@@ -19,6 +19,28 @@ def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = No
     return [finding for finding in report.to_findings() if finding.finding_type in _MACHINE_EXPORT_TYPES]
 
 
+def machine_export_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
+    """Rows for flat machine exports (CSV/Parquet): CVE findings plus synthesized
+    malicious-package findings.
+
+    ``cve_findings`` only includes synthesized malicious (vuln-less typosquat /
+    dep-confusion) findings when there are no BlastRadius rows to override with;
+    once any CVE BlastRadius exists it returns the BlastRadius list alone, so a
+    malicious-only package would silently vanish from CSV/Parquet even though
+    JSON/SARIF (which read ``report.to_findings()``) still surface it. Append the
+    malicious findings that the BlastRadius list doesn't already carry, deduped by
+    finding id, so every export sees the same rows.
+    """
+    findings = cve_findings(report, blast_radii)
+    seen = {getattr(finding, "id", None) for finding in findings}
+    findings.extend(
+        finding
+        for finding in report.to_findings()
+        if finding.finding_type == FindingType.MALICIOUS_PACKAGE and getattr(finding, "id", None) not in seen
+    )
+    return findings
+
+
 def active_cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
     """Return CVE findings that remain active after VEX suppression."""
     from agent_bom.vex import active_blast_radii

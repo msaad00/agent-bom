@@ -331,33 +331,51 @@ def _cached_version_match_state(
     intro = introduced or None
     fix = fixed or None
     last = last_affected or None
-    unknown = False
+    # ``ambiguous``: a genuine version-vs-version comparison yielded no ordering
+    # (unusual/unparseable version string) — worth a conservative include.
+    # ``uncomparable``: a bound is a git-commit SHA or other non-version token
+    # that can never establish semver range membership — NOT grounds for
+    # inclusion. Mirrors ``version_utils.version_in_range`` returning False for
+    # SHA bounds so this offline path stops emitting OSS-Fuzz/OSV-2022 false
+    # positives against concrete semver versions.
+    ambiguous = False
+    uncomparable = False
 
     if intro:
-        intro_cmp = compare_version_order(version, intro, ecosystem)
-        if intro_cmp is not None and intro_cmp < 0:
-            return "unaffected"
-        if intro_cmp is None:
-            unknown = True
+        if _looks_like_commit_sha(intro):
+            uncomparable = True
+        else:
+            intro_cmp = compare_version_order(version, intro, ecosystem)
+            if intro_cmp is not None and intro_cmp < 0:
+                return "unaffected"
+            if intro_cmp is None:
+                ambiguous = True
 
     if fix:
         if _looks_like_commit_sha(fix):
-            unknown = True
+            uncomparable = True
         else:
             fix_cmp = compare_version_order(version, fix, ecosystem)
             if fix_cmp is not None and fix_cmp >= 0:
                 return "unaffected"
             if fix_cmp is None:
-                unknown = True
+                ambiguous = True
 
     if last:
-        last_cmp = compare_version_order(version, last, ecosystem)
-        if last_cmp is not None and last_cmp > 0:
-            return "unaffected"
-        if last_cmp is None:
-            unknown = True
+        if _looks_like_commit_sha(last):
+            uncomparable = True
+        else:
+            last_cmp = compare_version_order(version, last, ecosystem)
+            if last_cmp is not None and last_cmp > 0:
+                return "unaffected"
+            if last_cmp is None:
+                ambiguous = True
 
-    return "unknown" if unknown else "affected"
+    if ambiguous:
+        return "unknown"
+    if uncomparable:
+        return "uncomparable"
+    return "affected"
 
 
 def _version_match_state(
@@ -367,7 +385,13 @@ def _version_match_state(
     last_affected: Optional[str],
     ecosystem: str = "",
 ) -> str:
-    """Return ``affected``, ``unaffected``, or ``unknown`` for one affected-range row."""
+    """Classify one affected-range row for a version.
+
+    Returns ``affected`` / ``unaffected`` for a definitive semver comparison,
+    ``unknown`` for a genuine version-vs-version ambiguity (conservatively
+    included), or ``uncomparable`` when a bound is a git SHA / non-version token
+    that can never match a concrete semver (never a reason to include).
+    """
     return _cached_version_match_state(version, introduced, fixed, last_affected, _comparator_ecosystem(ecosystem))
 
 
@@ -378,8 +402,10 @@ def _select_vulnerability_rows(rows: list[sqlite3.Row], version: Optional[str]) 
     include the vulnerability. If no rows match but at least one row
     definitively excludes the version, suppress the vulnerability even if
     sibling rows are ambiguous (for example, duplicate PYSEC rows with git-SHA
-    fix bounds). If all rows are ambiguous, include the first one
-    conservatively.
+    fix bounds). If all rows are genuinely ambiguous, include the first one
+    conservatively. Rows whose only signal is ``uncomparable`` (git-SHA /
+    non-version bounds — e.g. OSV-2022 OSS-Fuzz advisories) are never grounds
+    for inclusion, so a concrete semver version does not draw a false positive.
     """
     if not version:
         grouped_rows: dict[str, list[sqlite3.Row]] = defaultdict(list)

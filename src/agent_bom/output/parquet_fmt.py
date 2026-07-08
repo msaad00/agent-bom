@@ -12,9 +12,9 @@ from typing import Any
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.finding_views import (
-    cve_findings,
     evidence,
     is_package_malicious,
+    machine_export_findings,
     package_ecosystem,
     package_name,
     package_version,
@@ -100,7 +100,7 @@ def to_arrow_table(report: AIBOMReport, blast_radii: list[BlastRadius] | None = 
     consumers always see one consistent table shape.
     """
     pa, _ = _require_pyarrow()
-    rows = [_row_dict(finding) for finding in cve_findings(report, blast_radii)]
+    rows = [_row_dict(finding) for finding in machine_export_findings(report, blast_radii)]
     return pa.Table.from_pylist(rows, schema=_schema(pa))
 
 

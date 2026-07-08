@@ -12,9 +12,9 @@ import io
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.finding_views import (
-    cve_findings,
     evidence,
     is_package_malicious,
+    machine_export_findings,
     package_ecosystem,
     package_name,
     package_version,
@@ -54,7 +54,7 @@ _COLUMNS = [
 
 def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Convert an AIBOMReport to CSV string with UTF-8 BOM."""
-    findings = cve_findings(report, blast_radii)
+    findings = machine_export_findings(report, blast_radii)
 
     buf = io.StringIO()
     # UTF-8 BOM for Excel auto-detection

@@ -1,5 +1,9 @@
 # Enterprise Security Posture
 
+> Part of the **[enterprise doc set](ENTERPRISE.md#enterprise-doc-set)**. Start
+> at [`ENTERPRISE.md`](ENTERPRISE.md) for the controls-to-code map and the full
+> index of enterprise docs.
+
 This is the procurement-facing security posture for self-hosted `agent-bom`.
 It summarizes what the product does, where trust boundaries sit, and what an
 enterprise buyer must configure in its own environment.

@@ -1,5 +1,11 @@
 # Enterprise Controls Map
 
+> **Start here for enterprise.** This page maps enterprise claims to code and is
+> the entry point to the enterprise doc set. Jump to the
+> [Enterprise doc set](#enterprise-doc-set) index at the bottom for the
+> deployment, security-posture, procurement, operations-evidence, and support
+> siblings.
+
 This page maps enterprise-facing `agent-bom` claims to the code that implements them.
 
 It exists for a simple reason: the controls are real, but they should not require a repo archeology session to verify.
@@ -154,9 +160,22 @@ flowchart LR
     API --> UI["Dashboard / JSON / MCP / reports"]
 ```
 
-## Related Docs
+## Enterprise doc set
 
-- `docs/ENTERPRISE_DEPLOYMENT.md`
+This page is the hub. Each sibling below owns one concern; start here, then go
+deep where you need to.
+
+| Doc | Purpose |
+|---|---|
+| [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md) | Org-wide deployment guide — endpoints to cloud, container/image choices, rollout |
+| [`ENTERPRISE_SECURITY_POSTURE.md`](ENTERPRISE_SECURITY_POSTURE.md) | Procurement-facing security posture and trust boundaries |
+| [`ENTERPRISE_SECURITY_PLAYBOOK.md`](ENTERPRISE_SECURITY_PLAYBOOK.md) | Enterprise concern → capability → concrete code + test walkthrough |
+| [`ENTERPRISE_PROCUREMENT_PACKET.md`](ENTERPRISE_PROCUREMENT_PACKET.md) | Procurement evidence index for security, platform, and legal review |
+| [`ENTERPRISE_OPERATIONS_EVIDENCE.md`](ENTERPRISE_OPERATIONS_EVIDENCE.md) | Release-facing operations evidence (deploy, backup, restore, air-gap, upgrade, key custody) |
+| [`ENTERPRISE_SUPPORT_MODEL.md`](ENTERPRISE_SUPPORT_MODEL.md) | Support, patch, and disclosure model |
+
+## Related reference
+
 - `docs/CONTROL_PLANE_TESTING.md`
 - `docs/RUNTIME_MONITORING.md`
 - `docs/PERMISSIONS.md`

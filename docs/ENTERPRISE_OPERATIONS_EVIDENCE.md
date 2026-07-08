@@ -1,5 +1,9 @@
 # Enterprise Operations and Procurement Evidence
 
+> Part of the **[enterprise doc set](ENTERPRISE.md#enterprise-doc-set)**. Start
+> at [`ENTERPRISE.md`](ENTERPRISE.md) for the controls-to-code map and the full
+> index of enterprise docs.
+
 This page is the release-facing evidence index for self-hosted enterprise
 operations reviews. It connects the procurement packet to the concrete
 deployment, backup, restore, air-gap, upgrade, support, and key-custody

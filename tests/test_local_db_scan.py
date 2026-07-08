@@ -152,16 +152,19 @@ def test_scan_packages_local_db_db_unavailable():
     assert count == 0
 
 
-def test_scan_packages_local_db_falls_back_to_readonly_open():
+def test_scan_packages_local_db_falls_back_to_readonly_open(tmp_path):
     """Read-only fallback still scans when writable init_db fails."""
     from agent_bom.scanners import _scan_packages_local_db
 
     pkg = _make_pkg()
     lv = _make_local_vuln("CVE-2024-4444", "high", 7.9)
+    db_file = tmp_path / "scan.db"
+    db_file.write_text("placeholder", encoding="utf-8")
     conn = MagicMock()
 
     with (
         patch("agent_bom.db.schema.db_freshness_days", return_value=1),
+        patch("agent_bom.db.schema.DB_PATH", db_file),
         patch("agent_bom.db.schema.init_db", side_effect=RuntimeError("readonly mount")),
         patch("agent_bom.db.schema.open_existing_db_readonly", return_value=conn),
         patch("agent_bom.db.lookup.package_in_db", return_value=True),

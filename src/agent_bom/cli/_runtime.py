@@ -166,7 +166,7 @@ from agent_bom.cli._common import OPTIONAL_PORT_RANGE, PORT_RANGE
 @click.option(
     "--firewall-fail-mode",
     type=click.Choice(["open", "closed"], case_sensitive=False),
-    default="open",
+    default="closed",
     show_default=True,
     help="Fail-open (allow) or fail-closed (deny) when the gateway is unreachable AND no local policy is set.",
 )

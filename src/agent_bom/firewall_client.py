@@ -6,8 +6,8 @@ on every message would blow the latency budget. This client adds:
 
 - a per-process TTL cache keyed by (source, target, sorted source_roles,
   sorted target_roles) so repeat decisions in a typical session are local,
-- a configurable `fail_mode` (`open` / `closed`) so operators choose between
-  availability and safety when the gateway is unreachable,
+- a configurable `fail_mode` (`open` / `closed`, default `closed`) so operators
+  choose between availability and safety when the gateway is unreachable,
 - a local `AgentFirewallPolicy` fallback so air-gapped / single-host installs
   can run without a control plane.
 
@@ -33,6 +33,7 @@ from agent_bom.firewall import (
 from agent_bom.firewall import (
     evaluate as evaluate_firewall_policy,
 )
+from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ class FirewallClient:
         bearer_token: str | None = None,
         cache_ttl_seconds: float = 60.0,
         cache_max_entries: int = 1024,
-        fail_mode: FirewallFailMode = FirewallFailMode.OPEN,
+        fail_mode: FirewallFailMode = FirewallFailMode.CLOSED,
         local_policy: AgentFirewallPolicy | None = None,
         request_timeout_seconds: float = 2.0,
         http_client: Any | None = None,
@@ -118,7 +119,7 @@ class FirewallClient:
                     "firewall_client gateway call failed (source=%s, target=%s): %s",
                     source_agent,
                     target_agent,
-                    exc,
+                    sanitize_text(str(exc)),
                 )
 
         evaluation = self._fallback_decision(source_agent, target_agent, source_roles, target_roles)

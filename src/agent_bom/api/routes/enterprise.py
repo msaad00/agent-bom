@@ -521,9 +521,9 @@ async def delete_browser_session(request: Request, response: Response) -> None:
     """Clear the same-origin browser session cookie."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = require_request_tenant_id(request)
-    actor = getattr(request.state, "api_key_name", "") or "browser-session"
     _clear_browser_session_cookie(response, request)
+    tenant_id = getattr(request.state, "tenant_id", None) or "default"
+    actor = getattr(request.state, "api_key_name", "") or "browser-session"
     log_action("auth.browser_session_cleared", actor=actor, resource="auth/session", tenant_id=tenant_id)
     return None
 
@@ -614,6 +614,7 @@ async def rotate_key(
             expires_at=req.expires_at,
             scopes=list(current_key.scopes),
             tenant_id=current_key.tenant_id,
+            scim_subject_id=current_key.scim_subject_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
@@ -1446,7 +1447,12 @@ async def list_siem_connectors() -> dict:
 
 
 @router.post("/v1/siem/test", tags=["enterprise"])
-async def test_siem_connection(request: Request, siem_type: str = "", url: str = "", token: str = "") -> dict:
+async def test_siem_connection(
+    request: Request,
+    siem_type: str = "",
+    url: str = "",
+    token: str = Header(default="", alias="X-Siem-Token"),
+) -> dict:
     """Test SIEM connectivity."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.security import validate_url

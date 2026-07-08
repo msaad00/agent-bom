@@ -33,6 +33,10 @@ def _read_repo_file(relative_path: str, *, git_ref: str | None = None) -> str:
             stderr=subprocess.PIPE,
         )
     except subprocess.CalledProcessError as exc:
+        if git_ref == "HEAD":
+            path = ROOT / relative_path
+            if path.exists():
+                return path.read_text(encoding="utf-8")
         detail = (exc.stderr or "").strip()
         raise FileNotFoundError(f"{relative_path} at {git_ref}: {detail}") from exc
 
@@ -63,11 +67,7 @@ def verify_build_manifest(git_ref: str | None = None) -> list[str]:
         location = f" at {git_ref}" if git_ref else ""
         failures.append(f"missing Glama Dockerfile at {GLAMA_DOCKERFILE}{location}")
     else:
-        run_lines = [
-            line
-            for line in dockerfile_text.splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        ]
+        run_lines = [line for line in dockerfile_text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
         if any("uv sync" in line for line in run_lines):
             failures.append(f"{GLAMA_DOCKERFILE} must not use uv sync (mcp-proxy PATH issue)")
         if 'ENTRYPOINT ["agent-bom", "mcp", "server"]' not in dockerfile_text:
@@ -85,10 +85,7 @@ def verify_build_manifest(git_ref: str | None = None) -> list[str]:
             continue
         data = json.loads(manifest_text)
         if data.get("dockerfile") != GLAMA_DOCKERFILE:
-            failures.append(
-                f"{manifest_path} dockerfile must be {GLAMA_DOCKERFILE!r}, "
-                f"found {data.get('dockerfile')!r}"
-            )
+            failures.append(f"{manifest_path} dockerfile must be {GLAMA_DOCKERFILE!r}, found {data.get('dockerfile')!r}")
     return failures
 
 

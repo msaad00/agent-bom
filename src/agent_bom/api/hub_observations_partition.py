@@ -186,8 +186,8 @@ def rollover_observation_partitions(
         conn.execute(f"DROP TABLE IF EXISTS {partition_name}")  # nosec B608
         dropped += 1
         logger.info(
-            "hub observations retention dropped partition %s (end=%s cutoff=%s)",
-            partition_name,
+            "hub observations retention dropped expired partition #%d (end=%s cutoff=%s)",
+            dropped,
             partition_end.isoformat(),
             cutoff.isoformat(),
         )

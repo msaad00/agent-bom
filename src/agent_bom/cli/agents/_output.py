@@ -58,6 +58,7 @@ from agent_bom.output import (
     to_spdx,
     to_spdx2,
 )
+from agent_bom.security import write_scan_artifact_stdout
 
 _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "json": ("agent-bom-report.json", (".json",)),
@@ -230,9 +231,7 @@ def _enospc_report_fallback(
         )
         if serialized is not None:
             con.print(f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — emitting results to stdout instead.")
-            sys.stdout.write(serialized)
-            if not serialized.endswith("\n"):
-                sys.stdout.write("\n")
+            write_scan_artifact_stdout(serialized)
         else:
             con.print(
                 f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — "
@@ -358,9 +357,9 @@ def render_output(
                     full=agent_mode_full,
                     output_path=output if isinstance(output, str) else None,
                 )
-                sys.stdout.write(dumps_envelope(payload))
+                write_scan_artifact_stdout(dumps_envelope(payload), ensure_newline=False)
             else:
-                sys.stdout.write(json.dumps(to_json(report), indent=2))
+                write_scan_artifact_stdout(json.dumps(to_json(report), indent=2), ensure_newline=False)
             sys.stdout.write("\n")
         elif _is_null_device(output) and output_format in ("console", "text", "plain"):
             # `-o /dev/null` with a terminal-only format: discard silently rather
@@ -453,8 +452,7 @@ def render_output(
             _print_text(report, blast_radii)
         elif output_format == "json":
             if output in (None, "", "-"):
-                sys.stdout.write(json.dumps(to_json(report), indent=2))
-                sys.stdout.write("\n")
+                write_scan_artifact_stdout(json.dumps(to_json(report), indent=2))
             else:
                 out_path = _resolve_output_path(output, output_format)
                 export_json(report, out_path)

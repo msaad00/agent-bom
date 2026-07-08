@@ -22,6 +22,7 @@ from agent_bom.api.stores import (
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.platform_invariants import normalize_tenant_id
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.security import sanitize_error
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ def _try_records(name: str, func: Callable[[], list[Any]], unavailable: dict[str
     try:
         return func()
     except RuntimeError as exc:
-        unavailable[name] = str(exc)
+        unavailable[name] = sanitize_error(exc, generic=True)
         return []
 
 
@@ -112,7 +113,7 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
     try:
         quota = _get_tenant_quota_store().get(tenant_id)
     except RuntimeError as exc:
-        unavailable["tenant_quota"] = str(exc)
+        unavailable["tenant_quota"] = sanitize_error(exc, generic=True)
 
     counts = {
         "jobs": len(jobs),

@@ -27,6 +27,7 @@ from agent_bom.security import (
     sanitize_sensitive_payload,
     sanitize_text,
     sanitize_url,
+    write_scan_artifact_file,
 )
 
 SCAN_REPORT_SCHEMA_VERSION = "1.0"
@@ -1380,4 +1381,4 @@ def to_json(report: AIBOMReport) -> dict:
 def export_json(report: AIBOMReport, output_path: str) -> None:
     """Export report as JSON file."""
     data = to_json(report)
-    Path(output_path).write_text(json.dumps(data, indent=2))
+    write_scan_artifact_file(output_path, json.dumps(data, indent=2))

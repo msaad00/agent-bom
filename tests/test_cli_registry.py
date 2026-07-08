@@ -92,8 +92,7 @@ def test_registry_list_table_does_not_truncate_long_package_names():
     ):
         result = runner.invoke(registry, ["list"])
         assert result.exit_code == 0
-        flattened = "".join(result.output.split())
-        assert long_name in flattened
+        assert long_name in result.output
         assert "…" not in result.output
 
 

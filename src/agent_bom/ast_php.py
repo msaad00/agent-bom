@@ -8,6 +8,8 @@ agents do not inherit false ``function_reachable`` upgrades at CVE join time.
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -24,6 +26,7 @@ from agent_bom.ast_models import (
     _PhpMethodAnalysis,
     _PhpToolRegistration,
 )
+from agent_bom.ast_source_mask import mask_php_source
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_composer_package
 
 if TYPE_CHECKING:
@@ -61,9 +64,52 @@ _PHP_FRAMEWORK_HINTS: dict[str, str] = {
     "mcp": "MCP",
 }
 
+logger = logging.getLogger(__name__)
+
+# Keys that carry a PSR-4/PSR-0 autoload namespace root (rather than a package
+# name / vendor alias) inside the flat package map. The prefix keeps the map a
+# plain ``dict[str, str]`` so ``is_verified_composer_package`` (which inspects
+# ``.values()``) keeps working unchanged.
+_PSR_ROOT_KEY = "\x00psr\x00"
+
 
 def _line_number_from_index(source: str, index: int) -> int:
     return source[:index].count("\n") + 1
+
+
+def _composer_autoload_roots(project: Path) -> dict[str, str]:
+    """Map each package's PSR-4/PSR-0 namespace roots to its Composer name.
+
+    Reads ``packages[].autoload`` from ``composer.lock`` so a ``use`` such as
+    ``PhpParser\\ParserFactory`` resolves to ``nikic/php-parser`` even though
+    the namespace head never matches the vendor segment. Prefixes are returned
+    with the trailing ``\\`` stripped (PSR-0 underscore prefixes are kept).
+    """
+    lockfile = Path(project) / "composer.lock"
+    if not lockfile.is_file():
+        return {}
+    try:
+        data = json.loads(lockfile.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Cannot read %s for PSR-4 roots: %s", lockfile, exc)
+        return {}
+
+    roots: dict[str, str] = {}
+    for section in ("packages", "packages-dev"):
+        for pkg in data.get(section, []):
+            name = (pkg.get("name") or "").strip()
+            if not name:
+                continue
+            autoload = pkg.get("autoload") or {}
+            for scheme in ("psr-4", "psr-0"):
+                namespaces = autoload.get(scheme) or {}
+                if not isinstance(namespaces, dict):
+                    continue
+                for namespace in namespaces:
+                    prefix = (namespace or "").rstrip("\\").strip()
+                    if prefix:
+                        roots.setdefault(prefix, name)
+    return roots
 
 
 def load_composer_package_map(project: Path) -> dict[str, str]:
@@ -79,18 +125,53 @@ def load_composer_package_map(project: Path) -> dict[str, str]:
         mapping[name] = name
         vendor, _, _short = name.partition("/")
         if vendor:
-            mapping[vendor.lower()] = name
+            # Vendor-segment binding is a last-resort fallback only; PSR-4 roots
+            # below take precedence. ``setdefault`` avoids a multi-package vendor
+            # clobbering itself nondeterministically (finding #5).
+            mapping.setdefault(vendor.lower(), name)
+
+    for prefix, pkg_name in _composer_autoload_roots(project).items():
+        mapping[_PSR_ROOT_KEY + prefix] = pkg_name
+
     return mapping
 
 
+def _ns_matches_prefix(ns: str, prefix: str) -> bool:
+    if ns == prefix:
+        return True
+    if ns.startswith(prefix + "\\"):
+        return True
+    # PSR-0 underscore-style roots (e.g. ``Twig_``) use ``_`` as the boundary.
+    return prefix.endswith("_") and ns.startswith(prefix)
+
+
 def _php_package_for_namespace(ns: str, package_map: Mapping[str, str]) -> str | None:
-    head = ns.split("\\", 1)[0].strip()
+    ns = (ns or "").lstrip("\\").strip()
+    if not ns:
+        return None
+
+    # Prefer a real PSR-4/PSR-0 autoload root, longest-prefix wins so nested
+    # namespaces bind to the most specific declaring package.
+    best_prefix: str | None = None
+    best_pkg: str | None = None
+    for key, pkg in package_map.items():
+        if not key.startswith(_PSR_ROOT_KEY):
+            continue
+        prefix = key[len(_PSR_ROOT_KEY) :]
+        if not _ns_matches_prefix(ns, prefix):
+            continue
+        if best_prefix is None or len(prefix) > len(best_prefix):
+            best_prefix, best_pkg = prefix, pkg
+    if best_pkg and is_verified_composer_package(best_pkg, dict(package_map)):
+        return best_pkg
+
+    # Fallback: legacy vendor-segment match for packages with no autoload roots.
+    head = ns.split("\\", 1)[0].strip().lower()
     if not head:
         return None
-    head_lower = head.lower()
     for pkg_name in set(package_map.values()):
         vendor = pkg_name.split("/", 1)[0].lower()
-        if vendor == head_lower and is_verified_composer_package(pkg_name, dict(package_map)):
+        if vendor == head and is_verified_composer_package(pkg_name, dict(package_map)):
             return pkg_name
     return None
 
@@ -124,6 +205,22 @@ def _php_method_key(class_name: str, name: str) -> str:
     return f"{class_name}::{name}"
 
 
+def _php_class_spans(source: str) -> list[tuple[str, int]]:
+    """Return ``(class_name, start_index)`` for every class declaration in order."""
+    return [(match.group("name"), match.start()) for match in _PHP_CLASS_RE.finditer(source)]
+
+
+def _php_class_at(spans: Sequence[tuple[str, int]], default_class: str, index: int) -> str:
+    """Return the class enclosing ``index`` (the last class declared before it)."""
+    name = default_class
+    for class_name, start in spans:
+        if start <= index:
+            name = class_name
+        else:
+            break
+    return name
+
+
 def _php_method_body(source: str, method_start: int, method_end: int) -> tuple[str, int] | None:
     next_def = _PHP_METHOD_RE.search(source, method_end)
     body_end = next_def.start() if next_def else len(source)
@@ -133,6 +230,11 @@ def _php_method_body(source: str, method_start: int, method_end: int) -> tuple[s
 
 def _php_call_sites(body: str, *, line_offset: int) -> list[_PhpCallSite]:
     sites: list[_PhpCallSite] = []
+    # Blank comments, string literals and heredoc/nowdoc bodies so a
+    # ``Class::method(`` token mentioned in text is never emitted as a call
+    # site (a false ``function_reachable`` upgrade at CVE join time). Offsets
+    # are preserved, so line numbers stay accurate.
+    body = mask_php_source(body)
     for match in _PHP_OBJECT_CALL_RE.finditer(body):
         sites.append(
             _PhpCallSite(
@@ -154,12 +256,16 @@ def _collect_php_methods(
     source: str,
     *,
     rel_path: str,
-    class_name: str,
+    default_class: str,
+    class_spans: Sequence[tuple[str, int]],
     bindings: Mapping[str, str],
 ) -> dict[str, _PhpMethodAnalysis]:
     methods: dict[str, _PhpMethodAnalysis] = {}
     for match in _PHP_METHOD_RE.finditer(source):
         name = match.group("name")
+        # Key each method to the class that actually encloses it so multi-class
+        # files do not collapse every method under the first class declaration.
+        class_name = _php_class_at(class_spans, default_class, match.start())
         body_segment = _php_method_body(source, match.start(), match.end())
         if body_segment is None:
             continue
@@ -195,7 +301,8 @@ def _collect_php_tool_registrations(
     source: str,
     *,
     rel_path: str,
-    class_name: str,
+    default_class: str,
+    class_spans: Sequence[tuple[str, int]],
     bindings: Mapping[str, str],
     methods: Mapping[str, _PhpMethodAnalysis],
 ) -> list[_PhpToolRegistration]:
@@ -205,6 +312,7 @@ def _collect_php_tool_registrations(
         tool_name = match.group("name").strip()
         if not tool_name:
             continue
+        class_name = _php_class_at(class_spans, default_class, match.start())
         window = source[match.start() : match.start() + 240]
         handler_name = _resolve_php_tool_handler(window, class_name=class_name, methods=methods)
         if handler_name is None or handler_name not in methods:
@@ -380,10 +488,17 @@ def scan_php_file(
         return [], [], [], [], [], [], None
 
     if len(source) > _MAX_FILE_SIZE:
+        logger.warning(
+            "Skipping PHP reachability scan for %s: %d bytes exceeds %d-byte limit",
+            rel_path,
+            len(source),
+            _MAX_FILE_SIZE,
+        )
         return [], [], [], [], [], [], None
 
-    class_match = _PHP_CLASS_RE.search(source)
-    class_name = class_match.group("name") if class_match else Path(rel_path).stem
+    class_spans = _php_class_spans(source)
+    default_class = class_spans[0][0] if class_spans else Path(rel_path).stem
+    class_name = default_class
     bindings = _php_use_bindings(source, package_map)
     frameworks = sorted(
         {
@@ -392,11 +507,18 @@ def scan_php_file(
             if any(prefix in binding.lower() for binding in bindings.values())
         },
     )
-    methods = _collect_php_methods(source, rel_path=rel_path, class_name=class_name, bindings=bindings)
+    methods = _collect_php_methods(
+        source,
+        rel_path=rel_path,
+        default_class=default_class,
+        class_spans=class_spans,
+        bindings=bindings,
+    )
     tool_registrations = _collect_php_tool_registrations(
         source,
         rel_path=rel_path,
-        class_name=class_name,
+        default_class=default_class,
+        class_spans=class_spans,
         bindings=bindings,
         methods=methods,
     )

@@ -76,8 +76,11 @@ def extract_azure_function_packages(
     eco = ecosystem_from_runtime(runtime_stack)
     if not eco or not rg_name or not app_name:
         return []
+    list_credentials = getattr(web_client.web_apps, "list_publishing_credentials", None)
+    if not callable(list_credentials):
+        return []
     try:
-        creds = web_client.web_apps.list_publishing_credentials(rg_name, app_name)
+        creds = list_credentials(rg_name, app_name)
         props = getattr(creds, "properties", creds)
         scm_uri = str(getattr(props, "scm_uri", "") or "").rstrip("/")
         username = str(getattr(props, "publishing_user_name", "") or "")

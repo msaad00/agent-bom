@@ -41,7 +41,7 @@ _PROFILES: tuple[ProviderResilienceProfile, ...] = (
         max_page_safety="SDK paginator exhaustion; synthetic tests cover 10k resources without live credentials",
         synthetic_scale_target=10_000,
         status="verified",
-        evidence=("src/agent_bom/cloud/aws.py", "tests/test_cloud_resilience.py"),
+        evidence=("src/agent_bom/cloud/aws.py", "tests/cloud/test_cloud_resilience.py"),
     ),
     ProviderResilienceProfile(
         provider="azure",
@@ -107,7 +107,7 @@ _PROFILES: tuple[ProviderResilienceProfile, ...] = (
         max_page_safety="cursor exhaustion with page-loop tests",
         synthetic_scale_target=10_000,
         status="verified",
-        evidence=("src/agent_bom/cloud/openai_provider.py", "tests/test_cloud_resilience.py"),
+        evidence=("src/agent_bom/cloud/openai_provider.py", "tests/cloud/test_cloud_resilience.py"),
     ),
     ProviderResilienceProfile(
         provider="wandb",
@@ -118,7 +118,7 @@ _PROFILES: tuple[ProviderResilienceProfile, ...] = (
         max_page_safety="SDK iterator exhaustion; live scale evidence remains provider-dependent",
         synthetic_scale_target=10_000,
         status="partial",
-        evidence=("src/agent_bom/cloud/wandb_provider.py", "tests/test_cloud_providers_cov.py"),
+        evidence=("src/agent_bom/cloud/wandb_provider.py", "tests/cloud/test_cloud_providers_cov.py"),
     ),
     ProviderResilienceProfile(
         provider="mlflow",
@@ -129,7 +129,7 @@ _PROFILES: tuple[ProviderResilienceProfile, ...] = (
         max_page_safety="page-token exhaustion with contract coverage",
         synthetic_scale_target=10_000,
         status="verified",
-        evidence=("src/agent_bom/cloud/mlflow_provider.py", "tests/test_cloud_resilience.py"),
+        evidence=("src/agent_bom/cloud/mlflow_provider.py", "tests/cloud/test_cloud_resilience.py"),
     ),
     ProviderResilienceProfile(
         provider="nebius",
@@ -140,7 +140,7 @@ _PROFILES: tuple[ProviderResilienceProfile, ...] = (
         max_page_safety="cursor exhaustion with explicit token handling",
         synthetic_scale_target=10_000,
         status="verified",
-        evidence=("src/agent_bom/cloud/nebius.py", "tests/test_cloud_resilience.py"),
+        evidence=("src/agent_bom/cloud/nebius.py", "tests/cloud/test_cloud_resilience.py"),
     ),
     ProviderResilienceProfile(
         provider="coreweave",

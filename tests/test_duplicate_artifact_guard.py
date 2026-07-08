@@ -14,7 +14,7 @@ def test_duplicate_artifact_guard_detects_finder_copies() -> None:
         "README 2.md",
         "docs/cli 2.md",
         "docs/images/agent-bom-live 2.png",
-        "tests/test_cloud_resilience 3.py",
+        "tests/cloud/test_cloud_resilience 3.py",
     ]
 
     assert find_duplicate_artifacts(paths) == [
@@ -23,7 +23,7 @@ def test_duplicate_artifact_guard_detects_finder_copies() -> None:
         "docs/cli 2.md",
         "docs/images/agent-bom-live 2.png",
         "src/agent_bom/model_advisories 2.py",
-        "tests/test_cloud_resilience 3.py",
+        "tests/cloud/test_cloud_resilience 3.py",
     ]
 
 

@@ -32,7 +32,7 @@ def _stub_boto3(monkeypatch):
     fan-out runs. The fan-out tests monkeypatch ``assume_account_session`` /
     ``discover_inventory``, so the stub only has to satisfy those import guards.
     Mirrors the established pattern in ``tests/test_aws_organizations.py`` and
-    ``tests/test_cloud_aws_inventory.py``. A test that needs boto3 genuinely
+    ``tests/cloud/test_cloud_aws_inventory.py``. A test that needs boto3 genuinely
     absent overrides ``sys.modules["boto3"]`` to ``None`` in its own body.
     """
     boto3 = types.ModuleType("boto3")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 
 import pytest
 
@@ -15,7 +16,8 @@ def _reload_config(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_bool_typo_on_true_default_keeps_default(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     monkeypatch.setenv("AGENT_BOM_MCP_AUTH_REQUIRE_TLS", "Ture")
-    _reload_config(monkeypatch)
+    with caplog.at_level(logging.WARNING, logger="agent_bom.config"):
+        _reload_config(monkeypatch)
     from agent_bom.config import MCP_AUTH_REQUIRE_TLS
 
     assert MCP_AUTH_REQUIRE_TLS is True
@@ -32,7 +34,8 @@ def test_bool_explicit_false_overrides_true_default(monkeypatch: pytest.MonkeyPa
 
 def test_int_typo_falls_back_to_default(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     monkeypatch.setenv("AGENT_BOM_HTTP_MAX_RETRIES", "not-a-number")
-    _reload_config(monkeypatch)
+    with caplog.at_level(logging.WARNING, logger="agent_bom.config"):
+        _reload_config(monkeypatch)
     from agent_bom.config import HTTP_MAX_RETRIES
 
     assert HTTP_MAX_RETRIES == 3
@@ -41,7 +44,8 @@ def test_int_typo_falls_back_to_default(monkeypatch: pytest.MonkeyPatch, caplog:
 
 def test_float_typo_falls_back_to_default(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     monkeypatch.setenv("AGENT_BOM_HTTP_INITIAL_BACKOFF", "NaN-ish")
-    _reload_config(monkeypatch)
+    with caplog.at_level(logging.WARNING, logger="agent_bom.config"):
+        _reload_config(monkeypatch)
     from agent_bom.config import HTTP_INITIAL_BACKOFF
 
     assert HTTP_INITIAL_BACKOFF == 1.0

@@ -19,7 +19,6 @@ def _finding_with_id(finding_id: str) -> dict:
     return {
         "id": finding_id,
         "finding_type": "CVE",
-        "source": "MCP_SCAN",
         "severity": "high",
         "title": finding_id,
         "asset": {"name": "pkg", "asset_type": "package", "identifier": f"pkg:pypi/{finding_id}@1.0.0"},

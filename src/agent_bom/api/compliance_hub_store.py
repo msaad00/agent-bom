@@ -48,10 +48,10 @@ from agent_bom.api.hub_reference_store import (
     persist_finding_references_sqlite,
 )
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.graph.severity import severity_policy_rank
 
 # Chunk size for reconcile UPDATE … IN (…) to stay under SQLite/Postgres bind limits.
 RECONCILE_ABSENT_CHUNK = 500
-from agent_bom.graph.severity import severity_policy_rank
 
 # Defined here (module scope) so ``list`` resolves to the builtin: the store
 # classes below define a ``list`` method that would otherwise shadow it in

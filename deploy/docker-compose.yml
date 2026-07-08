@@ -1,5 +1,10 @@
 version: '3.8'
 
+# ── DEPRECATED (DEV profile) ─────────────────────────────────────────────────
+# Prefer `deploy/docker-compose.fullstack.yml` for local API+UI dev, or
+# `deploy/docker-compose.platform.yml` for a production-shaped stack.
+# This file remains for backward-compatible one-shot scanner+Postgres dev only.
+#
 # ── Profile: DEV ─────────────────────────────────────────────────────────────
 # Development compose — scanner + Redis + PostgreSQL
 # Useful for one-shot scans against a local Postgres + Redis. For an

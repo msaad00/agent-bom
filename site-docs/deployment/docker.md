@@ -30,7 +30,7 @@ Use these in this order:
 | `deploy/docker-compose.pilot.yml` | recommended | fastest one-machine pilot with the shipped images |
 | `deploy/docker-compose.fullstack.yml` | advanced local example | you want a fuller single-machine compose setup and are comfortable editing local compose files |
 | `deploy/docker-compose.platform.yml` | component example | you are focusing on the control-plane/platform layer only |
-| `deploy/docker-compose.runtime.yml` | component example | you are focusing on proxy/runtime behavior only |
+| `deploy/docker-compose.runtime-example.yml` | component example | you are focusing on proxy/runtime behavior only |
 
 If you want the full self-hosted deployment path for your own infrastructure,
 use `scripts/deploy/install-eks-reference.sh` instead of trying to stretch a

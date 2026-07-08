@@ -597,7 +597,7 @@ def test_compose_examples_pass_through_proxy_and_ca_env():
     """Compose examples should expose the same enterprise network env contract."""
     compose_files = [
         ROOT / "deploy" / "docker-compose.yml",
-        ROOT / "deploy" / "docker-compose.runtime.yml",
+        ROOT / "deploy" / "docker-compose.runtime-example.yml",
     ]
     required_tokens = [
         "HTTP_PROXY",

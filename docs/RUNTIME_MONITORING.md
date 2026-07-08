@@ -58,10 +58,10 @@ docker run --rm \
 
 ### Docker Compose
 
-Use the provided `deploy/docker-compose.runtime.yml` for a complete sidecar example:
+Use the provided `deploy/docker-compose.runtime-example.yml` for a complete sidecar example:
 
 ```bash
-docker compose -f deploy/docker-compose.runtime.yml up
+docker compose -f deploy/docker-compose.runtime-example.yml up
 ```
 
 This starts:

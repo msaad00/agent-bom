@@ -39,6 +39,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
@@ -205,6 +206,23 @@ def _page_meta(total: int, offset: int, limit: int, *, cursor: str | None = None
         "next_cursor": next_cursor or "",
         "has_more": bool(next_cursor) if cursor else offset + limit < total,
     }
+
+
+def _enforce_node_offset_cap(offset: int, cursor: str | None) -> None:
+    """Reject deep OFFSET pagination that would force an O(offset) row scan.
+
+    Offset paging past the cap costs seconds because the store still walks and
+    discards every skipped row. Keyset ``cursor=`` pagination stays flat, so
+    point callers there instead of silently serving a multi-second response.
+    """
+    if not cursor and offset > MAX_NODE_PAGE_OFFSET:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"offset={offset} exceeds the maximum supported node offset ({MAX_NODE_PAGE_OFFSET}). "
+                "Use the cursor= keyset parameter (next_cursor from the previous page) for deep pagination."
+            ),
+        )
 
 
 def _parse_entity_type_filter(raw: str | None) -> set[str] | None:
@@ -1551,6 +1569,7 @@ async def get_graph(
     """
     from agent_bom.graph import SEVERITY_RANK, GraphFilterOptions
 
+    _enforce_node_offset_cap(offset, cursor)
     tenant = _tenant(request)
     graph_store = _get_graph_store_or_503()
     requested_scan_id = _coalesce_alias(scan_id, scan, primary_name="scan_id", alias_name="scan")
@@ -2170,6 +2189,7 @@ async def list_graph_agents(
     limit: int = Query(100, ge=1, le=500, description="Max agents"),
 ) -> dict:
     """List agent nodes for large-graph selectors without loading the full graph."""
+    _enforce_node_offset_cap(offset, cursor)
     graph_store = _get_graph_store_or_503()
     tenant_id = _tenant(request)
     query = q.strip()

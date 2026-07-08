@@ -30,6 +30,15 @@ from agent_bom.graph.types import EntityType, RelationshipType
 # Severity buckets reported in every roll-up histogram, worst → least.
 _SEVERITY_ORDER: tuple[str, ...] = SEVERITY_BUCKETS_WORST_FIRST
 
+# A flat estate (no CONTAINS tree) surfaces every node as its own orphan entry.
+# Emitting one entry per node makes the roll-up body grow O(nodes) — hundreds of
+# thousands of single-node entries, a 170MB+ response at 500k. Surface only the
+# highest-risk orphans individually and fold the long tail into an aggregate
+# ``orphan_summary`` so nothing silently disappears from the view.
+_MAX_TOP_LEVEL_ORPHANS: int = 200
+# Bounded per-type sample of the truncated orphan tail carried on the summary.
+_ORPHAN_SUMMARY_SAMPLE: int = 20
+
 # Estate containment edges: org/account/resource trees use CONTAINS; cloud
 # account→resource lineage may be HOSTS-only on legacy graphs.
 _CONTAINMENT_RELS: frozenset[str] = frozenset({RelationshipType.CONTAINS.value})
@@ -192,10 +201,7 @@ def _edge_is_containment(graph: UnifiedGraph, edge: Any) -> bool:
     target = graph.nodes.get(edge.target)
     if source is None or target is None:
         return False
-    return (
-        _node_type_value(source) in _HOSTS_CONTAINMENT_SOURCES
-        and _node_type_value(target) in _HOSTS_CONTAINMENT_TARGETS
-    )
+    return _node_type_value(source) in _HOSTS_CONTAINMENT_SOURCES and _node_type_value(target) in _HOSTS_CONTAINMENT_TARGETS
 
 
 def _contains_children(graph: UnifiedGraph) -> dict[str, list[str]]:
@@ -343,15 +349,29 @@ def rollup_view(
         rolled_up_ids.add(root_id)
         rolled_up_ids.update(descendants)
 
-    # Nodes outside any CONTAINS tree (orphans / flat estates) are surfaced as
-    # their own single-node entries so nothing silently disappears from the view.
-    orphans: list[RollupContainer] = []
-    for nid in sorted(graph.nodes):
-        if nid in rolled_up_ids:
-            continue
+    # Nodes outside any CONTAINS tree (orphans / flat estates). Surface the
+    # highest-risk orphans individually (bounded) and aggregate the rest into
+    # ``orphan_summary`` so a flat 500k-node estate stays a small, readable body.
+    orphan_ids = [
+        nid
+        for nid in sorted(graph.nodes)
+        if nid not in rolled_up_ids and not (filters is not None and filters.active() and not filters.matches(graph.nodes[nid]))
+    ]
+
+    def _orphan_rank(nid: str) -> tuple[int, float, str]:
         node = graph.nodes[nid]
-        if filters is not None and filters.active() and not filters.matches(node):
-            continue
+        return (
+            -SEVERITY_RANK.get((node.severity or "").lower(), 0),
+            -float(node.risk_score or 0.0),
+            nid,
+        )
+
+    ranked_orphan_ids = sorted(orphan_ids, key=_orphan_rank)
+    shown_orphan_ids = ranked_orphan_ids[:_MAX_TOP_LEVEL_ORPHANS]
+    truncated_orphan_ids = ranked_orphan_ids[_MAX_TOP_LEVEL_ORPHANS:]
+    orphans: list[RollupContainer] = []
+    for nid in shown_orphan_ids:
+        node = graph.nodes[nid]
         orphans.append(
             RollupContainer(
                 id=node.id,
@@ -368,6 +388,32 @@ def rollup_view(
     top_level = containers + orphans
     top_level.sort(key=lambda c: (-c.aggregate.worst_severity_rank, -c.aggregate.descendant_count, c.id))
 
+    # Node-level aggregate over every orphan (matching nodes only), plus a
+    # bounded per-item sample of the truncated tail for drill-in.
+    orphan_agg = _aggregate(orphan_ids, graph, filters=filters)
+    orphan_summary = {
+        "total": len(orphan_ids),
+        "shown": len(orphans),
+        "truncated": len(truncated_orphan_ids),
+        "by_type": dict(sorted(orphan_agg.by_type.items())),
+        "severity_counts": {sev: orphan_agg.severity_counts.get(sev, 0) for sev in _SEVERITY_ORDER},
+        "worst_severity": orphan_agg.worst_severity,
+        "worst_severity_rank": orphan_agg.worst_severity_rank,
+        "internet_exposed": orphan_agg.internet_exposed,
+        "toxic_combo": orphan_agg.toxic_combo,
+        "exposed_count": orphan_agg.exposed_count,
+        "toxic_count": orphan_agg.toxic_count,
+        "sample": [
+            {
+                "id": graph.nodes[nid].id,
+                "label": graph.nodes[nid].label,
+                "entity_type": _node_type_value(graph.nodes[nid]),
+                "severity": graph.nodes[nid].severity or "",
+            }
+            for nid in truncated_orphan_ids[:_ORPHAN_SUMMARY_SAMPLE]
+        ],
+    }
+
     return {
         "scan_id": graph.scan_id,
         "tenant_id": graph.tenant_id,
@@ -375,12 +421,15 @@ def rollup_view(
         "mode": "rollup",
         "filters": _filters_dict(filters),
         "top_level": [c.to_dict() for c in top_level],
+        "orphan_summary": orphan_summary,
         "summary": {
             "total_nodes": len(graph.nodes),
             "total_edges": len(graph.edges),
             "top_level_count": len(top_level),
             "container_count": len(containers),
-            "orphan_count": len(orphans),
+            "orphan_count": len(orphan_ids),
+            "orphan_shown_count": len(orphans),
+            "orphan_truncated_count": len(truncated_orphan_ids),
         },
     }
 

@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-07-08
+
+Minor release shipping the post-0.93.5 audit/security batch, cloud and runtime
+hardening, identity/SCIM fixes, CIS fail-closed coverage, and CI evidence
+improvements for self-hosted control planes.
+
 ### Fixed
 - **git-SHA advisory false positives (offline scan)** — the local `db/lookup`
   matcher no longer conservatively reports advisories whose only bounds are git
@@ -16,17 +22,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   such rows are now classified `uncomparable` rather than `unknown`, so e.g.
   `pillow==11.0.0` stops drawing `OSV-2022-1074` / `OSV-2022-715`. Genuine semver
   in-range/past-fix matching and mixed SHA-plus-semver sibling rows are
-  unaffected.
+  unaffected (#3723).
 - **Malicious packages missing from CSV/Parquet export** — vuln-less
   malicious/typosquat packages (synthesized findings) now appear in the CSV and
   Parquet exports even when CVE findings are present, matching JSON/SARIF, with
-  `is_malicious` and `malicious_reason` populated.
-
-## [0.94.0] - 2026-07-08
-
-Minor release shipping the post-0.93.5 audit/security batch, cloud and runtime
-hardening, identity/SCIM fixes, CIS fail-closed coverage, and CI evidence
-improvements for self-hosted control planes.
+  `is_malicious` and `malicious_reason` populated (#3723).
 
 ### Security / audit
 - **CIS fail-closed** — ~25 checks report ERROR (not PASS) when per-resource reads
@@ -86,8 +86,8 @@ improvements for self-hosted control planes.
 ### Docs / deploy
 - **Doc consolidation** — stage-1 hub structure for duplicate deploy/product
   clusters (#3704).
-- **Deployment READMEs** — raw Kubernetes and Snowflake deploy paths (#3720;
-  Snowflake README in #3721 when merged).
+- **Deployment READMEs** — raw Kubernetes and Snowflake deploy paths (#3720,
+  #3721).
 - **How-it-works** — canonical deployment matrix and editions page (#3668).
 
 ### Also in this release line (since 0.93.5)

@@ -17,7 +17,7 @@ router = APIRouter()
 _logger = logging.getLogger(__name__)
 
 
-@router.get("/v1/assets", tags=["assets"])
+@router.get("/assets", tags=["assets"])
 async def list_assets(
     request: Request,
     status: str | None = None,
@@ -55,7 +55,7 @@ async def list_assets(
         }
 
 
-@router.get("/v1/assets/stats", tags=["assets"])
+@router.get("/assets/stats", tags=["assets"])
 async def get_asset_stats(request: Request) -> dict:
     """Return aggregate asset tracking statistics including MTTR."""
     try:

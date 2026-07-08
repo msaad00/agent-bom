@@ -40,7 +40,7 @@ def set_posture_webhook_outbox(outbox: WebhookOutbox | None) -> None:
     _OUTBOX_OVERRIDE = outbox is not None
 
 
-@router.get("/v1/posture/webhooks/outbox", tags=["posture"])
+@router.get("/posture/webhooks/outbox", tags=["posture"])
 async def list_posture_webhook_outbox(
     request: Request,
     status: str | None = Query(default=None, pattern="^(pending|delivered|dead_letter)$"),
@@ -64,13 +64,13 @@ async def list_posture_webhook_outbox(
     }
 
 
-@router.get("/v1/posture/webhooks/outbox/stats", tags=["posture"])
+@router.get("/posture/webhooks/outbox/stats", tags=["posture"])
 async def get_posture_webhook_outbox_stats(request: Request) -> dict:
     """Return webhook outbox status counts for the current tenant."""
     return {"schema_version": "v1", "stats": get_posture_webhook_outbox().stats(tenant_id=_tenant_id(request))}
 
 
-@router.post("/v1/posture/webhooks/outbox/{row_id}/retry", tags=["posture"], status_code=202)
+@router.post("/posture/webhooks/outbox/{row_id}/retry", tags=["posture"], status_code=202)
 async def retry_posture_webhook_outbox_record(request: Request, row_id: int) -> dict:
     """Requeue one dead-lettered webhook row for the current tenant."""
     tenant_id = _tenant_id(request)

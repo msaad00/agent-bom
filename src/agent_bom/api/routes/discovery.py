@@ -414,7 +414,7 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/v1/agents", tags=["discovery"])
+@router.get("/agents", tags=["discovery"])
 async def list_agents(
     request: Request,
     refresh: bool = Query(False, description="Bypass the sidebar cache and perform live local discovery"),
@@ -437,7 +437,7 @@ async def list_agents(
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
-@router.get("/v1/discovery/providers", tags=["discovery"])
+@router.get("/discovery/providers", tags=["discovery"])
 async def list_discovery_providers() -> dict:
     """Return registered discovery provider capability and trust contracts."""
 
@@ -446,7 +446,7 @@ async def list_discovery_providers() -> dict:
     return provider_contracts()
 
 
-@router.get("/v1/agents/mesh", tags=["discovery"])
+@router.get("/agents/mesh", tags=["discovery"])
 async def get_agent_mesh(request: Request) -> dict:
     """Get a ReactFlow-compatible mesh topology of all discovered agents.
 
@@ -500,7 +500,7 @@ async def get_agent_mesh(request: Request) -> dict:
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
-@router.get("/v1/agents/{agent_name}", tags=["discovery"])
+@router.get("/agents/{agent_name}", tags=["discovery"])
 async def get_agent_detail(request: Request, agent_name: str) -> dict:
     """Get detailed view of a single agent with cross-referenced scan data."""
     try:
@@ -586,7 +586,7 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
-@router.get("/v1/agents/{agent_name}/lifecycle", tags=["discovery"])
+@router.get("/agents/{agent_name}/lifecycle", tags=["discovery"])
 async def get_agent_lifecycle(request: Request, agent_name: str) -> dict:
     """Get React Flow nodes/edges for an agent's full lifecycle graph.
 

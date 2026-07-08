@@ -8,7 +8,7 @@ from agent_bom.agent_manifest import build_control_plane_agent_manifest
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store
 from agent_bom.api.tenancy import require_request_tenant_id
 
-router = APIRouter(prefix="/v1/agent-bom", tags=["Agent BOM"])
+router = APIRouter(prefix="/agent-bom", tags=["Agent BOM"])
 
 
 @router.get("/manifest")

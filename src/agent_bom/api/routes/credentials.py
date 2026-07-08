@@ -71,7 +71,7 @@ def _apply_update(credential: CredentialRefRecord, body: CredentialRefUpdate) ->
     return credential
 
 
-@router.post("/v1/credentials", tags=["credentials"], status_code=201)
+@router.post("/credentials", tags=["credentials"], status_code=201)
 async def create_credential_ref(request: Request, body: CredentialRefCreate) -> dict:
     tenant_id = _tenant_id(request)
     if body.tenant_id not in ("default", tenant_id):
@@ -111,7 +111,7 @@ async def create_credential_ref(request: Request, body: CredentialRefCreate) -> 
     return credential.model_dump()
 
 
-@router.get("/v1/credentials", tags=["credentials"])
+@router.get("/credentials", tags=["credentials"])
 async def list_credential_refs(
     request: Request,
     limit: int = Query(1000, ge=1, le=1000),
@@ -131,19 +131,19 @@ async def list_credential_refs(
     }
 
 
-@router.get("/v1/credentials/posture", tags=["credentials"])
+@router.get("/credentials/posture", tags=["credentials"])
 async def get_credential_rotation_posture(request: Request) -> dict:
     tenant_id = _tenant_id(request)
     credentials = _get_credential_ref_store().list_all(tenant_id=tenant_id)
     return build_credential_rotation_governance(credentials, tenant_id=tenant_id)
 
 
-@router.get("/v1/credentials/{credential_ref_id}", tags=["credentials"])
+@router.get("/credentials/{credential_ref_id}", tags=["credentials"])
 async def get_credential_ref(request: Request, credential_ref_id: str) -> dict:
     return _credential_for_request(request, credential_ref_id).model_dump()
 
 
-@router.put("/v1/credentials/{credential_ref_id}", tags=["credentials"])
+@router.put("/credentials/{credential_ref_id}", tags=["credentials"])
 async def update_credential_ref(request: Request, credential_ref_id: str, body: CredentialRefUpdate) -> dict:
     credential = _apply_update(_credential_for_request(request, credential_ref_id), body)
     _get_credential_ref_store().put(credential)
@@ -158,7 +158,7 @@ async def update_credential_ref(request: Request, credential_ref_id: str, body: 
     return credential.model_dump()
 
 
-@router.post("/v1/credentials/{credential_ref_id}/test", tags=["credentials"])
+@router.post("/credentials/{credential_ref_id}/test", tags=["credentials"])
 async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
     credential = _credential_for_request(request, credential_ref_id)
     status, message = validate_credential_ref(credential)
@@ -183,7 +183,7 @@ async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
     }
 
 
-@router.delete("/v1/credentials/{credential_ref_id}", tags=["credentials"], status_code=204)
+@router.delete("/credentials/{credential_ref_id}", tags=["credentials"], status_code=204)
 async def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
     credential = _credential_for_request(request, credential_ref_id)
     _get_credential_ref_store().delete(credential_ref_id)

@@ -49,7 +49,7 @@ def _match_payload(match: Any) -> dict[str, Any]:
     return payload
 
 
-@router.get("/v1/estate/correlations", tags=["estate"])
+@router.get("/estate/correlations", tags=["estate"])
 async def get_estate_correlations(
     request: Request,
     scan_id: str | None = Query(None, description="Scan job ID; latest completed scan if omitted"),

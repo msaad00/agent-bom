@@ -849,12 +849,14 @@ from agent_bom.api.routes.governance import router as _governance_router  # noqa
 from agent_bom.api.routes.graph import router as _graph_router  # noqa: E402
 from agent_bom.api.routes.identities import router as _identities_router  # noqa: E402
 from agent_bom.api.routes.intel import router as _intel_router  # noqa: E402
+from agent_bom.api.routes.observability import infra_router as _observability_infra_router  # noqa: E402
 from agent_bom.api.routes.observability import router as _observability_router  # noqa: E402
 from agent_bom.api.routes.overview import router as _overview_router  # noqa: E402
 from agent_bom.api.routes.plugins import router as _plugins_router  # noqa: E402
 from agent_bom.api.routes.posture_streaming import router as _posture_streaming_router  # noqa: E402
 from agent_bom.api.routes.privacy import router as _privacy_router  # noqa: E402
 from agent_bom.api.routes.proxy import router as _proxy_router  # noqa: E402
+from agent_bom.api.routes.proxy import ws_router as _proxy_ws_router  # noqa: E402
 from agent_bom.api.routes.reports import router as _reports_router  # noqa: E402
 from agent_bom.api.routes.runtime_blueprints import router as _runtime_blueprints_router  # noqa: E402
 from agent_bom.api.routes.scan import router as _scan_router  # noqa: E402
@@ -862,41 +864,54 @@ from agent_bom.api.routes.schedules import router as _schedules_router  # noqa: 
 from agent_bom.api.routes.scim import router as _scim_router  # noqa: E402
 from agent_bom.api.routes.sources import router as _sources_router  # noqa: E402
 from agent_bom.api.routes.webhooks import router as _webhooks_router  # noqa: E402
+from agent_bom.api.versioning import create_v1_api_router  # noqa: E402
 
-app.include_router(_assets_router)
-app.include_router(_agent_manifest_router)
-app.include_router(_cloud_router)
-app.include_router(_cloud_connections_router)
-app.include_router(_compliance_router)
-app.include_router(_connectors_router)
-app.include_router(_credentials_router)
-app.include_router(_datasets_router)
-app.include_router(_discovery_router)
-app.include_router(_entitlements_router)
-app.include_router(_estate_router)
-app.include_router(_enterprise_router)
-app.include_router(_fleet_router)
-app.include_router(_evaluations_router)
-app.include_router(_frameworks_router)
-app.include_router(_gateway_router)
-app.include_router(_gateway_feed_router)
-app.include_router(_governance_router)
-app.include_router(_graph_router)
-app.include_router(_identities_router)
-app.include_router(_intel_router)
-app.include_router(_observability_router)
-app.include_router(_overview_router)
-app.include_router(_plugins_router)
-app.include_router(_posture_streaming_router)
-app.include_router(_privacy_router)
-app.include_router(_proxy_router)
-app.include_router(_reports_router)
-app.include_router(_runtime_blueprints_router)
-app.include_router(_scan_router)
-app.include_router(_schedules_router)
+_v1_api_router = create_v1_api_router()
+
+for _router in (
+    _assets_router,
+    _agent_manifest_router,
+    _cloud_router,
+    _cloud_connections_router,
+    _compliance_router,
+    _connectors_router,
+    _credentials_router,
+    _datasets_router,
+    _discovery_router,
+    _entitlements_router,
+    _estate_router,
+    _enterprise_router,
+    _fleet_router,
+    _evaluations_router,
+    _frameworks_router,
+    _gateway_router,
+    _gateway_feed_router,
+    _governance_router,
+    _graph_router,
+    _identities_router,
+    _intel_router,
+    _observability_router,
+    _overview_router,
+    _plugins_router,
+    _posture_streaming_router,
+    _privacy_router,
+    _proxy_router,
+    _reports_router,
+    _runtime_blueprints_router,
+    _scan_router,
+    _schedules_router,
+    _sources_router,
+    _webhooks_router,
+):
+    _v1_api_router.include_router(_router)
+
+app.include_router(_v1_api_router)
+# SCIM base path is RFC-driven (/scim/v2 by default), not under API_V1_PREFIX.
 app.include_router(_scim_router)
-app.include_router(_sources_router)
-app.include_router(_webhooks_router)
+# Prometheus scrape surface stays unversioned (infra contract).
+app.include_router(_observability_infra_router)
+# Proxy live streams are root-level WebSocket paths (/ws/proxy/*), not /v1.
+app.include_router(_proxy_ws_router)
 
 # Resolve agent-bom-issued (abi_) identity tokens through the lifecycle store so
 # the proxy/gateway honor issuance, rotation overlap, and revocation.

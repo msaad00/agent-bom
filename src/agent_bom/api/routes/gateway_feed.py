@@ -413,7 +413,7 @@ def _load_tenant_llm_records(tenant_id: str, *, limit: int) -> list[Any]:
         return []
 
 
-@router.get("/v1/gateway/feed", tags=["gateway"], dependencies=[_dep("read")])
+@router.get("/gateway/feed", tags=["gateway"], dependencies=[_dep("read")])
 async def gateway_feed(
     request: Request,
     limit: int = Query(default=100, ge=1, le=500, description="Max fused events to return (1-500)"),
@@ -437,7 +437,7 @@ async def gateway_feed(
     )
 
 
-@router.get("/v1/gateway/feed/kpis", tags=["gateway"], dependencies=[_dep("read")])
+@router.get("/gateway/feed/kpis", tags=["gateway"], dependencies=[_dep("read")])
 async def gateway_feed_kpis(request: Request) -> dict[str, Any]:
     """KPI header rollup for the gateway live feed.
 

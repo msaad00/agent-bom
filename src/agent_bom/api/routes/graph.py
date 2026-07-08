@@ -1547,7 +1547,7 @@ def _filtered_query_graph(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/v1/graph", tags=["graph"])
+@router.get("/graph", tags=["graph"])
 async def get_graph(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Filter by scan ID"),
@@ -1672,7 +1672,7 @@ async def get_graph(
     }
 
 
-@router.get("/v1/graph/views/fix-first", tags=["graph"], responses={200: _FIX_FIRST_VIEW_OPENAPI_RESPONSE})
+@router.get("/graph/views/fix-first", tags=["graph"], responses={200: _FIX_FIRST_VIEW_OPENAPI_RESPONSE})
 async def get_fix_first_graph_view(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
@@ -1766,7 +1766,7 @@ def _tag_diff_change_kinds(diff: dict[str, Any]) -> dict[str, Any]:
     return diff
 
 
-@router.get("/v1/graph/diff", tags=["graph"])
+@router.get("/graph/diff", tags=["graph"])
 async def get_graph_diff(
     request: Request,
     old: str = Query(..., description="Old scan ID"),
@@ -1777,7 +1777,7 @@ async def get_graph_diff(
     return _tag_diff_change_kinds(diff)
 
 
-@router.get("/v1/graph/edges/active", tags=["graph"])
+@router.get("/graph/edges/active", tags=["graph"])
 async def get_active_graph_edges(
     request: Request,
     at: str = Query(..., description="ISO timestamp for replay lookup"),
@@ -1786,7 +1786,7 @@ async def get_active_graph_edges(
     return await _graph_store_call(_get_graph_store_or_503().active_edges_at, at, tenant_id=_tenant(request))
 
 
-@router.get("/v1/graph/edges/changes", tags=["graph"])
+@router.get("/graph/edges/changes", tags=["graph"])
 async def get_graph_edge_changes(
     request: Request,
     old: str = Query(..., description="Old scan ID"),
@@ -1796,7 +1796,7 @@ async def get_graph_edge_changes(
     return await _graph_store_call(_get_graph_store_or_503().changed_edges_between_scans, old, new, tenant_id=_tenant(request))
 
 
-@router.get("/v1/graph/attack-paths", tags=["graph"], responses={200: _ATTACK_PATHS_OPENAPI_RESPONSE})
+@router.get("/graph/attack-paths", tags=["graph"], responses={200: _ATTACK_PATHS_OPENAPI_RESPONSE})
 async def get_graph_attack_paths(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan ID"),
@@ -1864,7 +1864,7 @@ async def get_graph_attack_paths(
     )
 
 
-@router.get("/v1/graph/governance", tags=["graph"])
+@router.get("/graph/governance", tags=["graph"])
 async def get_graph_governance(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan ID"),
@@ -1903,7 +1903,7 @@ async def get_graph_governance(
     )
 
 
-@router.get("/v1/graph/nhi/governance", tags=["graph"])
+@router.get("/graph/nhi/governance", tags=["graph"])
 async def get_nhi_governance(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan ID"),
@@ -1932,7 +1932,7 @@ async def get_nhi_governance(
     return posture
 
 
-@router.get("/v1/graph/exposure-paths", tags=["graph"])
+@router.get("/graph/exposure-paths", tags=["graph"])
 async def get_graph_exposure_paths(
     request: Request,
     tenant_id: Optional[str] = Query(None, include_in_schema=False),
@@ -1958,7 +1958,7 @@ async def get_graph_exposure_paths(
     return payload
 
 
-@router.post("/v1/graph/should-i-deploy", tags=["graph"])
+@router.post("/graph/should-i-deploy", tags=["graph"])
 async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecisionRequest) -> dict:
     """Return the MCP-compatible allow/warn/block deploy decision over REST."""
     _ = (body.tenant_id, body.context)  # SDK compatibility/future policy context; request tenant scope is authoritative today.
@@ -2002,7 +2002,7 @@ async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecision
     return payload
 
 
-@router.get("/v1/graph/paths", tags=["graph"])
+@router.get("/graph/paths", tags=["graph"])
 async def get_graph_paths(
     request: Request,
     source_id: Optional[str] = Query(None, description="Source node ID (e.g. agent:claude-desktop)"),
@@ -2070,7 +2070,7 @@ async def get_graph_paths(
     }
 
 
-@router.get("/v1/graph/impact", tags=["graph"])
+@router.get("/graph/impact", tags=["graph"])
 async def get_graph_impact(
     request: Request,
     node: str = Query(..., description="Node ID to compute impact for"),
@@ -2090,7 +2090,7 @@ async def get_graph_impact(
     return impact
 
 
-@router.get("/v1/graph/search", tags=["graph"])
+@router.get("/graph/search", tags=["graph"])
 async def search_graph(
     request: Request,
     q: str = Query(..., min_length=1, description="Search query"),
@@ -2145,7 +2145,7 @@ async def search_graph(
     }
 
 
-@router.get("/v1/graph/clusters", tags=["graph"])
+@router.get("/graph/clusters", tags=["graph"])
 async def get_graph_clusters(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
@@ -2179,7 +2179,7 @@ async def get_graph_clusters(
     return await _graph_compute_call(_semantic_cluster_payload, graph, selected_kinds=selected_kinds, min_members=min_members, limit=limit)
 
 
-@router.get("/v1/graph/agents", tags=["graph"])
+@router.get("/graph/agents", tags=["graph"])
 async def list_graph_agents(
     request: Request,
     q: str = Query("", description="Optional agent label/id search"),
@@ -2237,7 +2237,7 @@ async def list_graph_agents(
     }
 
 
-@router.post("/v1/graph/query", tags=["graph"])
+@router.post("/graph/query", tags=["graph"])
 async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     """Run a bounded programmable traversal over the canonical graph."""
     graph_store = _get_graph_store_or_503()
@@ -2336,7 +2336,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     }
 
 
-@router.get("/v1/graph/node/{node_id}", tags=["graph"])
+@router.get("/graph/node/{node_id}", tags=["graph"])
 async def get_graph_node(
     request: Request,
     node_id: str,
@@ -2362,7 +2362,7 @@ async def get_graph_node(
     }
 
 
-@router.get("/v1/graph/snapshots", tags=["graph"])
+@router.get("/graph/snapshots", tags=["graph"])
 async def get_graph_snapshots(
     request: Request,
     limit: int = Query(50, ge=1, le=500, description="Max snapshots"),
@@ -2371,7 +2371,7 @@ async def get_graph_snapshots(
     return await _graph_store_call(_get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit)
 
 
-@router.get("/v1/graph/history", tags=["graph"])
+@router.get("/graph/history", tags=["graph"])
 async def get_graph_history(
     request: Request,
     limit: int = Query(50, ge=1, le=500, description="Max snapshots"),
@@ -2380,7 +2380,7 @@ async def get_graph_history(
     return await _graph_store_call(_get_graph_store_or_503().graph_history, tenant_id=_tenant(request), limit=limit)
 
 
-@router.get("/v1/graph/evidence-manifest", tags=["graph"])
+@router.get("/graph/evidence-manifest", tags=["graph"])
 async def get_graph_evidence_manifest(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
@@ -2398,7 +2398,7 @@ async def get_graph_evidence_manifest(
     return manifest
 
 
-@router.get("/v1/graph/compliance", tags=["graph"])
+@router.get("/graph/compliance", tags=["graph"])
 async def get_graph_compliance(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan ID"),
@@ -2417,7 +2417,7 @@ async def get_graph_compliance(
     )
 
 
-@router.get("/v1/graph/legend", tags=["graph"])
+@router.get("/graph/legend", tags=["graph"])
 async def get_graph_legend() -> dict:
     """Return entity and relationship legends for UI rendering."""
     from agent_bom.graph import ENTITY_LEGEND, RELATIONSHIP_LEGEND
@@ -2996,7 +2996,7 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
 }
 
 
-@router.get("/v1/graph/schema", tags=["graph"])
+@router.get("/graph/schema", tags=["graph"])
 async def get_graph_schema() -> dict:
     """Canonical graph entity/edge taxonomy — single source of truth.
 
@@ -3082,7 +3082,7 @@ async def get_graph_schema() -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.post("/v1/graph/presets", tags=["graph"])
+@router.post("/graph/presets", tags=["graph"])
 async def create_preset(request: Request, body: PresetCreate) -> dict:
     """Save a named graph filter preset for the current tenant."""
     from agent_bom.graph.util import _now_iso
@@ -3099,13 +3099,13 @@ async def create_preset(request: Request, body: PresetCreate) -> dict:
     return {"name": body.name, "status": "saved"}
 
 
-@router.get("/v1/graph/presets", tags=["graph"])
+@router.get("/graph/presets", tags=["graph"])
 async def list_presets(request: Request) -> list[dict]:
     """List saved filter presets for the current tenant."""
     return await _graph_store_call(_get_graph_store_or_503().list_presets, tenant_id=_tenant(request))
 
 
-@router.delete("/v1/graph/presets/{name}", tags=["graph"])
+@router.delete("/graph/presets/{name}", tags=["graph"])
 async def delete_preset(request: Request, name: str) -> dict:
     """Delete a saved filter preset."""
     deleted = await _graph_store_call(_get_graph_store_or_503().delete_preset, tenant_id=_tenant(request), name=name)
@@ -3119,7 +3119,7 @@ async def delete_preset(request: Request, name: str) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/v1/graph/rollup", tags=["graph"])
+@router.get("/graph/rollup", tags=["graph"])
 async def get_graph_rollup(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),

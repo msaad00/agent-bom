@@ -122,7 +122,7 @@ def _validate_dataset_link(tenant_id: str, body: EvaluationRunCreate) -> None:
         raise HTTPException(status_code=404, detail="Dataset version not found for evaluation run")
 
 
-@router.post("/v1/evaluations", tags=["evaluations"], status_code=201)
+@router.post("/evaluations", tags=["evaluations"], status_code=201)
 async def register_evaluation_run(request: Request, body: EvaluationRunCreate) -> dict[str, Any]:
     """Register an evaluation run linked to dataset versions, traces, models, and prompt hashes."""
     tenant_id = _tenant_id(request)
@@ -159,7 +159,7 @@ async def register_evaluation_run(request: Request, body: EvaluationRunCreate) -
     return {"schema_version": "evals.runs.v1", "evaluation": record.to_dict(), "warnings": warnings}
 
 
-@router.get("/v1/evaluations", tags=["evaluations"])
+@router.get("/evaluations", tags=["evaluations"])
 async def list_evaluation_runs(
     request: Request,
     dataset_id: Annotated[str | None, Query(max_length=128)] = None,
@@ -187,7 +187,7 @@ async def list_evaluation_runs(
     }
 
 
-@router.get("/v1/evaluations/{evaluation_id}", tags=["evaluations"])
+@router.get("/evaluations/{evaluation_id}", tags=["evaluations"])
 async def get_evaluation_run(
     request: Request,
     evaluation_id: Annotated[str, Path(min_length=1, max_length=128)],

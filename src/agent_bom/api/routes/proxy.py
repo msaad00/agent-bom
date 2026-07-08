@@ -34,6 +34,7 @@ from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 router = APIRouter()
+ws_router = APIRouter()
 
 # ── In-process ring buffer for proxy alerts/metrics ──────────────────────────
 #
@@ -128,7 +129,7 @@ def _alert_visible_to_tenant(alert: dict, tenant_id: str) -> bool:
     return alert_tenant == tenant_id
 
 
-@router.post("/v1/proxy/audit", tags=["proxy"])
+@router.post("/proxy/audit", tags=["proxy"])
 async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) -> dict:
     """Ingest alerts and summary from an external proxy process."""
     from agent_bom.api.audit_log import log_action
@@ -622,7 +623,7 @@ def _read_metrics_from_log(path: _Path, tenant_id: str = "default") -> dict | No
 # ── HTTP endpoints ───────────────────────────────────────────────────────────
 
 
-@router.get("/v1/proxy/status", tags=["proxy"])
+@router.get("/proxy/status", tags=["proxy"])
 async def proxy_status(request: Request) -> dict:
     """Get runtime proxy metrics.
 
@@ -657,7 +658,7 @@ async def proxy_status(request: Request) -> dict:
     }
 
 
-@router.get("/v1/runtime/production-index", tags=["runtime", "proxy"])
+@router.get("/runtime/production-index", tags=["runtime", "proxy"])
 async def runtime_production_index(request: Request) -> dict:
     """Return tenant-scoped runtime security observability for proxy/gateway traffic.
 
@@ -672,7 +673,7 @@ async def runtime_production_index(request: Request) -> dict:
     return _build_runtime_production_index(tenant_id, metrics, alerts)
 
 
-@router.get("/v1/proxy/alerts", tags=["proxy"])
+@router.get("/proxy/alerts", tags=["proxy"])
 async def proxy_alerts(
     request: Request,
     severity: str | None = None,
@@ -903,7 +904,7 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
     return None
 
 
-@router.websocket("/ws/proxy/metrics")
+@ws_router.websocket("/ws/proxy/metrics")
 async def ws_proxy_metrics(websocket: WebSocket) -> None:
     """WebSocket endpoint — push proxy metrics every second.
 
@@ -972,7 +973,7 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
         pass
 
 
-@router.websocket("/ws/proxy/alerts")
+@ws_router.websocket("/ws/proxy/alerts")
 async def ws_proxy_alerts(websocket: WebSocket) -> None:
     """WebSocket endpoint — push new proxy alerts as they arrive.
 
@@ -1034,7 +1035,7 @@ def _get_engine(tenant_id: str, session_id: str) -> ProtectionEngine | None:
     return _shield_engines.get(_shield_key(tenant_id, session_id))
 
 
-@router.post("/v1/shield/start", tags=["shield"])
+@router.post("/shield/start", tags=["shield"])
 async def shield_start(request: Request, session_id: str = "default", correlation_window: float = 30.0) -> dict:
     """Start the deep defense protection engine for a session.
 
@@ -1089,7 +1090,7 @@ async def shield_start(request: Request, session_id: str = "default", correlatio
     return {"status": "started", "tenant_id": tenant_id, "session_id": session_id, **engine.status()}
 
 
-@router.get("/v1/shield/status", tags=["shield"])
+@router.get("/shield/status", tags=["shield"])
 async def shield_status(request: Request, session_id: str = "default") -> dict:
     """Get current shield threat assessment for a session."""
     tenant_id = _request_tenant_id(request)
@@ -1117,7 +1118,7 @@ async def shield_status(request: Request, session_id: str = "default") -> dict:
     }
 
 
-@router.post("/v1/shield/unblock", tags=["shield"])
+@router.post("/shield/unblock", tags=["shield"])
 async def shield_unblock(request: Request, session_id: str = "default") -> dict:
     """Deactivate kill-switch for a session and reset to ELEVATED."""
     tenant_id = _request_tenant_id(request)
@@ -1132,7 +1133,7 @@ async def shield_unblock(request: Request, session_id: str = "default") -> dict:
     return {"status": "unblocked", "tenant_id": tenant_id, "session_id": session_id, **engine.status()}
 
 
-@router.post("/v1/shield/break-glass", tags=["shield"])
+@router.post("/shield/break-glass", tags=["shield"])
 async def break_glass(request: Request, session_id: str = "default", reason: str = "") -> dict:
     """Emergency kill-switch override — admin only, audit logged.
 

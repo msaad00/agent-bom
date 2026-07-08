@@ -30,7 +30,7 @@ def _audit_entitlement_read(request: Request, *, resource: str, details: dict[st
         _logger.exception("Failed to append entitlement audit entry")
 
 
-@router.get("/v1/entitlements", tags=["enterprise"])
+@router.get("/entitlements", tags=["enterprise"])
 async def get_entitlements(request: Request) -> dict:
     """Return local entitlement metadata for self-hosted packaging.
 
@@ -52,7 +52,7 @@ async def get_entitlements(request: Request) -> dict:
     return state.to_dict()
 
 
-@router.get("/v1/entitlements/check/{feature}", tags=["enterprise"])
+@router.get("/entitlements/check/{feature}", tags=["enterprise"])
 async def check_entitlement(feature: str, request: Request) -> dict:
     """Evaluate one feature against local entitlement metadata."""
     state = load_entitlement_state()

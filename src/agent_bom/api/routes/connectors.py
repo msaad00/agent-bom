@@ -91,7 +91,7 @@ def _load_registry() -> list[dict]:
 # ─── Connector endpoints ─────────────────────────────────────────────────────
 
 
-@router.get("/v1/connectors", tags=["connectors"])
+@router.get("/connectors", tags=["connectors"])
 async def list_available_connectors() -> dict:
     """List available SaaS connectors for AI agent discovery."""
     from agent_bom.connectors import list_connectors
@@ -99,7 +99,7 @@ async def list_available_connectors() -> dict:
     return {"connectors": list_connectors()}
 
 
-@router.get("/v1/connectors/{name}/health", tags=["connectors"])
+@router.get("/connectors/{name}/health", tags=["connectors"])
 async def connector_health(name: str) -> dict:
     """Check connectivity for a SaaS connector."""
     try:
@@ -114,14 +114,14 @@ async def connector_health(name: str) -> dict:
 # ─── Registry endpoints ──────────────────────────────────────────────────────
 
 
-@router.get("/v1/registry", tags=["registry"])
+@router.get("/registry", tags=["registry"])
 async def list_registry() -> dict:
     """List all known MCP servers from the agent-bom registry."""
     servers = _load_registry()
     return {"servers": servers, "count": len(servers)}
 
 
-@router.get("/v1/registry/{server_id:path}", tags=["registry"])
+@router.get("/registry/{server_id:path}", tags=["registry"])
 async def get_registry_server(server_id: str) -> dict:
     """Get a single MCP server entry by ID (e.g. 'modelcontextprotocol/filesystem')."""
     servers = _load_registry()
@@ -134,7 +134,7 @@ async def get_registry_server(server_id: str) -> dict:
 # ─── Security lookup endpoints ───────────────────────────────────────────────
 
 
-@router.get("/v1/malicious/check", tags=["security"])
+@router.get("/malicious/check", tags=["security"])
 async def check_malicious(name: str, ecosystem: str = "npm") -> dict:
     """Check if a package name is a known malicious package or typosquat.
 
@@ -153,7 +153,7 @@ async def check_malicious(name: str, ecosystem: str = "npm") -> dict:
     }
 
 
-@router.get("/v1/scorecard/{ecosystem}/{package:path}", tags=["security"])
+@router.get("/scorecard/{ecosystem}/{package:path}", tags=["security"])
 async def scorecard_lookup(ecosystem: str, package: str) -> dict:
     """Look up OpenSSF Scorecard for a package.
 

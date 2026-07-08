@@ -23,7 +23,7 @@ from agent_bom.api.tenant_quota import enforce_schedule_quota, tenant_quota_guar
 router = APIRouter()
 
 
-@router.post("/v1/schedules", tags=["schedules"], status_code=201)
+@router.post("/schedules", tags=["schedules"], status_code=201)
 async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     """Create a recurring scan schedule."""
     from agent_bom.api.audit_log import log_action
@@ -65,14 +65,14 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     return schedule.model_dump()
 
 
-@router.get("/v1/schedules", tags=["schedules"])
+@router.get("/schedules", tags=["schedules"])
 async def list_schedules(request: Request) -> list[dict]:
     """List all scan schedules."""
     tenant_id = require_request_tenant_id(request)
     return [s.model_dump() for s in _get_schedule_store().list_all(tenant_id=tenant_id)]
 
 
-@router.get("/v1/schedules/{schedule_id}", tags=["schedules"])
+@router.get("/schedules/{schedule_id}", tags=["schedules"])
 async def get_schedule(request: Request, schedule_id: str) -> dict:
     """Get a specific schedule."""
     tenant_id = require_request_tenant_id(request)
@@ -82,7 +82,7 @@ async def get_schedule(request: Request, schedule_id: str) -> dict:
     return s.model_dump()
 
 
-@router.delete("/v1/schedules/{schedule_id}", tags=["schedules"], status_code=204)
+@router.delete("/schedules/{schedule_id}", tags=["schedules"], status_code=204)
 async def delete_schedule(request: Request, schedule_id: str):
     """Delete a schedule."""
     from agent_bom.api.audit_log import log_action
@@ -96,7 +96,7 @@ async def delete_schedule(request: Request, schedule_id: str):
     log_action("schedule.delete", actor=actor, resource=f"schedule/{schedule_id}", tenant_id=tenant_id)
 
 
-@router.put("/v1/schedules/{schedule_id}/toggle", tags=["schedules"])
+@router.put("/schedules/{schedule_id}/toggle", tags=["schedules"])
 async def toggle_schedule(request: Request, schedule_id: str) -> dict:
     """Enable or disable a schedule."""
     from agent_bom.api.audit_log import log_action

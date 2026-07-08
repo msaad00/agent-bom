@@ -9,7 +9,7 @@ from agent_bom.plugin_entrypoints import plugin_registry_status
 router = APIRouter()
 
 
-@router.get("/v1/plugins/status", tags=["plugins"])
+@router.get("/plugins/status", tags=["plugins"])
 def get_plugin_registry_status() -> dict[str, object]:
     """Return metadata-only plugin registry status for operator dashboards."""
 

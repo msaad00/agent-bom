@@ -302,7 +302,7 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
     }
 
 
-@router.get("/v1/compliance", tags=["compliance"])
+@router.get("/compliance", tags=["compliance"])
 async def get_compliance(request: Request) -> dict:
     """Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,
     OWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.
@@ -452,7 +452,7 @@ async def get_compliance(request: Request) -> dict:
     return response
 
 
-@router.get("/v1/cis/checks", tags=["compliance"])
+@router.get("/cis/checks", tags=["compliance"])
 async def list_cis_benchmark_checks(
     request: Request,
     cloud: str | None = None,
@@ -539,7 +539,7 @@ def _coerce_cis_row(row: dict[str, Any]) -> dict[str, Any]:
 # ─── CIS Benchmark Trend / Drilldown (#1832) ──────────────────────────────
 
 
-@router.get("/v1/cis/trends", tags=["compliance"])
+@router.get("/cis/trends", tags=["compliance"])
 async def cis_benchmark_trends(
     request: Request,
     days: int = 30,
@@ -831,7 +831,7 @@ def _narrative_to_dict(narrative: "ComplianceNarrative") -> dict:
     }
 
 
-@router.get("/v1/compliance/narrative", tags=["compliance"])
+@router.get("/compliance/narrative", tags=["compliance"])
 async def get_compliance_narrative(request: Request) -> dict:
     """Generate a review-ready compliance narrative from all completed scans.
 
@@ -860,7 +860,7 @@ async def get_compliance_narrative(request: Request) -> dict:
     return _narrative_to_dict(narrative)
 
 
-@router.get("/v1/compliance/narrative/{framework}", tags=["compliance"])
+@router.get("/compliance/narrative/{framework}", tags=["compliance"])
 async def get_compliance_narrative_by_framework(request: Request, framework: str) -> dict:
     """Generate a single-framework compliance narrative.
 
@@ -897,7 +897,7 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
     return _narrative_to_dict(narrative)
 
 
-@router.get("/v1/compliance/verification-key", tags=["compliance"])
+@router.get("/compliance/verification-key", tags=["compliance"])
 async def get_compliance_verification_key(request: Request) -> dict:
     """Return the Ed25519 public key used to sign compliance evidence bundles.
 
@@ -937,13 +937,13 @@ async def get_compliance_verification_key(request: Request) -> dict:
     }
 
 
-@router.get("/v1/compliance/aisvs", tags=["compliance"])
+@router.get("/compliance/aisvs", tags=["compliance"])
 async def get_aisvs_compliance(request: Request) -> dict:
     """Return the latest tenant-scoped OWASP AISVS benchmark result from completed scans."""
     return _latest_aisvs_benchmark_from_jobs(_tenant_jobs(request))
 
 
-@router.get("/v1/compliance/summary", tags=["compliance"])
+@router.get("/compliance/summary", tags=["compliance"])
 async def get_compliance_summary(request: Request) -> dict:
     """Return aggregate compliance score and per-framework status counts.
 
@@ -989,7 +989,7 @@ async def get_compliance_summary(request: Request) -> dict:
     return response
 
 
-@router.get("/v1/compliance/{framework}", tags=["compliance"])
+@router.get("/compliance/{framework}", tags=["compliance"])
 async def get_compliance_by_framework(request: Request, framework: str) -> dict:
     """Get compliance posture for a single framework.
 
@@ -1204,7 +1204,7 @@ def _enrich_controls_with_evidence(
     return enriched_controls, total_findings, counts
 
 
-@router.get("/v1/compliance/{framework}/report", tags=["compliance"], response_model=ComplianceReportBundle)
+@router.get("/compliance/{framework}/report", tags=["compliance"], response_model=ComplianceReportBundle)
 async def export_compliance_report(
     request: Request,
     framework: str,
@@ -1447,7 +1447,7 @@ async def export_compliance_report(
 # ─── Multi-framework evidence pack ─────────────────────────────────────────
 
 
-@router.get("/v1/compliance/report/pack", tags=["compliance"])
+@router.get("/compliance/report/pack", tags=["compliance"])
 async def export_compliance_pack(
     request: Request,
     since: str | None = None,
@@ -1602,7 +1602,7 @@ async def export_compliance_pack(
 # ─── Posture Scorecard ─────────────────────────────────────────────────────
 
 
-@router.get("/v1/posture", tags=["compliance"])
+@router.get("/posture", tags=["compliance"])
 async def get_posture_scorecard(request: Request) -> dict:
     """Compute enterprise posture scorecard from the latest completed scan.
 
@@ -1637,7 +1637,7 @@ async def get_posture_scorecard(request: Request) -> dict:
     }
 
 
-@router.get("/v1/posture/enrichment", tags=["compliance"])
+@router.get("/posture/enrichment", tags=["compliance"])
 async def get_enrichment_posture() -> dict:
     """Report runtime health for external vulnerability enrichment sources."""
 
@@ -1646,7 +1646,7 @@ async def get_enrichment_posture() -> dict:
     return describe_enrichment_posture()
 
 
-@router.get("/v1/posture/backpressure", tags=["compliance"])
+@router.get("/posture/backpressure", tags=["compliance"])
 async def get_backpressure_posture() -> dict:
     """Report adaptive runtime backpressure state for expensive paths."""
 
@@ -1655,7 +1655,7 @@ async def get_backpressure_posture() -> dict:
     return describe_backpressure_posture()
 
 
-@router.get("/v1/posture/counts", tags=["compliance"])
+@router.get("/posture/counts", tags=["compliance"])
 async def get_posture_counts(request: Request) -> dict:
     """Aggregate vulnerability counts across all completed scans.
 
@@ -1703,7 +1703,7 @@ async def get_posture_counts(request: Request) -> dict:
     return counts
 
 
-@router.get("/v1/posture/credentials", tags=["compliance"])
+@router.get("/posture/credentials", tags=["compliance"])
 async def get_credential_risk_ranking(request: Request) -> dict:
     """Rank credentials by blast radius exposure from the latest scan.
 
@@ -1726,7 +1726,7 @@ async def get_credential_risk_ranking(request: Request) -> dict:
     return {"credentials": ranking, "count": len(ranking), "rotation_governance": rotation_governance}
 
 
-@router.get("/v1/posture/incidents", tags=["compliance"])
+@router.get("/posture/incidents", tags=["compliance"])
 async def get_incident_correlation(request: Request) -> dict:
     """Group vulnerabilities by agent for SOC incident correlation.
 
@@ -1805,7 +1805,7 @@ def _native_hub_findings(request: Request) -> list[dict[str, Any]]:
 
 
 @router.post(
-    "/v1/compliance/ingest",
+    "/compliance/ingest",
     tags=["compliance"],
     status_code=201,
     dependencies=[_dep("scan")],
@@ -1941,7 +1941,7 @@ def _unpack_hub_list_page(result: tuple[Any, ...]) -> tuple[list[dict[str, Any]]
     return page, total or 0
 
 
-@router.get("/v1/compliance/hub/findings", tags=["compliance"])
+@router.get("/compliance/hub/findings", tags=["compliance"])
 async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0) -> dict:
     """List compliance-hub findings for the current tenant.
 
@@ -1978,7 +1978,7 @@ async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0)
     }
 
 
-@router.get("/v1/compliance/hub/posture", tags=["compliance"])
+@router.get("/compliance/hub/posture", tags=["compliance"])
 async def get_hub_posture(request: Request) -> dict:
     """Aggregate compliance posture across native scans + hub-ingested findings.
 
@@ -2051,7 +2051,7 @@ async def get_hub_posture(request: Request) -> dict:
     }
 
 
-@router.delete("/v1/compliance/hub/findings", tags=["compliance"], dependencies=[_dep("policy_write")])
+@router.delete("/compliance/hub/findings", tags=["compliance"], dependencies=[_dep("policy_write")])
 async def clear_hub_findings(request: Request) -> dict:
     """Clear all hub-ingested findings for the current tenant.
 

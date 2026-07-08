@@ -127,7 +127,7 @@ def _audit_metadata(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-@router.get("/v1/cloud/{provider}/inventory")
+@router.get("/cloud/{provider}/inventory")
 async def cloud_inventory(
     request: Request,
     provider: str,
@@ -201,7 +201,7 @@ async def cloud_inventory(
         raise HTTPException(status_code=500, detail="Cloud inventory failed; see server logs.") from exc
 
 
-@router.get("/v1/cloud/{provider}/cis-benchmark")
+@router.get("/cloud/{provider}/cis-benchmark")
 async def cloud_cis_benchmark(
     request: Request,
     provider: str,

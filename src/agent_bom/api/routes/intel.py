@@ -33,14 +33,14 @@ class IntelDailyBriefRequest(BaseModel):
     limit: int = Field(default=100, ge=1, le=500)
 
 
-@router.get("/v1/intel/sources", tags=["intel"])
+@router.get("/intel/sources", tags=["intel"])
 async def get_intel_sources() -> dict[str, Any]:
     """Return canonical threat-intel source and feed-run metadata."""
 
     return list_intel_sources()
 
 
-@router.get("/v1/intel/advisories/{advisory_id}", tags=["intel"])
+@router.get("/intel/advisories/{advisory_id}", tags=["intel"])
 async def get_intel_advisory(advisory_id: str) -> dict[str, Any]:
     """Look up one CVE/GHSA/OSV advisory from local intel."""
 
@@ -50,7 +50,7 @@ async def get_intel_advisory(advisory_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
 
 
-@router.post("/v1/intel/match", tags=["intel"])
+@router.post("/intel/match", tags=["intel"])
 async def post_intel_match(
     body: IntelPackageMatchRequest,
     include_unmatched: Annotated[bool, Query(description="Return packages with zero matched advisories.")] = True,
@@ -66,7 +66,7 @@ async def post_intel_match(
     return result
 
 
-@router.post("/v1/intel/daily-brief", tags=["intel"])
+@router.post("/intel/daily-brief", tags=["intel"])
 async def post_intel_daily_brief(body: IntelDailyBriefRequest) -> dict[str, Any]:
     """Return a local analyst threat brief from governed intel sources."""
 

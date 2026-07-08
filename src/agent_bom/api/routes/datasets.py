@@ -68,7 +68,7 @@ def _validate_dataset_id(dataset_id: str) -> str:
     return normalized
 
 
-@router.post("/v1/datasets/{dataset_id}/versions", tags=["datasets"], status_code=201)
+@router.post("/datasets/{dataset_id}/versions", tags=["datasets"], status_code=201)
 async def register_dataset_version(
     request: Request,
     dataset_id: Annotated[str, Path(min_length=1, max_length=128)],
@@ -101,7 +101,7 @@ async def register_dataset_version(
     return {"schema_version": "v1", "dataset": record.to_dict(), "warnings": warnings}
 
 
-@router.get("/v1/datasets/{dataset_id}/versions", tags=["datasets"])
+@router.get("/datasets/{dataset_id}/versions", tags=["datasets"])
 async def list_dataset_versions(
     request: Request,
     dataset_id: Annotated[str, Path(min_length=1, max_length=128)],
@@ -118,7 +118,7 @@ async def list_dataset_versions(
     }
 
 
-@router.get("/v1/datasets/{dataset_id}/versions/{version_id}", tags=["datasets"])
+@router.get("/datasets/{dataset_id}/versions/{version_id}", tags=["datasets"])
 async def get_dataset_version(
     request: Request,
     dataset_id: Annotated[str, Path(min_length=1, max_length=128)],

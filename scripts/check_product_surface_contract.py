@@ -24,19 +24,47 @@ def _require_text(path: str, needles: list[str], failures: list[str]) -> None:
             failures.append(f"{path}: missing {needle!r}")
 
 
+def _require_v1_routes(path: str, routes: list[tuple[str, str]], failures: list[str]) -> None:
+    """Require route decorators for full /v1 paths after shared-prefix mounting."""
+    text = _text(path)
+    prefix = "/v1"
+    for method, full_path in routes:
+        if not full_path.startswith(prefix):
+            failures.append(f"{path}: expected v1 route path, got {full_path!r}")
+            continue
+        route_path = full_path.removeprefix(prefix) or "/"
+        needle = f'@router.{method.lower()}("{route_path}"'
+        if needle not in text:
+            failures.append(f"{path}: missing {needle!r} for {method.upper()} {full_path}")
+
+
 def main() -> int:
     failures: list[str] = []
 
     _require_text(
+        "src/agent_bom/api/versioning.py",
+        [
+            'API_V1_PREFIX = "/v1"',
+            "create_v1_api_router",
+        ],
+        failures,
+    )
+    _require_v1_routes(
         "src/agent_bom/api/routes/enterprise.py",
         [
-            '@router.get("/v1/auth/policy"',
-            '@router.get("/v1/auth/scim/config"',
-            '@router.get("/v1/auth/secrets/lifecycle"',
-            '@router.get("/v1/auth/secrets/rotation-plan"',
-            '@router.get("/v1/auth/secrets/credential-expiry"',
-            '@router.get("/v1/auth/quota"',
-            '@router.put("/v1/auth/quota"',
+            ("GET", "/v1/auth/policy"),
+            ("GET", "/v1/auth/scim/config"),
+            ("GET", "/v1/auth/secrets/lifecycle"),
+            ("GET", "/v1/auth/secrets/rotation-plan"),
+            ("GET", "/v1/auth/secrets/credential-expiry"),
+            ("GET", "/v1/auth/quota"),
+            ("PUT", "/v1/auth/quota"),
+        ],
+        failures,
+    )
+    _require_text(
+        "src/agent_bom/api/routes/enterprise.py",
+        [
             "tenant_quota_runtime",
             "configured_modes",
             "audit_hmac",
@@ -78,25 +106,37 @@ def main() -> int:
         ],
         failures,
     )
+    _require_v1_routes(
+        "src/agent_bom/api/routes/fleet.py",
+        [
+            ("GET", "/v1/fleet"),
+            ("GET", "/v1/fleet/stats"),
+            ("GET", "/v1/fleet/{agent_id}"),
+            ("POST", "/v1/fleet/sync"),
+        ],
+        failures,
+    )
     _require_text(
         "src/agent_bom/api/routes/fleet.py",
         [
-            '@router.get("/v1/fleet"',
-            '@router.get("/v1/fleet/stats"',
-            '@router.get("/v1/fleet/{agent_id}"',
-            '@router.post("/v1/fleet/sync"',
             "limit: int",
             "offset: int",
+        ],
+        failures,
+    )
+    _require_v1_routes(
+        "src/agent_bom/api/routes/graph.py",
+        [
+            ("GET", "/v1/graph"),
+            ("GET", "/v1/graph/agents"),
+            ("GET", "/v1/graph/search"),
+            ("GET", "/v1/graph/node/{node_id}"),
         ],
         failures,
     )
     _require_text(
         "src/agent_bom/api/routes/graph.py",
         [
-            '@router.get("/v1/graph"',
-            '@router.get("/v1/graph/agents"',
-            '@router.get("/v1/graph/search"',
-            '@router.get("/v1/graph/node/{node_id}"',
             "limit: int",
             "offset: int",
         ],

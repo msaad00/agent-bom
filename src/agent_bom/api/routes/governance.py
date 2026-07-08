@@ -22,7 +22,7 @@ router = APIRouter()
 _logger = logging.getLogger(__name__)
 
 
-@router.get("/v1/governance", tags=["governance"])
+@router.get("/governance", tags=["governance"])
 async def governance_report(days: int = 30):
     """Run Snowflake governance discovery and return findings.
 
@@ -49,7 +49,7 @@ async def governance_report(days: int = 30):
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/v1/governance/findings", tags=["governance"])
+@router.get("/governance/findings", tags=["governance"])
 async def governance_findings(
     days: int = 30,
     severity: str | None = None,
@@ -87,7 +87,7 @@ async def governance_findings(
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/v1/activity", tags=["governance"])
+@router.get("/activity", tags=["governance"])
 async def activity_timeline(days: int = 30):
     """Agent activity timeline from Snowflake QUERY_HISTORY + AI_OBSERVABILITY_EVENTS.
 
@@ -114,7 +114,7 @@ async def activity_timeline(days: int = 30):
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/v1/cortex/telemetry", tags=["governance"])
+@router.get("/cortex/telemetry", tags=["governance"])
 async def cortex_telemetry(hours: int = 24):
     """Aggregated Cortex agent telemetry with health assessments.
 
@@ -145,7 +145,7 @@ async def cortex_telemetry(hours: int = 24):
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/v1/cortex/agents/{name}/telemetry", tags=["governance"])
+@router.get("/cortex/agents/{name}/telemetry", tags=["governance"])
 async def cortex_agent_telemetry(name: str, hours: int = 24):
     """Telemetry for a specific Cortex agent."""
     import os
@@ -169,7 +169,7 @@ async def cortex_agent_telemetry(name: str, hours: int = 24):
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/v1/cortex/health", tags=["governance"])
+@router.get("/cortex/health", tags=["governance"])
 async def cortex_health():
     """Health status for all Cortex agents."""
     import os
@@ -210,7 +210,7 @@ async def cortex_health():
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/v1/siem/formats", tags=["siem"])
+@router.get("/siem/formats", tags=["siem"])
 async def siem_formats():
     """List supported SIEM event formats."""
     from agent_bom.siem import list_formats

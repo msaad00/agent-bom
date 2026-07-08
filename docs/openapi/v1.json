@@ -3714,7 +3714,7 @@
     },
     "/readyz": {
       "get": {
-        "description": "Readiness probe \u2014 returns 503 once graceful shutdown has started.\n\nKubernetes removes the pod from the service endpoint list on first 503,\nso new requests stop arriving while in-flight work drains under the\noperator-configured drain budget (AGENT_BOM_SHUTDOWN_DRAIN_SECONDS).",
+        "description": "Readiness probe \u2014 returns 503 during drain or when dependencies are unhealthy.\n\nKubernetes removes the pod from the service endpoint list on first 503,\nso new requests stop arriving while in-flight work drains under the\noperator-configured drain budget (AGENT_BOM_SHUTDOWN_DRAIN_SECONDS).",
         "operationId": "readiness_readyz_get",
         "responses": {
           "200": {

@@ -379,3 +379,12 @@ def test_semver_prerelease_orders_below_equal_tagged_release():
     assert version_in_range("13.4.20-canary.13", "0.9.9", "13.4.20", None, "npm") is True
     # while the released fix itself is not affected.
     assert version_in_range("13.4.20", "0.9.9", "13.4.20", None, "npm") is False
+
+
+def test_version_in_range_git_sha_bounds_not_affected():
+    """Git-commit advisory bounds must not mark every semver version as affected."""
+    sha_intro = "a" * 40
+    sha_fix = "b" * 40
+    assert version_in_range("99.99.99", sha_intro, sha_fix, None, "pypi") is False
+    assert version_in_range("10.0.1", sha_intro, None, None, "pypi") is False
+    assert version_in_range("1.0.0", None, sha_fix, None, "pypi") is False

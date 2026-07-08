@@ -60,6 +60,7 @@ from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request
 from agent_bom.firewall import (
     AgentFirewallPolicy,
     FirewallDecision,
+    FirewallEvaluation,
     FirewallPolicyError,
     load_firewall_policy_file,
 )
@@ -1055,6 +1056,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         "last_loaded_at": None,
         "last_error": None,
         "last_mtime": None,
+        "load_failed": settings.firewall_policy_path is not None,
     }
     firewall_lock = asyncio.Lock()
     firewall_reload_task: asyncio.Task[None] | None = None
@@ -1086,6 +1088,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 next_policy = load_firewall_policy_file(settings.firewall_policy_path)
             except (FileNotFoundError, FirewallPolicyError) as exc:
                 firewall_state["last_error"] = sanitize_error(exc)
+                firewall_state["load_failed"] = True
                 logger.warning(
                     "gateway firewall policy reload failed for %s: %s",
                     settings.firewall_policy_path,
@@ -1094,6 +1097,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 return False
             except Exception as exc:  # noqa: BLE001
                 firewall_state["last_error"] = sanitize_error(exc)
+                firewall_state["load_failed"] = True
                 logger.warning(
                     "gateway firewall policy reload failed for %s: %s",
                     settings.firewall_policy_path,
@@ -1105,6 +1109,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             firewall_state["last_loaded_at"] = time.time()
             firewall_state["last_error"] = None
             firewall_state["last_mtime"] = mtime
+            firewall_state["load_failed"] = False
         logger.info("gateway firewall policy reloaded from %s", settings.firewall_policy_path)
         return True
 
@@ -1177,6 +1182,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "reload_interval_seconds": settings.firewall_policy_reload_interval_seconds,
                 "last_loaded_at": firewall_state["last_loaded_at"],
                 "last_error": firewall_state["last_error"],
+                "load_failed": bool(firewall_state.get("load_failed")),
                 "rule_count": len(firewall_policy.rules),
                 "default_decision": firewall_policy.default_decision.value,
                 "enforcement_mode": firewall_policy.enforcement_mode.value,
@@ -1265,13 +1271,21 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             policy: AgentFirewallPolicy = firewall_state["policy"]
             policy_source = firewall_state["source"]
             policy_loaded_at = firewall_state["last_loaded_at"]
-        result = evaluate_firewall_policy(
-            policy,
-            source_agent=source_agent,
-            target_agent=target_agent,
-            source_roles=set(raw_source_roles),
-            target_roles=set(raw_target_roles),
-        )
+            policy_load_failed = bool(firewall_state.get("load_failed"))
+        if fail_closed and policy_load_failed and settings.firewall_policy_path is not None:
+            result = FirewallEvaluation(
+                decision=FirewallDecision.DENY,
+                matched_rule=None,
+                effective_decision=FirewallDecision.DENY,
+            )
+        else:
+            result = evaluate_firewall_policy(
+                policy,
+                source_agent=source_agent,
+                target_agent=target_agent,
+                source_roles=set(raw_source_roles),
+                target_roles=set(raw_target_roles),
+            )
 
         response_payload = {
             "source_agent": source_agent,
@@ -1598,6 +1612,20 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         if settings.firewall_policy_path is not None:
             async with firewall_lock:
                 fw_policy: AgentFirewallPolicy = firewall_state["policy"]
+                fw_load_failed = bool(firewall_state.get("load_failed"))
+            if fail_closed and fw_load_failed:
+                record_gateway_relay(upstream.name, "blocked")
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32000,
+                            "message": "gateway firewall policy unavailable",
+                        },
+                        "id": message.get("id"),
+                    },
+                )
             fw_result = evaluate_firewall_policy(
                 fw_policy,
                 source_agent=source_agent,

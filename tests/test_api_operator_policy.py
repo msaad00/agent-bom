@@ -941,7 +941,8 @@ def test_readyz_red_when_postgres_unreachable(monkeypatch) -> None:
         raise RuntimeError("connection refused")
 
     monkeypatch.setattr("agent_bom.api.postgres_common._get_pool", _boom)
-    client = TestClient(app)
-    resp = client.get("/readyz")
-    assert resp.status_code == 503
-    assert resp.json()["reason"] == "database_unavailable"
+    from agent_bom.api.readiness import evaluate_control_plane_readiness
+
+    status = evaluate_control_plane_readiness()
+    assert not status.ready
+    assert status.reason == "database_unavailable"

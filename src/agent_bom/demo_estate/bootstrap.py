@@ -104,12 +104,12 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     graph_store = _get_graph_store()
     summary: dict[str, Any] = {"enabled": True, "tenant_id": tenant_id, "seeded": False}
 
+    graph_seeded = seed_showcase_graph_if_empty(graph_store, tenant_id=tenant_id)
+    summary["graph_seeded"] = graph_seeded
+
     if _tenant_has_demo_jobs(store, tenant_id):
         summary["reason"] = "demo_jobs_present"
         return summary
-
-    graph_seeded = seed_showcase_graph_if_empty(graph_store, tenant_id=tenant_id)
-    summary["graph_seeded"] = graph_seeded
 
     try:
         report = _run_demo_scan_report()

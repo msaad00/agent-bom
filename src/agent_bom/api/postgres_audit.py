@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
-from agent_bom.api.audit_log import AuditEntry, _verify_audit_chain
+from agent_bom.api.audit_log import AuditEntry, _AuditChainCheckpoint, _verify_audit_chain_with_checkpoint
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.baseline import TrendPoint
 
@@ -44,8 +45,71 @@ class PostgresAuditLog:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_audit_log_team_resource_ts ON audit_log(team_id, resource text_pattern_ops, timestamp DESC)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (
+                    tenant_id TEXT PRIMARY KEY,
+                    entry_count INTEGER NOT NULL,
+                    head_signature TEXT NOT NULL
+                )
+                """
+            )
             _ensure_tenant_rls(conn, "audit_log", "team_id")
             conn.commit()
+        self._hydrate_checkpoints()
+
+    def _hydrate_checkpoints(self) -> None:
+        with self._pool.connection() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM audit_chain_checkpoint").fetchone()
+            if row and int(row[0]) > 0:
+                return
+            tenants = conn.execute("SELECT DISTINCT team_id FROM audit_log").fetchall()
+            for (tenant_id,) in tenants:
+                count_row = conn.execute(
+                    "SELECT COUNT(*) FROM audit_log WHERE team_id = %s",
+                    (tenant_id,),
+                ).fetchone()
+                head_row = conn.execute(
+                    "SELECT hmac_signature FROM audit_log WHERE team_id = %s ORDER BY timestamp DESC, entry_id DESC LIMIT 1",
+                    (tenant_id,),
+                ).fetchone()
+                if not count_row or not head_row:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (tenant_id) DO UPDATE SET
+                        entry_count = EXCLUDED.entry_count,
+                        head_signature = EXCLUDED.head_signature
+                    """,
+                    (tenant_id, int(count_row[0]), str(head_row[0])),
+                )
+            conn.commit()
+
+    def _get_checkpoint(self, tenant_id: str) -> _AuditChainCheckpoint | None:
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                "SELECT entry_count, head_signature FROM audit_chain_checkpoint WHERE tenant_id = %s",
+                (tenant_id,),
+            ).fetchone()
+        if not row:
+            return None
+        if len(row) >= 3:
+            return _AuditChainCheckpoint(entry_count=int(row[1]), head_signature=str(row[2]))
+        return _AuditChainCheckpoint(entry_count=int(row[0]), head_signature=str(row[1]))
+
+    def _upsert_checkpoint(self, conn: Any, tenant_id: str, head_signature: str) -> None:
+        conn.execute(
+            """
+            INSERT INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature)
+            VALUES (%s, 1, %s)
+            ON CONFLICT (tenant_id) DO UPDATE SET
+                entry_count = audit_chain_checkpoint.entry_count + 1,
+                head_signature = EXCLUDED.head_signature
+            """,
+            (tenant_id, head_signature),
+        )
 
     def _latest_signature_for_tenant(self, tenant_id: str) -> str:
         with self._pool.connection() as conn:
@@ -88,6 +152,7 @@ class PostgresAuditLog:
                     entry.hmac_signature,
                 ),
             )
+            self._upsert_checkpoint(conn, tenant_id, entry.hmac_signature)
             conn.commit()
         self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
 
@@ -185,8 +250,12 @@ class PostgresAuditLog:
         ]
 
     def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
-        entries = self._list_entries_chronological(limit=limit, tenant_id=tenant_id)
-        return _verify_audit_chain(entries)
+        tenant_key = tenant_id or "default"
+        total = self.count(tenant_id=tenant_id)
+        fetch_limit = total if total else limit
+        entries = self._list_entries_chronological(limit=fetch_limit, tenant_id=tenant_id)
+        checkpoint = self._get_checkpoint(tenant_key)
+        return _verify_audit_chain_with_checkpoint(entries, checkpoint)
 
 
 class PostgresTrendStore:

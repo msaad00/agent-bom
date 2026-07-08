@@ -43,18 +43,18 @@ def test_chain_hash_detects_leading_truncation():
     log._entries.pop(0)
     verified, tampered = log.verify_integrity()
     assert verified == 1
-    assert tampered == 1
+    assert tampered == 2
 
 
-def test_chain_hash_head_deletion_still_verifies_internal_chain():
-    """Deleting newest entries leaves a valid sub-chain (known limitation)."""
+def test_chain_hash_head_deletion_detected_with_checkpoint():
+    """Deleting newest entries without updating the checkpoint must fail verification."""
     log = InMemoryAuditLog()
     for i in range(3):
         log.append(AuditEntry(action="scan", actor="test", resource=f"pkg-{i}"))
     log._entries.pop()
     verified, tampered = log.verify_integrity()
     assert verified == 2
-    assert tampered == 0
+    assert tampered == 1
 
 
 def test_sqlite_audit_hydrates_last_signature_after_restart(tmp_path):

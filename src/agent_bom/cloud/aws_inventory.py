@@ -1566,10 +1566,7 @@ def _discover_lambda(
                     if arn:
                         packages = _extract_lambda_packages(session, arn, region, warnings)
                         if packages:
-                            entry["packages"] = [
-                                {"name": pkg.name, "version": pkg.version, "ecosystem": pkg.ecosystem}
-                                for pkg in packages
-                            ]
+                            entry["packages"] = [{"name": pkg.name, "version": pkg.version, "ecosystem": pkg.ecosystem} for pkg in packages]
                             entry["package_count"] = len(packages)
                 out.append(entry)
     except Exception as exc:  # noqa: BLE001 — one failed Lambda list must not sink the scan

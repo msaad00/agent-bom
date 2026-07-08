@@ -208,9 +208,7 @@ def run_cloud_discovery(
                     for srv in servers:
                         srv.packages = img_packages
                     if not quiet:
-                        con.print(
-                            f"  [green]✓[/green] {img_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]"
-                        )
+                        con.print(f"  [green]✓[/green] {img_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]")
                 except ImageScanError as exc:
                     if not quiet:
                         con.print(f"  [yellow]![/yellow] cloud image {img_ref}: {exc}")

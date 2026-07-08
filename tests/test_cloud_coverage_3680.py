@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from agent_bom.cli._terminal_sections import print_benchmark_line
-from agent_bom.cloud.aws_cis_benchmark import CISBenchmarkReport, CISCheckResult, CheckStatus
+from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISBenchmarkReport, CISCheckResult
 from agent_bom.cloud.gcp_cis_benchmark import GCPCISReport, _gcp_paginate_list
 
 

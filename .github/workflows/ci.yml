@@ -693,14 +693,15 @@ jobs:
         run: |
           # -n auto --dist loadscope: spread tests across worker processes,
           # grouping same-module tests on one worker so module-scoped fixtures
-          # behave. -p no:randomly keeps CI in deterministic order (reproducible
-          # failures); it is redundant with the pytest addopts default but kept
-          # explicit. The suite is order-independent — run `pytest -p randomly`
-          # locally to verify.
+          # behave. Test order is randomized by default (pytest-randomly, ON via
+          # pyproject addopts) to keep order-dependence from regressing; the seed
+          # is printed as "Using --randomly-seed=N" and a failure replays exactly
+          # with `pytest --randomly-seed=N`. Isolation is guaranteed by the
+          # global-singleton snapshot/restore fixture in tests/conftest.py.
           if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network" -n auto --dist loadscope -p no:randomly
+            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network" -n auto --dist loadscope
           else
-            uv run pytest tests/ -q --tb=short -m "not network" -n auto --dist loadscope -p no:randomly
+            uv run pytest tests/ -q --tb=short -m "not network" -n auto --dist loadscope
           fi
 
       - name: Graph accuracy guards (#2259 — round-trip + edge-count + visual-diff)

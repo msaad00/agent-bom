@@ -120,6 +120,7 @@ def test_healthz_lists_configured_upstreams() -> None:
             "reload_interval_seconds": 0,
             "last_loaded_at": None,
             "last_error": None,
+            "load_failed": False,
             "rule_count": 0,
             "default_decision": "allow",
             "enforcement_mode": "enforce",

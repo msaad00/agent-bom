@@ -1193,7 +1193,7 @@ async def version() -> VersionInfo:
 
 @app.get("/readyz", tags=["meta"])
 async def readiness() -> JSONResponse:
-    """Readiness probe — returns 503 once graceful shutdown has started.
+    """Readiness probe — returns 503 during drain or when dependencies are unhealthy.
 
     Kubernetes removes the pod from the service endpoint list on first 503,
     so new requests stop arriving while in-flight work drains under the
@@ -1201,7 +1201,12 @@ async def readiness() -> JSONResponse:
     """
     if _shutting_down:
         return JSONResponse(status_code=503, content={"status": "draining"})
-    return JSONResponse(status_code=200, content={"status": "ready"})
+    from agent_bom.api.readiness import evaluate_control_plane_readiness
+
+    status = evaluate_control_plane_readiness()
+    if not status.ready:
+        return JSONResponse(status_code=503, content=status.as_dict())
+    return JSONResponse(status_code=200, content=status.as_dict())
 
 
 @app.get("/livez", response_model=HealthResponse, tags=["meta"])

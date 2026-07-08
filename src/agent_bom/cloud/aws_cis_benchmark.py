@@ -189,33 +189,38 @@ def finalize_read_coverage(
 ) -> CISCheckResult:
     """Decide PASS vs ERROR for a per-resource read check with no failures.
 
-    Guards the "list-but-not-get" false-PASS class: a check that lists N
-    resources but is denied the per-resource read on every one of them has
-    inspected *nothing*, so it must not report PASS. Call this only in the
-    branch where the ``failing`` accumulator is empty — FAIL is decided by the
-    caller and left untouched.
+    Strict GRC contract: any permission denial on a listed resource means the
+    full scope cannot be certified compliant. PASS only when every listed
+    resource was read successfully (or there were genuinely zero resources).
+    Call this only in the branch where the ``failing`` accumulator is empty —
+    FAIL is decided by the caller and left untouched.
 
     Decision table (``denied`` is the list of resources whose read was denied):
-      * ``inspected == 0 and denied``  -> ERROR (names the missing permission);
-        zero resources were actually evaluated, so compliance is unknown.
-      * otherwise                      -> PASS with ``pass_evidence`` (plus a
-        note when some — but not all — reads were denied). This preserves the
-        genuine "0 resources exist" PASS/NOT_APPLICABLE semantics because that
-        path reaches here with ``inspected == 0`` and an empty ``denied``.
+      * ``denied`` non-empty  -> ERROR (names missing permission + coverage);
+      * ``denied`` empty      -> PASS with ``pass_evidence`` (includes the
+        genuine "0 resources exist" NOT_APPLICABLE path).
     """
     denied_count = len(denied)
-    if inspected == 0 and denied_count:
+    if denied_count:
         result.status = CheckStatus.ERROR
-        result.evidence = (
-            f"Could not read {denied_count} {resource_kind}(s) — permission denied on every one "
-            f"(0 inspected). Grant '{permission}' so this check can be evaluated; "
-            "reporting PASS here would be a false compliant."
-        )
+        if inspected == 0:
+            result.evidence = (
+                f"Could not read {denied_count} {resource_kind}(s) — permission denied on every one "
+                f"(0 inspected). Grant '{permission}' so this check can be evaluated; "
+                "reporting PASS here would be a false compliant."
+            )
+        else:
+            total = inspected + denied_count
+            result.evidence = (
+                f"Incomplete evaluation: read {inspected}/{total} {resource_kind}(s); "
+                f"{denied_count} could not be read (permission denied). "
+                f"Grant '{permission}' for full coverage — PASS not reported; "
+                "compliance is unknown for skipped resources."
+            )
         result.resource_ids = list(denied)[:20]
     else:
-        note = f" ({denied_count} {resource_kind}(s) skipped — permission denied)" if denied_count else ""
         result.status = CheckStatus.PASS
-        result.evidence = pass_evidence + note
+        result.evidence = pass_evidence
     return result
 
 

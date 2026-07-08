@@ -6,8 +6,9 @@ denied the per-resource read) previously left the check at its default
 failure accumulator stayed empty. That minted a false "compliant" for a scope
 that was never actually inspected.
 
-These tests assert the fixed contract across AWS, GCP, and Azure:
+These tests assert the strict GRC contract across AWS, GCP, and Azure:
   * every per-resource read denied  -> ERROR (never PASS), evidence names perm;
+  * any per-resource read denied    -> ERROR (partial coverage cannot PASS);
   * resources exist and all clean   -> PASS;
   * a real violation                -> FAIL;
   * genuinely zero resources        -> PASS (not ERROR — nothing was denied).
@@ -71,7 +72,7 @@ class TestAwsCheck212DeniedReads:
         result = _check_2_1_2(client)
         assert result.status == CheckStatus.PASS, result.evidence
 
-    def test_mixed_some_denied_some_clean_is_pass(self):
+    def test_mixed_some_denied_some_clean_is_error_not_pass(self):
         client = MagicMock()
         client.list_buckets.return_value = {"Buckets": [{"Name": "ok"}, {"Name": "denied"}]}
 
@@ -82,9 +83,9 @@ class TestAwsCheck212DeniedReads:
 
         client.get_bucket_encryption.side_effect = _side_effect
         result = _check_2_1_2(client)
-        # One bucket inspected clean -> PASS, but the skipped one is disclosed.
-        assert result.status == CheckStatus.PASS, result.evidence
-        assert "skipped" in result.evidence.lower()
+        assert result.status == CheckStatus.ERROR, result.evidence
+        assert "Incomplete evaluation" in result.evidence
+        assert "s3:GetEncryptionConfiguration" in result.evidence
 
 
 class TestAwsCheck116DeniedReads:

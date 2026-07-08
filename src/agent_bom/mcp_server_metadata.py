@@ -309,8 +309,11 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "ingest_external_scan",
-        "description": "Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis",
-        "annotations": {"readOnlyHint": True},
+        "description": (
+            "Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis;"
+            " parse_only stays local, while pushing to the control plane requires the findings:write scope"
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {
         "name": "cost_forecast",
@@ -408,7 +411,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "model_file_scan": ["READ", "LOCAL_FILE_READ"],
     "ai_inventory_scan": ["READ", "LOCAL_FILE_READ"],
     "license_compliance_scan": ["READ", "LOCAL_FILE_READ", "COMPLIANCE"],
-    "ingest_external_scan": ["READ", "LOCAL_FILE_READ", "INGEST"],
+    "ingest_external_scan": ["WRITE", "LOCAL_FILE_READ", "INGEST"],
 }
 
 for _tool in _SERVER_CARD_TOOLS:

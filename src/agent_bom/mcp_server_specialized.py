@@ -14,6 +14,7 @@ def register_specialized_ai_tools(
     mcp: Any,
     *,
     read_only: Any,
+    write_action: Any,
     execute_tool_async: Callable[..., Awaitable[Any]],
     safe_path: Callable[[str], Any],
     truncate_response: Callable[[str], str],
@@ -300,7 +301,7 @@ def register_specialized_ai_tools(
             _truncate_response=truncate_response,
         )
 
-    @mcp.tool(annotations=read_only, title="Ingest External Scanner Report")
+    @mcp.tool(annotations=write_action, title="Ingest External Scanner Report")
     async def ingest_external_scan(
         scan_json: Annotated[
             str,
@@ -323,9 +324,15 @@ def register_specialized_ai_tools(
             Field(description="When pushing, mark findings absent from this batch as resolved."),
         ] = False,
     ) -> str:
-        """Ingest Trivy, Grype, or Syft JSON scan output and optionally push findings to the control plane."""
+        """Ingest Trivy, Grype, or Syft JSON scan output and optionally push findings to the control plane.
 
-        async def _impl() -> str:
+        This tool mutates the control plane when ``parse_only`` is false: it bulk-ingests
+        findings and, with ``reconcile_absent``, resolves open findings absent from the batch.
+        That write path is gated as a destructive action requiring the ``findings:write`` scope.
+        ``parse_only`` requests parse locally only and stay a read.
+        """
+
+        async def _impl(**_operator_context: object) -> str:
             import json as _json
             import os
 
@@ -378,4 +385,9 @@ def register_specialized_ai_tools(
             except Exception as exc:  # noqa: BLE001
                 return truncate_response(mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc))
 
-        return await execute_tool_async("ingest_external_scan", _impl)
+        return await execute_tool_async(
+            "ingest_external_scan",
+            _impl,
+            destructive=not parse_only,
+            required_scope="findings:write",
+        )

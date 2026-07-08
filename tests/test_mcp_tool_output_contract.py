@@ -89,7 +89,7 @@ def _minimal_args(name: str, workdir: Path) -> dict[str, Any]:
         "identity_revoke": {"identity_id": "id-x"},
         "identity_revoke_jit": {"grant_id": "grant-x"},
         "identity_rotate": {"identity_id": "id-x"},
-        "ingest_external_scan": {"scan_json": "{}"},
+        "ingest_external_scan": {"scan_json": "{}", "parse_only": True},
         "intel_lookup": {"advisory_id": "GHSA-xxxx-xxxx-xxxx"},
         "license_compliance_scan": {"scan_json": "{}"},
         "marketplace_check": {"package": "requests"},

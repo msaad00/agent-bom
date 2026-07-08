@@ -436,7 +436,7 @@ def _is_mcp_tool_decorator(node: ast.expr) -> bool:
 
 
 def registered_mcp_tool_decorator_names() -> frozenset[str]:
-    """Return @mcp.tool function names across MCP server registration modules."""
+    """Return MCP tool function names across server registration modules."""
     package_root = Path(__file__).resolve().parent
     names: set[str] = set()
     for path in sorted(package_root.glob("mcp_server*.py")):

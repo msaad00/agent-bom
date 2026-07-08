@@ -268,6 +268,52 @@ Use two layers.
 That keeps scan, fleet, runtime enforcement, and gateway policy aligned
 without pretending every workload needs the same enforcement model.
 
+## IAM / IRSA
+
+There are two distinct IAM concerns in this shape, and you provision them from
+two different modules. Neither expects you to hand-craft roles or policies.
+
+**1. Platform cluster IAM — provisioned by Terraform.** The
+[`deploy/terraform/platform-eks`](https://github.com/msaad00/agent-bom/tree/main/deploy/terraform/platform-eks)
+module stands the platform up with `enable_irsa = true`, wires the cluster OIDC
+provider, and delegates RDS, IRSA, S3 backups, and Secrets Manager to its
+baseline module. It exports `scanner_role_arn` — the IRSA role bound to the
+scanner service account. Operators do not build these roles by hand.
+
+**2. AWS-account scan access — the read-only connect role.** To let
+`agent-bom` inventory an AWS account, apply
+[`deploy/terraform/connect-aws`](https://github.com/msaad00/agent-bom/tree/main/deploy/terraform/connect-aws).
+It creates a read-only role with the AWS-managed **SecurityAudit** policy
+(optional additive **ViewOnlyAccess**), and an opt-in
+[`deep-scan.tf`](https://github.com/msaad00/agent-bom/blob/main/deploy/terraform/connect-aws/deep-scan.tf)
+that adds narrowly-scoped read grants for Lambda code, ECR images, Inspector,
+Bedrock-agent inventory, and (the one sensitive grant) S3 object sampling. The
+module emits the `role_arn` output.
+
+Bind that role to the pod through the service account annotation — this is
+IRSA/workload-identity only, so **no static AWS keys ever live in the cluster**:
+
+```yaml
+serviceAccount:
+  annotations:
+    # connect-aws `role_arn` output
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-readonly
+```
+
+The same annotation shape covers GKE Workload Identity
+(`iam.gke.io/gcp-service-account`) and AKS workload identity; see the worked
+examples in
+[`values.yaml`](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/values.yaml).
+
+For the full walkthrough — associating the cluster OIDC provider, federating the
+connect-aws role trust policy to the namespace/service account, and enabling
+`scanner.cloud.aws.inventory` — start from
+[`eks-collector-irsa-values.yaml`](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-collector-irsa-values.yaml)
+or
+[`eks-production-values.yaml`](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-production-values.yaml),
+and follow
+[`deploy/RUNBOOK.md`](https://github.com/msaad00/agent-bom/blob/main/deploy/RUNBOOK.md).
+
 ## Helm Knobs That Matter
 
 | Value | Why it matters |

@@ -208,9 +208,7 @@ def run_cloud_discovery(
                     for srv in servers:
                         srv.packages = img_packages
                     if not quiet:
-                        con.print(
-                            f"  [green]✓[/green] {img_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]"
-                        )
+                        con.print(f"  [green]✓[/green] {img_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]")
                 except ImageScanError as exc:
                     if not quiet:
                         con.print(f"  [yellow]![/yellow] cloud image {img_ref}: {exc}")
@@ -371,15 +369,24 @@ def run_benchmarks(
 
                     ctx.cis_benchmark_report = run_all_account_benchmarks(profile=aws_profile)
                 else:
+                    from agent_bom.cloud import aws_inventory
                     from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
+                    from agent_bom.cloud.aws_cis_benchmark import run_benchmark_all_regions
 
-                    ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
+                    if aws_inventory.all_regions_enabled():
+                        ctx.cis_benchmark_report = run_benchmark_all_regions(profile=aws_profile, region=aws_region)
+                    else:
+                        ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
             passed = ctx.cis_benchmark_report.passed
             failed = ctx.cis_benchmark_report.failed
             total = ctx.cis_benchmark_report.total
             rate = ctx.cis_benchmark_report.pass_rate
+            errored = getattr(ctx.cis_benchmark_report, "errored", 0)
             scanned = getattr(ctx.cis_benchmark_report, "accounts_scanned", []) or []
+            regions_scanned = getattr(ctx.cis_benchmark_report, "regions_scanned", []) or []
             scope = f"{len(scanned)} account(s)" if len(scanned) > 1 else ""
+            if len(regions_scanned) > 1:
+                scope = f"{len(regions_scanned)} region(s)" if not scope else f"{scope}, {len(regions_scanned)} region(s)"
             if not quiet:
                 print_benchmark_line(
                     con,
@@ -389,6 +396,7 @@ def run_benchmarks(
                     failed=failed,
                     pass_rate=rate,
                     scope=scope,
+                    errored=errored,
                 )
         except CloudDiscoveryError as exc:
             if not quiet:
@@ -446,6 +454,7 @@ def run_benchmarks(
             failed = ctx.azure_cis_benchmark_report.failed
             total = ctx.azure_cis_benchmark_report.total
             rate = ctx.azure_cis_benchmark_report.pass_rate
+            errored = getattr(ctx.azure_cis_benchmark_report, "errored", 0)
             scanned = getattr(ctx.azure_cis_benchmark_report, "subscriptions_scanned", []) or []
             scope = f"{len(scanned)} subscription(s)" if len(scanned) > 1 else ""
             if not quiet:
@@ -457,6 +466,7 @@ def run_benchmarks(
                     failed=failed,
                     pass_rate=rate,
                     scope=scope,
+                    errored=errored,
                 )
         except _AZCISError as exc:
             if not quiet:
@@ -489,6 +499,7 @@ def run_benchmarks(
             failed = ctx.gcp_cis_benchmark_report.failed
             total = ctx.gcp_cis_benchmark_report.total
             rate = ctx.gcp_cis_benchmark_report.pass_rate
+            errored = getattr(ctx.gcp_cis_benchmark_report, "errored", 0)
             scanned = getattr(ctx.gcp_cis_benchmark_report, "projects_scanned", []) or []
             scope = f"{len(scanned)} project(s)" if len(scanned) > 1 else ""
             if not quiet:
@@ -500,6 +511,7 @@ def run_benchmarks(
                     failed=failed,
                     pass_rate=rate,
                     scope=scope,
+                    errored=errored,
                 )
         except _GCPCISError as exc:
             if not quiet:

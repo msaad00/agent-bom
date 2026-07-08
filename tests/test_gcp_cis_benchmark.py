@@ -299,9 +299,12 @@ def _mock_sqladmin_with_instances(instances):
     """Install fake googleapiclient and return a sqladmin mock with given instances."""
     _ensure_googleapiclient_namespace()
     mock_sqladmin = MagicMock()
-    mock_sqladmin.instances.return_value.list.return_value.execute.return_value = {
+    instances_api = mock_sqladmin.instances.return_value
+    instances_api.list.return_value.execute.return_value = {
         "items": instances,
     }
+    # googleapiclient returns None when pagination is exhausted; MagickMock stays truthy.
+    instances_api.list_next.return_value = None
     return mock_sqladmin
 
 

@@ -866,9 +866,12 @@ def _extract_lambda_packages(
     """Extract packages from a Lambda function's layers and deployment package."""
     lambda_client = session.client("lambda", region_name=region)
     packages: list[Package] = []
+    get_function = getattr(lambda_client, "get_function", None)
+    if not callable(get_function):
+        return packages
 
     try:
-        func_config = lambda_client.get_function(FunctionName=lambda_arn)
+        func_config = get_function(FunctionName=lambda_arn)
         config = func_config.get("Configuration", {})
         runtime = config.get("Runtime", "")
 

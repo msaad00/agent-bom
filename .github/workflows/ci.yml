@@ -694,7 +694,15 @@ jobs:
           # Keep PR matrix worker count bounded on hosted runners. `-n auto`
           # can overcommit CPU/RAM enough for GitHub to terminate the runner
           # before pytest prints a failure summary.
-          PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-4}"
+          # 3.11 keeps 4 workers (passes, and fewer would risk the 35-min
+          # timeout); 3.13/3.14 drop to 2 so the parallel run's peak RAM stays
+          # under the hosted-runner limit (4 heavy interpreters OOM the VM,
+          # surfacing as "runner received a shutdown signal" / exit 143).
+          if [ "${{ matrix.python-version }}" = "3.11" ]; then
+            PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-4}"
+          else
+            PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-2}"
+          fi
           if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
             uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network" -n "$PYTEST_XDIST_WORKERS" --dist loadscope
           else

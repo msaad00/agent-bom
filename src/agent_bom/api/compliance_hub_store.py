@@ -50,6 +50,9 @@ from agent_bom.api.hub_reference_store import (
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.graph.severity import severity_policy_rank
 
+# Chunk size for reconcile UPDATE … IN (…) to stay under SQLite/Postgres bind limits.
+RECONCILE_ABSENT_CHUNK = 500
+
 # Defined here (module scope) so ``list`` resolves to the builtin: the store
 # classes below define a ``list`` method that would otherwise shadow it in
 # their ``list_page`` return annotations.
@@ -527,9 +530,7 @@ def _migrate_current_origin_col_sqlite(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current)").fetchall()}
     if "origin" not in cols:
         conn.execute("ALTER TABLE hub_findings_current ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
-        conn.execute(
-            "UPDATE hub_findings_current SET origin = COALESCE(json_extract(payload, '$.origin'), '') WHERE origin = ''"
-        )
+        conn.execute("UPDATE hub_findings_current SET origin = COALESCE(json_extract(payload, '$.origin'), '') WHERE origin = ''")
 
 
 def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
@@ -1498,24 +1499,34 @@ class SQLiteComplianceHubStore:
     ) -> int:
         now = _now_utc_iso()
         where = ["tenant_id = ?", "status IN ('open', 'reopened')"]
-        params: list[Any] = [observed_at, now, tenant_id]
+        params: list[Any] = [tenant_id]
         if scope_source is not None:
             where.append("json_extract(payload, '$.source') = ?")
             params.append(scope_source)
-        if present_canonical_ids:
-            placeholders = ",".join("?" * len(present_canonical_ids))
-            where.append(f"canonical_id NOT IN ({placeholders})")
-            params.extend(sorted(present_canonical_ids))
-        cur = self._conn.execute(
-            f"""
-            UPDATE hub_findings_current
-            SET status = 'resolved', resolved_at = ?, updated_at = ?
-            WHERE {" AND ".join(where)}
-            """,  # nosec B608
+        where_sql = " AND ".join(where)
+        rows = self._conn.execute(
+            f"SELECT canonical_id FROM hub_findings_current WHERE {where_sql}",  # nosec B608
             params,
-        )
+        ).fetchall()
+        open_ids = {str(row[0]) for row in rows}
+        absent = sorted(open_ids - present_canonical_ids)
+        if not absent:
+            return 0
+        total = 0
+        for offset in range(0, len(absent), RECONCILE_ABSENT_CHUNK):
+            chunk = absent[offset : offset + RECONCILE_ABSENT_CHUNK]
+            placeholders = ",".join("?" * len(chunk))
+            cur = self._conn.execute(
+                f"""
+                UPDATE hub_findings_current
+                SET status = 'resolved', resolved_at = ?, updated_at = ?
+                WHERE {where_sql} AND canonical_id IN ({placeholders})
+                """,  # nosec B608
+                [observed_at, now, *params, *chunk],
+            )
+            total += int(cur.rowcount or 0)
         self._conn.commit()
-        return int(cur.rowcount or 0)
+        return total
 
 
 # ─── Module-level access (set/reset wired in stores.py) ──────────────────────

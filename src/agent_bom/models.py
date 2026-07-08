@@ -1243,7 +1243,40 @@ class AIBOMReport:
         base.extend(finding for finding in self._toxic_combination_findings() if finding.id not in toxic_existing)
         gov_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._snowflake_governance_findings() if finding.id not in gov_existing)
+        malicious_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._malicious_package_findings() if finding.id not in malicious_existing)
         return base
+
+    def _malicious_package_findings(self) -> "list[Finding]":
+        """Malicious/typosquat packages with no CVE BlastRadius row."""
+        from agent_bom.finding import malicious_package_to_finding
+
+        covered: set[tuple[str, str, str]] = {
+            (br.package.name, br.package.version or "", br.package.ecosystem or "") for br in self.blast_radii
+        }
+        grouped: dict[tuple[str, str, str], tuple[object, set[str], set[str]]] = {}
+        for agent in self.agents:
+            for server in agent.mcp_servers:
+                for pkg in server.packages:
+                    if not getattr(pkg, "is_malicious", False):
+                        continue
+                    key = (pkg.name, pkg.version or "", pkg.ecosystem or "")
+                    if key in covered:
+                        continue
+                    if key not in grouped:
+                        grouped[key] = (pkg, set(), set())
+                    pkg_ref, agents, servers = grouped[key]
+                    agents.add(agent.name)
+                    servers.add(server.name)
+                    grouped[key] = (pkg_ref, agents, servers)
+        return [
+            malicious_package_to_finding(
+                pkg,
+                affected_agents=sorted(agents),
+                affected_servers=sorted(servers),
+            )
+            for pkg, agents, servers in grouped.values()
+        ]
 
     def _snowflake_governance_findings(self) -> "list[Finding]":
         """Snowflake governance findings lifted into the unified findings stream.

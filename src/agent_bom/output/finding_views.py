@@ -7,6 +7,8 @@ from typing import Any
 from agent_bom.finding import Finding, FindingType, blast_radius_to_finding
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 
+_MACHINE_EXPORT_TYPES = (FindingType.CVE, FindingType.MALICIOUS_PACKAGE)
+
 
 def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
     """Return CVE findings, accepting non-empty legacy BlastRadius overrides."""
@@ -14,7 +16,7 @@ def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = No
     if source_blast_radii:
         return [blast_radius_to_finding(br) for br in source_blast_radii]
 
-    return [finding for finding in report.to_findings() if finding.finding_type == FindingType.CVE]
+    return [finding for finding in report.to_findings() if finding.finding_type in _MACHINE_EXPORT_TYPES]
 
 
 def active_cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:

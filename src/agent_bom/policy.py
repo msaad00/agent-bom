@@ -572,7 +572,7 @@ def _rule_matches(rule: dict, br) -> bool:
     return True
 
 
-def evaluate_policy(policy: dict, blast_radii: list, *, dry_run: bool = False) -> dict:
+def evaluate_policy(policy: dict, blast_radii: list, *, report: object | None = None, dry_run: bool = False) -> dict:
     """Evaluate policy rules against blast radius findings.
 
     Args:
@@ -594,8 +594,42 @@ def evaluate_policy(policy: dict, blast_radii: list, *, dry_run: bool = False) -
 
     active_findings = active_blast_radii(blast_radii)
 
+    malicious_findings: list = []
+    if report is not None and hasattr(report, "to_findings"):
+        from agent_bom.finding import FindingType
+
+        malicious_findings = [
+            finding
+            for finding in report.to_findings()
+            if getattr(finding, "finding_type", None) == FindingType.MALICIOUS_PACKAGE
+        ]
+
     for rule in policy.get("rules", []):
         action = rule.get("action", "fail")
+        if rule.get("is_malicious"):
+            for finding in malicious_findings:
+                from agent_bom.output.finding_views import package_ecosystem, package_name, package_version
+
+                violations.append(
+                    {
+                        "rule_id": rule["id"],
+                        "rule_description": rule.get("description", ""),
+                        "action": action,
+                        "vulnerability_id": finding.cve_id or finding.title,
+                        "severity": str(getattr(finding, "severity", "critical")),
+                        "package": f"{package_name(finding)}@{package_version(finding)}",
+                        "ecosystem": package_ecosystem(finding),
+                        "affected_agents": list(getattr(finding, "affected_agents", [])),
+                        "affected_servers": list(getattr(finding, "affected_servers", [])),
+                        "exposed_credentials": list(getattr(finding, "exposed_credentials", [])),
+                        "is_kev": bool(getattr(finding, "is_kev", False)),
+                        "ai_risk_context": getattr(finding, "ai_risk_context", None),
+                        "fixed_version": getattr(finding, "fixed_version", None),
+                        "owasp_tags": list(getattr(finding, "owasp_tags", [])),
+                        "owasp_mcp_tags": list(getattr(finding, "owasp_mcp_tags", [])),
+                    }
+                )
+            continue
         for br in active_findings:
             if _rule_matches(rule, br):
                 violations.append(

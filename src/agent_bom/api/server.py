@@ -72,6 +72,7 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
+from agent_bom.config import resolved_cors_origins_raw
 
 _logger = logging.getLogger(__name__)
 _DASHBOARD_CSP_META_RE = re.compile(
@@ -581,7 +582,7 @@ _default_origins = [
     "http://localhost:3001",
     "http://127.0.0.1:3001",
 ]
-_cors_env = os.environ.get("CORS_ORIGINS")
+_cors_env = resolved_cors_origins_raw()
 _cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_origins
 _api_key: str | None = None
 DEFAULT_RATE_LIMIT_RPM = DEFAULT_SCAN_RATE_LIMIT_RPM
@@ -618,7 +619,7 @@ def _env_truthy(name: str) -> bool:
 
 
 def _parse_cors_origins_from_env(default: list[str]) -> tuple[list[str], bool]:
-    raw = os.environ.get("CORS_ORIGINS", "").strip()
+    raw = resolved_cors_origins_raw()
     if not raw:
         return default, False
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]

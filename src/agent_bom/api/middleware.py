@@ -191,11 +191,9 @@ def _configured_listener_host(host: str | None = None) -> str:
 
 
 def _production_or_clustered_control_plane() -> bool:
-    deployment = (
-        (os.environ.get("AGENT_BOM_ENV") or os.environ.get("AGENT_BOM_DEPLOYMENT_ENV") or os.environ.get("ENVIRONMENT") or "")
-        .strip()
-        .lower()
-    )
+    from agent_bom.config import resolved_deployment_env
+
+    deployment = resolved_deployment_env()
     return deployment in {"prod", "production"} or clustered_control_plane_required()
 
 

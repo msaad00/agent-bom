@@ -128,6 +128,14 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_DEMO_ESTATE` | `bool` | `False` | Enables curated demo-estate bootstrap on loopback / hosted proof paths. Off by default so production deployments never seed synthetic estate data unless an operator explicitly opts in. |
 
+## Deployment / integration env aliases
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_CORS_ORIGINS` | `str` | `''` | — |
+| `AGENT_BOM_DEPLOYMENT_ENV` | `str` | `''` | Canonical AGENT_BOM_* keys below. Legacy unprefixed or alternate names are still honored via the resolved_* helpers for back-compat: AGENT_BOM_ENV / ENVIRONMENT → DEPLOYMENT_ENV CORS_ORIGINS → CORS_ORIGINS (prefixed) SERVICENOW_INSTANCE → S |
+| `AGENT_BOM_SERVICENOW_INSTANCE` | `str` | `''` | — |
+| `AGENT_BOM_VAULT_ADDR` | `str` | `''` | — |
+
 ## EPSS Thresholds
 | Env var | Type | Default | Description |
 |---|---|---|---|
@@ -276,6 +284,7 @@ so they cannot regress silently, but they are not part of this reference.
 ## Rate-limit fingerprint key rotation policy
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED` | `str` | `''` | — |
 | `AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS` | `int` | `90` | — |
 | `AGENT_BOM_RATE_LIMIT_KEY_ROTATION_DAYS` | `int` | `30` | Operators rotate AGENT_BOM_RATE_LIMIT_KEY periodically and record the rotation timestamp in AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED (ISO-8601 with timezone). The control plane warns when the configured key age approaches the rotation interval |
 

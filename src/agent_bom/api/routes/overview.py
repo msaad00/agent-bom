@@ -342,7 +342,7 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/v1/overview", tags=["overview"])
+@router.get("/overview", tags=["overview"])
 async def get_overview(request: Request) -> dict[str, Any]:
     """Cross-domain posture snapshot for the unified landing page.
 

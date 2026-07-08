@@ -29,7 +29,7 @@ def _actor(request: Request) -> str:
     return getattr(getattr(request, "state", None), "actor", None) or "api"
 
 
-@router.get("/v1/runtime/blueprints", dependencies=[_dep("read")])
+@router.get("/runtime/blueprints", dependencies=[_dep("read")])
 async def list_runtime_blueprints(request: Request) -> dict[str, object]:
     """Return canonical role/profile blueprints for runtime policy design."""
     return {
@@ -39,7 +39,7 @@ async def list_runtime_blueprints(request: Request) -> dict[str, object]:
     }
 
 
-@router.get("/v1/runtime/blueprints/{blueprint_id}", dependencies=[_dep("read")])
+@router.get("/runtime/blueprints/{blueprint_id}", dependencies=[_dep("read")])
 async def get_runtime_blueprint(request: Request, blueprint_id: str) -> dict[str, object]:
     """Return one canonical role/profile blueprint by ID."""
     blueprint = runtime_role_blueprint(blueprint_id)
@@ -52,7 +52,7 @@ async def get_runtime_blueprint(request: Request, blueprint_id: str) -> dict[str
     }
 
 
-@router.get("/v1/runtime/blueprints/{blueprint_id}/drift", dependencies=[_dep("read")])
+@router.get("/runtime/blueprints/{blueprint_id}/drift", dependencies=[_dep("read")])
 async def get_runtime_blueprint_drift(request: Request, blueprint_id: str) -> dict[str, object]:
     """Evaluate current runtime posture against one role/profile blueprint."""
     from agent_bom.api.routes.proxy import _build_runtime_production_index, _load_proxy_alerts, _runtime_metrics_for_tenant
@@ -90,7 +90,7 @@ async def get_runtime_blueprint_drift(request: Request, blueprint_id: str) -> di
     return result
 
 
-@router.get("/v1/runtime/drift/incidents", dependencies=[_dep("read")])
+@router.get("/runtime/drift/incidents", dependencies=[_dep("read")])
 async def list_drift_incidents(request: Request, include_resolved: bool = False, limit: int = 200) -> dict[str, object]:
     """List open (or all) blueprint-drift incidents for the active tenant."""
     tenant_id = _request_tenant_id(request)
@@ -105,7 +105,7 @@ async def list_drift_incidents(request: Request, include_resolved: bool = False,
     }
 
 
-@router.post("/v1/runtime/drift/incidents/{incident_id}/resolve", dependencies=[_dep("config")])
+@router.post("/runtime/drift/incidents/{incident_id}/resolve", dependencies=[_dep("config")])
 async def resolve_drift_incident(request: Request, incident_id: str, body: dict | None = None) -> dict[str, object]:
     """Resolve a drift incident once the blueprint/agent has been reconciled."""
     tenant_id = _request_tenant_id(request)

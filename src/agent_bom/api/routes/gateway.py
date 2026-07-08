@@ -165,7 +165,7 @@ def _firewall_string_list(value: Any, field_name: str) -> set[str]:
     return {role for role in value if role}
 
 
-@router.get("/v1/gateway/policies", tags=["gateway"], dependencies=[_dep("policy_read")])
+@router.get("/gateway/policies", tags=["gateway"], dependencies=[_dep("policy_read")])
 async def list_gateway_policies(request: Request, enabled: bool | None = None, mode: str | None = None):
     """List all gateway policies."""
     tenant_id = require_request_tenant_id(request)
@@ -183,7 +183,7 @@ async def list_gateway_policies(request: Request, enabled: bool | None = None, m
     )
 
 
-@router.post("/v1/gateway/policies", tags=["gateway"], status_code=201, dependencies=[_dep("policy_write")])
+@router.post("/gateway/policies", tags=["gateway"], status_code=201, dependencies=[_dep("policy_write")])
 async def create_gateway_policy(body: PolicyCreate, request: Request):
     """Create a new gateway policy."""
     from agent_bom.api.audit_log import log_action
@@ -228,7 +228,7 @@ async def create_gateway_policy(body: PolicyCreate, request: Request):
     return policy.model_dump()
 
 
-@router.get("/v1/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_read")])
+@router.get("/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_read")])
 async def get_gateway_policy(policy_id: str, request: Request):
     """Get a gateway policy by ID."""
     tenant_id = require_request_tenant_id(request)
@@ -238,7 +238,7 @@ async def get_gateway_policy(policy_id: str, request: Request):
     return policy.model_dump()
 
 
-@router.put("/v1/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_write")])
+@router.put("/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_write")])
 async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Request):
     """Update an existing gateway policy."""
     from agent_bom.api.audit_log import log_action
@@ -287,7 +287,7 @@ async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Req
     return policy.model_dump()
 
 
-@router.delete("/v1/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_write")])
+@router.delete("/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_write")])
 async def delete_gateway_policy(policy_id: str, request: Request):
     """Delete a gateway policy."""
     tenant_id = require_request_tenant_id(request)
@@ -312,7 +312,7 @@ async def delete_gateway_policy(policy_id: str, request: Request):
     return {"deleted": True, "policy_id": policy_id}
 
 
-@router.post("/v1/gateway/evaluate", tags=["gateway"], dependencies=[_dep("policy_read")])
+@router.post("/gateway/evaluate", tags=["gateway"], dependencies=[_dep("policy_read")])
 async def evaluate_gateway(body: EvaluateRequest, request: Request):
     """Evaluate gateway policies against a tool call and audit-log every decision.
 
@@ -408,7 +408,7 @@ async def evaluate_gateway(body: EvaluateRequest, request: Request):
     }
 
 
-@router.get("/v1/gateway/audit", tags=["gateway"], dependencies=[_dep("audit_read")])
+@router.get("/gateway/audit", tags=["gateway"], dependencies=[_dep("audit_read")])
 async def list_gateway_audit(
     request: Request,
     policy_id: str | None = None,
@@ -427,7 +427,7 @@ async def list_gateway_audit(
 
 
 @router.get(
-    "/v1/gateway/upstreams/discovered",
+    "/gateway/upstreams/discovered",
     tags=["gateway"],
     dependencies=[cast(Any, require_authenticated_permission("read"))],
 )
@@ -542,7 +542,7 @@ async def discovered_upstreams(request: Request) -> dict:
     }
 
 
-@router.get("/v1/gateway/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
+@router.get("/gateway/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
 async def gateway_stats(request: Request):
     """Gateway-wide statistics."""
     from agent_bom.gateway import summarize_gateway_policies
@@ -576,7 +576,7 @@ async def gateway_stats(request: Request):
     }
 
 
-@router.post("/v1/firewall/check", tags=["gateway"], dependencies=[_dep("scan")])
+@router.post("/firewall/check", tags=["gateway"], dependencies=[_dep("scan")])
 async def firewall_check(request: Request):
     """Evaluate a source -> target agent decision through the control plane.
 
@@ -644,7 +644,7 @@ async def firewall_check(request: Request):
     }
 
 
-@router.get("/v1/firewall/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
+@router.get("/firewall/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
 async def firewall_stats(request: Request):
     """Aggregated inter-agent firewall decisions for the runtime-tab overlay.
 

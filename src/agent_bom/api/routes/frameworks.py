@@ -11,7 +11,7 @@ from agent_bom.mitre_fetch import get_catalog_metadata
 router = APIRouter()
 
 
-@router.get("/v1/frameworks/catalogs", tags=["frameworks"])
+@router.get("/frameworks/catalogs", tags=["frameworks"])
 def framework_catalogs() -> dict:
     """Return active framework catalog metadata used by scans and outputs."""
     atlas_meta = get_atlas_metadata()

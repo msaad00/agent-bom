@@ -91,8 +91,8 @@ def _request_header(request: Request, key: str) -> str:
     return str(headers.get(key, "") or "")
 
 
-@router.get("/v1/fleet", tags=["fleet"])
-@router.get("/v1/fleet/agents", tags=["fleet"], include_in_schema=False)
+@router.get("/fleet", tags=["fleet"])
+@router.get("/fleet/agents", tags=["fleet"], include_in_schema=False)
 async def list_fleet(
     request: Request,
     state: str | None = None,
@@ -151,7 +151,7 @@ async def list_fleet(
     }
 
 
-@router.get("/v1/fleet/stats", tags=["fleet"])
+@router.get("/fleet/stats", tags=["fleet"])
 async def fleet_stats(request: Request):
     """Fleet-wide statistics."""
     tenant_id = require_request_tenant_id(request)
@@ -174,7 +174,7 @@ async def fleet_stats(request: Request):
     }
 
 
-@router.get("/v1/fleet/{agent_id}", tags=["fleet"])
+@router.get("/fleet/{agent_id}", tags=["fleet"])
 async def get_fleet_agent(request: Request, agent_id: str):
     """Get a single fleet agent with trust score breakdown."""
     tenant_id = require_request_tenant_id(request)
@@ -265,7 +265,7 @@ def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery
         store.put(merge_observations(store.get(tenant_id, observation_id), candidate))
 
 
-@router.post("/v1/fleet/sync", tags=["fleet"])
+@router.post("/fleet/sync", tags=["fleet"])
 async def sync_fleet(request: Request, body: PushPayload | None = None):
     """Run discovery and sync results into the fleet registry.
 
@@ -470,7 +470,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
     return response
 
 
-@router.put("/v1/fleet/{agent_id}/state", tags=["fleet"])
+@router.put("/fleet/{agent_id}/state", tags=["fleet"])
 async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate):
     """Update agent lifecycle state."""
     from agent_bom.api.audit_log import log_action
@@ -500,7 +500,7 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
     return {"agent_id": agent_id, "lifecycle_state": new_state.value}
 
 
-@router.post("/v1/fleet/{agent_id}/quarantine", tags=["fleet"], dependencies=[_dep("policy_write")])
+@router.post("/fleet/{agent_id}/quarantine", tags=["fleet"], dependencies=[_dep("policy_write")])
 async def quarantine_fleet_agent(request: Request, agent_id: str):
     """Quarantine an agent and fail closed with a gateway DENY policy for its identity.
 
@@ -607,7 +607,7 @@ async def quarantine_fleet_agent(request: Request, agent_id: str):
     }
 
 
-@router.put("/v1/fleet/{agent_id}", tags=["fleet"])
+@router.put("/fleet/{agent_id}", tags=["fleet"])
 async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUpdate):
     """Update agent metadata (owner, environment, tags, notes)."""
     from agent_bom.api.audit_log import log_action

@@ -181,7 +181,7 @@ def _delete_records(tenant_id: str) -> dict[str, int]:
     return deleted
 
 
-@router.get("/v1/tenant/{tenant_id}/data", dependencies=[_dep("config")])
+@router.get("/tenant/{tenant_id}/data", dependencies=[_dep("config")])
 def export_tenant_data(
     tenant_id: str,
     request: Request,
@@ -202,7 +202,7 @@ def export_tenant_data(
     return payload
 
 
-@router.delete("/v1/tenant/{tenant_id}/data", dependencies=[_dep("config")])
+@router.delete("/tenant/{tenant_id}/data", dependencies=[_dep("config")])
 def delete_tenant_data(
     tenant_id: str,
     request: Request,

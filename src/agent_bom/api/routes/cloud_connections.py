@@ -183,7 +183,7 @@ def _validate_regions(regions: list[str]) -> list[str]:
     return cleaned
 
 
-@router.post("/v1/cloud/connections", status_code=201)
+@router.post("/cloud/connections", status_code=201)
 async def create_connection(request: Request, body: CloudConnectionCreate, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """Create a read-only cloud connection for the authenticated tenant.
 
@@ -244,7 +244,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
     return record.to_public_dict()
 
 
-@router.get("/v1/cloud/connections")
+@router.get("/cloud/connections")
 async def list_connections(request: Request, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """List the authenticated tenant's connections (non-secret metadata only)."""
     tenant_id = _tenant(request)
@@ -265,13 +265,13 @@ def _require_connection(request: Request, connection_id: str) -> CloudConnection
     return record
 
 
-@router.get("/v1/cloud/connections/{connection_id}")
+@router.get("/cloud/connections/{connection_id}")
 async def get_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """Return one connection's non-secret metadata (tenant-scoped)."""
     return _require_connection(request, connection_id).to_public_dict()
 
 
-@router.patch("/v1/cloud/connections/{connection_id}")
+@router.patch("/cloud/connections/{connection_id}")
 async def update_connection(
     request: Request,
     connection_id: str,
@@ -298,7 +298,7 @@ async def update_connection(
     return record.to_public_dict()
 
 
-@router.delete("/v1/cloud/connections/{connection_id}", status_code=204)
+@router.delete("/cloud/connections/{connection_id}", status_code=204)
 async def delete_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> None:
     """Delete a connection owned by the authenticated tenant."""
     record = _require_connection(request, connection_id)
@@ -615,7 +615,7 @@ def _run_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[
     return runner(record, tenant_id)
 
 
-@router.post("/v1/cloud/connections/{connection_id}/test")
+@router.post("/cloud/connections/{connection_id}/test")
 async def test_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """Validate a stored connection's brokered read-only credential.
 
@@ -670,7 +670,7 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
     }
 
 
-@router.post("/v1/cloud/connections/{connection_id}/scan")
+@router.post("/cloud/connections/{connection_id}/scan")
 async def scan_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """Launch a read-only cloud scan for a stored connection via the broker.
 

@@ -45,7 +45,7 @@ def _subscription_for_tenant(request: Request, subscription_id: str):
     return subscription
 
 
-@router.post("/v1/webhooks", status_code=201, dependencies=[_dep("config")])
+@router.post("/webhooks", status_code=201, dependencies=[_dep("config")])
 async def create_webhook_subscription(request: Request, body: dict) -> dict[str, object]:
     """Register a governance webhook destination. Returns the signing secret once."""
     url = str(body.get("url", "") or "").strip()
@@ -86,7 +86,7 @@ async def create_webhook_subscription(request: Request, body: dict) -> dict[str,
     }
 
 
-@router.get("/v1/webhooks", dependencies=[_dep("read")])
+@router.get("/webhooks", dependencies=[_dep("read")])
 async def list_webhook_subscriptions(request: Request, include_disabled: bool = False, limit: int = 200) -> dict[str, object]:
     """List governance webhook subscriptions for the active tenant."""
     tenant_id = _tenant(request)
@@ -101,14 +101,14 @@ async def list_webhook_subscriptions(request: Request, include_disabled: bool = 
     }
 
 
-@router.get("/v1/webhooks/{subscription_id}", dependencies=[_dep("read")])
+@router.get("/webhooks/{subscription_id}", dependencies=[_dep("read")])
 async def get_webhook_subscription(request: Request, subscription_id: str) -> dict[str, object]:
     """Return one webhook subscription (without the signing secret)."""
     subscription = _subscription_for_tenant(request, subscription_id)
     return {"schema_version": "webhook.subscription.v1", "subscription": subscription.to_public_dict()}
 
 
-@router.post("/v1/webhooks/{subscription_id}/disable", dependencies=[_dep("config")])
+@router.post("/webhooks/{subscription_id}/disable", dependencies=[_dep("config")])
 async def disable_webhook_subscription(request: Request, subscription_id: str) -> dict[str, object]:
     """Disable a subscription without deleting it."""
     _subscription_for_tenant(request, subscription_id)
@@ -124,7 +124,7 @@ async def disable_webhook_subscription(request: Request, subscription_id: str) -
     return {"schema_version": "webhook.subscription.v1", "subscription": subscription.to_public_dict()}
 
 
-@router.post("/v1/webhooks/{subscription_id}/enable", dependencies=[_dep("config")])
+@router.post("/webhooks/{subscription_id}/enable", dependencies=[_dep("config")])
 async def enable_webhook_subscription(request: Request, subscription_id: str) -> dict[str, object]:
     """Re-enable a disabled subscription."""
     _subscription_for_tenant(request, subscription_id)
@@ -140,7 +140,7 @@ async def enable_webhook_subscription(request: Request, subscription_id: str) ->
     return {"schema_version": "webhook.subscription.v1", "subscription": subscription.to_public_dict()}
 
 
-@router.delete("/v1/webhooks/{subscription_id}", dependencies=[_dep("config")])
+@router.delete("/webhooks/{subscription_id}", dependencies=[_dep("config")])
 async def delete_webhook_subscription(request: Request, subscription_id: str) -> dict[str, object]:
     """Delete a webhook subscription."""
     _subscription_for_tenant(request, subscription_id)
@@ -156,7 +156,7 @@ async def delete_webhook_subscription(request: Request, subscription_id: str) ->
     return {"schema_version": "webhook.subscription.v1", "deleted": True, "subscription_id": subscription_id}
 
 
-@router.post("/v1/webhooks/{subscription_id}/test", dependencies=[_dep("config")])
+@router.post("/webhooks/{subscription_id}/test", dependencies=[_dep("config")])
 async def test_webhook_subscription(request: Request, subscription_id: str) -> dict[str, object]:
     """Enqueue a synthetic ``webhook.test`` event directly to this destination.
 

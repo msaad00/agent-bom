@@ -45,6 +45,7 @@ from agent_bom.security import (
 )
 
 router = APIRouter()
+infra_router = APIRouter()
 _logger = logging.getLogger(__name__)
 
 
@@ -455,7 +456,7 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
     return {"calls": len(calls), "cost_usd": round(total, 6)}
 
 
-@router.post("/v1/traces", tags=["observability"])
+@router.post("/traces", tags=["observability"])
 async def ingest_traces(request: Request, body: dict) -> dict:
     """Ingest OpenTelemetry trace data and flag vulnerable tool calls.
 
@@ -554,7 +555,7 @@ async def ingest_traces(request: Request, body: dict) -> dict:
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
-@router.post("/v1/results/push", tags=["push"], status_code=201)
+@router.post("/results/push", tags=["push"], status_code=201)
 async def receive_push(request: Request, body: PushPayload) -> dict:
     """Receive pushed scan results from a CLI instance.
 
@@ -586,7 +587,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
 
 
-@router.post("/v1/ocsf/ingest", tags=["observability"], status_code=202)
+@router.post("/ocsf/ingest", tags=["observability"], status_code=202)
 async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
     """Ingest OCSF events and normalize them onto the canonical runtime-event path."""
     from agent_bom.api.audit_log import log_action
@@ -628,7 +629,7 @@ async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
     }
 
 
-@router.post("/v1/runtime/events", tags=["runtime", "observability"], status_code=202, dependencies=[_dep("runtime_ingest")])
+@router.post("/runtime/events", tags=["runtime", "observability"], status_code=202, dependencies=[_dep("runtime_ingest")])
 async def ingest_runtime_events(request: Request, body: dict | list[dict]) -> dict[str, object]:
     """Persist metadata-only runtime observations for tenant-scoped querying."""
     tenant_id = _tenant_id(request)
@@ -650,7 +651,7 @@ async def ingest_runtime_events(request: Request, body: dict | list[dict]) -> di
     }
 
 
-@router.get("/v1/runtime/sessions", tags=["runtime", "observability"], dependencies=[_dep("read")])
+@router.get("/runtime/sessions", tags=["runtime", "observability"], dependencies=[_dep("read")])
 async def list_runtime_sessions(
     request: Request,
     limit: int = 100,
@@ -671,7 +672,7 @@ async def list_runtime_sessions(
     }
 
 
-@router.get("/v1/runtime/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
+@router.get("/runtime/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
 async def list_runtime_observations(
     request: Request,
     session_id: str | None = None,
@@ -698,7 +699,7 @@ async def list_runtime_observations(
     }
 
 
-@router.get("/v1/runtime/trace-explorer", tags=["runtime", "observability"], dependencies=[_dep("read")])
+@router.get("/runtime/trace-explorer", tags=["runtime", "observability"], dependencies=[_dep("read")])
 async def trace_explorer(
     request: Request,
     limit: int = 100,
@@ -778,7 +779,7 @@ async def _trace_explorer_payload_for_tenant(tenant_id: str, *, limit: int = 100
     )
 
 
-@router.get("/v1/runtime/approval-queue", tags=["runtime", "observability"], dependencies=[_dep("read")])
+@router.get("/runtime/approval-queue", tags=["runtime", "observability"], dependencies=[_dep("read")])
 async def runtime_approval_queue(
     request: Request,
     status: str | None = None,
@@ -818,7 +819,7 @@ class _HitlDecisionBody(BaseModel):
 
 
 @router.post(
-    "/v1/runtime/approval-queue/{item_id}/decision",
+    "/runtime/approval-queue/{item_id}/decision",
     tags=["runtime", "observability"],
     dependencies=[_dep("policy.manage")],
 )
@@ -872,7 +873,7 @@ async def runtime_approval_decision(request: Request, item_id: str, body: _HitlD
     }
 
 
-@router.get("/v1/runtime/sessions/{session_id}/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
+@router.get("/runtime/sessions/{session_id}/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
 async def list_runtime_session_observations(
     request: Request,
     session_id: str,
@@ -899,7 +900,7 @@ async def list_runtime_session_observations(
     }
 
 
-@router.post("/v1/ui/errors", tags=["observability"], dependencies=[_dep("read")])
+@router.post("/ui/errors", tags=["observability"], dependencies=[_dep("read")])
 async def ingest_ui_error(request: Request, body: dict) -> dict:
     """Ingest a sanitized client-side dashboard error report."""
     from agent_bom.api.audit_log import log_action
@@ -971,12 +972,12 @@ async def _render_prometheus_metrics(request: Request | None = None):
         return Response("# No metrics available\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
-@router.get("/metrics", tags=["observability"], dependencies=[_dep("read")])
+@infra_router.get("/metrics", tags=["observability"], dependencies=[_dep("read")])
 async def prometheus_metrics(request: Request):
     return await _render_prometheus_metrics(request)
 
 
-@router.get("/v1/observability/costs", tags=["observability", "finops"], dependencies=[_dep("read")])
+@router.get("/observability/costs", tags=["observability", "finops"], dependencies=[_dep("read")])
 async def get_llm_costs(
     request: Request,
     agent: str | None = None,
@@ -1025,7 +1026,7 @@ async def get_llm_costs(
     return report
 
 
-@router.get("/v1/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("read")])
+@router.get("/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("read")])
 async def get_llm_cost_budget(request: Request, agent: str = "", cost_center: str = "") -> dict[str, object]:
     """Return the configured spend budget and current utilization.
 
@@ -1045,7 +1046,7 @@ async def get_llm_cost_budget(request: Request, agent: str = "", cost_center: st
     return {"schema_version": "observability.costs.v1", "tenant_id": tenant_id, **budget_status(spend, budget)}
 
 
-@router.put("/v1/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("config")])
+@router.put("/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("config")])
 async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]:
     """Set a USD spend cap. Body: {limit_usd, agent?, cost_center?, mode?}.
 
@@ -1090,7 +1091,7 @@ async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]
     }
 
 
-@router.get("/v1/observability/costs/forecast", tags=["observability", "finops"], dependencies=[_dep("read")])
+@router.get("/observability/costs/forecast", tags=["observability", "finops"], dependencies=[_dep("read")])
 async def get_llm_cost_forecast(request: Request, agent: str | None = None, limit: int = 10000) -> dict[str, object]:
     """Project LLM spend burn rate and budget runway for the active tenant.
 
@@ -1107,7 +1108,7 @@ async def get_llm_cost_forecast(request: Request, agent: str | None = None, limi
     return forecast_for_tenant(_tenant_id(request), agent=scoped_agent, limit=bounded_limit)
 
 
-@router.get("/v1/observability/anomalies", tags=["observability", "finops"], dependencies=[_dep("read")])
+@router.get("/observability/anomalies", tags=["observability", "finops"], dependencies=[_dep("read")])
 async def get_anomalies(request: Request, z_threshold: float = 3.0) -> dict[str, object]:
     """Detect cost and behavior anomalies (per-agent spend + per-session call-rate
     z-scores) for the active tenant. Proactive surfacing of runaway agents."""

@@ -59,7 +59,7 @@ def _enforce_active_report_quota(tenant_id: str) -> None:
         )
 
 
-@router.post("/v1/reports", tags=["reports"], status_code=202)
+@router.post("/reports", tags=["reports"], status_code=202)
 async def create_report_job(request: Request, body: ReportJobRequest) -> dict:
     """Enqueue an async findings export (gzipped NDJSON) instead of a synchronous body."""
     tenant_id = _tenant_id(request)
@@ -78,7 +78,7 @@ async def create_report_job(request: Request, body: ReportJobRequest) -> dict:
     return _job_payload(job, request=request)
 
 
-@router.get("/v1/reports/{job_id}", tags=["reports"])
+@router.get("/reports/{job_id}", tags=["reports"])
 async def get_report_job(request: Request, job_id: str) -> dict:
     """Return async report job status and download URL when complete."""
     tenant_id = _tenant_id(request)
@@ -88,7 +88,7 @@ async def get_report_job(request: Request, job_id: str) -> dict:
     return _job_payload(job, request=request)
 
 
-@router.get("/v1/reports/{job_id}/download", tags=["reports"], name="download_report_artifact")
+@router.get("/reports/{job_id}/download", tags=["reports"], name="download_report_artifact")
 async def download_report_artifact(
     request: Request,
     job_id: str,

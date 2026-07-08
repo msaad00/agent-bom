@@ -897,7 +897,7 @@ def enqueue_scan_job(
 # ─── Core Scan Endpoints ─────────────────────────────────────────────────────
 
 
-@router.post("/v1/scan", response_model=ScanJob, status_code=202, tags=["scan"])
+@router.post("/scan", response_model=ScanJob, status_code=202, tags=["scan"])
 async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     """Start a scan. Returns immediately with a job_id.
     Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
@@ -946,7 +946,7 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     return job
 
 
-@router.get("/v1/scan/drivers", tags=["scan"])
+@router.get("/scan/drivers", tags=["scan"])
 async def list_scan_drivers(include_planned: bool = True) -> dict:
     """List scanner driver contracts and orchestration semantics."""
 
@@ -963,19 +963,19 @@ async def list_scan_drivers(include_planned: bool = True) -> dict:
     }
 
 
-@router.get("/v1/scan/{job_id}", response_model=ScanJob, tags=["scan"])
+@router.get("/scan/{job_id}", response_model=ScanJob, tags=["scan"])
 async def get_scan(request: Request, job_id: str) -> ScanJob:
     """Fetch scan status and full results."""
     return _job_response_payload(_job_for_request(request, job_id))
 
 
-@router.get("/v1/scan/{job_id}/status", tags=["scan"])
+@router.get("/scan/{job_id}/status", tags=["scan"])
 async def get_scan_status(request: Request, job_id: str) -> dict[str, Any]:
     """Poll lightweight scan status without serializing large result payloads."""
     return _job_summary_payload(_job_for_request(request, job_id))
 
 
-@router.get("/v1/scan/{job_id}/attack-flow", tags=["scan"])
+@router.get("/scan/{job_id}/attack-flow", tags=["scan"])
 async def get_attack_flow(
     request: Request,
     job_id: str,
@@ -1014,7 +1014,7 @@ async def get_attack_flow(
     )
 
 
-@router.get("/v1/scan/{job_id}/context-graph", tags=["scan"])
+@router.get("/scan/{job_id}/context-graph", tags=["scan"])
 async def get_context_graph(request: Request, job_id: str, agent: str | None = None) -> dict:
     """Get the agent context graph with lateral movement analysis.
 
@@ -1032,7 +1032,7 @@ async def get_context_graph(request: Request, job_id: str, agent: str | None = N
     return await _scan_graph_compute_call(_context_graph_payload, job.result, agent=agent, scan_id=job.job_id, tenant_id=tenant_id)
 
 
-@router.get("/v1/scan/{job_id}/graph-export", tags=["scan"], response_model=None)
+@router.get("/scan/{job_id}/graph-export", tags=["scan"], response_model=None)
 async def get_graph_export(
     request: Request,
     job_id: str,
@@ -1064,7 +1064,7 @@ async def get_graph_export(
     return await _scan_graph_compute_call(_graph_export_response, result, format=format, mermaid_limit=mermaid_limit)
 
 
-@router.get("/v1/scan/{job_id}/licenses", tags=["scan"])
+@router.get("/scan/{job_id}/licenses", tags=["scan"])
 async def get_licenses(request: Request, job_id: str) -> dict:
     """Get the license compliance report for a completed scan.
 
@@ -1111,7 +1111,7 @@ async def get_licenses(request: Request, job_id: str) -> dict:
     return _lic_ser(lic_report)
 
 
-@router.get("/v1/scan/{job_id}/vex", tags=["scan"])
+@router.get("/scan/{job_id}/vex", tags=["scan"])
 async def get_vex(request: Request, job_id: str) -> dict:
     """Get the VEX (Vulnerability Exploitability eXchange) document for a completed scan.
 
@@ -1130,7 +1130,7 @@ async def get_vex(request: Request, job_id: str) -> dict:
     return {"statements": [], "stats": {"total_statements": 0, "affected": 0, "not_affected": 0, "fixed": 0, "under_investigation": 0}}
 
 
-@router.get("/v1/scan/{job_id}/skill-audit", tags=["scan"])
+@router.get("/scan/{job_id}/skill-audit", tags=["scan"])
 async def get_skill_audit(request: Request, job_id: str) -> dict:
     """Get the skill security audit results for a completed scan.
 
@@ -1155,7 +1155,7 @@ async def get_skill_audit(request: Request, job_id: str) -> dict:
     )
 
 
-@router.delete("/v1/scan/{job_id}", status_code=204, tags=["scan"])
+@router.delete("/scan/{job_id}", status_code=204, tags=["scan"])
 async def delete_scan(request: Request, job_id: str) -> None:
     """Discard a job record."""
     job = _job_for_request(request, job_id)
@@ -1165,7 +1165,7 @@ async def delete_scan(request: Request, job_id: str) -> None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
 
-@router.get("/v1/scan/{job_id}/stream", tags=["scan"])
+@router.get("/scan/{job_id}/stream", tags=["scan"])
 async def stream_scan(request: Request, job_id: str):
     """Server-Sent Events stream for real-time scan progress.
 
@@ -1221,7 +1221,7 @@ async def stream_scan(request: Request, job_id: str):
     return EventSourceResponse(event_generator())
 
 
-@router.get("/v1/jobs", tags=["scan"])
+@router.get("/jobs", tags=["scan"])
 async def list_jobs(
     request: Request,
     # enforce limit/offset caps via Pydantic so callers
@@ -1432,7 +1432,7 @@ def _merged_scan_bulk_page(
     return page
 
 
-@router.get("/v1/findings", tags=["scan"])
+@router.get("/findings", tags=["scan"])
 async def list_findings(
     request: Request,
     severity: str | None = None,
@@ -1614,7 +1614,7 @@ async def list_findings(
     return response
 
 
-@router.post("/v1/findings/bulk", tags=["scan"], status_code=201)
+@router.post("/findings/bulk", tags=["scan"], status_code=201)
 async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> dict:
     """Append normalized findings for the request tenant.
 
@@ -1730,7 +1730,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     return response
 
 
-@router.get("/v1/inventory", tags=["scan"])
+@router.get("/inventory", tags=["scan"])
 async def list_inventory(
     request: Request,
     # enforce limit cap server-side via Pydantic.
@@ -1772,7 +1772,7 @@ async def list_inventory(
 # Each returns results directly (no job queue — these are fast local scans).
 
 
-@router.post("/v1/scan/dataset-cards", tags=["scan"], status_code=200)
+@router.post("/scan/dataset-cards", tags=["scan"], status_code=200)
 async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
     """Scan directories for HuggingFace dataset cards, DVC files, and data lineage.
 
@@ -1792,7 +1792,7 @@ async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
     return {"scan_type": "dataset-cards", "directories": safe_dirs, "results": results}
 
 
-@router.post("/v1/scan/training-pipelines", tags=["scan"], status_code=200)
+@router.post("/scan/training-pipelines", tags=["scan"], status_code=200)
 async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
     """Scan directories for ML training pipeline artifacts.
 
@@ -1812,7 +1812,7 @@ async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
     return {"scan_type": "training-pipelines", "directories": safe_dirs, "results": results}
 
 
-@router.post("/v1/scan/browser-extensions", tags=["scan"], status_code=200)
+@router.post("/scan/browser-extensions", tags=["scan"], status_code=200)
 async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) -> dict:
     """Scan installed browser extensions (Chrome, Chromium, Brave, Edge, Firefox).
 
@@ -1833,7 +1833,7 @@ async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) ->
     }
 
 
-@router.post("/v1/scan/model-provenance", tags=["scan"], status_code=200)
+@router.post("/scan/model-provenance", tags=["scan"], status_code=200)
 async def scan_model_provenance(request: ModelProvenanceRequest) -> dict:
     """Check model provenance for HuggingFace and Ollama models.
 
@@ -1858,7 +1858,7 @@ async def scan_model_provenance(request: ModelProvenanceRequest) -> dict:
     }
 
 
-@router.post("/v1/scan/prompt-scan", tags=["scan"], status_code=200)
+@router.post("/scan/prompt-scan", tags=["scan"], status_code=200)
 async def scan_prompts(request: PromptScanRequest) -> dict:
     """Scan prompt files for injection patterns, hardcoded secrets, and unsafe instructions.
 
@@ -1887,7 +1887,7 @@ async def scan_prompts(request: PromptScanRequest) -> dict:
     return {"scan_type": "prompt-scan", "results": results}
 
 
-@router.post("/v1/scan/model-files", tags=["scan"], status_code=200)
+@router.post("/scan/model-files", tags=["scan"], status_code=200)
 async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
     """Scan directories for ML model files and assess serialization safety.
 

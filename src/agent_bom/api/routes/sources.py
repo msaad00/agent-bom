@@ -108,7 +108,7 @@ def _request_for_source(source: SourceRecord) -> ScanRequest:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
 
-@router.post("/v1/sources", tags=["sources"], status_code=201)
+@router.post("/sources", tags=["sources"], status_code=201)
 async def create_source(request: Request, body: SourceCreate) -> dict:
     tenant_id = _tenant_id(request)
     if body.tenant_id not in ("default", tenant_id):
@@ -144,7 +144,7 @@ async def create_source(request: Request, body: SourceCreate) -> dict:
     return source.model_dump()
 
 
-@router.get("/v1/sources", tags=["sources"])
+@router.get("/sources", tags=["sources"])
 async def list_sources(
     request: Request,
     # cap pagination so hostile callers cannot probe an
@@ -167,12 +167,12 @@ async def list_sources(
     }
 
 
-@router.get("/v1/sources/{source_id}", tags=["sources"])
+@router.get("/sources/{source_id}", tags=["sources"])
 async def get_source(request: Request, source_id: str) -> dict:
     return _source_for_request(request, source_id).model_dump()
 
 
-@router.put("/v1/sources/{source_id}", tags=["sources"])
+@router.put("/sources/{source_id}", tags=["sources"])
 async def update_source(request: Request, source_id: str, body: SourceUpdate) -> dict:
     source = _apply_update(_source_for_request(request, source_id), body)
     _validate_credential_ref(request, source)
@@ -188,7 +188,7 @@ async def update_source(request: Request, source_id: str, body: SourceUpdate) ->
     return source.model_dump()
 
 
-@router.delete("/v1/sources/{source_id}", tags=["sources"], status_code=204)
+@router.delete("/sources/{source_id}", tags=["sources"], status_code=204)
 async def delete_source(request: Request, source_id: str) -> None:
     source = _source_for_request(request, source_id)
     _get_source_store().delete(source_id)
@@ -201,7 +201,7 @@ async def delete_source(request: Request, source_id: str) -> None:
     )
 
 
-@router.post("/v1/sources/{source_id}/test", tags=["sources"])
+@router.post("/sources/{source_id}/test", tags=["sources"])
 async def test_source(request: Request, source_id: str) -> dict:
     source = _source_for_request(request, source_id)
     _validate_credential_ref(request, source)
@@ -255,7 +255,7 @@ async def test_source(request: Request, source_id: str) -> dict:
     }
 
 
-@router.post("/v1/sources/{source_id}/run", tags=["sources"], status_code=202)
+@router.post("/sources/{source_id}/run", tags=["sources"], status_code=202)
 async def run_source(request: Request, source_id: str) -> dict:
     source = _source_for_request(request, source_id)
     if not source.enabled:
@@ -282,7 +282,7 @@ async def run_source(request: Request, source_id: str) -> dict:
     return {"source_id": source.source_id, "job_id": job.job_id, "status": job.status.value}
 
 
-@router.get("/v1/sources/{source_id}/jobs", tags=["sources"])
+@router.get("/sources/{source_id}/jobs", tags=["sources"])
 async def list_source_jobs(request: Request, source_id: str) -> dict:
     source = _source_for_request(request, source_id)
     jobs = [job.model_dump() for job in _get_store().list_all(tenant_id=source.tenant_id) if job.source_id == source.source_id]

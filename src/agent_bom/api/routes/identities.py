@@ -77,7 +77,7 @@ def _identity_for_tenant(request: Request, identity_id: str):
     return identity
 
 
-@router.post("/v1/identities", status_code=201, dependencies=[_dep("config")])
+@router.post("/identities", status_code=201, dependencies=[_dep("config")])
 async def issue_agent_identity(request: Request, body: dict) -> dict[str, object]:
     """Issue a new agent identity. Returns the raw token exactly once."""
     agent_id = str(body.get("agent_id", "") or "").strip()
@@ -142,7 +142,7 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
     }
 
 
-@router.post("/v1/identities/{identity_id}/rotate", dependencies=[_dep("config")])
+@router.post("/identities/{identity_id}/rotate", dependencies=[_dep("config")])
 async def rotate_agent_identity(request: Request, identity_id: str, body: dict | None = None) -> dict[str, object]:
     """Rotate an identity: issue a replacement and keep the old one live briefly."""
     payload = body or {}
@@ -187,7 +187,7 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
     }
 
 
-@router.post("/v1/identities/{identity_id}/revoke", dependencies=[_dep("config")])
+@router.post("/identities/{identity_id}/revoke", dependencies=[_dep("config")])
 async def revoke_agent_identity(request: Request, identity_id: str, body: dict | None = None) -> dict[str, object]:
     """Revoke an identity immediately; its token can no longer authenticate."""
     store = get_agent_identity_store()
@@ -212,7 +212,7 @@ async def revoke_agent_identity(request: Request, identity_id: str, body: dict |
     return {"schema_version": "agent.identity.v1", "revoked": True, "identity": revoked.to_public_dict()}
 
 
-@router.post("/v1/identities/{identity_id}/jit-requests", status_code=201, dependencies=[_dep("config")])
+@router.post("/identities/{identity_id}/jit-requests", status_code=201, dependencies=[_dep("config")])
 async def request_agent_identity_jit(request: Request, identity_id: str, body: dict) -> dict[str, object]:
     """Request time-bound access to one tool. Requests do not authorize calls."""
     identity = _identity_for_tenant(request, identity_id)
@@ -240,7 +240,7 @@ async def request_agent_identity_jit(request: Request, identity_id: str, body: d
     return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
 
 
-@router.post("/v1/identities/{identity_id}/jit-grants", status_code=201, dependencies=[_dep("config")])
+@router.post("/identities/{identity_id}/jit-grants", status_code=201, dependencies=[_dep("config")])
 async def grant_agent_identity_jit(request: Request, identity_id: str, body: dict) -> dict[str, object]:
     """Grant one identity time-bound access to one tool."""
     identity = _identity_for_tenant(request, identity_id)
@@ -278,7 +278,7 @@ async def grant_agent_identity_jit(request: Request, identity_id: str, body: dic
     return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
 
 
-@router.post("/v1/identity-jit-grants/{grant_id}/approve", dependencies=[_dep("config")])
+@router.post("/identity-jit-grants/{grant_id}/approve", dependencies=[_dep("config")])
 async def approve_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
     """Approve a pending JIT request for a bounded TTL."""
     payload = body or {}
@@ -302,7 +302,7 @@ async def approve_agent_identity_jit(request: Request, grant_id: str, body: dict
     return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
 
 
-@router.post("/v1/identity-jit-grants/{grant_id}/deny", dependencies=[_dep("config")])
+@router.post("/identity-jit-grants/{grant_id}/deny", dependencies=[_dep("config")])
 async def deny_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
     """Deny a pending JIT request."""
     store = get_agent_identity_store()
@@ -324,7 +324,7 @@ async def deny_agent_identity_jit(request: Request, grant_id: str, body: dict | 
     return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
 
 
-@router.post("/v1/identity-jit-grants/{grant_id}/revoke", dependencies=[_dep("config")])
+@router.post("/identity-jit-grants/{grant_id}/revoke", dependencies=[_dep("config")])
 async def revoke_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
     """Revoke an active JIT grant immediately."""
     store = get_agent_identity_store()
@@ -353,7 +353,7 @@ async def revoke_agent_identity_jit(request: Request, grant_id: str, body: dict 
     return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
 
 
-@router.get("/v1/identity-jit-grants", dependencies=[_dep("read")])
+@router.get("/identity-jit-grants", dependencies=[_dep("read")])
 async def list_agent_identity_jit_grants(
     request: Request,
     identity_id: str | None = None,
@@ -376,7 +376,7 @@ async def list_agent_identity_jit_grants(
     }
 
 
-@router.get("/v1/identities/{identity_id}/jit-grants", dependencies=[_dep("read")])
+@router.get("/identities/{identity_id}/jit-grants", dependencies=[_dep("read")])
 async def list_agent_identity_jit_for_identity(
     request: Request,
     identity_id: str,
@@ -428,7 +428,7 @@ def _int_list(body: dict, key: str, *, lo: int, hi: int) -> list[int]:
     return out
 
 
-@router.post("/v1/conditional-access-policies", status_code=201, dependencies=[_dep("config")])
+@router.post("/conditional-access-policies", status_code=201, dependencies=[_dep("config")])
 async def create_conditional_access_policy(request: Request, body: dict) -> dict[str, object]:
     """Create a context-aware access policy (time / CIDR / environment guardrail)."""
     name = str(body.get("name", "") or "").strip()
@@ -482,7 +482,7 @@ def _conditional_policy_for_tenant(request: Request, policy_id: str):
     return policy
 
 
-@router.post("/v1/conditional-access-policies/{policy_id}/disable", dependencies=[_dep("config")])
+@router.post("/conditional-access-policies/{policy_id}/disable", dependencies=[_dep("config")])
 async def disable_conditional_access_policy(request: Request, policy_id: str) -> dict[str, object]:
     """Disable a conditional-access policy without deleting it."""
     _conditional_policy_for_tenant(request, policy_id)
@@ -499,7 +499,7 @@ async def disable_conditional_access_policy(request: Request, policy_id: str) ->
     return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
 
 
-@router.post("/v1/conditional-access-policies/{policy_id}/enable", dependencies=[_dep("config")])
+@router.post("/conditional-access-policies/{policy_id}/enable", dependencies=[_dep("config")])
 async def enable_conditional_access_policy(request: Request, policy_id: str) -> dict[str, object]:
     """Re-enable a previously disabled conditional-access policy."""
     _conditional_policy_for_tenant(request, policy_id)
@@ -516,7 +516,7 @@ async def enable_conditional_access_policy(request: Request, policy_id: str) -> 
     return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
 
 
-@router.get("/v1/conditional-access-policies", dependencies=[_dep("read")])
+@router.get("/conditional-access-policies", dependencies=[_dep("read")])
 async def list_conditional_access_policies(request: Request, include_disabled: bool = False, limit: int = 200) -> dict[str, object]:
     """List conditional-access policies for the active tenant."""
     tenant_id = _tenant(request)
@@ -530,14 +530,14 @@ async def list_conditional_access_policies(request: Request, include_disabled: b
     }
 
 
-@router.get("/v1/conditional-access-policies/{policy_id}", dependencies=[_dep("read")])
+@router.get("/conditional-access-policies/{policy_id}", dependencies=[_dep("read")])
 async def get_conditional_access_policy(request: Request, policy_id: str) -> dict[str, object]:
     """Return one conditional-access policy."""
     policy = _conditional_policy_for_tenant(request, policy_id)
     return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
 
 
-@router.post("/v1/identities/discover", dependencies=[_dep("read")])
+@router.post("/identities/discover", dependencies=[_dep("read")])
 async def discover_non_human_identities(request: Request, body: dict | None = None) -> dict[str, object]:
     """Discover non-human identities (service accounts / principals) from IdPs.
 
@@ -588,7 +588,7 @@ async def discover_non_human_identities(request: Request, body: dict | None = No
     }
 
 
-@router.get("/v1/identities", dependencies=[_dep("read")])
+@router.get("/identities", dependencies=[_dep("read")])
 async def list_agent_identities(request: Request, include_inactive: bool = False, limit: int = 200) -> dict[str, object]:
     """List managed agent identities for the active tenant (metadata only)."""
     tenant_id = _tenant(request)
@@ -625,7 +625,7 @@ def _discover_nhi_subjects() -> list[dict[str, object]]:
     return list(merged.get("identities", []))
 
 
-@router.post("/v1/identities/access-reviews", status_code=201, dependencies=[_dep("config")])
+@router.post("/identities/access-reviews", status_code=201, dependencies=[_dep("config")])
 async def create_access_review(request: Request, body: dict | None = None) -> dict[str, object]:
     """Create a scheduled access-review / recertification campaign over NHIs.
 
@@ -702,7 +702,7 @@ async def create_access_review(request: Request, body: dict | None = None) -> di
     }
 
 
-@router.get("/v1/identities/access-reviews", dependencies=[_dep("read")])
+@router.get("/identities/access-reviews", dependencies=[_dep("read")])
 async def list_access_reviews(request: Request, limit: int = 200) -> dict[str, object]:
     """List access-review campaigns for the active tenant (overdue refreshed)."""
     from agent_bom.api.access_review import get_access_review_store, refresh_campaign_status
@@ -720,7 +720,7 @@ async def list_access_reviews(request: Request, limit: int = 200) -> dict[str, o
     }
 
 
-@router.get("/v1/identities/access-reviews/{campaign_id}", dependencies=[_dep("read")])
+@router.get("/identities/access-reviews/{campaign_id}", dependencies=[_dep("read")])
 async def get_access_review(request: Request, campaign_id: str) -> dict[str, object]:
     """Return one access-review campaign and its review items."""
     from agent_bom.api.access_review import get_access_review_store, refresh_campaign_status
@@ -739,7 +739,7 @@ async def get_access_review(request: Request, campaign_id: str) -> dict[str, obj
     }
 
 
-@router.post("/v1/identities/access-reviews/{campaign_id}/items/{item_id}/decision", dependencies=[_dep("config")])
+@router.post("/identities/access-reviews/{campaign_id}/items/{item_id}/decision", dependencies=[_dep("config")])
 async def submit_access_review_decision(request: Request, campaign_id: str, item_id: str, body: dict) -> dict[str, object]:
     """Record a reviewer decision (attest / revoke_recommended / flag) on one item.
 
@@ -793,7 +793,7 @@ async def submit_access_review_decision(request: Request, campaign_id: str, item
     }
 
 
-@router.get("/v1/identities/access-reviews/{campaign_id}/evidence", dependencies=[_dep("read")])
+@router.get("/identities/access-reviews/{campaign_id}/evidence", dependencies=[_dep("read")])
 async def export_access_review_evidence(request: Request, campaign_id: str) -> dict[str, object]:
     """Export a non-secret, signable evidence bundle for one campaign."""
     from agent_bom.api.access_review import export_evidence, get_access_review_store
@@ -807,7 +807,7 @@ async def export_access_review_evidence(request: Request, campaign_id: str) -> d
 
 # Declared last so the ``access-reviews`` static routes above take precedence
 # over this single-identity catch-all.
-@router.get("/v1/identities/{identity_id}", dependencies=[_dep("read")])
+@router.get("/identities/{identity_id}", dependencies=[_dep("read")])
 async def get_agent_identity(request: Request, identity_id: str) -> dict[str, object]:
     """Return one agent identity's lifecycle status (metadata only)."""
     identity = get_agent_identity_store().get(identity_id)

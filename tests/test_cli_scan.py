@@ -38,6 +38,7 @@ def _run(args: list, catch_exceptions: bool = False, **kwargs):
     if (
         args[:1] == ["scan"]
         and "--help" not in args
+        and "--help-all" not in args
         and "--no-scan" not in args
         and "--dry-run" not in args
         and "--no-auto-update-db" not in args
@@ -70,16 +71,20 @@ def test_main_version():
 
 def test_scan_help():
     result = _run(["scan", "--help"])
-    normalized = " ".join(result.output.split())
     assert result.exit_code == 0
     assert "--output" in result.output
     assert "--format" in result.output
     assert "--no-discover" in result.output
     # --inventory-only is a deprecated hidden alias — no longer advertised.
     assert "--inventory-only" not in result.output
-    assert "--no-follow-symlinks" in result.output
-    assert "graph (Cytoscape.js graph JSON)" in normalized
-    assert "graph (raw graph JSON)" not in normalized
+    assert "additional scan flags" in result.output
+
+    full = _run(["scan", "--help-all"])
+    full_normalized = " ".join(full.output.split())
+    assert full.exit_code == 0
+    assert "--no-follow-symlinks" in full.output
+    assert "graph (Cytoscape.js graph JSON)" in full_normalized
+    assert "graph (raw graph JSON)" not in full_normalized
 
 
 def test_scan_agent_mode_emits_machine_envelope(monkeypatch):
@@ -1725,7 +1730,7 @@ def test_format_choices_include_plain():
 
 def test_compliance_export_help_lists_supported_values():
     """--compliance-export help should document the accepted slugs clearly."""
-    result = _run(["scan", "--help"])
+    result = _run(["scan", "--help-all"])
     assert result.exit_code == 0
     assert "--compliance-export" in result.output
     assert "cmmc" in result.output

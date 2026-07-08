@@ -325,7 +325,7 @@ def test_cli_scan_mcp_registry_flag():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert result.exit_code == 0
     assert "--mcp-registry" in result.output
 

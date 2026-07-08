@@ -291,7 +291,7 @@ def test_detect_multi_arch_not_manifest_list(monkeypatch):
 def test_scan_cli_has_registry_options():
     """scan --help includes registry auth and platform options."""
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--registry-user" in result.output
     assert "--registry-pass" in result.output
     assert "--platform" in result.output

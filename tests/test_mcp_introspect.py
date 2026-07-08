@@ -644,4 +644,6 @@ def test_cli_introspect_flag():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert "--introspect" in result.output
+
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--introspect-timeout" in result.output

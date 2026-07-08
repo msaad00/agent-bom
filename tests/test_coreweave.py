@@ -386,7 +386,7 @@ def test_cli_coreweave_flags():
     from agent_bom.cli import scan
 
     runner = CliRunner()
-    result = runner.invoke(scan, ["--help"])
+    result = runner.invoke(scan, ["--help-all"])
     assert "--coreweave" in result.output
     assert "--coreweave-context" in result.output
     assert "--coreweave-namespace" in result.output

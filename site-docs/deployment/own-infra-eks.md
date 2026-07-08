@@ -200,7 +200,7 @@ These are the maintained building blocks for this model:
 - advanced local Compose references, not the primary production path:
   [deploy/docker-compose.platform.yml](https://github.com/msaad00/agent-bom/blob/main/deploy/docker-compose.platform.yml)
   and
-  [deploy/docker-compose.runtime.yml](https://github.com/msaad00/agent-bom/blob/main/deploy/docker-compose.runtime.yml)
+  [deploy/docker-compose.runtime-example.yml](https://github.com/msaad00/agent-bom/blob/main/deploy/docker-compose.runtime-example.yml)
 - sidecar examples:
   [deploy/k8s/sidecar-example.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/k8s/sidecar-example.yaml)
   and

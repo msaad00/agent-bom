@@ -356,7 +356,7 @@ def test_cli_has_ai_enrich_flag():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--ai-enrich" in result.output
 
 
@@ -367,7 +367,7 @@ def test_cli_has_ai_model_option():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--ai-model" in result.output
 
 
@@ -378,7 +378,7 @@ def test_cli_ai_model_shows_ollama_examples():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "ollama" in result.output.lower()
 
 

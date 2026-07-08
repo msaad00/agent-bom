@@ -9,7 +9,7 @@
 # Postgres+secrets layout).
 #
 # Quick start:
-#   docker compose -f deploy/docker-compose.runtime.yml up
+#   docker compose -f deploy/docker-compose.runtime-example.yml up
 #
 # The proxy wraps the filesystem MCP server and logs all tool calls to
 # ./audit-logs/audit.jsonl on the host.

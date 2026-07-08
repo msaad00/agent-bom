@@ -1344,7 +1344,7 @@ def test_cli_image_output_json_extension_writes_report(monkeypatch, tmp_path):
 
 def test_cli_scan_has_k8s_flags():
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--k8s" in result.output
     assert "--namespace" in result.output
 
@@ -1671,7 +1671,7 @@ def test_html_trust_assessment_absent():
 
 def test_cli_open_flag_accepted():
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--open" in result.output
 
 
@@ -1771,7 +1771,7 @@ def test_prometheus_clean_report_zero_vulns():
 
 def test_cli_scan_has_prometheus_format():
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "prometheus" in result.output
     assert "--push-gateway" in result.output
 
@@ -1927,7 +1927,7 @@ variable "anthropic_api_key" {
 
 def test_cli_scan_has_tf_dir_flag():
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--tf-dir" in result.output
 
 
@@ -2019,7 +2019,7 @@ def test_gha_no_workflows_dir(tmp_path):
 
 def test_cli_scan_has_gha_flag():
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--gha" in result.output
 
 
@@ -2230,7 +2230,7 @@ def test_python_agents_detects_langgraph_positional_tools_arg(tmp_path):
 def test_cli_scan_has_agent_project_flag():
     """CLI scan command exposes --agent-project flag."""
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert result.exit_code == 0
     assert "--agent-project" in result.output
 
@@ -2677,7 +2677,7 @@ def test_integrity_module_imports():
 def test_cli_scan_has_verify_integrity_flag():
     """The scan command accepts --verify-integrity."""
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert result.exit_code == 0
     assert "--verify-integrity" in result.output
 
@@ -4021,7 +4021,7 @@ def test_cli_scan_has_verbose_flag():
 def test_cli_scan_has_no_color_flag():
     """--no-color flag appears in scan --help."""
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert "--no-color" in result.output
 
 

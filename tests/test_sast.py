@@ -602,7 +602,7 @@ def test_cli_code_flag():
     from agent_bom.cli import scan as scan_cmd
 
     runner = CliRunner()
-    result = runner.invoke(scan_cmd, ["--help"])
+    result = runner.invoke(scan_cmd, ["--help-all"])
     assert "--code" in result.output
     assert "--sast-config" in result.output
     assert "--rules" in result.output

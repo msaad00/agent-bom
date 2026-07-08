@@ -34,7 +34,7 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("Dockerfile", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     # Compose + packaged manifests
     ("deploy/docker-compose.pilot.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
-    ("deploy/docker-compose.runtime.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("deploy/docker-compose.runtime-example.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/docker-compose.fullstack.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/docker-compose.platform.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/k8s/daemonset.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),

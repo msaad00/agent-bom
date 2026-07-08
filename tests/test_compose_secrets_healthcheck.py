@@ -33,7 +33,7 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         # depends_on uses postgres healthcheck for ordering.
         "agent-bom",
     },
-    "docker-compose.runtime.yml": {
+    "docker-compose.runtime-example.yml": {
         # The mcp-server container talks stdio to the proxy and never opens a
         # TCP listener — there is no port to probe.
         "mcp-server",

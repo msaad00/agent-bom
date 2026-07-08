@@ -34,7 +34,7 @@ CANONICAL_TAGLINE_SURFACES: list[Path] = [
 ]
 MANAGED_IMAGE_REFS: list[tuple[Path, re.Pattern[str]]] = [
     (ROOT / "deploy" / "docker-compose.pilot.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
-    (ROOT / "deploy" / "docker-compose.runtime.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
+    (ROOT / "deploy" / "docker-compose.runtime-example.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
     (ROOT / "deploy" / "docker-compose.fullstack.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
     (ROOT / "deploy" / "docker-compose.platform.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
     (ROOT / "deploy" / "k8s" / "daemonset.yaml", re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)")),

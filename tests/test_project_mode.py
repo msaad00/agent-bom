@@ -326,7 +326,8 @@ def test_cli_has_sbom_name_flag():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert "--project" in result.output
-    assert "--sbom-name" in result.output
+    full = runner.invoke(main, ["scan", "--help-all"])
+    assert "--sbom-name" in full.output
 
 
 def test_project_scan_via_cli_no_agents(tmp_path):

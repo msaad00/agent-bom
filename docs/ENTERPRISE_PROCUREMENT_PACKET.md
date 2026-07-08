@@ -1,5 +1,9 @@
 # Enterprise Procurement Evidence Packet
 
+> Part of the **[enterprise doc set](ENTERPRISE.md#enterprise-doc-set)**. Start
+> at [`ENTERPRISE.md`](ENTERPRISE.md) for the controls-to-code map and the full
+> index of enterprise docs.
+
 This packet is an evidence index for enterprise security, platform, legal, and
 procurement review of self-hosted `agent-bom`. It is not a certification claim.
 Validate every linked control against the exact release tag and deployment mode

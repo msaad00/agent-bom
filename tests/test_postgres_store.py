@@ -78,6 +78,14 @@ class MockConnection:
                     table = "policy_audit_log"
                 elif "audit_log" in sql:
                     table = "audit_log"
+                elif "audit_chain_checkpoint" in sql:
+                    table = "audit_chain_checkpoint"
+                    tenant_id, head_signature = params
+                    existing = self._store.setdefault(table, {}).get(tenant_id)
+                    entry_count = int(existing[1]) + 1 if existing and "on conflict" in sql_lower else 1
+                    self._store[table][tenant_id] = (tenant_id, entry_count, head_signature)
+                    self._cursors.append(cursor)
+                    return cursor
                 elif "trend_history" in sql:
                     table = "trend_history"
                 elif "scan_schedules" in sql:
@@ -115,6 +123,20 @@ class MockConnection:
                     rows = [row for row in rows if row[5] == params[0]]
                 rows = sorted(rows, key=lambda row: (row[1], row[0]), reverse=True)
                 cursor.rows = [(rows[0][8],)] if rows else []
+            elif "count(*) from audit_chain_checkpoint" in sql_lower.replace(" ", ""):
+                total = len(self._store.get("audit_chain_checkpoint", {}))
+                cursor.rows = [(total,)]
+            elif "select distinct team_id from audit_log" in sql_lower:
+                rows = list(self._store.get("audit_log", {}).values())
+                cursor.rows = [(row[5],) for row in rows]
+            elif "count(*) from audit_log" in sql_lower and "team_id = %s" in sql_lower:
+                rows = [row for row in self._store.get("audit_log", {}).values() if row[5] == params[0]]
+                cursor.rows = [(len(rows),)]
+            elif "from audit_chain_checkpoint" in sql_lower:
+                rows = list(self._store.get("audit_chain_checkpoint", {}).values())
+                if params and "tenant_id = %s" in sql_lower:
+                    rows = [row for row in rows if row[0] == params[0]]
+                cursor.rows = [(int(row[1]), row[2]) for row in rows]
             elif "group by" in sql_lower:
                 # Aggregate query — return empty list
                 cursor.rows = []

@@ -314,7 +314,11 @@ def _apply_group_patch(group: SCIMGroup, body: dict[str, Any]) -> SCIMGroup:
                 group.members = [entry for entry in group.members if _member_value(entry) != member_id]
                 continue
             if path == "members" or path.startswith("members"):
-                group.members = []
+                if isinstance(value, list) and value:
+                    to_remove = {_member_value(entry) for entry in value if isinstance(entry, dict)}
+                    group.members = [entry for entry in group.members if _member_value(entry) not in to_remove]
+                else:
+                    group.members = []
                 continue
         if op == "add" and path == "members":
             group.members = _dedupe_members([*group.members, *_member_entries_from_value(value)])
@@ -322,12 +326,20 @@ def _apply_group_patch(group: SCIMGroup, body: dict[str, Any]) -> SCIMGroup:
         if path == "displayName":
             group.display_name = str(value or "").strip()
         elif path == "members" and isinstance(value, list):
-            group.members = _dedupe_members([entry for entry in value if isinstance(entry, dict)])
+            member_entries = [entry for entry in value if isinstance(entry, dict)]
+            if op == "add":
+                group.members = _dedupe_members([*group.members, *member_entries])
+            else:
+                group.members = _dedupe_members(member_entries)
         elif isinstance(value, dict) and not path:
             if "displayName" in value:
                 group.display_name = str(value["displayName"]).strip()
             if "members" in value and isinstance(value["members"], list):
-                group.members = _dedupe_members([entry for entry in value["members"] if isinstance(entry, dict)])
+                member_entries = [entry for entry in value["members"] if isinstance(entry, dict)]
+                if op == "add":
+                    group.members = _dedupe_members([*group.members, *member_entries])
+                else:
+                    group.members = _dedupe_members(member_entries)
         else:
             raise HTTPException(status_code=400, detail="Unsupported group patch path")
     if not group.display_name:

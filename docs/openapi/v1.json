@@ -21543,12 +21543,12 @@
             }
           },
           {
-            "in": "query",
-            "name": "token",
+            "in": "header",
+            "name": "X-Siem-Token",
             "required": false,
             "schema": {
               "default": "",
-              "title": "Token",
+              "title": "X-Siem-Token",
               "type": "string"
             }
           }

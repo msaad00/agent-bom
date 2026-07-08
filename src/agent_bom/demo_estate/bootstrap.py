@@ -70,6 +70,14 @@ def _run_demo_scan_report() -> dict[str, Any]:
         report["scan_sources"].append("demo")
     if "demo-estate" not in report["scan_sources"]:
         report["scan_sources"].append("demo-estate")
+
+    # Overlay a curated multi-cloud CIS benchmark posture so the CIS/compliance
+    # surfaces render a believable AWS/GCP/Azure pass-fail spread. The keys are
+    # exactly what build_cis_benchmark_check_rows() reads from a scan result.
+    from agent_bom.demo_estate.showcase_cis import demo_cis_benchmarks
+
+    for key, benchmark in demo_cis_benchmarks().items():
+        report.setdefault(key, benchmark)
     return report
 
 

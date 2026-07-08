@@ -1033,8 +1033,8 @@ def test_demo_scan_preserves_curated_inventory_without_registry_fallback(monkeyp
     result = _run(["scan", "--demo", "--offline", "--no-auto-update-db"])
 
     assert result.exit_code == 0
-    assert captured["packages"] == 12
-    assert "12 packages" in result.output
+    assert captured["packages"] == 23
+    assert "23 packages" in result.output
     assert "PARTIAL COVERAGE" not in result.output
 
 

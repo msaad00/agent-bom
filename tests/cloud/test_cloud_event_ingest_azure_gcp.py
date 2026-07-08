@@ -1,6 +1,6 @@
 """Tests for event-driven Azure + GCP posture ingestion.
 
-Mirrors ``tests/test_cloud_event_ingest.py`` (AWS): patch the provider's scoped
+Mirrors ``tests/cloud/test_cloud_event_ingest.py`` (AWS): patch the provider's scoped
 ``discover_inventory`` to return a deterministic synthetic inventory, and assert
 a changed resource re-evaluates ONLY its resource type's CIS checks and produces
 the expected finding — plus the bounded, fail-closed queue-drain contract.

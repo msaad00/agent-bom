@@ -29,7 +29,9 @@ from agent_bom.models import (
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-_CLOUD_FIXTURES = Path(__file__).parent / "fixtures" / "cloud"
+_TESTS_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = _TESTS_ROOT.parent
+_CLOUD_FIXTURES = _TESTS_ROOT / "fixtures" / "cloud"
 
 # Provider SDKs that tests inject as mocks (or patch to None) in sys.modules.
 # The cloud submodules import these at module level, so reloading a submodule
@@ -2364,9 +2366,7 @@ def test_dry_run_lists_openai_apis():
 
 def test_clickhouse_in_mcp_registry():
     """ClickHouse MCP server should be in the registry with real data."""
-    from pathlib import Path
-
-    registry_path = Path(__file__).parent.parent / "src" / "agent_bom" / "mcp_registry.json"
+    registry_path = _REPO_ROOT / "src" / "agent_bom" / "mcp_registry.json"
     data = json.loads(registry_path.read_text())
     assert "mcp-clickhouse" in data["servers"]
     entry = data["servers"]["mcp-clickhouse"]

@@ -159,7 +159,7 @@ def test_report_write_enospc_falls_back_to_stdout(monkeypatch, tmp_path, capsys)
 
     import agent_bom.output.json_fmt as json_fmt
 
-    monkeypatch.setattr(json_fmt.Path, "write_text", _enospc, raising=False)
+    monkeypatch.setattr(json_fmt.Path, "open", _enospc, raising=False)
 
     ctx = _make_ctx(_report())
     # Must NOT raise — the scan already did all the work.

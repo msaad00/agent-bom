@@ -10,6 +10,17 @@ your own Kubernetes cluster, or as a hosted service where you operate the
 control plane and customers connect read-only. This guide covers all three
 tiers, each with the exact command.
 
+## Deployment doc set
+
+This page is the docs-tree hub for deployment. Each sibling owns one job:
+
+| Doc | Purpose |
+|---|---|
+| [`site-docs/deployment/overview.md`](../site-docs/deployment/overview.md) | Canonical deployment chooser (published site) |
+| [`DEPLOY_QUICKSTART.md`](DEPLOY_QUICKSTART.md) | Connect-and-scan onboarding — deploy → connect → inventory → scan |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Deployment and scalability architecture reference |
+| [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md) | Org-wide rollout — endpoints to cloud, container/image choices |
+
 ## Posture, in one breath
 
 Across every tier the posture is the same:

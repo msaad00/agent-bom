@@ -9,6 +9,16 @@ single canonical version.
 For policy-layer ordering inside a single tool-call see
 `docs/POLICY_PRECEDENCE.md`. This page is the higher-level surface map.
 
+### Runtime doc set
+
+This page is the canonical runtime surface map. The detail docs:
+
+- [`RUNTIME_MONITORING.md`](RUNTIME_MONITORING.md) — proxy sidecar deployment,
+  detector configuration, enforcement modes, and alert routing
+- [`RUNTIME_PROXY_AUDIT_JSONL.md`](RUNTIME_PROXY_AUDIT_JSONL.md) — the proxy
+  audit JSONL record format for SIEM forwarding and release evidence
+- `docs/POLICY_PRECEDENCE.md` — policy-layer ordering inside a single tool-call
+
 ## Which surface owns which decision
 
 | Surface | Module | Owns |

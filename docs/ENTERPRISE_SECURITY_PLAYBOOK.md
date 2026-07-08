@@ -1,5 +1,9 @@
 # Enterprise Security Playbook
 
+> Part of the **[enterprise doc set](ENTERPRISE.md#enterprise-doc-set)**. Start
+> at [`ENTERPRISE.md`](ENTERPRISE.md) for the controls-to-code map and the full
+> index of enterprise docs.
+
 > **Who this is for:** a security or platform team preparing to pilot
 > `agent-bom` inside their own AWS / EKS (or equivalent) environment,
 > with employees running Cursor / VS Code / Claude / Codex / Copilot on

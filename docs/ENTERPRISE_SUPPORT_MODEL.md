@@ -1,5 +1,9 @@
 # Enterprise Support, Patch, And Disclosure Model
 
+> Part of the **[enterprise doc set](ENTERPRISE.md#enterprise-doc-set)**. Start
+> at [`ENTERPRISE.md`](ENTERPRISE.md) for the controls-to-code map and the full
+> index of enterprise docs.
+
 This document defines the support and response model for self-hosted
 `agent-bom` deployments. It is written for procurement and security review. It
 does not create a paid support contract, hosted-service SLA, or legal DPA.

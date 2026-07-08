@@ -9,6 +9,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **git-SHA advisory false positives (offline scan)** — the local `db/lookup`
+  matcher no longer conservatively reports advisories whose only bounds are git
+  commit SHAs (OSS-Fuzz / OSV-2022-* rows) against concrete semver versions;
+  such rows are now classified `uncomparable` rather than `unknown`, so e.g.
+  `pillow==11.0.0` stops drawing `OSV-2022-1074` / `OSV-2022-715`. Genuine semver
+  in-range/past-fix matching and mixed SHA-plus-semver sibling rows are
+  unaffected.
+- **Malicious packages missing from CSV/Parquet export** — vuln-less
+  malicious/typosquat packages (synthesized findings) now appear in the CSV and
+  Parquet exports even when CVE findings are present, matching JSON/SARIF, with
+  `is_malicious` and `malicious_reason` populated.
+
 ## [0.94.0] - 2026-07-08
 
 Minor release shipping the post-0.93.5 audit/security batch, cloud and runtime

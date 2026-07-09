@@ -5155,6 +5155,8 @@ def _add_network_edge_inventory(
                     "vpc_id": _clean_graph_part(item.get("vpc_id")),
                     "internet_exposed": bool(item.get("internet_exposed")),
                     "has_internet_route": bool(item.get("has_internet_route")),
+                    "subnet_ids": list(item.get("subnet_ids", []) or []),
+                    "network_exposure": list(item.get("network_exposure", []) or []),
                 },
             )
 
@@ -5267,6 +5269,19 @@ def _add_network_edge_inventory(
             attrs={"resource_id": _clean_graph_part(acl.get("arn")) or acl_id, "scope": _clean_graph_part(acl.get("scope"))},
         )
         _protect(node_id, acl.get("protected_targets", []), "waf_web_acl_association")
+        waf_node = graph.nodes.get(node_id)
+        if waf_node is not None:
+            waf_node.attributes["internet_exposed"] = True
+        for target_ref in acl.get("protected_targets", []) or []:
+            ref = _clean_graph_part(target_ref)
+            target_node_id = ref_to_node.get(ref)
+            if target_node_id:
+                _add_exposure_path_edge(
+                    graph,
+                    source=node_id,
+                    target=target_node_id,
+                    reason="waf_internet_entry",
+                )
 
     # ── API gateways → API_GATEWAY nodes (+ Azure API Management) + PROTECTS ──
     api_gateway_items = list(inventory.get("api_gateways", []) or [])
@@ -5332,6 +5347,114 @@ def _add_network_edge_inventory(
                         source=node_id,
                         target=target_node_id,
                         reason="internet_facing_api_gateway",
+                    )
+
+    _wire_network_entry_exposure_paths(
+        graph,
+        inventory,
+        provider=provider,
+        subnet_node_by_id=subnet_node_by_id,
+        instance_node_by_id=instance_node_by_id,
+    )
+
+
+def _wire_network_entry_exposure_paths(
+    graph: UnifiedGraph,
+    inventory: dict[str, Any],
+    *,
+    provider: str,
+    subnet_node_by_id: dict[str, str],
+    instance_node_by_id: dict[str, str],
+) -> None:
+    """Link IGW / public subnet / permissive NACL nodes to reachable instances."""
+    public_subnet_ids = {
+        sn_id
+        for sn in inventory.get("subnets", []) or []
+        if isinstance(sn, dict)
+        for sn_id in [_clean_graph_part(sn.get("id"))]
+        if sn_id and sn.get("is_public")
+    }
+    igw_by_vpc: dict[str, str] = {}
+    for igw in inventory.get("internet_gateways", []) or []:
+        if not isinstance(igw, dict):
+            continue
+        kind = _clean_graph_part(igw.get("kind")) or "internet-gateway"
+        if kind != "internet-gateway":
+            continue
+        ident = _clean_graph_part(igw.get("id"))
+        vpc_id = _clean_graph_part(igw.get("vpc_id"))
+        if not ident or not vpc_id:
+            continue
+        node_id = f"cloud_resource:{provider}:network:internet_gateway:{ident}"
+        if node_id in graph.nodes:
+            graph.nodes[node_id].attributes["internet_exposed"] = True
+            igw_by_vpc[vpc_id] = node_id
+
+    for vpc_id, igw_node in igw_by_vpc.items():
+        for sn in inventory.get("subnets", []) or []:
+            if not isinstance(sn, dict):
+                continue
+            sn_id = _clean_graph_part(sn.get("id"))
+            if sn_id not in public_subnet_ids or _clean_graph_part(sn.get("vpc_id")) != vpc_id:
+                continue
+            sn_node = subnet_node_by_id.get(sn_id)
+            if sn_node:
+                _add_exposure_path_edge(
+                    graph,
+                    source=igw_node,
+                    target=sn_node,
+                    reason="internet_gateway_public_subnet",
+                )
+
+    for sn_id in public_subnet_ids:
+        sn_node = subnet_node_by_id.get(sn_id)
+        if not sn_node:
+            continue
+        for instance in inventory.get("instances", []) or []:
+            if not isinstance(instance, dict):
+                continue
+            if _clean_graph_part(instance.get("subnet_id")) != sn_id:
+                continue
+            inst_node = instance_node_by_id.get(_clean_graph_part(instance.get("instance_id")))
+            if inst_node:
+                _add_exposure_path_edge(
+                    graph,
+                    source=sn_node,
+                    target=inst_node,
+                    reason="public_subnet_instance",
+                )
+
+    for nacl in inventory.get("network_acls", []) or []:
+        if not isinstance(nacl, dict) or not nacl.get("internet_exposed"):
+            continue
+        ident = _clean_graph_part(nacl.get("id"))
+        if not ident:
+            continue
+        nacl_node = f"cloud_resource:{provider}:network:network_acl:{ident}"
+        if nacl_node not in graph.nodes:
+            continue
+        for sn_id in nacl.get("subnet_ids", []) or []:
+            sn_clean = _clean_graph_part(sn_id)
+            sn_node = subnet_node_by_id.get(sn_clean)
+            if sn_node:
+                _add_exposure_path_edge(
+                    graph,
+                    source=nacl_node,
+                    target=sn_node,
+                    reason="permissive_network_acl",
+                )
+            for instance in inventory.get("instances", []) or []:
+                if not isinstance(instance, dict):
+                    continue
+                if _clean_graph_part(instance.get("subnet_id")) != sn_clean:
+                    continue
+                inst_node = instance_node_by_id.get(_clean_graph_part(instance.get("instance_id")))
+                if inst_node:
+                    _add_exposure_path_edge(
+                        graph,
+                        source=nacl_node,
+                        target=inst_node,
+                        reason="permissive_network_acl_instance",
                     )
 
 

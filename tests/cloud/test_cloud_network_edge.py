@@ -79,7 +79,26 @@ class _Ec2Client:
             "describe_vpc_endpoints": [
                 {"VpcEndpoints": [{"VpcEndpointId": "vpce-1", "ServiceName": "com.amazonaws.s3", "VpcId": "vpc-1"}]}
             ],
-            "describe_network_acls": [{"NetworkAcls": [{"NetworkAclId": "acl-1", "VpcId": "vpc-1", "IsDefault": True}]}],
+            "describe_network_acls": [
+                {
+                    "NetworkAcls": [
+                        {
+                            "NetworkAclId": "acl-1",
+                            "VpcId": "vpc-1",
+                            "IsDefault": True,
+                            "Associations": [{"SubnetId": "subnet-pub"}],
+                            "Entries": [
+                                {
+                                    "Egress": False,
+                                    "RuleAction": "allow",
+                                    "CidrBlock": "0.0.0.0/0",
+                                    "Protocol": "-1",
+                                }
+                            ],
+                        }
+                    ]
+                }
+            ],
         }
         return _Paginator(pages.get(op, []))
 
@@ -240,6 +259,28 @@ def _aws_inventory() -> dict:
         "instances": [{"instance_id": "i-1", "name": "web", "vpc_id": "vpc-1", "subnet_id": "subnet-pub", "security_group_ids": ["sg-1"]}],
         "security_groups": [{"group_id": "sg-1", "name": "open", "vpc_id": "vpc-1", "internet_exposed": True, "network_exposure": []}],
         "subnets": [{"id": "subnet-pub", "name": "pub", "vpc_id": "vpc-1", "cidr": "10.0.1.0/24", "is_public": True}],
+        "internet_gateways": [
+            {
+                "id": "igw-1",
+                "name": "igw-1",
+                "vpc_id": "vpc-1",
+                "kind": "internet-gateway",
+                "internet_exposed": True,
+            }
+        ],
+        "network_acls": [
+            {
+                "id": "acl-open",
+                "name": "acl-open",
+                "vpc_id": "vpc-1",
+                "subnet_ids": ["subnet-pub"],
+                "internet_exposed": True,
+                "network_exposure": [{"scope": "internet", "cidr": "0.0.0.0/0"}],
+            }
+        ],
+        "buckets": [],
+        "roles": [],
+        "users": [],
         "network_interfaces": [
             {
                 "id": "eni-1",
@@ -360,6 +401,48 @@ def test_internet_facing_api_gateway_emits_exposed_to_frontend() -> None:
     ]
     assert exposed
     assert exposed[0].evidence.get("reason") == "internet_facing_api_gateway"
+
+
+def test_waf_emits_internet_entry_exposed_to_frontend() -> None:
+    g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
+    waf_id = "cloud_resource:aws:waf:web_acl:acl-id"
+    alb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
+    exposed = [
+        e
+        for e in g.edges
+        if e.relationship == RelationshipType.EXPOSED_TO and e.source == waf_id and e.target == alb_id
+    ]
+    assert exposed
+    assert exposed[0].evidence.get("reason") == "waf_internet_entry"
+    assert g.nodes[waf_id].attributes.get("internet_exposed") is True
+
+
+def test_internet_gateway_public_subnet_and_instance_paths() -> None:
+    g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
+    igw_id = "cloud_resource:aws:network:internet_gateway:igw-1"
+    subnet_id = "cloud_resource:aws:network:subnet:subnet-pub"
+    inst_id = "cloud_resource:aws:ec2:instance:i-1"
+    reasons = {
+        (e.source, e.target): (e.evidence or {}).get("reason")
+        for e in g.edges
+        if e.relationship == RelationshipType.EXPOSED_TO
+    }
+    assert reasons.get((igw_id, subnet_id)) == "internet_gateway_public_subnet"
+    assert reasons.get((subnet_id, inst_id)) == "public_subnet_instance"
+
+
+def test_permissive_network_acl_exposed_to_subnet_and_instance() -> None:
+    g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
+    nacl_id = "cloud_resource:aws:network:network_acl:acl-open"
+    subnet_id = "cloud_resource:aws:network:subnet:subnet-pub"
+    inst_id = "cloud_resource:aws:ec2:instance:i-1"
+    reasons = {
+        (e.source, e.target): (e.evidence or {}).get("reason")
+        for e in g.edges
+        if e.relationship == RelationshipType.EXPOSED_TO
+    }
+    assert reasons.get((nacl_id, subnet_id)) == "permissive_network_acl"
+    assert reasons.get((nacl_id, inst_id)) == "permissive_network_acl_instance"
 
 
 def _exposed_vuln_graph(*, protected: bool) -> UnifiedGraph:

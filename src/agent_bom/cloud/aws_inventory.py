@@ -2314,6 +2314,7 @@ def _discover_network_edge(
                     "name": igw_id,
                     "vpc_id": vpc_ids[0] if vpc_ids else "",
                     "kind": "internet-gateway",
+                    "internet_exposed": True,
                     "location": region,
                     "account_id": account_id or "",
                 }
@@ -2383,12 +2384,40 @@ def _discover_network_edge(
                 acl_id = str(acl.get("NetworkAclId", "") or "")
                 if not acl_id:
                     continue
+                subnet_ids = sorted(
+                    {
+                        str(assoc.get("SubnetId", "") or "")
+                        for assoc in acl.get("Associations", []) or []
+                        if isinstance(assoc, dict) and assoc.get("SubnetId")
+                    }
+                )
+                network_exposure: list[dict[str, Any]] = []
+                for entry in acl.get("Entries", []) or []:
+                    if not isinstance(entry, dict) or entry.get("Egress"):
+                        continue
+                    if str(entry.get("RuleAction", "")).lower() != "allow":
+                        continue
+                    cidr = str(entry.get("CidrBlock", "") or entry.get("Ipv6CidrBlock", "") or "")
+                    if cidr not in ("0.0.0.0/0", "::/0"):
+                        continue
+                    network_exposure.append(
+                        {
+                            "cidr": cidr,
+                            "from_port": entry.get("PortRange", {}).get("From") if isinstance(entry.get("PortRange"), dict) else None,
+                            "to_port": entry.get("PortRange", {}).get("To") if isinstance(entry.get("PortRange"), dict) else None,
+                            "protocol": str(entry.get("Protocol", "") or ""),
+                            "scope": "internet",
+                        }
+                    )
                 out["network_acls"].append(
                     {
                         "id": acl_id,
                         "name": acl_id,
                         "vpc_id": str(acl.get("VpcId", "") or ""),
                         "is_default": bool(acl.get("IsDefault")),
+                        "subnet_ids": subnet_ids,
+                        "internet_exposed": bool(network_exposure),
+                        "network_exposure": network_exposure,
                         "location": region,
                         "account_id": account_id or "",
                     }

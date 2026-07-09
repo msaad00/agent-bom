@@ -541,3 +541,47 @@ class TestRequestedProviderHardFailExits:
             quiet=True,
         )
         assert code == 1
+
+
+# ── regression: cloud aliases must call scan() with kwargs it actually accepts ──
+
+
+class TestCloudAliasKwargsMatchScanSignature:
+    """Guards the ``cloud`` group → ``scan`` invocation against keyword drift.
+
+    Regression for the 0.94.2 break where ``_run_cloud_scan`` passed
+    ``aws_include_lambda`` (the target ``scan`` command exposes ``no_aws_lambda``),
+    raising ``TypeError`` on every ``cloud scan/aws/azure/gcp`` run. The prior
+    tests missed it because they patched ``scan.callback`` with a permissive
+    ``**kwargs`` fake that swallowed the bad keyword. Here we bind the captured
+    kwargs against the REAL signature so any future rename fails loudly.
+    """
+
+    def _real_scan_signature(self):
+        import inspect
+
+        import agent_bom.cli.agents as agents
+
+        return inspect.signature(agents.scan.callback)
+
+    def _assert_kwargs_bind(self, kwargs: dict) -> None:
+        # Raises TypeError if the kwargs don't match scan()'s real parameters.
+        self._real_scan_signature().bind(**kwargs)
+        assert "no_aws_lambda" in kwargs
+        assert "aws_include_lambda" not in kwargs
+
+    def test_cloud_aws_alias_invokes_scan_cleanly(self, monkeypatch):
+        seen = _capture_scan(monkeypatch)
+        _all_configured(monkeypatch, {"aws"})
+        result = CliRunner().invoke(cloud_group, ["aws", "--region", "us-east-2"])
+        assert result.exit_code == 0, result.output
+        assert seen, "scan was never invoked"
+        self._assert_kwargs_bind(seen[-1])
+
+    def test_cloud_scan_provider_all_invokes_scan_cleanly(self, monkeypatch):
+        seen = _capture_scan(monkeypatch)
+        _all_configured(monkeypatch, {"aws", "gcp"})
+        result = CliRunner().invoke(cloud_group, ["scan", "--provider", "all"])
+        assert result.exit_code == 0, result.output
+        assert seen, "scan was never invoked"
+        self._assert_kwargs_bind(seen[-1])

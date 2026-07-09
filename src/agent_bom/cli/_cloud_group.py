@@ -176,7 +176,11 @@ def _run_cloud_scan(
         aws=aws_on,
         aws_region=aws_region,
         aws_profile=aws_profile,
-        aws_include_lambda=aws_include_lambda,
+        # The target ``scan`` command exposes lambda discovery as the negative
+        # flag ``no_aws_lambda`` (--no-aws-lambda), not ``aws_include_lambda`` —
+        # passing the wrong keyword raised TypeError and broke every
+        # ``cloud scan/aws/azure/gcp`` invocation.
+        no_aws_lambda=not aws_include_lambda,
         aws_include_eks=aws_include_eks,
         aws_include_ec2=aws_include_ec2,
         aws_include_iam=aws_include_iam,

@@ -23,7 +23,21 @@ const { apiMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+  default: ({
+    href,
+    children,
+    title,
+    className,
+  }: {
+    href: string;
+    children: React.ReactNode;
+    title?: string;
+    className?: string;
+  }) => (
+    <a href={href} title={title} className={className}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("@/components/auth-provider", () => ({
@@ -234,6 +248,44 @@ describe("SourcesPage", () => {
     expect(workflow.getByRole("link", { name: "Findings" })).toHaveAttribute("href", "/findings?scan=job-prod-cloud");
     expect(workflow.getByRole("link", { name: "Graph" })).toHaveAttribute("href", "/security-graph?scan=job-prod-cloud");
     expect(workflow.getByRole("link", { name: "Compliance" })).toHaveAttribute("href", "/compliance?scan=job-prod-cloud");
+  });
+
+  it("shortens long last_job_id links and keeps the full id in title", async () => {
+    const longJobId = `job-${"a".repeat(36)}`;
+    apiMock.listSources.mockResolvedValueOnce({
+      count: 1,
+      sources: [
+        {
+          source_id: "src-long",
+          tenant_id: "tenant-acme",
+          display_name: "Long job source",
+          kind: "scan.repo",
+          description: "",
+          owner: "platform-security",
+          connector_name: "",
+          credential_mode: "none",
+          credential_ref: "",
+          enabled: true,
+          status: "configured",
+          config: {},
+          created_at: "2026-04-21T00:00:00Z",
+          updated_at: "2026-04-21T00:00:00Z",
+          last_tested_at: null,
+          last_test_status: null,
+          last_test_message: null,
+          last_run_at: "2026-04-21T02:00:00Z",
+          last_run_status: "done",
+          last_job_id: longJobId,
+        },
+      ],
+    });
+
+    render(<SourcesPage />);
+
+    await waitFor(() => expect(screen.getByTestId("source-workflow-src-long")).toBeInTheDocument());
+    const jobLink = within(screen.getByTestId("source-workflow-src-long")).getByRole("link", { name: /…/ });
+    expect(jobLink).toHaveAttribute("title", longJobId);
+    expect(jobLink.textContent).not.toBe(longJobId);
   });
 
   it("creates a schedule bound to a source_id", async () => {

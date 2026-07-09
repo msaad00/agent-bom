@@ -18,10 +18,8 @@ export function DemoEstateLabel() {
   return (
     <div
       id="demo-estate-watermark"
-      className={`pointer-events-none fixed z-[120] rounded-full border border-emerald-500/40 bg-[color:var(--surface-elevated)]/95 px-3 py-1 font-medium uppercase tracking-[0.1em] text-emerald-200 shadow-md shadow-black/20 ${
-        captureMode
-          ? "right-5 top-3 text-[11px]"
-          : "right-5 top-[3.75rem] text-xs"
+      className={`pointer-events-none fixed z-[120] max-w-[min(18rem,calc(100vw-1.5rem))] truncate rounded-full border border-emerald-500/40 bg-[color:var(--surface-elevated)]/95 px-3 py-1 font-medium uppercase tracking-[0.1em] text-emerald-200 shadow-md shadow-black/20 right-3 top-16 lg:right-5 lg:top-3 ${
+        captureMode ? "text-[11px]" : "text-xs"
       }`}
       aria-hidden="true"
     >

@@ -351,8 +351,11 @@ def test_rollup_endpoint_rejects_bad_severity(tmp_path) -> None:
 
 
 def test_rollup_endpoint_requires_auth_when_key_configured(monkeypatch) -> None:
-    # With an API key configured, an unauthenticated request must be rejected
-    # by the same middleware that guards the sibling graph routes.
+    # With an API key configured and no anonymous opt-in, an unauthenticated
+    # request must be rejected by the same middleware that guards the sibling
+    # graph routes. (The shared test harness enables the anonymous opt-in by
+    # default; this test asserts the fail-closed credentialed posture.)
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
     api_server.configure_api(api_key="rollup-secret-key")
     try:
         client = TestClient(app)

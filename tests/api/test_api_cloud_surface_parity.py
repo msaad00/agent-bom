@@ -17,7 +17,7 @@ import os
 
 from starlette.testclient import TestClient
 
-from agent_bom.api.server import app
+from agent_bom.api.server import app, configure_api
 
 PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 
@@ -45,13 +45,21 @@ def teardown_module() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_cloud_inventory_requires_authenticated_context() -> None:
+def test_cloud_inventory_requires_authenticated_context(monkeypatch) -> None:
+    # The shared harness enables the anonymous opt-in by default; this contract
+    # asserts fail-closed auth, so disable it and rebuild the middleware.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None)
     client = TestClient(app)
     resp = client.get("/v1/cloud/aws/inventory")
     assert resp.status_code == 401
 
 
-def test_cloud_cis_requires_authenticated_context() -> None:
+def test_cloud_cis_requires_authenticated_context(monkeypatch) -> None:
+    # The shared harness enables the anonymous opt-in by default; this contract
+    # asserts fail-closed auth, so disable it and rebuild the middleware.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None)
     client = TestClient(app)
     resp = client.get("/v1/cloud/aws/cis-benchmark")
     assert resp.status_code == 401

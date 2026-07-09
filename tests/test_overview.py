@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from starlette.testclient import TestClient
 
-from agent_bom.api.server import JobStatus, _get_store, app
+from agent_bom.api.server import JobStatus, _get_store, app, configure_api
 from agent_bom.api.store import InMemoryJobStore
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
@@ -175,9 +175,13 @@ def test_overview_reads_compacted_scan_summary() -> None:
     assert data["domains"]["cloud"]["metric"] == 87
 
 
-def test_overview_requires_auth() -> None:
+def test_overview_requires_auth(monkeypatch) -> None:
     """Endpoint is read-only but still behind the standard viewer gate."""
     _clear_jobs()
+    # The shared harness enables the anonymous opt-in by default; this contract
+    # asserts fail-closed auth, so disable it and rebuild the middleware.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None)
     client = TestClient(app)
     resp = client.get("/v1/overview")
     assert resp.status_code in (401, 403)

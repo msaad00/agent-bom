@@ -135,6 +135,9 @@ def test_direct_asgi_import_configures_static_api_key_from_env(monkeypatch):
     """Raw uvicorn imports must honor AGENT_BOM_API_KEY without the CLI wrapper."""
     raw_key = "raw-uvicorn-static-key"
     monkeypatch.setenv("AGENT_BOM_API_KEY", raw_key)
+    # Assert fail-closed credentialed auth; the shared harness enables the
+    # anonymous opt-in by default, so disable it for this posture.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
     configure_api_from_env()
     try:
         client = TestClient(app)
@@ -153,6 +156,9 @@ def test_direct_asgi_import_configures_rbac_api_keys_from_env(monkeypatch):
     set_key_store(KeyStore())
     monkeypatch.setattr("agent_bom.api.server._env_api_keys_seeded", False)
     monkeypatch.setenv("AGENT_BOM_API_KEYS", f"{raw_admin}:admin,{raw_viewer}:viewer")
+    # Assert fail-closed credentialed auth; the shared harness enables the
+    # anonymous opt-in by default, so disable it for this posture.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
     configure_api_from_env()
     try:
         client = TestClient(app)
@@ -167,6 +173,131 @@ def test_direct_asgi_import_configures_rbac_api_keys_from_env(monkeypatch):
         set_key_store(original_store)
         monkeypatch.setattr("agent_bom.api.server._env_api_keys_seeded", False)
         configure_api(api_key=None)
+
+
+class TestAnonymousViewerAlongsideCredentials:
+    """Opt-in anonymous read-only surface coexisting with configured credentials.
+
+    AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 must let a credential-less caller act
+    as NO_AUTH_ROLE (default viewer) even while API keys are configured, without
+    weakening any credentialed path: valid keys still authenticate to their
+    role, and present-but-invalid credentials are still rejected.
+    """
+
+    _RAW_ADMIN = "raw-anon-coexist-admin-key"
+
+    def _configure(self, monkeypatch, *, allow_unauthenticated: bool, no_auth_role: str = "viewer"):
+        original_store = get_key_store()
+        set_key_store(KeyStore())
+        monkeypatch.setattr("agent_bom.api.server._env_api_keys_seeded", False)
+        monkeypatch.setenv("AGENT_BOM_API_KEYS", f"{self._RAW_ADMIN}:admin")
+        # conftest pins AGENT_BOM_NO_AUTH_ROLE=admin session-wide for legacy
+        # unauthenticated tests; pin the product default (viewer) here so these
+        # cases assert the shipped anonymous role rather than the test harness.
+        monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", no_auth_role)
+        if allow_unauthenticated:
+            monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+        else:
+            monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+        configure_api_from_env()
+        return original_store
+
+    @staticmethod
+    def _restore(monkeypatch, original_store):
+        monkeypatch.delenv("AGENT_BOM_API_KEYS", raising=False)
+        set_key_store(original_store)
+        monkeypatch.setattr("agent_bom.api.server._env_api_keys_seeded", False)
+        configure_api(api_key=None)
+
+    def test_flag_on_no_credential_serves_viewer(self, monkeypatch):
+        original_store = self._configure(monkeypatch, allow_unauthenticated=True)
+        try:
+            client = TestClient(app)
+            resp = client.get("/v1/auth/me")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["role"] == "viewer"
+            assert body["auth_method"] == "anonymous"
+        finally:
+            self._restore(monkeypatch, original_store)
+
+    def test_flag_on_valid_admin_key_authenticates_admin(self, monkeypatch):
+        original_store = self._configure(monkeypatch, allow_unauthenticated=True)
+        try:
+            client = TestClient(app)
+            me = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {self._RAW_ADMIN}"})
+            assert me.status_code == 200
+            assert me.json()["role"] == "admin"
+            # A protected admin write still succeeds with the admin key …
+            created = client.post(
+                "/v1/auth/keys",
+                json={"name": "spawned", "role": "viewer"},
+                headers={"Authorization": f"Bearer {self._RAW_ADMIN}"},
+            )
+            assert created.status_code == 201
+            # … while the anonymous viewer is forbidden from the same write.
+            assert client.post("/v1/auth/keys", json={"name": "nope", "role": "viewer"}).status_code == 403
+        finally:
+            self._restore(monkeypatch, original_store)
+
+    def test_flag_on_invalid_credential_is_rejected_not_anonymous(self, monkeypatch):
+        original_store = self._configure(monkeypatch, allow_unauthenticated=True)
+        try:
+            client = TestClient(app)
+            # Bad bearer key, unsupported scheme, and bad X-API-Key must all 401 —
+            # a presented-but-invalid credential must never fall through to viewer.
+            assert client.get("/v1/auth/me", headers={"Authorization": "Bearer totally-wrong-key"}).status_code == 401
+            assert client.get("/v1/auth/me", headers={"Authorization": "Basic dXNlcjpwYXNz"}).status_code == 401
+            assert client.get("/v1/auth/me", headers={"X-API-Key": "totally-wrong-key"}).status_code == 401
+        finally:
+            self._restore(monkeypatch, original_store)
+
+    def test_flag_off_no_credential_still_401(self, monkeypatch):
+        """Default (flag OFF) fails closed exactly as before — no regression."""
+        original_store = self._configure(monkeypatch, allow_unauthenticated=False)
+        try:
+            client = TestClient(app)
+            assert client.get("/v1/auth/me").status_code == 401
+            # A valid credential still works under the default posture.
+            assert client.get("/v1/auth/me", headers={"Authorization": f"Bearer {self._RAW_ADMIN}"}).status_code == 200
+            assert client.get("/health").json()["auth_required"] is True
+        finally:
+            self._restore(monkeypatch, original_store)
+
+    def test_flag_on_demo_estate_clamps_anonymous_to_viewer(self, monkeypatch):
+        """DEMO_ESTATE clamps the anonymous NO_AUTH_ROLE to viewer, winning over
+        an operator-set AGENT_BOM_NO_AUTH_ROLE=admin."""
+        import agent_bom.config as config
+
+        monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "1")
+        monkeypatch.setattr(config, "DEMO_ESTATE", True)
+        # NO_AUTH_ROLE=admin would grant admin anonymously, but DEMO_ESTATE must
+        # clamp to viewer regardless.
+        original_store = self._configure(monkeypatch, allow_unauthenticated=True, no_auth_role="admin")
+        try:
+            client = TestClient(app)
+            me = client.get("/v1/auth/me")
+            assert me.status_code == 200
+            assert me.json()["role"] == "viewer"
+            # The clamped anonymous viewer cannot reach an admin write.
+            assert client.post("/v1/auth/keys", json={"name": "z", "role": "viewer"}).status_code == 403
+        finally:
+            self._restore(monkeypatch, original_store)
+
+    def test_flag_on_session_discovery_reports_auth_not_required(self, monkeypatch):
+        original_store = self._configure(monkeypatch, allow_unauthenticated=True)
+        try:
+            client = TestClient(app)
+            health = client.get("/health").json()
+            assert health["auth_required"] is False
+            assert health["auth_configured"] is True
+            assert health["unauthenticated_allowed"] is True
+            # Authenticated users are still pointed at the right elevation path.
+            me = client.get("/v1/auth/me").json()
+            assert me["auth_required"] is False
+            assert me["recommended_ui_mode"] == "session_api_key"
+        finally:
+            self._restore(monkeypatch, original_store)
 
 
 def test_create_api_key_record_verifies_operator_supplied_key():
@@ -444,6 +575,9 @@ def test_configured_app_cors_preflight_survives_auth_and_rate_limit(monkeypatch)
         monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
         monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
         monkeypatch.delenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", raising=False)
+        # This test asserts fail-closed auth for a credentialed real request; the
+        # shared harness enables the anonymous opt-in by default, so disable it.
+        monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
         configure_api(
             cors_origins=["http://localhost:3000"],
             api_key="test-key-cors",

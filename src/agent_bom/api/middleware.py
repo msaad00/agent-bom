@@ -427,7 +427,14 @@ def configure_auth_runtime(
         configured_modes.append("scim_provisioning")
 
     auth_configured = bool(configured_modes)
-    auth_required = auth_configured or not unauthenticated_allowed
+    # An explicit unauthenticated opt-in means anonymous callers are served as
+    # NO_AUTH_ROLE, so authentication is not *required* — even when credentials
+    # are also configured for callers who want to elevate. This keeps the UI
+    # from rendering a login wall when public read-only access is genuinely on.
+    # Presenting a valid credential still authenticates to its role, and an
+    # invalid credential is still rejected; that enforcement lives in
+    # APIKeyMiddleware, not in this introspection surface.
+    auth_required = not unauthenticated_allowed
 
     recommended_ui_mode = "configure_auth"
     if unauthenticated_allowed and not auth_configured:
@@ -947,12 +954,21 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             )
         return sorted(catalog, key=lambda item: (item["scope"], item["method"], item["path_prefix"]))
 
-    def __init__(self, app: ASGIApp, api_key: str) -> None:
+    def __init__(self, app: ASGIApp, api_key: str, allow_unauthenticated: bool = False) -> None:
         super().__init__(app)
         if api_key and not static_api_key_allowed():
             raise RuntimeError(static_api_key_rejection_message())
         self._validate_exempt_paths_against_role_rules()
         self._api_key = api_key
+        # When the operator explicitly opts in, a request that presents NO
+        # credential at all is served as the configured NO_AUTH_ROLE (default
+        # viewer) instead of being rejected with 401; a present-but-invalid
+        # credential is still rejected. This is driven solely by the value
+        # ``configure_api`` resolves (explicit flag combined with
+        # AGENT_BOM_ALLOW_UNAUTHENTICATED_API) and passes in — the middleware
+        # deliberately does NOT re-read the env itself, so it fails closed
+        # unless an operator's configured posture explicitly enables it.
+        self._allow_unauthenticated = bool(allow_unauthenticated)
         self._trusted_proxy_auth = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
         self._trusted_proxy_secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
         self._trusted_proxy_issuer = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "").strip()
@@ -1022,6 +1038,48 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             request.state.scim_subject_id = resolution.user_id
         return resolution.role, None
 
+    @staticmethod
+    def _credential_presented(request: StarletteRequest, auth_header: str) -> bool:
+        """Return true when the caller presented *any* credential material.
+
+        Distinguishes "no credential presented" (eligible for the anonymous
+        NO_AUTH_ROLE fallback when opted in) from "credential presented but
+        we could not turn it into a valid identity" (must be rejected, never
+        silently downgraded to anonymous). A non-empty Authorization header in
+        any scheme, or a non-empty X-API-Key header, counts as presented. The
+        session-cookie and trusted-proxy paths are handled by their own
+        branches before this is consulted.
+        """
+        if auth_header.strip():
+            return True
+        if request.headers.get("x-api-key", "").strip():
+            return True
+        return False
+
+    async def _serve_anonymous(self, request: StarletteRequest, call_next):
+        """Serve a credential-less request as the configured NO_AUTH_ROLE.
+
+        The anonymous identity is subject to the exact same per-route role gate
+        as any other identity, so an anonymous viewer still gets 403 on
+        analyst/admin routes. DEMO_ESTATE clamps NO_AUTH_ROLE to viewer inside
+        ``_no_auth_role`` and remains authoritative here.
+        """
+        from agent_bom.api.auth import Role
+        from agent_bom.rbac import _no_auth_role
+
+        role = _no_auth_role()
+        required = Role(self._required_role(request.method, request.url.path))
+        if not self._role_allows(role, required):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": f"Forbidden — requires {required.value} role, anonymous access has {role.value}"},
+            )
+        request.state.api_key_name = "anonymous"
+        request.state.api_key_role = role.value
+        request.state.tenant_id = getattr(request.state, "tenant_id", None) or "default"
+        request.state.auth_method = "anonymous"
+        return await self._call_with_tenant_context(request, call_next)
+
     async def dispatch(self, request: StarletteRequest, call_next):
         # CORS preflight (OPTIONS) MUST bypass auth: browsers do not attach
         # Authorization headers to preflights (CORS spec / Fetch §3.2.2).
@@ -1065,6 +1123,14 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             proxy_response = await self._try_proxy_header_auth(request, call_next)
             if proxy_response is not None:
                 return proxy_response
+            # No API key, no session cookie, no trusted-proxy attestation. If the
+            # operator opted into anonymous read-only access AND no credential
+            # was presented in any form, serve the request as NO_AUTH_ROLE
+            # instead of 401. A present-but-malformed credential (e.g. an
+            # unsupported Authorization scheme) must NOT silently downgrade to
+            # anonymous — it is treated as a presented credential and rejected.
+            if self._allow_unauthenticated and not self._credential_presented(request, auth):
+                return await self._serve_anonymous(request, call_next)
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"},

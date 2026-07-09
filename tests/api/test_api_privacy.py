@@ -13,7 +13,7 @@ from agent_bom.api.models import JobStatus, ScanJob, ScanRequest, SourceKind, So
 from agent_bom.api.policy_store import GatewayPolicy, InMemoryPolicyStore
 from agent_bom.api.routes.privacy import delete_tenant_data, export_tenant_data
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
-from agent_bom.api.server import app
+from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import (
@@ -138,7 +138,11 @@ def test_tenant_data_export_is_tenant_scoped_and_redacts_source_secrets(tenant_s
     assert "retained_immutable_hmac_chain" == response["retention"]["audit_log"]
 
 
-def test_tenant_data_http_endpoint_requires_authenticated_admin(tenant_stores) -> None:
+def test_tenant_data_http_endpoint_requires_authenticated_admin(tenant_stores, monkeypatch) -> None:
+    # The shared harness enables the anonymous opt-in by default; this contract
+    # asserts fail-closed auth, so disable it and rebuild the middleware.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None)
     client = TestClient(app)
 
     unauthenticated = client.get("/v1/tenant/tenant-a/data")

@@ -9,6 +9,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.94.1] - 2026-07-08
+
+Demo, deployment, and hygiene release on top of 0.94.0 (no scanner-behavior changes).
+
+### Added
+- Rich multi-cloud showcase estate for the hosted demo — agents, MCP servers, real CVEs (incl. KEV/critical), a typosquat, credential-exposure edges, a multi-hop blast-radius, and CIS checks across AWS/GCP/Azure (#3731).
+- Demo-mode banner + "connect your cloud" sign-in CTA in the dashboard, funneling public-demo visitors to the authenticated product (#3730).
+- Authenticated hosted-instance overlay (`deploy/docker-compose.product.yml`) + a copy-pasteable "connect your cloud" runbook for connecting a real cloud read-only (#3729).
+- IAM/IRSA section in the EKS deployment guide (#3727); Helm chart README (#3734).
+
+### Fixed
+- Snowflake logo missing in the intake diagram (#3733).
+
+### Changed
+- Grouped cloud/API tests under `tests/cloud/` and `tests/api/` (#3716, #3718); example AWS account id in a public test fixture (#3732); combined #3675 cleanup follow-ups.
+
 ## [0.94.0] - 2026-07-08
 
 Minor release shipping the post-0.93.5 audit/security batch, cloud and runtime

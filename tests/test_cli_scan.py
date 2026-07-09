@@ -1107,6 +1107,8 @@ def test_scan_sarif_does_not_auto_enable_context_graph(tmp_path):
 
 def test_scan_finding_count_parity_across_formats(tmp_path):
     """json/csv/sarif of the same scan must report identical finding counts (#3643)."""
+    project = tmp_path / "project"
+    project.mkdir()
     out = tmp_path / "out"
     out.mkdir()
 
@@ -1118,7 +1120,7 @@ def test_scan_finding_count_parity_across_formats(tmp_path):
             patch("agent_bom.cli.agents.scan_agents_sync", return_value=br),
             patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
         ):
-            return _run(["scan", "--project", str(tmp_path), "-f", fmt, "-o", str(path), "--no-auto-update-db"])
+            return _run(["scan", "--project", str(project), "-f", fmt, "-o", str(path), "--no-auto-update-db"])
 
     jf, sf, cf = out / "r.json", out / "r.sarif", out / "r.csv"
     _scan("json", jf)

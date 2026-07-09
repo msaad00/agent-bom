@@ -117,7 +117,7 @@ def test_check_no_version_warns_loudly_on_stderr() -> None:
     """A version-less `check` must surface a loud NOT-scanned warning, not a
     silent skip on stdout that reads like a clean result."""
     result = CliRunner().invoke(main, ["check", "requests"])
-    assert result.exit_code == 0
+    assert result.exit_code == 2
     # Click 8.2+ captures stderr separately; the warning must be there.
     assert result.stdout == ""
     assert "WARNING" in result.stderr

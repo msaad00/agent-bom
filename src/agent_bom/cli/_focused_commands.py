@@ -16,6 +16,7 @@ Usage::
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -70,7 +71,7 @@ def _has_finding_at_or_above(findings, threshold: str = "high") -> bool:
     "--tar",
     "--image-tar",
     "image_tar",
-    type=click.Path(exists=True, dir_okay=True, file_okay=True, path_type=str),
+    type=click.Path(dir_okay=False, file_okay=True, path_type=str),
     help="Scan a docker save / OCI image tarball without a Docker daemon.",
 )
 @click.option("--platform", help="Target platform (e.g. linux/amd64)")
@@ -124,6 +125,8 @@ def image_cmd(
 
     if bool(image_ref) == bool(image_tar):
         raise click.UsageError("Provide exactly one image reference or --tar/--image-tar path.")
+    if image_tar and not Path(image_tar).expanduser().is_file():
+        raise click.BadParameter(f"Path '{image_tar}' does not exist.", param_hint="--tar")
 
     ctx = click.get_current_context()
     ctx.invoke(
@@ -249,9 +252,7 @@ def iac_cmd(
     # A missing/typo'd IaC target must never be reported as a clean scan.
     missing = [p for p in paths if not _Path(p).exists()]
     if missing:
-        raise click.ClickException(
-            "IaC target(s) not found: " + ", ".join(missing) + ". Check the path(s) and try again."
-        )
+        raise click.ClickException("IaC target(s) not found: " + ", ".join(missing) + ". Check the path(s) and try again.")
 
     effective_fail_on_severity = fail_on_severity
     if effective_fail_on_severity is None and output_format.lower() in {"console", "json"}:

@@ -1288,8 +1288,10 @@ def test_cli_scan_has_image_flag():
     assert "--image" in result.output
 
 
-def test_cli_image_accepts_tarball_without_image_ref(monkeypatch):
+def test_cli_image_accepts_tarball_without_image_ref(monkeypatch, tmp_path):
     seen = []
+    image_tar = tmp_path / "image.tar"
+    image_tar.write_bytes(b"")
 
     def fake_scan(**kwargs):
         seen.append(kwargs)
@@ -1297,11 +1299,11 @@ def test_cli_image_accepts_tarball_without_image_ref(monkeypatch):
     monkeypatch.setattr("agent_bom.cli.agents.scan.callback", fake_scan)
 
     runner = CliRunner()
-    result = runner.invoke(main, ["image", "--tar", "image.tar", "--quiet"])
+    result = runner.invoke(main, ["image", "--tar", str(image_tar), "--quiet"])
 
     assert result.exit_code == 0
     assert seen[0]["images"] == ()
-    assert seen[0]["image_tars"] == ("image.tar",)
+    assert seen[0]["image_tars"] == (str(image_tar),)
     assert seen[0]["_image_only"] is True
     assert seen[0]["no_skill"] is True
 

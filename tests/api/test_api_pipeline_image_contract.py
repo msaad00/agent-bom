@@ -94,6 +94,35 @@ def test_api_pipeline_dry_run_skips_discovery_scan_and_side_effects(monkeypatch)
     assert store.jobs[-1].job_id == "dry-run-123"
 
 
+def test_api_pipeline_persistence_failure_is_surfaced_not_silent_success(monkeypatch):
+    """A store.put() failure must not be reported as a clean success.
+
+    The result only ever lived in this process's memory; if persistence
+    raises, the job the caller polls must reflect the failure (so the result
+    does not silently evaporate on restart or go missing from durable reads).
+    """
+
+    class _FailingStore:
+        retains_job_objects_in_memory = True
+
+        def put(self, _job: ScanJob) -> None:
+            raise RuntimeError("postgres unavailable")
+
+    store = _FailingStore()
+    job = ScanJob(
+        job_id="persist-fail-123",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(images=["agentbom/agent-bom:latest"], dry_run=True),
+    )
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.FAILED
+    assert job.error is not None and "not persisted" in job.error
+    assert any("Persistence failed" in line for line in job.progress)
+
+
 def test_api_pipeline_no_scan_skips_vulnerability_scan_and_result_side_effects(monkeypatch):
     store = _DummyStore()
     job = ScanJob(

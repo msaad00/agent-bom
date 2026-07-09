@@ -71,6 +71,62 @@ def test_postgres_job_store_real_roundtrip_and_tenant_filter():
     assert any(item.job_id == job_id for item in results)
 
 
+def test_postgres_cis_checks_dedupe_latest_per_check_across_scans():
+    """Re-scanning a cloud must surface one row per check, not one-per-scan.
+
+    ``cis_benchmark_checks`` is insert-only and keyed by scan_id, so two scans
+    of the same cloud persist two copies of every (cloud, check_id). The read
+    path must collapse to the most recent measurement via DISTINCT ON.
+    """
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    store = PostgresJobStore()
+    suffix = uuid4().hex
+    tenant_id = f"tenant-{suffix}"
+
+    def _cis_job(job_id: str, completed_at: str, status: str) -> ScanJob:
+        job = ScanJob(
+            job_id=job_id,
+            tenant_id=tenant_id,
+            status=JobStatus.DONE,
+            created_at=completed_at,
+            completed_at=completed_at,
+            request=ScanRequest(format="json"),
+        )
+        job.result = {
+            "scan_id": job_id,
+            "cis_benchmark": {
+                "checks": [
+                    {
+                        "check_id": "1.5",
+                        "title": "Ensure MFA is enabled for the root user",
+                        "status": status,
+                        "severity": "high",
+                        "cis_section": "1 - IAM",
+                        "evidence": f"status={status}",
+                        "resource_ids": ["root"],
+                        "remediation": {"priority": 1},
+                    }
+                ]
+            },
+        }
+        return job
+
+    token = set_current_tenant(tenant_id)
+    try:
+        store.put(_cis_job(f"scan-old-{suffix}", "2026-01-01T00:00:00Z", "fail"))
+        store.put(_cis_job(f"scan-new-{suffix}", "2026-02-01T00:00:00Z", "pass"))
+        rows = store.query_cis_benchmark_checks(tenant_id, cloud="aws")
+    finally:
+        reset_current_tenant(token)
+
+    aws_15 = [row for row in rows if row["check_id"] == "1.5"]
+    assert len(aws_15) == 1  # not one-per-scan
+    assert aws_15[0]["status"] == "pass"  # latest measurement wins
+
+
 def test_postgres_audit_log_real_roundtrip_and_schema_marker():
     from agent_bom.api.audit_log import AuditEntry
     from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant

@@ -192,6 +192,13 @@ function formatWhen(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function formatShortId(value: string, head = 10, tail = 6): string {
+  if (value.length <= head + tail + 1) return value;
+  return `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+const PROVIDER_SCAN_MODE_PREVIEW = 3;
+
 function toneForMode(mode: IngestMode): string {
   switch (mode) {
     case "Direct scan":
@@ -691,11 +698,15 @@ export default function SourcesPage() {
                       <span>Connector: {source.connector_name || "—"}</span>
                       <span>Last tested: {formatWhen(source.last_tested_at)}</span>
                       <span>Last run: {formatWhen(source.last_run_at)}</span>
-                      <span>
+                      <span className="min-w-0 sm:col-span-2">
                         Last job:{" "}
                         {source.last_job_id ? (
-                          <Link href={`/scan?id=${encodeURIComponent(source.last_job_id)}`} className="text-emerald-300 hover:text-emerald-200">
-                            {source.last_job_id}
+                          <Link
+                            href={`/scan?id=${encodeURIComponent(source.last_job_id)}`}
+                            className="inline-block max-w-full truncate font-mono text-emerald-300 hover:text-emerald-200"
+                            title={source.last_job_id}
+                          >
+                            {formatShortId(source.last_job_id)}
                           </Link>
                         ) : (
                           "—"
@@ -961,14 +972,14 @@ export default function SourcesPage() {
                     />
                   </label>
                 </div>
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <p className="text-xs leading-5 text-[var(--text-secondary)]">
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <p className="min-w-0 flex-1 text-xs leading-5 text-[var(--text-secondary)]">
                     Schedules persist in the control plane and run queued scans with the linked <code>source_id</code>, not browser state.
                   </p>
                   <button
                     type="submit"
                     disabled={submittingSchedule || schedulableSources.length === 0 || !canManageSources}
-                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex shrink-0 items-center gap-2 self-start rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
                   >
                     <CalendarClock className="h-4 w-4" />
                     {submittingSchedule ? "Creating…" : "Create schedule"}
@@ -1116,6 +1127,9 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
   const capabilities = provider.capabilities;
   const destinations = capabilities.network_destinations ?? capabilities.outbound_destinations;
   const permissions = capabilities.permissions_used;
+  const scanModes = capabilities.scan_modes;
+  const previewModes = scanModes.slice(0, PROVIDER_SCAN_MODE_PREVIEW);
+  const extraModeCount = scanModes.length - previewModes.length;
 
   return (
     <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
@@ -1135,12 +1149,20 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
         </span>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {capabilities.scan_modes.map((mode) => (
+      <div className="mt-3 flex max-h-14 flex-wrap gap-1.5 overflow-hidden">
+        {previewModes.map((mode) => (
           <span key={mode} className="rounded border border-sky-900/60 bg-sky-950/30 px-2 py-0.5 text-[10px] font-mono text-sky-300">
             {formatMode(mode)}
           </span>
         ))}
+        {extraModeCount > 0 ? (
+          <span
+            className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)]"
+            title={scanModes.slice(PROVIDER_SCAN_MODE_PREVIEW).map(formatMode).join(", ")}
+          >
+            +{extraModeCount} mode{extraModeCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
       </div>
 
       <div className="mt-4 grid gap-2 text-xs text-[var(--text-secondary)] sm:grid-cols-2">

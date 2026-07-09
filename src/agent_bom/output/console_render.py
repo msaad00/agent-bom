@@ -202,14 +202,19 @@ def print_summary(report: AIBOMReport) -> None:
 
     coverage_warnings = getattr(report, "coverage_warnings", None) or []
     if coverage_warnings:
-        lines = [
-            (
+        def _coverage_line(w: dict) -> str:
+            if w.get("reason") == "manifest_parse_error":
+                return (
+                    f"[bold yellow]⚠ {w.get('release', '?')}[/bold yellow] — "
+                    f"{w.get('detail') or 'manifest failed to parse; ecosystem not scanned'}"
+                )
+            return (
                 f"[bold yellow]⚠ {w.get('release', '?')}[/bold yellow] — "
                 f"{w.get('package_count', 0)} package(s) present, "
                 f"{w.get('advisory_rows', 0)} advisory row(s) in the data source"
             )
-            for w in coverage_warnings
-        ]
+
+        lines = [_coverage_line(w) for w in coverage_warnings]
         body = "\n".join(lines) + (
             "\n\n[dim]Vulnerability coverage for the release(s) above is incomplete — likely "
             "end-of-life and no longer carried by the data source. Results may UNDER-report; a "

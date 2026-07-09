@@ -663,6 +663,13 @@ def _parse_pom_modules(root_dir: Path, depth: int = 0) -> list[Package]:
         xml_root = tree.getroot()
     except ET.ParseError as exc:
         logger.debug("Failed to parse pom.xml in %s: %s", root_dir, exc)
+        from agent_bom.coverage import record_manifest_parse_warning
+
+        record_manifest_parse_warning(
+            ecosystem="maven",
+            path=str(pom),
+            detail=f"pom.xml failed to parse ({exc}); Maven dependencies were not scanned",
+        )
         return []
 
     # Namespace may or may not be present

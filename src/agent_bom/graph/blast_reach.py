@@ -26,6 +26,7 @@ from agent_bom.graph.dependency_reach import compute_dependency_reach
 
 if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult
+    from agent_bom.finding import Finding
     from agent_bom.models import Agent, BlastRadius
 
 _logger = logging.getLogger(__name__)
@@ -162,7 +163,52 @@ def apply_symbol_reachability_to_blast_radii(
     return stamped
 
 
+def resync_cve_findings_from_blast_radii(
+    findings: list["Finding"] | None,
+    blast_radii: list["BlastRadius"],
+) -> int:
+    """Re-project stamped reachability from ``blast_radii`` onto CVE findings.
+
+    The CLI dual-write path materializes ``report.findings`` from ``blast_radii``
+    *before* ``apply_dependency_reachability_to_blast_radii`` /
+    ``apply_symbol_reachability_to_blast_radii`` stamp the rows. As a result the
+    JSON ``findings[]`` projection (which reads ``report.findings``) carried
+    ``symbol_reachability`` / ``graph_reachable`` = null while ``blast_radius[]``,
+    CSV, Parquet, and SARIF — all rebuilt fresh from the stamped rows — carried
+    the verdict. Rebuild each CVE finding from its stamped row (matched by
+    canonical id) so every view agrees, without reordering or double-counting.
+
+    Non-CVE findings (secrets, auth posture, prompt-scan, …) and CVE findings
+    with no matching row are left untouched. Returns the number of CVE findings
+    replaced. Best-effort: never raises.
+    """
+    if not findings or not blast_radii:
+        return 0
+    try:
+        from agent_bom.finding import FindingType, blast_radius_to_finding
+
+        fresh_by_id: dict[str, Finding] = {}
+        for br in blast_radii:
+            fresh = blast_radius_to_finding(br)
+            fresh_by_id[fresh.id] = fresh
+
+        replaced = 0
+        for idx, finding in enumerate(findings):
+            if finding.finding_type != FindingType.CVE:
+                continue
+            stamped = fresh_by_id.get(finding.id)
+            if stamped is None:
+                continue
+            findings[idx] = stamped
+            replaced += 1
+        return replaced
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("CVE finding reachability resync skipped: %s", exc)
+        return 0
+
+
 __all__ = [
     "apply_dependency_reachability_to_blast_radii",
     "apply_symbol_reachability_to_blast_radii",
+    "resync_cve_findings_from_blast_radii",
 ]

@@ -105,6 +105,40 @@ def test_typosquat_case_insensitive():
     assert result == "express"
 
 
+def test_typosquat_single_char_substitution_short_name():
+    # `djanga` vs `django` is a single substitution scoring 0.833 < 0.85 — the
+    # ratio gate misses it, the edit-distance-1 catch must not.
+    assert check_typosquat("djanga", "pypi") == "django"
+
+
+def test_typosquat_legit_packages_not_flagged_no_regressions():
+    from agent_bom.malicious import _POPULAR_PACKAGES
+
+    legit_pypi = [
+        "urllib3", "click", "rich", "pytest", "setuptools", "wheel", "certifi",
+        "idna", "six", "jinja2", "werkzeug", "attrs", "packaging", "tqdm",
+        "pyyaml", "typing-extensions", "pytz", "wrapt", "markupsafe", "poetry",
+        "ruff", "mypy", "coverage", "hypothesis", "loguru", "starlette", "anyio",
+        "sniffio", "greenlet", "protobuf",
+    ] + list(_POPULAR_PACKAGES["pypi"])
+    legit_npm = [
+        "react-router", "vite", "rollup", "esbuild", "vitest", "jest", "ts-node",
+        "pnpm", "yarn", "fastify", "koa", "ws", "ioredis", "pino", "winston",
+        "undici", "tslib", "glob", "rimraf", "minimist", "semver", "debug", "ms",
+        "node-fetch",
+    ] + list(_POPULAR_PACKAGES["npm"])
+
+    assert [n for n in legit_pypi if check_typosquat(n, "pypi")] == []
+    assert [n for n in legit_npm if check_typosquat(n, "npm")] == []
+
+
+def test_typosquat_short_names_not_over_flagged():
+    # `core` (len 4) vs `cors` and `flash` (len 5) vs `flask` are legitimate
+    # neighbours below the edit-distance-1 length gate — must stay clean.
+    assert check_typosquat("core", "npm") is None
+    assert check_typosquat("flash", "pypi") is None
+
+
 def test_typosquat_pypi_torch():
     # "torcch" is close to "torch"
     result = check_typosquat("torcch", "pypi")

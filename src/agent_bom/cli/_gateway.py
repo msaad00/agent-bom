@@ -326,7 +326,12 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     is_flag=True,
     envvar="AGENT_BOM_GATEWAY_ENABLE_DLP",
     default=False,
-    help="Run a DLP pass on tool-call arguments and results (injection/PII/secrets/payload-vuln).",
+    help=(
+        "Run a DLP pass on tool-call arguments and results "
+        "(injection/PII/secrets/payload-vuln). OFF by default: without this flag "
+        "the gateway does NOT scan, redact, or block secrets or PII. Pair with "
+        "--dlp-mode enforce to actually block/redact."
+    ),
 )
 @click.option(
     "--dlp-mode",

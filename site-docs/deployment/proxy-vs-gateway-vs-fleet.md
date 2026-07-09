@@ -132,6 +132,14 @@ What `gateway` gives you today:
 - local credential overlay via `--upstreams` or environment-backed tokens
 - in-process reload for file-backed policies
 
+> **DLP is opt-in — off by default.** Out of the box the gateway does **not**
+> scan, redact, or block secrets or PII in tool-call arguments or results. The
+> DLP pass only runs when you pass `--enable-dlp`, and it only blocks/redacts
+> when you also set `--dlp-mode enforce` (the default mode is `audit`, which
+> flags but forwards). Do not assume secret redaction is automatic: an operator
+> who wants the gateway to strip credentials from traffic must enable it
+> explicitly, e.g. `agent-bom gateway serve … --enable-dlp --dlp-mode enforce`.
+
 What `gateway` is not:
 
 - not the right answer for every stdio MCP session

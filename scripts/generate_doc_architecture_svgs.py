@@ -357,6 +357,8 @@ def _vendor_logo_inner(vendor: str, *, uid: str) -> str:
     root_fill_match = re.search(r"<svg[^>]*\sfill=\"([^\"]+)\"", raw)
     inner = re.sub(r"^.*?<svg[^>]*>", "", raw, count=1, flags=re.DOTALL)
     inner = re.sub(r"</svg>\s*$", "", inner, flags=re.DOTALL)
+    # Diagram cards add their own labels; drop embedded wordmark text from source SVGs.
+    inner = re.sub(r"<text\b[^>]*>.*?</text>", "", inner, flags=re.DOTALL | re.IGNORECASE)
     if root_fill_match and 'fill="' not in inner:
         inner = inner.replace("<path ", f'<path fill="{root_fill_match.group(1)}" ', 1)
     for gid in sorted(set(re.findall(r'id="([^"]+)"', inner)), key=len, reverse=True):
@@ -373,28 +375,35 @@ def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict, *, theme: str) -> t
     gap_y = 6
     card_w = (lane_inner_w - gap_x) // cols
     card_h = 44
+    label_band = 11
+    icon_pad = 4
     aws_wordmark = "#e9e9ec" if theme == "dark" else "#232F3E"
-    wordmark_vendors = frozenset({"aws", "snowflake"})
+    # AWS mark embeds its wordmark as paths; other vendors use icon + caption below.
+    wordmark_vendors = frozenset({"aws"})
     out: list[str] = []
     for i, (vendor, label, accent) in enumerate(CLOUD_VENDOR_LOGOS):
         col, row = i % cols, i // cols
         bx = x + col * (card_w + gap_x)
         by = y + row * (card_h + gap_y)
-        icon_area = 28
+        has_caption = vendor not in wordmark_vendors
+        icon_area = card_h - label_band - icon_pad if has_caption else card_h - icon_pad * 2
         raw = (VENDOR_LOGO_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
         vb_w, vb_h = _vendor_viewbox(raw)
         scale = min(icon_area / vb_w, icon_area / vb_h)
         render_w = vb_w * scale
         render_h = vb_h * scale
         icon_x = bx + (card_w - render_w) / 2
-        icon_y = by + (card_h - render_h) / 2 - (0 if vendor in wordmark_vendors else 2)
+        if has_caption:
+            icon_y = by + icon_pad + (icon_area - render_h) / 2
+        else:
+            icon_y = by + (card_h - render_h) / 2
         inner = _vendor_logo_inner(vendor, uid=f"cl-{vendor}")
         color_attr = f' color="{aws_wordmark}"' if vendor == "aws" else ""
         out.append(
             f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
             f'<g transform="translate({icon_x},{icon_y}) scale({scale})"{color_attr}>{inner}</g>'
         )
-        if vendor not in wordmark_vendors:
+        if has_caption:
             out.append(
                 f'<text x="{bx + card_w / 2}" y="{by + card_h - 5}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
                 f'font-size="8" font-weight="700" fill="{accent}">{_esc(label)}</text>'

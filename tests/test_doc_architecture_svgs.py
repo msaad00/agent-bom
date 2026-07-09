@@ -18,9 +18,11 @@ def test_how_it_works_includes_pipeline_steps() -> None:
     assert "PIPELINE" not in svg
     assert 'fill="#FF9900"' in svg
     assert "cl-azure-" in svg
-    assert "snowflake" in svg.lower()
+    assert ">Snowflake</text>" in svg
     # Snowflake mark must carry explicit fill when inlined (root <svg fill= is stripped).
     assert 'fill="#29B5E8"' in svg
+    # Icon-only asset: no legacy lowercase wordmark text inlined from the source SVG.
+    assert re.search(r"<text[^>]*>\s*snowflake\s*</text>", svg) is None
 
 
 def test_architecture_includes_core_surfaces() -> None:

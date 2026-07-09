@@ -1471,7 +1471,7 @@ def test_summarize_inventory_payload_redacts_raw_warnings() -> None:
 
     payload = {
         "status": "ok",
-        "account_id": "030225640638",
+        "account_id": "123456789012",
         "warnings": [
             "Could not list roles: Traceback (most recent call last): RuntimeError boom",
             "AccessDenied: arn:aws:iam::...:user/x — assume failed: <stack>",

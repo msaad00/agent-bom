@@ -10,6 +10,14 @@ CREATE APPLICATION ROLE IF NOT EXISTS app_user;
 CREATE SCHEMA IF NOT EXISTS core;
 GRANT USAGE ON SCHEMA core TO APPLICATION ROLE app_user;
 
+-- 2b. Core DCM schema (V001__core_schema.sql)
+-- Materialises the full internal schema — including the compliance-hub tables
+-- (core.compliance_hub_findings, core.findings_by_framework) that the Phase 2
+-- proc and posture view below depend on. Runs before the inline DDL so its
+-- superset table definitions win; the CREATE TABLE IF NOT EXISTS statements
+-- that follow become no-ops. Must run after app_user exists (grants inside).
+EXECUTE IMMEDIATE FROM 'dcm/V001__core_schema.sql';
+
 -- 3. Tables
 CREATE TABLE IF NOT EXISTS core.scan_jobs (
     job_id VARCHAR PRIMARY KEY,
@@ -256,7 +264,10 @@ BEGIN
             reference('osv_dev'),
             reference('cisa_kev'),
             reference('first_epss'),
-            reference('github_ghsa')
+            reference('github_ghsa'),
+            reference('nvd_api'),
+            reference('deps_dev'),
+            reference('package_registries')
         )
         MIN_INSTANCES = 1
         MAX_INSTANCES = 1

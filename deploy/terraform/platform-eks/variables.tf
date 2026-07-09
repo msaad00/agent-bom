@@ -192,3 +192,27 @@ variable "create_aws_connect_role" {
   type        = bool
   default     = false
 }
+
+###############################################################################
+# Optional S3 report-artifact export (async report download via presigned URL)
+###############################################################################
+
+variable "report_export_bucket" {
+  description = <<-EOT
+    Name of an existing S3 bucket for async report-artifact export (#3512). When
+    non-empty, this module mints a dedicated IRSA role trusted only by the
+    control-plane API service account (system:serviceaccount:<namespace>:<name>-api),
+    grants it s3:PutObject/GetObject/ListBucket scoped to this bucket, wires the
+    role ARN onto controlPlane.api.serviceAccount, and sets AGENT_BOM_REPORT_S3_BUCKET
+    on the API. Leave empty (default) to disable S3 export — default deploys are
+    unaffected and the API keeps the scanner IRSA role, which has no s3: actions.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "report_export_bucket_region" {
+  description = "Region of report_export_bucket. Empty falls back to var.region."
+  type        = string
+  default     = ""
+}

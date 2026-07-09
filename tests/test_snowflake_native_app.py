@@ -128,10 +128,11 @@ def test_no_eai_egresses_to_unexpected_destinations(manifest: dict):
         "api.deps.dev",
         "deps.dev",
         "registry.npmjs.org",
+        "api.npmjs.org",
         "pypi.org",
-        "files.pythonhosted.org",
-        "repo1.maven.org",
         "proxy.golang.org",
+        "sum.golang.org",
+        "search.maven.org",
     }
     for eai in manifest.get("external_access_integrations", []):
         body = next(iter(eai.values()))

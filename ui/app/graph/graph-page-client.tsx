@@ -72,6 +72,7 @@ import {
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
   buildDriftIndex,
+  driftAttributeSummaries,
   changeKindForEdge,
   changeKindForNode,
   CHANGE_KIND_META,
@@ -1453,6 +1454,10 @@ function GraphPageInner() {
   // previous one using the diff index the server tags. The lens is inert unless
   // a diff exists AND the operator armed it, so the default view never changes.
   const driftIndex = useMemo(() => buildDriftIndex(graphDiff), [graphDiff]);
+  const driftAttributeSummaryList = useMemo(
+    () => driftAttributeSummaries(driftIndex),
+    [driftIndex],
+  );
   const driftLensEngaged =
     driftLensActive && Boolean(graphDiff) && driftIndex.hasChanges;
 
@@ -2529,6 +2534,7 @@ function GraphPageInner() {
             counts={drift.counts}
             criticalCount={drift.critical}
             comparedLabel={previousSnapshot?.scan_id.slice(0, 12)}
+            attributeSummaries={driftAttributeSummaryList}
           />
         )}
 

@@ -460,6 +460,14 @@ export interface GraphDiffResponse {
   edges_added: [string, string, string][];
   edges_removed: [string, string, string][];
   change_kind_index?: GraphChangeKindIndex | undefined;
+  attribute_deltas?: Record<string, GraphAttributeDelta[]> | undefined;
+}
+
+export interface GraphAttributeDelta {
+  field: string;
+  before: unknown;
+  after: unknown;
+  summary: string;
 }
 
 export type GraphExportFormat =

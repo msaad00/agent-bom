@@ -318,6 +318,25 @@ def apply_showcase_overlays(
     return {"cnapp": cnapp, "effective_permissions": eff, "governance": gov}
 
 
+def finalize_showcase_snapshot(graph: UnifiedGraph, *, profile: ShowcaseProfile) -> None:
+    """Pin deliberate drift markers after overlays that may rewrite attributes."""
+    bucket = graph.nodes.get("cloud:pii-bucket")
+    if bucket is None:
+        return
+    if profile == "baseline":
+        bucket.attributes["internet_exposed"] = False
+        bucket.attributes["encryption_at_rest"] = True
+        bucket.severity = ""
+        bucket.risk_score = 0.0
+        bucket.compliance_tags = ["PII", "GDPR"]
+        return
+    bucket.attributes["internet_exposed"] = True
+    bucket.attributes["encryption_at_rest"] = False
+    bucket.severity = "high"
+    bucket.risk_score = 8.2
+    bucket.compliance_tags = ["PII", "GDPR", "public-exposure"]
+
+
 def seed_showcase_graph_if_empty(
     graph_store: GraphStoreProtocol,
     *,
@@ -340,6 +359,7 @@ def seed_showcase_graph_if_empty(
         identity_store=baseline_identity,
         drift_store=baseline_drift,
     )
+    finalize_showcase_snapshot(baseline_graph, profile="baseline")
     graph_store.save_graph(baseline_graph)
 
     current_graph, identity_store, drift_store = build_showcase_graph(
@@ -354,5 +374,6 @@ def seed_showcase_graph_if_empty(
         identity_store=identity_store,
         drift_store=drift_store,
     )
+    finalize_showcase_snapshot(current_graph, profile="current")
     graph_store.save_graph(current_graph)
     return True

@@ -270,6 +270,18 @@ def test_demo_estate_graph_snapshots_support_drift_lens(demo_estate_client: Test
     assert body.get("nodes_changed"), "expected at least one changed node in the showcase drift story"
 
 
+def test_demo_estate_graph_tags_runtime_evidence_tiers(demo_estate_client: TestClient) -> None:
+    payload = demo_estate_client.get("/v1/graph", headers=ADMIN).json()
+    attrs_by_id = {
+        node.get("id"): (node.get("attributes") or {}) for node in payload.get("nodes") or []
+    }
+    assert attrs_by_id.get("call:0", {}).get("evidence_tier") == "runtime_observed"
+    assert (
+        attrs_by_id.get("tool:shell-runner-server:run_shell", {}).get("evidence_tier")
+        == "runtime_blocked"
+    )
+
+
 def test_demo_estate_bootstrap_is_idempotent(demo_estate_client: TestClient) -> None:
     first = demo_estate_client.get("/v1/jobs", headers={"X-Agent-Bom-Role": "admin"}).json()
     from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate

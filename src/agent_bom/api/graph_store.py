@@ -147,6 +147,7 @@ class GraphStoreProtocol(Protocol):
         scan_id: str = "",
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
+        relationship_types: frozenset[str] | None = None,
     ) -> UnifiedGraph: ...
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]: ...
@@ -1108,6 +1109,7 @@ class SQLiteGraphStore:
         scan_id: str = "",
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
+        relationship_types: frozenset[str] | None = None,
     ) -> UnifiedGraph:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
@@ -1120,6 +1122,7 @@ class SQLiteGraphStore:
                 scan_id=scan_id,
                 entity_types=entity_types,
                 min_severity_rank=min_severity_rank,
+                relationship_types=relationship_types,
             )
         finally:
             conn.close()

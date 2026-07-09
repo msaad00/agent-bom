@@ -768,6 +768,7 @@ class PostgresGraphStore:
         scan_id: str = "",
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
+        relationship_types: frozenset[str] | None = None,
     ):
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
@@ -810,16 +811,20 @@ class PostgresGraphStore:
                 graph.add_node(self._node_from_row(row))
                 node_ids.add(row[0])
 
-            for row in conn.execute(
-                """
+            edge_query = """
                 SELECT source_id, target_id, relationship, direction, weight, traversable,
                        first_seen, last_seen, valid_from, valid_to, confidence, provenance,
                        source_scan_id, source_run_id, evidence, activity_id, scan_id
                 FROM graph_edges
                 WHERE tenant_id = %s AND scan_id = %s
-                """,
-                (tenant_id, effective_scan_id),
-            ).fetchall():
+            """
+            edge_params: list[Any] = [tenant_id, effective_scan_id]
+            if relationship_types:
+                placeholders = ",".join(["%s"] * len(relationship_types))
+                edge_query += f" AND relationship IN ({placeholders})"
+                edge_params.extend(sorted(relationship_types))
+
+            for row in conn.execute(edge_query, edge_params).fetchall():
                 if row[0] not in node_ids or row[1] not in node_ids:
                     continue
                 graph.add_edge(
@@ -843,46 +848,47 @@ class PostgresGraphStore:
                     )
                 )
 
-            for row in conn.execute(
-                """
-                SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids
-                FROM attack_paths
-                WHERE tenant_id = %s AND scan_id = %s
-                """,
-                (tenant_id, effective_scan_id),
-            ).fetchall():
-                graph.attack_paths.append(
-                    AttackPath(
-                        source=row[0],
-                        target=row[1],
-                        hops=json.loads(row[2]),
-                        edges=json.loads(row[3]),
-                        composite_risk=row[4],
-                        summary=row[5] or "",
-                        credential_exposure=json.loads(row[6]),
-                        tool_exposure=json.loads(row[7]),
-                        vuln_ids=json.loads(row[8]),
+            if not relationship_types:
+                for row in conn.execute(
+                    """
+                    SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
+                           summary, credential_exposure, tool_exposure, vuln_ids
+                    FROM attack_paths
+                    WHERE tenant_id = %s AND scan_id = %s
+                    """,
+                    (tenant_id, effective_scan_id),
+                ).fetchall():
+                    graph.attack_paths.append(
+                        AttackPath(
+                            source=row[0],
+                            target=row[1],
+                            hops=json.loads(row[2]),
+                            edges=json.loads(row[3]),
+                            composite_risk=row[4],
+                            summary=row[5] or "",
+                            credential_exposure=json.loads(row[6]),
+                            tool_exposure=json.loads(row[7]),
+                            vuln_ids=json.loads(row[8]),
+                        )
                     )
-                )
 
-            for row in conn.execute(
-                """
-                SELECT pattern, agents, risk_score, description, owasp_agentic_tag
-                FROM interaction_risks
-                WHERE tenant_id = %s AND scan_id = %s
-                """,
-                (tenant_id, effective_scan_id),
-            ).fetchall():
-                graph.interaction_risks.append(
-                    InteractionRisk(
-                        pattern=row[0],
-                        agents=json.loads(row[1]),
-                        risk_score=row[2],
-                        description=row[3],
-                        owasp_agentic_tag=row[4],
+                for row in conn.execute(
+                    """
+                    SELECT pattern, agents, risk_score, description, owasp_agentic_tag
+                    FROM interaction_risks
+                    WHERE tenant_id = %s AND scan_id = %s
+                    """,
+                    (tenant_id, effective_scan_id),
+                ).fetchall():
+                    graph.interaction_risks.append(
+                        InteractionRisk(
+                            pattern=row[0],
+                            agents=json.loads(row[1]),
+                            risk_score=row[2],
+                            description=row[3],
+                            owasp_agentic_tag=row[4],
+                        )
                     )
-                )
 
             return graph
 

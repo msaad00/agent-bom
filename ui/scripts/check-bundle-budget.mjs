@@ -23,7 +23,8 @@ const BUDGETS = {
   // Includes measured bundler/runtime drift from the July 2026 UI dependency refresh.
   // Includes the graph drift lens (#3192) — opt-in diff overlay on the lineage canvas.
   // Includes the hosted-demo banner and connect-your-cloud CTA shown from the shared app shell.
-  totalClientJsBytes: 3_136_000,
+  // Includes the runtime evidence lens (#3192/#3610) — opt-in runtime/static evidence overlay.
+  totalClientJsBytes: 3_145_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

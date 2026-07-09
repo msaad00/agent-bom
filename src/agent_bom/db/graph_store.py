@@ -496,7 +496,15 @@ def _executemany_batched(
 @contextmanager
 def open_graph_db(db_path: str | Path) -> Generator[sqlite3.Connection, None, None]:
     """Open (or create) a graph database with schema initialisation."""
-    conn = sqlite3.connect(str(db_path), timeout=10)
+    target = str(db_path)
+    # Create the parent directory up front: on a fresh deploy (new volume /
+    # container, offline) ``~/.agent-bom/db`` may not exist yet, and
+    # ``sqlite3.connect`` does not create missing parents — it raises
+    # "unable to open database file", which silently leaves the seeded demo
+    # estate with an empty graph. ``:memory:`` has no parent to create.
+    if target != ":memory:":
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(target, timeout=10)
     conn.row_factory = sqlite3.Row
     try:
         _init_db(conn)

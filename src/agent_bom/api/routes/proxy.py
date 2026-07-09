@@ -94,6 +94,20 @@ def _reset_audit_dedupe_for_tests() -> None:
         _audit_dedupe.clear()
 
 
+def _reset_proxy_runtime_for_tests() -> None:
+    """Test helper to clear the process-global proxy alert/metric ring buffers.
+
+    The alert deque and metrics maps are module-global (the ring buffer is
+    process-wide), so seeded demo data or per-test alerts otherwise leak across
+    tests. Callers pair this with the firewall decision store reset.
+    """
+    global _proxy_alerts_total, _proxy_metrics
+    _proxy_alerts.clear()
+    _proxy_alerts_total = 0
+    _proxy_metrics = None
+    _proxy_metrics_by_tenant.clear()
+
+
 def push_proxy_alert(alert: dict) -> None:
     """Called by the proxy to record a runtime alert (in-process path)."""
     global _proxy_alerts_total

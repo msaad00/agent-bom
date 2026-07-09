@@ -114,6 +114,18 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     graph_seeded = seed_showcase_graph_if_empty(graph_store, tenant_id=tenant_id)
     summary["graph_seeded"] = graph_seeded
 
+    # Seed the runtime gateway feed (proxy alerts + metrics + firewall
+    # decisions) so the gateway/proxy/runtime dashboards show the AI-firewall in
+    # action on the demo. Idempotent and independent of the scan-job seeding
+    # below, so it must run even when demo jobs already exist.
+    try:
+        from agent_bom.demo_estate.showcase_gateway import seed_showcase_gateway_events
+
+        summary["gateway_feed"] = seed_showcase_gateway_events(tenant_id=tenant_id)
+    except Exception:
+        _logger.warning("demo estate gateway feed seeding failed", exc_info=True)
+        summary["gateway_feed_error"] = True
+
     if _tenant_has_demo_jobs(store, tenant_id):
         summary["reason"] = "demo_jobs_present"
         return summary

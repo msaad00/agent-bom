@@ -30,6 +30,13 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
     finally:
         api_stores._store = original_job_store
         api_stores._graph_store = original_graph_store
+        # The proxy alert/metric ring buffers and the firewall decision store are
+        # process-global; the demo bootstrap seeds them, so clear them here to
+        # keep the seeded gateway feed from leaking into later tests.
+        from agent_bom.api.routes.proxy import _reset_proxy_runtime_for_tests
+
+        _reset_proxy_runtime_for_tests()
+        api_stores._get_firewall_decision_store().reset()
 
 
 def _demo_report(client: TestClient) -> dict:
@@ -159,6 +166,75 @@ def test_demo_estate_cis_posture_spans_aws_gcp_azure(demo_estate_client: TestCli
     assert {"aws", "gcp", "azure"} <= set(clouds), clouds
     statuses = Counter(r["status"] for r in rows)
     assert statuses["pass"] > 0 and statuses["fail"] > 0, statuses
+
+
+def test_demo_estate_gateway_feed_shows_the_ai_firewall(demo_estate_client: TestClient) -> None:
+    """The gateway live feed renders authorized / blocked / shadow / redacted
+    tool-call events on the demo — the AI-firewall differentiator."""
+    feed = demo_estate_client.get("/v1/gateway/feed")
+    assert feed.status_code == 200, feed.text
+    payload = feed.json()
+    events = payload.get("events") or []
+    assert len(events) >= 12, f"expected a dense gateway feed, got {len(events)}"
+
+    by_action = Counter(e.get("action_type") for e in events)
+    # A believable mix mirroring a real AI-firewall feed.
+    assert by_action["tool_call_authorized"] >= 5, by_action
+    assert by_action["tool_call_blocked"] >= 5, by_action
+    assert by_action["data_filter_applied"] >= 2, by_action
+
+    # Shadow / undeclared-agent blocks are labeled as such.
+    shadow = [e for e in events if e.get("shadow")]
+    assert len(shadow) >= 2, "expected shadow/undeclared-agent blocks in the feed"
+    assert any("shadow" in (e.get("agent") or "").lower() for e in shadow)
+
+    # Attribution uses the showcase graph's real agent names.
+    agents = {e.get("agent") for e in events}
+    assert {"Cursor IDE Agent", "Claude Desktop Agent", "Data Pipeline Agent"} & agents
+
+    # Feed is time-ordered newest-first and redaction-safe (metadata only).
+    ts_values = [e.get("ts") for e in events]
+    assert ts_values == sorted(ts_values, reverse=True)
+    for e in events:
+        assert "arguments" not in e and "response" not in e
+
+
+def test_demo_estate_gateway_feed_kpis_populated(demo_estate_client: TestClient) -> None:
+    kpis = demo_estate_client.get("/v1/gateway/feed/kpis").json()
+    assert kpis.get("calls_today", 0) >= 12, kpis
+    assert kpis.get("blocked_today", 0) >= 5, kpis
+    assert kpis.get("shadow_ai_blocked", 0) >= 2, kpis
+    assert kpis.get("data_filters_applied", 0) >= 2, kpis
+    assert kpis.get("uptime_seconds", 0) > 0, kpis
+
+
+def test_demo_estate_runtime_production_index_has_traffic(demo_estate_client: TestClient) -> None:
+    idx = demo_estate_client.get("/v1/runtime/production-index", headers=ADMIN).json()
+    assert idx.get("status") == "ok", idx
+    traffic = idx.get("traffic") or {}
+    assert traffic.get("total_tool_calls", 0) > 100, traffic
+    assert traffic.get("blocked_tool_calls", 0) > 0, traffic
+    assert traffic.get("uptime_seconds", 0) > 0, traffic
+    trace = (idx.get("authorization_trace") or {}).get("recent") or []
+    assert trace, "expected recent authorization-trace events"
+
+
+def test_demo_estate_firewall_stats_populated(demo_estate_client: TestClient) -> None:
+    stats = demo_estate_client.get("/v1/firewall/stats").json()
+    assert stats.get("total_decisions", 0) >= 6, stats
+    assert stats.get("deny", 0) >= 2, stats
+    assert stats.get("allow", 0) >= 2, stats
+    assert stats.get("recent"), "expected recent firewall decisions"
+
+
+def test_demo_estate_gateway_feed_is_idempotent(demo_estate_client: TestClient) -> None:
+    first = len(demo_estate_client.get("/v1/gateway/feed").json().get("events") or [])
+    from agent_bom.demo_estate.showcase_gateway import seed_showcase_gateway_events
+
+    again = seed_showcase_gateway_events()
+    assert again.get("seeded") is False and again.get("reason") == "already_present"
+    second = len(demo_estate_client.get("/v1/gateway/feed").json().get("events") or [])
+    assert second == first
 
 
 def test_demo_estate_bootstrap_is_idempotent(demo_estate_client: TestClient) -> None:

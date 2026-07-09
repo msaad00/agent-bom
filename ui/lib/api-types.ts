@@ -470,6 +470,46 @@ export interface GraphAttributeDelta {
   summary: string;
 }
 
+/** Rich edge record returned by `/v1/graph/edges/changes` and `/v1/graph/edges/active`. */
+export interface GraphEdgeHistoryRecord {
+  source_id: string;
+  target_id: string;
+  relationship: string;
+  direction: string;
+  weight: number;
+  traversable: boolean;
+  confidence: number;
+  provenance: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+  valid_from?: string | undefined;
+  valid_to?: string | null | undefined;
+  first_seen?: string | undefined;
+  last_seen?: string | undefined;
+  scan_id?: string | undefined;
+}
+
+export interface GraphEdgeChangePair {
+  before: GraphEdgeHistoryRecord;
+  after: GraphEdgeHistoryRecord;
+}
+
+export interface GraphEdgeChangesSummary {
+  added: number;
+  removed: number;
+  changed: number;
+  unchanged: number;
+}
+
+export interface GraphEdgeChangesResponse {
+  scan_id_old: string;
+  scan_id_new: string;
+  edges_added: GraphEdgeHistoryRecord[];
+  edges_removed: GraphEdgeHistoryRecord[];
+  edges_changed: GraphEdgeChangePair[];
+  edges_unchanged: GraphEdgeHistoryRecord[];
+  summary: GraphEdgeChangesSummary;
+}
+
 export type GraphExportFormat =
   "json" | "dot" | "mermaid" | "graphml" | "cypher";
 

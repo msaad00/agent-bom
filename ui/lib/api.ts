@@ -22,6 +22,7 @@ import type {
   GraphSemanticClustersResponse,
   GraphAgentsResponse,
   GraphDiffResponse,
+  GraphEdgeChangesResponse,
   GraphExportFormat,
   AgentBomManifestResponse,
   PostureCountsResponse,
@@ -142,6 +143,7 @@ export type {
   GraphAgentSelectorItem,
   GraphAgentsResponse,
   GraphDiffResponse,
+  GraphEdgeChangesResponse,
   GraphExportFormat,
   AgentBomManifestResponse,
   AgentBomManifestNode,
@@ -577,6 +579,14 @@ export const api = {
     params.set("old", oldScanId);
     params.set("new", newScanId);
     return get<GraphDiffResponse>(`/v1/graph/diff?${params.toString()}`);
+  },
+
+  /** Rich edge lifecycle changes between two snapshots (added/removed/changed). */
+  getGraphEdgeChanges: (oldScanId: string, newScanId: string) => {
+    const params = new URLSearchParams();
+    params.set("old", oldScanId);
+    params.set("new", newScanId);
+    return get<GraphEdgeChangesResponse>(`/v1/graph/edges/changes?${params.toString()}`);
   },
 
   /** Load the unified graph for a specific snapshot or the latest persisted state */

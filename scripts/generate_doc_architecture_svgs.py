@@ -344,6 +344,13 @@ ICONS = {
 }
 
 
+def _vendor_viewbox(raw: str) -> tuple[float, float]:
+    match = re.search(r'viewBox="[\d.\s]+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)"', raw)
+    if match:
+        return float(match.group(1)), float(match.group(2))
+    return 24.0, 24.0
+
+
 def _vendor_logo_inner(vendor: str, *, uid: str) -> str:
     """Inline public vector mark from ui/public/logos (same assets as the dashboard)."""
     raw = (VENDOR_LOGO_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
@@ -367,21 +374,27 @@ def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict, *, theme: str) -> t
     card_w = (lane_inner_w - gap_x) // cols
     card_h = 44
     aws_wordmark = "#e9e9ec" if theme == "dark" else "#232F3E"
+    wordmark_vendors = frozenset({"aws", "snowflake"})
     out: list[str] = []
     for i, (vendor, label, accent) in enumerate(CLOUD_VENDOR_LOGOS):
         col, row = i % cols, i // cols
         bx = x + col * (card_w + gap_x)
         by = y + row * (card_h + gap_y)
         icon_area = 28
-        icon_x = bx + (card_w - icon_area) / 2
+        raw = (VENDOR_LOGO_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
+        vb_w, vb_h = _vendor_viewbox(raw)
+        scale = min(icon_area / vb_w, icon_area / vb_h)
+        render_w = vb_w * scale
+        render_h = vb_h * scale
+        icon_x = bx + (card_w - render_w) / 2
+        icon_y = by + (card_h - render_h) / 2 - (0 if vendor in wordmark_vendors else 2)
         inner = _vendor_logo_inner(vendor, uid=f"cl-{vendor}")
         color_attr = f' color="{aws_wordmark}"' if vendor == "aws" else ""
-        scale = icon_area / 24
         out.append(
             f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-            f'<g transform="translate({icon_x},{by + 6}) scale({scale})"{color_attr}>{inner}</g>'
+            f'<g transform="translate({icon_x},{icon_y}) scale({scale})"{color_attr}>{inner}</g>'
         )
-        if vendor != "aws":
+        if vendor not in wordmark_vendors:
             out.append(
                 f'<text x="{bx + card_w / 2}" y="{by + card_h - 5}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
                 f'font-size="8" font-weight="700" fill="{accent}">{_esc(label)}</text>'

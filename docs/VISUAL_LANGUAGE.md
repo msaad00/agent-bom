@@ -76,7 +76,7 @@ Current SVG inventory:
 | `brand/logo-{light,dark}.svg` | Brand lockup (mark + wordmark + tagline); see Brand basics above | hero |
 | `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; README "What Is agent-bom", collapsed detail |
 | `how-it-works-{light,dark}.svg` | Six-step scan pipeline from read-only intake through evidence core to outputs; cloud intake row uses the same public vector marks as `ui/public/logos/` | README "What Is agent-bom" |
-| `persona-value-{light,dark}.svg` | Four buyer personas in a compact single-row band — neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card (larger body copy for README scale) | README "Who It's For", after the product intro |
+| `persona-value-{light,dark}.svg` | Four buyer personas in a compact single-row band — neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card (larger body copy for README scale) | README "What Is agent-bom", collapsed "Who it's for" detail |
 | `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | README "What Is agent-bom", collapsed drilldown |
 | `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
 | `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |

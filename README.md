@@ -17,7 +17,6 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
-<p align="center">Run scans in your environment, centralize findings, govern in your VPC — one evidence model for your team and your agents.</p>
 
 <p align="center">
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -28,55 +27,17 @@
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
-<details open>
-<summary><b>Human view</b> — security control plane for AI/MCP estates</summary>
-
-Run scans in your environment, centralize evidence in your VPC, then govern selected runtime hops.
-One model (`Finding` + `ContextGraph`) for CLI, CI, API, dashboard, MCP tools, and
-gateway/proxy enforcement. We are **not** a managed MCP connector catalog — we
-prove blast radius and enforce policy on **your** agents and upstream MCP servers.
-
-**Three lanes:** run scans in your environment → self-hosted control plane → runtime proxy/gateway.
-
-</details>
-
-<details>
-<summary><b>Agent view</b> — capability manifest (strict MCP + REST)</summary>
-
-```text
-DESCRIPTION
-Open security scanner and self-hosted control plane. Scan → graph → prove path →
-enforce on selected runtime hops. Same evidence for humans and headless agents.
-
-CAPABILITIES
-MCP security tools       70 tools · 6 resources · 8 workflow prompts
-REST API                 283 ops · OpenAPI docs/openapi/v1.json
-Graph / blast radius     UnifiedGraph · attack paths · hop counts · SARIF export
-Runtime proxy            stdio MCP inline policy (7 detectors)
-Runtime gateway          HTTP/SSE relay · /v1/gateway/feed · KPI rollup
-Fleet inventory          MCP configs · transports · credential refs
-Auth                     API keys · OAuth AS · OIDC · SAML · SCIM
-Deployment               CLI · Docker · Helm · customer VPC (not managed SaaS)
-
-NOT SHIPPED
-No 1,000+ MCP app library · No Cedar engine · No turnkey SIEM tiles
-
-ENDPOINTS
-MCP server               agent-bom mcp server
-Control plane            agent-bom serve
-Gateway KPIs             GET /v1/gateway/feed/kpis
-Full manifest            docs/AGENT_CAPABILITY.md
-```
-
-</details>
-
 ## What Is agent-bom
 
 `agent-bom` is a read-only scanner and self-hosted control plane for local
-projects, agent fleets, MCP runtimes, containers, and cloud estates. Every
-surface writes into one evidence model — `Finding` + `ContextGraph` — and the
-same model comes back through CLI, CI, API, dashboard, MCP tools, exports, and
-optional runtime policy.
+projects, agent fleets, MCP runtimes, containers, and cloud estates. Scan in
+your environment, centralize evidence in your VPC, and govern selected runtime
+hops — one model (`Finding` + `ContextGraph`) for CLI, CI, API, dashboard, MCP
+tools, exports, and optional proxy/gateway enforcement.
+
+**Three lanes:** scan → self-hosted control plane → runtime proxy/gateway. We are
+**not** a managed MCP connector catalog — we prove blast radius and enforce
+policy on **your** agents and upstream MCP servers.
 
 Blast radius is the core idea: a vulnerable package is linked to the MCP server
 that loads it, the tools it exposes, reachable credential references, and the
@@ -92,6 +53,81 @@ agents that can call it — not just a CVE row.
 Coverage depth and honest boundaries:
 [AI infrastructure scanning](docs/AI_INFRASTRUCTURE_SCANNING.md) ·
 [product boundaries](docs/PRODUCT_BOUNDARIES.md)
+
+<details>
+<summary><b>See it in action</b> — CLI demo and dashboard screenshots</summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Risk overview dashboard with posture grade and attack paths" width="900" />
+  <br/><em>Risk overview — posture grade, KPIs, and fix-first attack paths</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Fix-first attack-path queue with graph evidence export" width="900" />
+  <br/><em>Security graph — fix-first attack-path queue with evidence export</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent mesh graph across agents, MCP servers, packages, tools, and findings" width="900" />
+  <br/><em>Blast radius — agent → MCP server → package → tool → CVE</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway live feed with KPI rollup and tool-call authorization stream" width="900" />
+  <br/><em>Runtime gateway — calls, blocks, shadow AI, and live tool-call feed</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/fleet-state-live.png" alt="Fleet lifecycle review state with owner and environment" width="900" />
+  <br/><em>Fleet — lifecycle review state, owner, and environment</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/identity-audit-live.png" alt="Audit log filtered to identity resources with HMAC integrity counters" width="900" />
+  <br/><em>Audit — identity lifecycle with tamper-evident HMAC counters</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Fix-first remediation table with prioritized packages" width="900" />
+  <br/><em>Remediation — prioritized fix list with framework context</em>
+</p>
+
+<sub>Synthetic seeded evidence for docs proof, captured from the real Next.js
+routes with a visible <strong>Demo data — simulated estate</strong> label — not a
+claim these entities came from a buyer environment. Regenerate with
+<code>npm run capture:product-proof</code> (see
+<a href="docs/CAPTURE.md">docs/CAPTURE.md</a>).</sub>
+
+</details>
+
+<details>
+<summary><b>Who it's for</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas mapped to value proof: AppSec/GRC to SARIF and compliance, Platform/SRE to fleet sync and CI gates, agent builders to MCP inventory and runtime shield, security engineers to findings queue and attack paths" width="980" />
+  </picture>
+</p>
+
+- **AppSec / GRC** — SARIF, compliance packs, and audit-ready exports from the
+  same scan that powers the dashboard.
+- **Platform / SRE** — fleet sync, Helm deploy, CI gates, and SBOM output
+  without a separate scanner stack.
+- **Agent builders** — MCP inventory, Shield SDK, and optional runtime proxy or
+  gateway enforcement on the same graph.
+- **Security engineers** — findings queue, attack-path drilldown, and blast-radius
+  context in CLI, API, and UI.
+
+Snowflake is a supported connector lane, not the product center. MCP server mode
+advertises 70 MCP tools, 6 resources, and 8 workflow prompts — registry metadata
+via the Smithery manifest and Glama listing.
+
+</details>
 
 <details>
 <summary><b>Control-plane architecture</b></summary>
@@ -144,51 +180,50 @@ Matching mechanics and release evidence:
 
 </details>
 
-## Who It's For
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas mapped to value proof: AppSec/GRC to SARIF and compliance, Platform/SRE to fleet sync and CI gates, agent builders to MCP inventory and runtime shield, security engineers to findings queue and attack paths" width="980" />
-  </picture>
-</p>
-
 <details>
-<summary><b>Persona lane detail</b></summary>
+<summary><b>Agent view</b> — capability manifest (strict MCP + REST)</summary>
 
-- **AppSec / GRC** — SARIF, compliance packs, and audit-ready exports from the
-  same scan that powers the dashboard.
-- **Platform / SRE** — fleet sync, Helm deploy, CI gates, and SBOM output
-  without a separate scanner stack.
-- **Agent builders** — MCP inventory, Shield SDK, and optional runtime proxy or
-  gateway enforcement on the same graph.
-- **Security engineers** — findings queue, attack-path drilldown, and blast-radius
-  context in CLI, API, and UI.
+```text
+DESCRIPTION
+Open security scanner and self-hosted control plane. Scan → graph → prove path →
+enforce on selected runtime hops. Same evidence for humans and headless agents.
 
-Snowflake is a supported connector lane, not the product center.
+CAPABILITIES
+MCP security tools       70 tools · 6 resources · 8 workflow prompts
+REST API                 283 ops · OpenAPI docs/openapi/v1.json
+Graph / blast radius     UnifiedGraph · attack paths · hop counts · SARIF export
+Runtime proxy            stdio MCP inline policy (7 detectors)
+Runtime gateway          HTTP/SSE relay · /v1/gateway/feed · KPI rollup
+Fleet inventory          MCP configs · transports · credential refs
+Auth                     API keys · OAuth AS · OIDC · SAML · SCIM
+Deployment               CLI · Docker · Helm · customer VPC (not managed SaaS)
 
-MCP server mode advertises 70 MCP tools, 6 resources, and 8 workflow prompts.
-Registry metadata is tracked through the committed Smithery manifest and Glama
-listing; install and liveness checks live in the integration docs.
+NOT SHIPPED
+No 1,000+ MCP app library · No Cedar engine · No turnkey SIEM tiles
+
+ENDPOINTS
+MCP server               agent-bom mcp server
+Control plane            agent-bom serve
+Gateway KPIs             GET /v1/gateway/feed/kpis
+Full manifest            docs/AGENT_CAPABILITY.md
+```
 
 </details>
 
-## First Run
+## Quickstart
 
 ```bash
 pip install agent-bom
 agent-bom scan -p .                       # scan this repo: rich console panel with posture grade
 ```
 
-The console panel is the fastest first impression — posture grade, blast radius,
-and fix-first findings inline, no file to open. For a reproducible run (safe to
-screenshot or attach to a bug report), use the release-pinned demo:
+For a reproducible, offline demo (safe to screenshot or attach to a bug report):
 
 ```bash
 agent-bom scan --demo --offline           # curated sample, no network, deterministic
 ```
 
-Then export or hand off when you need a file:
+Export when you need a file:
 
 ```bash
 agent-bom db update                       # populate ~/.agent-bom vuln DB before --offline scans
@@ -196,64 +231,12 @@ agent-bom scan -p . -f html -o agent-bom-report.html
 ```
 
 Run `agent-bom db update` before `--offline` image or package scans. Guided path:
-[docs/FIRST_RUN.md](docs/FIRST_RUN.md) · UI screenshots:
-[docs/CAPTURE.md](docs/CAPTURE.md)
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
-</p>
-
-<details>
-<summary><b>Product screenshots</b> — packaged dashboard on seeded demo data</summary>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Risk overview dashboard with posture grade and attack paths" width="900" />
-  <br/><em>Risk overview — posture grade, KPIs, and fix-first attack paths</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Fix-first attack-path queue with graph evidence export" width="900" />
-  <br/><em>Security graph — fix-first attack-path queue with evidence export</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent mesh graph across agents, MCP servers, packages, tools, and findings" width="900" />
-  <br/><em>Blast radius — agent → MCP server → package → tool → CVE</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway live feed with KPI rollup and tool-call authorization stream" width="900" />
-  <br/><em>Runtime gateway — calls, blocks, shadow AI, and live tool-call feed</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/fleet-state-live.png" alt="Fleet lifecycle review state with owner and environment" width="900" />
-  <br/><em>Fleet — lifecycle review state, owner, and environment</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/identity-audit-live.png" alt="Audit log filtered to identity resources with HMAC integrity counters" width="900" />
-  <br/><em>Audit — identity lifecycle with tamper-evident HMAC counters</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Fix-first remediation table with prioritized packages" width="900" />
-  <br/><em>Remediation — prioritized fix list with framework context</em>
-</p>
-
-<sub>Synthetic seeded evidence for docs proof, captured from the real Next.js
-routes with a visible <strong>Demo data — simulated estate</strong> label — not a
-claim these entities came from a buyer environment. Regenerate from the UI package
-with <code>npm run capture:product-proof</code> (see
-<a href="docs/CAPTURE.md">docs/CAPTURE.md</a>).</sub>
-
-</details>
+[docs/FIRST_RUN.md](docs/FIRST_RUN.md)
 
 ## Start Here
 
-Every lane writes into the same `Finding` and `ContextGraph` model. Pick the
-entry point that matches your role; see [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md)
-for ingest lanes, auth boundaries, and surface detail.
+Pick the entry point for your role — ingest lanes, auth boundaries, and surface
+detail in [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md).
 
 | Need | Surface | First action | Main artifact |
 |---|---|---|---|

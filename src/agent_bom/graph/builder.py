@@ -4497,6 +4497,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     # Track (node_id, raw-instance) so the GCP firewall-matching pass can mark
     # exposure by network + target tags/SA (GCP has no per-instance SG-id list).
     instance_nodes: list[tuple[str, dict[str, Any]]] = []
+    internet_facing_lbs: list[tuple[str, str]] = []
     for instance in inventory.get("instances", []) or []:
         if not isinstance(instance, dict):
             continue
@@ -4653,6 +4654,8 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                         source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
                     )
                 )
+            if coll_key == "elb_load_balancers" and exposed:
+                internet_facing_lbs.append((node_id, _clean_graph_part(item.get("vpc_id"))))
 
     # ── GCP estate breadth (GKE / Cloud Run / Functions / Cloud SQL / VPC /
     # disks / Pub/Sub) → CLOUD_RESOURCE or DATA_STORE, OWNS from the project. ──
@@ -4737,6 +4740,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         sg_node_by_id=sg_node_by_id,
         instance_node_by_id=instance_node_by_id,
     )
+    _link_internet_facing_load_balancers(graph, internet_facing_lbs, instance_nodes)
 
     # ── Management-group hierarchy (org → subscription CONTAINS tree) ──
     _add_management_group_hierarchy(graph, original_inventory, provider=provider, data_sources=data_sources)
@@ -4954,6 +4958,63 @@ _GCP_LB_COLLECTION: tuple[str, str, str, str, str, str] = (
 )
 
 
+def _add_exposure_path_edge(
+    graph: UnifiedGraph,
+    *,
+    source: str,
+    target: str,
+    reason: str,
+    weight: float = 6.0,
+) -> None:
+    """Emit a provenance-tagged EXPOSED_TO edge when both endpoints exist."""
+    if source not in graph.nodes or target not in graph.nodes or source == target:
+        return
+    for edge in graph.edges:
+        if edge.source == source and edge.target == target and edge.relationship == RelationshipType.EXPOSED_TO:
+            return
+    graph.add_edge(
+        UnifiedEdge(
+            source=source,
+            target=target,
+            relationship=RelationshipType.EXPOSED_TO,
+            weight=weight,
+            evidence={"source": "cloud-inventory", "reason": reason},
+        )
+    )
+
+
+def _instance_internet_reachable(graph: UnifiedGraph, inst_node_id: str, instance: dict[str, Any]) -> bool:
+    node = graph.nodes.get(inst_node_id)
+    if node is None:
+        return False
+    if node.attributes.get("internet_exposed") or _clean_graph_part(instance.get("public_ip")):
+        return True
+    return any(e.relationship == RelationshipType.EXPOSED_TO and e.target == inst_node_id for e in graph.edges)
+
+
+def _link_internet_facing_load_balancers(
+    graph: UnifiedGraph,
+    load_balancers: list[tuple[str, str]],
+    instance_nodes: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Link internet-facing LBs to reachable instances in the same VPC."""
+    for lb_node_id, lb_vpc_id in load_balancers:
+        lb_node = graph.nodes.get(lb_node_id)
+        if lb_node is None or not lb_node.attributes.get("internet_exposed"):
+            continue
+        for inst_node_id, instance in instance_nodes:
+            inst_vpc = _clean_graph_part(instance.get("vpc_id"))
+            if lb_vpc_id and inst_vpc and inst_vpc != lb_vpc_id:
+                continue
+            if _instance_internet_reachable(graph, inst_node_id, instance):
+                _add_exposure_path_edge(
+                    graph,
+                    source=lb_node_id,
+                    target=inst_node_id,
+                    reason="internet_facing_load_balancer",
+                )
+
+
 def _add_network_edge_inventory(
     graph: UnifiedGraph,
     inventory: dict[str, Any],
@@ -4979,7 +5040,10 @@ def _add_network_edge_inventory(
     - **Subnets** → ``CLOUD_RESOURCE``; a public subnet is ``internet_exposed``.
     - **ENIs / NICs** → ``CLOUD_RESOURCE`` wired ``PART_OF`` their instance,
       subnet, and security group(s) so the network path is traversable; an ENI
-      carrying a public IP marks its instance internet-reachable.
+      carrying a public IP marks its instance internet-reachable and emits
+      ``EXPOSED_TO`` the instance.
+    - **Elastic/public IPs** → ``EXPOSED_TO`` the attached instance when known.
+    - **Internet-facing API gateways** → ``EXPOSED_TO`` protected frontends.
     - NAT/internet gateways, route tables, network ACLs, VPC endpoints, load
       balancers, and IP addresses → ``CLOUD_RESOURCE`` inventory nodes.
 
@@ -5116,6 +5180,14 @@ def _add_network_edge_inventory(
                 "internet_exposed": True,
             },
         )
+        attached_instance = instance_node_by_id.get(_clean_graph_part(ip.get("attached_to")))
+        if attached_instance:
+            _add_exposure_path_edge(
+                graph,
+                source=node_id,
+                target=attached_instance,
+                reason="elastic_ip_attachment",
+            )
 
     # ── ENIs / NICs → PART_OF instance + subnet + security group(s) ──
     for eni in inventory.get("network_interfaces", []) or []:
@@ -5154,6 +5226,12 @@ def _add_network_edge_inventory(
                 inst_node = graph.nodes.get(instance_node_id)
                 if inst_node is not None:
                     inst_node.attributes["internet_exposed"] = True
+                _add_exposure_path_edge(
+                    graph,
+                    source=node_id,
+                    target=instance_node_id,
+                    reason="eni_public_ip",
+                )
         subnet_node_id = subnet_node_by_id.get(_clean_graph_part(eni.get("subnet_id")))
         if subnet_node_id:
             graph.add_edge(
@@ -5244,6 +5322,17 @@ def _add_network_edge_inventory(
                 )
             )
         _protect(node_id, api.get("protected_targets", []), "api_gateway_frontend")
+        if api.get("internet_exposed"):
+            for target_ref in api.get("protected_targets", []) or []:
+                ref = _clean_graph_part(target_ref)
+                target_node_id = ref_to_node.get(ref)
+                if target_node_id:
+                    _add_exposure_path_edge(
+                        graph,
+                        source=node_id,
+                        target=target_node_id,
+                        reason="internet_facing_api_gateway",
+                    )
 
 
 def _add_inventory_principal(

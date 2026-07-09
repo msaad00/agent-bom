@@ -92,6 +92,67 @@ def test_sarif_exports_symbol_reachability_fields() -> None:
     assert props["reachable_affected_symbols"] == ["get"]
 
 
+def test_dual_write_findings_resync_carries_reachability_into_json() -> None:
+    """Regression: the CLI materializes `report.findings` *before* the blast_radii
+    are stamped, so the JSON `findings[]` projection carried null reachability
+    while `blast_radius[]`/CSV/Parquet/SARIF carried the verdict. The resync must
+    reconcile them."""
+    from agent_bom.graph.blast_reach import resync_cve_findings_from_blast_radii
+
+    br = _python_br(["get"])
+    # Dual-write: findings built from the row before stamping (the CLI ordering).
+    findings = [blast_radius_to_finding(br)]
+    apply_symbol_reachability_to_blast_radii(
+        [br],
+        ASTAnalysisResult(dependency_symbol_reach=[_reach("requests", "requests", "get")]),
+    )
+    assert findings[0].evidence["symbol_reachability"] is None  # stale before resync
+
+    replaced = resync_cve_findings_from_blast_radii(findings, [br])
+    assert replaced == 1
+
+    payload = to_json(AIBOMReport(agents=[], blast_radii=[br], findings=findings))
+    assert payload["blast_radius"][0]["symbol_reachability"] == FUNCTION_REACHABLE
+    assert payload["findings"][0]["evidence"]["symbol_reachability"] == FUNCTION_REACHABLE
+    # The two views must agree, not merely both be truthy.
+    assert (
+        payload["findings"][0]["evidence"]["symbol_reachability"]
+        == payload["blast_radius"][0]["symbol_reachability"]
+    )
+
+
+def test_all_machine_views_agree_on_reachability_verdict() -> None:
+    """json findings[], blast_radius[], CSV, SARIF (and Parquet when pyarrow is
+    present) must surface the same symbol_reachability verdict for a finding."""
+    import csv as _csv
+    import io
+
+    from agent_bom.output.csv_fmt import to_csv
+
+    br = _stamp_python_br()
+    report = AIBOMReport(agents=[], blast_radii=[br], findings=[blast_radius_to_finding(br)])
+
+    payload = to_json(report)
+    assert payload["findings"][0]["evidence"]["symbol_reachability"] == FUNCTION_REACHABLE
+    assert payload["blast_radius"][0]["symbol_reachability"] == FUNCTION_REACHABLE
+
+    sarif = to_sarif(report)
+    assert sarif["runs"][0]["results"][0]["properties"]["symbol_reachability"] == FUNCTION_REACHABLE
+
+    rows = list(_csv.DictReader(io.StringIO(to_csv(report))))
+    assert rows[0]["symbol_reachability"] == FUNCTION_REACHABLE
+
+    try:
+        import pyarrow.parquet as pq  # noqa: F401
+
+        from agent_bom.output.parquet_fmt import to_arrow_table
+
+        table = to_arrow_table(report)
+        assert table.column("symbol_reachability").to_pylist()[0] == FUNCTION_REACHABLE
+    except ImportError:
+        pass
+
+
 def test_project_paths_for_symbol_reach_dedupes_scan_targets() -> None:
     class _Req:
         agent_projects = ["/tmp/agent-a", "/tmp/agent-b"]

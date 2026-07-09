@@ -128,6 +128,29 @@ _POPULAR_PACKAGES: dict[str, frozenset[str]] = {
 }
 
 
+# Names at least this long are eligible for the single-substitution catch below.
+# Below this, one edited character is too weak a signal (``core`` vs ``cors``,
+# ``flask`` vs ``flash``) and would create false positives on real packages.
+_EDIT1_MIN_LEN = 6
+
+
+def _single_substitution(a: str, b: str) -> bool:
+    """Return True when equal-length ``a`` and ``b`` differ in exactly one char.
+
+    Restricting to equal length (a pure substitution) avoids flagging legitimate
+    length-shifted neighbours such as ``panda`` vs ``pandas``.
+    """
+    if len(a) != len(b):
+        return False
+    diff = 0
+    for ca, cb in zip(a, b):
+        if ca != cb:
+            diff += 1
+            if diff > 1:
+                return False
+    return diff == 1
+
+
 def check_typosquat(name: str, ecosystem: str, threshold: float = 0.85) -> str | None:
     """Check if a package name looks like a typosquat of a popular package.
 
@@ -159,6 +182,16 @@ def check_typosquat(name: str, ecosystem: str, threshold: float = 0.85) -> str |
 
     if best_ratio >= threshold:
         return best_match
+
+    # A single-character substitution on a short-ish name (``djanga`` vs
+    # ``django``) scores 0.833 < 0.85 and slips past the ratio gate. Catch the
+    # equal-length one-edit case explicitly for names long enough that one edited
+    # character is a strong signal, without lowering the ratio threshold (which
+    # would pull in genuine near-neighbours).
+    if len(normalized) >= _EDIT1_MIN_LEN:
+        for pkg_name in popular:
+            if _single_substitution(normalized, pkg_name.lower()):
+                return pkg_name
     return None
 
 

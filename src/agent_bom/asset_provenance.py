@@ -47,6 +47,26 @@ _VERSION_SOURCE_CONFIDENCE = {
     "registry_latest": "low",
     "unknown": "unknown",
 }
+# Version sources where the reported version came from the running/installed
+# host rather than the declared reference — a git ref pinned here is a
+# coincidence, not an exact match.
+_HOST_RESOLVED_VERSION_SOURCES = frozenset(
+    {"installed_package", "runtime_process", "image_sbom", "tool_cache"}
+)
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
+
+def _looks_like_git_reference(value: Any) -> bool:
+    """Return True when a declared version looks like a git URL or commit SHA."""
+    text = str(value or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if "git+" in lowered or lowered.startswith(("git@", "git://")):
+        return True
+    return bool(_GIT_SHA_RE.fullmatch(lowered))
+
+
 _VERSION_SOURCE_PRECEDENCE = {
     "runtime_process": 80,
     "image_sbom": 70,
@@ -289,6 +309,18 @@ def package_version_provenance(package: Any, inherited: dict[str, Any] | None = 
         result["floating_reference"] = True
         if _field(package, "floating_reference_reason"):
             result["floating_reference_reason"] = _field(package, "floating_reference_reason")
+
+    # A git URL/SHA declared reference whose reported version came from the host
+    # environment (installed/runtime/image) is not an exact pin — the SHA and the
+    # resolved release are unrelated coincidences. Never let it claim `exact`.
+    if _looks_like_git_reference(declared_version) and version_source in _HOST_RESOLVED_VERSION_SOURCES:
+        result["floating_reference"] = True
+        result.setdefault(
+            "floating_reference_reason",
+            "git URL/SHA reference — reported version resolved from the installed host package, not the pinned ref",
+        )
+        if result["confidence"] == "exact":
+            result["confidence"] = "low"
 
     evidence = _sanitize_version_evidence_list(
         explicit.get("evidence") or _field(package, "version_evidence") or _occurrence_version_evidence(package)

@@ -210,6 +210,14 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                 )
         except (json.JSONDecodeError, KeyError) as exc:
             logger.debug("Failed to parse package-lock.json in %s: %s", directory, exc)
+            if isinstance(exc, json.JSONDecodeError):
+                from agent_bom.coverage import record_manifest_parse_warning
+
+                record_manifest_parse_warning(
+                    ecosystem="npm",
+                    path=str(lock_file),
+                    detail=f"package-lock.json failed to parse ({exc}); npm dependencies were not scanned",
+                )
 
     # Fallback to package.json only
     elif (directory / "package.json").exists():
@@ -258,6 +266,14 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                     )
         except (json.JSONDecodeError, KeyError) as exc:
             logger.debug("Failed to parse package.json in %s: %s", directory, exc)
+            if isinstance(exc, json.JSONDecodeError):
+                from agent_bom.coverage import record_manifest_parse_warning
+
+                record_manifest_parse_warning(
+                    ecosystem="npm",
+                    path=str(directory / "package.json"),
+                    detail=f"package.json failed to parse ({exc}); npm dependencies were not scanned",
+                )
 
     return packages
 

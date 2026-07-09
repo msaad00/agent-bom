@@ -224,5 +224,46 @@ def test_osv_fallback_db_keys_for_sparse_release(tmp_path):
     assert keys == {package_db_key(pkg) for pkg in packages}
 
 
+def test_malformed_package_json_records_coverage_warning(tmp_path):
+    from agent_bom.parsers.node_parsers import parse_npm_packages
+    from agent_bom.scanners.state import consume_coverage_warnings
+
+    consume_coverage_warnings()  # clear any prior state
+    (tmp_path / "package.json").write_text('{ "dependencies": { "express": "^4"  BROKEN', encoding="utf-8")
+
+    pkgs = parse_npm_packages(tmp_path)
+    warnings = consume_coverage_warnings()
+
+    assert pkgs == []  # nothing parsed — but the gap must be surfaced
+    assert any(w.get("reason") == "manifest_parse_error" and w.get("ecosystem") == "npm" for w in warnings)
+
+
+def test_malformed_pom_xml_records_coverage_warning(tmp_path):
+    from agent_bom.parsers.compiled_parsers import parse_maven_packages
+    from agent_bom.scanners.state import consume_coverage_warnings
+
+    consume_coverage_warnings()
+    (tmp_path / "pom.xml").write_text("<project><dependencies><dependency><groupId>g</groupId><artifactId>a", encoding="utf-8")
+
+    pkgs = parse_maven_packages(tmp_path)
+    warnings = consume_coverage_warnings()
+
+    assert pkgs == []
+    assert any(w.get("reason") == "manifest_parse_error" and w.get("ecosystem") == "maven" for w in warnings)
+
+
+def test_valid_package_json_records_no_manifest_warning(tmp_path):
+    from agent_bom.parsers.node_parsers import parse_npm_packages
+    from agent_bom.scanners.state import consume_coverage_warnings
+
+    consume_coverage_warnings()
+    (tmp_path / "package.json").write_text('{"dependencies": {"express": "4.18.2"}}', encoding="utf-8")
+
+    parse_npm_packages(tmp_path)
+    warnings = consume_coverage_warnings()
+
+    assert not any(w.get("reason") == "manifest_parse_error" for w in warnings)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

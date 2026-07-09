@@ -2454,6 +2454,7 @@ def scan(
         from agent_bom.graph.blast_reach import (
             apply_dependency_reachability_to_blast_radii,
             apply_symbol_reachability_to_blast_radii,
+            resync_cve_findings_from_blast_radii,
         )
 
         apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
@@ -2462,6 +2463,11 @@ def scan(
         # unreachable signal. No-op when no Python entrypoints were analysed.
         if _ast_result_for_reach is not None:
             apply_symbol_reachability_to_blast_radii(blast_radii, _ast_result_for_reach)
+        # The dual-write `report.findings` was materialized before the stamping
+        # above, so its CVE findings still carry null reachability. Re-project the
+        # stamped rows onto them so the JSON `findings[]` view agrees with
+        # `blast_radius[]`, CSV, Parquet, and SARIF.
+        resync_cve_findings_from_blast_radii(report.findings, blast_radii)
     except Exception:  # noqa: BLE001
         # Reachability is best-effort enrichment — don't let it fail the scan.
         pass

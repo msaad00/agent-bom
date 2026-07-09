@@ -453,9 +453,29 @@ export interface GraphChangeKindIndex {
   edges: Record<string, GraphChangeKind>;
 }
 
+/**
+ * Rich node record emitted by `/v1/graph/diff` for added/removed nodes.
+ * Shape mirrors the backend `node_diff_metadata`, plus a `change_kind` tag
+ * the route attaches for the drift lens.
+ */
+export interface GraphDiffNode {
+  id: string;
+  entity_type: string;
+  label: string;
+  status: string;
+  severity: string;
+  severity_id: number;
+  risk_score: number;
+  attributes?: Record<string, unknown> | undefined;
+  compliance_tags?: string[] | undefined;
+  change_kind?: string | undefined;
+}
+
 export interface GraphDiffResponse {
-  nodes_added: string[];
-  nodes_removed: string[];
+  /** Added/removed nodes are full node objects. */
+  nodes_added: GraphDiffNode[];
+  nodes_removed: GraphDiffNode[];
+  /** Changed nodes are emitted as bare node-id strings. */
   nodes_changed: string[];
   edges_added: [string, string, string][];
   edges_removed: [string, string, string][];
@@ -2478,7 +2498,8 @@ export interface ProxyStatusResponse {
 }
 
 export interface ProxyAlert {
-  ts: number;
+  /** ISO-8601 timestamp string (e.g. "2026-07-06T15:10:00+00:00"). */
+  ts: string;
   severity: string;
   detector: string;
   tool_name: string;

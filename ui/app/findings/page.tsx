@@ -33,6 +33,7 @@ import {
   serverFindingsSort,
   formatFindingsTotal,
   hasLifecycleMetadata,
+  vulnRowKey,
 } from "@/lib/findings-view";
 import { severityRank } from "@/lib/severity";
 import { Bug, Download, Layers, Loader2, Package, Server, ClipboardCheck } from "lucide-react";
@@ -181,6 +182,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
     const sourceLabel = uniqueStrings([finding.source, finding.finding_type, ...(finding.scan_sources ?? [])]);
     return {
       id: findingLabel,
+      finding_id: finding.id,
       severity: normalizedSeverity(finding.effective_severity ?? finding.severity),
       summary: raw.attack_vector_summary ?? finding.title ?? finding.description,
       description: finding.description ?? finding.title,
@@ -708,7 +710,10 @@ function FindingsPage() {
     ? displayed
     : displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const selectedVuln = useMemo(
-    () => displayed.find((vuln) => vuln.id === selectedId) ?? vulns.find((vuln) => vuln.id === selectedId) ?? null,
+    () =>
+      displayed.find((vuln) => vulnRowKey(vuln) === selectedId || vuln.id === selectedId) ??
+      vulns.find((vuln) => vulnRowKey(vuln) === selectedId || vuln.id === selectedId) ??
+      null,
     [displayed, selectedId, vulns],
   );
   const triageByKey = useMemo(() => {

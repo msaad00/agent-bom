@@ -849,7 +849,7 @@ function SessionStatus({
 
   if (!session?.authenticated) {
     return (
-      <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[12px] text-amber-300">
+      <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
         Sign-in required for protected control-plane actions
       </div>
     );

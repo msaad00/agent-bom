@@ -63,9 +63,9 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
     case "error":
       return { label: "Error", className: "text-orange-400 border-orange-500/30 bg-orange-500/10", Icon: AlertTriangle };
     case "not_applicable":
-      return { label: "N/A", className: "text-zinc-500 border-zinc-700 bg-zinc-800/40", Icon: ChevronRight };
+      return { label: "N/A", className: "text-[color:var(--text-tertiary)] border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]/40", Icon: ChevronRight };
     default:
-      return { label: status || "Unknown", className: "text-zinc-400 border-zinc-700 bg-zinc-800/40", Icon: ChevronRight };
+      return { label: status || "Unknown", className: "text-[color:var(--text-secondary)] border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]/40", Icon: ChevronRight };
   }
 }
 
@@ -80,7 +80,7 @@ function severityClass(severity: string): string {
     case "low":
       return "text-sky-300 border-sky-500/40 bg-sky-500/10";
     default:
-      return "text-zinc-400 border-zinc-700 bg-zinc-800/40";
+      return "text-[color:var(--text-secondary)] border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]/40";
   }
 }
 
@@ -108,7 +108,7 @@ function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
 
   if (!cli) {
     return (
-      <div className="text-xs text-zinc-500">
+      <div className="text-xs text-[color:var(--text-tertiary)]">
         No copy-pasteable CLI fix — use the console path below.
       </div>
     );
@@ -116,7 +116,7 @@ function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-2 text-xs text-zinc-500">
+      <div className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">
         <Terminal className="h-3.5 w-3.5" />
         <span>Fix (CLI)</span>
         {check.requires_human_review ? (
@@ -130,7 +130,7 @@ function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
         ) : null}
       </div>
       <div className="flex items-start gap-2">
-        <pre className="flex-1 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-200">
+        <pre className="flex-1 overflow-x-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-xs text-[color:var(--foreground)]">
           <code>{cli}</code>
         </pre>
         <button
@@ -149,7 +149,7 @@ function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
           className={`mt-0.5 inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-xs transition-colors ${
             check.requires_human_review
               ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
-              : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              : "border-[color:var(--border-strong)] text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)]"
           }`}
         >
           <Copy className="h-3.5 w-3.5" />
@@ -171,7 +171,7 @@ function CheckCard({ check }: { check: CISBenchmarkCheck }) {
   const docs = check.remediation?.docs;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/60">
+    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -179,8 +179,8 @@ function CheckCard({ check }: { check: CISBenchmarkCheck }) {
       >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs text-zinc-400">{check.check_id}</span>
-            <span className="text-sm font-medium text-zinc-100">{check.title}</span>
+            <span className="font-mono text-xs text-[color:var(--text-secondary)]">{check.check_id}</span>
+            <span className="text-sm font-medium text-[color:var(--foreground)]">{check.title}</span>
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium ${badge.className}`}>
@@ -190,7 +190,7 @@ function CheckCard({ check }: { check: CISBenchmarkCheck }) {
             <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium capitalize ${severityClass(check.severity)}`}>
               {check.severity}
             </span>
-            <span className="rounded border border-zinc-700 bg-zinc-800/40 px-1.5 py-0.5 text-[11px] font-medium text-zinc-300">
+            <span className="rounded border border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]/40 px-1.5 py-0.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
               {priorityLabel(check.priority)}
             </span>
             {check.requires_human_review ? (
@@ -209,16 +209,16 @@ function CheckCard({ check }: { check: CISBenchmarkCheck }) {
             ))}
           </div>
         </div>
-        {open ? <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-zinc-500" /> : <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-zinc-500" />}
+        {open ? <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-[color:var(--text-tertiary)]" /> : <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-[color:var(--text-tertiary)]" />}
       </button>
       {open ? (
-        <div className="space-y-3 border-t border-zinc-800 px-4 py-3">
-          {check.evidence ? <p className="text-xs text-zinc-400">{check.evidence}</p> : null}
+        <div className="space-y-3 border-t border-[color:var(--border-subtle)] px-4 py-3">
+          {check.evidence ? <p className="text-xs text-[color:var(--text-secondary)]">{check.evidence}</p> : null}
           <CopyableFixCli check={check} />
           {check.fix_console ? (
-            <div className="text-xs text-zinc-400">
-              <span className="text-zinc-500">Console path: </span>
-              <span className="text-zinc-200">{check.fix_console}</span>
+            <div className="text-xs text-[color:var(--text-secondary)]">
+              <span className="text-[color:var(--text-tertiary)]">Console path: </span>
+              <span className="text-[color:var(--foreground)]">{check.fix_console}</span>
             </div>
           ) : null}
           {docs ? (
@@ -253,14 +253,14 @@ function FilterPills<T extends string | number>({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-[11px] uppercase tracking-wider text-zinc-600">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-[color:var(--text-tertiary)]">{label}</span>
       {options.map((option) => (
         <button
           key={String(option)}
           type="button"
           onClick={() => onChange(option)}
           className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-            value === option ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+            value === option ? "bg-[color:var(--surface-muted)] text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
           }`}
         >
           {render(option)}
@@ -341,18 +341,18 @@ export function CISBenchmarkDetail() {
 
   if (loading) {
     return (
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5" aria-busy="true">
+      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5" aria-busy="true">
         <SectionHeader />
-        <p className="mt-3 text-sm text-zinc-500">Loading cloud CIS benchmark checks…</p>
+        <p className="mt-3 text-sm text-[color:var(--text-tertiary)]">Loading cloud CIS benchmark checks…</p>
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5">
         <SectionHeader />
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 text-sm text-[color:var(--text-secondary)]">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
           <span>{error}</span>
         </div>
@@ -363,9 +363,9 @@ export function CISBenchmarkDetail() {
   const total = checks?.length ?? 0;
   if (total === 0) {
     return (
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5">
         <SectionHeader />
-        <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 text-sm text-zinc-500">
+        <div className="mt-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
           No cloud CIS benchmark checks yet. Run a cloud scan (AWS, Azure, GCP, Snowflake, or Databricks)
           to populate per-check remediation.
         </div>
@@ -374,9 +374,9 @@ export function CISBenchmarkDetail() {
   }
 
   return (
-    <section id="cloud-cis-benchmarks" className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <section id="cloud-cis-benchmarks" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5">
       <SectionHeader count={total} />
-      <div className="mt-4 flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-5">
+      <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-5">
         <FilterPills
           label="Cloud"
           options={cloudOptions}
@@ -409,12 +409,12 @@ export function CISBenchmarkDetail() {
 
       <div className="mt-4 space-y-2">
         {visible.length === 0 ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 text-sm text-zinc-500">
+          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
             No checks match the current filters ({total} total).
           </div>
         ) : (
           <>
-            <div className="text-xs text-zinc-500">
+            <div className="text-xs text-[color:var(--text-tertiary)]">
               {visible.length} of {total} checks shown
             </div>
             {visible.map((check) => (
@@ -432,8 +432,8 @@ function SectionHeader({ count }: { count?: number | undefined }) {
     <div className="flex items-center gap-2">
       <Cloud className="h-4 w-4 text-cyan-400" />
       <div>
-        <h2 className="text-lg font-semibold text-zinc-100">Cloud CIS Benchmark Drill-down</h2>
-        <p className="text-xs text-zinc-500">
+        <h2 className="text-lg font-semibold text-[color:var(--foreground)]">Cloud CIS Benchmark Drill-down</h2>
+        <p className="text-xs text-[color:var(--text-tertiary)]">
           Failed AWS / Azure / GCP / Snowflake / Databricks checks behind CIS Controls v8, with fix guidance.
           {typeof count === "number" ? ` ${count} checks.` : null}
         </p>

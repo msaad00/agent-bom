@@ -109,6 +109,7 @@ nav:
           - Runtime Operations: deployment/runtime-operations.md
           - Gateway Auto-Discovery: deployment/gateway-auto-discovery.md
       - Enterprise Controls:
+          - Hosted Authenticated Instance + Connect Your Cloud: deployment/authenticated-hosted-instance.md
           - Enterprise Auth and Tenancy: deployment/enterprise-auth-and-tenancy.md
           - Data Access Boundaries: deployment/data-access-boundaries.md
           - Customer Data and Support Boundary: deployment/customer-data-and-support-boundary.md

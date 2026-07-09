@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agent_bom.graph.attack_path_fusion import (
     _MAX_DEPTH,
+    _MAX_NODES,
     _MAX_PATHS,
     apply_attack_path_fusion,
     compute_fused_attack_paths,
@@ -214,3 +215,62 @@ def test_apply_preserves_foreign_attack_paths():
     apply_attack_path_fusion(g)
     assert foreign in g.attack_paths
     assert any(p.summary.startswith("Internet-exposed ") for p in g.attack_paths)
+
+
+def test_inbound_trust_edge_does_not_fabricate_cross_account_chain():
+    """Regression (complete #3761): a CROSS_ACCOUNT_TRUST edge is INBOUND trust
+    (role R -> principal P means P may assume R). It must NOT be walked forward as
+    an outbound pivot, which would fabricate a cross-account kill-chain from an
+    exposed R into P's account and on to P's data store."""
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:R", entity_type=EntityType.ROLE, label="exposed-R", attributes={"internet_exposed": True}))
+    g.add_node(UnifiedNode(id="prin:P", entity_type=EntityType.ROLE, label="P"))
+    g.add_node(
+        UnifiedNode(
+            id="ds:X",
+            entity_type=EntityType.DATA_STORE,
+            label="ds-X",
+            attributes={"data_sensitivity": "high", "data_classification_tier": "restricted"},
+        )
+    )
+    g.add_edge(UnifiedEdge(source="role:R", target="prin:P", relationship=RelationshipType.CROSS_ACCOUNT_TRUST))
+    g.add_edge(UnifiedEdge(source="prin:P", target="ds:X", relationship=RelationshipType.CAN_ACCESS))
+
+    paths = compute_fused_attack_paths(g)
+    assert not any(p.source == "role:R" and p.target == "ds:X" for p in paths)
+
+
+def test_genuine_assumes_chain_still_fuses():
+    """Over-correction guard: a real OUTBOUND ASSUMES chain (exposed workload ->
+    role it assumes -> sensitive data store) must still fuse into an attack path."""
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="res:web", entity_type=EntityType.CLOUD_RESOURCE, label="web", attributes={"internet_exposed": True}))
+    g.add_node(UnifiedNode(id="role:app", entity_type=EntityType.ROLE, label="app-role"))
+    g.add_node(
+        UnifiedNode(
+            id="ds:X",
+            entity_type=EntityType.DATA_STORE,
+            label="ds-X",
+            attributes={"data_sensitivity": "high", "data_classification_tier": "restricted"},
+        )
+    )
+    g.add_edge(UnifiedEdge(source="res:web", target="role:app", relationship=RelationshipType.ASSUMES))
+    g.add_edge(UnifiedEdge(source="role:app", target="ds:X", relationship=RelationshipType.CAN_ACCESS))
+
+    paths = compute_fused_attack_paths(g)
+    assert any(p.source == "res:web" and p.target == "ds:X" for p in paths)
+
+
+def test_oversized_graph_surfaces_skipped_signal():
+    """A graph past the node budget returns 0 paths but the apply-level result must
+    mark it 'skipped' so a large estate is not misread as 'no attack paths'."""
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="entry", entity_type=EntityType.CLOUD_RESOURCE, label="e", attributes={"internet_exposed": True}))
+    g.add_node(UnifiedNode(id="data_store:x", entity_type=EntityType.DATA_STORE, label="d", attributes={"data_sensitivity": "sensitive"}))
+    g.add_edge(UnifiedEdge(source="entry", target="data_store:x", relationship=RelationshipType.STORES))
+    for i in range(_MAX_NODES + 1):
+        g.add_node(UnifiedNode(id=f"pad{i}", entity_type=EntityType.PACKAGE, label=f"p{i}"))
+    stats = apply_attack_path_fusion(g)
+    assert stats["fused_attack_paths"] == 0
+    assert stats["skipped"] is True
+    assert "node_cap_exceeded" in stats["skipped_reason"]

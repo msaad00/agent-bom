@@ -68,7 +68,7 @@ def test_effective_permissions_uses_action_derived_admin():
     # Policy NAME is not admin-keyword, but action-derived privilege_level is admin.
     g.add_node(UnifiedNode(id="pol:c", entity_type=EntityType.POLICY, label="team-custom", attributes={"privilege_level": "admin"}))
     g.add_node(UnifiedNode(id="cloud:x", entity_type=EntityType.CLOUD_RESOURCE, label="x"))
-    g.add_edge(UnifiedEdge(source="user:dev", target="role:r", relationship=RelationshipType.TRUSTS))
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:r", relationship=RelationshipType.ASSUMES))
     g.add_edge(UnifiedEdge(source="role:r", target="pol:c", relationship=RelationshipType.ATTACHED))
     g.add_edge(UnifiedEdge(source="role:r", target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
 

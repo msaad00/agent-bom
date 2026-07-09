@@ -119,6 +119,17 @@ class BackpressureController:
 _CONTROLLERS: dict[str, BackpressureController] = {}
 _CONTROLLERS_LOCK = Lock()
 
+# Default p99 cooldown threshold per path. A path's own honest latency must sit
+# *below* its threshold or a normal single request counts as overload and trips
+# the shared cooldown, 429-storming every route on that controller. The graph
+# path builds a full unified graph on a cold snapshot (~2.6s) and a single GET
+# fans out into several store+compute samples, so the generic 2500ms budget
+# false-trips on cold traffic. Give ``graph`` explicit headroom above its honest
+# build latency; genuinely degraded builds (well past this ceiling) and the
+# concurrency limit still shed real overload.
+_DEFAULT_P99_THRESHOLD_MS: dict[str, int] = {"graph": 12_000}
+_GENERIC_P99_THRESHOLD_MS = 2500
+
 
 def _percentile(values: list[float], percentile: float) -> float:
     if not values:
@@ -159,7 +170,14 @@ def _controller_for(path: str) -> BackpressureController:
         controller = BackpressureController(
             path=path,
             max_concurrency=_env_int(_path_env_key(path, "CONCURRENCY"), 8, minimum=1, maximum=1024),
-            p99_threshold_ms=float(_env_int(_path_env_key(path, "P99_MS"), 2500, minimum=1, maximum=120_000)),
+            p99_threshold_ms=float(
+                _env_int(
+                    _path_env_key(path, "P99_MS"),
+                    _DEFAULT_P99_THRESHOLD_MS.get(path, _GENERIC_P99_THRESHOLD_MS),
+                    minimum=1,
+                    maximum=120_000,
+                )
+            ),
             cooldown_seconds=_env_int(_path_env_key(path, "COOLDOWN_SECONDS"), 10, minimum=1, maximum=3600),
             min_samples=_env_int(_path_env_key(path, "MIN_SAMPLES"), 20, minimum=1, maximum=10_000),
         )

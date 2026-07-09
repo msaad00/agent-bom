@@ -5489,6 +5489,12 @@ def _wire_network_entry_exposure_paths(
             continue
         for sn_id in nacl.get("subnet_ids", []) or []:
             sn_clean = _clean_graph_part(sn_id)
+            # A permissive NACL only implies internet reachability when the
+            # subnet is actually public (has an IGW route). A permissive NACL on
+            # a private subnet is not internet exposure — skip it to avoid a
+            # false EXPOSED_TO edge. Mirrors the IGW branch's public gate above.
+            if sn_clean not in public_subnet_ids:
+                continue
             sn_node = subnet_node_by_id.get(sn_clean)
             if sn_node:
                 _add_exposure_path_edge(

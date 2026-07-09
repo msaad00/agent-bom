@@ -2416,7 +2416,11 @@ def _discover_network_edge(
                         "vpc_id": str(acl.get("VpcId", "") or ""),
                         "is_default": bool(acl.get("IsDefault")),
                         "subnet_ids": subnet_ids,
-                        "internet_exposed": bool(network_exposure),
+                        # The AWS default NACL is allow-all inbound by design, so
+                        # its permissive rules alone are not internet exposure —
+                        # only flag non-default NACLs (downstream public-subnet
+                        # gate is the primary guard).
+                        "internet_exposed": bool(network_exposure) and not bool(acl.get("IsDefault")),
                         "network_exposure": network_exposure,
                         "location": region,
                         "account_id": account_id or "",

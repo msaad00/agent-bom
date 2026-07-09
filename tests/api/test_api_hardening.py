@@ -284,6 +284,26 @@ class TestAnonymousViewerAlongsideCredentials:
         finally:
             self._restore(monkeypatch, original_store)
 
+    def test_flag_on_combined_mode_clamps_no_auth_admin_to_viewer(self, monkeypatch):
+        """Combined mode (credentials configured + anonymous allowed) must clamp
+        the anonymous fallback to viewer even when AGENT_BOM_NO_AUTH_ROLE=admin.
+
+        Without the clamp, NO_AUTH_ROLE=admin would hand an unauthenticated caller
+        admin — they could then mint admin keys. This is the footgun, and it must
+        be closed independently of DEMO_ESTATE.
+        """
+        original_store = self._configure(monkeypatch, allow_unauthenticated=True, no_auth_role="admin")
+        try:
+            client = TestClient(app)
+            me = client.get("/v1/auth/me")
+            assert me.status_code == 200
+            assert me.json()["role"] == "viewer"
+            assert me.json()["auth_method"] == "anonymous"
+            # The clamped anonymous caller cannot mint an admin (or any) key.
+            assert client.post("/v1/auth/keys", json={"name": "escalate", "role": "admin"}).status_code == 403
+        finally:
+            self._restore(monkeypatch, original_store)
+
     def test_flag_on_session_discovery_reports_auth_not_required(self, monkeypatch):
         original_store = self._configure(monkeypatch, allow_unauthenticated=True)
         try:

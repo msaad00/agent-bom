@@ -59,13 +59,16 @@ _PRINCIPAL_TYPES = frozenset(
 )
 
 # Edges that move a principal toward effective control of a resource.
+# NOTE: CROSS_ACCOUNT_TRUST / TRUSTS are deliberately excluded. Those edges are
+# emitted as role R -> principal P where P is *allowed to assume* R, i.e. they
+# encode INBOUND trust (P -> R capability). Walking them as outbound pivots would
+# falsely claim an exposed R can move laterally INTO P's account. The genuine
+# outbound vectors are ASSUMES / CAN_ACCESS / HAS_PERMISSION.
 _LATERAL_RELS = frozenset(
     {
         RelationshipType.ASSUMES,
         RelationshipType.CAN_ACCESS,
         RelationshipType.HAS_PERMISSION,
-        RelationshipType.CROSS_ACCOUNT_TRUST,
-        RelationshipType.TRUSTS,
     }
 )
 

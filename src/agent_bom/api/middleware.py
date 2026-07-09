@@ -1068,6 +1068,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         from agent_bom.rbac import _no_auth_role
 
         role = _no_auth_role()
+        # Combined mode: when credentials (a static API key or any stored keys)
+        # are also configured, the anonymous fallback is strictly read-only —
+        # otherwise NO_AUTH_ROLE=admin would hand an unauthenticated caller admin
+        # (they could mint admin keys). NO_AUTH_ROLE elevation only applies to a
+        # pure no-auth deployment with no credentials configured at all.
+        if role != Role.VIEWER and (self._api_key or get_key_store().has_keys()):
+            role = Role.VIEWER
         required = Role(self._required_role(request.method, request.url.path))
         if not self._role_allows(role, required):
             return JSONResponse(

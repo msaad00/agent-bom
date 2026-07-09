@@ -179,6 +179,15 @@ def _cross_account_foothold_inventory() -> dict:
                 "iam_instance_profile": "arn:aws:iam::111122223333:role/cross-account-role",
             }
         ],
+        "network_interfaces": [
+            {
+                "id": "eni-1",
+                "instance_id": "i-foothold",
+                "vpc_id": "vpc-1",
+                "subnet_id": "subnet-1",
+                "public_ip": "52.1.2.3",
+            }
+        ],
         "security_groups": [
             {
                 "group_id": "sg-1",
@@ -231,13 +240,33 @@ def test_inventory_instance_profile_assumes_role_and_marks_exposed() -> None:
 
 def test_inventory_public_foothold_triggers_public_permission_lateral() -> None:
     graph = build_unified_graph_from_report({"cloud_inventory": _cross_account_foothold_inventory()})
+    instance_id = "cloud_resource:aws:ec2:instance:i-foothold"
     role_id = "role:aws:arn:aws:iam::111122223333:role/cross-account-role"
     external_account_id = "account:aws:210987654321"
 
     hits = [f for f in build_toxic_combination_findings(graph) if f.evidence.get("rule_id") == "PUBLIC_PERMISSION_LATERAL"]
-    assert hits, "expected PUBLIC_PERMISSION_LATERAL from exposed role with cross-account trust"
-    assert role_id in hits[0].evidence["node_ids"]
-    assert external_account_id in hits[0].evidence["node_ids"]
+
+    # True positive: an internet-exposed instance can pivot to the same-account
+    # admin role it is allowed to assume (a genuine outbound lateral move).
+    assert hits, "expected PUBLIC_PERMISSION_LATERAL from exposed foothold to same-account role"
+    same_account = [f for f in hits if instance_id in f.evidence["node_ids"] and role_id in f.evidence["node_ids"]]
+    assert same_account, "expected same-account instance→role lateral finding"
+
+    # Regression guard: the role→external-account edge is INBOUND trust (the
+    # external account is allowed to assume the role, not vice-versa). It must
+    # NOT be walked as an outbound pivot, so no lateral finding may claim the
+    # exposed role moves INTO the external account.
+    assert not any(external_account_id in f.evidence["node_ids"] for f in hits), (
+        "cross-account trust is inbound and must not fabricate a lateral pivot into the trusting account"
+    )
+    # The trust edge itself is still present in the graph — we stopped walking
+    # it as a lateral vector, we did not delete the relationship.
+    assert any(
+        edge.source == role_id
+        and edge.target == external_account_id
+        and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
+        for edge in graph.edges
+    )
 
 
 def test_inventory_fusion_reaches_sensitive_data_store() -> None:

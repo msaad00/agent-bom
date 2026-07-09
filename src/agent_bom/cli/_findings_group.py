@@ -110,8 +110,19 @@ def _print_triage_table(payload: JsonObject) -> None:
 
 
 def _run_request(client: AgentBomClient, callback: Any) -> JsonObject:
+    import httpx
+
     try:
         return callback(client)
+    except httpx.RequestError as exc:
+        # No server listening (or unreachable): give the same friendly
+        # guidance the `fleet` commands print instead of dumping a raw
+        # "[Errno 61] Connection refused" traceback.
+        raise click.ClickException(
+            f"Could not reach the agent-bom API server at {client.base_url}. "
+            "This command requires the API server. Start it with:\n"
+            "  agent-bom api"
+        ) from exc
     except AgentBomApiError as exc:
         raise click.ClickException(f"API request failed with {exc.status_code}: {exc.body[:500]}") from exc
     except ValueError as exc:

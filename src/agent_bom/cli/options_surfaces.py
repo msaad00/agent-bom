@@ -244,6 +244,12 @@ def cloud_options(fn):
             click.option("--aws-include-ec2", is_flag=True, help="Discover EC2 instances by tag (used with --aws)"),
             click.option("--aws-include-iam", is_flag=True, help="Enrich AWS identity graph with IAM role policies and trust principals"),
             click.option(
+                "--aws-deep",
+                is_flag=True,
+                help="Full AWS scan: enable EKS, Step Functions, EC2, and IAM discovery at once "
+                "(convenience alias for --aws-include-eks --aws-include-step-functions --aws-include-ec2 --aws-include-iam).",
+            ),
+            click.option(
                 "--aws-ec2-tag", default=None, metavar="KEY=VALUE", help="EC2 tag filter for --aws-include-ec2 (e.g. 'Environment=ai-prod')"
             ),
             click.option("--azure", "azure_flag", is_flag=True, help="Discover agents from Azure AI Foundry and Container Apps"),

@@ -389,6 +389,7 @@ def scan(
     aws_include_step_functions: bool,
     aws_include_ec2: bool,
     aws_include_iam: bool,
+    aws_deep: bool,
     aws_ec2_tag: Optional[str],
     aws_cis_benchmark: bool,
     snowflake_cis_benchmark: bool,
@@ -517,6 +518,16 @@ def scan(
     from agent_bom.cli._profiles import apply_scan_profile_defaults
 
     agent_mode = agent_mode or agent_mode_requested()
+
+    # `--aws-deep` is a convenience alias that ORs on every granular AWS
+    # discovery toggle. It never turns anything off, so it composes with any
+    # individually supplied --aws-include-* flag and leaves defaults unchanged
+    # when absent.
+    if aws_deep:
+        aws_include_eks = True
+        aws_include_step_functions = True
+        aws_include_ec2 = True
+        aws_include_iam = True
 
     if _apply_profile_defaults:
         (

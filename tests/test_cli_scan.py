@@ -1107,6 +1107,8 @@ def test_scan_sarif_does_not_auto_enable_context_graph(tmp_path):
 
 def test_scan_finding_count_parity_across_formats(tmp_path):
     """json/csv/sarif of the same scan must report identical finding counts (#3643)."""
+    project = tmp_path / "project"
+    project.mkdir()
     out = tmp_path / "out"
     out.mkdir()
 
@@ -1118,7 +1120,7 @@ def test_scan_finding_count_parity_across_formats(tmp_path):
             patch("agent_bom.cli.agents.scan_agents_sync", return_value=br),
             patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
         ):
-            return _run(["scan", "--project", str(tmp_path), "-f", fmt, "-o", str(path), "--no-auto-update-db"])
+            return _run(["scan", "--project", str(project), "-f", fmt, "-o", str(path), "--no-auto-update-db"])
 
     jf, sf, cf = out / "r.json", out / "r.sarif", out / "r.csv"
     _scan("json", jf)
@@ -1882,3 +1884,48 @@ def test_scan_positional_with_image_still_routes_to_image(tmp_path):
     assert image_calls == ["alpine:3.19"]
     # Local project discovery was skipped for image scans (no hijack via PATH).
     assert discover_calls == []
+
+
+# ---------------------------------------------------------------------------
+# --aws-deep convenience flag on the top-level scan command
+# ---------------------------------------------------------------------------
+
+
+def _capture_dry_run_plan(monkeypatch):
+    """Capture the kwargs the scan command hands to emit_dry_run_plan.
+
+    --dry-run runs after the --aws-deep flags are resolved but before any
+    real discovery, so the plan kwargs are a faithful, side-effect-free view
+    of the resolved aws_include_* toggles.
+    """
+    seen: dict = {}
+
+    def fake_plan(_con, **kwargs):
+        seen.update(kwargs)
+
+    monkeypatch.setattr("agent_bom.cli.agents.emit_dry_run_plan", fake_plan)
+    return seen
+
+
+def test_scan_aws_deep_enables_all_aws_includes(monkeypatch, tmp_path):
+    seen = _capture_dry_run_plan(monkeypatch)
+    result = _run(
+        ["scan", str(tmp_path), "--aws", "--aws-deep", "--dry-run", "--no-scan", "--no-auto-update-db", "--offline"],
+    )
+    assert result.exit_code == 0, result.output
+    assert seen["aws_include_eks"] is True
+    assert seen["aws_include_step_functions"] is True
+    assert seen["aws_include_ec2"] is True
+    assert seen["aws_include_iam"] is True
+
+
+def test_scan_without_aws_deep_leaves_aws_includes_off(monkeypatch, tmp_path):
+    seen = _capture_dry_run_plan(monkeypatch)
+    result = _run(
+        ["scan", str(tmp_path), "--aws", "--dry-run", "--no-scan", "--no-auto-update-db", "--offline"],
+    )
+    assert result.exit_code == 0, result.output
+    assert seen["aws_include_eks"] is False
+    assert seen["aws_include_step_functions"] is False
+    assert seen["aws_include_ec2"] is False
+    assert seen["aws_include_iam"] is False

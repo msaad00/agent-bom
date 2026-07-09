@@ -249,3 +249,53 @@ def test_image_and_fs_expose_ignore_and_exclude_unfixable():
         assert result.exit_code == 0
         assert "--ignore" in result.output
         assert "--exclude-unfixable" in result.output
+
+
+# ── Focused-command --format validation (CI-gate bypass guard) ───────────────
+
+
+@pytest.mark.parametrize("command", ["fs", "iac", "sbom", "image"])
+def test_focused_bad_format_is_rejected_rc2(command: str, tmp_path: Path):
+    """A bogus -f must be rejected (rc=2) like `scan`, not accepted as a free
+    string that silently disables the default fail-on-severity gate."""
+    target = tmp_path / "target"
+    if command == "sbom":
+        target.write_text("{}", encoding="utf-8")
+        args = [command, str(target), "-f", "bogus"]
+    elif command == "image":
+        args = [command, "nginx:latest", "-f", "bogus"]
+    elif command == "iac":
+        target.write_text("FROM ubuntu:latest\n", encoding="utf-8")
+        args = [command, str(target), "-f", "bogus"]
+    else:  # fs
+        target.mkdir()
+        args = [command, str(target), "-f", "bogus"]
+
+    result = CliRunner().invoke(main, args)
+
+    assert result.exit_code == 2, result.output
+    assert "bogus" in result.output
+
+
+@pytest.mark.parametrize("command", ["fs", "iac", "sbom", "image"])
+def test_focused_valid_format_is_accepted(command: str):
+    """The now-restricted choice must still advertise the shared scan formats."""
+    result = CliRunner().invoke(main, [command, "--help"])
+    assert result.exit_code == 0
+    for fmt in ("console", "json", "sarif"):
+        assert fmt in result.output
+
+
+def test_iac_missing_path_errors_nonzero(tmp_path: Path):
+    """A missing/typo'd IaC path must error, never report a clean pass."""
+    missing = tmp_path / "does-not-exist.tf"
+    result = CliRunner().invoke(main, ["iac", str(missing)])
+    assert result.exit_code != 0
+    assert "no misconfigurations" not in result.output
+
+
+def test_image_missing_tar_errors_nonzero(tmp_path: Path):
+    """A missing --tar image path must be rejected, not silently scanned."""
+    missing = tmp_path / "nope.tar"
+    result = CliRunner().invoke(main, ["image", "--tar", str(missing)])
+    assert result.exit_code == 2

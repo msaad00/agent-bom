@@ -617,6 +617,10 @@ def check(
     from agent_bom.parsers.os_parsers import enrich_os_package_context
 
     if version == "unknown":
+        # Without a version we cannot query OSV, so NOTHING was actually
+        # checked. This is an incomplete scan, not a clean pass — exit
+        # non-zero (rc=2) so a CI pre-install gate does not treat an
+        # unscanned package as safe.
         message = f"No version specified for {name}; skipping OSV lookup."
         if structured_output:
             _write_check_output(
@@ -626,11 +630,11 @@ def check(
                     ecosystems=[detected_eco],
                     verdict="skipped",
                     message=message,
-                    exit_code=0,
+                    exit_code=2,
                 ),
                 output_path,
                 agent_mode=agent_mode,
-                exit_code=0,
+                exit_code=2,
                 output_format=output_format,
             )
         else:
@@ -641,7 +645,7 @@ def check(
             warn_console = Console(stderr=True, no_color=no_color)
             warn_console.print(f"[bold yellow]⚠ WARNING: no version given for '{name}' — NOT scanned (OSV lookup skipped).[/bold yellow]")
             warn_console.print(f"  This is not a clean result. Re-run with a version: agent-bom check {name}@<version>")
-        sys.exit(0)
+        sys.exit(2)
 
     ecosystems = _resolve_check_ecosystems(name, version, ecosystem, detected_eco)
     pkgs = [Package(name=name, version=version, ecosystem=eco) for eco in ecosystems]

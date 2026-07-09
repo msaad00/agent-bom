@@ -256,6 +256,11 @@ def cloud_group(ctx: click.Context) -> None:
 @click.option("--include-eks", is_flag=True, help="Include EKS workloads (aws only).")
 @click.option("--include-ec2", is_flag=True, help="Include EC2 instances (aws only).")
 @click.option("--include-iam", is_flag=True, help="Enrich identity graph with IAM (aws only).")
+@click.option(
+    "--aws-deep",
+    is_flag=True,
+    help="Full AWS scan: enable EKS, EC2, and IAM discovery at once (convenience alias, aws only).",
+)
 @click.option("--subscription", default=None, help="Azure subscription ID (azure only).")
 @click.option("--project", default=None, help="GCP project ID (gcp only).")
 @click.option("--cis/--no-cis", default=True, show_default=True, help="Run CIS benchmark for each selected provider.")
@@ -281,6 +286,7 @@ def scan_cmd(
     include_eks: bool,
     include_ec2: bool,
     include_iam: bool,
+    aws_deep: bool,
     subscription: Optional[str],
     project: Optional[str],
     cis: bool,
@@ -313,9 +319,9 @@ def scan_cmd(
         aws_region=region,
         aws_profile=profile,
         aws_include_lambda=not skip_lambda,
-        aws_include_eks=include_eks,
-        aws_include_ec2=include_ec2,
-        aws_include_iam=include_iam,
+        aws_include_eks=include_eks or aws_deep,
+        aws_include_ec2=include_ec2 or aws_deep,
+        aws_include_iam=include_iam or aws_deep,
         azure_subscription=subscription,
         gcp_project=project,
         cis=cis,
@@ -334,6 +340,11 @@ def scan_cmd(
 @click.option("--include-eks", is_flag=True, help="Include EKS workloads")
 @click.option("--include-ec2", is_flag=True, help="Include EC2 instances")
 @click.option("--include-iam", is_flag=True, help="Enrich identity graph with IAM role policies and trust principals")
+@click.option(
+    "--aws-deep",
+    is_flag=True,
+    help="Full AWS scan: enable EKS, EC2, and IAM discovery at once (convenience alias).",
+)
 @click.option("--cis", is_flag=True, default=True, help="Run CIS benchmark (default: on)")
 @click.option("--no-cis", is_flag=True, help="Skip CIS benchmark")
 @click.option("--show-passed", is_flag=True, help="List passed CIS checks instead of collapsing them into a count.")
@@ -348,6 +359,7 @@ def aws_cmd(
     include_eks: bool,
     include_ec2: bool,
     include_iam: bool,
+    aws_deep: bool,
     cis: bool,
     no_cis: bool,
     show_passed: bool,
@@ -366,9 +378,9 @@ def aws_cmd(
         aws_region=region,
         aws_profile=profile,
         aws_include_lambda=not skip_lambda,
-        aws_include_eks=include_eks,
-        aws_include_ec2=include_ec2,
-        aws_include_iam=include_iam,
+        aws_include_eks=include_eks or aws_deep,
+        aws_include_ec2=include_ec2 or aws_deep,
+        aws_include_iam=include_iam or aws_deep,
         cis=cis and not no_cis,
         show_passed=show_passed,
         output_format=output_format,

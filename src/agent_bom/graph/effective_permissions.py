@@ -1,9 +1,11 @@
 """Effective-permission computation and privilege-escalation detection.
 
-The identity graph already records direct access (``CAN_ACCESS``), assume/trust
-relationships (``TRUSTS`` / ``CROSS_ACCOUNT_TRUST`` / ``ASSUMES``), and group
-membership (``MEMBER_OF`` into a ``GROUP``) between principals. This overlay
-resolves them into *effective* access — what a principal can reach after assuming
+The identity graph already records direct access (``CAN_ACCESS``), outbound
+assume relationships (``ASSUMES`` — principal → role it may assume), inbound
+trust (``TRUSTS`` / ``CROSS_ACCOUNT_TRUST`` — role → principal allowed to assume
+it, which this overlay does NOT walk as an assume), and group membership
+(``MEMBER_OF`` into a ``GROUP``) between principals. This overlay resolves them
+into *effective* access — what a principal can reach after assuming
 the roles it is allowed to assume and inheriting the access of the groups it
 belongs to — and emits ``HAS_PERMISSION`` edges for the transitive closure. A
 principal that reaches a resource only by assuming another role is flagged as a
@@ -16,11 +18,14 @@ scale: principals and chain depth are capped.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from agent_bom.graph.container import InteractionRisk, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.types import EntityType, RelationshipType
+
+_logger = logging.getLogger(__name__)
 
 _OVERLAY_SOURCE = "effective-permissions"
 
@@ -37,24 +42,45 @@ _PRINCIPAL_TYPES = frozenset(
     }
 )
 _RESOURCE_TYPES = frozenset({EntityType.CLOUD_RESOURCE, EntityType.RESOURCE, EntityType.DATA_STORE})
-_ASSUME_RELS = frozenset(
-    {RelationshipType.TRUSTS, RelationshipType.CROSS_ACCOUNT_TRUST, RelationshipType.ASSUMES, RelationshipType.INHERITS}
-)
+# Edges that let a principal gain the access of *another* principal by moving
+# outbound. TRUSTS / CROSS_ACCOUNT_TRUST are deliberately excluded: those edges
+# are emitted as ``role R -> trusted principal P`` where P is *allowed to assume*
+# R (INBOUND trust). Folding them into an assume walk would make an exposed R
+# inherit P's access and mint a false HAS_PERMISSION{assume_chain} edge into P's
+# account — a fabricated cross-account kill-chain (the same class #3761 removed
+# from toxic_findings). ASSUMES (principal -> role) is the genuine outbound
+# vector; INHERITS is scoped-policy inheritance, also outbound.
+_ASSUME_RELS = frozenset({RelationshipType.ASSUMES, RelationshipType.INHERITS})
 
 _MAX_PRINCIPALS = 5000
 _MAX_DEPTH = 6
 _ADMIN_PRIVILEGE_KEYWORDS = ("administratoraccess", "fullaccess", "poweruseraccess", "iamfullaccess", "*:*", "admin", "owner", "root")
 
 
-def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
+def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     """Emit HAS_PERMISSION edges + privilege-escalation signals in place.
 
     Returns counts of permission edges added and escalation chains found. Never
     raises into the builder.
     """
     principals = [n for n in graph.nodes.values() if n.entity_type in _PRINCIPAL_TYPES]
-    if not principals or len(principals) > _MAX_PRINCIPALS:
+    if not principals:
         return {"has_permission_edges": 0, "privilege_escalations": 0}
+    if len(principals) > _MAX_PRINCIPALS:
+        # Capped, NOT "no escalations". Surface a signal (log + returned reason) so
+        # consumers can distinguish "too big to compute" from "genuinely clean".
+        _logger.warning(
+            "effective-permissions capped: %d principals exceed cap %d; "
+            "privilege-escalation NOT computed for this graph (result is 'skipped', not 'none')",
+            len(principals),
+            _MAX_PRINCIPALS,
+        )
+        return {
+            "has_permission_edges": 0,
+            "privilege_escalations": 0,
+            "skipped": True,
+            "skipped_reason": f"principal_cap_exceeded:{len(principals)}>{_MAX_PRINCIPALS}",
+        }
     principal_ids = {p.id for p in principals}
 
     direct_access: dict[str, set[str]] = defaultdict(set)

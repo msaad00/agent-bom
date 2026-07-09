@@ -57,7 +57,7 @@ def _scenario() -> UnifiedGraph:
     add("user:dev", EntityType.USER, "dev")
     add("role:admin", EntityType.ROLE, "prod-admin-role")
     add("pol:admin", EntityType.POLICY, "AdministratorAccess")
-    g.add_edge(UnifiedEdge(source="user:dev", target="role:admin", relationship=RelationshipType.TRUSTS))
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:admin", relationship=RelationshipType.ASSUMES))
     g.add_edge(UnifiedEdge(source="role:admin", target="pol:admin", relationship=RelationshipType.ATTACHED))
     g.add_edge(UnifiedEdge(source="role:admin", target="cloud:bucket", relationship=RelationshipType.CAN_ACCESS))
     return g

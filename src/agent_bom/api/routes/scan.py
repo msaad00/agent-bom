@@ -365,6 +365,18 @@ def _scan_source_labels(job: ScanJob) -> list[str]:
     return labels or ["local-agents"]
 
 
+def _finding_identity(finding: dict[str, Any]) -> str:
+    """Stable identity used to collapse the default findings view.
+
+    Prefers the finding ``id`` (what Postgres' ``hub_findings_current`` keys on)
+    and falls back to the vuln:package content key when a scan row omits ``id``.
+    """
+    raw_id = finding.get("id")
+    if raw_id:
+        return str(raw_id)
+    return _finding_key(finding)
+
+
 def _finding_key(finding: dict[str, Any]) -> str:
     vuln_id = finding.get("vulnerability_id") or finding.get("cve_id") or finding.get("id") or finding.get("title") or ""
     raw_asset = finding.get("asset")
@@ -1277,6 +1289,16 @@ async def list_jobs(
 
 
 _ALLOWED_FINDING_SORTS = ("effective_reach", "cvss", "severity")
+_ALLOWED_FINDING_SEVERITIES = (
+    "critical",
+    "high",
+    "medium",
+    "low",
+    "info",
+    "informational",
+    "none",
+    "unknown",
+)
 
 
 def _resolve_bulk_findings_total(
@@ -1468,7 +1490,18 @@ async def list_findings(
     tenant_id = _tenant_id(request)
     sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
     if sort_key not in _ALLOWED_FINDING_SORTS:
-        sort_key = "effective_reach"
+        # Silently falling back masked typos as "wrong order"; reject clearly.
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid sort '{sort}'; accepted values: {', '.join(_ALLOWED_FINDING_SORTS)}",
+        )
+    if severity is not None and severity.strip().lower() not in _ALLOWED_FINDING_SEVERITIES:
+        # A bogus severity previously returned an empty 200 that reads as
+        # "no findings" — a trap. Reject with the accepted set instead.
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid severity '{severity}'; accepted values: {', '.join(_ALLOWED_FINDING_SEVERITIES)}",
+        )
     if cursor and offset:
         raise HTTPException(status_code=400, detail="cursor and offset are mutually exclusive")
     if cursor:
@@ -1504,13 +1537,25 @@ async def list_findings(
     else:
         include_bulk_total = not cursor and cached_bulk_total is None
 
-    scan_findings: list[dict[str, Any]] = []
-    for job in _completed_jobs_for_tenant(tenant_id):
+    # Default (no ``scan_id``) view collapses to the current state per finding:
+    # re-scanning a project emits the same finding ``id`` under a fresh
+    # ``scan_id``, and the in-memory store retains every completed job. Without
+    # deduping, ``total`` inflated by one full copy per re-scan (Postgres reads
+    # ``hub_findings_current`` which already dedupes). Iterate jobs oldest-first
+    # so the latest occurrence of each finding id wins; ``?scan_id=`` still
+    # returns that scan's rows verbatim.
+    deduped: dict[str, dict[str, Any]] = {}
+    for job in sorted(
+        _completed_jobs_for_tenant(tenant_id),
+        key=lambda job: (job.completed_at or "", job.created_at or "", job.job_id),
+    ):
         if scan_id and job.job_id != scan_id:
             continue
         if job.child_job_ids and job.job_id != scan_id:
             continue
-        scan_findings.extend(_iter_scan_findings(job))
+        for row in _iter_scan_findings(job):
+            deduped[_finding_identity(row)] = row
+    scan_findings: list[dict[str, Any]] = list(deduped.values())
     if severity:
         normalized = severity.lower()
         scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]

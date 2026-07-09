@@ -555,12 +555,45 @@ async def ingest_traces(request: Request, body: dict) -> dict:
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
+# Extra (non-declared) keys that still mark a payload as a real pushed report.
+# ``PushPayload`` is ``extra="allow"`` so the full scan report rides through, but
+# that also let arbitrary junk validate into an empty ScanJob. A genuine push
+# always sets at least one declared field (source_id/agents/blast_radii/…) or
+# carries one of these canonical report keys.
+_RECOGNIZED_PUSH_EXTRA_KEYS = frozenset(
+    {
+        "blast_radius",
+        "scan_id",
+        "summary",
+        "posture_scorecard",
+        "findings",
+        "packages",
+        "vulnerabilities",
+        "agent_projects",
+        "report",
+        "observed_at",
+    }
+)
+
+
 @router.post("/results/push", tags=["push"], status_code=201)
 async def receive_push(request: Request, body: PushPayload) -> dict:
     """Receive pushed scan results from a CLI instance.
 
     Stores as a completed ScanJob with source metadata.
     """
+    # ``model_fields_set`` includes ``extra="allow"`` keys, so intersect with the
+    # declared fields to see whether the client set a real push field.
+    provided_declared = body.model_fields_set & set(type(body).model_fields)
+    extra_keys = set(body.model_extra or {})
+    if not provided_declared and not (extra_keys & _RECOGNIZED_PUSH_EXTRA_KEYS):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "results push payload missing recognized fields; expected at least one of "
+                "source_id, agents, blast_radii, warnings, summary"
+            ),
+        )
     tenant_id = _tenant_id(request)
     job = ScanJob(
         job_id=str(uuid.uuid4()),

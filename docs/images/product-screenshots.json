@@ -1,5 +1,5 @@
 {
-  "release_version": "0.94.1",
+  "release_version": "0.94.2",
   "captured_at": "2026-07-07T03:31:12.952Z",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — simulated estate label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
@@ -7,67 +7,67 @@
       "path": "dashboard-live.png",
       "page": "/?capture=1",
       "scope": "Risk overview top frame with headline KPIs, posture grade, and start of attack paths",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
       "scope": "Risk overview mid-frame with attack paths and exposure KPIs",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
       "scope": "Focused agent mesh graph across the active agent, MCP server, package, tool, and CVE path, cropped to the product graph surface",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "gateway-policies-live.png",
       "page": "/gateway?capture=1",
       "scope": "Runtime gateway KPI rollup and live tool-call feed",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "security-graph-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "lineage-graph-live.png",
       "page": "/graph?capture=1&scan=scan-proof-ai-platform",
       "scope": "Expanded but bounded lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "context-map-live.png",
       "page": "/context?capture=1",
       "scope": "Agent-scoped context map showing reachable MCP servers and lateral movement side panel",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "fleet-state-live.png",
       "page": "/fleet?capture=1",
       "scope": "Expanded fleet row showing lifecycle distribution, approved state, owner metadata, environment label, and discovery state",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "identity-audit-live.png",
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with HMAC integrity counters and agent identity issue, rotate, revoke events",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "dependency-map-live.png",
       "page": "/?tab=analytics",
       "scope": "Dashboard analytics tab with package risk charts, compound issues, and agent topology",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     },
     {
       "path": "remediation-live.png",
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation table with prioritized packages and framework context",
-      "visible_version": "0.94.1"
+      "visible_version": "0.94.2"
     }
   ]
 }

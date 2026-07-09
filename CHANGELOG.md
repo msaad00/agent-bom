@@ -9,6 +9,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.94.2] - 2026-07-09
+
+Accuracy, security-hardening, and cloud-graph release on top of 0.94.1.
+
+### Added
+- Cloud graph now rolls up the account → resource `OWNS` hierarchy and materializes live `EXPOSED_TO` network-entry paths, cross-account inventory, and toxic/fusion findings across accounts (evidence-grounded, single-tenant per report).
+- Opt-in anonymous read-only surface: with `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1` (default off), credential-less callers are served as the configured `NO_AUTH_ROLE` (default `viewer`) even while API keys are configured, so a public read-only instance can coexist with key-based elevation.
+
+### Fixed
+- **Reachability accuracy — no false internet exposure**: a permissive or default network ACL no longer fabricates an `EXPOSED_TO` edge for private subnets; network-entry exposure is gated to public subnets (with an internet route), matching the internet-gateway path.
+- **Reachability accuracy — cross-account trust direction**: inbound assume-role trust edges (`CROSS_ACCOUNT_TRUST` / `TRUSTS`) are no longer walked as outbound lateral pivots, eliminating false cross-account kill-chains from a public foothold.
+- **Anonymous access is read-only in combined mode**: when credentials are configured, the anonymous fallback is clamped to `viewer` regardless of `NO_AUTH_ROLE`, so it can never grant an unauthenticated caller admin.
+- **Fresh-deploy demo estate**: the graph database now creates its parent directory, so a seeded demo on a fresh volume (or offline container) no longer crashes to an empty dashboard with "unable to open database file".
+- Compliance surface no longer duplicates CIS checks across repeated scans of the same cloud; scan-result persistence failures are surfaced instead of silently reported as success.
+- Snowpark Container Services native-app install blockers (image-tag drift, missing external-access integrations, DDL ordering) and deployment hardening (opt-in data-plane grants, EKS API S3 IRSA, upgrade runbook).
+
+### Changed
+- Sign-in screen rebuilt into a single, clear API-key flow with real key-provisioning guidance; internal auth-mode strings and reverse-proxy header jargon removed from the default view.
+- Consolidated weekly dependency, GitHub Action, and UI/SDK toolchain updates.
+
 ## [0.94.1] - 2026-07-08
 
 Demo, deployment, and hygiene release on top of 0.94.0 (no scanner-behavior changes).
@@ -2231,7 +2251,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.94.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.94.2...HEAD
+[0.94.2]: https://github.com/msaad00/agent-bom/compare/v0.94.1...v0.94.2
 [0.94.1]: https://github.com/msaad00/agent-bom/compare/v0.94.0...v0.94.1
 [0.94.0]: https://github.com/msaad00/agent-bom/compare/v0.93.5...v0.94.0
 [0.93.5]: https://github.com/msaad00/agent-bom/compare/v0.93.0...v0.93.5

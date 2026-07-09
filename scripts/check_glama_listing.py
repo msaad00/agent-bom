@@ -22,6 +22,10 @@ GLAMA_DOCKERFILE = "integrations/glama/Dockerfile"
 GLAMA_MANIFESTS = (ROOT / "glama.json", ROOT / "integrations" / "glama" / "server.json")
 
 
+def _is_current_checkout_ref(git_ref: str) -> bool:
+    return git_ref in {"HEAD", ".", ""}
+
+
 def _read_repo_file(relative_path: str, *, git_ref: str | None = None) -> str:
     if not git_ref:
         return (ROOT / relative_path).read_text(encoding="utf-8")
@@ -33,6 +37,10 @@ def _read_repo_file(relative_path: str, *, git_ref: str | None = None) -> str:
             stderr=subprocess.PIPE,
         )
     except subprocess.CalledProcessError as exc:
+        if _is_current_checkout_ref(git_ref):
+            checkout_path = ROOT / relative_path
+            if checkout_path.exists():
+                return checkout_path.read_text(encoding="utf-8")
         detail = (exc.stderr or "").strip()
         raise FileNotFoundError(f"{relative_path} at {git_ref}: {detail}") from exc
 

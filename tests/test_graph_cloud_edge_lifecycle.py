@@ -12,6 +12,7 @@ from agent_bom.api.server import app
 from agent_bom.api.stores import set_graph_store
 from agent_bom.db.graph_store import changed_edges_between_scans, diff_snapshots, save_graph
 from agent_bom.graph.builder import build_unified_graph_from_report
+from agent_bom.graph.toxic_findings import build_toxic_combination_findings
 from agent_bom.graph.types import EntityType, RelationshipType
 from tests.test_graph_api import _init_db
 
@@ -159,3 +160,103 @@ def test_cloud_inventory_snapshots_diff_exposed_edges(tmp_path) -> None:
     finally:
         set_graph_store(original)
         conn.close()
+
+
+def _cross_account_foothold_inventory() -> dict:
+    """Public EC2 + instance-profile role with cross-account trust and a PII bucket."""
+    return {
+        "provider": "aws",
+        "status": "ok",
+        "account_id": "111122223333",
+        "region": "us-east-1",
+        "instances": [
+            {
+                "instance_id": "i-foothold",
+                "name": "web",
+                "vpc_id": "vpc-1",
+                "subnet_id": "subnet-1",
+                "security_group_ids": ["sg-1"],
+                "iam_instance_profile": "arn:aws:iam::111122223333:role/cross-account-role",
+            }
+        ],
+        "security_groups": [
+            {
+                "group_id": "sg-1",
+                "name": "web-sg",
+                "vpc_id": "vpc-1",
+                "internet_exposed": True,
+                "network_exposure": [{"scope": "internet", "from_port": 443, "to_port": 443, "protocol": "tcp"}],
+            }
+        ],
+        "buckets": [
+            {
+                "name": "pii-lake",
+                "arn": "arn:aws:s3:::pii-lake",
+                "publicly_accessible": True,
+                "tags": {"data-classification": "pii"},
+            }
+        ],
+        "users": [],
+        "roles": [
+            {
+                "name": "cross-account-role",
+                "arn": "arn:aws:iam::111122223333:role/cross-account-role",
+                "principal_type": "role",
+                "privilege_level": "admin",
+                "policies": [],
+                "trust_principals": [
+                    {
+                        "principal_type": "account",
+                        "principal_id": "210987654321",
+                        "principal_name": "210987654321",
+                        "relationship": "cross_account_trust",
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_inventory_instance_profile_assumes_role_and_marks_exposed() -> None:
+    graph = build_unified_graph_from_report({"cloud_inventory": _cross_account_foothold_inventory()})
+    inst_id = "cloud_resource:aws:ec2:instance:i-foothold"
+    role_id = "role:aws:arn:aws:iam::111122223333:role/cross-account-role"
+
+    assert any(
+        edge.source == inst_id and edge.target == role_id and edge.relationship == RelationshipType.ASSUMES
+        for edge in graph.edges
+    )
+    assert graph.nodes[role_id].attributes.get("internet_exposed") is True
+
+
+def test_inventory_public_foothold_triggers_public_permission_lateral() -> None:
+    graph = build_unified_graph_from_report({"cloud_inventory": _cross_account_foothold_inventory()})
+    role_id = "role:aws:arn:aws:iam::111122223333:role/cross-account-role"
+    external_account_id = "account:aws:210987654321"
+
+    hits = [f for f in build_toxic_combination_findings(graph) if f.evidence.get("rule_id") == "PUBLIC_PERMISSION_LATERAL"]
+    assert hits, "expected PUBLIC_PERMISSION_LATERAL from exposed role with cross-account trust"
+    assert role_id in hits[0].evidence["node_ids"]
+    assert external_account_id in hits[0].evidence["node_ids"]
+
+
+def test_inventory_fusion_reaches_sensitive_data_store() -> None:
+    """Live inventory → overlays → attack-path fusion end-to-end (#3742)."""
+    graph = build_unified_graph_from_report({"cloud_inventory": _cross_account_foothold_inventory()})
+    role_id = "role:aws:arn:aws:iam::111122223333:role/cross-account-role"
+    bucket_id = "cloud_resource:aws:s3:bucket:pii-lake"
+    data_store_id = f"data_store:{bucket_id}"
+
+    assert data_store_id in graph.nodes
+    assert graph.nodes[data_store_id].attributes.get("data_sensitivity") == "sensitive"
+    assert any(
+        edge.source == role_id
+        and edge.target == "account:aws:210987654321"
+        and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
+        for edge in graph.edges
+    )
+
+    fused = [path for path in graph.attack_paths if path.summary.startswith("Internet-exposed ")]
+    assert fused, "expected fused kill-chain from inventory-built graph"
+    assert any(path.target == data_store_id for path in fused)
+    assert any(role_id in path.hops for path in fused)

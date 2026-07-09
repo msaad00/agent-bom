@@ -4752,6 +4752,13 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                 graph, principal, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
             )
 
+    _wire_instance_profile_roles(
+        graph,
+        inventory,
+        provider=provider,
+        instance_node_by_id=instance_node_by_id,
+    )
+
     # ── IAM / Entra groups → GROUP nodes + MEMBER_OF edges from members ──
     # A group carries its members' shared access (its attached policies / bound
     # roles). Wiring the group as a principal with CAN_ACCESS, plus MEMBER_OF
@@ -4763,6 +4770,53 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             _add_inventory_group(
                 graph, group, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
             )
+
+
+def _wire_instance_profile_roles(
+    graph: UnifiedGraph,
+    inventory: dict[str, Any],
+    *,
+    provider: str,
+    instance_node_by_id: dict[str, str],
+) -> None:
+    """Link EC2 instance profiles to IAM roles and mark lateral roles exposed."""
+    role_by_name = {
+        _clean_graph_part(role.get("name")): role
+        for role in inventory.get("roles", []) or []
+        if isinstance(role, dict) and _clean_graph_part(role.get("name"))
+    }
+    for instance in inventory.get("instances", []) or []:
+        if not isinstance(instance, dict):
+            continue
+        inst_id = _clean_graph_part(instance.get("instance_id"))
+        inst_node = instance_node_by_id.get(inst_id)
+        if not inst_node:
+            continue
+        profile = _clean_graph_part(instance.get("iam_instance_profile"))
+        if not profile:
+            continue
+        role_name = ""
+        if ":role/" in profile:
+            role_name = profile.rsplit(":role/", 1)[-1].split("/")[0]
+        elif profile in role_by_name:
+            role_name = profile
+        role = role_by_name.get(role_name)
+        if role is None:
+            continue
+        role_arn = _clean_graph_part(role.get("arn")) or role_name
+        role_node_id = _identity_node_id(EntityType.ROLE, provider, role_arn)
+        if role_node_id not in graph.nodes:
+            continue
+        graph.add_edge(
+            UnifiedEdge(
+                source=inst_node,
+                target=role_node_id,
+                relationship=RelationshipType.ASSUMES,
+                evidence={"source": "cloud-inventory", "reason": "ec2_instance_profile"},
+            )
+        )
+        if _instance_internet_reachable(graph, inst_node, instance):
+            graph.nodes[role_node_id].attributes["internet_exposed"] = True
 
 
 def _add_management_group_hierarchy(graph: UnifiedGraph, inventory: dict[str, Any], *, provider: str, data_sources: list[str]) -> None:

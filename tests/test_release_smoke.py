@@ -13,16 +13,7 @@ def test_release_smoke_script_is_valid_shell() -> None:
 
 def test_release_smoke_golden_path(tmp_path: Path) -> None:
     """Offline demo scan smoke must pass on every CI run."""
-    env = dict(os.environ)
-    for key in (
-        "AGENT_BOM_API_KEY",
-        "AGENT_BOM_API_KEYS",
-        "AGENT_BOM_DB",
-        "AGENT_BOM_GRAPH_DB",
-        "AGENT_BOM_POSTGRES_URL",
-        "AGENT_BOM_RELEASE_SMOKE_API_URL",
-    ):
-        env.pop(key, None)
+    env = {key: value for key, value in os.environ.items() if not key.startswith("AGENT_BOM_")}
     env.update(
         {
             "AGENT_BOM_RELEASE_SMOKE_SKIP_UI": "1",

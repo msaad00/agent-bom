@@ -19,6 +19,9 @@ def test_how_it_works_includes_pipeline_steps() -> None:
     assert 'fill="#FF9900"' in svg
     assert "cl-azure-" in svg
     assert "Snowflake" in svg
+    # Snowflake mark must carry explicit fill when inlined (root <svg fill= is stripped).
+    snowflake_idx = svg.index("Snowflake")
+    assert 'fill="#29B5E8"' in svg[snowflake_idx - 500 : snowflake_idx]
 
 
 def test_architecture_includes_core_surfaces() -> None:

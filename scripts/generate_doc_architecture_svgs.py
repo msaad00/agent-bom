@@ -347,8 +347,11 @@ ICONS = {
 def _vendor_logo_inner(vendor: str, *, uid: str) -> str:
     """Inline public vector mark from ui/public/logos (same assets as the dashboard)."""
     raw = (VENDOR_LOGO_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
+    root_fill_match = re.search(r"<svg[^>]*\sfill=\"([^\"]+)\"", raw)
     inner = re.sub(r"^.*?<svg[^>]*>", "", raw, count=1, flags=re.DOTALL)
     inner = re.sub(r"</svg>\s*$", "", inner, flags=re.DOTALL)
+    if root_fill_match and 'fill="' not in inner:
+        inner = inner.replace("<path ", f'<path fill="{root_fill_match.group(1)}" ', 1)
     for gid in sorted(set(re.findall(r'id="([^"]+)"', inner)), key=len, reverse=True):
         namespaced = f"{uid}-{gid}"
         inner = inner.replace(f'id="{gid}"', f'id="{namespaced}"')

@@ -1189,7 +1189,21 @@ def _run_scan_sync(job: ScanJob) -> None:
             terminal_status = job.status
         # Persist final state
         store = _get_store()
-        store.put(job)
+        try:
+            store.put(job)
+        except Exception as persist_exc:  # noqa: BLE001
+            # Persistence is the durability boundary. If the store rejects the
+            # final write, this result only ever existed in this process's
+            # memory: it will not survive a restart and will never reach the
+            # compliance/graph reads that load from the store. Reporting it as a
+            # clean success would be a lie, so surface the failure on the job
+            # the caller polls rather than swallowing it in a finally block.
+            _logger.error("Scan result persistence failed job=%s: %s", job.job_id, persist_exc)
+            with lock:
+                job.status = JobStatus.FAILED
+                job.error = f"result not persisted: {sanitize_error(persist_exc)}"
+                job.progress.append(f"Persistence failed: {sanitize_error(persist_exc)}")
+                terminal_status = job.status
         # Default to "retains in memory" so a store that does not declare the
         # attribute (e.g. test mocks, third-party plugins) keeps a usable job
         # result for the caller. Durable stores that fully serialize on put()

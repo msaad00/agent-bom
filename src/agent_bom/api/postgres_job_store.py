@@ -338,12 +338,26 @@ class PostgresJobStore:
             params.append(int(priority))
         params.extend([max(1, min(int(limit), 500)), max(0, int(offset))])
         with _tenant_connection(self._pool) as conn:
+            # Each scan inserts a fresh set of rows keyed by its own scan_id
+            # (the table is insert-only, deleted only per scan_id). Without a
+            # latest-per-check filter, the compliance surface would stack every
+            # historical scan's checks and show the same (cloud, check_id) N
+            # times after N scans. DISTINCT ON collapses each logical check to
+            # its most recent measurement; the outer query then restores the
+            # caller's measured_at/priority ordering and applies pagination.
             rows = conn.execute(
                 f"""SELECT scan_id, team_id, cloud, check_id, title, status, severity, cis_section, evidence,
                           resource_ids, remediation, fix_cli, fix_console, effort, priority, guardrails,
                           requires_human_review, measured_at
-                   FROM cis_benchmark_checks
-                   WHERE {" AND ".join(clauses)}
+                   FROM (
+                       SELECT DISTINCT ON (cloud, check_id)
+                              scan_id, team_id, cloud, check_id, title, status, severity, cis_section, evidence,
+                              resource_ids, remediation, fix_cli, fix_console, effort, priority, guardrails,
+                              requires_human_review, measured_at
+                       FROM cis_benchmark_checks
+                       WHERE {" AND ".join(clauses)}
+                       ORDER BY cloud, check_id, measured_at DESC
+                   ) latest
                    ORDER BY measured_at DESC, priority ASC, cloud, check_id
                    LIMIT %s OFFSET %s""",  # nosec B608 - clauses are fixed fragments, values are parameters.
                 params,

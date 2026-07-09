@@ -195,6 +195,62 @@ def test_list_cis_checks_filters_scan_job_fallback():
     assert body["checks"][0]["remediation"]["priority"] == 1
 
 
+def _seed_cis_scan(job_id: str, completed_at: str, status: str, tenant_id: str = "tenant-alpha") -> ScanJob:
+    """A completed scan carrying a single AWS CIS check 1.5 with a given status/time."""
+    job = ScanJob(
+        job_id=job_id,
+        tenant_id=tenant_id,
+        status=JobStatus.DONE,
+        created_at=completed_at,
+        completed_at=completed_at,
+        request=ScanRequest(),
+    )
+    job.result = {
+        "scan_id": job_id,
+        "cis_benchmark": {
+            "checks": [
+                {
+                    "check_id": "1.5",
+                    "title": "Ensure MFA is enabled for the root user",
+                    "status": status,
+                    "severity": "high",
+                    "cis_section": "1 - Identity and Access Management",
+                    "evidence": f"status={status}",
+                    "resource_ids": ["root"],
+                    "remediation": {"priority": 1},
+                }
+            ]
+        },
+    }
+    return job
+
+
+def test_list_cis_checks_fallback_dedupes_repeat_scans_to_latest():
+    """Two scans of the same cloud must not stack duplicate check_id rows.
+
+    The insert-only CIS table keys rows by scan_id, so N scans of one cloud
+    would otherwise surface the same (cloud, check_id) N times. The in-memory
+    fallback must collapse to the latest measurement, mirroring the columnar
+    store's DISTINCT ON dedup.
+    """
+    store = InMemoryJobStore()
+    set_job_store(store)
+    store.put(_seed_cis_scan("scan-old", "2026-01-01T00:00:00Z", status="fail"))
+    store.put(_seed_cis_scan("scan-new", "2026-02-01T00:00:00Z", status="pass"))
+
+    class _NoAnalytics:
+        def query_cis_benchmark_checks(self, **_kwargs):
+            return []
+
+    set_analytics_store(_NoAnalytics())
+    body = asyncio.run(compliance_routes.list_cis_benchmark_checks(_request("tenant-alpha"), cloud="aws"))
+    assert body["source"] == "scan_jobs"
+    aws_15 = [row for row in body["checks"] if row["check_id"] == "1.5"]
+    assert len(aws_15) == 1  # one logical check, not one-per-scan
+    assert aws_15[0]["status"] == "pass"  # latest scan wins
+    assert body["count"] == 1
+
+
 def test_list_cis_checks_prefers_columnar_store():
     class _ColumnarStore(InMemoryJobStore):
         def query_cis_benchmark_checks(self, tenant_id: str, **kwargs):

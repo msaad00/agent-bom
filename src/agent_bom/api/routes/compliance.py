@@ -522,7 +522,19 @@ async def list_cis_benchmark_checks(
         and (priority is None or int(row["priority"]) == priority)
     ]
     filtered.sort(key=lambda row: (str(row.get("measured_at") or ""), -int(row.get("priority") or 0)), reverse=True)
-    return {"checks": filtered[safe_offset : safe_offset + safe_limit], "count": len(filtered), "source": "scan_jobs"}
+    # Collapse to the latest measurement per logical (cloud, check_id) so this
+    # in-memory fallback matches the columnar store's DISTINCT ON dedup: without
+    # it, N scans of the same cloud would stack N copies of each check. Rows are
+    # already sorted newest-first, so the first occurrence wins.
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in filtered:
+        key = (str(row.get("cloud") or ""), str(row.get("check_id") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return {"checks": deduped[safe_offset : safe_offset + safe_limit], "count": len(deduped), "source": "scan_jobs"}
 
 
 def _coerce_cis_row(row: dict[str, Any]) -> dict[str, Any]:

@@ -28,8 +28,14 @@ from agent_bom.demo_advisories import seed_demo_advisories
 # Confirmed clean via `agent-bom check <name>@<version> --ecosystem <eco>`:
 # - semver@7.5.2: paired with vulnerable axios@1.4.0 in the demo to show
 #   that not every dependency is on fire.
+#
+# Intentional malicious/typosquat sample (flagged by the typosquat heuristic,
+# not by a CVE advisory — so it correctly resolves to no advisory row):
+# - reqeusts@2.99.0: typosquat of "requests"; demonstrates the
+#   malicious-package differentiator. See test_typosquat_package_is_flagged.
 NO_KNOWN_VULNS_ALLOWLIST: set[tuple[str, str, str]] = {
     ("npm", "semver", "7.5.2"),
+    ("pypi", "reqeusts", "2.99.0"),
 }
 
 
@@ -92,3 +98,24 @@ def test_demo_inventory_has_critical_or_high_for_screenshot_paths(vuln_db) -> No
     assert high_or_above, (
         "Demo inventory yields no HIGH or CRITICAL findings — the README blast-radius story needs at least one to remain credible."
     )
+
+
+def test_demo_inventory_has_at_least_two_criticals() -> None:
+    """The estate ships a couple of genuine CRITICALs (PyYAML + LangChain RCE)."""
+    from agent_bom.demo_advisories import DEMO_ADVISORIES
+
+    demo_pkgs = {(eco, name) for eco, name, _ in _all_demo_packages()}
+    criticals = {
+        adv.vuln_id
+        for adv in DEMO_ADVISORIES
+        if adv.severity == "critical" and (adv.ecosystem, adv.package) in demo_pkgs
+    }
+    assert len(criticals) >= 2, f"expected >=2 critical advisories on demo packages, got {criticals}"
+
+
+def test_typosquat_package_is_flagged() -> None:
+    """The intentional typosquat sample must trip the malicious-package heuristic."""
+    from agent_bom.malicious import check_typosquat
+
+    assert ("pypi", "reqeusts", "2.99.0") in _all_demo_packages(), "typosquat sample missing from demo inventory"
+    assert check_typosquat("reqeusts", "pypi") == "requests"

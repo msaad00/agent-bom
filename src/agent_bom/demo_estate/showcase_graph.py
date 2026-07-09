@@ -73,21 +73,26 @@ def build_showcase_graph(
         g.add_edge(UnifiedEdge(source=s, target=d, relationship=r, **kw))
 
     agents = {
-        "billing-agent": "Billing Copilot",
-        "support-agent": "Support Copilot",
-        "data-pipeline-agent": "Data Pipeline Agent",
-        "devops-agent": "DevOps Agent",
-        "analytics-agent": "Analytics Agent",
+        "cursor": "Cursor IDE Agent",
+        "langchain-service": "LangChain Service Agent",
+        "support-copilot": "Support Copilot",
+        "data-pipeline": "Data Pipeline Agent",
+        "claude-desktop": "Claude Desktop Agent",
     }
     for aid, label in agents.items():
         node(f"agent:{aid}", EntityType.AGENT, label, environment="production")
 
     servers = {
-        "mcp-fs": ("billing-agent", ["read_file", "write_file", "run_shell"]),
-        "mcp-db": ("data-pipeline-agent", ["sql_query", "sql_exec"]),
-        "mcp-http": ("support-agent", ["http_get", "http_post"]),
-        "mcp-deploy": ("devops-agent", ["deploy", "rollback", "exec_remote"]),
-        "mcp-warehouse": ("analytics-agent", ["query_warehouse"]),
+        "filesystem-server": ("cursor", ["read_file", "write_file", "list_directory"]),
+        "shell-runner-server": ("cursor", ["run_shell", "exec_command", "read_file"]),
+        "llm-orchestrator-server": ("langchain-service", ["run_chain", "eval_expression", "http_get"]),
+        "vector-db-server": ("langchain-service", ["query_vectors", "upsert_vectors"]),
+        "helpdesk-server": ("support-copilot", ["create_ticket", "search_tickets", "send_reply"]),
+        "email-server": ("support-copilot", ["send_email", "list_inbox"]),
+        "warehouse-server": ("data-pipeline", ["run_query", "execute_sql", "export_csv"]),
+        "etl-server": ("data-pipeline", ["transform_image", "load_data"]),
+        "github-server": ("claude-desktop", ["create_issue", "search_repos", "push_files"]),
+        "team-chat-server": ("claude-desktop", ["send_message", "list_channels"]),
     }
     for sid, (owner, tools) in servers.items():
         node(f"server:{sid}", EntityType.SERVER, sid)
@@ -97,29 +102,75 @@ def build_showcase_graph(
             node(tid, EntityType.TOOL, tname)
             edge(f"server:{sid}", tid, RelationshipType.PROVIDES_TOOL)
 
+    # Real CVEs on real package@versions — mirrors the demo advisory catalog.
     pkgs = {
-        "express@4.17.1": ("mcp-http", "CVE-2024-29041", "critical", 9.3),
-        "pyyaml@5.3": ("mcp-db", "CVE-2020-14343", "critical", 9.8),
-        "requests@2.19.0": ("mcp-fs", "CVE-2023-32681", "high", 7.5),
-        "log4j@2.14.0": ("mcp-deploy", "CVE-2021-44228", "critical", 10.0),
-        "pillow@9.0.0": ("mcp-warehouse", "CVE-2022-22817", "high", 8.1),
+        "pyyaml@5.3": ("shell-runner-server", "CVE-2020-14343", "critical", 9.8),
+        "langchain@0.0.150": ("llm-orchestrator-server", "CVE-2023-36258", "critical", 9.8),
+        "pillow@9.0.0": ("etl-server", "CVE-2023-4863", "high", 8.8),
+        "jsonwebtoken@8.5.1": ("helpdesk-server", "CVE-2022-23529", "high", 7.6),
+        "axios@1.4.0": ("helpdesk-server", "CVE-2023-45857", "high", 6.5),
+        "cryptography@39.0.0": ("warehouse-server", "CVE-2023-50782", "high", 7.5),
+        "ws@8.5.0": ("filesystem-server", "CVE-2024-37890", "high", 7.5),
+        "flask@2.2.0": ("team-chat-server", "CVE-2023-30861", "high", 7.5),
+        "certifi@2022.12.7": ("email-server", "CVE-2023-37920", "high", 7.5),
+        "lodash@4.17.20": ("github-server", "CVE-2021-23337", "high", 7.2),
+        "express@4.17.1": ("filesystem-server", "CVE-2024-29041", "medium", 6.1),
+        "requests@2.28.0": ("vector-db-server", "CVE-2023-32681", "medium", 6.1),
+        "jinja2@3.0.0": ("team-chat-server", "CVE-2024-22195", "medium", 5.4),
     }
+    kev_cves = {"CVE-2023-4863"}
     for purl, (sid, cve, sev, score) in pkgs.items():
         pid = f"pkg:{purl}"
         node(pid, EntityType.PACKAGE, purl)
         edge(f"server:{sid}", pid, RelationshipType.DEPENDS_ON)
         vid = f"vuln:{cve}"
-        node(vid, EntityType.VULNERABILITY, cve, severity=sev, risk_score=score)
+        node(vid, EntityType.VULNERABILITY, cve, severity=sev, risk_score=score, is_kev=cve in kev_cves)
         edge(pid, vid, RelationshipType.VULNERABLE_TO)
 
-    node("cred:aws-key", EntityType.CREDENTIAL, "AWS_SECRET_ACCESS_KEY")
-    edge("server:mcp-deploy", "cred:aws-key", RelationshipType.EXPOSES_CRED)
+    # Malicious/typosquat package — the malicious-package differentiator.
+    node(
+        "pkg:reqeusts@2.99.0",
+        EntityType.PACKAGE,
+        "reqeusts@2.99.0",
+        severity="critical",
+        risk_score=9.1,
+        is_malicious=True,
+        malicious_reason="Possible typosquat of 'requests'",
+    )
+    edge("server:etl-server", "pkg:reqeusts@2.99.0", RelationshipType.DEPENDS_ON)
+    node("vuln:MAL-2024-reqeusts", EntityType.VULNERABILITY, "MAL-2024-reqeusts", severity="critical", risk_score=9.1)
+    edge("pkg:reqeusts@2.99.0", "vuln:MAL-2024-reqeusts", RelationshipType.VULNERABLE_TO)
+
+    # Credential-backed env on servers — lights up credential-exposure edges.
+    creds = {
+        "cred:aws-secret": ("AWS_SECRET_ACCESS_KEY", "shell-runner-server"),
+        "cred:openai-key": ("OPENAI_API_KEY", "llm-orchestrator-server"),
+        "cred:db-url": ("DATABASE_URL", "vector-db-server"),
+        "cred:jwt-secret": ("JWT_SECRET", "helpdesk-server"),
+        "cred:snowflake-pw": ("SNOWFLAKE_PASSWORD", "warehouse-server"),
+        "cred:gcs-key": ("GCS_SERVICE_ACCOUNT_KEY", "etl-server"),
+        "cred:github-token": ("GITHUB_TOKEN", "github-server"),
+        "cred:slack-token": ("SLACK_BOT_TOKEN", "team-chat-server"),
+    }
+    for cid, (label, sid) in creds.items():
+        node(cid, EntityType.CREDENTIAL, label)
+        edge(f"server:{sid}", cid, RelationshipType.EXPOSES_CRED)
+
+    # Hero blast-radius chain: the PyYAML RCE on shell-runner-server reaches an
+    # AWS credential AND the run_shell tool → potential RCE. This is the top
+    # exposure path the graph/posture surfaces should headline.
+    edge("vuln:CVE-2020-14343", "cred:aws-secret", RelationshipType.EXPLOITABLE_VIA, weight=9.8)
+    edge("vuln:CVE-2020-14343", "tool:shell-runner-server:run_shell", RelationshipType.EXPLOITABLE_VIA, weight=9.8)
+    edge("cred:aws-secret", "tool:shell-runner-server:run_shell", RelationshipType.REACHES_TOOL)
+    # Second high-signal chain: LangChain RCE reaches the eval_expression tool.
+    edge("vuln:CVE-2023-36258", "tool:llm-orchestrator-server:eval_expression", RelationshipType.EXPLOITABLE_VIA, weight=9.8)
+    edge("vuln:CVE-2023-36258", "cred:openai-key", RelationshipType.EXPLOITABLE_VIA, weight=9.8)
 
     for i, (aid, tid) in enumerate(
         [
-            ("billing-agent", "tool:mcp-fs:run_shell"),
-            ("data-pipeline-agent", "tool:mcp-db:sql_exec"),
-            ("devops-agent", "tool:mcp-deploy:exec_remote"),
+            ("cursor", "tool:shell-runner-server:run_shell"),
+            ("data-pipeline", "tool:warehouse-server:execute_sql"),
+            ("langchain-service", "tool:llm-orchestrator-server:eval_expression"),
         ]
     ):
         cid = f"call:{i}"
@@ -183,19 +234,22 @@ def build_showcase_graph(
     edge("role:data-pipeline", "cloud:logs-bucket", RelationshipType.CAN_ACCESS)
     edge("role:readonly", "cloud:logs-bucket", RelationshipType.CAN_ACCESS)
 
-    edge("agent:devops-agent", "role:prod-admin", RelationshipType.CAN_ACCESS)
-    edge("agent:data-pipeline-agent", "role:data-pipeline", RelationshipType.CAN_ACCESS)
+    # cursor drives the shell-runner (AWS creds + run_shell) → toxic combo with
+    # prod-admin; data-pipeline maps to the least-privilege pipeline role.
+    edge("agent:cursor", "role:prod-admin", RelationshipType.CAN_ACCESS)
+    edge("agent:data-pipeline", "role:data-pipeline", RelationshipType.CAN_ACCESS)
 
     store = InMemoryAgentIdentityStore()
+    _jit_tools = {"cursor": "run_shell", "data-pipeline": "execute_sql", "langchain-service": "eval_expression"}
     for aid, label in agents.items():
         idn, _ = issue_identity(store, agent_id=label, tenant_id=tenant_id, allowed_tools=[])
-        if aid in ("billing-agent", "devops-agent", "data-pipeline-agent"):
+        if aid in _jit_tools:
             issue_jit_grant(
                 store,
                 identity_id=idn.identity_id,
                 agent_id=label,
                 tenant_id=tenant_id,
-                tool_name="run_shell" if aid == "billing-agent" else "exec_remote",
+                tool_name=_jit_tools[aid],
                 ttl_seconds=3600,
                 approved_by="oncall@corp",
             )
@@ -204,17 +258,17 @@ def build_showcase_graph(
         [
             _DriftIncident(
                 incident_id="drift-001",
-                blueprint_id="DevOps Agent",
+                blueprint_id="Cursor IDE Agent",
                 drift_score=0.78,
                 violation_count=14,
-                top_violations=[{"tool_name": "exec_remote"}],
+                top_violations=[{"tool_name": "run_shell"}],
             ),
             _DriftIncident(
                 incident_id="drift-002",
-                blueprint_id="Billing Copilot",
+                blueprint_id="Data Pipeline Agent",
                 drift_score=0.41,
                 violation_count=5,
-                top_violations=[{"tool_name": "run_shell"}],
+                top_violations=[{"tool_name": "execute_sql"}],
             ),
         ]
     )

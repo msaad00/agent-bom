@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import tempfile
 import uuid
-from pathlib import Path
 from typing import Any
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
@@ -37,39 +34,49 @@ def _tenant_has_demo_jobs(store: Any, tenant_id: str) -> bool:
 
 
 def _run_demo_scan_report() -> dict[str, Any]:
-    from click.testing import CliRunner
+    from agent_bom.cli._common import _build_agents_from_inventory
+    from agent_bom.demo import DEMO_INVENTORY
+    from agent_bom.finding import blast_radius_to_finding
+    from agent_bom.mcp_auth_posture import evaluate_mcp_auth_posture
+    from agent_bom.mcp_blocklist import blocklist_findings_for_agents
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output import to_json
+    from agent_bom.scanners import scan_agents_sync
 
-    from agent_bom.cli import main
-
-    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as handle:
-        out_path = handle.name
-    try:
-        runner = CliRunner()
-        result = runner.invoke(
-            main,
-            [
-                "agents",
-                "--demo",
-                "--offline",
-                "--quiet",
-                "--no-auto-update-db",
-                "-f",
-                "json",
-                "-o",
-                out_path,
-            ],
+    agents = _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
+    blast_radii = scan_agents_sync(
+        agents,
+        compliance_enabled=True,
+        show_scan_banner=False,
+        offline=True,
+        demo_advisories=True,
+    )
+    findings = [blast_radius_to_finding(br) for br in blast_radii]
+    findings.extend(blocklist_findings_for_agents(agents))
+    findings.extend(evaluate_mcp_auth_posture(agents))
+    report = to_json(
+        AIBOMReport(
+            agents=agents,
+            blast_radii=blast_radii,
+            findings=findings,
+            scan_sources=["demo", "demo-estate"],
+            scan_id="showcase",
         )
-        if result.exit_code != 0:
-            raise RuntimeError(f"demo scan failed: {result.output}")
-        report = json.loads(Path(out_path).read_text(encoding="utf-8"))
-    finally:
-        Path(out_path).unlink(missing_ok=True)
+    )
 
     report.setdefault("scan_sources", [])
     if "demo" not in report["scan_sources"]:
         report["scan_sources"].append("demo")
     if "demo-estate" not in report["scan_sources"]:
         report["scan_sources"].append("demo-estate")
+
+    # Overlay a curated multi-cloud CIS benchmark posture so the CIS/compliance
+    # surfaces render a believable AWS/GCP/Azure pass-fail spread. The keys are
+    # exactly what build_cis_benchmark_check_rows() reads from a scan result.
+    from agent_bom.demo_estate.showcase_cis import demo_cis_benchmarks
+
+    for key, benchmark in demo_cis_benchmarks().items():
+        report.setdefault(key, benchmark)
     return report
 
 

@@ -260,6 +260,11 @@ def test_demo_estate_graph_snapshots_support_drift_lens(demo_estate_client: Test
     kinds = set(node_kinds.values())
     assert kinds & {"new", "removed", "changed"}, kinds
 
+    deltas = body.get("attribute_deltas") or {}
+    pii_deltas = deltas.get("cloud:pii-bucket") or []
+    summaries = {row.get("summary") for row in pii_deltas}
+    assert "Public exposure opened" in summaries or "Encryption at rest disabled" in summaries, pii_deltas
+
     assert body.get("nodes_added"), "expected at least one new node in the showcase drift story"
     assert body.get("nodes_removed"), "expected at least one removed node in the showcase drift story"
     assert body.get("nodes_changed"), "expected at least one changed node in the showcase drift story"

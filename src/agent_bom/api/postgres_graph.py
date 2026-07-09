@@ -1159,42 +1159,37 @@ class PostgresGraphStore:
         }
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
+        from agent_bom.graph.drift_attributes import attribute_deltas, node_diff_metadata, node_snapshot_changed
+
         tenant_id = normalize_graph_tenant_id(tenant_id)
 
-        def node_metadata(row) -> dict[str, Any]:
-            return {
-                "id": row[0],
-                "entity_type": row[1],
-                "label": row[2],
-                "status": row[3] or "",
-                "severity": row[4] or "",
-                "severity_id": int(row[5] or 0),
-                "risk_score": float(row[6] or 0.0),
-            }
+        def _load_nodes(conn, scan_id: str) -> dict[str, dict[str, Any]]:
+            loaded: dict[str, dict[str, Any]] = {}
+            for row in conn.execute(
+                """
+                SELECT id, entity_type, label, status, severity, severity_id, risk_score,
+                       attributes, compliance_tags
+                FROM graph_nodes
+                WHERE scan_id = %s AND tenant_id = %s
+                """,
+                (scan_id, tenant_id),
+            ).fetchall():
+                loaded[row[0]] = node_diff_metadata(
+                    node_id=row[0],
+                    entity_type=row[1],
+                    label=row[2],
+                    status=row[3],
+                    severity=row[4],
+                    severity_id=int(row[5] or 0),
+                    risk_score=float(row[6] or 0.0),
+                    attributes=row[7],
+                    compliance_tags=row[8],
+                )
+            return loaded
 
         with _tenant_connection(self._pool) as conn:
-            old_nodes = {
-                row[0]: node_metadata(row)
-                for row in conn.execute(
-                    """
-                    SELECT id, entity_type, label, status, severity, severity_id, risk_score
-                    FROM graph_nodes
-                    WHERE scan_id = %s AND tenant_id = %s
-                    """,
-                    (scan_id_old, tenant_id),
-                ).fetchall()
-            }
-            new_nodes = {
-                row[0]: node_metadata(row)
-                for row in conn.execute(
-                    """
-                    SELECT id, entity_type, label, status, severity, severity_id, risk_score
-                    FROM graph_nodes
-                    WHERE scan_id = %s AND tenant_id = %s
-                    """,
-                    (scan_id_new, tenant_id),
-                ).fetchall()
-            }
+            old_nodes = _load_nodes(conn, scan_id_old)
+            new_nodes = _load_nodes(conn, scan_id_new)
             old_ids, new_ids = set(old_nodes), set(new_nodes)
             old_edges = {
                 (row[0], row[1], row[2])
@@ -1210,10 +1205,20 @@ class PostgresGraphStore:
                     (scan_id_new, tenant_id),
                 ).fetchall()
             }
+            attribute_delta_index: dict[str, list[dict[str, Any]]] = {}
+            nodes_changed: list[str] = []
+            for nid in sorted(old_ids & new_ids):
+                if not node_snapshot_changed(old_nodes[nid], new_nodes[nid]):
+                    continue
+                nodes_changed.append(nid)
+                deltas = attribute_deltas(old_nodes[nid], new_nodes[nid])
+                if deltas:
+                    attribute_delta_index[nid] = deltas
             return {
                 "nodes_added": [new_nodes[nid] for nid in sorted(new_ids - old_ids)],
                 "nodes_removed": [old_nodes[nid] for nid in sorted(old_ids - new_ids)],
-                "nodes_changed": sorted(nid for nid in (old_ids & new_ids) if old_nodes[nid] != new_nodes[nid]),
+                "nodes_changed": nodes_changed,
+                "attribute_deltas": attribute_delta_index,
                 "edges_added": sorted(new_edges - old_edges),
                 "edges_removed": sorted(old_edges - new_edges),
                 "edges_changed": self.changed_edges_between_scans(scan_id_old, scan_id_new, tenant_id=tenant_id)["edges_changed"],

@@ -609,6 +609,7 @@ export interface DriftIndex {
   counts: Record<ChangeKind, number>;
   /** True when the diff surfaced at least one changed node or edge. */
   hasChanges: boolean;
+  attributeDeltas: Map<string, import("@/lib/api-types").GraphAttributeDelta[]>;
 }
 
 const EMPTY_DRIFT_COUNTS = (): Record<ChangeKind, number> => ({
@@ -636,12 +637,32 @@ export function buildDriftIndex(
     }
   }
 
+  const attributeDeltas = new Map<string, import("@/lib/api-types").GraphAttributeDelta[]>();
+  if (diff?.attribute_deltas) {
+    for (const [nodeId, deltas] of Object.entries(diff.attribute_deltas)) {
+      if (deltas.length > 0) attributeDeltas.set(nodeId, deltas);
+    }
+  }
+
   return {
     nodeKind,
     edgeKind,
     counts,
     hasChanges: nodeKind.size > 0 || edgeKind.size > 0,
+    attributeDeltas,
   };
+}
+
+export function driftAttributeSummaries(
+  index: DriftIndex,
+): string[] {
+  const seen = new Set<string>();
+  for (const deltas of index.attributeDeltas.values()) {
+    for (const delta of deltas) {
+      if (delta.summary) seen.add(delta.summary);
+    }
+  }
+  return [...seen];
 }
 
 export function changeKindForNode(id: string, index: DriftIndex): ChangeKind {

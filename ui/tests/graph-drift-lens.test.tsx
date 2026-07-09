@@ -6,6 +6,7 @@ import {
   buildDriftIndex,
   changeKindForEdge,
   changeKindForNode,
+  driftAttributeSummaries,
   driftLegendItems,
   type ChangeKind,
 } from "@/lib/graph-utils";
@@ -80,6 +81,23 @@ describe("drift index helpers", () => {
       "Removed · 1",
       "Unchanged · 4",
     ]);
+  });
+
+  it("collects attribute delta summaries from the diff payload", () => {
+    const index = buildDriftIndex({
+      ...DIFF,
+      attribute_deltas: {
+        "cloud:pii-bucket": [
+          {
+            field: "internet_exposed",
+            before: false,
+            after: true,
+            summary: "Public exposure opened",
+          },
+        ],
+      },
+    });
+    expect(driftAttributeSummaries(index)).toEqual(["Public exposure opened"]);
   });
 });
 
@@ -169,5 +187,22 @@ describe("GraphDriftLegend component", () => {
     const { onToggleActive } = renderLegend({ active: false });
     fireEvent.click(screen.getByTestId("graph-drift-toggle"));
     expect(onToggleActive).toHaveBeenCalledWith(true);
+  });
+
+  it("renders attribute drift summaries when provided", () => {
+    render(
+      <GraphDriftLegend
+        active
+        onToggleActive={vi.fn()}
+        filter="all"
+        onFilterChange={vi.fn()}
+        counts={COUNTS}
+        criticalCount={2}
+        attributeSummaries={["Public exposure opened"]}
+      />,
+    );
+    expect(screen.getByTestId("graph-drift-attribute-summaries")).toHaveTextContent(
+      "Public exposure opened",
+    );
   });
 });

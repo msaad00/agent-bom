@@ -54,6 +54,8 @@ export interface GraphDriftLegendProps {
   criticalCount: number;
   /** Short id of the older snapshot this diff compares against, if any. */
   comparedLabel?: string | undefined;
+  /** Canonical config-drift summaries from attribute-aware diff (#3192). */
+  attributeSummaries?: string[] | undefined;
 }
 
 export function GraphDriftLegend({
@@ -64,6 +66,7 @@ export function GraphDriftLegend({
   counts,
   criticalCount,
   comparedLabel,
+  attributeSummaries,
 }: GraphDriftLegendProps) {
   return (
     <div
@@ -156,6 +159,22 @@ export function GraphDriftLegend({
               );
             })}
           </div>
+
+          {attributeSummaries && attributeSummaries.length > 0 ? (
+            <div
+              className="mt-3 flex flex-wrap gap-2"
+              data-testid="graph-drift-attribute-summaries"
+            >
+              {attributeSummaries.map((summary) => (
+                <span
+                  key={summary}
+                  className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[11px] text-amber-100"
+                >
+                  {summary}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </>
       ) : (
         <p className="mt-2 text-xs text-zinc-500">

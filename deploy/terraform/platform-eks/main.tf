@@ -131,6 +131,24 @@ locals {
     image   = { tag = local.effective_image_tag }
     uiImage = { tag = local.effective_image_tag }
   }
+
+  # Optional S3 report-export overlay. Binds the dedicated API IRSA role onto
+  # the API service account and turns on S3 export, only when a bucket is set.
+  report_values = local.report_export_enabled ? {
+    controlPlane = {
+      api = {
+        serviceAccount = {
+          annotations = {
+            "eks.amazonaws.com/role-arn" = aws_iam_role.report_export[0].arn
+          }
+        }
+        env = [
+          { name = "AGENT_BOM_REPORT_S3_BUCKET", value = var.report_export_bucket },
+          { name = "AGENT_BOM_REPORT_S3_REGION", value = coalesce(var.report_export_bucket_region, var.region) },
+        ]
+      }
+    }
+  } : {}
 }
 
 ###############################################################################
@@ -253,11 +271,13 @@ resource "helm_release" "control_plane" {
   atomic        = true
   recreate_pods = false
 
-  # Precedence (low -> high): baseline wiring, image tag, ingress, user extras.
+  # Precedence (low -> high): baseline wiring, image tag, ingress, report
+  # export, user extras.
   values = compact([
     yamlencode(local.baseline_values),
     length(local.image_values) > 0 ? yamlencode(local.image_values) : "",
     length(local.ingress_values) > 0 ? yamlencode(local.ingress_values) : "",
+    length(local.report_values) > 0 ? yamlencode(local.report_values) : "",
     var.extra_helm_values,
   ])
 
@@ -283,4 +303,89 @@ module "connect_aws" {
   attach_view_only_access = true
 
   tags = var.tags
+}
+
+###############################################################################
+# 5. Optional API IRSA role for S3 report-artifact export (#3512)
+#
+# The async report exporter (report_artifact_store.py) runs in the API pod and
+# calls s3:PutObject on AGENT_BOM_REPORT_S3_BUCKET. The API service account
+# (agent-bom-api) otherwise inherits the scanner IRSA role, which has zero s3:
+# actions — so S3 export fails AccessDenied. When a report bucket is supplied we
+# mint a dedicated, least-privilege role trusted only by the API SA and wire it
+# below. Gated on var.report_export_bucket so default deploys are unaffected.
+###############################################################################
+
+locals {
+  report_export_enabled    = var.report_export_bucket != ""
+  oidc_provider_hostpath   = replace(local.oidc_issuer_url, "https://", "")
+  api_service_account_name = "${var.name}-api"
+  report_bucket_arn        = "arn:aws:s3:::${var.report_export_bucket}"
+}
+
+data "aws_iam_policy_document" "report_export_assume_role" {
+  count = local.report_export_enabled ? 1 : 0
+
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [local.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_provider_hostpath}:sub"
+      values   = ["system:serviceaccount:${var.namespace}:${local.api_service_account_name}"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_provider_hostpath}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "report_export" {
+  count = local.report_export_enabled ? 1 : 0
+
+  statement {
+    sid       = "ListReportBucket"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
+    resources = [local.report_bucket_arn]
+  }
+
+  statement {
+    sid       = "ReadWriteReportObjects"
+    effect    = "Allow"
+    actions   = ["s3:PutObject", "s3:GetObject"]
+    resources = ["${local.report_bucket_arn}/*"]
+  }
+}
+
+resource "aws_iam_role" "report_export" {
+  count = local.report_export_enabled ? 1 : 0
+
+  name               = "${var.name}-api-report-export"
+  assume_role_policy = data.aws_iam_policy_document.report_export_assume_role[0].json
+  tags               = var.tags
+}
+
+resource "aws_iam_policy" "report_export" {
+  count = local.report_export_enabled ? 1 : 0
+
+  name   = "${var.name}-api-report-export"
+  policy = data.aws_iam_policy_document.report_export[0].json
+  tags   = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "report_export" {
+  count = local.report_export_enabled ? 1 : 0
+
+  role       = aws_iam_role.report_export[0].name
+  policy_arn = aws_iam_policy.report_export[0].arn
 }

@@ -101,6 +101,15 @@ network I/O.
 | `wif_attribute_condition` | `""` | Scoped CEL condition. **Required when WIF is on** (empty is rejected). |
 | `wif_allowed_audiences` | `[]` | Pinned audiences. **Required (≥1) when WIF is on.** |
 | `wif_principal_set` | `""` | `principalSet://` member allowed to impersonate the SA. **Required when WIF is on.** |
+| `assign_artifact_registry_reader` | `false` | **Opt-in** data-plane read: `roles/artifactregistry.reader` for GAR image pull (SBOM/CVE extraction). Off by default so image-content read is opt-in, matching the AWS S3/deep-scan pattern. |
+
+## Known coverage limitations
+
+- **Org-level CIS checks need org/folder scope.** This module binds IAM at the
+  **project** level. CIS benchmarks that assert org-wide posture (e.g.
+  org-policy and folder-level controls) require an organization or folder IAM
+  binding that is out of scope here; run those with an org/folder-scoped
+  principal or they surface as silently-empty at project scope.
 
 ## Outputs
 

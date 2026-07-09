@@ -74,12 +74,12 @@ variable "federated_credential_audience" {
 
 variable "assign_key_vault_reader" {
   type        = bool
-  default     = true
-  description = "Assign the built-in 'Key Vault Reader' role so CIS 8.1/8.2 (key/secret expiry) can read vault data-plane metadata. Reader alone cannot, and the check would otherwise be unevaluable. RBAC-model vaults only."
+  default     = false
+  description = "Opt-in data-plane read: assign the built-in 'Key Vault Reader' role so CIS 8.1/8.2 (key/secret expiry) can read vault data-plane metadata. Reader alone cannot, and the check would otherwise be unevaluable. RBAC-model vaults only. Off by default so vault-metadata read is opt-in, matching the AWS S3/deep-scan pattern; set true to enable CIS 8.1/8.2."
 }
 
 variable "assign_acr_pull" {
   type        = bool
-  default     = true
-  description = "Assign the built-in 'AcrPull' role so agent-bom can pull ACR images for SBOM/CVE extraction. Reader cannot pull image content."
+  default     = false
+  description = "Opt-in data-plane read: assign the built-in 'AcrPull' role so agent-bom can pull ACR images for SBOM/CVE extraction. Reader cannot pull image content. Off by default so image-content read is opt-in, matching the AWS S3/deep-scan pattern; set true to enable ACR SBOM extraction."
 }

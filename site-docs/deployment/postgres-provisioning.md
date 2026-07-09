@@ -122,6 +122,34 @@ For Postgres-backed deployments, a successful authenticated request does this:
 That means Postgres is not just a passive storage backend; it participates in
 tenant enforcement.
 
+## Upgrading a pre-existing Postgres volume (superuser crash-loop)
+
+The RLS role guard refuses to start the API when the connection role has
+`SUPERUSER` or `BYPASSRLS`, because either attribute silently voids tenant
+isolation. Fresh installs are fine: `deploy/supabase/postgres/init.sql` strips
+`SUPERUSER`/`BYPASSRLS` from the `agent_bom` owner and provisions the DML-only
+`agent_bom_app` role automatically.
+
+`init.sql` only runs on **first** cluster init (an empty data directory). If you
+created your `postgres-data` volume before that de-superuser block shipped, the
+`agent_bom` role is still a `SUPERUSER`, and upgrading to a build with the guard
+will fail closed on boot — the API pod crash-loops with a
+`RlsRolePrivilegeError` and no automatic escape.
+
+Fix it once, on the existing database, before rolling the new image:
+
+```sql
+-- run as a superuser against the existing database, one time
+ALTER ROLE agent_bom NOSUPERUSER NOBYPASSRLS;
+```
+
+Then point `AGENT_BOM_POSTGRES_URL` at the least-privilege `agent_bom_app` role
+(the intended production connection role). As a temporary stopgap only — for a
+single-tenant or local/dev deployment where tenant isolation is not required —
+you may instead set `AGENT_BOM_ALLOW_SUPERUSER_DB=1` to downgrade the hard
+failure to a warning. Do not use that flag in a multi-tenant deployment: it
+leaves cross-tenant reads/writes possible.
+
 ## Operational checklist
 
 Before calling the deployment production-ready:

@@ -103,6 +103,16 @@ Azure network I/O.
 | `federated_credential_issuer` | `""` | OIDC issuer. **Required when the credential is created.** |
 | `federated_credential_subject` | `""` | Exact subject (no wildcard). **Required when the credential is created.** |
 | `federated_credential_audience` | `api://AzureADTokenExchange` | Token-exchange audience. |
+| `assign_key_vault_reader` | `false` | **Opt-in** data-plane read: built-in `Key Vault Reader` for CIS 8.1/8.2 (key/secret expiry metadata). RBAC-model vaults only. Off by default, matching the AWS S3/deep-scan opt-in pattern. |
+| `assign_acr_pull` | `false` | **Opt-in** data-plane read: built-in `AcrPull` for ACR image SBOM/CVE extraction. Off by default, matching the AWS S3/deep-scan opt-in pattern. |
+
+## Known coverage limitations
+
+- **Access-policy-model Key Vaults need a different grant.** `Key Vault Reader`
+  only reads data-plane metadata on **RBAC-model** vaults. Vaults using the
+  legacy **access-policy** permission model require a `List` access policy on
+  keys/secrets instead (not managed here); CIS 8.1/8.2 read as silently-empty
+  on those vaults until that policy is added out-of-band.
 
 ## Outputs
 

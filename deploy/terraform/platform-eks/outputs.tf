@@ -51,6 +51,11 @@ output "connect_role_arn" {
   value       = var.create_aws_connect_role ? module.connect_aws[0].role_arn : ""
 }
 
+output "report_export_role_arn" {
+  description = "IRSA role ARN bound to the API service account for S3 report export (empty unless report_export_bucket is set)."
+  value       = local.report_export_enabled ? aws_iam_role.report_export[0].arn : ""
+}
+
 locals {
   reach_with_domain = <<-EOT
     Platform is reachable at https://${var.domain} once DNS resolves to your

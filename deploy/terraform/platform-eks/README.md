@@ -72,8 +72,15 @@ terraform output ui_url
 | `image_tag` | `""` | Override the API/UI image tag (empty = chart default) |
 | `extra_helm_values` | `""` | Raw YAML merged last into the Helm release |
 | `create_aws_connect_role` | `false` | Mint the read-only role the scanner assumes |
+| `report_export_bucket` | `""` | Existing S3 bucket for async report export. When set, mints a dedicated API IRSA role (least-privilege `s3:` on that bucket only), wires it onto the API service account, and turns on S3 export. Empty = disabled |
 
 See `variables.tf` for the full list.
+
+The API pod runs the async report exporter, which needs `s3:PutObject`. Without
+`report_export_bucket` the API service account inherits the scanner IRSA role,
+which has no `s3:` actions — so S3 export (if enabled by hand) would fail
+`AccessDenied`. Setting `report_export_bucket` provisions a separate, minimal
+role scoped to only that bucket and binds it to the `-api` service account.
 
 ## Outputs
 
@@ -85,6 +92,7 @@ See `variables.tf` for the full list.
 | `scanner_role_arn` | IRSA role bound to the scanner service account |
 | `backup_bucket_name` | S3 bucket for the packaged Postgres backups |
 | `connect_role_arn` | Read-only role the scanner assumes (when enabled) |
+| `report_export_role_arn` | API IRSA role for S3 report export (when `report_export_bucket` is set) |
 
 ## Composition notes
 

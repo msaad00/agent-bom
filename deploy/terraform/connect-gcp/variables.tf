@@ -78,6 +78,6 @@ variable "wif_principal_set" {
 
 variable "assign_artifact_registry_reader" {
   type        = bool
-  default     = true
-  description = "Grant roles/artifactregistry.reader so agent-bom can pull GAR images (downloadArtifacts) for SBOM/CVE extraction. Primitive viewer does not guarantee image pull."
+  default     = false
+  description = "Opt-in data-plane read: grant roles/artifactregistry.reader so agent-bom can pull GAR images (downloadArtifacts) for SBOM/CVE extraction. Primitive viewer does not guarantee image pull. Off by default so image-content read is opt-in, matching the AWS S3/deep-scan pattern; set true to enable GAR SBOM extraction."
 }

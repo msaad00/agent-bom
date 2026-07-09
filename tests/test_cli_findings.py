@@ -225,3 +225,45 @@ def test_findings_triage_export_vex_writes_file(monkeypatch, tmp_path) -> None:
     assert "Wrote" in result.output
     assert json.loads(output.read_text(encoding="utf-8"))["schema_version"] == "findings.triage.vex.v1"
     assert fake.calls[0] == ("export_finding_triage_vex", {})
+
+
+class ConnRefusedClient:
+    """Client whose server-backed calls fail as if no API server is listening."""
+
+    base_url = "http://127.0.0.1:8422"
+
+    def __init__(self, **kwargs: Any) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def _refuse(self, *args: Any, **kwargs: Any):
+        import httpx
+
+        raise httpx.ConnectError("[Errno 61] Connection refused")
+
+    list_findings = _refuse
+    list_finding_triage = _refuse
+
+
+def _install_refused_client(monkeypatch) -> None:
+    monkeypatch.setattr("agent_bom.cli._findings_group.AgentBomClient", ConnRefusedClient)
+
+
+def test_findings_list_connection_refused_is_friendly(monkeypatch) -> None:
+    _install_refused_client(monkeypatch)
+    result = CliRunner().invoke(main, ["findings", "list"])
+    assert result.exit_code != 0
+    assert "Connection refused" not in result.output
+    assert "requires the API server" in result.output
+    assert "agent-bom api" in result.output
+
+
+def test_findings_triage_list_connection_refused_is_friendly(monkeypatch) -> None:
+    _install_refused_client(monkeypatch)
+    result = CliRunner().invoke(main, ["findings", "triage", "list"])
+    assert result.exit_code != 0
+    assert "Connection refused" not in result.output
+    assert "requires the API server" in result.output
+    assert "agent-bom api" in result.output

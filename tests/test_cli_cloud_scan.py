@@ -585,3 +585,32 @@ class TestCloudAliasKwargsMatchScanSignature:
         assert result.exit_code == 0, result.output
         assert seen, "scan was never invoked"
         self._assert_kwargs_bind(seen[-1])
+
+
+# ── --aws-deep convenience flag ──────────────────────────────────────────────
+
+
+class TestAwsDeep:
+    def test_cloud_scan_aws_deep_sets_all_includes(self, monkeypatch):
+        seen = _capture_scan(monkeypatch)
+        r = CliRunner().invoke(cloud_group, ["scan", "--provider", "aws", "--aws-deep"])
+        assert r.exit_code == 0
+        assert seen[0]["aws_include_eks"] is True
+        assert seen[0]["aws_include_ec2"] is True
+        assert seen[0]["aws_include_iam"] is True
+
+    def test_cloud_aws_alias_deep_sets_all_includes(self, monkeypatch):
+        seen = _capture_scan(monkeypatch)
+        r = CliRunner().invoke(cloud_group, ["aws", "--aws-deep"])
+        assert r.exit_code == 0
+        assert seen[0]["aws_include_eks"] is True
+        assert seen[0]["aws_include_ec2"] is True
+        assert seen[0]["aws_include_iam"] is True
+
+    def test_cloud_scan_without_deep_leaves_includes_off(self, monkeypatch):
+        seen = _capture_scan(monkeypatch)
+        r = CliRunner().invoke(cloud_group, ["scan", "--provider", "aws"])
+        assert r.exit_code == 0
+        assert seen[0]["aws_include_eks"] is False
+        assert seen[0]["aws_include_ec2"] is False
+        assert seen[0]["aws_include_iam"] is False

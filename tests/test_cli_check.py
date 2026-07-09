@@ -522,3 +522,27 @@ def test_check_output_requires_json_format(monkeypatch):
 
     assert result.exit_code == 1
     assert "--format json" in result.output
+
+
+def test_check_without_version_exits_nonzero(monkeypatch):
+    """`check <pkg>` with no @version scans nothing, so it must not exit 0 —
+    a CI pre-install gate must never treat an unscanned package as clean."""
+    _patch_check_scan(monkeypatch, [])
+
+    result = CliRunner().invoke(main, ["check", "somepkg", "--ecosystem", "pypi"])
+
+    assert result.exit_code != 0
+    assert result.exit_code == 2
+    assert "not a clean result" in result.output
+
+
+def test_check_without_version_json_reports_nonzero(monkeypatch):
+    """Structured output for the no-version skip must also carry exit_code=2."""
+    _patch_check_scan(monkeypatch, [])
+
+    result = CliRunner().invoke(main, ["check", "somepkg", "--ecosystem", "pypi", "--format", "json"])
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output)
+    assert payload["verdict"] == "skipped"
+    assert payload["exit_code"] == 2

@@ -9,6 +9,35 @@ import click
 from agent_bom.cli._scan_help import AliasedChoice
 from agent_bom.cli.options_helpers import _apply
 
+# Canonical `--format` choices accepted by the top-level `scan` command. The
+# focused commands (fs/iac/sbom/image) forward straight to `scan`, so they
+# reuse this exact list to validate `-f/--format` instead of accepting any
+# free string (which silently disabled the fail-on-severity gate).
+SCAN_OUTPUT_FORMATS = [
+    "console",
+    "json",
+    "html",
+    "pdf",
+    "sarif",
+    "cyclonedx",
+    "spdx",
+    "spdx2",
+    "junit",
+    "csv",
+    "parquet",
+    "markdown",
+    "plain",
+    "prometheus",
+    "graph",
+    "graph-html",
+    "mermaid",
+    "svg",
+    "badge",
+]
+# `text` is a deprecated spelling of the canonical `plain`; still accepted,
+# but hidden from the advertised choices.
+SCAN_OUTPUT_FORMAT_ALIASES = {"text": "plain"}
+
 
 def _set_env(var: str):
     """Click callback: mirror a CLI value into ``os.environ`` when provided.
@@ -169,30 +198,8 @@ def output_options(fn):
                 "-f",
                 "output_format",
                 type=AliasedChoice(
-                    [
-                        "console",
-                        "json",
-                        "html",
-                        "pdf",
-                        "sarif",
-                        "cyclonedx",
-                        "spdx",
-                        "spdx2",
-                        "junit",
-                        "csv",
-                        "parquet",
-                        "markdown",
-                        "plain",
-                        "prometheus",
-                        "graph",
-                        "graph-html",
-                        "mermaid",
-                        "svg",
-                        "badge",
-                    ],
-                    # `text` is a deprecated spelling of the canonical `plain`;
-                    # still accepted, but hidden from the advertised choices.
-                    aliases={"text": "plain"},
+                    SCAN_OUTPUT_FORMATS,
+                    aliases=SCAN_OUTPUT_FORMAT_ALIASES,
                 ),
                 default="console",
                 help=(

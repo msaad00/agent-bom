@@ -20,7 +20,25 @@ from typing import Optional
 
 import click
 
+from agent_bom.cli._scan_help import AliasedChoice
+from agent_bom.cli.options_sources import SCAN_OUTPUT_FORMAT_ALIASES, SCAN_OUTPUT_FORMATS
 from agent_bom.graph.severity import severity_at_or_above
+
+
+def _scan_format_option():
+    """`-f/--format` validated against the same formats the `scan` command accepts.
+
+    A bad ``-f`` is rejected with rc=2 (like `scan`), instead of being accepted
+    as a free string that silently bypasses the default fail-on-severity gate.
+    """
+    return click.option(
+        "-f",
+        "--format",
+        "output_format",
+        type=AliasedChoice(SCAN_OUTPUT_FORMATS, aliases=SCAN_OUTPUT_FORMAT_ALIASES),
+        default="console",
+        help="Output format",
+    )
 
 
 def _validate_json_or_console_format(command_name: str, output_format: str) -> str:
@@ -52,11 +70,11 @@ def _has_finding_at_or_above(findings, threshold: str = "high") -> bool:
     "--tar",
     "--image-tar",
     "image_tar",
-    type=click.Path(exists=False, dir_okay=True, file_okay=True, path_type=str),
+    type=click.Path(exists=True, dir_okay=True, file_okay=True, path_type=str),
     help="Scan a docker save / OCI image tarball without a Docker daemon.",
 )
 @click.option("--platform", help="Target platform (e.g. linux/amd64)")
-@click.option("-f", "--format", "output_format", default="console", help="Output format")
+@_scan_format_option()
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--fail-on-severity", type=click.Choice(["critical", "high", "medium", "low"]))
 @click.option("--enrich", is_flag=True, help="Add NVD CVSS + EPSS + KEV enrichment")
@@ -129,7 +147,7 @@ def image_cmd(
 
 @click.command("fs")
 @click.argument("path")
-@click.option("-f", "--format", "output_format", default="console", help="Output format")
+@_scan_format_option()
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--fail-on-severity", type=click.Choice(["critical", "high", "medium", "low"]))
 @click.option("--enrich", is_flag=True, help="Add NVD CVSS + EPSS + KEV enrichment")
@@ -192,7 +210,7 @@ def fs_cmd(
 
 @click.command("iac")
 @click.argument("paths", nargs=-1, required=True)
-@click.option("-f", "--format", "output_format", default="console", help="Output format")
+@_scan_format_option()
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--fail-on-severity", type=click.Choice(["critical", "high", "medium", "low"]))
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
@@ -224,7 +242,16 @@ def iac_cmd(
       agent-bom iac . -f sarif -o iac-results.sarif
       agent-bom iac . --k8s-live --k8s-all-namespaces
     """
+    from pathlib import Path as _Path
+
     from agent_bom.cli.agents import scan
+
+    # A missing/typo'd IaC target must never be reported as a clean scan.
+    missing = [p for p in paths if not _Path(p).exists()]
+    if missing:
+        raise click.ClickException(
+            "IaC target(s) not found: " + ", ".join(missing) + ". Check the path(s) and try again."
+        )
 
     effective_fail_on_severity = fail_on_severity
     if effective_fail_on_severity is None and output_format.lower() in {"console", "json"}:
@@ -252,7 +279,7 @@ def iac_cmd(
 @click.command("sbom")
 @click.argument("path", type=click.Path(exists=True, dir_okay=False, readable=True))
 @click.option("--name", "sbom_name", help="Label for the SBOM resource")
-@click.option("-f", "--format", "output_format", default="console", help="Output format")
+@_scan_format_option()
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--fail-on-severity", type=click.Choice(["critical", "high", "medium", "low"]))
 @click.option("--enrich", is_flag=True, help="Add NVD CVSS + EPSS + KEV enrichment")

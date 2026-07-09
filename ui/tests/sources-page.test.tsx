@@ -5,6 +5,7 @@ import SourcesPage from "@/app/sources/page";
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
+    health: vi.fn(),
     listConnectors: vi.fn(),
     getConnectorHealth: vi.fn(),
     listSchedules: vi.fn(),
@@ -65,6 +66,14 @@ vi.mock("@/lib/api", () => ({
 }));
 
 function primeApi() {
+  apiMock.health.mockResolvedValue({
+    status: "ok",
+    version: "0.0.0-test",
+    auth_required: true,
+    auth_configured: true,
+    configured_auth_modes: ["oidc"],
+    unauthenticated_allowed: false,
+  });
   apiMock.listConnectors.mockResolvedValue({ connectors: ["jira"] });
   apiMock.getConnectorHealth.mockResolvedValue({
     connector: "jira",

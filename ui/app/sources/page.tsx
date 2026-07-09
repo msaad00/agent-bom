@@ -29,6 +29,7 @@ import {
   type SourceRecord,
 } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
+import { DemoConnectCard } from "@/components/demo-mode-cta";
 
 type IngestMode = "Direct scan" | "Read-only connector" | "Pushed ingest" | "Runtime" | "Imported artifact";
 
@@ -784,6 +785,10 @@ export default function SourcesPage() {
                   Register the source here, then let backend jobs, connectors, proxy, or gateway paths do the collection work.
                 </p>
               </div>
+            </div>
+
+            <div className="mt-5 empty:hidden">
+              <DemoConnectCard />
             </div>
 
             <form className="mt-5 space-y-4" onSubmit={handleCreateSource}>

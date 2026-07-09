@@ -31,6 +31,10 @@ def _hosts(graph: UnifiedGraph, parent: str, child: str) -> None:
     graph.add_edge(UnifiedEdge(source=parent, target=child, relationship=RelationshipType.HOSTS))
 
 
+def _owns(graph: UnifiedGraph, parent: str, child: str) -> None:
+    graph.add_edge(UnifiedEdge(source=parent, target=child, relationship=RelationshipType.OWNS))
+
+
 def _deep_estate() -> UnifiedGraph:
     """org -> account -> app -> {server, server} -> {package(crit), package(low)}."""
     g = UnifiedGraph(scan_id="estate-scan", tenant_id="default")
@@ -110,6 +114,71 @@ def test_rollup_treats_hosts_as_containment_for_cloud_account_resources() -> Non
     assert top["aggregate"]["descendant_count"] == 1
     assert top["aggregate"]["by_type"]["cloud_resource"] == 1
     assert top["aggregate"]["worst_severity"] == "high"
+
+
+def test_rollup_treats_owns_as_containment_for_cloud_account_resources() -> None:
+    """Cloud inventory emits account→resource as OWNS — roll-up must treat it like CONTAINS."""
+    g = UnifiedGraph(scan_id="owns-scan", tenant_id="default")
+    g.add_node(UnifiedNode(id="account:aws:1", entity_type=EntityType.ACCOUNT, label="prod"))
+    g.add_node(
+        UnifiedNode(
+            id="cloud:aws:s3:bucket",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="customer-pii",
+            severity="high",
+        )
+    )
+    _owns(g, "account:aws:1", "cloud:aws:s3:bucket")
+
+    view = rollup_view(g)
+    assert view["summary"]["top_level_count"] == 1
+    top = view["top_level"][0]
+    assert top["id"] == "account:aws:1"
+    assert top["aggregate"]["descendant_count"] == 1
+    assert top["aggregate"]["by_type"]["cloud_resource"] == 1
+
+    drill = drill_down(g, "account:aws:1")
+    assert {child["id"] for child in drill["children"]} == {"cloud:aws:s3:bucket"}
+
+
+def test_rollup_org_account_resource_hierarchy_with_owns() -> None:
+    """Org→account CONTAINS + account→resource OWNS rolls up as a three-level estate."""
+    g = UnifiedGraph(scan_id="org-owns-scan", tenant_id="default")
+    g.add_node(UnifiedNode(id="org:aws:acme", entity_type=EntityType.ORG, label="Acme"))
+    g.add_node(UnifiedNode(id="account:aws:111", entity_type=EntityType.ACCOUNT, label="prod"))
+    g.add_node(
+        UnifiedNode(
+            id="cloud:aws:s3:logs",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="logs-bucket",
+            severity="medium",
+        )
+    )
+    g.add_node(
+        UnifiedNode(
+            id="cloud:aws:ec2:bastion",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="bastion",
+            severity="high",
+        )
+    )
+    _contains(g, "org:aws:acme", "account:aws:111")
+    _owns(g, "account:aws:111", "cloud:aws:s3:logs")
+    _owns(g, "account:aws:111", "cloud:aws:ec2:bastion")
+
+    view = rollup_view(g)
+    assert view["summary"]["top_level_count"] == 1
+    org = view["top_level"][0]
+    assert org["id"] == "org:aws:acme"
+    assert org["aggregate"]["descendant_count"] == 3
+    assert org["aggregate"]["by_type"]["account"] == 1
+    assert org["aggregate"]["by_type"]["cloud_resource"] == 2
+
+    account_drill = drill_down(g, "account:aws:111")
+    assert {child["id"] for child in account_drill["children"]} == {
+        "cloud:aws:s3:logs",
+        "cloud:aws:ec2:bastion",
+    }
 
 
 def test_rollup_collapses_deep_contains_tree_with_aggregate_counts() -> None:

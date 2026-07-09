@@ -40,13 +40,16 @@ _MAX_TOP_LEVEL_ORPHANS: int = 200
 _ORPHAN_SUMMARY_SAMPLE: int = 20
 
 # Estate containment edges: org/account/resource trees use CONTAINS; cloud
-# account→resource lineage may be HOSTS-only on legacy graphs.
+# inventory emits account→resource as OWNS; legacy graphs may use HOSTS-only.
 _CONTAINMENT_RELS: frozenset[str] = frozenset({RelationshipType.CONTAINS.value})
 
-# HOSTS is operational hosting (provider→agent, etc.); only account→cloud_resource
-# HOSTS edges participate in estate roll-up alongside CONTAINS.
-_HOSTS_CONTAINMENT_SOURCES: frozenset[str] = frozenset({EntityType.ACCOUNT.value})
-_HOSTS_CONTAINMENT_TARGETS: frozenset[str] = frozenset({EntityType.CLOUD_RESOURCE.value})
+# Operational edges that roll up like CONTAINS when they link an account to a
+# cloud resource (inventory uses OWNS; some legacy paths use HOSTS).
+_ACCOUNT_RESOURCE_CONTAINMENT_RELS: frozenset[str] = frozenset(
+    {RelationshipType.HOSTS.value, RelationshipType.OWNS.value}
+)
+_ACCOUNT_RESOURCE_CONTAINMENT_SOURCES: frozenset[str] = frozenset({EntityType.ACCOUNT.value})
+_ACCOUNT_RESOURCE_CONTAINMENT_TARGETS: frozenset[str] = frozenset({EntityType.CLOUD_RESOURCE.value})
 
 # Container entity types form the readable top-level scaffold of the estate.
 # A node of one of these types is a candidate roll-up container; everything else
@@ -195,20 +198,24 @@ def _edge_is_containment(graph: UnifiedGraph, edge: Any) -> bool:
     rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
     if rel in _CONTAINMENT_RELS:
         return True
-    if rel != RelationshipType.HOSTS.value:
+    if rel not in _ACCOUNT_RESOURCE_CONTAINMENT_RELS:
         return False
     source = graph.nodes.get(edge.source)
     target = graph.nodes.get(edge.target)
     if source is None or target is None:
         return False
-    return _node_type_value(source) in _HOSTS_CONTAINMENT_SOURCES and _node_type_value(target) in _HOSTS_CONTAINMENT_TARGETS
+    return (
+        _node_type_value(source) in _ACCOUNT_RESOURCE_CONTAINMENT_SOURCES
+        and _node_type_value(target) in _ACCOUNT_RESOURCE_CONTAINMENT_TARGETS
+    )
 
 
 def _contains_children(graph: UnifiedGraph) -> dict[str, list[str]]:
     """Map container_id -> sorted direct containment children (deterministic).
 
-    Walks ``CONTAINS`` and account→``CLOUD_RESOURCE`` ``HOSTS`` edges so cloud
-    resources roll up under their account even when only ``HOSTS`` is present.
+    Walks ``CONTAINS`` and account→``CLOUD_RESOURCE`` ``HOSTS``/``OWNS`` edges
+    so cloud resources roll up under their account even when inventory emits
+    ``OWNS`` instead of ``CONTAINS``.
     Self-loops are ignored. Children are de-duplicated and sorted by id so the
     output is stable across runs regardless of edge insertion order.
     """

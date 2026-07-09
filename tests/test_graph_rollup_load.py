@@ -28,8 +28,44 @@ def test_load_graph_can_filter_edges_for_rollup(tmp_path) -> None:
             conn,
             tenant_id="default",
             scan_id="rollup-load",
-            relationship_types=frozenset({RelationshipType.CONTAINS.value}),
+            relationship_types=frozenset(
+                {
+                    RelationshipType.CONTAINS.value,
+                    RelationshipType.HOSTS.value,
+                    RelationshipType.OWNS.value,
+                }
+            ),
         )
         assert len(containment.edges) == 1
         assert containment.edges[0].relationship == RelationshipType.CONTAINS
         assert not containment.attack_paths
+
+        g2 = UnifiedGraph(scan_id="rollup-owns", tenant_id="default")
+        g2.add_node(UnifiedNode(id="account:aws:1", entity_type=EntityType.ACCOUNT, label="prod"))
+        g2.add_node(
+            UnifiedNode(id="cloud:aws:s3:b", entity_type=EntityType.CLOUD_RESOURCE, label="bucket")
+        )
+        g2.add_edge(
+            UnifiedEdge(
+                source="account:aws:1",
+                target="cloud:aws:s3:b",
+                relationship=RelationshipType.OWNS,
+            )
+        )
+        sqlite_graph_store.save_graph(conn, g2)
+        conn.commit()
+
+        owns_only = sqlite_graph_store.load_graph(
+            conn,
+            tenant_id="default",
+            scan_id="rollup-owns",
+            relationship_types=frozenset(
+                {
+                    RelationshipType.CONTAINS.value,
+                    RelationshipType.HOSTS.value,
+                    RelationshipType.OWNS.value,
+                }
+            ),
+        )
+        assert len(owns_only.edges) == 1
+        assert owns_only.edges[0].relationship == RelationshipType.OWNS

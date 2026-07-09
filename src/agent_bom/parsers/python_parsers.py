@@ -17,6 +17,52 @@ from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
 
 logger = logging.getLogger(__name__)
 
+# PEP 508 direct-URL git reference (``flask @ git+https://…/flask.git@<sha>``)
+# and the legacy ``git+https://…#egg=name`` form.
+_GIT_DIRECT_URL_RE = re.compile(r"^(?P<name>[a-zA-Z0-9_.-]+)\s*@\s*(?P<url>\S+)$")
+_GIT_EGG_RE = re.compile(r"[#&]egg=(?P<name>[a-zA-Z0-9_.-]+)")
+
+_GIT_REF_FLOATING_REASON = (
+    "declared as a git URL/SHA reference — a pinned git ref is not a released "
+    "version, so any reported version is resolved from the installed host "
+    "package, not the pinned ref"
+)
+
+
+def _looks_like_git_requirement(url: str) -> bool:
+    lowered = url.lower()
+    return lowered.startswith(("git+", "git@", "git://")) or "git+" in lowered
+
+
+def _git_reference_package(line: str, *, is_direct: bool = True) -> Package | None:
+    """Return a Package for a git-URL requirement line, or None if not one.
+
+    A git reference resolves (at scan time) to whatever the host environment has
+    installed, which is *not* an exact match to the pinned ref. Mark it
+    ``floating_reference`` with lowered confidence so downstream matching does not
+    treat the host-env coincidence as an exact pin.
+    """
+    direct = _GIT_DIRECT_URL_RE.match(line)
+    if direct and _looks_like_git_requirement(direct.group("url")):
+        name, url = direct.group("name"), direct.group("url")
+    elif _looks_like_git_requirement(line):
+        egg = _GIT_EGG_RE.search(line)
+        if not egg:
+            return None
+        name, url = egg.group("name"), line.split()[0]
+    else:
+        return None
+    return Package(
+        name=name,
+        version="unknown",
+        ecosystem="pypi",
+        is_direct=is_direct,
+        declared_version=url,
+        floating_reference=True,
+        floating_reference_reason=_GIT_REF_FLOATING_REASON,
+        version_confidence="low",
+    )
+
 
 def parse_poetry_lock(directory: Path) -> list[Package]:
     """Parse packages from poetry.lock (TOML format).
@@ -208,6 +254,12 @@ def parse_pip_packages(directory: Path) -> list[Package]:
         for line in read_text_limited(req_file).splitlines():
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("-"):
+                continue
+            # Git URL/SHA reference (``flask @ git+…@<sha>``): version can't be
+            # pinned from the ref, so flag it floating rather than dropping it.
+            git_pkg = _git_reference_package(line, is_direct=True)
+            if git_pkg is not None:
+                packages.append(git_pkg)
                 continue
             # Parse name==version, name>=version, etc.
             match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)

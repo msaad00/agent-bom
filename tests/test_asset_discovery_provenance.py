@@ -346,3 +346,34 @@ def _blast_radius(vuln: Vulnerability, pkg: Package, server: MCPServer, agent: A
         exposed_credentials=[],
         exposed_tools=[],
     )
+
+
+def test_git_ref_resolved_from_host_never_reports_exact() -> None:
+    """A git URL/SHA declared version resolved from the installed host package
+    must be downgraded from `exact` and flagged floating (host-env coincidence)."""
+    pkg = Package(name="flask", version="3.1.3", ecosystem="pypi")
+    pkg.version_source = "installed_package"
+    pkg.declared_version = "git+https://github.com/pallets/flask.git@a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+
+    vp = package_version_provenance(pkg)
+    assert vp["confidence"] != "exact"
+    assert vp.get("floating_reference") is True
+
+
+def test_bare_commit_sha_declared_never_reports_exact() -> None:
+    pkg = Package(name="flask", version="3.1.3", ecosystem="pypi")
+    pkg.version_source = "installed_package"
+    pkg.declared_version = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+
+    vp = package_version_provenance(pkg)
+    assert vp["confidence"] != "exact"
+
+
+def test_normal_installed_package_still_exact() -> None:
+    pkg = Package(name="flask", version="3.1.3", ecosystem="pypi")
+    pkg.version_source = "installed_package"
+    pkg.declared_version = "3.1.3"
+
+    vp = package_version_provenance(pkg)
+    assert vp["confidence"] == "exact"
+    assert vp.get("floating_reference") is not True

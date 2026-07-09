@@ -294,6 +294,25 @@ def _should_scan(path: Path) -> bool:
     return path.suffix.lower() in _SCAN_EXTENSIONS
 
 
+def _is_agent_bom_report(content: str) -> bool:
+    """Return True when *content* is one of agent-bom's own machine reports.
+
+    Re-scanning a previously written report (JSON AI-BOM, SARIF, or the CSV
+    finding export) for secrets flags the report's own numeric payload — scan
+    ids, CVSS scores, timestamps — as PII/credentials, inflating and
+    destabilizing finding counts on repeat scans of a directory that holds prior
+    output. Our own output is never a secret source, so skip it.
+    """
+    head = content[:4096]
+    if '"document_type": "AI-BOM"' in head or '"document_type":"AI-BOM"' in head:
+        return True
+    if '"$schema"' in head and "sarif" in head.lower() and '"runs"' in head:
+        return True
+    return head.startswith("cve_id,package,version,ecosystem,severity") or head.startswith(
+        "﻿cve_id,package,version,ecosystem,severity"
+    )
+
+
 def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) -> list[SecretFinding]:
     """Scan a single file for secrets."""
     try:
@@ -302,6 +321,9 @@ def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) 
         return []
 
     if len(content) > _MAX_FILE_SIZE:
+        return []
+
+    if _is_agent_bom_report(content):
         return []
 
     findings: list[SecretFinding] = []

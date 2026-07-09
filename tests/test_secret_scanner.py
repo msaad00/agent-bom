@@ -121,3 +121,21 @@ def test_scan_secrets_warns_on_non_directory(tmp_path: Path):
 
     assert result.total == 0
     assert result.warnings == [f"{target} is not a directory"]
+
+
+def test_scan_secrets_skips_agent_bom_own_reports(tmp_path: Path):
+    """Re-scanning a directory that holds a prior agent-bom report must not flag
+    the report's own numeric payload (scan ids, CVSS, timestamps) as PII."""
+    # A phone-number-like literal inside our own JSON report must be ignored.
+    (tmp_path / "r.json").write_text(
+        '{"document_type": "AI-BOM", "summary": {"phone": "415-555-0132"}}',
+        encoding="utf-8",
+    )
+    # SARIF report form.
+    (tmp_path / "r.sarif").write_text(
+        '{"$schema": "https://json.schemastore.org/sarif-2.1.0.json", "version": "2.1.0", '
+        '"runs": [{"results": [{"message": {"text": "415-555-0132"}}]}]}',
+        encoding="utf-8",
+    )
+    result = scan_secrets(tmp_path)
+    assert result.total == 0

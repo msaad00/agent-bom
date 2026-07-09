@@ -58,6 +58,32 @@ class CoverageWarning:
         return asdict(self)
 
 
+def record_manifest_parse_warning(*, ecosystem: str, path: str, detail: str) -> None:
+    """Record a coverage warning for a manifest that failed to parse.
+
+    A malformed dependency manifest (invalid ``package.json``, unclosed
+    ``pom.xml``, …) otherwise scans to zero packages for that ecosystem with no
+    signal — indistinguishable from a project that genuinely has no
+    dependencies. Emit a structured coverage warning (deduped per path) plus a
+    stderr log so operators know the ecosystem was not actually covered.
+    """
+    warning = CoverageWarning(
+        ecosystem=ecosystem,
+        release=f"{ecosystem}:{path}",
+        reason="manifest_parse_error",
+        detail=detail,
+        package_count=0,
+        advisory_rows=0,
+    )
+    _logger.warning("Manifest not scanned (%s): %s", path, detail)
+    try:
+        from agent_bom.scanners.state import record_coverage_warning
+
+        record_coverage_warning(warning.to_dict())
+    except Exception:  # noqa: BLE001 - warning surfacing must never break a scan
+        pass
+
+
 def _release_key(pkg: "Package") -> Optional[tuple[str, str]]:
     """Return ``(family, db_release_key)`` for an OS package with a known release.
 

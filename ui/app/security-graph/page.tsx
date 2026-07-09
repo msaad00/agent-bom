@@ -7,7 +7,6 @@ import {
   ArrowRight,
   GitBranch,
   Loader2,
-  Route,
 } from "lucide-react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -377,74 +376,50 @@ function SecurityGraphPageContent() {
 
   return (
     <div className="space-y-4">
-      <GraphLensSwitcher />
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Security graph</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">Fix-first investigation — ranked attack paths from persisted graph evidence.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <GraphEvidenceExportButton
+            scanId={selectedScanId || undefined}
+            filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
+          />
+          <Link
+            href={fullGraphHref}
+            className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+          >
+            Full graph
+            <GitBranch className="h-4 w-4" />
+          </Link>
+          <Link
+            href="/remediation"
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-950/70"
+          >
+            Remediation
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </header>
+
+      <GraphLensSwitcher variant="compact" />
+
       {selectedExposurePath && (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="overflow-hidden rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-            <ExposurePathStrip path={selectedExposurePath} />
-            <div className="p-5">
-              <ExposurePathCommandCenter
-                path={selectedExposurePath}
-                actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
-              />
-            </div>
-          </div>
-          <div className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-orange-400">Graph operating mode</p>
-            <h2 className="mt-2 text-base font-semibold text-[color:var(--foreground)]">Fix-first investigation</h2>
-            <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">
-              This page starts with the highest-risk proven path. Use the queue below to change focus, or open the
-              full lineage graph when you need broader neighbor context.
-            </p>
-            <div className="mt-4 grid gap-2 text-xs">
-              <QuickStat label="Rank" value={`#${selectedExposurePath.rank ?? 1}`} />
-              <QuickStat label="Relationships" value={String(selectedExposurePath.relationships.length)} />
-              <QuickStat label="Evidence source" value={selectedExposurePath.provenance?.source ?? "graph"} />
-            </div>
+        <section className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+          <ExposurePathStrip path={selectedExposurePath} />
+          <div className="p-4">
+            <ExposurePathCommandCenter
+              path={selectedExposurePath}
+              actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
+            />
           </div>
         </section>
       )}
 
-      <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_34%),linear-gradient(180deg,var(--surface),var(--surface-elevated))] p-4 shadow-2xl">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-emerald-300">
-              <Route className="h-3.5 w-3.5" />
-              Security graph
-            </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
-              Fix-first attack paths without dropping into the full graph canvas
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--text-secondary)]">
-              This view keeps the highest-risk exploit chains explicit: what finding starts the path, which assets it reaches,
-              which credentials and tools stay exposed, and where to jump next for evidence or remediation.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <GraphEvidenceExportButton
-              scanId={selectedScanId || undefined}
-              filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
-            />
-            <Link
-              href={fullGraphHref}
-              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-            >
-              Open full lineage graph
-              <GitBranch className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/remediation"
-              className="inline-flex items-center gap-2 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-950/70"
-            >
-              Open remediation
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+          <div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Snapshot</p>
@@ -523,38 +498,25 @@ function SecurityGraphPageContent() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Current pressure</p>
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Posture</p>
             {posture ? (
-              <div className="mt-4">
-                <div className="flex items-end justify-between gap-4">
-                  <div>
-                    <div className="font-mono text-5xl font-semibold text-red-300">{posture.grade}</div>
-                    <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{posture.summary}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono text-2xl text-[color:var(--foreground)]">{posture.score}</div>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">score</div>
-                  </div>
+              <div className="mt-3">
+                <div className="flex items-baseline gap-3">
+                  <div className="font-mono text-3xl font-semibold text-red-300">{posture.grade}</div>
+                  <div className="font-mono text-lg text-[color:var(--foreground)]">{posture.score}</div>
                 </div>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400"
-                    style={{ width: `${Math.max(0, Math.min(100, posture.score))}%` }}
-                  />
-                </div>
+                <p className="mt-2 line-clamp-2 text-xs text-[color:var(--text-tertiary)]">{posture.summary}</p>
                 <Link
                   href="/insights"
-                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                  className="mt-3 inline-flex items-center gap-1 text-xs text-[color:var(--text-secondary)] transition hover:text-[color:var(--foreground)]"
                 >
-                  Open posture details
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  Details
+                  <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
             ) : (
-              <div className="mt-4 rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-secondary)]">
-                Posture scoring is unavailable for this snapshot.
-              </div>
+              <div className="mt-3 text-sm text-[color:var(--text-secondary)]">Unavailable for this snapshot.</div>
             )}
           </div>
         </div>
@@ -630,58 +592,21 @@ function SecurityGraphPageContent() {
         </section>
       ) : (
         <>
-          <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
+          <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-orange-400">Attack path queue</p>
-                <h2 className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
-                  {attackPaths.length} ranked fix-first path{attackPaths.length !== 1 ? "s" : ""} in the selected snapshot
+                <h2 className="text-base font-semibold text-[color:var(--foreground)]">
+                  {attackPaths.length} ranked path{attackPaths.length !== 1 ? "s" : ""}
                 </h2>
-                <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-                  Ranked by composite risk and operator context so the first screen starts with what to validate, contain, or expand.
-                </p>
-                <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
-                  Keyboard: focus this queue and use ← / → to step through paths.
-                </p>
                 {focusLabel && (
-                  <p className="mt-2 text-xs text-emerald-300">
-                    Focused from dashboard context: {focusLabel}
-                  </p>
+                  <p className="mt-1 text-xs text-emerald-300">Focused: {focusLabel}</p>
                 )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Link
-                    href={fullGraphHref}
-                    className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                  >
-                    Full graph
-                    <GitBranch className="h-3 w-3" />
-                  </Link>
-                  <Link
-                    href={buildFindingsHref({ scanId: selectedScanId || undefined })}
-                    className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                  >
-                    Findings
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
-                  {hasFocusContext && (
-                    <Link
-                      href={resetFocusHref}
-                      className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                    >
-                      Clear focus
-                      <ArrowRight className="h-3 w-3" />
-                    </Link>
-                  )}
-                </div>
               </div>
-              <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3 text-sm text-[color:var(--text-secondary)]">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Highest composite risk</div>
-                <div className="mt-1 font-mono text-xl text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
-              </div>
+              <div className="font-mono text-lg text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
             </div>
 
             <div
-              className="mt-4 grid max-h-[34rem] max-w-full grid-cols-1 gap-3 overflow-y-auto pr-1 outline-none md:grid-cols-2 xl:grid-cols-3"
+              className="mt-4 grid max-h-[28rem] max-w-full grid-cols-1 gap-2 overflow-y-auto pr-1 outline-none md:grid-cols-2 xl:grid-cols-3"
               tabIndex={0}
               onKeyDown={handleAttackPathQueueKeyDown}
               aria-label="Attack path queue"
@@ -716,6 +641,7 @@ function SecurityGraphPageContent() {
                       nodes={pathNodes}
                       riskScore={path.composite_risk}
                       captureMode={captureMode}
+                      compact
                       onClick={() => setSelectedAttackPathKey(key)}
                     />
                     {card && card.risk_reasons.length > 0 && (

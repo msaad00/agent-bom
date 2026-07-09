@@ -6,10 +6,10 @@ import {
   Bot,
   Bug,
   CheckCircle2,
+  ChevronDown,
   Database,
   KeyRound,
   Package,
-  Route,
   Server,
   ShieldAlert,
   Wrench,
@@ -57,100 +57,82 @@ export function ExposurePathCommandCenter({
   const evidence = path.evidence;
   const primaryAction = actions[0];
   const investigationBrief = buildInvestigationBrief(path, fixLabel);
+  const hopCount = Math.max(0, path.hops.length - 1);
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(220px,280px)]">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Command center</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Command center</p>
           <h2 className="mt-1 text-lg font-semibold leading-7 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
             {pathDisplayTitle(path)}
           </h2>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--text-secondary)]">
-            {path.summary ||
-              evidence?.attackVectorSummary ||
-              "Selected exposure path with the entities, relationships, and evidence needed to choose the first fix."}
-          </p>
         </div>
-        <div className="grid min-w-0 grid-cols-2 gap-2 text-xs">
-          <CommandMetric label="Risk" value={path.riskScore.toFixed(1)} tone="red" />
-          <CommandMetric label="Hops" value={String(Math.max(0, path.hops.length - 1))} />
-          <CommandMetric label="Agents" value={String(path.affectedAgents.length)} />
-          <CommandMetric label="Fix" value={fixLabel ?? "triage"} tone={fixLabel ? "green" : "zinc"} />
+        <div className="flex flex-wrap gap-2 text-xs">
+          <MetricPill label="Risk" value={path.riskScore.toFixed(1)} tone="red" />
+          <MetricPill label="Hops" value={String(hopCount)} />
+          <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
+          {fixLabel && <MetricPill label="Fix" value={fixLabel} tone="green" />}
         </div>
       </div>
 
-      <section aria-label="Investigation brief" className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className="flex flex-wrap gap-2">
         {investigationBrief.map((item) => (
-          <div
-            key={item.label}
-            className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2"
-          >
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{item.label}</div>
-            <div className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
-              {item.value}
-            </div>
-            {item.detail && (
-              <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)] [overflow-wrap:anywhere]">
-                {item.detail}
-              </p>
-            )}
-          </div>
+          <BriefChip key={item.label} label={item.label} value={item.value} detail={item.detail} />
         ))}
-      </section>
+      </div>
 
       <section aria-label="Selected exposure path graph">
-        <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-          <Route className="h-3.5 w-3.5" />
-          Selected path graph
-        </div>
         <ExposurePathGraph path={path} />
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <section aria-label="Relationship proof">
-          <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-            Relationship proof
-          </div>
-          <div className="max-h-64 overflow-y-auto divide-y divide-[color:var(--border-subtle)] rounded-xl border border-[color:var(--border-subtle)]">
-            {path.relationships.slice(0, 5).map((relationship) => (
-              <div key={relationship.id} className="grid gap-2 px-3 py-2 text-xs md:grid-cols-[1fr_auto]">
-                <div className="min-w-0">
-                  <span className="font-mono text-[color:var(--foreground)] [overflow-wrap:anywhere]">{relationship.relationship}</span>
-                  <span className="ml-2 break-all text-[color:var(--text-tertiary)] [overflow-wrap:anywhere]">
-                    {relationship.source} → {relationship.target}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-                  <span>{relationship.direction ?? "directed"}</span>
-                  <span>{relationship.traversable === false ? "blocked" : "traversable"}</span>
-                  {relationship.confidence && <span>{relationship.confidence}</span>}
-                </div>
-              </div>
-            ))}
-            {path.relationships.length === 0 && (
-              <div className="px-3 py-3 text-xs text-[color:var(--text-secondary)]">No relationship evidence attached.</div>
-            )}
-          </div>
-        </section>
-
-        <aside aria-label="Evidence drawer" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Evidence drawer</div>
-          <EvidenceRow label="Findings" values={path.findings} />
-          <EvidenceRow label="Agents" values={path.affectedAgents} />
-          <EvidenceRow label="Servers" values={path.affectedServers} />
-          <EvidenceRow label="Tools" values={path.reachableTools} emptyLabel="none" />
-          <EvidenceRow label="Credentials" values={path.exposedCredentials} emptyLabel="none" />
-          <div className="rounded-xl border border-[color:var(--border-subtle)] px-3 py-2 text-xs">
-            <div className="flex items-center gap-2 text-[color:var(--text-secondary)]">
-              <ShieldAlert className="h-3.5 w-3.5 text-red-300" />
-              <span>CVSS {evidence?.cvssScore ?? "n/a"}</span>
-              <span>EPSS {typeof evidence?.epssScore === "number" ? evidence.epssScore.toFixed(3) : "n/a"}</span>
-              {evidence?.isKev && <span className="font-semibold text-red-300">KEV</span>}
+      <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
+          <span>Relationship proof & evidence drawer</span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-4 border-t border-[color:var(--border-subtle)] px-4 py-4">
+          <section aria-label="Relationship proof">
+            <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+              Relationship proof
             </div>
-          </div>
-        </aside>
-      </div>
+            <div className="max-h-48 divide-y divide-[color:var(--border-subtle)] overflow-y-auto rounded-xl border border-[color:var(--border-subtle)]">
+              {path.relationships.slice(0, 8).map((relationship) => (
+                <div key={relationship.id} className="grid gap-2 px-3 py-2 text-xs md:grid-cols-[1fr_auto]">
+                  <div className="min-w-0">
+                    <span className="font-mono text-[color:var(--foreground)] [overflow-wrap:anywhere]">{relationship.relationship}</span>
+                    <span className="ml-2 break-all text-[color:var(--text-tertiary)] [overflow-wrap:anywhere]">
+                      {relationship.source} → {relationship.target}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {path.relationships.length === 0 && (
+                <div className="px-3 py-3 text-xs text-[color:var(--text-secondary)]">No relationship evidence attached.</div>
+              )}
+            </div>
+          </section>
+
+          <aside aria-label="Evidence drawer" className="grid gap-2 sm:grid-cols-2">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)] sm:col-span-2">
+              Evidence drawer
+            </div>
+            <EvidenceRow label="Findings" values={path.findings} />
+            <EvidenceRow label="Agents" values={path.affectedAgents} />
+            <EvidenceRow label="Servers" values={path.affectedServers} />
+            <EvidenceRow label="Tools" values={path.reachableTools} emptyLabel="none" />
+            <EvidenceRow label="Credentials" values={path.exposedCredentials} emptyLabel="none" />
+            <div className="rounded-xl border border-[color:var(--border-subtle)] px-3 py-2 text-xs sm:col-span-2">
+              <div className="flex flex-wrap items-center gap-2 text-[color:var(--text-secondary)]">
+                <ShieldAlert className="h-3.5 w-3.5 text-red-300" />
+                <span>CVSS {evidence?.cvssScore ?? "n/a"}</span>
+                <span>EPSS {typeof evidence?.epssScore === "number" ? evidence.epssScore.toFixed(3) : "n/a"}</span>
+                {evidence?.isKev && <span className="font-semibold text-red-300">KEV</span>}
+              </div>
+            </div>
+          </aside>
+        </div>
+      </details>
 
       {primaryAction && (
         <Link
@@ -168,38 +150,52 @@ export function ExposurePathCommandCenter({
   );
 }
 
+function MetricPill({
+  label,
+  value,
+  tone = "zinc",
+}: {
+  label: string;
+  value: string;
+  tone?: "red" | "green" | "zinc";
+}) {
+  const toneClass =
+    tone === "red"
+      ? "border-red-500/25 bg-red-500/10 text-red-200"
+      : tone === "green"
+        ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+        : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--foreground)]";
+
+  return (
+    <div className={`rounded-lg border px-2.5 py-1.5 ${toneClass}`}>
+      <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</span>{" "}
+      <span className="font-mono font-semibold">{value}</span>
+    </div>
+  );
+}
+
+function BriefChip({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <div
+      className="min-w-[9rem] max-w-full flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2"
+      title={detail ? `${label}: ${detail}` : label}
+    >
+      <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</div>
+      <div className="mt-0.5 truncate text-sm font-medium text-[color:var(--foreground)]">{value}</div>
+    </div>
+  );
+}
+
 function buildInvestigationBrief(path: ExposurePath, fixLabel: string | undefined) {
   const exposed = firstNonEmpty(path.exposedCredentials, path.reachableTools, path.affectedServers, path.affectedAgents);
   const finding = path.findings[0] ?? path.target.label;
   const proofCount = path.relationships.length;
-  const evidence = path.evidence;
-  const riskSignals = [
-    evidence?.isKev ? "KEV" : "",
-    typeof evidence?.epssScore === "number" ? `EPSS ${evidence.epssScore.toFixed(3)}` : "",
-    typeof evidence?.cvssScore === "number" ? `CVSS ${evidence.cvssScore}` : "",
-  ].filter(Boolean);
 
   return [
-    {
-      label: "What is exposed",
-      value: exposed.value,
-      detail: exposed.label,
-    },
-    {
-      label: "Why it matters",
-      value: finding,
-      detail: riskSignals.length > 0 ? riskSignals.join(" · ") : path.severity || "ranked by graph risk",
-    },
-    {
-      label: "What proves it",
-      value: `${proofCount} relationship${proofCount === 1 ? "" : "s"}`,
-      detail: path.provenance?.source ?? "graph evidence",
-    },
-    {
-      label: "What fixes it",
-      value: fixLabel ?? "triage path",
-      detail: path.fix?.version ? `Target ${path.fix.version}` : primaryFixDetail(path),
-    },
+    { label: "What is exposed", value: exposed.value, detail: exposed.label },
+    { label: "Why it matters", value: finding, detail: path.severity || "ranked by graph risk" },
+    { label: "What proves it", value: `${proofCount} relationship${proofCount === 1 ? "" : "s"}`, detail: path.provenance?.source ?? "graph evidence" },
+    { label: "What fixes it", value: fixLabel ?? "triage path", detail: path.fix?.version ? `Target ${path.fix.version}` : primaryFixDetail(path) },
   ];
 }
 
@@ -228,28 +224,20 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
   const layout = buildPathGraphLayout(path);
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-[color:var(--border-subtle)] bg-[#05070b]">
+    <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)] bg-[#05070b]">
       <svg
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         role="img"
         aria-label={`Selected exposure path graph for ${pathDisplayTitle(path)}`}
-        className="block h-auto min-w-[760px] md:min-w-0 md:w-full"
+        className="block h-auto min-w-[640px] w-full md:min-w-0"
       >
         <defs>
           <marker id="exposure-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
             <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8" />
           </marker>
-          <filter id="node-shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="#000000" floodOpacity="0.35" />
-          </filter>
         </defs>
 
         <rect x="0" y="0" width={layout.width} height={layout.height} fill="#05070b" />
-        <g opacity="0.18">
-          {Array.from({ length: 10 }).map((_, index) => (
-            <line key={index} x1="0" y1={34 + index * 38} x2={layout.width} y2={34 + index * 38} stroke="#334155" strokeWidth="1" />
-          ))}
-        </g>
 
         {layout.edges.map((edge) => (
           <path
@@ -257,7 +245,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
             d={edge.path}
             fill="none"
             stroke={edge.stroke}
-            strokeWidth="3"
+            strokeWidth="2.5"
             strokeLinecap="round"
             markerEnd="url(#exposure-arrow)"
             opacity="0.88"
@@ -268,8 +256,8 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 
         {layout.relationshipLabels.map((label) => (
           <g key={label.id} transform={`translate(${label.x} ${label.y})`}>
-            <rect x="-52" y="-11" width="104" height="22" rx="11" fill="#0f172a" stroke="#334155" />
-            <text x="0" y="4" textAnchor="middle" fill="#cbd5e1" fontSize="11" fontFamily="var(--font-mono), monospace">
+            <rect x="-48" y="-10" width="96" height="20" rx="10" fill="#0f172a" stroke="#334155" />
+            <text x="0" y="4" textAnchor="middle" fill="#cbd5e1" fontSize="10" fontFamily="var(--font-mono), monospace">
               {label.text}
             </text>
           </g>
@@ -279,24 +267,18 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
           const style = GRAPH_ROLE_STYLE[node.role] ?? GRAPH_ROLE_STYLE.unknown;
           const meta = ROLE_META[node.role] ?? ROLE_META.unknown;
           return (
-            <g key={`${node.id}-${index}`} transform={`translate(${node.x} ${node.y})`} filter="url(#node-shadow)">
-              <rect width={layout.nodeWidth} height={layout.nodeHeight} rx="14" fill={style.fill} stroke={style.stroke} strokeWidth="2" />
-              <circle cx="18" cy="20" r="5" fill={style.accent} />
-              <text x="32" y="24" fill={style.accent} fontSize="10" fontWeight="700" letterSpacing="2" fontFamily="var(--font-mono), monospace">
+            <g key={`${node.id}-${index}`} transform={`translate(${node.x} ${node.y})`}>
+              <rect width={layout.nodeWidth} height={layout.nodeHeight} rx="12" fill={style.fill} stroke={style.stroke} strokeWidth="2" />
+              <text x="14" y="22" fill={style.accent} fontSize="9" fontWeight="700" letterSpacing="1.5" fontFamily="var(--font-mono), monospace">
                 {meta.label.toUpperCase()}
               </text>
-              <text x="16" y="49" fill={style.text} fontSize="14" fontWeight="700" fontFamily="var(--font-sans), system-ui">
-                {wrapGraphText(node.label, 18, 2).map((line, lineIndex) => (
-                  <tspan key={`${node.id}-line-${lineIndex}`} x="16" dy={lineIndex === 0 ? 0 : 17}>
+              <text x="14" y="44" fill={style.text} fontSize="13" fontWeight="600" fontFamily="var(--font-sans), system-ui">
+                {wrapGraphText(node.label, 16, 2).map((line, lineIndex) => (
+                  <tspan key={`${node.id}-line-${lineIndex}`} x="14" dy={lineIndex === 0 ? 0 : 15}>
                     {line}
                   </tspan>
                 ))}
               </text>
-              {node.severity && (
-                <text x="16" y="79" fill="#94a3b8" fontSize="10" letterSpacing="1.4" fontFamily="var(--font-mono), monospace">
-                  {String(node.severity).toUpperCase()}
-                </text>
-              )}
               <title>{`${meta.label}: ${node.label}`}</title>
             </g>
           );
@@ -308,21 +290,21 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 
 function buildPathGraphLayout(path: ExposurePath) {
   const width = 920;
-  const nodeWidth = 178;
-  const nodeHeight = 96;
-  const columns = Math.min(3, Math.max(1, path.hops.length));
+  const nodeWidth = 168;
+  const nodeHeight = 72;
+  const columns = Math.min(4, Math.max(1, path.hops.length));
   const rows = Math.max(1, Math.ceil(path.hops.length / columns));
-  const xGap = columns > 1 ? (width - nodeWidth - 64) / (columns - 1) : 0;
-  const yGap = 138;
-  const height = 52 + rows * nodeHeight + (rows - 1) * (yGap - nodeHeight) + 36;
+  const xGap = columns > 1 ? (width - nodeWidth - 48) / (columns - 1) : 0;
+  const yGap = 108;
+  const height = 40 + rows * nodeHeight + (rows - 1) * (yGap - nodeHeight) + 24;
   const nodes = path.hops.map((hop, index) => {
     const row = Math.floor(index / columns);
     const col = index % columns;
     const visualCol = row % 2 === 0 ? col : columns - 1 - col;
     return {
       ...hop,
-      x: 32 + visualCol * xGap,
-      y: 38 + row * yGap,
+      x: 24 + visualCol * xGap,
+      y: 28 + row * yGap,
     };
   });
   const edges = nodes.slice(0, -1).map((source, index) => {
@@ -333,7 +315,7 @@ function buildPathGraphLayout(path: ExposurePath) {
     const endX = target.x;
     const endY = target.y + nodeHeight / 2;
     const sameRow = Math.abs(startY - endY) < 10;
-    const control = sameRow ? Math.max(48, Math.abs(endX - startX) / 2) : 70;
+    const control = sameRow ? Math.max(40, Math.abs(endX - startX) / 2) : 56;
     const pathD = sameRow
       ? `M ${startX} ${startY} C ${startX + control} ${startY}, ${endX - control} ${endY}, ${endX} ${endY}`
       : `M ${source.x + nodeWidth / 2} ${source.y + nodeHeight} C ${source.x + nodeWidth / 2} ${source.y + nodeHeight + control}, ${target.x + nodeWidth / 2} ${target.y - control}, ${target.x + nodeWidth / 2} ${target.y}`;
@@ -344,12 +326,12 @@ function buildPathGraphLayout(path: ExposurePath) {
       stroke: style.stroke,
       label: relationship,
       labelX: sameRow ? (startX + endX) / 2 : (source.x + target.x + nodeWidth) / 2,
-      labelY: sameRow ? startY - 16 : (source.y + target.y + nodeHeight) / 2,
+      labelY: sameRow ? startY - 14 : (source.y + target.y + nodeHeight) / 2,
     };
   });
   const relationshipLabels = edges.map((edge) => ({
     id: `${edge.id}:label`,
-    text: truncateGraphText(edge.label, 14),
+    text: truncateGraphText(edge.label, 12),
     x: edge.labelX,
     y: edge.labelY,
   }));
@@ -395,22 +377,6 @@ function wrapGraphText(value: string, maxLineLength: number, maxLines: number): 
   return lines.length > 0 ? lines : [truncateGraphText(normalized, maxLineLength)];
 }
 
-function CommandMetric({ label, value, tone = "zinc" }: { label: string; value: string; tone?: "red" | "green" | "zinc" }) {
-  const toneClass =
-    tone === "red"
-      ? "border-red-500/25 bg-red-500/10 text-red-200"
-      : tone === "green"
-        ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
-        : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]";
-
-  return (
-    <div className={`min-w-0 rounded-xl border px-3 py-2 ${toneClass}`}>
-      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{label}</div>
-      <div className="mt-1 font-mono text-sm font-semibold leading-5 [overflow-wrap:anywhere]">{value}</div>
-    </div>
-  );
-}
-
 function EvidenceRow({
   label,
   values,
@@ -424,7 +390,7 @@ function EvidenceRow({
     <div className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] px-3 py-2 text-xs">
       <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{label}</div>
       <div className="flex flex-wrap gap-1.5">
-        {(values.length > 0 ? values : [emptyLabel]).slice(0, 4).map((value) => (
+        {(values.length > 0 ? values : [emptyLabel]).slice(0, 3).map((value) => (
           <span
             key={`${label}-${value}`}
             className="max-w-full rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[color:var(--text-secondary)] [overflow-wrap:anywhere]"
@@ -432,9 +398,9 @@ function EvidenceRow({
             {value}
           </span>
         ))}
-        {values.length > 4 && (
+        {values.length > 3 && (
           <span className="rounded border border-[color:var(--border-subtle)] px-2 py-0.5 text-[color:var(--text-tertiary)]">
-            +{values.length - 4}
+            +{values.length - 3}
           </span>
         )}
       </div>

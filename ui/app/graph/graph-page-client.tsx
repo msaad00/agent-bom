@@ -2534,7 +2534,12 @@ function GraphPageInner() {
           )}
         </div>
 
-        <GraphEvaluationSummary evaluation={graphEvaluation} />
+        <details className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70">
+          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
+            Graph evaluation · score {Math.round(graphEvaluation.score)} ({graphEvaluation.grade})
+          </summary>
+          <GraphEvaluationSummary evaluation={graphEvaluation} />
+        </details>
 
         {/* Snapshot diff + how-to-read default-collapsed so the canvas owns the
             viewport. The four redundant SnapshotMetaCards (Snapshot/Topology/
@@ -2628,19 +2633,26 @@ function GraphPageInner() {
         )}
 
         {graphDiff && (
-          <GraphDriftLegend
-            active={driftLensActive}
-            onToggleActive={(next) => {
-              setDriftLensActive(next);
-              if (!next) setDriftFilter("all");
-            }}
-            filter={driftFilter}
-            onFilterChange={setDriftFilter}
-            counts={drift.counts}
-            criticalCount={drift.critical}
-            comparedLabel={previousSnapshot?.scan_id.slice(0, 12)}
-            attributeSummaries={driftAttributeSummaryList}
-          />
+          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+            <summary className="cursor-pointer list-none text-xs font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
+              Snapshot drift lens · {drift.critical} critical changes
+            </summary>
+            <div className="mt-3">
+              <GraphDriftLegend
+                active={driftLensActive}
+                onToggleActive={(next) => {
+                  setDriftLensActive(next);
+                  if (!next) setDriftFilter("all");
+                }}
+                filter={driftFilter}
+                onFilterChange={setDriftFilter}
+                counts={drift.counts}
+                criticalCount={drift.critical}
+                comparedLabel={previousSnapshot?.scan_id.slice(0, 12)}
+                attributeSummaries={driftAttributeSummaryList}
+              />
+            </div>
+          </details>
         )}
 
         {driftLensActive && graphDiff ? (
@@ -2652,16 +2664,23 @@ function GraphPageInner() {
           />
         ) : null}
 
-        <GraphEvidenceLegend
-          active={evidenceLensActive}
-          onToggleActive={(next) => {
-            setEvidenceLensActive(next);
-            if (!next) setEvidenceFilter("all");
-          }}
-          filter={evidenceFilter}
-          onFilterChange={setEvidenceFilter}
-          counts={evidenceCounts}
-        />
+        <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+          <summary className="cursor-pointer list-none text-xs font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
+            Evidence lens · {evidenceCounts.all} nodes
+          </summary>
+          <div className="mt-3">
+            <GraphEvidenceLegend
+              active={evidenceLensActive}
+              onToggleActive={(next) => {
+                setEvidenceLensActive(next);
+                if (!next) setEvidenceFilter("all");
+              }}
+              filter={evidenceFilter}
+              onFilterChange={setEvidenceFilter}
+              counts={evidenceCounts}
+            />
+          </div>
+        </details>
 
         <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400 group">
           <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">

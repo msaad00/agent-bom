@@ -245,13 +245,12 @@ async function routeCockpit(page: Page) {
 }
 
 async function expectCockpitVisible(page: Page) {
-  // Investigation cockpit shell
-  await expect(page.getByRole("heading", { name: "Fix-first investigation" })).toBeVisible();
-  // Exposure-path command center, metrics, and evidence drawer
+  await expect(page.getByRole("heading", { name: "Security graph" })).toBeVisible();
+  await expect(page.getByText("Fix-first investigation")).toBeVisible();
   await expect(page.getByText("Command center", { exact: true })).toBeVisible();
   await expect(page.getByText("Risk", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Hops", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Evidence drawer", { exact: true })).toBeVisible();
+  await expect(page.getByText("Relationship proof & evidence drawer", { exact: true })).toBeVisible();
 }
 
 for (const theme of ["dark", "light"] as const) {

@@ -40,6 +40,7 @@ import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
 import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette, type CommandPaletteAction } from "@/components/command-palette";
+import { DemoNavSignIn } from "@/components/demo-mode-cta";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   deploymentModeLabel,
@@ -59,7 +60,6 @@ interface NavLink {
 
 interface NavGroup {
   label: string;
-  description: string;
   icon: React.ElementType;
   links: NavLink[];
   /**
@@ -82,40 +82,14 @@ function activeGroupForPath(path: string | null): string {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Discover",
-    description: "Inventory, coverage, and starting points",
+    label: "Command",
     icon: LayoutDashboard,
-    accent: "#58a6ff", // blue — discovery layer
+    accent: "#58a6ff",
     links: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/agents", label: "Agents", icon: Server },
-      { href: "/manifest", label: "Agent BOM", icon: Waypoints },
-      { href: "/fleet", label: "Fleet", icon: Users },
-      { href: "/registry", label: "Registry", icon: Boxes },
-    ],
-  },
-  {
-    label: "Scan",
-    description: "Choose source mode, run scans, and review findings",
-    icon: Scan,
-    accent: "#f85149", // red — scanning layer
-    links: [
-      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
-      { href: "/connections", label: "Cloud Accounts", icon: Cloud, capability: "scan.run" },
-      { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
-      { href: "/jobs", label: "Scan Jobs", icon: Clock },
       { href: "/findings", label: "Findings", icon: Bug },
-    ],
-  },
-  {
-    label: "Analyze",
-    description: "One security graph with attack-path, lineage, mesh, and context lenses",
-    icon: GitBranch,
-    accent: "#d29922", // amber — analysis layer
-    links: [
-      // Single graph surface. Lineage / mesh / context are lenses reached from the
-      // in-page lens switcher, not separate nav links (see graph-lens-switcher).
       { href: "/security-graph", label: "Security Graph", icon: Network },
+      { href: "/remediation", label: "Remediation", icon: Wrench },
     ],
     secondary: [
       { href: "/graph", label: "Lineage Lens", icon: GitBranch },
@@ -124,23 +98,40 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Protect",
-    description: "Proxy, policy, and runtime enforcement surfaces",
-    icon: Shield,
-    accent: "#f778ba", // pink — enforcement layer
+    label: "AI Estate",
+    icon: Server,
+    accent: "#3fb950",
     links: [
-      { href: "/runtime", label: "Runtime", icon: Shield },
+      { href: "/agents", label: "Agents", icon: Server },
+      { href: "/manifest", label: "Agent BOM", icon: Waypoints },
+      { href: "/fleet", label: "Fleet", icon: Users },
     ],
   },
-  // Govern is split into three tight, single-purpose groups instead of one
-  // eight-deep list with a "More" disclosure. Every former Govern route (plus
-  // the Audit Log moved out of Protect) stays reachable directly in the sidebar,
-  // the command palette, and deep links.
   {
-    label: "Compliance",
-    description: "Evidence, policy governance, and audit export",
+    label: "Cloud & Data",
+    icon: Cloud,
+    accent: "#a371f7",
+    links: [
+      { href: "/connections", label: "Cloud Accounts", icon: Cloud, capability: "scan.run" },
+      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
+      { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
+      { href: "/identity", label: "Identity", icon: Fingerprint },
+      { href: "/drift", label: "Drift", icon: Radar },
+    ],
+  },
+  {
+    label: "Runtime",
     icon: Shield,
-    accent: "#3fb950", // green — evidence/governance layer
+    accent: "#f778ba",
+    links: [
+      { href: "/runtime", label: "Runtime", icon: Shield },
+      { href: "/traces", label: "Traces", icon: Radio },
+    ],
+  },
+  {
+    label: "Governance",
+    icon: Eye,
+    accent: "#3fb950",
     links: [
       { href: "/compliance", label: "Compliance", icon: Shield },
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
@@ -148,25 +139,19 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Operations",
-    description: "Identity, cost, drift, and activity posture",
-    icon: Activity,
-    accent: "#a371f7", // purple — operational posture layer
-    links: [
-      { href: "/identity", label: "Identity", icon: Fingerprint },
-      { href: "/cost", label: "Cost", icon: DollarSign },
-      { href: "/drift", label: "Drift", icon: Radar },
-      { href: "/activity", label: "Activity", icon: Activity },
-    ],
+    label: "Reference",
+    icon: Boxes,
+    accent: "#d29922",
+    links: [{ href: "/registry", label: "MCP Catalog", icon: Boxes }],
   },
   {
-    label: "Remediation",
-    description: "Fix workflow and runtime trace evidence",
-    icon: Wrench,
-    accent: "#db6d28", // orange — remediation/action layer
+    label: "Operations",
+    icon: Activity,
+    accent: "#db6d28",
     links: [
-      { href: "/remediation", label: "Remediation", icon: Wrench },
-      { href: "/traces", label: "Traces", icon: Radio },
+      { href: "/cost", label: "AI Spend", icon: DollarSign },
+      { href: "/jobs", label: "Scan Jobs", icon: Clock },
+      { href: "/activity", label: "Activity", icon: Activity },
     ],
   },
 ];
@@ -177,11 +162,11 @@ const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
 // Reuse the canonical nav labels so proof-path tiles don't give the same route
 // a second name (e.g. Findings vs "Queue"). Icons mirror each route's nav icon.
 const PROOF_PATH_LINKS: NavLink[] = [
-  { href: "/findings", label: "Findings", icon: Bug },
   { href: "/security-graph", label: "Security Graph", icon: Network },
   { href: "/runtime", label: "Runtime", icon: Shield },
   { href: "/compliance", label: "Compliance", icon: FileText },
   { href: "/connections", label: "Cloud Accounts", icon: Cloud },
+  { href: "/remediation", label: "Remediation", icon: Wrench },
 ];
 
 // ─── Risk counts for badges ─────────────────────────────────────────────────
@@ -460,7 +445,7 @@ export function Nav() {
           <p className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
             Proof path
           </p>
-          <div className="grid grid-cols-2 gap-1">
+          <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
             {PROOF_PATH_LINKS.map((link) => {
               const Icon = link.icon;
               const active = link.href === "/" ? path === "/" : Boolean(path?.startsWith(link.href));
@@ -468,14 +453,14 @@ export function Nav() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-colors ${
+                  className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap transition-colors ${
                     active
                       ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
                       : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{link.label}</span>
+                  <span>{link.label}</span>
                 </Link>
               );
             })}
@@ -524,7 +509,7 @@ export function Nav() {
                 }`}
                 style={{ borderLeftColor: group.accent }}
                 aria-expanded={collapsed ? collapsedFlyoutGroup === group.label : isExpanded}
-                aria-label={collapsed ? `${group.label}: ${group.description}` : undefined}
+                aria-label={collapsed ? group.label : undefined}
               >
                 <GroupIcon
                   className={`${collapsed ? "h-5 w-5" : "h-4 w-4"} shrink-0`}
@@ -552,9 +537,6 @@ export function Nav() {
               {/* Group Links */}
               {(isExpanded || collapsed) && !collapsed && (
                 <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-[color:var(--border-subtle)] pl-2">
-                  <p className="px-3 pb-1 text-[11px] leading-5 text-[color:var(--text-tertiary)]">
-                    {group.description}
-                  </p>
                   {group.visibleLinks.map(({ href, label, icon: Icon }) => {
                     const active =
                       href === "/"
@@ -687,9 +669,6 @@ export function Nav() {
                         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--foreground)]">
                           {group.label}
                         </p>
-                        <p className="mt-1 text-[12px] leading-5 text-[color:var(--text-secondary)]">
-                          {group.description}
-                        </p>
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -763,6 +742,7 @@ export function Nav() {
       <div className={`border-t border-[color:var(--border-subtle)] ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
         <div className="space-y-2">
           <SessionStatus collapsed={collapsed} loading={authLoading} session={session} />
+          <DemoNavSignIn collapsed={collapsed} />
           <Link
             href={`/help?from=${encodeURIComponent(path ?? "/")}`}
             className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] ${collapsed ? "justify-center px-2" : ""}`}

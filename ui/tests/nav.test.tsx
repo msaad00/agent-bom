@@ -54,34 +54,31 @@ describe('Nav', () => {
     vi.clearAllMocks()
   })
 
-  it('renders the Discover nav group', () => {
+  it('renders the Command nav group', () => {
     render(<Nav />)
-    expect(screen.getByText('Discover')).toBeInTheDocument()
-    expect(screen.getByText('Inventory, coverage, and starting points')).toBeInTheDocument()
+    expect(screen.getByText('Command')).toBeInTheDocument()
   })
 
-  it('renders the Scan nav group', () => {
+  it('renders the AI Estate nav group', () => {
     render(<Nav />)
-    expect(screen.getByText('Scan')).toBeInTheDocument()
+    expect(screen.getByText('AI Estate')).toBeInTheDocument()
   })
 
-  it('renders the Analyze nav group', () => {
+  it('renders the Cloud & Data nav group', () => {
     render(<Nav />)
-    expect(screen.getByText('Analyze')).toBeInTheDocument()
+    expect(screen.getByText('Cloud & Data')).toBeInTheDocument()
   })
 
-  it('renders the Protect nav group', () => {
+  it('renders the Runtime nav group', () => {
     render(<Nav />)
-    expect(screen.getByText('Protect')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^runtime/i })).toBeInTheDocument()
   })
 
-  it('renders the three Govern groups (Compliance, Operations, Remediation)', () => {
+  it('renders Governance, Reference, and Operations groups', () => {
     render(<Nav />)
-    // 'Compliance'/'Remediation' appear both as a group label and as a page link,
-    // so use getAllByText.
-    expect(screen.getAllByText('Compliance').length).toBeGreaterThan(0)
+    expect(screen.getByText('Governance')).toBeInTheDocument()
+    expect(screen.getByText('Reference')).toBeInTheDocument()
     expect(screen.getByText('Operations')).toBeInTheDocument()
-    expect(screen.getAllByText('Remediation').length).toBeGreaterThan(0)
   })
 
   it('contains link to Dashboard (/)', () => {
@@ -90,44 +87,41 @@ describe('Nav', () => {
     expect(links.length).toBeGreaterThan(0)
   })
 
-  it('contains link to New Scan (/scan)', () => {
+  it('contains link to New Scan (/scan) under Cloud & Data', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /scan/i }))
+    fireEvent.click(screen.getByRole('button', { name: /cloud & data/i }))
     const links = screen.getAllByRole('link', { name: /new scan/i })
     expect(links.some((l) => l.getAttribute('href') === '/scan')).toBe(true)
   })
 
   it('contains link to Data Sources (/sources)', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /scan/i }))
+    fireEvent.click(screen.getByRole('button', { name: /cloud & data/i }))
     const links = screen.getAllByRole('link', { name: /data sources/i })
     expect(links.some((l) => l.getAttribute('href') === '/sources')).toBe(true)
   })
 
-  it('contains link to Scan Jobs (/jobs)', () => {
+  it('contains link to Scan Jobs (/jobs) under Operations', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /scan/i }))
+    fireEvent.click(screen.getByRole('button', { name: /operations/i }))
     const links = screen.getAllByRole('link', { name: /scan jobs/i })
     expect(links.some((l) => l.getAttribute('href') === '/jobs')).toBe(true)
   })
 
-  it('contains link to Findings (/findings)', () => {
+  it('contains link to Findings (/findings) under Command', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /scan/i }))
     const links = screen.getAllByRole('link', { name: /findings/i })
     expect(links.some((l) => l.getAttribute('href') === '/findings')).toBe(true)
   })
 
-  it('contains Remediation link', () => {
+  it('contains Remediation link under Command', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /remediation/i }))
     const links = screen.getAllByRole('link', { name: /remediation/i })
     expect(links.some((l) => l.getAttribute('href') === '/remediation')).toBe(true)
   })
 
-  it('contains Security Graph link', () => {
+  it('contains Security Graph link under Command', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
     const links = screen.getAllByRole('link', { name: /security graph/i })
     expect(links.some((l) => l.getAttribute('href') === '/security-graph')).toBe(true)
   })
@@ -135,7 +129,7 @@ describe('Nav', () => {
   it('surfaces curated proof-path links for golden workflows', () => {
     render(<Nav />)
     const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
-    expect(hrefs).toContain('/findings')
+    expect(hrefs).toContain('/remediation')
     expect(hrefs).toContain('/security-graph')
     expect(hrefs).toContain('/runtime')
     expect(hrefs).toContain('/compliance')
@@ -143,15 +137,15 @@ describe('Nav', () => {
     expect(screen.getByText(/proof path/i)).toBeInTheDocument()
   })
 
-  it('contains Registry link in Discover', () => {
+  it('contains MCP Catalog link in Reference', () => {
     render(<Nav />)
-    const links = screen.getAllByRole('link', { name: /^registry$/i })
+    fireEvent.click(screen.getByRole('button', { name: /reference/i }))
+    const links = screen.getAllByRole('link', { name: /mcp catalog/i })
     expect(links.some((l) => l.getAttribute('href') === '/registry')).toBe(true)
   })
 
-  it('keeps graph lenses tucked under Analyze instead of primary sidebar links', () => {
+  it('keeps graph lenses tucked under Command instead of primary sidebar links', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
     expect(screen.getByText(/more \(3\)/i)).toBeInTheDocument()
     const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
     expect(hrefs).toContain('/security-graph')
@@ -168,33 +162,38 @@ describe('Nav', () => {
     expect(hrefs).not.toContain('/overview')
   })
 
-  it('contains Compliance link', () => {
+  it('contains Compliance link under Governance', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /compliance/i }))
+    fireEvent.click(screen.getByRole('button', { name: /governance/i }))
     const links = screen.getAllByRole('link', { name: /^compliance$/i })
     expect(links.some((l) => l.getAttribute('href') === '/compliance')).toBe(true)
   })
 
   it('contains Governance link', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /compliance/i }))
+    fireEvent.click(screen.getByRole('button', { name: /governance/i }))
     const links = screen.getAllByRole('link', { name: /^governance$/i })
     expect(links.some((l) => l.getAttribute('href') === '/governance')).toBe(true)
   })
 
-  it('keeps cost, identity, drift, and activity reachable directly from the Operations group', () => {
+  it('labels cost as AI Spend under Operations', () => {
     render(<Nav />)
     fireEvent.click(screen.getByRole('button', { name: /operations/i }))
-    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
-    expect(hrefs).toContain('/cost')
-    expect(hrefs).toContain('/identity')
-    expect(hrefs).toContain('/drift')
-    expect(hrefs).toContain('/activity')
+    const links = screen.getAllByRole('link', { name: /ai spend/i })
+    expect(links.some((l) => l.getAttribute('href') === '/cost')).toBe(true)
   })
 
-  it('moves the Audit Log into the Compliance group', () => {
+  it('keeps identity and drift under Cloud & Data', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /compliance/i }))
+    fireEvent.click(screen.getByRole('button', { name: /cloud & data/i }))
+    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/identity')
+    expect(hrefs).toContain('/drift')
+  })
+
+  it('moves the Audit Log into the Governance group', () => {
+    render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /governance/i }))
     const links = screen.getAllByRole('link', { name: /audit log/i })
     expect(links.some((l) => l.getAttribute('href') === '/audit')).toBe(true)
   })
@@ -220,18 +219,22 @@ describe('Nav', () => {
 
   it('renders all 7 nav group labels', () => {
     render(<Nav />)
-    // Use getAllByText to handle cases where a label also appears as a page link
-    // (e.g. Compliance, Remediation).
-    const groups = ['Discover', 'Scan', 'Analyze', 'Protect', 'Compliance', 'Operations', 'Remediation']
+    const groups = ['Command', 'AI Estate', 'Cloud & Data', 'Runtime', 'Governance', 'Reference', 'Operations']
     for (const group of groups) {
       expect(screen.getAllByText(group).length).toBeGreaterThan(0)
     }
   })
 
+  it('does not render sidebar group description paragraphs', () => {
+    render(<Nav />)
+    expect(screen.queryByText('Inventory, coverage, and starting points')).not.toBeInTheDocument()
+    expect(screen.queryByText('One security graph with attack-path, lineage, mesh, and context lenses')).not.toBeInTheDocument()
+  })
+
   it('shows page counts for expanded nav groups', async () => {
     render(<Nav />)
     expect(screen.getAllByText('3').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
+    fireEvent.click(screen.getByRole('button', { name: /cloud & data/i }))
     await waitFor(() => {
       expect(screen.getAllByText('5').length).toBeGreaterThan(0)
     })
@@ -240,13 +243,13 @@ describe('Nav', () => {
   it('contains links for all primary pages across all groups', async () => {
     render(<Nav />)
     const expectedByGroup: Record<string, string[]> = {
-      Discover: ['/', '/agents', '/fleet', '/registry'],
-      Scan: ['/sources', '/scan', '/jobs', '/findings'],
-      Analyze: ['/security-graph'],
-      Protect: ['/runtime'],
-      Compliance: ['/compliance', '/governance', '/audit'],
-      Operations: ['/identity', '/cost', '/drift', '/activity'],
-      Remediation: ['/remediation', '/traces'],
+      Command: ['/', '/findings', '/security-graph', '/remediation'],
+      'AI Estate': ['/agents', '/manifest', '/fleet'],
+      'Cloud & Data': ['/connections', '/sources', '/scan', '/identity', '/drift'],
+      Runtime: ['/runtime', '/traces'],
+      Governance: ['/compliance', '/governance', '/audit'],
+      Reference: ['/registry'],
+      Operations: ['/cost', '/jobs', '/activity'],
     }
 
     for (const [group, hrefs] of Object.entries(expectedByGroup)) {
@@ -265,18 +268,11 @@ describe('Nav', () => {
     render(<Nav />)
 
     await waitFor(() => {
-      expect(screen.getByText('Choose source mode, run scans, and review findings')).toBeInTheDocument()
-      expect(screen.getByText('One security graph with attack-path, lineage, mesh, and context lenses')).toBeInTheDocument()
-      expect(screen.getByText('Proxy, policy, and runtime enforcement surfaces')).toBeInTheDocument()
-      expect(screen.getByText('Evidence, policy governance, and audit export')).toBeInTheDocument()
-      expect(screen.getByText('Identity, cost, drift, and activity posture')).toBeInTheDocument()
-      expect(screen.getByText('Fix workflow and runtime trace evidence')).toBeInTheDocument()
+      expect(screen.getAllByRole('link', { name: /dashboard/i }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: /new scan/i }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: /runtime/i }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: /remediation/i }).length).toBeGreaterThan(0)
     })
-
-    expect(screen.getAllByRole('link', { name: /dashboard/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', { name: /new scan/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', { name: /runtime/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', { name: /remediation/i }).length).toBeGreaterThan(0)
   })
 
   it('moves inactive deployment surfaces into Unused capabilities', async () => {
@@ -308,16 +304,23 @@ describe('Nav', () => {
     render(<Nav />)
 
     await waitFor(() => {
-      expect(document.querySelector('summary')).toBeTruthy()
+      expect(screen.getByRole('button', { name: /ai estate/i })).toBeInTheDocument()
     })
 
-    expect(document.querySelector('summary')?.textContent).toContain('Unused in Local')
+    fireEvent.click(screen.getByRole('button', { name: /ai estate/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/unused in local \(1\)/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText(/unused in local \(1\)/i))
+
     const fleetLink = screen.getByRole('link', { name: /^fleet$/i })
     expect(fleetLink).toHaveAttribute('href', '/fleet')
     expect(fleetLink).toHaveAttribute('title', 'Hidden until this deployment mode is detected')
   })
 
-  it('keeps gateway and traces visible for hybrid deployments', async () => {
+  it('keeps runtime and traces visible for hybrid deployments', async () => {
     const { api } = await import('@/lib/api')
     vi.mocked(api.getPostureCounts).mockResolvedValueOnce({
       critical: 0,
@@ -345,12 +348,11 @@ describe('Nav', () => {
 
     render(<Nav />)
 
-    fireEvent.click(screen.getByRole('button', { name: /protect/i }))
+    fireEvent.click(screen.getByRole('button', { name: /runtime/i }))
     await waitFor(() => {
       expect(screen.getAllByRole('link', { name: /^runtime$/i }).some((link) => link.getAttribute('href') === '/runtime')).toBe(true)
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /remediation/i }))
     expect(screen.getAllByRole('link', { name: /^traces$/i }).some((link) => link.getAttribute('href') === '/traces')).toBe(true)
   })
 
@@ -383,8 +385,16 @@ describe('Nav', () => {
     render(<Nav />)
 
     await waitFor(() => {
-      expect(document.querySelector('summary')).toBeTruthy()
+      expect(screen.getByRole('button', { name: /ai estate/i })).toBeInTheDocument()
     })
+
+    fireEvent.click(screen.getByRole('button', { name: /ai estate/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/unused in local/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText(/unused in local/i))
 
     const agentsLink = screen.getByRole('link', { name: /^agents$/i })
     expect(agentsLink).toHaveAttribute('href', '/agents')

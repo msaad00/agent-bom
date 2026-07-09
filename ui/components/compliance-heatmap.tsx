@@ -29,7 +29,7 @@ function cellColor(status: string): string {
     case "pass":    return "#34d399";
     case "warning": return "#facc15";
     case "fail":    return "#f87171";
-    default:        return "#27272a";
+    default:        return "var(--border-strong)";
   }
 }
 
@@ -51,13 +51,13 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
   );
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 overflow-x-auto relative">
-      <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-4">
+    <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-2xl p-6 overflow-x-auto relative">
+      <h3 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-wider mb-4">
         Compliance Heatmap
       </h3>
 
       {/* Legend */}
-      <div className="flex gap-4 mb-4 text-xs text-zinc-500">
+      <div className="flex gap-4 mb-4 text-xs text-[color:var(--text-tertiary)]">
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded" style={{ backgroundColor: "#34d399" }} /> Pass
         </span>
@@ -68,7 +68,7 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
           <span className="w-3 h-3 rounded" style={{ backgroundColor: "#f87171" }} /> Fail
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded" style={{ backgroundColor: "#27272a" }} /> N/A
+          <span className="w-3 h-3 rounded" style={{ backgroundColor: "var(--border-strong)" }} /> N/A
         </span>
       </div>
 
@@ -78,7 +78,7 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
           return (
             <div key={fw.field} className="flex items-center gap-3">
               {/* Framework label */}
-              <div className="w-44 shrink-0 text-xs text-zinc-400 font-medium truncate" title={fw.label}>
+              <div className="w-44 shrink-0 text-xs text-[color:var(--text-secondary)] font-medium truncate" title={fw.label}>
                 {fw.label}
               </div>
 
@@ -101,7 +101,7 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
                   <div
                     key={`empty-${i}`}
                     className="w-7 h-7 rounded"
-                    style={{ backgroundColor: "#27272a" }}
+                    style={{ backgroundColor: "var(--border-strong)" }}
                   />
                 ))}
               </div>
@@ -113,7 +113,7 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
       {/* Tooltip */}
       {tooltip && (
         <div
-          className="fixed z-50 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-200 shadow-xl pointer-events-none"
+          className="fixed z-50 px-3 py-1.5 rounded-lg bg-[color:var(--surface-muted)] border border-[color:var(--border-strong)] text-xs text-[color:var(--foreground)] shadow-xl pointer-events-none"
           style={{
             left: tooltip.x,
             top: tooltip.y - 40,
@@ -121,7 +121,7 @@ export function ComplianceHeatmap({ data }: ComplianceHeatmapProps) {
           }}
         >
           <span className="font-mono font-semibold">{tooltip.code}</span>
-          <span className="text-zinc-500 mx-1.5">&middot;</span>
+          <span className="text-[color:var(--text-tertiary)] mx-1.5">&middot;</span>
           <span>{statusLabel(tooltip.status)}</span>
         </div>
       )}

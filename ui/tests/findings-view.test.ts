@@ -5,6 +5,7 @@ import {
   findingStatusLabel,
   formatFindingTimestamp,
   hasLifecycleMetadata,
+  vulnRowKey,
   type EnrichedVuln,
 } from "@/lib/findings-view";
 
@@ -41,5 +42,21 @@ describe("findings lifecycle helpers", () => {
   it("detects lifecycle metadata on enriched rows", () => {
     expect(hasLifecycleMetadata([sampleVuln()])).toBe(false);
     expect(hasLifecycleMetadata([sampleVuln({ lifecycle_status: "open", last_seen: "2026-07-01T00:00:00Z" })])).toBe(true);
+  });
+});
+
+describe("vulnRowKey", () => {
+  it("prefers the unique per-finding id so the same CVE keeps distinct keys", () => {
+    // Same CVE label affecting two assets must yield two distinct row keys,
+    // otherwise React collapses/drops rows (regression: duplicate keys).
+    const a = sampleVuln({ id: "CVE-2020-14343", finding_id: "uuid-a" });
+    const b = sampleVuln({ id: "CVE-2020-14343", finding_id: "uuid-b" });
+    expect(vulnRowKey(a)).toBe("uuid-a");
+    expect(vulnRowKey(b)).toBe("uuid-b");
+    expect(vulnRowKey(a)).not.toBe(vulnRowKey(b));
+  });
+
+  it("falls back to the vulnerability id when no finding id is present", () => {
+    expect(vulnRowKey(sampleVuln({ id: "CVE-2026-0001" }))).toBe("CVE-2026-0001");
   });
 });

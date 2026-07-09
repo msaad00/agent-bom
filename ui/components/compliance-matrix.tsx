@@ -92,7 +92,7 @@ const columns = [
   col.accessor("framework", {
     header: "Framework",
     cell: (info) => (
-      <span className="text-xs font-medium text-zinc-400">
+      <span className="text-xs font-medium text-[color:var(--text-secondary)]">
         {info.getValue()}
       </span>
     ),
@@ -101,7 +101,7 @@ const columns = [
   col.accessor("code", {
     header: "Control",
     cell: (info) => (
-      <span className="font-mono text-xs font-semibold text-zinc-200">
+      <span className="font-mono text-xs font-semibold text-[color:var(--foreground)]">
         {info.getValue()}
       </span>
     ),
@@ -109,7 +109,7 @@ const columns = [
   col.accessor("name", {
     header: "Description",
     cell: (info) => (
-      <span className="text-xs text-zinc-400 leading-snug">
+      <span className="text-xs text-[color:var(--text-secondary)] leading-snug">
         {info.getValue()}
       </span>
     ),
@@ -140,7 +140,7 @@ const columns = [
       const v = info.getValue();
       return (
         <span
-          className={`font-mono text-xs ${v > 0 ? "text-zinc-200" : "text-zinc-700"}`}
+          className={`font-mono text-xs ${v > 0 ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]"}`}
         >
           {v}
         </span>
@@ -156,7 +156,7 @@ const columns = [
           {v}
         </span>
       ) : (
-        <span className="text-zinc-700">—</span>
+        <span className="text-[color:var(--text-tertiary)]">—</span>
       );
     },
   }),
@@ -169,7 +169,7 @@ const columns = [
           {v}
         </span>
       ) : (
-        <span className="text-zinc-700">—</span>
+        <span className="text-[color:var(--text-tertiary)]">—</span>
       );
     },
   }),
@@ -180,7 +180,7 @@ const columns = [
       return v > 0 ? (
         <span className="font-mono text-xs text-yellow-400">{v}</span>
       ) : (
-        <span className="text-zinc-700">—</span>
+        <span className="text-[color:var(--text-tertiary)]">—</span>
       );
     },
   }),
@@ -191,7 +191,7 @@ const columns = [
       return v > 0 ? (
         <span className="font-mono text-xs text-blue-400">{v}</span>
       ) : (
-        <span className="text-zinc-700">—</span>
+        <span className="text-[color:var(--text-tertiary)]">—</span>
       );
     },
   }),
@@ -199,9 +199,9 @@ const columns = [
     header: "Packages",
     cell: (info) => {
       const pkgs = info.getValue();
-      if (pkgs.length === 0) return <span className="text-zinc-700">—</span>;
+      if (pkgs.length === 0) return <span className="text-[color:var(--text-tertiary)]">—</span>;
       return (
-        <span className="text-xs text-zinc-500" title={pkgs.join(", ")}>
+        <span className="text-xs text-[color:var(--text-tertiary)]" title={pkgs.join(", ")}>
           {pkgs.length} pkg{pkgs.length !== 1 ? "s" : ""}
         </span>
       );
@@ -266,19 +266,19 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
       <div className="flex flex-wrap items-center gap-3">
         {/* Search */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[color:var(--text-tertiary)]" />
           <input
             type="text"
             placeholder="Search controls..."
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+            className="w-full bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-lg pl-9 pr-3 py-2 text-xs text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:outline-none focus:border-[color:var(--border-strong)]"
           />
         </div>
 
         {/* Framework filter */}
         <div className="flex items-center gap-1">
-          <Filter className="w-3.5 h-3.5 text-zinc-500" />
+          <Filter className="w-3.5 h-3.5 text-[color:var(--text-tertiary)]" />
           <select
             value={activeFramework}
             onChange={(e) => {
@@ -288,7 +288,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
                 return val ? [...without, { id: "framework", value: val }] : without;
               });
             }}
-            className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-zinc-600"
+            className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-lg px-2 py-1.5 text-xs text-[color:var(--text-secondary)] focus:outline-none focus:border-[color:var(--border-strong)]"
           >
             <option value="">All frameworks</option>
             {frameworks?.map((f) => (
@@ -313,7 +313,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
               className={`px-2.5 py-1 rounded-lg text-[10px] font-medium border transition-colors ${
                 activeStatus === s
                   ? "bg-emerald-600 text-white border-emerald-600"
-                  : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600"
+                  : "bg-[color:var(--surface)] text-[color:var(--text-secondary)] border-[color:var(--border-subtle)] hover:border-[color:var(--border-strong)]"
               }`}
             >
               {s === "" ? "All" : s === "pass" ? "Pass" : s === "warning" ? "Warn" : "Fail"}
@@ -324,7 +324,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
         {/* Export */}
         <button
           onClick={() => exportCsv(table.getFilteredRowModel().rows?.map((r) => r.original))}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-300 hover:text-zinc-100 hover:border-zinc-600 transition-colors ml-auto"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[color:var(--surface-muted)] border border-[color:var(--border-strong)] rounded-lg text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:border-[color:var(--border-strong)] transition-colors ml-auto"
         >
           <Download className="w-3.5 h-3.5" />
           CSV
@@ -332,27 +332,27 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
       </div>
 
       {/* Count */}
-      <div className="text-xs text-zinc-600">
+      <div className="text-xs text-[color:var(--text-tertiary)]">
         {table.getFilteredRowModel().rows.length} of {rows.length} controls
       </div>
 
       {/* Table */}
-      <div className="border border-zinc-800 rounded-xl overflow-hidden">
+      <div className="border border-[color:var(--border-subtle)] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-900 border-b border-zinc-800">
+            <thead className="bg-[color:var(--surface)] border-b border-[color:var(--border-subtle)]">
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
                   {hg.headers?.map((header) => (
                     <th
                       key={header.id}
-                      className="text-left px-3 py-2.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wider whitespace-nowrap"
+                      className="text-left px-3 py-2.5 text-[10px] font-medium text-[color:var(--text-tertiary)] uppercase tracking-wider whitespace-nowrap"
                     >
                       {header.isPlaceholder ? null : (
                         <button
                           className={`flex items-center gap-1 ${
                             header.column.getCanSort()
-                              ? "cursor-pointer select-none hover:text-zinc-300"
+                              ? "cursor-pointer select-none hover:text-[color:var(--text-secondary)]"
                               : ""
                           }`}
                           onClick={header.column.getToggleSortingHandler()}
@@ -379,11 +379,11 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
                 </tr>
               ))}
             </thead>
-            <tbody className="divide-y divide-zinc-800/50 bg-zinc-950">
+            <tbody className="divide-y divide-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
               {table.getRowModel().rows?.map((row) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-zinc-900/50 transition-colors"
+                  className="hover:bg-[color:var(--surface)]/50 transition-colors"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-3 py-2.5">

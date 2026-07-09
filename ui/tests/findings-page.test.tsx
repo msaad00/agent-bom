@@ -142,4 +142,34 @@ describe("FindingsPage", () => {
       expect(screen.queryByRole("dialog", { name: "Finding details for CVE-2026-1234" })).not.toBeInTheDocument();
     });
   });
+
+  it("renders the same CVE across multiple assets as distinct rows with unique keys", async () => {
+    // Regression: rows were keyed by the CVE label, so one CVE affecting N
+    // assets collapsed to a single key — React warned and could drop rows.
+    // Each unified finding carries its own UUID, so keys must stay unique.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    apiMock.listFindings.mockResolvedValue({
+      total: 3,
+      findings: [
+        { id: "uuid-1", severity: "high", cve_id: "CVE-2020-14343", title: "PyYAML RCE", asset: { name: "agent-alpha" } },
+        { id: "uuid-2", severity: "high", cve_id: "CVE-2020-14343", title: "PyYAML RCE", asset: { name: "agent-beta" } },
+        { id: "uuid-3", severity: "high", cve_id: "CVE-2020-14343", title: "PyYAML RCE", asset: { name: "agent-gamma" } },
+      ],
+    });
+
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: "Open details for CVE-2020-14343" }).length,
+      ).toBe(3);
+    });
+
+    const duplicateKeyWarning = consoleError.mock.calls.some((call) =>
+      String(call[0] ?? "").includes("same key"),
+    );
+    expect(duplicateKeyWarning).toBe(false);
+    consoleError.mockRestore();
+  });
 });

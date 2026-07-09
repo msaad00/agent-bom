@@ -1,6 +1,14 @@
 import type { Vulnerability } from "@/lib/api";
 
 export interface EnrichedVuln extends Vulnerability {
+  /**
+   * Unique per-finding identifier (UUID). Distinct from `id`, which carries the
+   * vulnerability label (CVE/GHSA) shown to users. The same CVE can affect many
+   * assets, so `id` is NOT unique across rows — use `finding_id` for React keys
+   * and per-row selection. Absent for legacy scan/graph paths that already
+   * merge one row per CVE.
+   */
+  finding_id?: string | undefined;
   packages: string[];
   agents: string[];
   sources: string[];
@@ -109,4 +117,13 @@ export function hasLifecycleMetadata(rows: EnrichedVuln[]): boolean {
 
 export function uniqueStrings(items: Array<string | null | undefined>) {
   return [...new Set(items.filter((item): item is string => Boolean(item && item.trim())).map((item) => item.trim()))];
+}
+
+/**
+ * Stable, unique React key / selection identity for a findings row. Prefers the
+ * per-finding UUID (`finding_id`) so the same CVE across multiple assets renders
+ * as distinct rows; falls back to `id` for legacy paths that merge per CVE.
+ */
+export function vulnRowKey(vuln: EnrichedVuln): string {
+  return vuln.finding_id ?? vuln.id;
 }

@@ -98,6 +98,7 @@ import {
 import { evaluateGraphUx } from "@/lib/graph-ux-evaluation";
 import {
   api,
+  ApiRateLimitError,
   type GraphDiffResponse,
   type GraphEdgeChangesResponse,
   type GraphNodeDetailResponse,
@@ -105,7 +106,7 @@ import {
   type GraphSnapshot,
   type UnifiedGraphResponse,
 } from "@/lib/api";
-import type { GraphRollupResponse } from "@/lib/api-types";
+import type { GraphDiffNode, GraphRollupResponse } from "@/lib/api-types";
 import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
@@ -680,6 +681,7 @@ function GraphPageInner() {
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [graphDiff, setGraphDiff] = useState<GraphDiffResponse | null>(null);
   const [edgeChanges, setEdgeChanges] = useState<GraphEdgeChangesResponse | null>(
@@ -800,7 +802,10 @@ function GraphPageInner() {
           });
         }
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        setRateLimited(e instanceof ApiRateLimitError);
+        setError(e.message);
+      })
       .finally(() => setLoadingSnapshots(false));
   }, []);
 
@@ -2167,10 +2172,22 @@ function GraphPageInner() {
     return (
       <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
-        <p className="text-sm">Could not load the unified graph</p>
-        <p className="text-xs text-zinc-500">
-          Run a scan first so the API can persist graph snapshots.
-        </p>
+        {rateLimited ? (
+          <>
+            <p className="text-sm">Graph temporarily rate-limited</p>
+            <p className="text-xs text-zinc-500">
+              The API is shedding load (HTTP 429). Wait a moment and retry — your
+              snapshots are still there.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm">Could not load the unified graph</p>
+            <p className="text-xs text-zinc-500">
+              Run a scan first so the API can persist graph snapshots.
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -3481,7 +3498,24 @@ function DiffLoadingGrid() {
   );
 }
 
-function DiffPreview({ label, items }: { label: string; items: string[] }) {
+type DiffPreviewItem = GraphDiffNode | string;
+
+function diffItemKey(item: DiffPreviewItem): string {
+  return typeof item === "string" ? item : item.id;
+}
+
+function diffItemLabel(item: DiffPreviewItem): string {
+  if (typeof item === "string") return item;
+  return item.label || item.id;
+}
+
+export function DiffPreview({
+  label,
+  items,
+}: {
+  label: string;
+  items: DiffPreviewItem[];
+}) {
   const visible = items.slice(0, 5);
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
@@ -3496,10 +3530,10 @@ function DiffPreview({ label, items }: { label: string; items: string[] }) {
       <div className="mt-2 space-y-1">
         {visible.map((item) => (
           <p
-            key={`${label}-${item}`}
+            key={`${label}-${diffItemKey(item)}`}
             className="truncate font-mono text-[11px] text-zinc-300"
           >
-            {item}
+            {diffItemLabel(item)}
           </p>
         ))}
         {items.length > visible.length && (

@@ -1176,7 +1176,7 @@ async def scan_packages(
     if scan_offline or (scan_prefer_local_db and not osv_targets):
         if scan_offline:
             covered_ecos = _db_covered_ecosystems()
-            if not covered_ecos and osv_targets:
+            if not covered_ecos and osv_targets and not scan_options.demo_advisories:
                 # Genuinely empty/missing DB — nothing can be scanned offline.
                 raise IncompleteScanError(
                     "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update` before using `--offline`."

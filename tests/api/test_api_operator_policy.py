@@ -886,6 +886,10 @@ def test_metrics_requires_authenticated_access(monkeypatch: pytest.MonkeyPatch) 
 def test_auth_debug_reports_runtime_auth_modes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
+    # This case asserts auth_required is True for a configured-auth posture; the
+    # shared harness enables the anonymous opt-in by default (which correctly
+    # reports auth_required=False), so disable it here.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
     _reload_config()
     _server_mod.configure_api(api_key=None)
 

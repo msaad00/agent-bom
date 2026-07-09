@@ -6,7 +6,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
-from agent_bom.api.server import app
+from agent_bom.api.server import app, configure_api
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_job_store
 
@@ -35,7 +35,11 @@ def teardown_module() -> None:
     os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", None)
 
 
-def test_posture_requires_authenticated_context() -> None:
+def test_posture_requires_authenticated_context(monkeypatch) -> None:
+    # The shared harness enables the anonymous opt-in by default; this contract
+    # asserts fail-closed auth, so disable it and rebuild the middleware.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None)
     client = TestClient(app)
     resp = client.get("/v1/posture")
     assert resp.status_code == 401
@@ -70,7 +74,11 @@ def test_posture_proxy_auth_requires_tenant_header() -> None:
     assert "X-Agent-Bom-Tenant-ID" in resp.json()["detail"]
 
 
-def test_compliance_export_requires_authenticated_context() -> None:
+def test_compliance_export_requires_authenticated_context(monkeypatch) -> None:
+    # The shared harness enables the anonymous opt-in by default; this contract
+    # asserts fail-closed auth, so disable it and rebuild the middleware.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None)
     client = TestClient(app)
     resp = client.get("/v1/compliance")
     assert resp.status_code == 401
@@ -89,7 +97,11 @@ def test_compliance_export_accepts_trusted_proxy_headers() -> None:
     assert body["tenant_id"] == "tenant-alpha"
 
 
-def test_aisvs_compliance_requires_authenticated_context() -> None:
+def test_aisvs_compliance_requires_authenticated_context(monkeypatch) -> None:
+    # The shared harness enables the anonymous opt-in by default; this contract
+    # asserts fail-closed auth, so disable it and rebuild the middleware.
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    configure_api(api_key=None)
     client = TestClient(app)
     resp = client.get("/v1/compliance/aisvs")
     assert resp.status_code == 401

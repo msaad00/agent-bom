@@ -786,8 +786,15 @@ def configure_api(
     # (capping unauthenticated floods before auth), then body-size, then auth
     # before the tenant-scoped rate limiter, which needs tenant/auth state.
     _replace_middleware(RateLimitMiddleware, scan_rpm=_rate_limit_rpm, read_rpm=_rate_limit_rpm * 5)
+    # ``auth_required`` is ``auth_configured or not allow_unauthenticated`` so the
+    # middleware is still installed whenever any credential is configured — even
+    # with the unauthenticated opt-in on. In that combined mode it authenticates
+    # valid credentials to their role and lets credential-less callers fall
+    # through to NO_AUTH_ROLE (via ``allow_unauthenticated``); a present-but-
+    # invalid credential is still rejected. Only the pure no-auth mode (nothing
+    # configured + opt-in) removes the middleware entirely.
     if auth_required:
-        _replace_middleware(APIKeyMiddleware, api_key=api_key)
+        _replace_middleware(APIKeyMiddleware, api_key=api_key, allow_unauthenticated=allow_unauthenticated)
     else:
         app.user_middleware = [m for m in app.user_middleware if m.cls is not APIKeyMiddleware]
     _replace_middleware(MaxBodySizeMiddleware)

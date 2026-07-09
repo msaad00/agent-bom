@@ -29,10 +29,14 @@ capped, and the number of returned paths is capped after ranking + dedup.
 
 from __future__ import annotations
 
+import logging
+
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
+
+_logger = logging.getLogger(__name__)
 
 _FUSION_SOURCE = "attack-path-fusion"
 
@@ -45,6 +49,11 @@ _MAX_PATHS = 50  # ranked fused chains returned / materialised
 
 # Edges an attacker can traverse moving *forward* from an internet entry toward
 # data. All are already present in the unified graph (inventory + both overlays).
+# TRUSTS / CROSS_ACCOUNT_TRUST are deliberately excluded: they are emitted as
+# ``role R -> trusted principal P`` where P is *allowed to assume* R (INBOUND
+# trust). Walking them forward would fabricate a cross-account kill-chain from an
+# exposed R into P's account (the class #3761 removed from toxic_findings).
+# ASSUMES (principal -> role) remains the genuine outbound assume vector.
 _TRAVERSABLE_RELS = frozenset(
     {
         RelationshipType.USES,
@@ -58,8 +67,6 @@ _TRAVERSABLE_RELS = frozenset(
         RelationshipType.AUTHENTICATES_AS,
         RelationshipType.SCOPED_TO,
         RelationshipType.ASSUMES,
-        RelationshipType.TRUSTS,
-        RelationshipType.CROSS_ACCOUNT_TRUST,
         RelationshipType.INHERITS,
         RelationshipType.CAN_ACCESS,
         RelationshipType.HAS_PERMISSION,
@@ -106,8 +113,8 @@ def _edge_boost(edge: UnifiedEdge, target: UnifiedNode) -> tuple[float, str]:
         if (edge.evidence or {}).get("access") == "assume_chain":
             return 20.0, f"escalates privilege (assume-chain) to reach {target.label}"
         return 8.0, f"uses effective permission to reach {target.label}"
-    if rel in (RelationshipType.ASSUMES, RelationshipType.TRUSTS, RelationshipType.CROSS_ACCOUNT_TRUST, RelationshipType.INHERITS):
-        return 14.0, f"assumes role/trust into {target.label}"
+    if rel in (RelationshipType.ASSUMES, RelationshipType.INHERITS):
+        return 14.0, f"assumes role into {target.label}"
     if rel == RelationshipType.EXPOSED_TO:
         return 16.0, f"reaches internet-exposed {target.label}"
     if rel == RelationshipType.STORES:
@@ -158,7 +165,17 @@ def compute_fused_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     collecting the *highest-scoring* chain that terminates at each reachable
     crown-jewel data store, then ranks + dedups + caps the result.
     """
-    if not graph.nodes or len(graph.nodes) > _MAX_NODES:
+    if not graph.nodes:
+        return []
+    if len(graph.nodes) > _MAX_NODES:
+        # Capped, NOT "no attack paths". Log a signal so a large real estate that
+        # skipped fusion is not silently read as "flagship found nothing".
+        _logger.warning(
+            "attack-path fusion capped: %d nodes exceed cap %d; fused kill-chains "
+            "NOT computed for this graph (result is 'skipped', not 'none')",
+            len(graph.nodes),
+            _MAX_NODES,
+        )
         return []
 
     entries = [n for n in graph.nodes.values() if _is_entry(n)]
@@ -259,7 +276,7 @@ def _walk_from_entry(
     dfs(entry.id, [entry.id], [], [], {entry.id}, _node_boost(entry), [], [])
 
 
-def apply_attack_path_fusion(graph: UnifiedGraph) -> dict[str, int]:
+def apply_attack_path_fusion(graph: UnifiedGraph) -> dict[str, object]:
     """Compute fused chains and materialise them on ``graph.attack_paths``.
 
     Idempotent w.r.t. fusion: existing fusion-sourced paths are replaced so a
@@ -270,10 +287,16 @@ def apply_attack_path_fusion(graph: UnifiedGraph) -> dict[str, int]:
     # Drop any prior fusion output, keep everything else.
     graph.attack_paths = [p for p in graph.attack_paths if not _is_fusion_path(p)]
     graph.attack_paths.extend(fused)
-    return {
+    result: dict[str, object] = {
         "fused_attack_paths": len(fused),
         "max_fused_risk": int(round(max((p.composite_risk for p in fused), default=0.0))),
     }
+    # Surface the node-budget cap so 0 paths on a large estate reads as "skipped"
+    # rather than "genuinely none".
+    if len(graph.nodes) > _MAX_NODES:
+        result["skipped"] = True
+        result["skipped_reason"] = f"node_cap_exceeded:{len(graph.nodes)}>{_MAX_NODES}"
+    return result
 
 
 def _is_fusion_path(path: AttackPath) -> bool:

@@ -106,3 +106,40 @@ def test_governance_paths_merge_into_derived_attack_paths():
     # No vuln-anchored paths, but the governance path should still surface.
     all_paths = _derived_attack_paths(g)
     assert any(p.source == "user:dev" and p.target == "cloud:r" for p in all_paths)
+
+
+def test_inbound_trust_does_not_surface_governance_attack_path():
+    # Regression (complete #3761): end-to-end, an exposed role R with only an
+    # INBOUND CROSS_ACCOUNT_TRUST to P (P may assume R) must NOT, after the
+    # effective-permissions overlay runs, produce a HAS_PERMISSION{assume_chain}
+    # edge or a governance privilege-escalation attack path out of R.
+    from agent_bom.graph.effective_permissions import apply_effective_permissions
+
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:R", entity_type=EntityType.ROLE, label="exposed-R", attributes={"internet_exposed": True}))
+    g.add_node(UnifiedNode(id="prin:P", entity_type=EntityType.ROLE, label="P"))
+    g.add_node(
+        UnifiedNode(id="ds:X", entity_type=EntityType.DATA_STORE, label="ds-X", attributes={"data_sensitivity": "high"})
+    )
+    g.add_edge(UnifiedEdge(source="role:R", target="prin:P", relationship=RelationshipType.CROSS_ACCOUNT_TRUST))
+    g.add_edge(UnifiedEdge(source="prin:P", target="ds:X", relationship=RelationshipType.CAN_ACCESS))
+
+    apply_effective_permissions(g)
+    gov = _derived_governance_attack_paths(g)
+    assert not any(p.source == "role:R" for p in gov)
+
+
+def test_genuine_assume_chain_still_surfaces_governance_path():
+    # Over-correction guard: a real assume-chain HAS_PERMISSION edge still surfaces.
+    from agent_bom.graph.effective_permissions import apply_effective_permissions
+
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev"))
+    g.add_node(UnifiedNode(id="role:admin", entity_type=EntityType.ROLE, label="admin-role"))
+    g.add_node(UnifiedNode(id="cloud:x", entity_type=EntityType.CLOUD_RESOURCE, label="x", attributes={"internet_exposed": True}))
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:admin", relationship=RelationshipType.ASSUMES))
+    g.add_edge(UnifiedEdge(source="role:admin", target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
+
+    apply_effective_permissions(g)
+    gov = _derived_governance_attack_paths(g)
+    assert any(p.source == "user:dev" and p.target == "cloud:x" for p in gov)

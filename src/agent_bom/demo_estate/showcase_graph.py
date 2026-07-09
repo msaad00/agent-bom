@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from agent_bom.api.agent_identity_store import (
     InMemoryAgentIdentityStore,
@@ -351,7 +351,7 @@ def _ensure_showcase_edge(
     source: str,
     target: str,
     relationship: RelationshipType,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> None:
     for edge in graph.edges:
         if edge.source == source and edge.target == target and edge.relationship == relationship:

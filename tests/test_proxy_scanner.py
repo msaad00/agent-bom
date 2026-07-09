@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent_bom.proxy_scanner import (
     ScanConfig,
     load_scan_config,
@@ -186,6 +188,100 @@ class TestSecretsScanning:
         results = scan_content("Please review this pull request.", _cfg())
         secrets = [r for r in results if r.scanner == "secrets"]
         assert len(secrets) == 0
+
+
+# ---------------------------------------------------------------------------
+# Modern secret token formats (gateway-DLP coverage)
+# ---------------------------------------------------------------------------
+
+# Each case: (id, sample text) where the sample MUST be detected as a secret
+# and, in enforce mode, marked blocked.
+def _sample(*parts: str) -> str:
+    return "".join(parts)
+
+
+def _token_body(length: int, alphabet: str = "Ab3dEf4gH5jK") -> str:
+    return (alphabet * ((length // len(alphabet)) + 1))[:length]
+
+
+def _jwt_sample() -> str:
+    return _sample("eyJ", _token_body(18), ".", _token_body(14), ".", _token_body(20))
+
+
+_MODERN_SECRET_CASES = [
+    ("openai_project_key", _sample("key ", "sk-", "proj-", _token_body(50))),
+    ("openai_legacy_key", _sample("OPENAI_", "API_", "KEY=", "sk-", _token_body(28))),
+    ("anthropic_api_key", _sample("sk-", "ant-", "api03-", _token_body(36))),
+    ("github_fine_grained_pat", _sample("github_", "pat_", _token_body(24, "Ab3dEf4gH5_jK"))),
+    ("jwt_bare", _jwt_sample()),
+    ("jwt_bearer_header", _sample("Authorization: ", "Bearer ", _jwt_sample())),
+    ("bearer_opaque", _sample("Authorization: ", "Bearer ", _token_body(24))),
+    ("aws_secret_lower", _sample("aws_", "secret_", "access_", "key=", _token_body(40, "Ab3dEf4gH5jK/Lm7N"))),
+    ("aws_secret_upper", _sample("AWS_", "SECRET_", "ACCESS_", "KEY = ", _token_body(40, "Ab3dEf4gH5jK/Lm7N"))),
+    ("client_secret_embedded", _sample("client_", "secret=", _token_body(28))),
+    ("secret_key_embedded", _sample("my_", "secret_", "key: ", _token_body(24))),
+    ("access_token_embedded", _sample("access_", "token=", _token_body(28))),
+]
+
+
+class TestModernSecretFormats:
+    """Modern token formats the shared _SECRET_PATTERNS ruleset missed."""
+
+    @pytest.mark.parametrize("case_id,text", _MODERN_SECRET_CASES, ids=[c[0] for c in _MODERN_SECRET_CASES])
+    def test_detected_in_content(self, case_id, text):
+        results = scan_content(text, _cfg())
+        secrets = [r for r in results if r.scanner == "secrets"]
+        assert secrets, f"{case_id} not detected as a secret"
+
+    @pytest.mark.parametrize("case_id,text", _MODERN_SECRET_CASES, ids=[c[0] for c in _MODERN_SECRET_CASES])
+    def test_blocked_in_enforce_mode(self, case_id, text):
+        results = scan_content(text, _cfg(mode="enforce"))
+        secrets = [r for r in results if r.scanner == "secrets"]
+        assert secrets and all(r.blocked for r in secrets), f"{case_id} not blocked in enforce mode"
+
+    @pytest.mark.parametrize("case_id,text", _MODERN_SECRET_CASES, ids=[c[0] for c in _MODERN_SECRET_CASES])
+    def test_detected_in_tool_call_argument(self, case_id, text):
+        # A tool-call argument carrying the secret must be flagged+blocked
+        # so the gateway's arg DLP pass drops the request under enforce.
+        results = scan_tool_call("do_thing", {"payload": text, "note": "ok"}, _cfg(mode="enforce"))
+        secrets = [r for r in results if r.scanner == "secrets"]
+        assert secrets and any(r.blocked for r in secrets), f"{case_id} not blocked in tool-call arg"
+
+    @pytest.mark.parametrize("case_id,text", _MODERN_SECRET_CASES, ids=[c[0] for c in _MODERN_SECRET_CASES])
+    def test_detected_in_tool_response(self, case_id, text):
+        # A tool response echoing the secret must be flagged+blocked so the
+        # gateway's response DLP pass does not forward it verbatim.
+        import json as _json
+
+        body = _json.dumps({"content": text})
+        results = scan_tool_response(body, _cfg(mode="enforce"))
+        secrets = [r for r in results if r.scanner == "secrets"]
+        assert secrets and any(r.blocked for r in secrets), f"{case_id} not blocked in tool response"
+
+
+# Benign strings that MUST NOT be flagged as secrets (false-positive guard).
+_BENIGN_SECRET_NEGATIVES = [
+    ("plain_prose", "Please review this pull request and merge it when ready."),
+    ("uuid", "The request id is 550e8400-e29b-41d4-a716-446655440000 thanks."),
+    ("word_token", "Please pass the token to the next stage of the pipeline."),
+    ("word_secret", "It is no secret that the team ships fast every quarter."),
+    ("secret_colon_prose", "The secret: I really love strong coffee in the morning."),
+    ("git_sha", "Commit da39a3ee5e6b4b0d3255bfef95601890afd80709 fixes the bug."),
+    ("access_word", "Grant read access to the token store for the new service."),
+    ("normal_sentence", "The gateway forwards each token exactly once per session."),
+]
+
+
+class TestModernSecretFalsePositives:
+    @pytest.mark.parametrize(
+        "case_id,text",
+        _BENIGN_SECRET_NEGATIVES,
+        ids=[c[0] for c in _BENIGN_SECRET_NEGATIVES],
+    )
+    def test_benign_not_flagged_as_secret(self, case_id, text):
+        results = scan_content(text, _cfg())
+        secrets = [r for r in results if r.scanner == "secrets"]
+        assert not secrets, f"benign {case_id} falsely flagged as secret: {[r.rule_id for r in secrets]}"
 
 
 # ---------------------------------------------------------------------------

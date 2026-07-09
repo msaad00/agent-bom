@@ -217,11 +217,12 @@ class GatewaySettings:
     # ("enforce") or flagged ("warn") at the gateway — isolating a compromised
     # or under-review agent without touching per-tool policy. Default "off".
     fleet_enforcement_mode: str = "off"
-    # Fail-closed posture for the policy engine. "open" (default) preserves
-    # today's behaviour: a missing/unloadable policy or an evaluation error
-    # degrades to default-allow. "closed" makes those paths DENY so a
-    # security-conscious operator never silently runs unprotected. Resolved from
-    # AGENT_BOM_GATEWAY_FAIL_MODE when left at the sentinel ``None``.
+    # Fail-closed posture for the policy engine. "closed" (the secure default,
+    # used when the env var is unset) makes a missing/unloadable policy or an
+    # evaluation error DENY so a security-conscious operator never silently runs
+    # unprotected. "open" opts back into legacy default-allow on those paths.
+    # Resolved by ``resolve_fail_mode`` from AGENT_BOM_GATEWAY_FAIL_MODE when
+    # left at the sentinel ``None`` (unset env → "closed").
     fail_mode: str | None = None
     # SIEM/SOAR webhook for deny/quarantine OCSF events. Unset (default) is a
     # no-op; when set, every DENY/QUARANTINE POSTs a normalized OCSF event with

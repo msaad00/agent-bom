@@ -88,6 +88,75 @@ _PII_PATTERNS: list[tuple[re.Pattern, str, str]] = [
 ]
 
 # ---------------------------------------------------------------------------
+# Modern secret token formats (new — gateway-DLP specific)
+#
+# The shared ``_SECRET_PATTERNS`` ruleset (imported from prompt_scanner) misses
+# several token formats that a live gateway forwards upstream in cleartext and
+# echoes to clients. These patterns are kept LOCAL to the proxy scanner so the
+# prompt-file scanner's false-positive profile is unchanged. Every rule requires
+# a distinctive prefix, an explicit label, or a high length/charset constraint
+# to keep false positives low on ordinary prose.
+# ---------------------------------------------------------------------------
+
+_GATEWAY_SECRET_PATTERNS: list[tuple[re.Pattern, str, str]] = [
+    (
+        # OpenAI project-scoped keys: sk-proj-<body>. The dash after the prefix
+        # defeats the legacy ``sk-[A-Za-z0-9]{20,}`` rule, so it is missed today.
+        re.compile(r"sk-proj-[A-Za-z0-9_\-]{20,}"),
+        "openai_project_key",
+        "critical",
+    ),
+    (
+        # Anthropic keys: sk-ant-<body>.
+        re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}"),
+        "anthropic_api_key",
+        "critical",
+    ),
+    (
+        # GitHub fine-grained PAT: github_pat_<22+ char body>.
+        re.compile(r"github_pat_[A-Za-z0-9_]{22,}"),
+        "github_fine_grained_pat",
+        "critical",
+    ),
+    (
+        # JWT (and bearer JWTs): three base64url segments, header begins ``eyJ``
+        # (base64 of ``{"``). The triple-segment shape keeps FPs negligible.
+        re.compile(r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"),
+        "jwt",
+        "critical",
+    ),
+    (
+        # Opaque bearer token behind an explicit Authorization header. The
+        # explicit ``Authorization: Bearer`` label plus a 20+ char value keeps
+        # this from firing on ordinary words.
+        re.compile(r"(?i)authorization\s*:\s*bearer\s+[A-Za-z0-9._\-]{20,}"),
+        "bearer_token",
+        "critical",
+    ),
+    (
+        # AWS secret access key value (40-char base64) — REQUIRE the label. A
+        # bare 40-char base64 string collides with git SHAs, hashes, etc., so it
+        # is only flagged when explicitly named ``aws_secret_access_key``.
+        re.compile(r"(?i)aws_secret_access_key\s*[:=]\s*['\"]?[A-Za-z0-9/+]{40}"),
+        "aws_secret_access_key",
+        "critical",
+    ),
+    (
+        # Generic labeled secret where the keyword is EMBEDDED in a longer
+        # identifier (e.g. client_secret, secret_key, access_token) that the
+        # legacy adjacent-keyword rules miss. Requires ``=``/``:`` plus a 16+
+        # char value to avoid flagging prose that merely mentions the word.
+        re.compile(
+            r"(?i)\b[\w.\-]*"
+            r"(?:secret|api[_-]?key|access[_-]?key|auth[_-]?token|access[_-]?token|refresh[_-]?token|credential)"
+            r"[\w.\-]*\s*[:=]\s*['\"]?([A-Za-z0-9/+=_\-\.]{16,})",
+        ),
+        "labeled_secret",
+        "high",
+    ),
+]
+
+# ---------------------------------------------------------------------------
 # Payload vulnerability patterns (WAF-style — new)
 # ---------------------------------------------------------------------------
 
@@ -262,6 +331,8 @@ def scan_content(text: str, config: ScanConfig) -> list[ScanResult]:
                 is_enforce,
             )
         )
+        # Modern token formats missed by the shared ruleset above.
+        results.extend(_scan_patterns(text, _GATEWAY_SECRET_PATTERNS, "secrets", is_enforce))
 
     # Payload vulnerability scanning
     if "payload_vuln" in config.scanners:

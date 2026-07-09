@@ -15,6 +15,7 @@ import hashlib
 import secrets
 from typing import Any
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.oauth_as import OAuthAuthorizationServer, OAuthSigningKey
@@ -244,6 +245,67 @@ def test_dlp_blocks_secret_in_arguments() -> None:
     )
     body = resp.json()
     assert body["error"]["data"]["policy_source"] == "dlp"
+
+
+# Modern token formats that must be blocked end-to-end through the relay.
+def _sample(*parts: str) -> str:
+    return "".join(parts)
+
+
+def _token_body(length: int, alphabet: str = "Ab3dEf4gH5jK") -> str:
+    return (alphabet * ((length // len(alphabet)) + 1))[:length]
+
+
+def _jwt_sample() -> str:
+    return _sample("eyJ", _token_body(18), ".", _token_body(14), ".", _token_body(20))
+
+
+_MODERN_SECRET_SAMPLES = [
+    ("openai_project_key", _sample("sk-", "proj-", _token_body(50))),
+    ("anthropic_api_key", _sample("sk-", "ant-", "api03-", _token_body(36))),
+    ("github_fine_grained_pat", _sample("github_", "pat_", _token_body(24, "Ab3dEf4gH5_jK"))),
+    ("jwt", _jwt_sample()),
+    ("bearer_opaque", _sample("Authorization: ", "Bearer ", _token_body(24))),
+    ("aws_secret_access_key", _sample("aws_", "secret_", "access_", "key=", _token_body(40, "Ab3dEf4gH5jK/Lm7N"))),
+]
+
+
+@pytest.mark.parametrize("case_id,sample", _MODERN_SECRET_SAMPLES, ids=[c[0] for c in _MODERN_SECRET_SAMPLES])
+def test_dlp_blocks_modern_secret_in_arguments(case_id: str, sample: str) -> None:
+    caller, captured = _echo_caller()
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        upstream_caller=caller,
+        dlp_enabled=True,
+        dlp_mode="enforce",
+        listener_host="127.0.0.1",
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_tools_call("fs.write", {"body": sample}))
+    body = resp.json()
+    assert body["error"]["data"]["policy_source"] == "dlp", case_id
+    # Blocked before reaching upstream — secret never forwarded in cleartext.
+    assert "message" not in captured, f"{case_id} secret forwarded upstream"
+
+
+@pytest.mark.parametrize("case_id,sample", _MODERN_SECRET_SAMPLES, ids=[c[0] for c in _MODERN_SECRET_SAMPLES])
+def test_dlp_blocks_modern_secret_in_result(case_id: str, sample: str) -> None:
+    caller, _ = _echo_caller(result={"content": f"leaked value {sample}"})
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        upstream_caller=caller,
+        dlp_enabled=True,
+        dlp_mode="enforce",
+        listener_host="127.0.0.1",
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_tools_call("fs.read", {"path": "/x"}))
+    body = resp.json()
+    # Response carrying the secret is blocked, not echoed verbatim to the client.
+    assert body.get("error", {}).get("data", {}).get("policy_source") == "dlp", case_id
+    assert sample not in resp.text, f"{case_id} secret echoed to client"
 
 
 def test_dlp_redacts_pii_in_result() -> None:

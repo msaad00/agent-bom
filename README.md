@@ -124,8 +124,8 @@ claim these entities came from a buyer environment. Regenerate with
   context in CLI, API, and UI.
 
 Snowflake is a supported connector lane, not the product center. MCP server mode
-advertises 70 tools, 6 resources, and 8 workflow prompts — registry metadata via
-the Smithery manifest and Glama listing.
+advertises 70 MCP tools, 6 resources, and 8 workflow prompts — registry metadata
+via the Smithery manifest and Glama listing.
 
 </details>
 

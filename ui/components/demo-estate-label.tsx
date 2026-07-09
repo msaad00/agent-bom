@@ -21,7 +21,7 @@ export function DemoEstateLabel() {
       className={`pointer-events-none fixed z-[120] rounded-full border border-emerald-500/40 bg-[color:var(--surface-elevated)]/95 px-3 py-1 font-medium uppercase tracking-[0.1em] text-emerald-200 shadow-md shadow-black/20 ${
         captureMode
           ? "right-5 top-3 text-[11px]"
-          : "right-5 top-[3.75rem] text-xs"
+          : "bottom-4 right-4 text-[11px]"
       }`}
       aria-hidden="true"
     >

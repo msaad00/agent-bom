@@ -207,6 +207,8 @@ def test_root_uses_hash_manifest_csp_when_bundled(tmp_path: Path, monkeypatch):
 
 def test_direct_dashboard_html_static_file_strips_csp_meta(tmp_path: Path, monkeypatch):
     """Direct static-export HTML files should use the same CSP stripping as SPA fallback."""
+    monkeypatch.delenv("AGENT_BOM_NO_UI", raising=False)
+
     package_root = tmp_path / "agent_bom"
     api_dir = package_root / "api"
     api_dir.mkdir(parents=True)
@@ -238,6 +240,8 @@ def test_direct_dashboard_html_static_file_strips_csp_meta(tmp_path: Path, monke
 
 def test_dashboard_extensionless_route_serves_static_export_page(tmp_path: Path, monkeypatch):
     """Next static-export routes such as /mesh should serve mesh.html, not index.html."""
+    monkeypatch.delenv("AGENT_BOM_NO_UI", raising=False)
+
     package_root = tmp_path / "agent_bom"
     api_dir = package_root / "api"
     api_dir.mkdir(parents=True)
@@ -275,6 +279,8 @@ def test_dashboard_extensionless_route_serves_static_export_page(tmp_path: Path,
 
 def test_dashboard_client_routes_fall_back_to_app_shell(tmp_path: Path, monkeypatch):
     """Client-only dashboard routes such as /dashboard and /settings serve the SPA shell."""
+    monkeypatch.delenv("AGENT_BOM_NO_UI", raising=False)
+
     package_root = tmp_path / "agent_bom"
     api_dir = package_root / "api"
     api_dir.mkdir(parents=True)

@@ -119,9 +119,23 @@ def _graph_agent_reaches_privileged() -> UnifiedGraph:
 def _graph_public_permission_lateral() -> UnifiedGraph:
     entry = _node("role:public_fn", EntityType.ROLE, severity="medium", internet_exposed=True)
     other = _node("account:prod", EntityType.ACCOUNT, severity="high")
+    # ASSUMES is a genuine OUTBOUND lateral capability: the exposed role can
+    # assume into account:prod. (CROSS_ACCOUNT_TRUST is inbound and must NOT
+    # count as lateral — see test_cross_account_trust_is_not_lateral.)
     return _graph(
         [entry, other],
-        [_edge("role:public_fn", "account:prod", RelationshipType.CROSS_ACCOUNT_TRUST)],
+        [_edge("role:public_fn", "account:prod", RelationshipType.ASSUMES)],
+    )
+
+
+def _graph_cross_account_trust_only() -> UnifiedGraph:
+    entry = _node("role:public_fn", EntityType.ROLE, severity="medium", internet_exposed=True)
+    other = _node("account:external", EntityType.ACCOUNT, severity="high")
+    # role -> account CROSS_ACCOUNT_TRUST encodes that the external account may
+    # assume the role (INBOUND). It is not an outbound pivot the role can walk.
+    return _graph(
+        [entry, other],
+        [_edge("role:public_fn", "account:external", RelationshipType.CROSS_ACCOUNT_TRUST)],
     )
 
 
@@ -228,6 +242,14 @@ def test_public_permission_lateral_rule():
     # max component = high (account) → critical.
     assert f.severity == "critical"
     assert "account:prod" in f.evidence["node_ids"]
+
+
+def test_cross_account_trust_is_not_lateral():
+    """Regression: a role→account CROSS_ACCOUNT_TRUST edge is INBOUND trust
+    (the account may assume the role), so an internet-exposed role must NOT be
+    reported as pivoting laterally into the trusting account."""
+    findings = build_toxic_combination_findings(_graph_cross_account_trust_only())
+    assert _by_rule(findings, "PUBLIC_PERMISSION_LATERAL") == []
 
 
 def test_severity_escalation_one_tier_above_max():

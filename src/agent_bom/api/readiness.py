@@ -42,11 +42,11 @@ def evaluate_control_plane_readiness() -> ReadinessStatus:
     db_path = os.environ.get("AGENT_BOM_DB", "").strip() or default_state_db_path()
     if db_path and db_path != ":memory:":
         try:
-            conn = sqlite3.connect(db_path, timeout=1.0)
+            sqlite_conn = sqlite3.connect(db_path, timeout=1.0)
             try:
-                conn.execute("SELECT 1")
+                sqlite_conn.execute("SELECT 1")
             finally:
-                conn.close()
+                sqlite_conn.close()
         except Exception:  # noqa: BLE001
             return ReadinessStatus(ready=False, reason="database_unavailable")
 

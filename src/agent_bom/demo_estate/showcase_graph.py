@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-ShowcaseProfile = Literal["baseline", "current"]
-
 from agent_bom.api.agent_identity_store import (
     InMemoryAgentIdentityStore,
     issue_identity,
@@ -21,6 +19,8 @@ from agent_bom.graph.types import EntityType, RelationshipType
 
 if TYPE_CHECKING:
     from agent_bom.api.graph_store import GraphStoreProtocol
+
+ShowcaseProfile = Literal["baseline", "current"]
 
 SHOWCASE_TENANT = "default"
 SHOWCASE_SCAN_ID = "showcase"

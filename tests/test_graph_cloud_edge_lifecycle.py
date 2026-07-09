@@ -1,0 +1,161 @@
+"""Cloud inventory graph edges: cross-account trust + scheduled-scan drift (#3742)."""
+
+from __future__ import annotations
+
+import sqlite3
+
+from starlette.testclient import TestClient
+
+from agent_bom.api import stores as api_stores
+from agent_bom.api.graph_store import SQLiteGraphStore
+from agent_bom.api.server import app
+from agent_bom.api.stores import set_graph_store
+from agent_bom.db.graph_store import changed_edges_between_scans, diff_snapshots, save_graph
+from agent_bom.graph.builder import build_unified_graph_from_report
+from agent_bom.graph.types import EntityType, RelationshipType
+from tests.test_graph_api import _init_db
+
+
+def _minimal_aws_inventory(*, sg_exposed: bool) -> dict:
+    return {
+        "provider": "aws",
+        "status": "ok",
+        "account_id": "111122223333",
+        "region": "us-east-1",
+        "instances": [
+            {
+                "instance_id": "i-1",
+                "name": "web",
+                "vpc_id": "vpc-1",
+                "subnet_id": "subnet-1",
+                "security_group_ids": ["sg-1"],
+            }
+        ],
+        "security_groups": [
+            {
+                "group_id": "sg-1",
+                "name": "web-sg",
+                "vpc_id": "vpc-1",
+                "internet_exposed": sg_exposed,
+                "network_exposure": (
+                    [{"scope": "internet", "from_port": 443, "to_port": 443, "protocol": "tcp"}]
+                    if sg_exposed
+                    else []
+                ),
+            }
+        ],
+        "buckets": [],
+        "roles": [],
+        "users": [],
+    }
+
+
+def test_inventory_emits_cross_account_trust_edges() -> None:
+    payload = {
+        "provider": "aws",
+        "status": "ok",
+        "account_id": "111122223333",
+        "region": "us-east-1",
+        "instances": [],
+        "security_groups": [],
+        "buckets": [],
+        "users": [],
+        "roles": [
+            {
+                "name": "cross-account-role",
+                "arn": "arn:aws:iam::111122223333:role/cross-account-role",
+                "principal_type": "role",
+                "privilege_level": "admin",
+                "policies": [],
+                "trust_principals": [
+                    {
+                        "principal_type": "account",
+                        "principal_id": "210987654321",
+                        "principal_name": "210987654321",
+                        "relationship": "cross_account_trust",
+                    }
+                ],
+            }
+        ],
+    }
+    graph = build_unified_graph_from_report({"cloud_inventory": payload})
+    role_id = "role:aws:arn:aws:iam::111122223333:role/cross-account-role"
+    external_account_id = "account:aws:210987654321"
+
+    assert role_id in graph.nodes
+    assert external_account_id in graph.nodes
+    assert graph.nodes[external_account_id].entity_type == EntityType.ACCOUNT
+    assert any(
+        edge.source == role_id
+        and edge.target == external_account_id
+        and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
+        for edge in graph.edges
+    )
+
+
+def test_cloud_inventory_snapshots_diff_exposed_edges(tmp_path) -> None:
+    """Scheduled scans surface EXPOSED_TO lifecycle changes between snapshots."""
+    conn = sqlite3.connect(tmp_path / "cloud-edge-diff.db")
+    conn.row_factory = sqlite3.Row
+    _init_db(conn)
+
+    baseline = build_unified_graph_from_report(
+        {"cloud_inventory": _minimal_aws_inventory(sg_exposed=False)}
+    )
+    baseline.scan_id = "cloud-scan-baseline"
+    baseline.created_at = "2026-06-01T12:00:00+00:00"
+    save_graph(conn, baseline)
+
+    current = build_unified_graph_from_report(
+        {"cloud_inventory": _minimal_aws_inventory(sg_exposed=True)}
+    )
+    current.scan_id = "cloud-scan-current"
+    current.created_at = "2026-06-08T12:00:00+00:00"
+    save_graph(conn, current)
+
+    sg_id = "cloud_resource:aws:ec2:security-group:sg-1"
+    inst_id = "cloud_resource:aws:ec2:instance:i-1"
+
+    diff = diff_snapshots(conn, "cloud-scan-baseline", "cloud-scan-current", tenant_id="default")
+    assert diff["edges_added"], "expected new edges when SG exposure opens"
+    added_keys = {(row[0], row[1], row[2]) for row in diff["edges_added"]}
+    assert (sg_id, inst_id, "exposed_to") in added_keys
+
+    changes = changed_edges_between_scans(
+        conn,
+        "cloud-scan-baseline",
+        "cloud-scan-current",
+        tenant_id="default",
+    )
+    assert changes["summary"]["added"] >= 1
+    assert any(
+        edge["source_id"] == sg_id
+        and edge["target_id"] == inst_id
+        and edge["relationship"] == "exposed_to"
+        for edge in changes["edges_added"]
+    )
+
+    store = SQLiteGraphStore(tmp_path / "cloud-edge-diff.db")
+    original = api_stores._graph_store
+    try:
+        set_graph_store(store)
+        client = TestClient(app)
+        diff_resp = client.get(
+            "/v1/graph/diff",
+            params={"old": "cloud-scan-baseline", "new": "cloud-scan-current"},
+        )
+        assert diff_resp.status_code == 200
+        diff_body = diff_resp.json()
+        index = diff_body.get("change_kind_index") or {}
+        assert index.get("edges", {}).get(f"{sg_id}|{inst_id}|exposed_to") == "new"
+
+        changes_resp = client.get(
+            "/v1/graph/edges/changes",
+            params={"old": "cloud-scan-baseline", "new": "cloud-scan-current"},
+        )
+        assert changes_resp.status_code == 200
+        changes_body = changes_resp.json()
+        assert changes_body["summary"]["added"] >= 1
+    finally:
+        set_graph_store(original)
+        conn.close()

@@ -43,6 +43,9 @@ import {
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { ChartTooltip } from "@/components/charts";
 import { PageLaneHeader } from "@/components/page-lane";
+import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { serviceEntry } from "@/lib/service-registry";
 
 function classifyApiErrorKind(err: unknown): ApiOfflineKind {
   if (err instanceof ApiAuthError) return "auth";
@@ -426,6 +429,8 @@ function AnomalyRow({ a }: { a: CostAnomaly }) {
 }
 
 export default function CostPage() {
+  const { counts } = useDeploymentContext();
+  const aiSpendService = serviceEntry(counts?.services, "ai_spend");
   const [report, setReport] = useState<CostReport | null>(null);
   const [anomalies, setAnomalies] = useState<AnomaliesReport | null>(null);
   const [forecast, setForecast] = useState<CostForecast | null>(null);
@@ -495,6 +500,19 @@ export default function CostPage() {
         lane="operations"
         title="AI Spend"
         subtitle="Model and token cost from proxy/gateway usage — not cloud infrastructure billing."
+        actions={
+          <ServiceStateChip
+            serviceId="ai_spend"
+            entry={aiSpendService}
+            registry={counts?.services}
+          />
+        }
+      />
+
+      <ServiceStateBanner
+        serviceId="ai_spend"
+        entry={aiSpendService}
+        registry={counts?.services}
       />
 
       <BudgetBanner budget={report.budget} />

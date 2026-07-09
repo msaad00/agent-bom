@@ -1,0 +1,29 @@
+---
+description: Never name competitor products in user-facing or git-facing copy (AGENTS.md)
+alwaysApply: true
+---
+
+# No competitor names in shipped copy
+
+From `AGENTS.md` — non-negotiable for every agent in this repo.
+
+## Never use competitor product names in
+
+- PR titles and PR bodies
+- Commit messages
+- CHANGELOG / release notes
+- Marketing, positioning, or benchmark claims
+- UI copy users see in the product
+
+## Do instead
+
+- Describe **capability gaps** and **our surfaces**: "product taxonomy", "scope chips", "table-first browse"
+- Compare patterns generically: "enterprise console clarity", "minimal nav", "catalog vs owned estate"
+- Branch names: `feat/ui-product-taxonomy` not names referencing other vendors
+
+## Before opening or updating a PR
+
+1. Search the branch diff for competitor names in titles, commits, and UI strings
+2. Release notes pull from PR titles — a bad title ships to GitHub Releases
+
+Functional integration docs may name a service when required for configuration (e.g. AWS, Azure).

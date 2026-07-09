@@ -19,6 +19,7 @@ const { apiMock } = vi.hoisted(() => ({
     createSchedule: vi.fn(),
     toggleSchedule: vi.fn(),
     deleteSchedule: vi.fn(),
+    getPostureCounts: vi.fn(),
   },
 }));
 
@@ -80,6 +81,18 @@ vi.mock("@/lib/api", () => ({
 }));
 
 function primeApi() {
+  apiMock.getPostureCounts.mockResolvedValue({
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
+    kev: 0,
+    compound_issues: 0,
+    services: {
+      data_sources: { state: "live", count: 2 },
+    },
+  });
   apiMock.health.mockResolvedValue({
     status: "ok",
     version: "0.0.0-test",

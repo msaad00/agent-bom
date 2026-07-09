@@ -4251,6 +4251,8 @@ def test_api_posture_counts_empty():
     assert body["has_fleet_ingest"] is False
     assert body["has_cluster_scan"] is False
     assert body["has_ci_cd_scan"] is False
+    assert "services" in body
+    assert body["services"]["cloud_accounts"]["state"] == "locked"
 
 
 def test_api_posture_counts_with_data():

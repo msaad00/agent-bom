@@ -43,9 +43,12 @@ import {
 import { useAuthState } from "@/components/auth-provider";
 import { ErrorBanner } from "@/components/empty-state";
 import { PageEmptyState } from "@/components/states/page-state";
+import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
 import { Card, Section } from "@/components/card";
 import { Collapsible } from "@/components/collapsible";
 import { StatCard } from "@/components/stat-card";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { serviceEntry } from "@/lib/service-registry";
 import { RUN_SCAN_ACTION } from "@/lib/empty-state-actions";
 import { vendorLogo } from "@/lib/vendor-logos";
 
@@ -411,7 +414,9 @@ const SECURITY_FACTS: {
 
 export default function ConnectionsPage() {
   const { hasCapability, session } = useAuthState();
+  const { counts } = useDeploymentContext();
   const canManage = !session?.auth_required || hasCapability("scan.run");
+  const cloudService = serviceEntry(counts?.services, "cloud_accounts");
 
   const [connections, setConnections] = useState<CloudConnectionRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -590,6 +595,14 @@ export default function ConnectionsPage() {
               a short-lived brokered credential. The connection secret is
               encrypted at rest and is never returned to the browser.
             </p>
+            <div className="mt-3">
+              <ServiceStateChip
+                serviceId="cloud_accounts"
+                entry={cloudService}
+                registry={counts?.services}
+                showUnlock={false}
+              />
+            </div>
           </div>
           <div className="flex flex-wrap gap-3">
             <button
@@ -634,6 +647,12 @@ export default function ConnectionsPage() {
           </p>
         ) : null}
       </section>
+
+      <ServiceStateBanner
+        serviceId="cloud_accounts"
+        entry={cloudService}
+        registry={counts?.services}
+      />
 
       {/* Connect & deploy — provider connector catalog */}
       <Section

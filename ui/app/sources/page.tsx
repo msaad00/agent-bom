@@ -30,6 +30,9 @@ import {
 import { useAuthState } from "@/components/auth-provider";
 import { DemoConnectCard } from "@/components/demo-mode-cta";
 import { useDemoMode } from "@/hooks/use-demo-mode";
+import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { serviceEntry } from "@/lib/service-registry";
 
 type IngestMode = "Direct scan" | "Read-only connector" | "Pushed ingest" | "Runtime" | "Imported artifact";
 
@@ -251,6 +254,8 @@ function summarizeProviders(contracts: DiscoveryProvidersResponse | null) {
 export default function SourcesPage() {
   const { session, loading: authLoading, hasCapability } = useAuthState();
   const { isDemoMode } = useDemoMode();
+  const { counts } = useDeploymentContext();
+  const dataSourcesService = serviceEntry(counts?.services, "data_sources");
   const [connectorHealth, setConnectorHealth] = useState<ConnectorHealthResponse[]>([]);
   const [providerContracts, setProviderContracts] = useState<DiscoveryProvidersResponse | null>(null);
   const [schedules, setSchedules] = useState<ScanSchedule[]>([]);
@@ -521,6 +526,14 @@ export default function SourcesPage() {
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Register scan targets, review connector health, and manage schedules.
           </p>
+          <div className="mt-2">
+            <ServiceStateChip
+              serviceId="data_sources"
+              entry={dataSourcesService}
+              registry={counts?.services}
+              showUnlock={false}
+            />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -544,6 +557,12 @@ export default function SourcesPage() {
       </header>
 
       {isDemoMode && <DemoConnectCard />}
+
+      <ServiceStateBanner
+        serviceId="data_sources"
+        entry={dataSourcesService}
+        registry={counts?.services}
+      />
 
       <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

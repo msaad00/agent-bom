@@ -280,6 +280,7 @@ class NeptuneGraphStore:
         scan_id: str = "",
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
+        relationship_types: frozenset[str] | None = None,
     ) -> UnifiedGraph:
         tenant = tenant_id or "default"
         scan = scan_id or self.latest_snapshot_id(tenant_id=tenant)

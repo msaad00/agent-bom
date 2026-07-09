@@ -551,11 +551,6 @@ export function computeValidValues(
 // ───────────────────────────────────────────────────────────────────────
 // Drift lens predicates (#3192)
 // ───────────────────────────────────────────────────────────────────────
-//
-// The drift lens is a focus overlay, not a hard filter: when a chip other than
-// "all" is active, non-matching nodes are dimmed rather than removed so the
-// surrounding topology stays legible (mirroring the blast-radius / reachability
-// overlays). These predicates are the pure decision core the client dims by.
 
 export type DriftLensFilter = "all" | "new" | "removed" | "changed" | "critical";
 
@@ -567,13 +562,6 @@ export const DRIFT_LENS_FILTERS: DriftLensFilter[] = [
   "removed",
 ];
 
-/**
- * Whether a node with the given change kind passes the active drift chip.
- *
- * `critical` is a cross-cutting chip: it keeps any node the client has flagged
- * as a critical change (a new/changed asset carrying a high-or-worse severity),
- * independent of its raw new/changed kind.
- */
 export function driftFilterPasses(
   kind: ChangeKind,
   filter: DriftLensFilter,
@@ -597,6 +585,32 @@ export function isCriticalChange(
   const rank = SEVERITY_RANK[String(severity ?? "").toLowerCase()] ?? 0;
   const highRank = SEVERITY_RANK["high"] ?? 0;
   return rank >= highRank && highRank > 0;
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Runtime evidence lens (#3192 / #3610)
+// ───────────────────────────────────────────────────────────────────────
+
+export type EvidenceLensFilter =
+  | "all"
+  | "runtime_observed"
+  | "runtime_blocked"
+  | "static_scan";
+
+export const EVIDENCE_LENS_FILTERS: EvidenceLensFilter[] = [
+  "all",
+  "runtime_observed",
+  "runtime_blocked",
+  "static_scan",
+];
+
+export function evidenceLensPasses(
+  tier: "static_scan" | "runtime_observed" | "runtime_blocked" | undefined,
+  filter: EvidenceLensFilter,
+): boolean {
+  if (filter === "all") return true;
+  const effective = tier ?? "static_scan";
+  return effective === filter;
 }
 
 // ───────────────────────────────────────────────────────────────────────

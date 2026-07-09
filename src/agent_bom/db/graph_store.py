@@ -778,6 +778,7 @@ def load_graph(
     scan_id: str = "",
     entity_types: set[str] | None = None,
     min_severity_rank: int = 0,
+    relationship_types: frozenset[str] | None = None,
 ) -> UnifiedGraph:
     """Load a UnifiedGraph from a specific scan snapshot."""
     tenant_id = normalize_graph_tenant_id(tenant_id)
@@ -822,6 +823,10 @@ def load_graph(
 
     eq = "SELECT * FROM graph_edges WHERE tenant_id = ? AND scan_id = ?"
     eparams: list[Any] = [tenant_id, effective_scan_id]
+    if relationship_types:
+        placeholders = ",".join("?" * len(relationship_types))
+        eq += f" AND relationship IN ({placeholders})"
+        eparams.extend(sorted(relationship_types))
     for row in conn.execute(eq, eparams):
         if row["source_id"] not in node_ids or row["target_id"] not in node_ids:
             continue
@@ -846,35 +851,36 @@ def load_graph(
             )
         )
 
-    apq = "SELECT * FROM attack_paths WHERE tenant_id = ? AND scan_id = ?"
-    apparams: list[Any] = [tenant_id, effective_scan_id]
-    for row in conn.execute(apq, apparams):
-        graph.attack_paths.append(
-            AttackPath(
-                source=row["source_node"],
-                target=row["target_node"],
-                hops=json.loads(row["path_nodes"]),
-                edges=json.loads(row["path_edges"]),
-                composite_risk=row["composite_risk"],
-                summary=row["summary"] or "",
-                credential_exposure=json.loads(row["credential_exposure"]),
-                tool_exposure=json.loads(row["tool_exposure"]),
-                vuln_ids=json.loads(row["vuln_ids"]),
+    if not relationship_types:
+        apq = "SELECT * FROM attack_paths WHERE tenant_id = ? AND scan_id = ?"
+        apparams: list[Any] = [tenant_id, effective_scan_id]
+        for row in conn.execute(apq, apparams):
+            graph.attack_paths.append(
+                AttackPath(
+                    source=row["source_node"],
+                    target=row["target_node"],
+                    hops=json.loads(row["path_nodes"]),
+                    edges=json.loads(row["path_edges"]),
+                    composite_risk=row["composite_risk"],
+                    summary=row["summary"] or "",
+                    credential_exposure=json.loads(row["credential_exposure"]),
+                    tool_exposure=json.loads(row["tool_exposure"]),
+                    vuln_ids=json.loads(row["vuln_ids"]),
+                )
             )
-        )
 
-    irq = "SELECT * FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?"
-    irparams: list[Any] = [tenant_id, effective_scan_id]
-    for row in conn.execute(irq, irparams):
-        graph.interaction_risks.append(
-            InteractionRisk(
-                pattern=row["pattern"],
-                agents=json.loads(row["agents"]),
-                risk_score=row["risk_score"],
-                description=row["description"],
-                owasp_agentic_tag=row["owasp_agentic_tag"],
+        irq = "SELECT * FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?"
+        irparams: list[Any] = [tenant_id, effective_scan_id]
+        for row in conn.execute(irq, irparams):
+            graph.interaction_risks.append(
+                InteractionRisk(
+                    pattern=row["pattern"],
+                    agents=json.loads(row["agents"]),
+                    risk_score=row["risk_score"],
+                    description=row["description"],
+                    owasp_agentic_tag=row["owasp_agentic_tag"],
+                )
             )
-        )
 
     return graph
 

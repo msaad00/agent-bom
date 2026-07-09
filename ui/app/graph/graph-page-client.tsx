@@ -122,8 +122,10 @@ import {
   decodeFiltersFromParams,
   driftFilterPasses,
   encodeFiltersToParams,
+  evidenceLensPasses,
   isCriticalChange,
   type DriftLensFilter,
+  type EvidenceLensFilter,
 } from "@/lib/filter-algebra";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
@@ -131,6 +133,14 @@ const GraphDriftLegend = dynamic(
   () =>
     import("@/components/graph-drift-legend").then(
       (mod) => mod.GraphDriftLegend,
+    ),
+  { ssr: false },
+);
+
+const GraphEvidenceLegend = dynamic(
+  () =>
+    import("@/components/graph-evidence-legend").then(
+      (mod) => mod.GraphEvidenceLegend,
     ),
   { ssr: false },
 );
@@ -663,6 +673,9 @@ function GraphPageInner() {
   const [graphDiff, setGraphDiff] = useState<GraphDiffResponse | null>(null);
   const [driftLensActive, setDriftLensActive] = useState(false);
   const [driftFilter, setDriftFilter] = useState<DriftLensFilter>("all");
+  const [evidenceLensActive, setEvidenceLensActive] = useState(false);
+  const [evidenceFilter, setEvidenceFilter] =
+    useState<EvidenceLensFilter>("all");
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(
     null,
   );
@@ -1472,25 +1485,49 @@ function GraphPageInner() {
   }, [graphDiff]);
 
   const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
-    if (!driftLensEngaged) return baseDisplayNodes;
-    return baseDisplayNodes.map((node) => {
-      const kind = changeKindForNode(node.id, driftIndex);
-      const critical = isCriticalChange(kind, node.data.severity);
-      const passes = driftFilterPasses(kind, driftFilter, critical);
-      const ringClass =
-        driftFilter === "critical" && critical
-          ? "drift-ring-critical"
-          : CHANGE_KIND_META[kind].ringClass;
-      const className = [node.className, ringClass].filter(Boolean).join(" ");
-      // Focus (not filter): non-matching nodes dim so topology stays legible.
-      const dimmed = Boolean(node.data.dimmed) || !passes;
-      return {
-        ...node,
-        className,
-        data: { ...node.data, dimmed },
-      };
-    });
-  }, [baseDisplayNodes, driftIndex, driftLensEngaged, driftFilter]);
+    let nodes = baseDisplayNodes;
+    if (driftLensEngaged) {
+      nodes = nodes.map((node) => {
+        const kind = changeKindForNode(node.id, driftIndex);
+        const critical = isCriticalChange(kind, node.data.severity);
+        const passes = driftFilterPasses(kind, driftFilter, critical);
+        const ringClass =
+          driftFilter === "critical" && critical
+            ? "drift-ring-critical"
+            : CHANGE_KIND_META[kind].ringClass;
+        const className = [node.className, ringClass].filter(Boolean).join(" ");
+        const dimmed = Boolean(node.data.dimmed) || !passes;
+        return {
+          ...node,
+          className,
+          data: { ...node.data, dimmed },
+        };
+      });
+    }
+    if (evidenceLensActive) {
+      nodes = nodes.map((node) => {
+        const passes = evidenceLensPasses(
+          node.data.runtimeEvidenceTier,
+          evidenceFilter,
+        );
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            dimmed: Boolean(node.data.dimmed) || !passes,
+          },
+        };
+      });
+    }
+    return nodes;
+  }, [
+    baseDisplayNodes,
+    driftIndex,
+    driftLensEngaged,
+    driftFilter,
+    evidenceLensActive,
+    evidenceFilter,
+  ]);
 
   // Live change-kind tallies over the rendered graph — `unchanged` is derived
   // here (the diff index only carries actively-changed ids) so the legend and
@@ -1515,6 +1552,24 @@ function GraphPageInner() {
     }
     return { counts, critical };
   }, [baseDisplayNodes, driftIndex]);
+
+  const evidenceCounts = useMemo<
+    Record<EvidenceLensFilter, number>
+  >(() => {
+    const counts: Record<EvidenceLensFilter, number> = {
+      all: baseDisplayNodes.length,
+      runtime_observed: 0,
+      runtime_blocked: 0,
+      static_scan: 0,
+    };
+    for (const node of baseDisplayNodes) {
+      const tier = node.data.runtimeEvidenceTier ?? "static_scan";
+      if (tier === "runtime_observed") counts.runtime_observed += 1;
+      else if (tier === "runtime_blocked") counts.runtime_blocked += 1;
+      else counts.static_scan += 1;
+    }
+    return counts;
+  }, [baseDisplayNodes]);
 
   const compressedGroupCount = aggregatedClusterNodes.length;
   const sourceNodeCount = rollupNavigationActive
@@ -2537,6 +2592,17 @@ function GraphPageInner() {
             attributeSummaries={driftAttributeSummaryList}
           />
         )}
+
+        <GraphEvidenceLegend
+          active={evidenceLensActive}
+          onToggleActive={(next) => {
+            setEvidenceLensActive(next);
+            if (!next) setEvidenceFilter("all");
+          }}
+          filter={evidenceFilter}
+          onFilterChange={setEvidenceFilter}
+          counts={evidenceCounts}
+        />
 
         <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400 group">
           <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">

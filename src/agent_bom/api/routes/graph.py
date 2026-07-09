@@ -3118,6 +3118,11 @@ async def delete_preset(request: Request, name: str) -> dict:
 # Estate-scale roll-up (CONTAINS) — backend for the UI graph-nav drill-down
 # ═══════════════════════════════════════════════════════════════════════════
 
+# Containment-only edge load for /v1/graph/rollup (default mode).
+_ROLLUP_CONTAINMENT_RELATIONSHIPS = frozenset(
+    {RelationshipType.CONTAINS.value, RelationshipType.HOSTS.value}
+)
+
 
 @router.get("/graph/rollup", tags=["graph"])
 async def get_graph_rollup(
@@ -3154,11 +3159,13 @@ async def get_graph_rollup(
         raise HTTPException(status_code=422, detail=f"Unsupported severity: {min_severity}")
 
     try:
-        graph = await _graph_store_call(
-            graph_store.load_graph,
-            scan_id=requested_scan_id,
-            tenant_id=tenant,
-        )
+        load_kwargs: dict[str, Any] = {
+            "scan_id": requested_scan_id,
+            "tenant_id": tenant,
+        }
+        if mode != "attack_path":
+            load_kwargs["relationship_types"] = _ROLLUP_CONTAINMENT_RELATIONSHIPS
+        graph = await _graph_store_call(graph_store.load_graph, **load_kwargs)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 

@@ -336,6 +336,14 @@ def finalize_showcase_snapshot(graph: UnifiedGraph, *, profile: ShowcaseProfile)
     bucket.risk_score = 8.2
     bucket.compliance_tags = ["PII", "GDPR", "public-exposure"]
 
+    for node_id in ("call:0", "call:1", "call:2"):
+        node = graph.nodes.get(node_id)
+        if node is not None:
+            node.attributes["evidence_tier"] = "runtime_observed"
+    blocked_tool = graph.nodes.get("tool:shell-runner-server:run_shell")
+    if blocked_tool is not None:
+        blocked_tool.attributes["evidence_tier"] = "runtime_blocked"
+
 
 def seed_showcase_graph_if_empty(
     graph_store: GraphStoreProtocol,

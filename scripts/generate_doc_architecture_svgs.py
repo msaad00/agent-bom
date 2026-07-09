@@ -12,6 +12,7 @@ from pathlib import Path
 
 OUT = Path(__file__).resolve().parents[1] / "docs" / "images"
 VENDOR_LOGO_DIR = Path(__file__).resolve().parents[1] / "ui" / "public" / "logos"
+VENDOR_WORDMARK_DIR = VENDOR_LOGO_DIR / "wordmarks"
 
 CLOUD_VENDOR_LOGOS = (
     ("aws", "AWS", "#232F3E"),
@@ -345,10 +346,47 @@ ICONS = {
 
 
 def _vendor_viewbox(raw: str) -> tuple[float, float]:
-    match = re.search(r'viewBox="[\d.\s]+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)"', raw)
+    match = re.search(r'viewBox="\s*[\d.]+\s+[\d.]+\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*"', raw)
+    if match:
+        return float(match.group(1)), float(match.group(2))
+    match = re.search(r'width="(\d+(?:\.\d+)?)"\s+height="(\d+(?:\.\d+)?)"', raw)
     if match:
         return float(match.group(1)), float(match.group(2))
     return 24.0, 24.0
+
+
+def _namespace_svg_ids(inner: str, *, uid: str) -> str:
+    for gid in sorted(set(re.findall(r'id="([^"]+)"', inner)), key=len, reverse=True):
+        namespaced = f"{uid}-{gid}"
+        inner = inner.replace(f'id="{gid}"', f'id="{namespaced}"')
+        inner = inner.replace(f"url(#{gid})", f"url(#{namespaced})")
+    return inner
+
+
+def _vendor_wordmark_inner(vendor: str, *, uid: str, theme: str) -> str:
+    """Inline official horizontal wordmarks used in the workflow diagram cloud row."""
+    raw = (VENDOR_WORDMARK_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
+    root_fill_match = re.search(r"<svg[^>]*\sfill=\"([^\"]+)\"", raw)
+    inner = re.sub(r"^.*?<svg[^>]*>", "", raw, count=1, flags=re.DOTALL)
+    inner = re.sub(r"</svg>\s*$", "", inner, flags=re.DOTALL)
+    inner = re.sub(r"<text\b[^>]*>.*?</text>", "", inner, flags=re.DOTALL | re.IGNORECASE)
+    if root_fill_match and 'fill="' not in inner:
+        inner = f'<g fill="{root_fill_match.group(1)}">{inner}</g>'
+    if vendor == "aws" and theme == "dark":
+        ink = "#e9e9ec"
+        inner = inner.replace('stroke="#000"', f'stroke="{ink}"')
+        inner = re.sub(
+            r'(<path\b(?:(?!fill=)[^>])*)(fill-rule="evenodd")',
+            rf'\1fill="{ink}" \2',
+            inner,
+        )
+        inner = re.sub(
+            r'(<path d="M46\.998[^"]+"[^>]*)(/>)',
+            lambda m: m.group(1) + f' fill="{ink}"' + m.group(2) if "fill=" not in m.group(1) else m.group(0),
+            inner,
+            count=1,
+        )
+    return _namespace_svg_ids(inner.strip(), uid=uid)
 
 
 def _vendor_logo_inner(vendor: str, *, uid: str) -> str:
@@ -361,53 +399,35 @@ def _vendor_logo_inner(vendor: str, *, uid: str) -> str:
     inner = re.sub(r"<text\b[^>]*>.*?</text>", "", inner, flags=re.DOTALL | re.IGNORECASE)
     if root_fill_match and 'fill="' not in inner:
         inner = inner.replace("<path ", f'<path fill="{root_fill_match.group(1)}" ', 1)
-    for gid in sorted(set(re.findall(r'id="([^"]+)"', inner)), key=len, reverse=True):
-        namespaced = f"{uid}-{gid}"
-        inner = inner.replace(f'id="{gid}"', f'id="{namespaced}"')
-        inner = inner.replace(f"url(#{gid})", f"url(#{namespaced})")
-    return inner.strip()
+    return _namespace_svg_ids(inner.strip(), uid=uid)
 
 
 def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict, *, theme: str) -> tuple[str, int]:
-    """2x2 provider grid using the same public vector marks as the dashboard."""
+    """2x2 provider grid using official horizontal wordmarks from public media kits."""
     cols = 2
     gap_x = 6
-    gap_y = 6
+    gap_y = 5
     card_w = (lane_inner_w - gap_x) // cols
-    card_h = 44
-    label_band = 11
-    icon_pad = 4
-    aws_wordmark = "#e9e9ec" if theme == "dark" else "#232F3E"
-    # AWS mark embeds its wordmark as paths; other vendors use icon + caption below.
-    wordmark_vendors = frozenset({"aws"})
+    card_h = 34
+    logo_h = 14
+    logo_pad_x = 8
     out: list[str] = []
-    for i, (vendor, label, accent) in enumerate(CLOUD_VENDOR_LOGOS):
+    for i, (vendor, _label, _accent) in enumerate(CLOUD_VENDOR_LOGOS):
         col, row = i % cols, i // cols
         bx = x + col * (card_w + gap_x)
         by = y + row * (card_h + gap_y)
-        has_caption = vendor not in wordmark_vendors
-        icon_area = card_h - label_band - icon_pad if has_caption else card_h - icon_pad * 2
-        raw = (VENDOR_LOGO_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
+        raw = (VENDOR_WORDMARK_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
         vb_w, vb_h = _vendor_viewbox(raw)
-        scale = min(icon_area / vb_w, icon_area / vb_h)
+        scale = min(logo_h / vb_h, (card_w - logo_pad_x) / vb_w)
         render_w = vb_w * scale
         render_h = vb_h * scale
         icon_x = bx + (card_w - render_w) / 2
-        if has_caption:
-            icon_y = by + icon_pad + (icon_area - render_h) / 2
-        else:
-            icon_y = by + (card_h - render_h) / 2
-        inner = _vendor_logo_inner(vendor, uid=f"cl-{vendor}")
-        color_attr = f' color="{aws_wordmark}"' if vendor == "aws" else ""
+        icon_y = by + (card_h - render_h) / 2
+        inner = _vendor_wordmark_inner(vendor, uid=f"cl-{vendor}", theme=theme)
         out.append(
             f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-            f'<g transform="translate({icon_x},{icon_y}) scale({scale})"{color_attr}>{inner}</g>'
+            f'<g transform="translate({icon_x},{icon_y}) scale({scale})">{inner}</g>'
         )
-        if has_caption:
-            out.append(
-                f'<text x="{bx + card_w / 2}" y="{by + card_h - 5}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
-                f'font-size="8" font-weight="700" fill="{accent}">{_esc(label)}</text>'
-            )
     return "".join(out), gap_y + 2 * card_h
 
 

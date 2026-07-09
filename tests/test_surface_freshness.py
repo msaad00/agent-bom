@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 from types import ModuleType
 
@@ -49,6 +50,17 @@ def test_glama_build_manifest_verify_passes():
 
 def test_glama_build_manifest_verify_reads_git_ref():
     script = _load_script("check_glama_listing.py")
+    assert script.main(["--verify-manifest", "--git-ref", "HEAD"]) == 0
+
+
+def test_glama_build_manifest_verify_falls_back_for_head_checkout(monkeypatch):
+    script = _load_script("check_glama_listing.py")
+
+    def fake_check_output(*_args, **_kwargs):
+        raise subprocess.CalledProcessError(128, ["git", "show"], stderr="not a git repository")
+
+    monkeypatch.setattr(script.subprocess, "check_output", fake_check_output)
+
     assert script.main(["--verify-manifest", "--git-ref", "HEAD"]) == 0
 
 

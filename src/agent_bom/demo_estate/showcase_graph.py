@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from agent_bom.api.agent_identity_store import (
     InMemoryAgentIdentityStore,
@@ -20,8 +20,13 @@ from agent_bom.graph.types import EntityType, RelationshipType
 if TYPE_CHECKING:
     from agent_bom.api.graph_store import GraphStoreProtocol
 
+ShowcaseProfile = Literal["baseline", "current"]
+
 SHOWCASE_TENANT = "default"
 SHOWCASE_SCAN_ID = "showcase"
+SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
+SHOWCASE_BASELINE_CREATED_AT = "2026-06-01T12:00:00+00:00"
+SHOWCASE_CURRENT_CREATED_AT = "2026-06-08T12:00:00+00:00"
 
 
 class _DriftIncident:
@@ -51,7 +56,9 @@ def build_showcase_graph(
     *,
     tenant_id: str = SHOWCASE_TENANT,
     scan_id: str = SHOWCASE_SCAN_ID,
+    profile: ShowcaseProfile = "current",
 ) -> tuple[UnifiedGraph, InMemoryAgentIdentityStore, _DriftStore]:
+    is_baseline = profile == "baseline"
     g = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
 
     def node(i: str, t: EntityType, label: str, **attrs) -> str:
@@ -127,19 +134,20 @@ def build_showcase_graph(
         node(vid, EntityType.VULNERABILITY, cve, severity=sev, risk_score=score, is_kev=cve in kev_cves)
         edge(pid, vid, RelationshipType.VULNERABLE_TO)
 
-    # Malicious/typosquat package — the malicious-package differentiator.
-    node(
-        "pkg:reqeusts@2.99.0",
-        EntityType.PACKAGE,
-        "reqeusts@2.99.0",
-        severity="critical",
-        risk_score=9.1,
-        is_malicious=True,
-        malicious_reason="Possible typosquat of 'requests'",
-    )
-    edge("server:etl-server", "pkg:reqeusts@2.99.0", RelationshipType.DEPENDS_ON)
-    node("vuln:MAL-2024-reqeusts", EntityType.VULNERABILITY, "MAL-2024-reqeusts", severity="critical", risk_score=9.1)
-    edge("pkg:reqeusts@2.99.0", "vuln:MAL-2024-reqeusts", RelationshipType.VULNERABLE_TO)
+    # Malicious/typosquat package — appears only in the current snapshot for drift.
+    if not is_baseline:
+        node(
+            "pkg:reqeusts@2.99.0",
+            EntityType.PACKAGE,
+            "reqeusts@2.99.0",
+            severity="critical",
+            risk_score=9.1,
+            is_malicious=True,
+            malicious_reason="Possible typosquat of 'requests'",
+        )
+        edge("server:etl-server", "pkg:reqeusts@2.99.0", RelationshipType.DEPENDS_ON)
+        node("vuln:MAL-2024-reqeusts", EntityType.VULNERABILITY, "MAL-2024-reqeusts", severity="critical", risk_score=9.1)
+        edge("pkg:reqeusts@2.99.0", "vuln:MAL-2024-reqeusts", RelationshipType.VULNERABLE_TO)
 
     # Credential-backed env on servers — lights up credential-exposure edges.
     creds = {
@@ -184,11 +192,22 @@ def build_showcase_graph(
         "customer-pii-prod (S3)",
         resource_type="s3",
         compliance_tags=["PII", "GDPR"],
+        severity="" if is_baseline else "high",
+        risk_score=0.0 if is_baseline else 8.2,
+        internet_exposed=False if is_baseline else True,
     )
-    node("mc:pii-public", EntityType.MISCONFIGURATION, "S3 bucket customer-pii-prod is publicly readable")
-    node("vuln:bucket-acl", EntityType.VULNERABILITY, "CVE-2024-S3ACL", severity="high", risk_score=8.2)
-    edge("mc:pii-public", "cloud:pii-bucket", RelationshipType.AFFECTS)
-    edge("cloud:pii-bucket", "vuln:bucket-acl", RelationshipType.VULNERABLE_TO)
+    if is_baseline:
+        node(
+            "mc:pii-private",
+            EntityType.MISCONFIGURATION,
+            "S3 bucket customer-pii-prod blocks public ACLs",
+        )
+        edge("mc:pii-private", "cloud:pii-bucket", RelationshipType.AFFECTS)
+    else:
+        node("mc:pii-public", EntityType.MISCONFIGURATION, "S3 bucket customer-pii-prod is publicly readable")
+        node("vuln:bucket-acl", EntityType.VULNERABILITY, "CVE-2024-S3ACL", severity="high", risk_score=8.2)
+        edge("mc:pii-public", "cloud:pii-bucket", RelationshipType.AFFECTS)
+        edge("cloud:pii-bucket", "vuln:bucket-acl", RelationshipType.VULNERABLE_TO)
 
     node(
         "cloud:payments-db",
@@ -225,7 +244,11 @@ def build_showcase_graph(
     edge("role:readonly", "pol:readonly", RelationshipType.ATTACHED)
 
     edge("user:alice", "role:prod-admin", RelationshipType.TRUSTS)
-    edge("user:bob", "role:data-pipeline", RelationshipType.TRUSTS)
+    if is_baseline:
+        edge("user:bob", "role:readonly", RelationshipType.TRUSTS)
+    else:
+        edge("user:bob", "role:data-pipeline", RelationshipType.TRUSTS)
+        edge("user:bob", "role:prod-admin", RelationshipType.TRUSTS)
 
     edge("role:prod-admin", "cloud:pii-bucket", RelationshipType.CAN_ACCESS)
     edge("role:prod-admin", "cloud:payments-db", RelationshipType.CAN_ACCESS)
@@ -238,6 +261,13 @@ def build_showcase_graph(
     # prod-admin; data-pipeline maps to the least-privilege pipeline role.
     edge("agent:cursor", "role:prod-admin", RelationshipType.CAN_ACCESS)
     edge("agent:data-pipeline", "role:data-pipeline", RelationshipType.CAN_ACCESS)
+
+    # Retired MCP server — removed in the current snapshot so drift shows a removal.
+    if is_baseline:
+        node("server:legacy-chat-server", EntityType.SERVER, "legacy-chat-server")
+        edge("agent:support-copilot", "server:legacy-chat-server", RelationshipType.USES)
+        node("tool:legacy-chat-server:send_message", EntityType.TOOL, "send_message")
+        edge("server:legacy-chat-server", "tool:legacy-chat-server:send_message", RelationshipType.PROVIDES_TOOL)
 
     store = InMemoryAgentIdentityStore()
     _jit_tools = {"cursor": "run_shell", "data-pipeline": "execute_sql", "langchain-service": "eval_expression"}
@@ -293,11 +323,36 @@ def seed_showcase_graph_if_empty(
     *,
     tenant_id: str = SHOWCASE_TENANT,
 ) -> bool:
-    """Persist the showcase graph when the tenant has no snapshot yet."""
+    """Persist baseline + current showcase snapshots when the tenant has none yet."""
     latest_snapshot_id = getattr(graph_store, "latest_snapshot_id", None)
     if callable(latest_snapshot_id) and latest_snapshot_id(tenant_id=tenant_id):
         return False
-    graph, identity_store, drift_store = build_showcase_graph(tenant_id=tenant_id)
-    apply_showcase_overlays(graph, tenant_id=tenant_id, identity_store=identity_store, drift_store=drift_store)
-    graph_store.save_graph(graph)
+
+    baseline_graph, baseline_identity, baseline_drift = build_showcase_graph(
+        tenant_id=tenant_id,
+        scan_id=SHOWCASE_BASELINE_SCAN_ID,
+        profile="baseline",
+    )
+    baseline_graph.created_at = SHOWCASE_BASELINE_CREATED_AT
+    apply_showcase_overlays(
+        baseline_graph,
+        tenant_id=tenant_id,
+        identity_store=baseline_identity,
+        drift_store=baseline_drift,
+    )
+    graph_store.save_graph(baseline_graph)
+
+    current_graph, identity_store, drift_store = build_showcase_graph(
+        tenant_id=tenant_id,
+        scan_id=SHOWCASE_SCAN_ID,
+        profile="current",
+    )
+    current_graph.created_at = SHOWCASE_CURRENT_CREATED_AT
+    apply_showcase_overlays(
+        current_graph,
+        tenant_id=tenant_id,
+        identity_store=identity_store,
+        drift_store=drift_store,
+    )
+    graph_store.save_graph(current_graph)
     return True

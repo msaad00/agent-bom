@@ -5,6 +5,8 @@ from collections import Counter
 import pytest
 from starlette.testclient import TestClient
 
+from agent_bom.demo_estate.showcase_graph import SHOWCASE_BASELINE_SCAN_ID
+
 ADMIN = {"X-Agent-Bom-Role": "admin"}
 
 
@@ -235,6 +237,32 @@ def test_demo_estate_gateway_feed_is_idempotent(demo_estate_client: TestClient) 
     assert again.get("seeded") is False and again.get("reason") == "already_present"
     second = len(demo_estate_client.get("/v1/gateway/feed").json().get("events") or [])
     assert second == first
+
+
+def test_demo_estate_graph_snapshots_support_drift_lens(demo_estate_client: TestClient) -> None:
+    """Baseline + current snapshots let the shipped drift lens diff against a prior estate."""
+    snapshots = demo_estate_client.get("/v1/graph/snapshots", headers=ADMIN).json()
+    scan_ids = {row.get("scan_id") for row in snapshots}
+    assert SHOWCASE_BASELINE_SCAN_ID in scan_ids
+    assert "showcase" in scan_ids
+    assert len(snapshots) >= 2
+
+    diff = demo_estate_client.get(
+        "/v1/graph/diff",
+        headers=ADMIN,
+        params={"old": SHOWCASE_BASELINE_SCAN_ID, "new": "showcase"},
+    )
+    assert diff.status_code == 200, diff.text
+    body = diff.json()
+    index = body.get("change_kind_index") or {}
+    node_kinds = index.get("nodes") or {}
+    assert node_kinds, "expected node drift between baseline and current showcase snapshots"
+    kinds = set(node_kinds.values())
+    assert kinds & {"new", "removed", "changed"}, kinds
+
+    assert body.get("nodes_added"), "expected at least one new node in the showcase drift story"
+    assert body.get("nodes_removed"), "expected at least one removed node in the showcase drift story"
+    assert body.get("nodes_changed"), "expected at least one changed node in the showcase drift story"
 
 
 def test_demo_estate_bootstrap_is_idempotent(demo_estate_client: TestClient) -> None:

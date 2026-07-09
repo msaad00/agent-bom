@@ -16,6 +16,7 @@ interface AttackPathCardProps {
   onClick?: () => void;
   href?: string | undefined;
   captureMode?: boolean | undefined;
+  compact?: boolean | undefined;
 }
 
 const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string; ring: string }> = {
@@ -26,7 +27,7 @@ const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string
   credential: { icon: KeyRound, tint: "text-fuchsia-300 bg-fuchsia-500/12", ring: "border-fuchsia-500/25" },
 };
 
-export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = false }: AttackPathCardProps) {
+export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = false, compact = false }: AttackPathCardProps) {
   const riskTone =
     riskScore >= 8
       ? "border-red-500/25 bg-red-500/10 text-red-200"
@@ -36,18 +37,25 @@ export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = 
 
   const cardBody = (
     <>
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Attack path</p>
-          <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">Credential-aware blast radius</p>
+      {!compact && (
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Attack path</p>
+            <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">Credential-aware blast radius</p>
+          </div>
+          <div className={`rounded-xl border px-2.5 py-1 font-mono text-xs font-semibold ${riskTone}`}>
+            <span className="text-[11px] uppercase tracking-[0.14em]">Risk</span>{" "}
+            <span>{riskScore.toFixed(1)}</span>
+          </div>
         </div>
-        <div className={`rounded-xl border px-2.5 py-1 font-mono text-xs font-semibold ${riskTone}`}>
-          <span className="text-[11px] uppercase tracking-[0.14em]">Risk</span>{" "}
-          <span>{riskScore.toFixed(1)}</span>
-        </div>
-      </div>
+      )}
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "justify-between" : ""}`}>
+        {compact && (
+          <div className={`rounded-lg border px-2 py-0.5 font-mono text-[11px] font-semibold ${riskTone}`}>
+            {riskScore.toFixed(1)}
+          </div>
+        )}
         {nodes.map((node, i) => {
           const meta = NODE_META[node.type];
           const Icon = meta.icon;
@@ -100,7 +108,9 @@ export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = 
   );
 
   const className =
-    `group block w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] px-4 py-3 text-left shadow-lg transition-all hover:border-[color:var(--border-strong)] hover:shadow-xl hover:shadow-emerald-500/5 ${
+    `group block w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] text-left shadow-lg transition-all hover:border-[color:var(--border-strong)] hover:shadow-xl hover:shadow-emerald-500/5 ${
+      compact ? "px-3 py-2" : "px-4 py-3"
+    } ${
       captureMode ? "" : "hover:-translate-y-0.5"
     }`;
 

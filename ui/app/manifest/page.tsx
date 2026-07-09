@@ -28,6 +28,7 @@ import {
   manifestFilterOptions,
   type ManifestFilters,
 } from "@/lib/agent-bom-manifest";
+import { PageLaneHeader } from "@/components/page-lane";
 
 function downloadManifest(manifest: AgentBomManifestResponse) {
   const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
@@ -183,56 +184,59 @@ export default function AgentBomManifestPage() {
   return (
     <main className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-sm font-medium text-emerald-400">Agent BOM</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">AI visibility cockpit</h1>
-            <p className="mt-2 max-w-3xl text-sm text-[var(--muted-foreground)]">
-              Tenant-scoped inventory of agents, MCP servers, tools, credential references, ownership, runtime evidence, and graph relationships.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={load}
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--accent)]"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Refresh
-            </button>
-            <button
-              type="button"
-              disabled={!manifest}
-              onClick={() => manifest && downloadManifest(manifest)}
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Download className="h-4 w-4" />
-              Download JSON
-            </button>
-          </div>
-        </header>
+        <PageLaneHeader
+          lane="ai-estate"
+          title="Agent BOM"
+          subtitle="Your tenant inventory of agents, MCP servers, tools, and credential references."
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={load}
+                className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--accent)]"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Refresh
+              </button>
+              <button
+                type="button"
+                disabled={!manifest}
+                onClick={() => manifest && downloadManifest(manifest)}
+                className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                Download JSON
+              </button>
+            </>
+          }
+        />
 
         {error ? <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{error}</div> : null}
 
         {manifest ? (
           <>
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <section className="grid gap-3 sm:grid-cols-3">
               <SummaryCard label="Agents" value={manifest.summary.agents} icon={TerminalSquare} tone="text-blue-300" />
               <SummaryCard label="MCP servers" value={manifest.summary.mcp_servers} icon={Server} tone="text-cyan-300" />
-              <SummaryCard label="Tools" value={manifest.summary.tools} icon={Wrench} tone="text-emerald-300" />
-              <SummaryCard label="Credentials" value={manifest.summary.credential_refs} icon={KeyRound} tone="text-yellow-300" />
-              <SummaryCard label="Runtime seen" value={manifest.summary.runtime_observed_servers} icon={Activity} tone="text-pink-300" />
-              <SummaryCard label="Gateway bound" value={manifest.summary.gateway_registered_servers} icon={Network} tone="text-violet-300" />
+              <SummaryCard label="Credential refs" value={manifest.summary.credential_refs} icon={KeyRound} tone="text-yellow-300" />
             </section>
 
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-              <SummaryCard label="Owners" value={manifest.visibility.owners} icon={UserRound} tone="text-teal-300" />
-              <SummaryCard label="Unowned agents" value={manifest.visibility.unowned_agents} icon={AlertTriangle} tone="text-yellow-300" />
-              <SummaryCard label="Shadow runtime" value={manifest.visibility.shadow_runtime_servers} icon={Eye} tone="text-red-300" />
-              <SummaryCard label="Untracked runtime" value={manifest.visibility.untracked_runtime_servers} icon={Network} tone="text-orange-300" />
-              <SummaryCard label="Warnings" value={manifest.visibility.servers_with_warnings} icon={AlertTriangle} tone="text-amber-300" />
-              <SummaryCard label="Risky refs" value={manifest.visibility.risky_credential_refs} icon={KeyRound} tone="text-rose-300" />
-            </section>
+            <details className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+              <summary className="cursor-pointer list-none text-sm font-medium text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+                Extended visibility metrics
+              </summary>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <SummaryCard label="Tools" value={manifest.summary.tools} icon={Wrench} tone="text-emerald-300" />
+                <SummaryCard label="Runtime seen" value={manifest.summary.runtime_observed_servers} icon={Activity} tone="text-pink-300" />
+                <SummaryCard label="Gateway bound" value={manifest.summary.gateway_registered_servers} icon={Network} tone="text-violet-300" />
+                <SummaryCard label="Owners" value={manifest.visibility.owners} icon={UserRound} tone="text-teal-300" />
+                <SummaryCard label="Unowned agents" value={manifest.visibility.unowned_agents} icon={AlertTriangle} tone="text-yellow-300" />
+                <SummaryCard label="Shadow runtime" value={manifest.visibility.shadow_runtime_servers} icon={Eye} tone="text-red-300" />
+                <SummaryCard label="Untracked runtime" value={manifest.visibility.untracked_runtime_servers} icon={Network} tone="text-orange-300" />
+                <SummaryCard label="Warnings" value={manifest.visibility.servers_with_warnings} icon={AlertTriangle} tone="text-amber-300" />
+                <SummaryCard label="Risky refs" value={manifest.visibility.risky_credential_refs} icon={KeyRound} tone="text-rose-300" />
+              </div>
+            </details>
 
             <section className="flex flex-wrap items-center gap-2">
               <BoundaryBadge ok={!manifest.boundaries.stores_credential_values} label="credential values redacted" />
@@ -264,7 +268,7 @@ export default function AgentBomManifestPage() {
               </section>
             ) : null}
 
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+            <div className="space-y-6">
               <section className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
                 <div className="flex flex-col gap-3 border-b border-[var(--border)] p-4 md:flex-row md:items-center md:justify-between">
                   <div>
@@ -414,7 +418,9 @@ export default function AgentBomManifestPage() {
                       {rows.length === 0 ? (
                         <tr>
                           <td colSpan={11} className="px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
-                            No MCP servers match these filters. Run <code className="rounded bg-[var(--muted)] px-1.5 py-0.5">agent-bom manifest</code> to generate local evidence, or clear filters to inspect the full tenant manifest.
+                            No MCP servers in this tenant yet. Run{" "}
+                            <code className="rounded bg-[var(--muted)] px-1.5 py-0.5">agent-bom manifest</code> locally to
+                            generate evidence, or clear filters to inspect the full manifest.
                           </td>
                         </tr>
                       ) : null}
@@ -423,7 +429,14 @@ export default function AgentBomManifestPage() {
                 </div>
               </section>
 
-              <MiniGraph manifest={manifest} />
+              <details className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
+                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                  Manifest graph · {manifest.graph.stats.nodes} nodes · {manifest.graph.stats.edges} edges
+                </summary>
+                <div className="border-t border-[var(--border)] p-4">
+                  <MiniGraph manifest={manifest} />
+                </div>
+              </details>
             </div>
           </>
         ) : loading ? (

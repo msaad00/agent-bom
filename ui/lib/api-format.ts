@@ -40,7 +40,10 @@ export function severityDot(severity: string): string {
 }
 
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString();
+  if (!iso?.trim()) return "—";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleString();
 }
 
 export function isConfigured(agent: Agent): boolean {

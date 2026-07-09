@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider } from "@/components/auth-provider";
-import { DemoConnectCard, DemoModeBanner } from "@/components/demo-mode-cta";
+import { DemoConnectCard, DemoModeBanner, DemoNavSignIn } from "@/components/demo-mode-cta";
 
 const originalFetch = global.fetch;
 
@@ -63,62 +63,35 @@ afterEach(() => {
 });
 
 describe("DemoModeBanner", () => {
-  it("shows the connect-your-cloud CTA in public demo mode", async () => {
+  it("renders nothing (banner removed in favor of watermark + nav CTA)", () => {
     mockServer({ unauthenticated_allowed: true, auth_configured: false, authenticated: false });
-
-    render(
+    const { container } = render(
       <AuthProvider>
         <DemoModeBanner />
       </AuthProvider>,
     );
+    expect(container).toBeEmptyDOMElement();
+  });
+});
 
-    const cta = await screen.findByRole("link", { name: /sign in \/ get started/i });
-    expect(cta).toBeInTheDocument();
+describe("DemoNavSignIn", () => {
+  it("shows a compact nav sign-in CTA in public demo mode", async () => {
+    mockServer({ unauthenticated_allowed: true, auth_configured: false, authenticated: false });
+
+    render(
+      <AuthProvider>
+        <DemoNavSignIn />
+      </AuthProvider>,
+    );
+
+    const cta = await screen.findByTestId("demo-nav-sign-in");
     expect(cta).toHaveAttribute("href", "/login");
-    expect(screen.getByTestId("demo-mode-banner")).toBeInTheDocument();
-  });
-
-  it("honors a configured sign-in URL", async () => {
-    mockServer({ unauthenticated_allowed: true, auth_configured: false, authenticated: false });
-    window.__AGENT_BOM_CONFIG__ = { signInUrl: "https://app.example.com/start" };
-
-    render(
-      <AuthProvider>
-        <DemoModeBanner />
-      </AuthProvider>,
-    );
-
-    const cta = await screen.findByRole("link", { name: /sign in \/ get started/i });
-    expect(cta).toHaveAttribute("href", "https://app.example.com/start");
-  });
-
-  it("stays hidden for an authenticated deployment", async () => {
-    mockServer({ unauthenticated_allowed: false, auth_configured: true, authenticated: true });
-
-    render(
-      <AuthProvider>
-        <DemoModeBanner />
-      </AuthProvider>,
-    );
-
-    await waitFor(() => expect(screen.queryByTestId("demo-mode-banner")).not.toBeInTheDocument());
-  });
-
-  it("stays hidden for a signed-in viewer even when the server allows anonymous access", async () => {
-    mockServer({ unauthenticated_allowed: true, auth_configured: false, authenticated: true });
-
-    render(
-      <AuthProvider>
-        <DemoModeBanner />
-      </AuthProvider>,
-    );
-
-    await waitFor(() => expect(screen.queryByTestId("demo-mode-banner")).not.toBeInTheDocument());
+    expect(screen.getByText(/demo · sign in/i)).toBeInTheDocument();
   });
 });
 
 describe("DemoConnectCard", () => {
-  it("renders the connect-surface demo state in demo mode", async () => {
+  it("renders a compact connect-surface demo state in demo mode", async () => {
     mockServer({ unauthenticated_allowed: true, auth_configured: false, authenticated: false });
 
     render(
@@ -128,8 +101,8 @@ describe("DemoConnectCard", () => {
     );
 
     expect(await screen.findByTestId("demo-connect-card")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /connect your cloud/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /connect your cloud/i })).toHaveAttribute("href", "/login");
+    expect(screen.getByText(/read-only demo/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^sign in$/i })).toHaveAttribute("href", "/login");
   });
 
   it("is absent outside demo mode", async () => {

@@ -16,7 +16,6 @@ import {
 } from "@/lib/api";
 import { TrustStackSignals } from "@/components/trust-stack";
 import { ActivityFeed } from "@/components/activity-feed";
-import { PostureGrade } from "@/components/posture-grade";
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
@@ -346,10 +345,7 @@ export default function Dashboard() {
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} kind={apiErrorKind} detail={apiErrorDetail} />;
 
   return (
-    <div className="space-y-8">
-      {/* Scorecard strip — one posture grade + risk score, critical/high, coverage,
-          connect status. Folds the former /overview domain tiles into the home
-          header so `/` opens above the fold with a single command surface. */}
+    <div className="space-y-5">
       <ScorecardStrip
         posture={posture ?? (overview ? { grade: overview.posture.grade, score: overview.posture.score, summary: overview.posture.summary, dimensions: {} } : null)}
         overview={overview}
@@ -359,158 +355,64 @@ export default function Dashboard() {
         summaryReady={summaryReady}
       />
 
-      <section className="relative overflow-hidden rounded-[28px] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(239,68,68,0.12),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.98),rgba(9,9,11,0.96))] p-6 shadow-2xl shadow-black/20">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-400">Solution overview</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">
-              Exposure command center
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
-              Prioritized AI/MCP exposure paths, active services, credentials, packages, and response work across {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""}, {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"}, {summaryReady ? displayedPackages : (summaryStats?.total_packages ?? 0)} packages, and {summaryReady ? displayedUniqueCVEs : (summaryStats?.total_vulnerabilities ?? fallbackVulnTotal)} CVEs.
+      <section className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Exposure command center</h1>
+            <p className="mt-1 text-sm text-zinc-400">
+              {(displayedAgentCount ?? "—")} agents · {summaryReady ? displayedPackages : "—"} packages · {summaryReady ? displayedUniqueCVEs : "—"} CVEs
             </p>
-            <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
-              Active exposure
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-red-200/70">Actively exploited</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-red-100">{summaryReady ? displayedKevCount : 0}</div>
-              </div>
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-amber-200/70">Credential exposed</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-amber-100">{summaryReady ? displayedCredentialExposure : 0}</div>
-              </div>
-              <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/70">Reachable tools</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-sky-100">{summaryReady ? displayedReachableTools : 0}</div>
-              </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <MetricChip label="KEV" value={String(summaryReady ? displayedKevCount : 0)} tone="red" />
+              <MetricChip label="Credentials" value={String(summaryReady ? displayedCredentialExposure : 0)} tone="amber" />
+              <MetricChip label="Tools" value={String(summaryReady ? displayedReachableTools : 0)} tone="sky" />
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 xl:justify-end">
-            <Link
-              href="/scan"
-              className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
-            >
-              Run scan
-              <ArrowRight className="h-4 w-4" />
+          <div className="flex flex-wrap gap-2">
+            <Link href="/scan" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
+              Run scan <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link
-              href="/security-graph"
-              className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
-            >
-              Open graph
-              <GitBranch className="h-4 w-4" />
+            <Link href="/security-graph" className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500">
+              Security graph <GitBranch className="h-4 w-4" />
             </Link>
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
           {topExposurePath ? (
-            <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">Highest priority path</p>
-                  <p className="mt-1 text-sm text-zinc-400">
-                    Start here: this chain connects a finding to the agent/runtime surface that can exercise it.
-                  </p>
-                </div>
-                <span className="rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 font-mono text-xs font-semibold text-red-200">
-                  Risk {topExposurePath.riskScore.toFixed(1)}
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">Top path</p>
+                <span className="rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 font-mono text-xs text-red-200">
+                  {topExposurePath.riskScore.toFixed(1)}
                 </span>
               </div>
-              <AttackPathCard nodes={topExposurePath.nodes} riskScore={topExposurePath.riskScore} href={topExposurePath.href} captureMode />
+              <AttackPathCard nodes={topExposurePath.nodes} riskScore={topExposurePath.riskScore} href={topExposurePath.href} captureMode compact />
             </div>
           ) : (
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">Estate map</p>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-400">
-                No scored exposure path is available yet. The overview stays grounded in discovered environments, agent services, credential boundaries, and scan coverage until findings produce evidence.
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Link href="/agents" className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 transition-colors hover:border-sky-400/40">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Agents</p>
-                  <p className="mt-2 font-mono text-2xl font-semibold text-sky-100">{agentsReady ? estateSummary.configuredAgents : "—"}</p>
-                  <p className="mt-1 text-xs text-sky-100/60">configured clients</p>
-                </Link>
-                <Link href="/agents" className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 transition-colors hover:border-emerald-400/40">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-200/70">Services</p>
-                  <p className="mt-2 font-mono text-2xl font-semibold text-emerald-100">{agentsReady ? estateSummary.servers : "—"}</p>
-                  <p className="mt-1 text-xs text-emerald-100/60">MCP servers</p>
-                </Link>
-                <Link href="/security-graph" className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 transition-colors hover:border-amber-400/40">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-amber-200/70">Identities</p>
-                  <p className="mt-2 font-mono text-2xl font-semibold text-amber-100">{agentsReady ? estateSummary.credentialedServers : "—"}</p>
-                  <p className="mt-1 text-xs text-amber-100/60">credentialed services</p>
-                </Link>
-                <Link href="/security-graph" className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4 transition-colors hover:border-fuchsia-400/40">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-fuchsia-200/70">Environments</p>
-                  <p className="mt-2 font-mono text-2xl font-semibold text-fuchsia-100">{agentsReady ? estateSummary.environments : "—"}</p>
-                  <p className="mt-1 text-xs text-fuchsia-100/60">observed scopes</p>
-                </Link>
-              </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+              No scored exposure path yet. Run a scan to populate attack-path evidence.
             </div>
           )}
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Fix queue</p>
-              <p className="mt-2 font-mono text-2xl font-semibold text-red-100">{severity.critical}</p>
-              <p className="mt-1 text-xs text-red-100/60">critical findings</p>
-            </Link>
-            <Link href="/security-graph" className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 transition-colors hover:border-amber-400/40">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-amber-200/70">Identity paths</p>
-              <p className="mt-2 font-mono text-2xl font-semibold text-amber-100">{credentialExposureCount || estateSummary.credentialedServers}</p>
-              <p className="mt-1 text-xs text-amber-100/60">credential-linked services</p>
-            </Link>
-            <Link href="/agents" className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 transition-colors hover:border-sky-400/40">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Active services</p>
-              <p className="mt-2 font-mono text-2xl font-semibold text-sky-100">{impactedAgentCount || estateSummary.servers || (displayedAgentCount ?? 0)}</p>
-              <p className="mt-1 text-xs text-sky-100/60">agent-facing services</p>
-            </Link>
+          <div className="grid grid-cols-3 gap-2">
+            <QuickLink href="/findings?severity=critical" label="Critical" value={String(severity.critical)} />
+            <QuickLink href="/security-graph" label="Identity" value={String(credentialExposureCount || estateSummary.credentialedServers)} />
+            <QuickLink href="/agents" label="Services" value={String(impactedAgentCount || estateSummary.servers || (displayedAgentCount ?? 0))} />
           </div>
         </div>
-
-        {posture && doneJobs.length > 0 && (
-          <div className="mt-6">
-            <PostureGrade
-              grade={posture.grade}
-              score={posture.score}
-              dimensions={posture.dimensions}
-              summary={posture.summary}
-              variant="panel"
-              defaultExpanded={false}
-              drilldown
-            />
-          </div>
-        )}
       </section>
 
       {/* Top exposure paths — the fix-first shortlist, kept above the fold. */}
       {(!isLoading) && allBlast.length > 0 && (
-        <details open className="group/attack rounded-[28px] border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_24px_80px_-48px_rgba(16,185,129,0.28)]">
-          <summary className="flex cursor-pointer list-none items-start justify-between gap-4 select-none">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
-                <GitBranch className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/attack:rotate-90" />
-                  <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-widest">
-                    Exposure Paths
-                  </h2>
-                  <span className="rounded-full border border-zinc-800 bg-zinc-900/90 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
-                    {Math.min(allBlast.length, 5)} shown
-                  </span>
-                </div>
-                <p className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
-                  Collapse this list when you want a tighter landing view. Open any path card to jump straight into the focused security graph drilldown.
-                </p>
-              </div>
+        <details className="group/attack rounded-2xl border border-zinc-800/90 bg-zinc-950/70 p-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 select-none">
+            <div className="flex items-center gap-2">
+              <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/attack:rotate-90" />
+              <h2 className="text-sm font-semibold text-zinc-300">Exposure paths</h2>
+              <span className="rounded-full border border-zinc-800 bg-zinc-900/90 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
+                {Math.min(allBlast.length, 5)}
+              </span>
             </div>
-            <span className="hidden rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300 md:inline-flex">
-              Clickable drilldowns
-            </span>
           </summary>
           <div className="mt-4 space-y-2">
             {[...allBlast]
@@ -544,27 +446,10 @@ export default function Dashboard() {
       )}
 
       {/* Exposure KPIs — coverage + backlog snapshot. */}
-      <details open className="group/metrics rounded-[28px] border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_24px_80px_-48px_rgba(59,130,246,0.24)]">
-        <summary className="flex cursor-pointer list-none items-start justify-between gap-4 select-none">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-sky-500/20 bg-sky-500/10 text-sky-300">
-              <Layers className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/metrics:rotate-90" />
-                <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-widest">
-                  Exposure KPIs
-                </h2>
-              </div>
-              <p className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
-                Coverage and backlog snapshot for the current scan set: total scans, agents, packages, unique CVEs, and critical findings.
-              </p>
-            </div>
-          </div>
-          <span className="hidden rounded-full border border-zinc-800 bg-zinc-900/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400 md:inline-flex">
-            5 tiles
-          </span>
+      <details className="group/metrics rounded-2xl border border-zinc-800/90 bg-zinc-950/70 p-4">
+        <summary className="flex cursor-pointer list-none items-center gap-2 select-none">
+          <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/metrics:rotate-90" />
+          <h2 className="text-sm font-semibold text-zinc-300">Exposure KPIs</h2>
         </summary>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
@@ -580,8 +465,8 @@ export default function Dashboard() {
           paint. */}
       <div>
         <div className="mb-4 inline-flex rounded-2xl border border-zinc-800 bg-zinc-950/70 p-1">
-          <TabButton icon={LayoutGrid} label="Command center" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
-          <TabButton icon={BarChart3} label="Deep analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
+          <TabButton icon={LayoutGrid} label="Overview" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
+          <TabButton icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
         </div>
 
         {activeTab === "command" ? (
@@ -637,6 +522,29 @@ export default function Dashboard() {
 }
 
 // ─── Components ───────────────────────────────────────────────────────────────
+
+function MetricChip({ label, value, tone }: { label: string; value: string; tone: "red" | "amber" | "sky" }) {
+  const toneClass =
+    tone === "red"
+      ? "border-red-500/20 bg-red-500/10 text-red-100"
+      : tone === "amber"
+        ? "border-amber-500/20 bg-amber-500/10 text-amber-100"
+        : "border-sky-500/20 bg-sky-500/10 text-sky-100";
+  return (
+    <span className={`rounded-lg border px-2.5 py-1 font-mono text-xs ${toneClass}`}>
+      {label} {value}
+    </span>
+  );
+}
+
+function QuickLink({ href, label, value }: { href: string; label: string; value: string }) {
+  return (
+    <Link href={href} className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3 text-center transition hover:border-zinc-600">
+      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+      <p className="mt-1 font-mono text-xl font-semibold text-zinc-100">{value}</p>
+    </Link>
+  );
+}
 
 function TabButton({
   icon: Icon,

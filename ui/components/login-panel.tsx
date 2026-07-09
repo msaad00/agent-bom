@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
+import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
 
 import { useAuthState } from "@/components/auth-provider";
 import { api } from "@/lib/api";
 import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { clearSessionApiKey } from "@/lib/auth";
+
+const AUTH_FAILURE_MESSAGE = "That API key wasn't accepted — check it and try again.";
 
 function isAuthFailure(message: string): boolean {
   const normalized = message.toLowerCase();
@@ -28,23 +30,8 @@ function isApiReachabilityFailure(message: string): boolean {
   );
 }
 
-function modeLabel(mode: string): string {
-  switch (mode) {
-    case "trusted_proxy":
-      return "Reverse-proxy OIDC";
-    case "oidc_bearer":
-      return "OIDC bearer";
-    case "api_key":
-      return "API key";
-    case "scim_provisioning":
-      return "SCIM provisioning";
-    default:
-      return mode.replaceAll("_", " ");
-  }
-}
-
 export function LoginPanel({
-  title = "Control-plane authentication required",
+  title = "Sign in to agent-bom",
   onAuthenticated,
 }: {
   title?: string;
@@ -94,144 +81,125 @@ export function LoginPanel({
 
   if (!error || isAuthFailure(error)) {
     const configuredModes = session?.configured_modes ?? [];
-    const recommendedMode = session?.recommended_ui_mode ?? "configure_auth";
+    const ssoConfigured = configuredModes.includes("trusted_proxy") || configuredModes.includes("oidc_bearer");
+    const authError = error && isAuthFailure(error) ? AUTH_FAILURE_MESSAGE : null;
+    const shownError = formError ?? authError;
 
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
-        <div className="w-full max-w-2xl rounded-3xl border border-zinc-800 bg-zinc-950/80 p-8 shadow-2xl shadow-black/20">
-          <div className="mb-6 flex items-center gap-3 text-zinc-100">
-            <ShieldCheck className="h-6 w-6 text-emerald-400" />
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-              <p className="mt-1 text-sm text-zinc-400">
-                Sign in to connect cloud accounts, launch scans, and manage connections from the dashboard. Recommended
-                for enterprise: same-origin reverse-proxy OIDC/session auth. For single-user local or pilot access, exchange
-                a short-lived API key for a browser session.
-              </p>
+        <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-950/80 p-8 shadow-2xl shadow-black/20">
+          <div className="mb-6 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-900/60 bg-emerald-950/30">
+              <ShieldCheck className="h-6 w-6 text-emerald-400" />
             </div>
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">{title}</h1>
+            <p className="mt-1 text-sm text-zinc-400">Enter your API key to access the dashboard.</p>
           </div>
 
-          {configuredModes.length > 0 ? (
-            <div className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-400">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Configured auth modes</span>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {configuredModes.map((mode) => (
-                  <span
-                    key={mode}
-                    className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-300"
-                  >
-                    {modeLabel(mode)}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-zinc-500">
-                Recommended UI path: <span className="font-mono text-zinc-300">{recommendedMode}</span>
+          {ssoConfigured ? (
+            <div className="mb-6">
+              <p className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-center text-sm text-zinc-400">
+                Single sign-on is handled by your identity provider or reverse proxy.
               </p>
+              <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-600">
+                <span className="h-px flex-1 bg-zinc-800" />
+                or use an API key
+                <span className="h-px flex-1 bg-zinc-800" />
+              </div>
             </div>
           ) : null}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-5">
-              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-emerald-300">
-                <Lock className="h-4 w-4" />
-                Recommended: reverse-proxy OIDC
-              </div>
-              <p className="text-sm leading-6 text-zinc-400">
-                Keep the UI and API on the same origin, terminate browser auth at the proxy, and inject trusted
-                <code className="mx-1 rounded bg-zinc-900 px-1 py-0.5 font-mono text-zinc-200">X-Agent-Bom-Role</code>
-                plus
-                <code className="mx-1 rounded bg-zinc-900 px-1 py-0.5 font-mono text-zinc-200">X-Agent-Bom-Tenant-ID</code>
-                headers upstream.
-              </p>
-            </div>
-
-            <form
-              className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                setFormError(null);
-                const trimmedApiKey = apiKey.trim();
-                if (!trimmedApiKey) {
-                  setFormError("Enter an API key before unlocking the dashboard.");
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setFormError(null);
+              const trimmedApiKey = apiKey.trim();
+              if (!trimmedApiKey) {
+                setFormError("Enter an API key to sign in.");
+                return;
+              }
+              try {
+                await api.createAuthSession(trimmedApiKey);
+                clearSessionApiKey();
+              } catch (nextError) {
+                const message = userFacingApiErrorMessage(nextError, "Failed to create browser session");
+                clearSessionApiKey();
+                if (message.includes("404") || message.includes("405")) {
+                  setFormError("Browser session endpoint unavailable; update the API before using browser API-key exchange.");
                   return;
                 }
-                try {
-                  await api.createAuthSession(trimmedApiKey);
-                  clearSessionApiKey();
-                } catch (nextError) {
-                  const message = userFacingApiErrorMessage(nextError, "Failed to create browser session");
-                  if (message.includes("404") || message.includes("405")) {
-                    clearSessionApiKey();
-                    setFormError("Browser session endpoint unavailable; update the API before using browser API-key exchange.");
-                    return;
-                  }
-                  clearSessionApiKey();
-                  setFormError(message);
-                  return;
-                }
-                await refresh();
-                onAuthenticated?.();
-              }}
+                setFormError(isAuthFailure(message) ? AUTH_FAILURE_MESSAGE : message);
+                return;
+              }
+              await refresh();
+              onAuthenticated?.();
+            }}
+          >
+            <label
+              htmlFor="agent-bom-browser-session-api-key"
+              className="mb-2 block text-xs uppercase tracking-[0.2em] text-zinc-500"
             >
-              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-200">
-                <KeyRound className="h-4 w-4 text-amber-300" />
-                Browser session
-              </div>
-              <p className="mb-4 text-sm leading-6 text-zinc-400">
-                Creates a same-origin
-                <code className="mx-1 rounded bg-zinc-950 px-1 py-0.5 font-mono text-zinc-200">httpOnly</code>
-                cookie. The API key is exchanged with the control plane and is never stored in browser storage.
-              </p>
-              <label htmlFor="agent-bom-browser-session-api-key" className="mb-3 block text-xs uppercase tracking-[0.2em] text-zinc-500">
-                API key
-              </label>
+              API key
+            </label>
+            <div className="relative">
+              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600" />
               <input
                 id="agent-bom-browser-session-api-key"
                 type="password"
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
-                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none ring-0 placeholder:text-zinc-600 focus:border-emerald-500"
-                placeholder="abk_..."
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-9 pr-3 font-mono text-sm text-zinc-100 outline-none ring-0 placeholder:text-zinc-600 focus:border-emerald-500"
+                placeholder="Paste your API key"
                 autoComplete="off"
+                autoFocus
               />
-              <div className="mt-4 flex gap-3">
-                <button
-                  type="submit"
-                  disabled={!apiKey.trim()}
-                  className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
-                >
-                  Unlock dashboard
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await api.deleteAuthSession();
-                    } catch {
-                      // Older API versions may not expose the cookie session endpoint.
-                    }
-                    clearSessionApiKey();
-                    setFormError(null);
-                    setApiKey("");
-                    await refresh();
-                  }}
-                  className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:bg-zinc-900"
-                >
-                  Clear key
-                </button>
-              </div>
-            </form>
-          </div>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-zinc-500">
+              No key yet? Server operators set API keys via the{" "}
+              <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-zinc-300">AGENT_BOM_API_KEYS</code> env var
+              (format{" "}
+              <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-zinc-300">&lt;key&gt;:&lt;admin|analyst|viewer&gt;</code>).
+            </p>
 
-          {error ? (
-            <div className="mt-5 rounded-2xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
-              {userFacingApiErrorMessage(error, "Failed to load auth session")}
+            <button
+              type="submit"
+              disabled={!apiKey.trim()}
+              className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+            >
+              Sign in
+            </button>
+
+            {shownError ? (
+              <div className="mt-4 rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-2.5 text-sm text-red-300">
+                {shownError}
+              </div>
+            ) : null}
+
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await api.deleteAuthSession();
+                  } catch {
+                    // Older API versions may not expose the cookie session endpoint.
+                  }
+                  clearSessionApiKey();
+                  setFormError(null);
+                  setApiKey("");
+                  await refresh();
+                }}
+                className="text-xs text-zinc-500 underline-offset-4 transition hover:text-zinc-300 hover:underline"
+              >
+                Clear
+              </button>
             </div>
-          ) : null}
-          {formError ? (
-            <div className="mt-5 rounded-2xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
-              {formError}
-            </div>
+          </form>
+
+          {!ssoConfigured ? (
+            <p className="mt-6 border-t border-zinc-900 pt-4 text-center text-xs text-zinc-600">
+              Setting up single sign-on? Configure a reverse proxy or OIDC issuer in your deployment.
+            </p>
           ) : null}
         </div>
       </div>

@@ -3120,7 +3120,11 @@ async def delete_preset(request: Request, name: str) -> dict:
 
 # Containment-only edge load for /v1/graph/rollup (default mode).
 _ROLLUP_CONTAINMENT_RELATIONSHIPS = frozenset(
-    {RelationshipType.CONTAINS.value, RelationshipType.HOSTS.value}
+    {
+        RelationshipType.CONTAINS.value,
+        RelationshipType.HOSTS.value,
+        RelationshipType.OWNS.value,
+    }
 )
 
 

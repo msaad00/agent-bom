@@ -253,13 +253,28 @@ def _aws_inventory() -> dict:
             }
         ],
         "elb_load_balancers": [
-            {"name": "web-alb", "arn": "arn:alb:web", "scheme": "internet-facing", "internet_exposed": True, "location": "us-east-1"}
+            {
+                "name": "web-alb",
+                "arn": "arn:alb:web",
+                "scheme": "internet-facing",
+                "internet_exposed": True,
+                "location": "us-east-1",
+                "vpc_id": "vpc-1",
+            }
         ],
         "web_acls": [
             {"name": "web-acl", "id": "acl-id", "arn": "arn:waf:regional", "scope": "regional", "protected_targets": ["arn:alb:web"]}
         ],
         "api_gateways": [
-            {"name": "rest-api", "id": "rest1", "protocol": "REST", "endpoint": "REGIONAL", "internet_exposed": True, "stages": ["prod"]}
+            {
+                "name": "rest-api",
+                "id": "rest1",
+                "protocol": "REST",
+                "endpoint": "REGIONAL",
+                "internet_exposed": True,
+                "stages": ["prod"],
+                "protected_targets": ["arn:alb:web"],
+            }
         ],
     }
 
@@ -286,10 +301,65 @@ def test_eni_maps_instance_subnet_and_security_group() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
     edges = {(e.source, e.target, e.relationship.value) for e in g.edges}
     eni_id = "cloud_resource:aws:network:network_interface:eni-1"
+    inst_id = "cloud_resource:aws:ec2:instance:i-1"
     assert eni_id in g.nodes
-    assert (eni_id, "cloud_resource:aws:ec2:instance:i-1", "part_of") in edges
+    assert (eni_id, inst_id, "part_of") in edges
     assert (eni_id, "cloud_resource:aws:network:subnet:subnet-pub", "part_of") in edges
     assert (eni_id, "cloud_resource:aws:ec2:security-group:sg-1", "part_of") in edges
+
+
+def test_eni_public_ip_emits_exposed_to_instance() -> None:
+    g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
+    eni_id = "cloud_resource:aws:network:network_interface:eni-1"
+    inst_id = "cloud_resource:aws:ec2:instance:i-1"
+    exposed = [
+        e
+        for e in g.edges
+        if e.relationship == RelationshipType.EXPOSED_TO and e.source == eni_id and e.target == inst_id
+    ]
+    assert exposed
+    assert exposed[0].evidence.get("reason") == "eni_public_ip"
+
+
+def test_elastic_ip_emits_exposed_to_attached_instance() -> None:
+    payload = _aws_inventory()
+    payload["ip_addresses"] = [{"address": "52.9.9.9", "kind": "elastic", "attached_to": "i-1"}]
+    g = build_unified_graph_from_report({"cloud_inventory": payload})
+    ip_id = "cloud_resource:aws:network:ip_address:52.9.9.9"
+    inst_id = "cloud_resource:aws:ec2:instance:i-1"
+    exposed = [
+        e
+        for e in g.edges
+        if e.relationship == RelationshipType.EXPOSED_TO and e.source == ip_id and e.target == inst_id
+    ]
+    assert exposed
+    assert exposed[0].evidence.get("reason") == "elastic_ip_attachment"
+
+
+def test_internet_facing_lb_emits_exposed_to_reachable_instance() -> None:
+    g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
+    lb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
+    inst_id = "cloud_resource:aws:ec2:instance:i-1"
+    exposed = [
+        e
+        for e in g.edges
+        if e.relationship == RelationshipType.EXPOSED_TO and e.source == lb_id and e.target == inst_id
+    ]
+    assert exposed
+    assert exposed[0].evidence.get("reason") == "internet_facing_load_balancer"
+
+
+def test_internet_facing_api_gateway_emits_exposed_to_frontend() -> None:
+    g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
+    api_id = "api_gateway:aws:rest1"
+    alb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
+    exposed = [
+        e
+        for e in g.edges
+        if e.relationship == RelationshipType.EXPOSED_TO and e.source == api_id and e.target == alb_id
+    ]
+    assert exposed
+    assert exposed[0].evidence.get("reason") == "internet_facing_api_gateway"
 
 
 def _exposed_vuln_graph(*, protected: bool) -> UnifiedGraph:

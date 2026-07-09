@@ -17,7 +17,7 @@
 
 **Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.**
 
-Scan locally, centralize findings, govern runtime — your team and your agents
+Run scans in your environment, centralize findings, govern in your VPC — your team and your agents
 work from the same evidence model.
 
 `agent-bom` is also an open security data plane. It generates a

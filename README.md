@@ -17,7 +17,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
-<p align="center">Scan locally, centralize findings, govern runtime — one evidence model for your team and your agents.</p>
+<p align="center">Run scans in your environment, centralize findings, govern in your VPC — one evidence model for your team and your agents.</p>
 
 <p align="center">
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -31,12 +31,12 @@
 <details open>
 <summary><b>Human view</b> — security control plane for AI/MCP estates</summary>
 
-Scan locally, centralize evidence in your VPC, then govern selected runtime hops.
+Run scans in your environment, centralize evidence in your VPC, then govern selected runtime hops.
 One model (`Finding` + `ContextGraph`) for CLI, CI, API, dashboard, MCP tools, and
 gateway/proxy enforcement. We are **not** a managed MCP connector catalog — we
 prove blast radius and enforce policy on **your** agents and upstream MCP servers.
 
-**Three lanes:** local scan → self-hosted control plane → runtime proxy/gateway.
+**Three lanes:** run scans in your environment → self-hosted control plane → runtime proxy/gateway.
 
 </details>
 

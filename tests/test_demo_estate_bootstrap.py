@@ -270,6 +270,33 @@ def test_demo_estate_graph_snapshots_support_drift_lens(demo_estate_client: Test
     assert body.get("nodes_changed"), "expected at least one changed node in the showcase drift story"
 
 
+def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: TestClient) -> None:
+    """Showcase graph carries org→account containment and a bastion→PII exposure edge."""
+    payload = demo_estate_client.get("/v1/graph", headers=ADMIN).json()
+    node_ids = {node.get("id") for node in payload.get("nodes") or []}
+    assert "org:corp" in node_ids
+    assert "account:aws:123456789012" in node_ids
+
+    edges = payload.get("edges") or []
+    contains = {
+        (row.get("source"), row.get("target"))
+        for row in edges
+        if row.get("relationship") == "contains"
+    }
+    assert ("org:corp", "account:aws:123456789012") in contains
+    assert ("account:aws:123456789012", "cloud:pii-bucket") in contains
+    assert ("account:aws:123456789012", "cloud:bastion") in contains
+
+    exposed = [
+        row
+        for row in edges
+        if row.get("relationship") == "exposed_to"
+        and row.get("source") == "cloud:bastion"
+        and row.get("target") == "cloud:pii-bucket"
+    ]
+    assert exposed, "expected bastion→PII EXPOSED_TO edge in showcase snapshot"
+
+
 def test_demo_estate_graph_tags_runtime_evidence_tiers(demo_estate_client: TestClient) -> None:
     payload = demo_estate_client.get("/v1/graph", headers=ADMIN).json()
     attrs_by_id = {

@@ -10,6 +10,7 @@ import {
   Panel,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -98,6 +99,7 @@ import { evaluateGraphUx } from "@/lib/graph-ux-evaluation";
 import {
   api,
   type GraphDiffResponse,
+  type GraphEdgeChangesResponse,
   type GraphNodeDetailResponse,
   type GraphQueryResponse,
   type GraphSnapshot,
@@ -141,6 +143,14 @@ const GraphEvidenceLegend = dynamic(
   () =>
     import("@/components/graph-evidence-legend").then(
       (mod) => mod.GraphEvidenceLegend,
+    ),
+  { ssr: false },
+);
+
+const GraphEdgeChangesPanel = dynamic(
+  () =>
+    import("@/components/graph-edge-changes-panel").then(
+      (mod) => mod.GraphEdgeChangesPanel,
     ),
   { ssr: false },
 );
@@ -204,7 +214,7 @@ function PulseStyles() {
          deliberate dim, not a flicker. */
       .lineage-node-dim {
         opacity: 0.15;
-        transition: opacity 0.15s ease;
+        transition: opacity 0.2s ease;
       }
       .lineage-node-focus {
         box-shadow: 0 0 16px rgba(56, 189, 248, 0.6);
@@ -661,6 +671,7 @@ export default function GraphPageClient() {
 }
 
 function GraphPageInner() {
+  const reactFlow = useReactFlow();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
@@ -671,6 +682,11 @@ function GraphPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [graphDiff, setGraphDiff] = useState<GraphDiffResponse | null>(null);
+  const [edgeChanges, setEdgeChanges] = useState<GraphEdgeChangesResponse | null>(
+    null,
+  );
+  const [loadingEdgeChanges, setLoadingEdgeChanges] = useState(false);
+  const [edgeChangesError, setEdgeChangesError] = useState<string | null>(null);
   const [driftLensActive, setDriftLensActive] = useState(false);
   const [driftFilter, setDriftFilter] = useState<DriftLensFilter>("all");
   const [evidenceLensActive, setEvidenceLensActive] = useState(false);
@@ -920,21 +936,34 @@ function GraphPageInner() {
     let cancelled = false;
     setGraphDiff(null);
     setDiffError(null);
+    setEdgeChanges(null);
+    setEdgeChangesError(null);
     if (!selectedScanId || !previousSnapshot) {
       setLoadingDiff(false);
+      setLoadingEdgeChanges(false);
       return;
     }
     setLoadingDiff(true);
-    api
-      .getGraphDiff(previousSnapshot.scan_id, selectedScanId)
-      .then((result) => {
-        if (!cancelled) setGraphDiff(result);
+    setLoadingEdgeChanges(true);
+    Promise.all([
+      api.getGraphDiff(previousSnapshot.scan_id, selectedScanId),
+      api.getGraphEdgeChanges(previousSnapshot.scan_id, selectedScanId),
+    ])
+      .then(([diffResult, edgeResult]) => {
+        if (cancelled) return;
+        setGraphDiff(diffResult);
+        setEdgeChanges(edgeResult);
       })
-      .catch((e) => {
-        if (!cancelled) setDiffError(e.message);
+      .catch((e: Error) => {
+        if (cancelled) return;
+        setDiffError(e.message);
+        setEdgeChangesError(e.message);
       })
       .finally(() => {
-        if (!cancelled) setLoadingDiff(false);
+        if (!cancelled) {
+          setLoadingDiff(false);
+          setLoadingEdgeChanges(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -1726,6 +1755,8 @@ function GraphPageInner() {
           stroke: meta.color,
           opacity: Math.max(currentOpacity, 0.85),
           strokeWidth: Math.max(currentWidth, 2.2),
+          transition:
+            "stroke 0.2s ease, opacity 0.2s ease, stroke-width 0.2s ease",
         },
       };
     });
@@ -1794,6 +1825,25 @@ function GraphPageInner() {
     graphOnlyFindings,
     webglEnabled: webglGraphEnabled,
   });
+
+  // Soft re-frame when drift/evidence lenses engage so ring emphasis stays in view.
+  useEffect(() => {
+    if (graphRenderer.kind !== "react-flow") return;
+    if (!driftLensActive && !evidenceLensActive) return;
+    const timer = window.setTimeout(() => {
+      void reactFlow.fitView({ ...viewportOptions, duration: 280 });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [
+    driftLensActive,
+    evidenceLensActive,
+    driftFilter,
+    evidenceFilter,
+    graphRenderer.kind,
+    reactFlow,
+    viewportOptions,
+  ]);
+
   const graphPanelError =
     error && snapshots.length > 0 ? graphErrorState(error) : null;
   const findingNodes = useMemo(
@@ -2592,6 +2642,15 @@ function GraphPageInner() {
             attributeSummaries={driftAttributeSummaryList}
           />
         )}
+
+        {driftLensActive && graphDiff ? (
+          <GraphEdgeChangesPanel
+            changes={edgeChanges}
+            loading={loadingEdgeChanges}
+            error={edgeChangesError}
+            comparedLabel={previousSnapshot?.scan_id.slice(0, 12)}
+          />
+        ) : null}
 
         <GraphEvidenceLegend
           active={evidenceLensActive}

@@ -228,6 +228,34 @@ def build_showcase_graph(
 
     node("cloud:logs-bucket", EntityType.CLOUD_RESOURCE, "app-logs (S3)", resource_type="s3")
 
+    # Cloud estate hierarchy — org → account → resources for rollup/containment demos.
+    node("org:corp", EntityType.ORG, "Corp (root org)")
+    node(
+        "account:aws:123456789012",
+        EntityType.ACCOUNT,
+        "AWS prod (123456789012)",
+        cloud_provider="aws",
+        account_id="123456789012",
+    )
+    node("env:production", EntityType.ENVIRONMENT, "production")
+    edge("org:corp", "account:aws:123456789012", RelationshipType.CONTAINS)
+    edge("account:aws:123456789012", "env:production", RelationshipType.CONTAINS)
+    for cloud_id in (
+        "cloud:pii-bucket",
+        "cloud:payments-db",
+        "cloud:bastion",
+        "cloud:logs-bucket",
+    ):
+        edge("account:aws:123456789012", cloud_id, RelationshipType.CONTAINS)
+
+    # Hero exposure path: internet-facing bastion reaches the PII bucket.
+    edge(
+        "cloud:bastion",
+        "cloud:pii-bucket",
+        RelationshipType.EXPOSED_TO,
+        evidence={"reason": "bastion_ssh_to_pii_bucket_network_path"},
+    )
+
     node("user:alice", EntityType.USER, "alice@corp (developer)")
     node("user:bob", EntityType.USER, "bob@contractor (external)")
     node("role:prod-admin", EntityType.ROLE, "prod-admin-role")
@@ -318,8 +346,41 @@ def apply_showcase_overlays(
     return {"cnapp": cnapp, "effective_permissions": eff, "governance": gov}
 
 
+def _ensure_showcase_edge(
+    graph: UnifiedGraph,
+    source: str,
+    target: str,
+    relationship: RelationshipType,
+    **kwargs: object,
+) -> None:
+    for edge in graph.edges:
+        if edge.source == source and edge.target == target and edge.relationship == relationship:
+            return
+    graph.add_edge(UnifiedEdge(source=source, target=target, relationship=relationship, **kwargs))
+
+
 def finalize_showcase_snapshot(graph: UnifiedGraph, *, profile: ShowcaseProfile) -> None:
     """Pin deliberate drift markers after overlays that may rewrite attributes."""
+    _ensure_showcase_edge(
+        graph,
+        "cloud:bastion",
+        "cloud:pii-bucket",
+        RelationshipType.EXPOSED_TO,
+        evidence={"reason": "bastion_ssh_to_pii_bucket_network_path"},
+    )
+    for cloud_id in (
+        "cloud:pii-bucket",
+        "cloud:payments-db",
+        "cloud:bastion",
+        "cloud:logs-bucket",
+    ):
+        _ensure_showcase_edge(
+            graph,
+            "account:aws:123456789012",
+            cloud_id,
+            RelationshipType.CONTAINS,
+        )
+
     bucket = graph.nodes.get("cloud:pii-bucket")
     if bucket is None:
         return

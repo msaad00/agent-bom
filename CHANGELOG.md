@@ -2231,7 +2231,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.94.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.94.1...HEAD
+[0.94.1]: https://github.com/msaad00/agent-bom/compare/v0.94.0...v0.94.1
 [0.94.0]: https://github.com/msaad00/agent-bom/compare/v0.93.5...v0.94.0
 [0.93.5]: https://github.com/msaad00/agent-bom/compare/v0.93.0...v0.93.5
 [0.93.0]: https://github.com/msaad00/agent-bom/compare/v0.92.0...v0.93.0

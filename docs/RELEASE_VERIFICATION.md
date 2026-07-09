@@ -36,7 +36,7 @@ Do not publish a release as hosted-ready when any required line above is red.
 ## Download release assets
 
 ```bash
-TAG=v0.94.1
+TAG=v0.94.2
 VERSION="${TAG#v}"
 mkdir -p /tmp/agent-bom-release && cd /tmp/agent-bom-release
 gh release download "$TAG" --repo msaad00/agent-bom

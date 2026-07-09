@@ -256,7 +256,7 @@ detail in [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md).
 | Non-human identity posture | `agent-bom identity credential-expiry` |
 | Advisory remediation plan | `agent-bom remediate -p .` |
 | Gated-capability readiness | `agent-bom capabilities` |
-| CI gate | `uses: msaad00/agent-bom@v0.94.1` |
+| CI gate | `uses: msaad00/agent-bom@v0.94.2` |
 
 Full command map: [docs/CLI_MAP.md](docs/CLI_MAP.md) · role routing:
 [docs/START_HERE.md](docs/START_HERE.md) · repo layout:

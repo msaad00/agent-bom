@@ -35,6 +35,11 @@ import {
   hasLifecycleMetadata,
   vulnRowKey,
 } from "@/lib/findings-view";
+import {
+  ISSUE_TYPE_FILTERS,
+  matchesIssueTypeFilter,
+  type IssueTypeFilter,
+} from "@/lib/finding-issue-type";
 import { severityRank } from "@/lib/severity";
 import { Bug, Download, Layers, Loader2, Package, Server, ClipboardCheck } from "lucide-react";
 
@@ -204,6 +209,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       framework_tags: raw.framework_tags ?? finding.compliance_tags ?? [],
       attack_vector_summary: raw.attack_vector_summary ?? (finding.network_exploitable ? "Network exploitable" : undefined),
       impact_category: finding.impact_category ?? finding.finding_type,
+      finding_type: finding.finding_type,
       risk_score: finding.risk_score,
       effective_reach_band: raw.effective_reach_band,
       effective_reach_score: raw.effective_reach_score,
@@ -261,6 +267,7 @@ function FindingsPage() {
   const paramGroup = searchParams.get("group");
   const paramPage = searchParams.get("page");
   const paramScan = searchParams.get("scan") ?? searchParams.get("scan_id");
+  const paramIssueType = searchParams.get("issue");
 
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
@@ -276,6 +283,12 @@ function FindingsPage() {
       ? (paramSeverity as SeverityFilter)
       : "all"
   );
+  const [issueTypeFilter, setIssueTypeFilter] = useState<IssueTypeFilter>(() => {
+    if (paramIssueType && ISSUE_TYPE_FILTERS.some((entry) => entry.key === paramIssueType)) {
+      return paramIssueType as IssueTypeFilter;
+    }
+    return "all";
+  });
   const [sortKey, setSortKey] = useState<SortKey>("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [search, setSearch] = useState(paramQuery ?? paramCve ?? paramAgent ?? "");
@@ -334,8 +347,17 @@ function FindingsPage() {
   }, [paramCve]);
 
   useEffect(() => {
+    if (paramIssueType && ISSUE_TYPE_FILTERS.some((entry) => entry.key === paramIssueType)) {
+      setIssueTypeFilter(paramIssueType as IssueTypeFilter);
+    } else {
+      setIssueTypeFilter("all");
+    }
+  }, [paramIssueType]);
+
+  useEffect(() => {
     const params = new URLSearchParams();
     if (filter !== "all") params.set("severity", filter);
+    if (issueTypeFilter !== "all") params.set("issue", issueTypeFilter);
     if (search.trim()) params.set("q", search.trim());
     if (scope !== "latest") params.set("scope", scope);
     if (groupBy !== "none") params.set("group", groupBy);
@@ -343,7 +365,7 @@ function FindingsPage() {
     if (paramScan) params.set("scan", paramScan);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [filter, search, scope, groupBy, page, paramScan, pathname, router]);
+  }, [filter, issueTypeFilter, search, scope, groupBy, page, paramScan, pathname, router]);
 
   const collectVulns = useCallback((fullJobs: ScanJob[]) => {
     const vulnMap = new Map<string, EnrichedVuln>();
@@ -674,6 +696,9 @@ function FindingsPage() {
     if (filter !== "all") {
       list = list.filter((v) => v.severity.toLowerCase() === filter);
     }
+    if (issueTypeFilter !== "all") {
+      list = list.filter((v) => matchesIssueTypeFilter(v, issueTypeFilter));
+    }
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -698,10 +723,10 @@ function FindingsPage() {
       return sortDir === "desc" ? -diff : diff;
     });
     return list;
-  }, [vulns, filter, search, sortKey, sortDir, useServerPaging]);
+  }, [vulns, filter, issueTypeFilter, search, sortKey, sortDir, useServerPaging]);
 
   // Reset page when filters change
-  useEffect(() => { setPage(1); }, [filter, search, sortKey, sortDir, groupBy, scope, paramScan]);
+  useEffect(() => { setPage(1); }, [filter, issueTypeFilter, search, sortKey, sortDir, groupBy, scope, paramScan]);
 
   const totalPages = useServerPaging
     ? Math.max(1, Math.ceil(findingsTotal / PAGE_SIZE))
@@ -792,7 +817,7 @@ function FindingsPage() {
                 : `${useServerPaging ? findingsTotalLabel : vulns.length} findings from the latest completed scan.`
               : `${useServerPaging ? findingsTotalLabel : vulns.length} findings aggregated across all completed scans.`}{" "}
             {useServerPaging && findingsTotalApproximate ? "Total is cached from the first page and may be a lower bound on deep pages. " : ""}
-            CVSS and EPSS appear for advisory-backed vulnerabilities; cloud and governance findings use source evidence and policy severity.
+            Filter by issue type (vulnerability, misconfiguration, secrets, identity) — industry labels, not a full CNAPP claim.
           </p>
         </div>
         {vulns.length > 0 && (
@@ -888,22 +913,43 @@ function FindingsPage() {
               </div>
             </div>
 
-            {/* Filters + search */}
-            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-              <div className="flex items-center gap-1 flex-wrap">
-                {FILTERS?.map(({ key, label, color }) => (
-                  <button
-                    key={key}
-                    onClick={() => setFilter(key)}
-                    className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
-                      filter === key
-                        ? `${color} border-zinc-600 bg-zinc-800`
-                        : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+            {/* Issue type + severity filters */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">Issue type</span>
+                  {ISSUE_TYPE_FILTERS.map(({ key, label, hint }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setIssueTypeFilter(key)}
+                      title={hint}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                        issueTypeFilter === key
+                          ? "border-cyan-700 bg-cyan-950/40 text-cyan-200"
+                          : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">Severity</span>
+                  {FILTERS?.map(({ key, label, color }) => (
+                    <button
+                      key={key}
+                      onClick={() => setFilter(key)}
+                      className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
+                        filter === key
+                          ? `${color} border-zinc-600 bg-zinc-800`
+                          : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <input
                 type="text"

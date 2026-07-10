@@ -26,7 +26,9 @@ const BUDGETS = {
   // Includes the runtime evidence lens (#3192/#3610) — opt-in runtime/static evidence overlay.
   // Includes the consolidated operator surfaces: connector setup, jobs DAG, compliance drill-down,
   // and graph investigation. Total counts every emitted route chunk, including lazy-loaded views.
-  totalClientJsBytes: 3_225_000,
+  // Includes the New Scan scope explainer, connected-account picker, and
+  // repository-surface coverage cockpit shipped with the operator workflow.
+  totalClientJsBytes: 3_300_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

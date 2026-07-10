@@ -11,13 +11,15 @@ import {
 } from "lucide-react";
 
 import type { OverviewDomain, OverviewResponse } from "@/lib/api";
+import type { ServiceEntry, ServiceId } from "@/lib/api-types";
 import { AttackPathCard } from "@/components/attack-path-card";
+import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
 import {
-  overviewPersonaHint,
   overviewPersonaLabel,
   type OverviewPersona,
 } from "@/lib/overview-persona";
+import { SERVICE_META, serviceStateLabel } from "@/lib/service-registry";
 
 export interface ExposurePathView {
   nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[];
@@ -25,6 +27,21 @@ export interface ExposurePathView {
   href: string;
   key: string;
 }
+
+export type OverviewComplianceFramework = {
+  id: string;
+  label: string;
+  pass: number;
+  warn: number;
+  fail: number;
+  total: number;
+};
+
+export type OverviewComplianceSnapshot = {
+  overallScore: number;
+  overallStatus: "pass" | "warning" | "fail";
+  frameworks: OverviewComplianceFramework[];
+};
 
 export interface OverviewCockpitProps {
   grade: string;
@@ -50,6 +67,8 @@ export interface OverviewCockpitProps {
     activeServices: number;
     connected: boolean;
   };
+  compliance?: OverviewComplianceSnapshot | null | undefined;
+  services?: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
   persona: OverviewPersona;
   onPersonaChange: (persona: OverviewPersona) => void;
 }
@@ -73,6 +92,8 @@ export function OverviewCockpit({
   topPath,
   exposurePaths,
   signals,
+  compliance = null,
+  services = null,
   persona,
   onPersonaChange,
 }: OverviewCockpitProps) {
@@ -80,30 +101,34 @@ export function OverviewCockpit({
   const domainList = domains ? Object.values(domains) : [];
   const activeDomains = domainList.filter((domain) => domain.status !== "idle").length;
   const coverage = domainList.length > 0 ? Math.round((activeDomains / domainList.length) * 100) : null;
+  const complianceScore =
+    compliance != null ? `${Math.round(compliance.overallScore)}%` : coverage != null ? `${coverage}%` : undefined;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-[color:var(--text-secondary)]">{overviewPersonaHint(persona)}</p>
-        <div className="flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-0.5">
-          {(["executive", "engineer"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => onPersonaChange(value)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                persona === value
-                  ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                  : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
-              }`}
-            >
-              {overviewPersonaLabel(value)}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 lg:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+            Command center
+          </p>
+          <div className="flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5">
+            {(["executive", "engineer"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onPersonaChange(value)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  persona === value
+                    ? "bg-[color:var(--surface)] text-[color:var(--foreground)] shadow-sm"
+                    : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
+                }`}
+              >
+                {overviewPersonaLabel(value)}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid gap-5 lg:grid-cols-[auto_1fr_auto] lg:items-center">
           <PostureHero
             grade={grade}
@@ -120,7 +145,7 @@ export function OverviewCockpit({
               <PriorityKpi
                 label="Compliance"
                 value={null}
-                textValue={coverage != null ? `${coverage}%` : undefined}
+                textValue={complianceScore}
                 href="/compliance"
               />
             ) : (
@@ -140,6 +165,9 @@ export function OverviewCockpit({
             <MetaLine label="Mode" value={mode} />
           </div>
         </div>
+
+        <ComplianceSnapshotPanel compliance={compliance} />
+        <ActivatedServicesPanel services={services} activeCount={signals.activeServices} />
 
         {domainList.length > 0 ? (
           <div className="mt-5 border-t border-[color:var(--border-subtle)] pt-4">
@@ -227,6 +255,159 @@ export function OverviewCockpit({
             </div>
           </section>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function ComplianceSnapshotPanel({
+  compliance,
+}: {
+  compliance: OverviewComplianceSnapshot | null | undefined;
+}) {
+  const frameworks = (compliance?.frameworks ?? []).slice(0, 8);
+  const failing = frameworks.filter((item) => item.fail > 0).length;
+  const statusTone =
+    compliance?.overallStatus === "pass"
+      ? "text-emerald-400"
+      : compliance?.overallStatus === "warning"
+        ? "text-amber-300"
+        : compliance?.overallStatus === "fail"
+          ? "text-red-400"
+          : "text-[color:var(--text-tertiary)]";
+
+  return (
+    <div className="mt-5 border-t border-[color:var(--border-subtle)] pt-4" data-testid="overview-compliance-snapshot">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+            Compliance
+          </p>
+          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+            {compliance
+              ? `${Math.round(compliance.overallScore)}% overall · ${failing} framework${failing === 1 ? "" : "s"} need attention`
+              : "Framework coverage appears after the first scan"}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {compliance ? (
+            <span className={`text-sm font-semibold tabular-nums ${statusTone}`}>
+              {Math.round(compliance.overallScore)}%
+            </span>
+          ) : null}
+          <Link href="/compliance" className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
+            Trust center <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+      </div>
+      {frameworks.length > 0 ? (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {frameworks.map((framework) => {
+            const tone =
+              framework.fail > 0 ? "fail" : framework.warn > 0 ? "warn" : "pass";
+            return (
+              <Link
+                key={framework.id}
+                href="/compliance"
+                className="flex items-center gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 transition hover:border-[color:var(--border-strong)]"
+              >
+                <FrameworkIcon frameworkId={framework.id} size={20} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-[color:var(--foreground)]">{framework.label}</p>
+                  <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
+                    {framework.pass}/{framework.total} pass
+                    {framework.fail > 0 ? ` · ${framework.fail} fail` : ""}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                    tone === "fail"
+                      ? "bg-red-500/15 text-red-300"
+                      : tone === "warn"
+                        ? "bg-yellow-500/15 text-yellow-200"
+                        : "bg-emerald-500/15 text-emerald-300"
+                  }`}
+                >
+                  {tone}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-5 text-center text-xs text-[color:var(--text-tertiary)]">
+          Run a scan to light up OWASP, NIST, CIS, and related framework coverage.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivatedServicesPanel({
+  services,
+  activeCount,
+}: {
+  services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
+  activeCount: number;
+}) {
+  const rows = (Object.entries(SERVICE_META) as [ServiceId, (typeof SERVICE_META)[ServiceId]][]).map(
+    ([id, meta]) => {
+      const entry = services?.[id] ?? { state: "locked" as const, count: 0 };
+      return { id, entry, meta };
+    },
+  );
+
+  return (
+    <div className="mt-5 border-t border-[color:var(--border-subtle)] pt-4" data-testid="overview-activated-services">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+            Activated services
+          </p>
+          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+            {activeCount > 0
+              ? `${activeCount} live or connected · tools, data, runtime, and governance surfaces`
+              : "Connect accounts, sync fleet, or enable runtime to activate surfaces"}
+          </p>
+        </div>
+        <Link href="/connections" className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
+          Manage <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map(({ id, entry, meta }) => {
+          const live = entry.state === "live" || entry.state === "connected";
+          return (
+            <Link
+              key={id}
+              href={meta.unlockHref}
+              className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 transition ${
+                live
+                  ? "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] hover:border-[color:var(--border-strong)]"
+                  : "border-dashed border-[color:var(--border-subtle)] bg-transparent text-[color:var(--text-tertiary)] hover:border-[color:var(--border-strong)]"
+              }`}
+            >
+              <div className="min-w-0">
+                <p className={`truncate text-xs font-medium ${live ? "text-[color:var(--foreground)]" : ""}`}>
+                  {meta.label}
+                </p>
+                <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
+                  {live && entry.count > 0 ? `${entry.count} · ${serviceStateLabel(entry.state)}` : serviceStateLabel(entry.state)}
+                </p>
+              </div>
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${
+                  entry.state === "live"
+                    ? "bg-emerald-400"
+                    : entry.state === "connected"
+                      ? "bg-sky-400"
+                      : "bg-[color:var(--border-strong)]"
+                }`}
+                aria-hidden="true"
+              />
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

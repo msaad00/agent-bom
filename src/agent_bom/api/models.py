@@ -42,7 +42,7 @@ _BATCH_LIST_TARGET_FIELDS = (
     "connectors",
     "filesystem_paths",
 )
-_BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom", "external_scan", "vex")
+_BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom", "external_scan", "vex", "repo_url")
 
 _SCAN_PATH_MAX_LENGTH = 4096
 _SCAN_IMAGE_REF_MAX_LENGTH = 512
@@ -96,6 +96,9 @@ class ScanRequest(BaseModel):
 
     gha_path: ScanSinglePath | None = None
     """Path to a Git repo to scan GitHub Actions workflows."""
+
+    repo_url: str | None = Field(default=None, max_length=2048)
+    """Public ``http(s)`` git repository URL to shallow-clone and scan statically."""
 
     agent_projects: list[ScanPathEntry] = Field(default_factory=list)
     """Python project directories using AI agent frameworks."""
@@ -169,6 +172,36 @@ class ScanRequest(BaseModel):
             total += 1
         if total > API_MAX_BATCH_SCAN_TARGETS:
             raise ValueError(f"scan request expands to {total} targets; maximum is {API_MAX_BATCH_SCAN_TARGETS} per request")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_repo_url_exclusive(self) -> "ScanRequest":
+        """``repo_url`` mirrors CLI ``--repo`` and cannot mix with local path targets."""
+        repo_url = (self.repo_url or "").strip()
+        if not repo_url:
+            return self
+        conflicts: list[str] = []
+        if self.agent_projects:
+            conflicts.append("agent_projects")
+        if self.gha_path:
+            conflicts.append("gha_path")
+        if self.tf_dirs:
+            conflicts.append("tf_dirs")
+        if self.inventory:
+            conflicts.append("inventory")
+        if self.jupyter_dirs:
+            conflicts.append("jupyter_dirs")
+        if self.filesystem_paths:
+            conflicts.append("filesystem_paths")
+        if self.sbom:
+            conflicts.append("sbom")
+        if self.external_scan:
+            conflicts.append("external_scan")
+        if self.vex:
+            conflicts.append("vex")
+        if conflicts:
+            joined = ", ".join(conflicts)
+            raise ValueError(f"repo_url is mutually exclusive with local path targets: {joined}")
         return self
 
 

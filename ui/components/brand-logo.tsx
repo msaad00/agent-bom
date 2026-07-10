@@ -2,7 +2,7 @@
 
 import { useThemeMode } from "@/lib/theme-mode";
 
-const TAGLINE = "AI supply-chain & infrastructure security";
+const TAGLINE = "AI supply-chain security";
 
 type BrandLogoProps = {
   className?: string;

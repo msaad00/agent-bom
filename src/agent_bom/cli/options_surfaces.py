@@ -21,7 +21,8 @@ def discovery_options(fn):
                 type=click.Path(exists=True),
                 metavar="DIR",
                 help="Python project using an agent framework (OpenAI Agents SDK, Google ADK, LangChain, AutoGen, "
-                "CrewAI, LlamaIndex, Pydantic AI, smolagents, Semantic Kernel, Haystack). Repeatable.",
+                "CrewAI, LlamaIndex, Pydantic AI, smolagents, Semantic Kernel, Haystack). "
+                "Auto-detected when scanning --project or --repo if Python manifests or agent code are present. Repeatable.",
             ),
             click.option(
                 "--skill",
@@ -41,7 +42,10 @@ def discovery_options(fn):
                 help="Scan ONLY skill/instruction files; skip agent/package/CVE scanning (focused workflow: `agent-bom skills scan`)",
             ),
             click.option(
-                "--scan-prompts", is_flag=True, help="Scan prompt template files (.prompt, system_prompt.*, prompts/) for security risks"
+                "--scan-prompts",
+                is_flag=True,
+                help="Scan prompt template files (.prompt, system_prompt.*, prompts/) for security risks. "
+                "Auto-detected when scanning --project or --repo if prompt files are present.",
             ),
             click.option(
                 "--browser-extensions",
@@ -56,7 +60,8 @@ def discovery_options(fn):
                 multiple=True,
                 type=click.Path(exists=True),
                 metavar="DIR",
-                help="Scan Jupyter notebooks (.ipynb) for AI library imports, model references, and credentials. Repeatable.",
+                help="Scan Jupyter notebooks (.ipynb) for AI library imports, model references, and credentials. "
+                "Auto-detected when scanning --project or --repo if notebooks are present. Repeatable.",
             ),
             click.option(
                 "--model-files",
@@ -347,14 +352,16 @@ def iac_sast_options(fn):
                 multiple=True,
                 type=click.Path(exists=True),
                 metavar="DIR",
-                help="Terraform directory to scan for AI resources, providers, and hardcoded secrets. Repeatable.",
+                help="Terraform directory to scan for AI resources, providers, and hardcoded secrets. "
+                "Auto-detected when scanning --project or --repo if .tf files are present. Repeatable.",
             ),
             click.option(
                 "--gha",
                 "gha_path",
                 type=click.Path(exists=True),
                 metavar="REPO",
-                help="Repository root to scan GitHub Actions workflows for AI usage and credential exposure.",
+                help="Repository root to scan GitHub Actions workflows for AI usage and credential exposure. "
+                "Auto-detected when scanning --project or --repo if .github/workflows exists.",
             ),
             click.option(
                 "--code",
@@ -362,7 +369,8 @@ def iac_sast_options(fn):
                 multiple=True,
                 type=click.Path(exists=True),
                 metavar="PATH",
-                help="Source code directory to scan for security flaws via Semgrep (SAST). Repeatable.",
+                help="Source code directory to scan for security flaws via Semgrep (SAST). "
+                "Auto-detected when scanning --project or --repo when semgrep is installed. Repeatable.",
             ),
             click.option(
                 "--sast-config",

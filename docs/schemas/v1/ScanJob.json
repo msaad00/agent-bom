@@ -191,6 +191,19 @@
           "title": "Offline",
           "type": "boolean"
         },
+        "repo_url": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repo Url"
+        },
         "sbom": {
           "anyOf": [
             {

@@ -13,10 +13,18 @@ import {
   OverviewResponse,
   formatDate,
   type PostureCountsResponse,
+  type ComplianceResponse,
 } from "@/lib/api";
 import { TrustStackSignals } from "@/components/trust-stack";
 import { ActivityFeed } from "@/components/activity-feed";
-import { OverviewCockpit, type ExposurePathView } from "@/components/overview-cockpit";
+import { AttackPathCard } from "@/components/attack-path-card";
+import { CoverageCockpit } from "@/components/coverage-cockpit";
+import {
+  OverviewCockpit,
+  type ExposurePathView,
+  type OverviewComplianceSnapshot,
+} from "@/components/overview-cockpit";
+import { PageLaneHeader } from "@/components/page-lane";
 import { useAuthState } from "@/components/auth-provider";
 import { useOverviewPersona } from "@/hooks/use-overview-persona";
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -25,6 +33,7 @@ import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { deploymentModeLabel, hasDeploymentSignals } from "@/lib/deployment-context";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import { buildSecurityGraphHref } from "@/lib/attack-paths";
+import { complianceFrameworkSummaries } from "@/lib/compliance-frameworks";
 import {
   aggregateCompoundIssues,
   aggregateEpss,
@@ -39,7 +48,7 @@ import {
   blastTools,
 } from "@/lib/dashboard-data";
 import {
-  ShieldAlert, ArrowRight, Clock,
+  ShieldAlert, ArrowRight, Clock, ChevronRight,
   AlertTriangle, GitBranch, BarChart3, LayoutGrid,
 } from "lucide-react";
 
@@ -78,6 +87,7 @@ export default function Dashboard() {
   const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
   const [activeTab, setActiveTab] = useState<"command" | "analytics">("command");
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
@@ -96,6 +106,7 @@ export default function Dashboard() {
   useEffect(() => {
     api.getPosture().then(setPosture).catch(() => {});
     api.getOverview().then(setOverview).catch(() => {});
+    api.getCompliance().then(setCompliance).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -371,6 +382,11 @@ export default function Dashboard() {
     ? (totalPackages > 0 ? totalPackages : (seededEvidence ? (summaryStats?.total_packages ?? 0) : totalPackages))
     : (summaryStats?.total_packages ?? 0);
 
+  const complianceSnapshot = useMemo(
+    () => buildComplianceSnapshot(compliance),
+    [compliance],
+  );
+
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} kind={apiErrorKind} detail={apiErrorDetail} />;
 
   const postureGrade = posture?.grade ?? overview?.posture.grade ?? "—";
@@ -382,28 +398,38 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Overview</h1>
-          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-            Executive and engineering lenses on posture, exposure, and domain coverage.
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Link
-            href="/scan"
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-          >
-            Run scan <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link
-            href="/security-graph"
-            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
-          >
-            Security graph <GitBranch className="h-4 w-4" />
-          </Link>
-        </div>
-      </header>
+      <PageLaneHeader
+        lane="command"
+        title="Overview"
+        subtitle="Posture, compliance, and activated surfaces across your AI estate."
+        scopeChip={
+          <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-200">
+            {deploymentModeLabel(counts?.deployment_mode)} · {countActiveServices(counts?.services)} services live
+          </span>
+        }
+        actions={
+          <>
+            <Link
+              href="/scan"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+            >
+              Run scan <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/security-graph"
+              className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+            >
+              Security graph <GitBranch className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/compliance"
+              className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+            >
+              Compliance
+            </Link>
+          </>
+        }
+      />
 
       <OverviewCockpit
         grade={postureGrade}
@@ -429,9 +455,85 @@ export default function Dashboard() {
           activeServices: countActiveServices(counts?.services),
           connected: hasDeploymentSignals(counts),
         }}
+        compliance={complianceSnapshot}
+        services={counts?.services ?? null}
         persona={persona}
         onPersonaChange={selectPersona}
       />
+
+      <CoverageCockpit
+        counts={counts}
+        scanCount={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
+        latestScanLabel={latestScanShort}
+      />
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-medium text-[color:var(--foreground)]">Top exposure path</h2>
+          {topExposurePath ? (
+            <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-xs text-[color:var(--text-secondary)]">
+              {topExposurePath.riskScore.toFixed(1)}
+            </span>
+          ) : null}
+        </div>
+        {topExposurePath ? (
+          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+            <AttackPathCard
+              nodes={topExposurePath.nodes}
+              riskScore={topExposurePath.riskScore}
+              href={topExposurePath.href}
+              captureMode
+              compact
+            />
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">
+            No scored exposure path yet. Run a scan to populate attack-path evidence.
+          </div>
+        )}
+      </section>
+
+      {allBlast.length > 0 && (
+        <details className="group/attack rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 select-none">
+            <div className="flex items-center gap-2">
+              <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open/attack:rotate-90" />
+              <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Exposure paths</h2>
+              <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]">
+                {Math.min(allBlast.length, 5)}
+              </span>
+            </div>
+          </summary>
+          <div className="mt-4 space-y-2">
+            {[...allBlast]
+              .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
+              .slice(0, 5)
+              .map((b, index) => {
+                const nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[] = [
+                  { type: "cve", label: b.vulnerability_id, severity: b.severity?.toLowerCase() },
+                ];
+                if (b.package) nodes.push({ type: "package", label: b.package });
+                if (b.affected_servers && b.affected_servers.length > 0) nodes.push({ type: "server", label: b.affected_servers[0]! });
+                const agents = blastAgents(b);
+                const credentials = blastCredentials(b);
+                if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
+                if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
+                return (
+                  <AttackPathCard
+                    key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`}
+                    nodes={nodes}
+                    riskScore={b.risk_score ?? b.blast_score / 10}
+                    href={buildSecurityGraphHref({
+                      cve: b.vulnerability_id,
+                      packageName: b.package,
+                      agentName: agents[0],
+                    })}
+                  />
+                );
+              })}
+          </div>
+        </details>
+      )}
 
       <div>
         <div className="mb-4 inline-flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-1">
@@ -536,6 +638,28 @@ function TabButton({
 function countActiveServices(services: PostureCountsResponse["services"]): number {
   if (!services) return 0;
   return Object.values(services).filter((entry) => entry.state === "live" || entry.state === "connected").length;
+}
+
+function buildComplianceSnapshot(
+  compliance: ComplianceResponse | null,
+): OverviewComplianceSnapshot | null {
+  if (!compliance) return null;
+  const hasMcp = Boolean(compliance.has_mcp_context);
+  const frameworks = complianceFrameworkSummaries(compliance, hasMcp)
+    .filter((framework) => !framework.disabled)
+    .map((framework) => ({
+      id: framework.id,
+      label: framework.label,
+      pass: framework.pass,
+      warn: framework.warn,
+      fail: framework.fail,
+      total: framework.total,
+    }));
+  return {
+    overallScore: compliance.overall_score,
+    overallStatus: compliance.overall_status,
+    frameworks,
+  };
 }
 
 function JobRow({ job }: { job: JobListItem }) {

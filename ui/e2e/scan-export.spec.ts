@@ -179,7 +179,9 @@ test("scan flow reaches result view and exports graph JSON", async ({ page }) =>
   // no actionable error.
   await page.waitForLoadState("networkidle");
 
-  await page.getByRole("button", { name: /containers/i }).click();
+  // New Scan uses source tabs + ad-hoc target tabs (not a free-standing Containers button).
+  await page.getByRole("tab", { name: /^Ad-hoc$/i }).click();
+  await page.getByRole("tab", { name: /Containers/i }).click();
   const imageInput = page.getByPlaceholder("nginx:1.25 or ghcr.io/org/app:v1");
   try {
     await expect(imageInput, "image input must be visible after hydration").toBeVisible({ timeout: 15_000 });

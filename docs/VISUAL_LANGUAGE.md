@@ -1,15 +1,30 @@
 # Visual language for agent-bom docs
 
-## Brand basics (canonical)
+## Brand basics (canonical — locked)
 
-One name, one tagline, one accent. Use these everywhere — README, docs, badges,
-social cards, CLI splash.
+One product name, one mark, one tagline, one accent. Do not rename the product
+to “BOM” alone — BOM is the **logo**, not the installable/searchable name.
+
+| Layer | Canonical form | Where |
+|---|---|---|
+| **Product name** | `agent-bom` | CLI, packages, URLs, docs titles, UI wordmark `alt`, metadata |
+| **Mark (logo)** | **BOM** with agent face in the **O** | Favicon, nav icon, avatars, social icon-only |
+| **Wordmark** | `agent·bom` | Nav lockup beside the mark |
+| **Tagline (short)** | "BOM for humans & agents" | Badges, lockup subtitle |
+| **Spoken nickname** | “BOM” | Optional in conversation / tight chrome — never as the sole product name in docs, CLI, or packages |
+
+### Name rules
 
 - **Name:** `agent-bom` — always lowercase and hyphenated, even at the start of a
-  sentence or in a Title Case heading. Never `Agent-BOM`, `AgentBOM`, or
-  `Agent-Bom` (the title-cased `X-Agent-Bom-*` HTTP headers are a separate wire
-  convention and are intentionally left as-is).
-- **Tagline (short, for the wordmark/badges):** "BOM for humans & agents".
+  sentence or in a Title Case heading. Never `Agent-BOM`, `AgentBOM`,
+  `Agent-Bom`, or bare `BOM` as the product name (the title-cased
+  `X-Agent-Bom-*` HTTP headers are a separate wire convention and are
+  intentionally left as-is).
+- **Why not rename to BOM:** “BOM” alone collides with SBOM/CBOM and every
+  bill-of-materials; `agent-bom` stays distinct for PyPI, npm, GitHub, and search.
+- **Feature labels:** The inventory artifact may be called **AI BOM** /
+  **agent-bom manifest** in UI (nav: “AI BOM”). Prefer `agent-bom` or “AI BOM”
+  over title-cased “Agent BOM” in new UI copy.
 - **Tagline (full, for prose/meta):** "Security scanner for the AI supply chain and
   infrastructure — from agent to runtime."
 - **Positioning line (README hero):** "Open security scanner and self-hosted control
@@ -17,8 +32,11 @@ social cards, CLI splash.
 - **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
   dark `#34d399 → #06b6d4` / `#22d3ee`. Ink `#1f2937` (light) / `#e6edf3` (dark);
   muted `#6b7280` / `#8b949e`.
-- **Mark:** `a·b` lettermark — lowercase a, gradient interpunct, gradient b, with a
-  thin BOM bar cue underneath. Matches the wordmark interpunct and reads at favicon size.
+- **Mark (locked):** **BOM** wordmark-as-icon where the **O** is an agent face
+  (eyes + antenna). Canonical product mark — do not replace with lettermarks or
+  clipboard variants. Reads as bill-of-materials + agent in one glyph. Same mark
+  appears in the dashboard lockup and the CLI no-args splash
+  (`agent_bom.output.brand_tokens`).
 
 
 Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or

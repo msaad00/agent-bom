@@ -3,6 +3,13 @@
 import { useThemeMode } from "@/lib/theme-mode";
 
 const TAGLINE = "BOM for humans & agents";
+/** Bump when mark/wordmark SVGs change so browsers drop stale caches. */
+const BRAND_ASSET_REV = "v7";
+
+/**
+ * Product name is always `agent-bom`. The mark is BOM-with-agent-O (logo only).
+ * See docs/VISUAL_LANGUAGE.md — do not rename the product to bare "BOM".
+ */
 
 type BrandLogoProps = {
   className?: string;
@@ -28,7 +35,7 @@ export function BrandLogo({
     <span className={`inline-flex min-w-0 items-center gap-2.5 ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={`/brand/mark-${theme}.svg`}
+        src={`/brand/mark-${theme}.svg?${BRAND_ASSET_REV}`}
         alt=""
         aria-hidden="true"
         className={`${markClassName} shrink-0 object-contain`}
@@ -38,7 +45,7 @@ export function BrandLogo({
           {showWordmark && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={`/brand/wordmark-${theme}.svg`}
+              src={`/brand/wordmark-${theme}.svg?${BRAND_ASSET_REV}`}
               alt="agent-bom"
               className={`${wordmarkClassName} max-w-[9.5rem] shrink-0 object-contain object-left`}
             />

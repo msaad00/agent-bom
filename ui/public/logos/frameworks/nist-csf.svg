@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="NIST CSF">
+  <rect width="32" height="32" rx="8" fill="#0B3D91"/>
+  <text x="16" y="19" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="10" font-weight="800" fill="#FFFFFF" letter-spacing="0.06em">NIST</text>
+  <rect x="8" y="23" width="16" height="2.2" rx="1.1" fill="#F0C808"/>
+</svg>

@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="CIS">
-  <rect width="32" height="32" rx="7" fill="#0055A5"/>
-  <path d="M16 5.5 25.5 11v10L16 26.5 6.5 21V11L16 5.5Z" fill="#FFFFFF" fill-opacity="0.15" stroke="#FFFFFF" stroke-width="1.4"/>
-  <path d="M11.5 16.2 14.2 18.8 20.5 12.8" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="16" y="28" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="5" font-weight="700" fill="#B3D4F5" letter-spacing="0.12em">CIS</text>
+  <rect width="32" height="32" rx="8" fill="#0055A5"/>
+  <path d="M16 6 25 11.2v9.6L16 26 7 20.8v-9.6L16 6Z" fill="#FFFFFF" fill-opacity="0.12" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M11.8 16.2 14.6 18.9 20.4 13.2" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

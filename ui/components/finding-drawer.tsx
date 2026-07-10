@@ -6,6 +6,13 @@ import { ExternalLink, FileSearch, Loader2, Radar, ShieldAlert, X } from "lucide
 
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
 import { buildWhyItMatters } from "@/lib/finding-why-matters";
+import {
+  findingsDrawerEyebrow,
+  findingsDrawerSubtitle,
+  findingsTriageDetail,
+  findingsTriageTitle,
+  type FindingsLens,
+} from "@/lib/findings-lens";
 import { type EnrichedVuln, uniqueStrings, formatFindingTimestamp, findingStatusClass, findingStatusLabel } from "@/lib/findings-view";
 
 export function FindingDrawer({
@@ -14,6 +21,7 @@ export function FindingDrawer({
   triageBusy,
   onTriageDecision,
   onClose,
+  lens = "ops",
 }: {
   vuln: EnrichedVuln;
   triage: FindingTriageItem | undefined;
@@ -24,6 +32,7 @@ export function FindingDrawer({
     justification?: FindingTriageJustification,
   ) => void;
   onClose: () => void;
+  lens?: FindingsLens | undefined;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Finding details for ${vuln.id}`}>
@@ -31,11 +40,9 @@ export function FindingDrawer({
       <aside className="relative h-full w-full max-w-3xl overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
         <div className="mb-4 flex items-start justify-between gap-4 border-b border-zinc-800 pb-4">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Evidence drawer</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{findingsDrawerEyebrow(lens)}</p>
             <h2 className="mt-1 break-all font-mono text-lg font-semibold text-zinc-100">{vuln.id}</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              Reachability, impacted packages, agent exposure, remediation, and VEX decisioning.
-            </p>
+            <p className="mt-1 text-sm text-zinc-500">{findingsDrawerSubtitle(lens)}</p>
           </div>
           <button
             type="button"
@@ -51,6 +58,7 @@ export function FindingDrawer({
           triage={triage}
           triageBusy={triageBusy}
           onTriageDecision={onTriageDecision}
+          lens={lens}
         />
       </aside>
     </div>
@@ -62,6 +70,7 @@ function VulnDetailPanel({
   triage,
   triageBusy,
   onTriageDecision,
+  lens,
 }: {
   vuln: EnrichedVuln;
   triage: FindingTriageItem | undefined;
@@ -71,6 +80,7 @@ function VulnDetailPanel({
     decision: FindingTriageDecision,
     justification?: FindingTriageJustification,
   ) => void;
+  lens: FindingsLens;
 }) {
   const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "No advisory summary available.";
   const cweMatches = summary.match(/CWE-\d+/gi) ?? [];
@@ -294,9 +304,9 @@ function VulnDetailPanel({
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Review queue</h4>
+                <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">{findingsTriageTitle(lens)}</h4>
                 <p className="mt-2 text-xs leading-5 text-zinc-400">
-                  Record analyst disposition for this package finding. Not affected decisions require an OpenVEX justification and become eligible for signed VEX export.
+                  {findingsTriageDetail(lens)}
                 </p>
               </div>
               {triage && (

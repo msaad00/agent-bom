@@ -209,7 +209,7 @@ export function FrameworkCoveragePanel({ items, onFocusFramework, cloudCisHref }
                   ) : (
                     <ChevronRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)]" />
                   )}
-                  <FrameworkIcon frameworkId={item.id} size={22} />
+                  <FrameworkIcon frameworkId={item.id} size={28} />
                   <span className="truncate text-sm font-medium text-[color:var(--foreground)]">{item.label}</span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${

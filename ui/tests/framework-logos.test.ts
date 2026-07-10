@@ -6,7 +6,8 @@ describe("frameworkLogoMeta", () => {
   it("resolves canonical framework ids to distinct color tiles", () => {
     expect(frameworkLogoMeta("owasp-llm")?.src).toContain("/logos/frameworks/owasp.svg");
     expect(frameworkLogoMeta("atlas")?.src).toContain("mitre-atlas.svg");
-    expect(frameworkLogoMeta("nist-ai-rmf")?.src).toContain("nist.svg");
+    expect(frameworkLogoMeta("nist-ai-rmf")?.src).toContain("nist-ai-rmf.svg");
+    expect(frameworkLogoMeta("nist-csf")?.src).toContain("nist-csf.svg");
     expect(frameworkLogoMeta("eu-ai-act")?.src).toContain("eu-ai-act.svg");
     expect(frameworkLogoMeta("soc2")?.src).toContain("soc2.svg");
     expect(frameworkLogoMeta("cmmc")?.src).toContain("cmmc.svg");

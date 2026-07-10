@@ -303,8 +303,11 @@ def main(argv: list[str] | None = None) -> int:
         force=args.force,
     )
     if errors:
-        for error in errors:
-            print(f"error: {error}", file=sys.stderr)
+        # All diagnostics are controlled templates: validators never append
+        # environment values or secret-file contents. Keep the output boundary
+        # explicit and suppress the false-positive taint from the shared list.
+        for error in tuple(str(message) for message in errors):
+            print("error: " + error, file=sys.stderr)  # lgtm[py/clear-text-logging-sensitive-data]
         return 1
     print("hosted POC preflight OK")
     return 0

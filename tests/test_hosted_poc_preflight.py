@@ -166,8 +166,18 @@ def test_preflight_can_write_secret_files(tmp_path: Path) -> None:
         assert oct(path.stat().st_mode & 0o777) == "0o400"
 
 
-def test_cli_returns_nonzero_on_failed_preflight(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_cli_returns_nonzero_without_printing_secret_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     _seed_secret_files(tmp_path)
+    secret_value = "control-plane-secret-that-must-not-be-logged"
+    (tmp_path / "deploy" / "secrets" / "api_key").write_text(secret_value, encoding="utf-8")
     monkeypatch.setenv("NEXT_PUBLIC_API_URL", "http://localhost:8422")
+    monkeypatch.setenv("AGENT_BOM_API_KEY", secret_value)
 
     assert main(["--root", str(tmp_path), "--skip-compose"]) == 1
+    captured = capsys.readouterr()
+    assert secret_value not in captured.out
+    assert secret_value not in captured.err

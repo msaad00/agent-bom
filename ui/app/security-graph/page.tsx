@@ -44,6 +44,8 @@ import {
   toAttackCardNodes,
   toExposurePathFromAttackPath,
 } from "@/lib/attack-paths";
+import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
+import type { UnifiedGraphData } from "@/lib/graph-schema";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const ATTACK_PATH_QUEUE_LIMIT = 75;
@@ -66,6 +68,7 @@ function SecurityGraphPageContent() {
   const [focusApplied, setFocusApplied] = useState(false);
   const [showAllSnapshots, setShowAllSnapshots] = useState(false);
   const [visibleAttackPathCount, setVisibleAttackPathCount] = useState(ATTACK_PATH_QUEUE_PAGE_SIZE);
+  const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
   const captureMode = useCaptureMode();
 
   const focus = useMemo(
@@ -417,6 +420,17 @@ function SecurityGraphPageContent() {
             />
           </div>
         </section>
+      )}
+
+      {graphData && selectedAttackPath && (
+        <SecurityGraphInvestigation
+          graph={graphData as UnifiedGraphData}
+          attackPath={selectedAttackPath}
+          focusMode={investigationFocusMode}
+          onFocusModeChange={setInvestigationFocusMode}
+          fullGraphHref={fullGraphHref}
+          loading={loadingGraph}
+        />
       )}
 
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">

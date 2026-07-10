@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="agent-bom mark — brace BOM">
+  <defs>
+    <linearGradient id="abm-c" x1="12" y1="10" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect x="5" y="5" width="54" height="54" rx="16" fill="#0c1210" stroke="url(#abm-c)" stroke-width="2"/>
+  <!-- braces -->
+  <path d="M24 16c-5 0-7 3-7 8v4c0 3-2 4-4 5 2 1 4 2 4 5v4c0 5 2 8 7 8"
+        fill="none" stroke="url(#abm-c)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M40 16c5 0 7 3 7 8v4c0 3 2 4 4 5-2 1-4 2-4 5v4c0 5-2 8-7 8"
+        fill="none" stroke="url(#abm-c)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- dependency ticks -->
+  <rect x="27" y="24" width="10" height="3" rx="1.5" fill="#34d399" fill-opacity="0.4"/>
+  <rect x="26" y="30.5" width="12" height="3.5" rx="1.75" fill="url(#abm-c)"/>
+  <rect x="28" y="37.5" width="8" height="3" rx="1.5" fill="#06b6d4" fill-opacity="0.4"/>
+</svg>

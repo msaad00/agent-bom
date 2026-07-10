@@ -9,15 +9,17 @@ social cards, CLI splash.
   sentence or in a Title Case heading. Never `Agent-BOM`, `AgentBOM`, or
   `Agent-Bom` (the title-cased `X-Agent-Bom-*` HTTP headers are a separate wire
   convention and are intentionally left as-is).
-- **Tagline (short, for the wordmark/badges):** "AI supply-chain & infrastructure security".
+- **Tagline (short, for the wordmark/badges):** "AI agent bill of materials".
 - **Tagline (full, for prose/meta):** "Security scanner for the AI supply chain and
   infrastructure — from agent to runtime."
 - **Positioning line (README hero):** "Open security scanner and self-hosted control
   plane for AI, MCP, and cloud infrastructure."
-- **Accent:** blue → violet gradient. Light `#2563eb → #7c3aed`; dark `#60a5fa → #a78bfa`.
-  Ink `#1f2937` (light) / `#e6edf3` (dark); muted `#6b7280` / `#8b949e`.
-- **Mark:** a security shield wrapping a three-node supply-chain / blast-radius graph —
-  the product's signature "agent → MCP → package → CVE → blast radius" motif.
+- **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
+  dark `#34d399 → #06b6d4` / `#22d3ee`. Ink `#1f2937` (light) / `#e6edf3` (dark);
+  muted `#6b7280` / `#8b949e`.
+- **Mark:** a rounded tile with a BOM manifest card — stacked inventory rows and one
+  finding highlight. Reads as bill-of-materials inventory, not a generic network graph.
+  A/B explorations live in `docs/images/brand/variants/`.
 
 Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or
 network refs, light + dark pairs):

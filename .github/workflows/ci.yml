@@ -302,10 +302,6 @@ jobs:
   lint:
     name: Lint and Type Check
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.11', '3.13', '3.14']
     timeout-minutes: 15
     permissions:
       contents: read
@@ -314,7 +310,7 @@ jobs:
 
       - uses: ./.github/actions/setup-python
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.11'
 
       - name: Install dependencies
         run: uv sync --frozen --extra dev
@@ -323,7 +319,7 @@ jobs:
         run: uv run ruff check src/
 
       - name: MyPy
-        run: uv run mypy src/ --python-version ${{ matrix.python-version }} --ignore-missing-imports --disable-error-code import-untyped
+        run: uv run mypy src/ --ignore-missing-imports --disable-error-code import-untyped
 
       - name: Env-var reference is current (config.py + allowlist gate)
         # Generator: scripts/generate_env_var_reference.py

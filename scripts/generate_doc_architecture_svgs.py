@@ -406,11 +406,11 @@ def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict, *, theme: str) -> t
     """2x2 provider grid using official horizontal wordmarks from public media kits."""
     cols = 2
     gap_x = 6
-    gap_y = 5
+    gap_y = 6
     card_w = (lane_inner_w - gap_x) // cols
-    card_h = 34
-    logo_h = 14
-    logo_pad_x = 8
+    card_h = 40
+    logo_h = 20
+    logo_pad_x = 12
     out: list[str] = []
     for i, (vendor, _label, _accent) in enumerate(CLOUD_VENDOR_LOGOS):
         col, row = i % cols, i // cols
@@ -423,9 +423,12 @@ def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict, *, theme: str) -> t
         render_h = vb_h * scale
         icon_x = bx + (card_w - render_w) / 2
         icon_y = by + (card_h - render_h) / 2
-        inner = _vendor_wordmark_inner(vendor, uid=f"cl-{vendor}", theme=theme)
+        # Official marks sit on a light chip (brand-guideline default) so their
+        # native colors stay legible on both the dark and light diagram; render
+        # in native ("light" context) colors rather than the dark-tinted variant.
+        inner = _vendor_wordmark_inner(vendor, uid=f"cl-{vendor}", theme="light")
         out.append(
-            f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
+            f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="8" fill="#ffffff" stroke="#d4d4d8"/>'
             f'<g transform="translate({icon_x},{icon_y}) scale({scale})">{inner}</g>'
         )
     return "".join(out), gap_y + 2 * card_h

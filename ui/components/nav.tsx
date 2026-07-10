@@ -684,23 +684,13 @@ export function Nav() {
         })}
       </nav>
 
-      {/* Bottom section */}
-      <div className={`border-t border-[color:var(--border-subtle)] ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
-        <div className="space-y-2">
-          <SessionStatus collapsed={collapsed} loading={authLoading} session={session} />
-          <DemoNavSignIn collapsed={collapsed} />
-          <Link
-            href={`/help?from=${encodeURIComponent(path ?? "/")}`}
-            className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] ${collapsed ? "justify-center px-2" : ""}`}
-            title="Share feedback or report a bug"
-          >
-            <MessageSquareQuote className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>Feedback &amp; Bug Report</span>}
-          </Link>
-          <ThemeToggle compact={collapsed} />
-          <ApiStatus collapsed={collapsed} />
-        </div>
-      </div>
+      {/* Bottom section — collapsed by default so nav lanes keep vertical space */}
+      <SidebarFooter
+        collapsed={collapsed}
+        authLoading={authLoading}
+        session={session}
+        path={path}
+      />
     </>
   );
 
@@ -786,14 +776,73 @@ export function Nav() {
   );
 }
 
+function SidebarFooter({
+  collapsed,
+  authLoading,
+  session,
+  path,
+}: {
+  collapsed: boolean;
+  authLoading: boolean;
+  session: ReturnType<typeof useAuthState>["session"];
+  path: string | null;
+}) {
+  const feedbackLink = (
+    <Link
+      href={`/help?from=${encodeURIComponent(path ?? "/")}`}
+      className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] ${collapsed ? "justify-center px-2" : ""}`}
+      title="Share feedback or report a bug"
+    >
+      <MessageSquareQuote className="h-4 w-4 shrink-0" />
+      {!collapsed && <span>Feedback &amp; Bug Report</span>}
+    </Link>
+  );
+
+  if (collapsed) {
+    return (
+      <div className="border-t border-[color:var(--border-subtle)] px-2 py-3">
+        <div className="space-y-2">
+          <SessionStatus collapsed loading={authLoading} session={session} />
+          <DemoNavSignIn collapsed />
+          {feedbackLink}
+        </div>
+      </div>
+    );
+  }
+
+  const footerHint = authLoading
+    ? "Checking session…"
+    : session?.authenticated
+      ? `Signed in · ${session.subject ?? session.role_summary?.display_name ?? session.role ?? "user"}`
+      : "Sign-in required";
+
+  return (
+    <div className="border-t border-[color:var(--border-subtle)] px-3 py-3">
+      <details className="group/footer">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[11px] text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+          <span className="truncate">{footerHint}</span>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open/footer:rotate-90" />
+        </summary>
+        <div className="mt-2 space-y-2">
+          <SessionStatus collapsed={false} loading={authLoading} session={session} embedded />
+          <DemoNavSignIn />
+          {feedbackLink}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function SessionStatus({
   collapsed,
   loading,
   session,
+  embedded = false,
 }: {
   collapsed: boolean;
   loading: boolean;
   session: ReturnType<typeof useAuthState>["session"];
+  embedded?: boolean;
 }) {
   if (collapsed) {
     if (loading) {
@@ -819,8 +868,11 @@ function SessionStatus({
   }
 
   if (!session?.authenticated) {
+    if (embedded) {
+      return null;
+    }
     return (
-      <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+      <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)]">
         Sign-in required for protected control-plane actions
       </div>
     );

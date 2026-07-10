@@ -2,21 +2,22 @@
 
 import { useThemeMode } from "@/lib/theme-mode";
 
-const TAGLINE = "BOM for humans & agents";
 /** Bump when mark/wordmark SVGs change so browsers drop stale caches. */
-const BRAND_ASSET_REV = "v7";
+const BRAND_ASSET_REV = "v8";
 
 /**
  * Product name is always `agent-bom`. The mark is BOM-with-agent-O (logo only).
- * See docs/VISUAL_LANGUAGE.md — do not rename the product to bare "BOM".
+ * No lockup tagline — the wordmark is enough. See docs/VISUAL_LANGUAGE.md.
  */
 
 type BrandLogoProps = {
   className?: string;
   showWordmark?: boolean;
+  /** @deprecated Tagline removed from lockup; prop kept as no-op for callers. */
   showTagline?: boolean;
   markClassName?: string;
   wordmarkClassName?: string;
+  /** @deprecated Unused — tagline removed from lockup. */
   taglineClassName?: string;
 };
 
@@ -24,10 +25,8 @@ type BrandLogoProps = {
 export function BrandLogo({
   className = "",
   showWordmark = true,
-  showTagline = false,
   markClassName = "h-8 w-8",
   wordmarkClassName = "h-[22px] w-auto",
-  taglineClassName = "block text-[10px] font-medium leading-tight tracking-wide text-[color:var(--text-tertiary)] max-[479px]:hidden",
 }: BrandLogoProps) {
   const theme = useThemeMode();
 
@@ -40,21 +39,14 @@ export function BrandLogo({
         aria-hidden="true"
         className={`${markClassName} shrink-0 object-contain`}
       />
-      {(showWordmark || showTagline) && (
-        <span className="flex min-w-0 flex-col justify-center gap-0.5">
-          {showWordmark && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`/brand/wordmark-${theme}.svg?${BRAND_ASSET_REV}`}
-              alt="agent-bom"
-              className={`${wordmarkClassName} max-w-[9.5rem] shrink-0 object-contain object-left`}
-            />
-          )}
-          {showTagline && (
-            <span className={`${taglineClassName} max-w-[14rem] truncate`}>{TAGLINE}</span>
-          )}
-        </span>
-      )}
+      {showWordmark ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/brand/wordmark-${theme}.svg?${BRAND_ASSET_REV}`}
+          alt="agent-bom"
+          className={`${wordmarkClassName} max-w-[9.5rem] shrink-0 object-contain object-left`}
+        />
+      ) : null}
     </span>
   );
 }

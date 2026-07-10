@@ -2491,6 +2491,7 @@ _RESERVED_GRAPH_EDGE_KINDS: dict[str, tuple[list[str], str]] = {
 _EMITTED_GRAPH_NODE_SURFACES: dict[str, list[str]] = {
     EntityType.TOOL_CALL.value: ["runtime_proxy", "gateway_event_projection"],
     EntityType.RESOURCE.value: ["runtime_proxy", "gateway_event_projection", "cnapp_overlay"],
+    EntityType.FRAMEWORK.value: ["ai_inventory", "framework_agents"],
     # Repository folder/file-structure nodes emitted by the repo-structure
     # overlay for a code / project scan (directory tree + manifest files).
     EntityType.DIRECTORY.value: ["repo_structure_overlay"],
@@ -2502,6 +2503,8 @@ _EMITTED_GRAPH_NODE_SURFACES: dict[str, list[str]] = {
 _EMITTED_GRAPH_EDGE_SURFACES: dict[str, list[str]] = {
     RelationshipType.CALLED.value: ["runtime_proxy", "gateway_event_projection"],
     RelationshipType.USED_CREDENTIAL.value: ["runtime_proxy", "gateway_event_projection"],
+    RelationshipType.USES_FRAMEWORK.value: ["ai_inventory", "framework_agents"],
+    RelationshipType.OBSERVES.value: ["ai_inventory"],
 }
 
 
@@ -2554,6 +2557,13 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
         "target_types": [EntityType.SERVER.value],
         "traversable": True,
     },
+    RelationshipType.USES_FRAMEWORK.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.FRAMEWORK.value],
+        "traversable": True,
+    },
     RelationshipType.DEPENDS_ON.value: {
         "category": "inventory",
         "direction": "directed",
@@ -2562,6 +2572,7 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
             EntityType.CONTAINER.value,
             EntityType.CONFIG_FILE.value,
             EntityType.SOURCE_FILE.value,
+            EntityType.FRAMEWORK.value,
         ],
         "target_types": [EntityType.PACKAGE.value],
         "traversable": True,
@@ -2590,8 +2601,15 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
     RelationshipType.SERVES_MODEL.value: {
         "category": "inventory",
         "direction": "directed",
-        "source_types": [EntityType.SERVER.value],
+        "source_types": [EntityType.SERVER.value, EntityType.AGENT.value, EntityType.FRAMEWORK.value],
         "target_types": [EntityType.MODEL.value],
+        "traversable": True,
+    },
+    RelationshipType.OBSERVES.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.FRAMEWORK.value],
+        "target_types": [EntityType.AGENT.value, EntityType.SERVER.value],
         "traversable": True,
     },
     RelationshipType.CONTAINS.value: {

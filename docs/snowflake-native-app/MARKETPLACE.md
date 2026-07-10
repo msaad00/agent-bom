@@ -10,7 +10,7 @@ are configured.
 
 | Field | Draft value |
 |---|---|
-| Listing name | agent-bom - BOM for humans & agents |
+| Listing name | agent-bom |
 | Category | Security and Governance |
 | Delivery method | Snowflake Native App with Snowpark Container Services |
 | Data boundary | Customer account only; no customer data leaves Snowflake |

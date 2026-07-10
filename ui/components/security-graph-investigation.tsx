@@ -55,6 +55,7 @@ const INVESTIGATION_LAYERS = {
   credential: true,
   tool: true,
   model: false,
+  framework: true,
   dataset: false,
   container: true,
   cloudResource: true,

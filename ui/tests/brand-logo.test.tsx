@@ -24,8 +24,9 @@ describe("BrandLogo", () => {
     expect(images[0]?.getAttribute("src")).toMatch(/^\/brand\/mark-dark\.svg\?/);
   });
 
-  it("renders the canonical tagline when requested", () => {
-    const { getByText } = render(<BrandLogo showTagline />);
-    expect(getByText("BOM for humans & agents")).toBeInTheDocument();
+  it("does not render a lockup tagline", () => {
+    const { container, queryByText } = render(<BrandLogo showTagline />);
+    expect(queryByText("BOM for humans & agents")).not.toBeInTheDocument();
+    expect(container.querySelectorAll("img")).toHaveLength(2);
   });
 });

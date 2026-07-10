@@ -9,7 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 PRODUCT_NAME = "agent-bom"
-TAGLINE_SHORT = "BOM for humans & agents"
+# Capability line for meta/prose — not shown under the nav lockup.
+POSITIONING_SHORT = "Open security scanner for AI infrastructure"
 TAGLINE_CHAIN = "agent → MCP server → packages → CVEs → blast radius"
 DOCS_URL = "https://github.com/msaad00/agent-bom"
 
@@ -82,12 +83,12 @@ def cli_banner_plain(*, version: str | None = None, force_ascii: bool = False) -
     lines = list(cli_mark_lines(force_ascii=force_ascii))
     ver = f"  v{version}" if version else ""
     lines.append(f"  {PRODUCT_NAME}{ver}")
-    lines.append(f"  {TAGLINE_SHORT}")
+    lines.append(f"  {POSITIONING_SHORT}")
     return "\n" + "\n".join(lines) + "\n"
 
 
 def print_cli_startup_banner(console: object, *, version: str) -> None:
-    """Render the no-args CLI splash with mark, wordmark, tagline, and quick start."""
+    """Render the no-args CLI splash with mark, wordmark, and quick start."""
 
     mark = cli_mark_lines()
     # ``console`` is a Rich Console; typed as object to avoid a hard import cycle.
@@ -97,9 +98,8 @@ def print_cli_startup_banner(console: object, *, version: str) -> None:
         print_(f"[bold cyan]{line}[/bold cyan]")
     print_()
     print_(f"    [bold]{PRODUCT_NAME}[/bold] [dim]·[/dim] [dim]v{version}[/dim]")
-    print_(f"    [dim]{TAGLINE_SHORT}[/dim]")
+    print_(f"    [dim]{POSITIONING_SHORT}[/dim]")
     print_()
-    print_("    Open security scanner for AI infrastructure.")
     print_(f"    [dim]{TAGLINE_CHAIN}[/dim]")
     print_()
     print_("    [bold]Quick start[/bold]")
@@ -114,9 +114,9 @@ def print_cli_startup_banner(console: object, *, version: str) -> None:
 __all__ = [
     "DOCS_URL",
     "LANE_TOKENS",
+    "POSITIONING_SHORT",
     "PRODUCT_NAME",
     "TAGLINE_CHAIN",
-    "TAGLINE_SHORT",
     "LaneToken",
     "cli_banner_plain",
     "cli_mark_lines",

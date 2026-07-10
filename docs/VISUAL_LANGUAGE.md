@@ -2,15 +2,15 @@
 
 ## Brand basics (canonical — locked)
 
-One product name, one mark, one tagline, one accent. Do not rename the product
-to “BOM” alone — BOM is the **logo**, not the installable/searchable name.
+One product name, one mark, one accent. Do not rename the product to “BOM”
+alone — BOM is the **logo**, not the installable/searchable name. Do not put a
+tagline under the nav lockup — the wordmark is enough.
 
 | Layer | Canonical form | Where |
 |---|---|---|
 | **Product name** | `agent-bom` | CLI, packages, URLs, docs titles, UI wordmark `alt`, metadata |
 | **Mark (logo)** | **BOM** with agent face in the **O** | Favicon, nav icon, avatars, social icon-only |
 | **Wordmark** | `agent·bom` | Nav lockup beside the mark |
-| **Tagline (short)** | "BOM for humans & agents" | Badges, lockup subtitle |
 | **Spoken nickname** | “BOM” | Optional in conversation / tight chrome — never as the sole product name in docs, CLI, or packages |
 
 ### Name rules
@@ -25,8 +25,11 @@ to “BOM” alone — BOM is the **logo**, not the installable/searchable name.
 - **Feature labels:** The inventory artifact may be called **AI BOM** /
   **agent-bom manifest** in UI (nav: “AI BOM”). Prefer `agent-bom` or “AI BOM”
   over title-cased “Agent BOM” in new UI copy.
-- **Tagline (full, for prose/meta):** "Security scanner for the AI supply chain and
-  infrastructure — from agent to runtime."
+- **No lockup tagline:** Do not ship “BOM for humans & agents” (or similar) under
+  the mark/wordmark. Human UI and headless/agent surfaces are both first-class;
+  that is product behavior, not a subtitle.
+- **Meta / prose description:** "Open security scanner and self-hosted control
+  plane for AI, MCP, and cloud infrastructure."
 - **Positioning line (README hero):** "Open security scanner and self-hosted control
   plane for AI, MCP, and cloud infrastructure."
 - **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
@@ -44,7 +47,7 @@ network refs, light + dark pairs):
 
 | Asset | Use |
 |---|---|
-| `logo-{light,dark}.svg` | Horizontal lockup (mark + wordmark + tagline) — README/docs hero |
+| `logo-{light,dark}.svg` | Horizontal lockup (mark + wordmark) — README/docs hero |
 | `mark-{light,dark}.svg` | Icon-only mark — square avatars, favicons, tight spaces |
 | `wordmark-{light,dark}.svg` | Wordmark only — inline headers where the mark is redundant |
 
@@ -93,7 +96,7 @@ Current SVG inventory:
 
 | File | What it shows | Where it lives in the README |
 |---|---|---|
-| `brand/logo-{light,dark}.svg` | Brand lockup (mark + wordmark + tagline); see Brand basics above | hero |
+| `brand/logo-{light,dark}.svg` | Brand lockup (mark + wordmark); see Brand basics above | hero |
 | `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; README "What Is agent-bom", collapsed detail |
 | `how-it-works-{light,dark}.svg` | Six-step scan pipeline from read-only intake through evidence core to outputs; cloud intake row uses the same public vector marks as `ui/public/logos/` | README "What Is agent-bom" |
 | `persona-value-{light,dark}.svg` | Four buyer personas in a compact single-row band — neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card (larger body copy for README scale) | README "What Is agent-bom", collapsed "Who it's for" detail |

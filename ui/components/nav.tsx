@@ -741,7 +741,6 @@ export function Nav() {
       <header className="fixed inset-x-0 top-0 z-[60] flex h-16 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
         <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
           <BrandLogo
-            showTagline
             markClassName="h-9 w-9"
             wordmarkClassName="h-[26px] w-auto max-w-[11rem]"
             className="transition-transform duration-200 group-hover:scale-[1.01]"

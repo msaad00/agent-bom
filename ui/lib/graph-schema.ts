@@ -49,6 +49,7 @@ export enum EntityType {
   TOOL = "tool",
   TOOL_CALL = "tool_call",
   MODEL = "model",
+  FRAMEWORK = "framework",
   DATASET = "dataset",
   CONTAINER = "container",
   RESOURCE = "resource",
@@ -97,6 +98,7 @@ export enum RelationshipType {
   // Static inventory
   HOSTS = "hosts",
   USES = "uses",
+  USES_FRAMEWORK = "uses_framework",
   DEPENDS_ON = "depends_on",
   PROVIDES_TOOL = "provides_tool",
   EXPOSES_CRED = "exposes_cred",
@@ -107,6 +109,7 @@ export enum RelationshipType {
   DEFINES = "defines",
   RUNS = "runs",
   CONFIGURES = "configures",
+  OBSERVES = "observes",
   // Vulnerability
   AFFECTS = "affects",
   VULNERABLE_TO = "vulnerable_to",
@@ -262,6 +265,7 @@ export const ENTITY_OCSF_MAP: Record<
   [EntityType.TOOL]: { category_uid: 5, class_uid: 4001 },
   [EntityType.TOOL_CALL]: { category_uid: 5, class_uid: 4001 },
   [EntityType.MODEL]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.FRAMEWORK]: { category_uid: 5, class_uid: 4001 },
   [EntityType.DATASET]: { category_uid: 5, class_uid: 4001 },
   [EntityType.CONTAINER]: { category_uid: 5, class_uid: 4001 },
   [EntityType.RESOURCE]: { category_uid: 5, class_uid: 4001 },
@@ -440,6 +444,7 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
   [EntityType.TOOL]: "#a855f7", // purple
   [EntityType.TOOL_CALL]: "#9333ea", // purple
   [EntityType.MODEL]: "#8b5cf6", // violet
+  [EntityType.FRAMEWORK]: "#06b6d4", // cyan
   [EntityType.DATASET]: "#06b6d4", // cyan
   [EntityType.CONTAINER]: "#6366f1", // indigo
   [EntityType.RESOURCE]: "#3b82f6", // blue
@@ -478,6 +483,7 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
 export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.HOSTS]: "#6b7280",
   [RelationshipType.USES]: "#10b981",
+  [RelationshipType.USES_FRAMEWORK]: "#06b6d4",
   [RelationshipType.DEPENDS_ON]: "#52525b",
   [RelationshipType.PROVIDES_TOOL]: "#a855f7",
   [RelationshipType.EXPOSES_CRED]: "#f59e0b",
@@ -488,6 +494,7 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.DEFINES]: "#06b6d4",
   [RelationshipType.RUNS]: "#a855f7",
   [RelationshipType.CONFIGURES]: "#f97316",
+  [RelationshipType.OBSERVES]: "#22d3ee",
   [RelationshipType.AFFECTS]: "#ef4444",
   [RelationshipType.VULNERABLE_TO]: "#ef4444",
   [RelationshipType.EXPLOITABLE_VIA]: "#dc2626",

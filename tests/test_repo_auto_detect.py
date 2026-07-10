@@ -21,9 +21,11 @@ def test_expand_project_scan_targets_auto_jupyter_and_terraform(tmp_path: Path) 
     assert "terraform" in targets.auto_enabled
     assert "github_actions" in targets.auto_enabled
     assert "python_agents" in targets.auto_enabled
+    assert "ai_inventory" in targets.auto_enabled
     assert targets.jupyter_dirs == (str(tmp_path),)
     assert targets.tf_dirs == (str(tmp_path),)
     assert targets.gha_path == str(tmp_path)
+    assert targets.ai_inventory_paths == (str(tmp_path),)
 
 
 def test_expand_project_scan_targets_respects_explicit_jupyter(tmp_path: Path) -> None:
@@ -77,4 +79,17 @@ def test_repo_static_surface_catalog_lists_api_surfaces() -> None:
     ids = {entry["id"] for entry in catalog}
     assert "secrets" in ids
     assert "jupyter" in ids
+    assert "ai_inventory" in ids
     assert any(entry["api_repo_tree"] for entry in catalog)
+
+
+def test_expand_project_scan_targets_respects_explicit_ai_inventory(tmp_path: Path) -> None:
+    (tmp_path / "requirements.txt").write_text("langchain==0.2.0\n", encoding="utf-8")
+    custom = tmp_path / "custom"
+    custom.mkdir()
+
+    targets = expand_project_scan_targets(str(tmp_path), ai_inventory_paths=(str(custom),))
+
+    assert targets.ai_inventory_paths == (str(custom),)
+    assert "ai_inventory" not in targets.auto_enabled
+    assert "python_agents" in targets.auto_enabled

@@ -11,10 +11,11 @@ Nothing here removes or rewrites an existing command. ``scan``, ``graph`` and
 ``report`` already exist and are simply surfaced as the primary verbs in
 ``--help``. This module contributes the two genuinely new verbs:
 
-* ``connect`` — read-only onboarding guidance for a cloud/source. It points at
-  the per-cloud read-only Terraform module under ``deploy/terraform/connect-*``
-  and the opt-in inventory env var, then reports whether local credentials are
-  already detectable so the next ``scan`` will have something to read.
+* ``connect`` — read-only onboarding guidance for a cloud/source. It prints
+  CLI, CloudShell, and Terraform grant options (pick what your rights allow),
+  points at ``scripts/provision/`` and ``deploy/terraform/connect-*``, and
+  reports whether local credentials are already detectable so the next
+  ``scan`` will have something to read.
 * ``up`` (alias of ``serve``) — run the platform locally. It delegates to the
   existing ``serve`` command and points at the full-stack docker compose file.
 
@@ -47,6 +48,9 @@ class _ConnectSource:
     name: str
     title: str
     terraform_module: str
+    provision_path: str
+    cli_hint: str
+    cloudshell_hint: str
     inventory_env: str
     inventory_value: str
     cred_env_vars: tuple[str, ...]
@@ -61,6 +65,9 @@ _CONNECT_SOURCES: dict[str, _ConnectSource] = {
         name="aws",
         title="Amazon Web Services",
         terraform_module="deploy/terraform/connect-aws",
+        provision_path="scripts/provision/aws_readonly_policy.json",
+        cli_hint="aws iam create-policy/role + SecurityAudit (see scripts/provision/README.md)",
+        cloudshell_hint="Open AWS CloudShell → paste the CLI grant (no local Terraform required)",
         inventory_env="AGENT_BOM_AWS_INVENTORY",
         inventory_value="1",
         cred_env_vars=("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE"),
@@ -75,6 +82,9 @@ _CONNECT_SOURCES: dict[str, _ConnectSource] = {
         name="azure",
         title="Microsoft Azure",
         terraform_module="deploy/terraform/connect-azure",
+        provision_path="scripts/provision/azure_readonly_role.json",
+        cli_hint="az ad sp create-for-rbac --role Reader (see scripts/provision/README.md)",
+        cloudshell_hint="Open Azure Cloud Shell → paste the az grant (no local Terraform required)",
         inventory_env="AGENT_BOM_AZURE_INVENTORY",
         inventory_value="1",
         cred_env_vars=("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"),
@@ -89,6 +99,9 @@ _CONNECT_SOURCES: dict[str, _ConnectSource] = {
         name="gcp",
         title="Google Cloud Platform",
         terraform_module="deploy/terraform/connect-gcp",
+        provision_path="scripts/provision/gcp_readonly_role.yaml",
+        cli_hint="gcloud iam service-accounts create + roles/viewer (see scripts/provision/README.md)",
+        cloudshell_hint="Open Google Cloud Shell → paste the gcloud grant (no local Terraform required)",
         inventory_env="AGENT_BOM_GCP_INVENTORY",
         inventory_value="1",
         cred_env_vars=("GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT", "CLOUDSDK_CORE_PROJECT"),
@@ -103,6 +116,9 @@ _CONNECT_SOURCES: dict[str, _ConnectSource] = {
         name="snowflake",
         title="Snowflake",
         terraform_module="deploy/terraform/connect-snowflake",
+        provision_path="scripts/provision/snowflake_readonly.sql",
+        cli_hint="snow sql -f scripts/provision/snowflake_readonly.sql",
+        cloudshell_hint="Snowsight SQL worksheet → paste snowflake_readonly.sql",
         inventory_env="SNOWFLAKE_ACCOUNT",
         inventory_value="<your-account-locator>",
         cred_env_vars=("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PRIVATE_KEY_PATH"),
@@ -126,9 +142,15 @@ def _render_connect_guidance(con: object, source: _ConnectSource) -> None:
     from agent_bom.cli._terminal_sections import render_connect_card
 
     body_lines = [
-        "[bold]1. Provision the read-only grant[/bold]",
+        "[bold]1. Provision the read-only grant[/bold] [dim]— pick one path based on your rights[/dim]",
+        "   [bold]CLI[/bold]",
+        f"   [cyan]{source.cli_hint}[/cyan]",
+        f"   [dim]Recipe + policy: {source.provision_path}[/dim]",
+        "   [bold]CloudShell / console[/bold]",
+        f"   [cyan]{source.cloudshell_hint}[/cyan]",
+        "   [bold]Terraform[/bold] [dim](when IaC owns apply rights)[/dim]",
         f"   [cyan]terraform -chdir={source.terraform_module} init && terraform -chdir={source.terraform_module} apply[/cyan]",
-        "   [dim]Read-only role only — nothing is created or modified in your account.[/dim]",
+        "   [dim]Read-only role only — agent-bom never writes to your account.[/dim]",
         "",
         "[bold]2. Opt in to inventory[/bold] [dim](default-off)[/dim]",
         f"   [cyan]export {source.inventory_env}={source.inventory_value}[/cyan]",
@@ -186,10 +208,10 @@ def connect_group(ctx: click.Context) -> None:
     """Read-only onboard a cloud or data source.
 
     \b
-    Prints the exact read-only setup for a source (Terraform module + opt-in
-    inventory env var), then reports whether local credentials are already
-    detectable. agent-bom never mutates the target and does no network I/O
-    until you opt in.
+    Prints the exact read-only setup for a source (CLI, CloudShell, or
+    Terraform grant + opt-in inventory env var), then reports whether local
+    credentials are already detectable. agent-bom never mutates the target
+    and does no network I/O until you opt in.
 
     \b
     Sources:
@@ -210,7 +232,8 @@ def _make_connect_subcommand(source: _ConnectSource) -> click.Command:
         source.name,
         help=(
             f"Read-only onboarding for {source.title}.\n\n"
-            f"Prints the read-only Terraform module ({source.terraform_module}), the "
+            f"Prints CLI, CloudShell, and Terraform grant options "
+            f"({source.terraform_module} / {source.provision_path}), the "
             f"opt-in inventory env var ({source.inventory_env}), and the scan command, "
             f"then reports whether local credentials are detectable. Read-only — nothing "
             f"is created or modified in your account."

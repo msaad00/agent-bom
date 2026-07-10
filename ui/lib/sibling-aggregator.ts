@@ -270,6 +270,7 @@ const CHILD_TYPE_NOUNS: Partial<Record<LineageNodeType, string>> = {
   credential: "credential",
   tool: "tool",
   model: "model",
+  framework: "framework",
   dataset: "dataset",
   container: "container",
   cloudResource: "cloud resource",

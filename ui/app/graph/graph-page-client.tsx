@@ -302,6 +302,7 @@ const LAYER_ENTITY_TYPES: Array<[LineageNodeType, EntityType]> = [
   ["server", EntityType.SERVER],
   ["package", EntityType.PACKAGE],
   ["model", EntityType.MODEL],
+  ["framework", EntityType.FRAMEWORK],
   ["dataset", EntityType.DATASET],
   ["container", EntityType.CONTAINER],
   ["cloudResource", EntityType.CLOUD_RESOURCE],
@@ -332,6 +333,7 @@ const RELATIONSHIP_SCOPE_MAP: Record<
     RelationshipType.EXPOSES_CRED,
     RelationshipType.REACHES_TOOL,
     RelationshipType.SERVES_MODEL,
+    RelationshipType.USES_FRAMEWORK,
     RelationshipType.CONTAINS,
   ],
   attack: [

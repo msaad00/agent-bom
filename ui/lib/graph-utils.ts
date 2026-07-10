@@ -45,6 +45,7 @@ export const LINEAGE_NODE_GRAPH_KIND: Record<
   credential: "credential",
   tool: "tool",
   model: "model",
+  framework: "framework",
   dataset: "dataset",
   container: "container",
   cloudResource: "cloud_resource",

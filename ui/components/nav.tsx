@@ -102,7 +102,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Bot,
     links: [
       { href: "/agents", label: "Agents", icon: Bot },
-      { href: "/manifest", label: "Agent BOM", icon: ClipboardList },
+      { href: "/manifest", label: "AI BOM", icon: ClipboardList },
       { href: "/fleet", label: "Fleet", icon: Users },
     ],
   },

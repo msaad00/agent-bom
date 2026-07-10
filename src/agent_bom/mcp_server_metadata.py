@@ -97,7 +97,11 @@ _SERVER_CARD_TOOLS = [
         "description": "Quick agent and server discovery without vulnerability scanning — shows what's configured, not what's vulnerable",
         "annotations": {"readOnlyHint": True},
     },
-    {"name": "diff", "description": "Compare scan against baseline for new/resolved vulns", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "diff",
+        "description": "Compare scan against baseline; persists scan to history and prunes old reports (destructive write)",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
     {
         "name": "marketplace_check",
         "description": "Pre-install marketplace trust check with registry cross-reference",
@@ -344,8 +348,8 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "access_review",
-        "description": "List or get NHI access-review / recertification campaigns and their status (read-only)",
-        "annotations": {"readOnlyHint": True},
+        "description": "List/get NHI access-review campaigns; recomputes and persists overdue status (idempotent write)",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },
 ]
 
@@ -371,7 +375,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "where": ["READ", "LOCAL_FILE_READ"],
     "tool_risk_assessment": ["READ", "ANALYZE"],
     "inventory": ["READ", "LOCAL_FILE_READ"],
-    "diff": ["READ", "LOCAL_FILE_READ", "ANALYZE"],
+    "diff": ["WRITE", "READ", "LOCAL_FILE_READ", "ANALYZE", "HISTORY"],
     "marketplace_check": ["READ", "REGISTRY"],
     "code_scan": ["READ", "LOCAL_FILE_READ", "SAST"],
     "context_graph": ["READ", "GRAPH", "ANALYZE"],
@@ -414,6 +418,14 @@ _TOOL_CAPABILITY_CLASSES = {
     "ai_inventory_scan": ["READ", "LOCAL_FILE_READ"],
     "license_compliance_scan": ["READ", "LOCAL_FILE_READ", "COMPLIANCE"],
     "ingest_external_scan": ["WRITE", "LOCAL_FILE_READ", "INGEST"],
+    # access_review recomputes and persists campaign status as a side effect of
+    # a read-shaped call → WRITE (idempotent, non-destructive).
+    "access_review": ["WRITE", "READ", "IDENTITY", "GOVERNANCE", "AUDIT"],
+    "nhi_discover": ["READ", "NETWORK", "IDENTITY"],
+    "cloud_inventory": ["READ", "NETWORK", "CLOUD", "INVENTORY"],
+    "credential_expiry": ["READ", "SECURITY", "AUDIT"],
+    "cost_forecast": ["READ", "RUNTIME", "OBSERVABILITY"],
+    "cost_allocation": ["READ", "RUNTIME", "OBSERVABILITY"],
 }
 
 for _tool in _SERVER_CARD_TOOLS:

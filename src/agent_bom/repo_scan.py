@@ -147,6 +147,10 @@ def _clone_env() -> dict[str, str]:
     env["GCM_INTERACTIVE"] = "never"
     # Strip any ambient proxy-side credential helpers from inheriting state.
     env.pop("GIT_CONFIG_PARAMETERS", None)
+    # Strip ambient GIT_CONFIG_* env config so inherited values can neither
+    # collide with nor bypass the ephemeral extraheader injected below.
+    for key in [k for k in env if k.startswith("GIT_CONFIG_")]:
+        env.pop(key, None)
     return env
 
 
@@ -238,13 +242,19 @@ def _clone_into_tempdir(
         ]
         if branch:
             cmd += ["--branch", branch]
-        # Inject the token only as an ephemeral in-process HTTP header so it
-        # never lands in the URL, git config, logs, or process listing of a
-        # child. The value is masked by git in any error output.
+        cmd += [url, temp_dir]
+
+        # Inject the token only as an ephemeral in-process HTTP header. The
+        # secret-bearing value is passed via the git config *environment*
+        # (GIT_CONFIG_COUNT/KEY/VALUE), never on argv — so it cannot be read
+        # from `ps aux` or /proc/<pid>/cmdline of the child. The value is
+        # masked by git in any error output.
+        env = _clone_env()
         if token:
             host = urlsplit(url).hostname or ""
-            cmd += ["-c", f"http.https://{host}/.extraheader=Authorization: Bearer {token}"]
-        cmd += [url, temp_dir]
+            env["GIT_CONFIG_COUNT"] = "1"
+            env["GIT_CONFIG_KEY_0"] = f"http.https://{host}/.extraheader"
+            env["GIT_CONFIG_VALUE_0"] = f"Authorization: Bearer {token}"
 
         try:
             result = subprocess.run(  # noqa: S603 — fixed argv, no shell, runs git only
@@ -252,7 +262,7 @@ def _clone_into_tempdir(
                 capture_output=True,
                 text=True,
                 timeout=REPO_SCAN_CLONE_TIMEOUT_SECONDS,
-                env=_clone_env(),
+                env=env,
                 check=False,
             )
         except FileNotFoundError as exc:

@@ -948,7 +948,7 @@ def test_spdx_has_vulnerability_elements(sample_report):
     from agent_bom.output import to_spdx
 
     data = to_spdx(sample_report)
-    vuln_elements = [e for e in data["elements"] if e.get("type") == "security/Vulnerability"]
+    vuln_elements = [e for e in data["elements"] if e.get("type") == "security_Vulnerability"]
     assert len(vuln_elements) >= 1
     assert vuln_elements[0]["name"] == "CVE-2024-1234"
 

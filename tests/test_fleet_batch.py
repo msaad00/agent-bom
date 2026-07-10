@@ -32,7 +32,7 @@ class TestInMemoryBatchPut:
     def test_single(self):
         store = InMemoryFleetStore()
         assert store.batch_put([_make_agent("a1")]) == 1
-        assert store.get("a1") is not None
+        assert store.get("a1", tenant_id="default") is not None
 
     def test_multiple(self):
         store = InMemoryFleetStore()
@@ -44,7 +44,7 @@ class TestInMemoryBatchPut:
         store = InMemoryFleetStore()
         store.put(_make_agent("a1", name="old"))
         store.batch_put([_make_agent("a1", name="new")])
-        assert store.get("a1").name == "new"
+        assert store.get("a1", tenant_id="default").name == "new"
 
 
 # ── SQLiteFleetStore ────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ class TestSQLiteBatchPut:
     def test_single(self, tmp_path):
         store = SQLiteFleetStore(str(tmp_path / "test.db"))
         assert store.batch_put([_make_agent("a1")]) == 1
-        assert store.get("a1") is not None
+        assert store.get("a1", tenant_id="default") is not None
 
     def test_multiple(self, tmp_path):
         store = SQLiteFleetStore(str(tmp_path / "test.db"))
@@ -70,4 +70,4 @@ class TestSQLiteBatchPut:
         store = SQLiteFleetStore(str(tmp_path / "test.db"))
         store.put(_make_agent("a1", name="old"))
         store.batch_put([_make_agent("a1", name="new")])
-        assert store.get("a1").name == "new"
+        assert store.get("a1", tenant_id="default").name == "new"

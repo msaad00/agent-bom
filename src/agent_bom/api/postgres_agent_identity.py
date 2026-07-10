@@ -121,9 +121,12 @@ class PostgresAgentIdentityStore:
             )
             conn.commit()
 
-    def get(self, identity_id: str) -> AgentIdentity | None:
+    def get(self, identity_id: str, *, tenant_id: str) -> AgentIdentity | None:
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT data FROM agent_identities WHERE identity_id = %s", (identity_id,)).fetchone()
+            row = conn.execute(
+                "SELECT data FROM agent_identities WHERE identity_id = %s AND tenant_id = %s",
+                (identity_id, tenant_id),
+            ).fetchone()
         return AgentIdentity(**json.loads(row[0])) if row else None
 
     def get_by_token_hash(self, token_hash: str) -> AgentIdentity | None:

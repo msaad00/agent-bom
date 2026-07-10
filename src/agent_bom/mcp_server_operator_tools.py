@@ -19,6 +19,7 @@ def register_operator_tools(
     *,
     read_only,
     write_action,
+    write_idempotent,
     execute_tool_async,
     execute_tool_sync_async,
     safe_path,
@@ -71,7 +72,7 @@ def register_operator_tools(
 
     # ── Tool 13: diff ─────────────────────────────────────────────
 
-    @mcp.tool(annotations=read_only, title="Vulnerability Diff")
+    @mcp.tool(annotations=write_action, title="Vulnerability Diff")
     async def diff(
         baseline: Annotated[
             dict | None, Field(description="Baseline report JSON object. If omitted, uses the latest saved report from history.")
@@ -82,6 +83,9 @@ def register_operator_tools(
         Runs a new scan, then diffs it against the provided baseline (or the
         latest saved report). Shows new vulnerabilities, resolved ones, and
         changes in the package inventory.
+
+        Not read-only: this persists the fresh scan to report history and may
+        prune older saved reports, so it is annotated as a (destructive) write.
 
         Returns:
             JSON with new findings, resolved findings, new/removed packages,
@@ -1130,7 +1134,7 @@ def register_operator_tools(
             _truncate_response=truncate_response,
         )
 
-    @mcp.tool(annotations=read_only, title="Access Review")
+    @mcp.tool(annotations=write_idempotent, title="Access Review")
     async def access_review(
         campaign_id: Annotated[
             str,
@@ -1147,10 +1151,11 @@ def register_operator_tools(
     ) -> str:
         """List or get NHI access-review / recertification campaigns and their status.
 
-        Read-only: pass ``campaign_id`` to fetch one campaign with its review
-        items, or omit it to list campaigns (overdue statuses refreshed).
-        Creating a campaign or submitting a reviewer decision is a write action
-        and is intentionally not exposed through this read-only tool.
+        Pass ``campaign_id`` to fetch one campaign with its review items, or omit
+        it to list campaigns. Not read-only: listing/fetching recomputes and
+        persists each campaign's status (to surface overdue), so this is an
+        idempotent write. Creating a campaign or submitting a reviewer decision
+        is a separate write action not exposed through this tool.
         """
         return await execute_tool_async(
             "access_review",

@@ -93,10 +93,10 @@ class FleetStore(Protocol):
     """Protocol for fleet agent persistence."""
 
     def put(self, agent: FleetAgent) -> None: ...
-    def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None: ...
+    def get(self, agent_id: str, *, tenant_id: str) -> FleetAgent | None: ...
     def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None) -> FleetAgent | None: ...
     def get_by_name(self, name: str) -> FleetAgent | None: ...
-    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool: ...
+    def delete(self, agent_id: str, *, tenant_id: str) -> bool: ...
     def list_all(self) -> list[FleetAgent]: ...
     def list_summary(self) -> list[dict[str, Any]]: ...
     def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]: ...
@@ -132,12 +132,12 @@ class InMemoryFleetStore:
         with self._lock:
             self._agents[normalized.agent_id] = normalized
 
-    def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None:
+    def get(self, agent_id: str, *, tenant_id: str) -> FleetAgent | None:
         with self._lock:
             agent = self._agents.get(agent_id)
             if agent is None:
                 return None
-            if tenant_id is not None and agent.tenant_id != tenant_id:
+            if agent.tenant_id != tenant_id:
                 return None
             return agent
 
@@ -158,16 +158,15 @@ class InMemoryFleetStore:
                     return a
             return None
 
-    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, agent_id: str, *, tenant_id: str) -> bool:
         with self._lock:
             agent = self._agents.get(agent_id)
             if agent is None:
                 return False
-            if tenant_id is not None and agent.tenant_id != tenant_id:
+            if agent.tenant_id != tenant_id:
                 return False
             del self._agents[agent_id]
             return True
-            return False
 
     def list_all(self) -> list[FleetAgent]:
         with self._lock:
@@ -349,14 +348,11 @@ class SQLiteFleetStore:
         )
         self._conn.commit()
 
-    def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None:
-        if tenant_id is None:
-            row = self._conn.execute("SELECT data FROM fleet_agents WHERE agent_id = ?", (agent_id,)).fetchone()
-        else:
-            row = self._conn.execute(
-                "SELECT data FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
-                (agent_id, tenant_id),
-            ).fetchone()
+    def get(self, agent_id: str, *, tenant_id: str) -> FleetAgent | None:
+        row = self._conn.execute(
+            "SELECT data FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
+            (agent_id, tenant_id),
+        ).fetchone()
         if row is None:
             return None
         agent: FleetAgent = FleetAgent.model_validate_json(row[0])
@@ -382,14 +378,11 @@ class SQLiteFleetStore:
         agent: FleetAgent = FleetAgent.model_validate_json(row[0])
         return agent
 
-    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool:
-        if tenant_id is None:
-            cursor = self._conn.execute("DELETE FROM fleet_agents WHERE agent_id = ?", (agent_id,))
-        else:
-            cursor = self._conn.execute(
-                "DELETE FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
-                (agent_id, tenant_id),
-            )
+    def delete(self, agent_id: str, *, tenant_id: str) -> bool:
+        cursor = self._conn.execute(
+            "DELETE FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
+            (agent_id, tenant_id),
+        )
         self._conn.commit()
         return cursor.rowcount > 0
 
@@ -466,9 +459,10 @@ class SQLiteFleetStore:
 
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
         now = now_utc_iso()
-        agent = self.get(agent_id)
-        if agent is None:
+        row = self._conn.execute("SELECT data FROM fleet_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+        if row is None:
             return False
+        agent = FleetAgent.model_validate_json(row[0])
         agent.lifecycle_state = state
         agent.updated_at = now
         self.put(agent)

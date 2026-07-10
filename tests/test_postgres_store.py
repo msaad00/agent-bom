@@ -518,7 +518,7 @@ def test_fleet_store_put_get(mock_pool):
         agent.model_dump_json(),
     )
 
-    retrieved = store.get("a-1")
+    retrieved = store.get("a-1", tenant_id="default")
     assert retrieved is not None
     assert retrieved.agent_id == "a-1"
     assert retrieved.name == "test-agent"
@@ -558,7 +558,7 @@ def test_fleet_store_get_nonexistent(mock_pool):
     from agent_bom.api.postgres_store import PostgresFleetStore
 
     store = PostgresFleetStore(pool=mock_pool)
-    assert store.get("nonexistent") is None
+    assert store.get("nonexistent", tenant_id="default") is None
 
 
 def test_fleet_store_get_by_name(mock_pool):
@@ -594,7 +594,7 @@ def test_fleet_store_delete(mock_pool):
 
     store = PostgresFleetStore(pool=mock_pool)
     mock_pool._conn._store.setdefault("fleet_agents", {})["a-1"] = ("a-1",)
-    assert store.delete("a-1") is True
+    assert store.delete("a-1", tenant_id="default") is True
 
 
 def test_fleet_store_list_all(mock_pool):
@@ -1349,14 +1349,14 @@ def test_credential_ref_store_put_get_list_delete(mock_pool):
         credential.model_dump_json(),
     )
 
-    loaded = store.get("cred-1")
+    loaded = store.get("cred-1", tenant_id="tenant-alpha")
     assert loaded is not None
     assert loaded.credential_ref_id == "cred-1"
 
     listed = store.list_all(tenant_id="tenant-alpha")
     assert isinstance(listed, list)
 
-    assert store.delete("cred-1") is True
+    assert store.delete("cred-1", tenant_id="tenant-alpha") is True
 
 
 def test_tenant_context_is_applied_to_postgres_session(mock_pool):

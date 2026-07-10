@@ -18,6 +18,7 @@ Usage from cli.py::
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -31,9 +32,31 @@ from agent_bom.output.finding_views import (
     severity_value,
 )
 
+logger = logging.getLogger(__name__)
+
 # ─── Metric name constants ─────────────────────────────────────────────────
 
 _PREFIX = "agent_bom"
+
+# Each finding emits up to three high-cardinality time series (blast radius,
+# EPSS, CVSS) keyed by vuln_id/package/version. A large report would otherwise
+# explode a Prometheus server's scrape cardinality, so cap the number of
+# per-finding series and expose the truncation as its own metric. Callers can
+# override via ``max_per_finding_series``; ``0`` disables per-finding series
+# entirely (aggregate metrics are always emitted).
+_DEFAULT_MAX_PER_FINDING_SERIES = 500
+
+
+def _cap_findings(findings: list, limit: int) -> tuple[list, int]:
+    """Return the highest-risk ``limit`` findings and the dropped count.
+
+    Findings are ranked by risk score (descending) so the retained per-finding
+    series are the ones an operator most wants on a dashboard.
+    """
+    if limit < 0 or len(findings) <= limit:
+        return findings, 0
+    ranked = sorted(findings, key=lambda f: getattr(f, "risk_score", 0.0) or 0.0, reverse=True)
+    return ranked[:limit], len(findings) - limit
 
 
 def _label(key: str, value: str) -> str:
@@ -58,6 +81,7 @@ def _metric(name: str, value: float | int, *label_pairs: tuple[str, str]) -> str
 def to_prometheus(
     report: AIBOMReport,
     blast_radii: Optional[list[BlastRadius]] = None,
+    max_per_finding_series: int = _DEFAULT_MAX_PER_FINDING_SERIES,
 ) -> str:
     """Convert an AIBOMReport to Prometheus text exposition format.
 
@@ -131,9 +155,26 @@ def to_prometheus(
     lines.append("")
 
     # ── Per-vulnerability blast radius scores ─────────────────────────────
-    if findings:
+    # Cap per-finding series so a large report cannot blow up scrape cardinality.
+    per_finding, dropped = _cap_findings(findings, max_per_finding_series)
+    if dropped:
+        logger.warning(
+            "Prometheus export truncated per-finding series: emitting top %d of %d findings "
+            "(cap=%d) to bound scrape cardinality",
+            len(per_finding),
+            len(findings),
+            max_per_finding_series,
+        )
+        header(
+            "per_finding_series_truncated",
+            "Number of findings whose per-finding series were dropped to bound cardinality",
+        )
+        lines.append(_metric("per_finding_series_truncated", dropped))
+        lines.append("")
+
+    if per_finding:
         header("blast_radius_score", "Blast radius risk score per vulnerability (0-10 scale)")
-        for finding in findings:
+        for finding in per_finding:
             lines.append(
                 _metric(
                     "blast_radius_score",
@@ -150,7 +191,7 @@ def to_prometheus(
         lines.append("")
 
         # ── EPSS scores ───────────────────────────────────────────────────
-        epss_findings = [finding for finding in findings if finding.epss_score is not None]
+        epss_findings = [finding for finding in per_finding if finding.epss_score is not None]
         if epss_findings:
             header("vulnerability_epss_score", "EPSS exploit probability score (0.0-1.0) per vulnerability")
             for finding in epss_findings:
@@ -166,7 +207,7 @@ def to_prometheus(
             lines.append("")
 
         # ── CVSS scores ───────────────────────────────────────────────────
-        cvss_findings = [finding for finding in findings if finding.cvss_score is not None]
+        cvss_findings = [finding for finding in per_finding if finding.cvss_score is not None]
         if cvss_findings:
             header("vulnerability_cvss_score", "CVSS base score (0.0-10.0) per vulnerability")
             for finding in cvss_findings:

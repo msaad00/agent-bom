@@ -35,8 +35,8 @@ def _actor(request: Request) -> str:
 
 
 def _credential_for_request(request: Request, credential_ref_id: str) -> CredentialRefRecord:
-    credential = _get_credential_ref_store().get(credential_ref_id)
     tenant_id = _tenant_id(request)
+    credential = _get_credential_ref_store().get(credential_ref_id, tenant_id=tenant_id)
     if credential is None or credential.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail=f"Credential reference {credential_ref_id} not found")
     return credential
@@ -186,7 +186,7 @@ async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
 @router.delete("/credentials/{credential_ref_id}", tags=["credentials"], status_code=204)
 async def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
     credential = _credential_for_request(request, credential_ref_id)
-    _get_credential_ref_store().delete(credential_ref_id)
+    _get_credential_ref_store().delete(credential_ref_id, tenant_id=credential.tenant_id)
     log_action(
         "credential_ref.delete",
         actor=_actor(request),

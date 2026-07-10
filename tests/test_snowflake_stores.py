@@ -422,7 +422,7 @@ class TestSnowflakeFleetStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.get("missing") is None
+        assert store.get("missing", tenant_id="tenant-alpha") is None
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_get_by_name(self, mock_connect):

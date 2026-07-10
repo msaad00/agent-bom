@@ -990,6 +990,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     def _required_role(self, method: str, path: str) -> str:
         """Determine the minimum role required for a request."""
         method = method.upper()
+        # A HEAD reaches the same handler as GET (it returns the GET headers with
+        # no body), so it must inherit the GET route's required role. Keying on
+        # the literal "HEAD" would miss every GET rule and silently fall through
+        # to the viewer default — letting an anonymous HEAD reach an admin GET
+        # handler when ALLOW_UNAUTHENTICATED_API is on.
+        if method == "HEAD":
+            method = "GET"
         for m, p, role in self._ROLE_RULES:
             if method == m and path.startswith(p):
                 return role
@@ -999,6 +1006,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     def _required_scope(self, method: str, path: str) -> str | None:
         """Determine the optional scope required for a request."""
+        if method.upper() == "HEAD":
+            method = "GET"
         for m, p, scope in self._SCOPE_RULES:
             if method == m and path.startswith(p):
                 return scope

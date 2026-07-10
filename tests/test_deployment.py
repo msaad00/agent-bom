@@ -259,11 +259,16 @@ def test_server_card_tools_expose_capability_classes():
         "identity_grant_jit",
         "identity_revoke_jit",
         "ingest_external_scan",
+        # access_review recomputes+persists campaign status on read; diff persists
+        # the fresh scan to history and prunes old reports.
+        "access_review",
+        "diff",
     }
     # Writes that tear down or invalidate state advertise destructiveHint; issuing
     # an identity or granting access creates state and is non-destructive.
     # ingest_external_scan mutates the control plane (bulk-ingest + reconcile
-    # resolves absent findings), so it is a destructive write.
+    # resolves absent findings), so it is a destructive write. diff prunes old
+    # saved reports, so it is destructive; access_review's upsert is idempotent.
     destructive_writes = {
         "shield_start",
         "shield_unblock",
@@ -271,6 +276,7 @@ def test_server_card_tools_expose_capability_classes():
         "identity_revoke",
         "identity_revoke_jit",
         "ingest_external_scan",
+        "diff",
     }
     card = build_server_card()
     for tool in card["tools"]:
@@ -332,6 +338,8 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     assert "operator_scopes=identity:write" in docs
     write_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
     assert sorted(write_tools) == [
+        "access_review",
+        "diff",
         "identity_grant_jit",
         "identity_issue",
         "identity_revoke",

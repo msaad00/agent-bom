@@ -9,7 +9,14 @@ from agent_bom.api.audit_log import AuditEntry, _AuditChainCheckpoint, _verify_a
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.baseline import TrendPoint
 
-from .postgres_common import ConnectionPool, _current_tenant, _ensure_tenant_rls, _get_pool, _tenant_connection
+from .postgres_common import (
+    ConnectionPool,
+    _current_tenant,
+    _ensure_tenant_rls,
+    _get_pool,
+    _tenant_connection,
+    bypass_tenant_rls,
+)
 
 
 class PostgresAuditLog:
@@ -59,7 +66,12 @@ class PostgresAuditLog:
         self._hydrate_checkpoints()
 
     def _hydrate_checkpoints(self) -> None:
-        with self._pool.connection() as conn:
+        # Enumerating DISTINCT team_id spans every tenant, which FORCE ROW LEVEL
+        # SECURITY on audit_log hides from a normally-scoped connection (a
+        # NOSUPERUSER role would only ever see the 'default' tenant here). This
+        # is a trusted startup rebuild, so bind the RLS bypass session for the
+        # cross-tenant read; audit_chain_checkpoint itself carries no RLS policy.
+        with bypass_tenant_rls(audit=False), _tenant_connection(self._pool) as conn:
             row = conn.execute("SELECT COUNT(*) FROM audit_chain_checkpoint").fetchone()
             if row and int(row[0]) > 0:
                 return
@@ -112,15 +124,26 @@ class PostgresAuditLog:
         )
 
     def _latest_signature_for_tenant(self, tenant_id: str) -> str:
-        with self._pool.connection() as conn:
-            row = conn.execute(
-                "SELECT hmac_signature FROM audit_log WHERE team_id = %s ORDER BY timestamp DESC, entry_id DESC LIMIT 1",
-                (tenant_id,),
-            ).fetchone()
+        # audit_log is under FORCE ROW LEVEL SECURITY, so a raw connection (no
+        # tenant session) resolves abom_current_tenant() to 'default' and returns
+        # zero rows for every other tenant — leaving prev_signature empty and
+        # silently breaking the HMAC chain. Bind the requested tenant on a
+        # tenant-scoped connection so RLS returns that tenant's real chain head.
+        token = _current_tenant.set(tenant_id)
+        try:
+            with _tenant_connection(self._pool) as conn:
+                row = conn.execute(
+                    "SELECT hmac_signature FROM audit_log WHERE team_id = %s ORDER BY timestamp DESC, entry_id DESC LIMIT 1",
+                    (tenant_id,),
+                ).fetchone()
+        finally:
+            _current_tenant.reset(token)
         return row[0] if row else ""
 
     def _hydrate_last_signatures(self) -> None:
-        with self._pool.connection() as conn:
+        # Cross-tenant enumeration hidden by FORCE ROW LEVEL SECURITY; run under a
+        # trusted RLS-bypass session so the per-tenant cache covers every tenant.
+        with bypass_tenant_rls(audit=False), _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 """
                 SELECT DISTINCT ON (team_id) team_id, hmac_signature

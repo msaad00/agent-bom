@@ -431,7 +431,7 @@ class ClickHouseAnalyticsStore:
 
     def _fleet_row(self, snapshot: dict) -> dict[str, Any]:
         return {
-            "measured_at": snapshot.get("last_seen"),
+            "measured_at": _coerce_clickhouse_timestamp(snapshot.get("last_seen")),
             "agent_name": snapshot.get("agent_name", ""),
             "agent_type": snapshot.get("agent_type", ""),
             "lifecycle_state": snapshot.get("lifecycle_state", ""),
@@ -460,7 +460,7 @@ class ClickHouseAnalyticsStore:
         framework = control.get("framework", "")
         control_id = control.get("control_id", "")
         return {
-            "measured_at": control.get("measured_at"),
+            "measured_at": _coerce_clickhouse_timestamp(control.get("measured_at")),
             "scan_id": scan_id,
             "tenant_id": resolved_tenant,
             "control_key": _deterministic_row_key("control", resolved_tenant, scan_id, framework, control_id),

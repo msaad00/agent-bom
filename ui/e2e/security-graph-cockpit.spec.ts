@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 // Non-empty fixture with one critical agent->vulnerability exposure path so the
-// investigation cockpit renders its command center, metrics, and evidence drawer.
+// security graph page renders the exposure command center, metrics, and evidence panel.
 const scanId = "scan-cockpit-fixture";
 const createdAt = "2026-05-27T16:00:00Z";
 
@@ -246,11 +246,10 @@ async function routeCockpit(page: Page) {
 
 async function expectCockpitVisible(page: Page) {
   await expect(page.getByRole("heading", { name: "Security graph" })).toBeVisible();
-  await expect(page.getByText("Fix-first investigation")).toBeVisible();
-  await expect(page.getByText("Command center", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "claude-desktop -> form-data@4.0.0 -> CVE-2025-7783" })).toBeVisible();
+  await expect(page.getByText("Evidence", { exact: true })).toBeVisible();
   await expect(page.getByText("Risk", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Hops", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Relationship proof & evidence drawer", { exact: true })).toBeVisible();
 }
 
 for (const theme of ["dark", "light"] as const) {

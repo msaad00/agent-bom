@@ -17,9 +17,9 @@ social cards, CLI splash.
 - **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
   dark `#34d399 → #06b6d4` / `#22d3ee`. Ink `#1f2937` (light) / `#e6edf3` (dark);
   muted `#6b7280` / `#8b949e`.
-- **Mark:** suited agent + BOM clipboard — a professional agent figure beside a
-  materials checklist (finding highlight). Reads as agent-bom: inventory for
-  humans and headless agents. A/B leftovers live in `docs/images/brand/variants/`.
+- **Mark:** `a·b` lettermark — lowercase a, gradient interpunct, gradient b, with a
+  thin BOM bar cue underneath. Matches the wordmark interpunct and reads at favicon size.
+
 
 Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or
 network refs, light + dark pairs):

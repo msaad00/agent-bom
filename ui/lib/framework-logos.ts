@@ -27,8 +27,8 @@ export type FrameworkLogoMeta = {
   badgeClass: string;
 };
 
-/** Bump when framework SVGs change so CSS masks / browsers drop stale caches. */
-const LOGO_ASSET_REV = "v2";
+/** Bump when framework SVGs change so browsers drop stale caches. */
+const LOGO_ASSET_REV = "v3";
 
 const LOGO_PATH: Partial<Record<FrameworkLogoId, string>> = {
   "owasp-llm": `/logos/frameworks/owasp.svg?${LOGO_ASSET_REV}`,
@@ -39,6 +39,9 @@ const LOGO_PATH: Partial<Record<FrameworkLogoId, string>> = {
   "nist-csf": `/logos/frameworks/nist.svg?${LOGO_ASSET_REV}`,
   iso27001: `/logos/frameworks/iso.svg?${LOGO_ASSET_REV}`,
   cis: `/logos/frameworks/cis.svg?${LOGO_ASSET_REV}`,
+  "eu-ai-act": `/logos/frameworks/eu-ai-act.svg?${LOGO_ASSET_REV}`,
+  soc2: `/logos/frameworks/soc2.svg?${LOGO_ASSET_REV}`,
+  cmmc: `/logos/frameworks/cmmc.svg?${LOGO_ASSET_REV}`,
 };
 
 /** Theme-token badges — readable on both light and dark (no dark-only pastels). */

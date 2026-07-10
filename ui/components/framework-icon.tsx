@@ -11,11 +11,10 @@ type FrameworkIconProps = {
 };
 
 /**
- * Small framework mark. Vendored SVGs use `currentColor`, which does not
- * inherit through `<img>` — paint them via CSS mask so they follow theme
- * foreground. Monogram badges use theme tokens (not dark-only pastels).
+ * Framework brand tile — full-color vendored marks (console-style), with
+ * monogram fallback when no asset ships or the image fails to load.
  */
-export function FrameworkIcon({ frameworkId, size = 20, className = "" }: FrameworkIconProps) {
+export function FrameworkIcon({ frameworkId, size = 24, className = "" }: FrameworkIconProps) {
   const meta = frameworkLogoMeta(frameworkId);
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -25,33 +24,15 @@ export function FrameworkIcon({ frameworkId, size = 20, className = "" }: Framew
 
   if (meta.src && !imageFailed) {
     return (
-      <span
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={meta.src}
+        alt=""
         aria-hidden="true"
-        className={`relative inline-block shrink-0 ${className}`}
+        className={`shrink-0 rounded-md object-contain shadow-sm ring-1 ring-[color:var(--border-subtle)] ${className}`}
         style={dimension}
-      >
-        {/* Hidden probe — if the asset 404s, fall back to monogram. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={meta.src}
-          alt=""
-          className="pointer-events-none absolute h-0 w-0 opacity-0"
-          onError={() => setImageFailed(true)}
-        />
-        <span
-          className="block h-full w-full bg-[color:var(--foreground)] opacity-80"
-          style={{
-            WebkitMaskImage: `url(${meta.src})`,
-            maskImage: `url(${meta.src})`,
-            WebkitMaskSize: "contain",
-            maskSize: "contain",
-            WebkitMaskRepeat: "no-repeat",
-            maskRepeat: "no-repeat",
-            WebkitMaskPosition: "center",
-            maskPosition: "center",
-          }}
-        />
-      </span>
+        onError={() => setImageFailed(true)}
+      />
     );
   }
 

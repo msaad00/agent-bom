@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" role="img" aria-label="ISO">
-  <!-- ISO = certified document with seal -->
-  <rect x="5" y="3.5" width="14" height="17" rx="2" stroke="currentColor" stroke-width="1.5" fill="currentColor" fill-opacity="0.06"/>
-  <path d="M8 8h8M8 11.5h8M8 15h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-  <circle cx="15.5" cy="16.5" r="2.4" stroke="currentColor" stroke-width="1.4" fill="currentColor" fill-opacity="0.15"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="ISO">
+  <rect width="32" height="32" rx="7" fill="#E30613"/>
+  <circle cx="16" cy="15" r="9" fill="#FFFFFF"/>
+  <text x="16" y="18.2" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="9" font-weight="800" fill="#E30613" letter-spacing="0.04em">ISO</text>
+  <text x="16" y="28.5" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="4.5" font-weight="600" fill="#FFD0D3" letter-spacing="0.06em">27001</text>
 </svg>

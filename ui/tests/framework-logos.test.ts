@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import { frameworkLogoMeta, normalizeFrameworkLogoId } from "@/lib/framework-logos";
 
 describe("frameworkLogoMeta", () => {
-  it("resolves canonical framework ids", () => {
+  it("resolves canonical framework ids to distinct color tiles", () => {
     expect(frameworkLogoMeta("owasp-llm")?.src).toContain("/logos/frameworks/owasp.svg");
     expect(frameworkLogoMeta("atlas")?.src).toContain("mitre-atlas.svg");
     expect(frameworkLogoMeta("nist-ai-rmf")?.src).toContain("nist.svg");
+    expect(frameworkLogoMeta("eu-ai-act")?.src).toContain("eu-ai-act.svg");
+    expect(frameworkLogoMeta("soc2")?.src).toContain("soc2.svg");
+    expect(frameworkLogoMeta("cmmc")?.src).toContain("cmmc.svg");
     expect(frameworkLogoMeta("atlas")?.src).not.toEqual(frameworkLogoMeta("nist-ai-rmf")?.src);
     expect(frameworkLogoMeta("nist-csf")?.monogram).toBe("CS");
   });
@@ -16,9 +19,9 @@ describe("frameworkLogoMeta", () => {
     expect(normalizeFrameworkLogoId("MITRE ATLAS")).toBe("atlas");
   });
 
-  it("uses monogram-only metadata for frameworks without shipped marks", () => {
+  it("keeps monogram metadata as image-load fallback", () => {
     const meta = frameworkLogoMeta("soc2");
-    expect(meta?.src).toBeNull();
     expect(meta?.monogram).toBe("S2");
+    expect(meta?.src).toContain("soc2.svg");
   });
 });

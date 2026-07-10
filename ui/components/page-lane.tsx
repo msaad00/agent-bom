@@ -67,7 +67,7 @@ export function CatalogBanner() {
     <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100/90">
       <span className="font-medium text-amber-50">Reference catalog only.</span>{" "}
       Capability risk scores what an MCP server can do (filesystem, SQL, cloud APIs) — not CVE patch status or your live inventory.
-      Use <span className="font-medium text-amber-50">Agent BOM</span> and <span className="font-medium text-amber-50">Findings</span> for tenant inventory and vulnerabilities.
+      Use <span className="font-medium text-amber-50">agent-bom</span> and <span className="font-medium text-amber-50">Findings</span> for tenant inventory and vulnerabilities.
     </div>
   );
 }

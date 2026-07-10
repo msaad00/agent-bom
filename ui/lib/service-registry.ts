@@ -17,7 +17,7 @@ export const SERVICE_META: Record<
   local_agents: {
     label: "Local agents",
     unlockHref: "/manifest",
-    unlockLabel: "Generate Agent BOM",
+    unlockLabel: "Open AI BOM",
   },
   fleet: {
     label: "Fleet",

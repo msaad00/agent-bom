@@ -1,8 +1,4 @@
-import {
-  formatExposureEntityDisplay,
-  formatExposureEntityTitle,
-  formatExposurePathSequence,
-} from "@/lib/entity-display";
+import { formatExposureEntityTitle, formatExposurePathSequence } from "@/lib/entity-display";
 
 export type ExposureSeverity = "critical" | "high" | "medium" | "low" | "none" | string;
 

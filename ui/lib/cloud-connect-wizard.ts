@@ -56,14 +56,14 @@ export function cloudProviderMeta(provider: string): CloudProviderMeta | null {
 export function buildTerraformDeployScript(provider: string): string {
   const meta = cloudProviderMeta(provider);
   if (!meta) return "";
-  const module = meta.terraformModule;
+  const terraformModule = meta.terraformModule;
   return [
     `# ${provider} read-only connector for agent-bom`,
-    `terraform -chdir=${module} init`,
-    `terraform -chdir=${module} apply`,
+    `terraform -chdir=${terraformModule} init`,
+    `terraform -chdir=${terraformModule} apply`,
     "",
     "# After apply, read outputs for role/account references:",
-    `terraform -chdir=${module} output`,
+    `terraform -chdir=${terraformModule} output`,
     "",
     `# Enable inventory scans from CLI (optional local smoke):`,
     `export ${meta.inventoryEnv}=1`,

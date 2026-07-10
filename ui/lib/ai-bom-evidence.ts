@@ -1,4 +1,4 @@
-import type { AgentBomManifestNode, AgentBomManifestResponse, PostureCountsResponse } from "@/lib/api";
+import type { AgentBomManifestResponse, PostureCountsResponse } from "@/lib/api";
 import { deploymentModeLabel } from "@/lib/deployment-context";
 
 export type AiBomEvidenceSource = {

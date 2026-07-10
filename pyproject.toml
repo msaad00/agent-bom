@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Environment :: Console",
@@ -31,7 +32,7 @@ classifiers = [
 dependencies = [
     "click>=8.0",
     "rich>=13.0",
-    "httpx>=0.28.1",  # Requires urllib3>=2.6.3 (CVE-2025-66418, CVE-2025-66471, CVE-2026-21441)
+    "httpx>=0.28.1",  # core async HTTP client (CLI, TestClient, registry/OSV fetchers)
     "pydantic>=2.0",
     "cyclonedx-python-lib>=11.6",  # Updated for better CycloneDX 1.6 support
     "packageurl-python>=0.17",
@@ -44,10 +45,11 @@ dependencies = [
     "werkzeug>=3.1.8",  # GHSA-29vq-49wr-vm6x, GHSA-2g68-c3qc-8985, GHSA-87hc-h4r5-73f7, GHSA-f9vj-2wh5-fj8j, GHSA-hgf8-39gv-g3f2, GHSA-hrfv-mqp8-q5rw, GHSA-px8h-6qxv-m22q, GHSA-q34m-jh98-gwm2, GHSA-xg9f-g7g7-2323
     "flask>=3.1.3",  # GHSA-68rp-wp8r-4726, GHSA-m2qf-hxjv-5gpq (Vary: Cookie session exposure; transitive via mlflow)
     "requests>=2.33.0",  # GHSA-9hjg-9r4m-mvj7, GHSA-j8r2-6x86-q33q (session cookie leak)
+    "urllib3>=2.7.0",  # PYSEC-2026-141, PYSEC-2026-142 (fixed 2.7.0) — transitive via requests/botocore
     # NOTE: nltk pin removed — safety (which pulled nltk) was replaced by pip-audit.
     # nltk is not imported by agent-bom. Keeping it added 3 CVEs to Docker images.
-    "pyjwt>=2.12.0",  # CVE-2026-32597 (crit header bypass) — transitive via auth
-    "tornado>=6.5.5",  # CVE-2026-31958 (multipart DoS), GHSA-78cv-mqj4-43f7 (cookie injection) — transitive via streamlit
+    "pyjwt>=2.13.0",  # CVE-2026-32597 (crit header bypass), PYSEC-2026-175..179 — transitive via auth
+    "tornado>=6.5.7",  # CVE-2026-49854, CVE-2026-49853, CVE-2026-49855, GHSA-pw6j-qg29-8w7f — transitive via streamlit
     # NOTE: stale pyopenssl suppressions were retired after snowflake-connector-python moved to a compatible range.
     # Tracked: https://github.com/msaad00/agent-bom/issues/930
     "cryptography>=46.0.7",  # Required by audit chain (aes-cmac-128), proxy response signing, OIDC; top-level `audit` CLI fails without it.
@@ -170,7 +172,7 @@ lake = ["pyarrow>=15.0"]
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 interactive = ["prompt-toolkit>=3.0"]
 oidc = [
-    "PyJWT>=2.8",
+    "PyJWT>=2.13.0",  # PYSEC-2026-175..179
     "cryptography>=46.0.7",  # Buffer overflow advisory on older releases when non-contiguous buffers reach cryptography APIs
 ]
 saml = [

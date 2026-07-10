@@ -933,7 +933,12 @@ def _run_scan_sync(job: ScanJob) -> None:
                 pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
 
         if not agents:
-            if skill_audit_data is not None or iac_findings_data is not None or repo_ai_inventory_data is not None or repo_sast_data is not None:
+            if (
+                skill_audit_data is not None
+                or iac_findings_data is not None
+                or repo_ai_inventory_data is not None
+                or repo_sast_data is not None
+            ):
                 pipeline.skip_step("extraction", "No agents to extract")
                 pipeline.skip_step("scanning", "No packages to scan")
                 pipeline.skip_step("enrichment", "Skipped")

@@ -1958,6 +1958,12 @@ components:
           default: false
           title: Offline
           type: boolean
+        repo_url:
+          anyOf:
+          - maxLength: 2048
+            type: string
+          - type: 'null'
+          title: Repo Url
         sbom:
           anyOf:
           - maxLength: 4096

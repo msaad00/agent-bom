@@ -2527,6 +2527,16 @@ export interface ProxyAlert {
   tool_name: string;
   message: string;
   details?: Record<string, unknown> | undefined;
+  event_id?: string | undefined;
+  agent_name?: string | undefined;
+  event_type?: string | undefined;
+  decision?: string | undefined;
+  effective_decision?: string | undefined;
+  reason_code?: string | undefined;
+  source_id?: string | undefined;
+  session_id?: string | undefined;
+  request_id?: string | undefined;
+  trace_id?: string | undefined;
 }
 
 export interface ProxyAlertsResponse {

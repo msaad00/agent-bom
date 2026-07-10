@@ -40,6 +40,10 @@ describe("graphRollupEligible", () => {
     expect(graphRollupEligible(base)).toBe(true);
   });
 
+  it("skips roll-up when ranked attack paths are available", () => {
+    expect(graphRollupEligible({ ...base, attackPathCount: 3 })).toBe(false);
+  });
+
   it("respects explicit opt-out and competing overlays", () => {
     expect(
       graphRollupEligible({ ...base, rollupPreference: "off" }),

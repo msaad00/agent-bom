@@ -1,5 +1,10 @@
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 
+import {
+  formatInventoryAgentLabel,
+  topologyAgentTypeLabel,
+} from "@/lib/agent-topology-graph";
+
 import type {
   LineageNodeData,
   LineageNodeType,
@@ -11,6 +16,7 @@ import {
   reachStrokeColor,
 } from "@/lib/effective-reach";
 import { relationshipLegendItem, type LegendItem } from "@/lib/graph-utils";
+import { displayContextDescription } from "@/lib/context-graph";
 import {
   EntityType,
   type UnifiedEdge,
@@ -371,10 +377,11 @@ function deriveVisibleNodeIds(
       )
       .map((node) => node.id);
     if (seeds.length > 0) {
-      const agentDepth =
-        filters.vulnOnly || filters.severity
-          ? Math.max(filters.maxDepth, 3)
-          : Math.max(filters.maxDepth, 2);
+      // A common agent → server → package → finding chain is three
+      // edges long. Preserve both endpoints in the focused view so the graph
+      // never presents an apparently safe dependency path with its finding
+      // clipped just beyond the default window.
+      const agentDepth = Math.max(filters.maxDepth, 3);
       visible = intersectSets(
         visible,
         collectNeighborhood(seeds, undirected, agentDepth),
@@ -441,8 +448,12 @@ function toLineageData(
   nodeById: Map<string, UnifiedNode>,
 ): LineageNodeData {
   const attributes = node.attributes ?? {};
+  const agentType = stringAttr(node, "agent_type");
   const data: LineageNodeData = {
-    label: node.label,
+    label:
+      nodeType === "agent"
+        ? formatInventoryAgentLabel(node.label)
+        : node.label,
     nodeType,
     entityType: String(node.entity_type),
     status: String(node.status ?? ""),
@@ -469,7 +480,10 @@ function toLineageData(
       );
       break;
     case "agent":
-      data.agentType = stringAttr(node, "agent_type");
+      data.agentType = agentType || stringAttr(node, "agent_type");
+      if (data.agentType) {
+        data.description = topologyAgentTypeLabel(data.agentType);
+      }
       data.agentStatus = stringAttr(node, "status");
       data.serverCount = countOutgoing(
         node.id,
@@ -626,7 +640,7 @@ function toLineageData(
         stringAttr(node, "description");
       break;
     case "tool":
-      data.description = stringAttr(node, "description");
+      data.description = displayContextDescription(stringAttr(node, "description"));
       break;
     case "model":
       data.description =

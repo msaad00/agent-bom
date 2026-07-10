@@ -3,6 +3,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 let mockedPathname = '/'
 
+const authStateMock = vi.hoisted(() => ({
+  session: null as {
+    authenticated: boolean
+    auth_required: boolean
+    tenant_id: string
+    subject: string | null
+    role: string | null
+    role_summary: { display_name: string; capabilities: string[] } | null
+  } | null,
+  loading: true,
+  error: null as string | null,
+  refresh: vi.fn(),
+  hasCapability: vi.fn(() => false),
+}))
+
 // Mock next/link so it renders a plain anchor
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode; [key: string]: unknown }) => (
@@ -13,6 +28,20 @@ vi.mock('next/link', () => ({
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
   usePathname: () => mockedPathname,
+}))
+
+vi.mock('@/components/auth-provider', () => ({
+  useAuthState: () => ({
+    session: authStateMock.session,
+    loading: authStateMock.loading,
+    error: authStateMock.error,
+    refresh: authStateMock.refresh,
+    hasCapability: authStateMock.hasCapability,
+  }),
+}))
+
+vi.mock('@/hooks/use-demo-mode', () => ({
+  useDemoMode: () => ({ isDemoMode: false, loading: false }),
 }))
 
 // Mock the API so the component doesn't make real network calls
@@ -56,6 +85,12 @@ describe('Nav', () => {
   beforeEach(() => {
     mockedPathname = '/'
     window.history.replaceState({}, '', '/')
+    authStateMock.session = null
+    authStateMock.loading = true
+    authStateMock.error = null
+    authStateMock.refresh.mockReset()
+    authStateMock.hasCapability.mockReset()
+    authStateMock.hasCapability.mockReturnValue(false)
     vi.clearAllMocks()
   })
 
@@ -382,6 +417,50 @@ describe('Nav', () => {
     })
 
     expect(screen.getAllByRole('link', { name: /^traces$/i }).some((link) => link.getAttribute('href') === '/traces')).toBe(true)
+  })
+
+  it('shows a single sign-in hint in the expanded session footer without duplicate copy', () => {
+    authStateMock.loading = false
+    authStateMock.session = {
+      authenticated: false,
+      auth_required: true,
+      tenant_id: 'default',
+      subject: null,
+      role: null,
+      role_summary: null,
+    }
+
+    renderExpandedNav()
+
+    expect(screen.getByText('Sign-in required')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Sign-in required for protected control-plane actions'),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Sign-in required'))
+    expect(
+      screen.queryByText('Sign-in required for protected control-plane actions'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('surfaces signed-in identity when the session footer is expanded', () => {
+    authStateMock.loading = false
+    authStateMock.session = {
+      authenticated: true,
+      auth_required: true,
+      tenant_id: 'tenant-acme',
+      subject: 'security@acme.example',
+      role: 'analyst',
+      role_summary: { display_name: 'Security analyst', capabilities: ['inventory.read'] },
+    }
+
+    renderExpandedNav()
+
+    expect(screen.getByText(/Signed in · security@acme\.example/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText(/Signed in · security@acme\.example/))
+    expect(screen.getByText('Signed in')).toBeInTheDocument()
+    expect(screen.getByText('security@acme.example')).toBeInTheDocument()
+    expect(screen.getByText(/Security analyst · tenant tenant-acme/)).toBeInTheDocument()
   })
 
   it('keeps CI-only scans from masquerading as workstation deployment context', async () => {

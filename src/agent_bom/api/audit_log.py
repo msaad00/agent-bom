@@ -230,6 +230,8 @@ class AuditEntry:
             f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|"
             f"{self.action}|{self.actor}|{self.resource}|{self._canonical_details_json()}"
         )
+        # lgtm[py/weak-sensitive-data-hashing] HMAC-SHA256 authenticates an
+        # already-sanitized audit record; it does not derive or store passwords.
         return hmac.new(_HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
 
     def sign(self) -> None:

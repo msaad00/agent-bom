@@ -23,12 +23,14 @@ export function PageLaneHeader({
   subtitle,
   actions,
   banner,
+  scopeChip,
 }: {
   lane: PageLane;
   title: string;
   subtitle?: string;
   actions?: ReactNode;
   banner?: ReactNode;
+  scopeChip?: ReactNode;
 }) {
   const meta = PAGE_LANE_META[lane];
   return (
@@ -42,7 +44,7 @@ export function PageLaneHeader({
             >
               {meta.label}
             </p>
-            <PageScopeChip lane={lane} />
+            {scopeChip ?? <PageScopeChip lane={lane} />}
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
             {title}

@@ -102,7 +102,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Bot,
     links: [
       { href: "/agents", label: "Agents", icon: Bot },
-      { href: "/manifest", label: "Agent BOM", icon: ClipboardList },
+      { href: "/manifest", label: "AI BOM", icon: ClipboardList },
       { href: "/fleet", label: "Fleet", icon: Users },
     ],
   },
@@ -110,7 +110,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Cloud & Data",
     icon: Cloud,
     links: [
-      { href: "/connections", label: "Cloud Accounts", icon: Cloud, capability: "scan.run" },
+      { href: "/connections", label: "Cloud Accounts", icon: Cloud, capability: "inventory.read" },
       { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
       { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
       { href: "/identity", label: "Identity", icon: Fingerprint },

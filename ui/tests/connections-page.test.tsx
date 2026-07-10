@@ -163,6 +163,33 @@ describe("ConnectionsPage", () => {
     expect(document.querySelector(`input[value="${SECRET}"]`)).toBeNull();
   });
 
+  it("generates an AWS external ID in the wizard and pre-fills the secret field", async () => {
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("No cloud accounts connected"),
+      ).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate external ID" }),
+    );
+
+    const generated = screen.getByText(/^[a-f0-9]{32}$/);
+    expect(generated).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+
+    const secretInput = screen.getByPlaceholderText(
+      "••••••••••••",
+    ) as HTMLInputElement;
+    expect(secretInput.value).toBe(generated.textContent);
+  });
+
   it("maps provider-specific GCP fields to role_ref / external_id / auth_params", async () => {
     apiMock.createCloudConnection.mockResolvedValue({
       ...CREATED_RECORD,

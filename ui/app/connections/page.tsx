@@ -22,12 +22,7 @@ import {
   GitGraph,
   ListChecks,
   ClipboardList,
-  Eye,
-  EyeOff,
-  Server,
-  ShieldAlert,
-  ScrollText,
-  Building2,
+  Copy,
   Plug,
   Terminal,
   MapPin,
@@ -45,9 +40,17 @@ import { ErrorBanner } from "@/components/empty-state";
 import { PageEmptyState } from "@/components/states/page-state";
 import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
 import { Card, Section } from "@/components/card";
+import { PageLaneHeader } from "@/components/page-lane";
 import { Collapsible } from "@/components/collapsible";
 import { StatCard } from "@/components/stat-card";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { deploymentModeLabel } from "@/lib/deployment-context";
+import {
+  buildTerraformDeployScript,
+  cloudProviderMeta,
+  copyTextToClipboard,
+  generateConnectionExternalId,
+} from "@/lib/cloud-connect-wizard";
 import { serviceEntry } from "@/lib/service-registry";
 import { RUN_SCAN_ACTION } from "@/lib/empty-state-actions";
 import { vendorLogo } from "@/lib/vendor-logos";
@@ -371,51 +374,6 @@ function ReadinessBadge({ readiness }: { readiness: ProviderReadiness }) {
   );
 }
 
-// ── Capability / security posture (each backed by a real model fact) ───────────
-
-const SECURITY_FACTS: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  detail: string;
-}[] = [
-  {
-    icon: Eye,
-    title: "Read-only",
-    detail:
-      "The broker assumes a read-only role/identity (SecurityAudit · Reader · roles/viewer) and runs inventory + CIS with no mutating API calls.",
-  },
-  {
-    icon: EyeOff,
-    title: "No secret values",
-    detail:
-      "The one secret per connection is Fernet-encrypted at rest and never returned — responses expose only has_external_id.",
-  },
-  {
-    icon: Server,
-    title: "Your control plane",
-    detail:
-      "Scans run from your self-hosted control plane against a short-lived brokered credential; no long-lived customer key is retained.",
-  },
-  {
-    icon: ShieldAlert,
-    title: "Fail-closed",
-    detail:
-      "Create refuses with 503 when AGENT_BOM_CONNECTIONS_KEY is unset rather than storing a plaintext secret.",
-  },
-  {
-    icon: ScrollText,
-    title: "Signed audit",
-    detail:
-      "Every create / scan / delete writes a tamper-evident entry to the hash-chained audit log.",
-  },
-  {
-    icon: Building2,
-    title: "Tenant isolation",
-    detail:
-      "Each endpoint enforces tenant scoping + the scan RBAC permission (OIDC/SAML/SCIM-backed roles); reads and deletes never cross tenants.",
-  },
-];
-
 export default function ConnectionsPage() {
   const { hasCapability, session } = useAuthState();
   const { counts } = useDeploymentContext();
@@ -583,35 +541,20 @@ export default function ConnectionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] p-6 shadow-2xl shadow-black/10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-400">
-              Connect &amp; deploy
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-              Connectors
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-              Connect a customer cloud account (AWS, Azure, GCP, or Snowflake)
-              in read-only mode, then launch inventory and CIS discovery against
-              a short-lived brokered credential. The connection secret is
-              encrypted at rest and is never returned to the browser.
-            </p>
-            <div className="mt-3">
-              <ServiceStateChip
-                serviceId="cloud_accounts"
-                entry={cloudService}
-                registry={counts?.services}
-                showUnlock={false}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
+      <PageLaneHeader
+        lane="cloud-data"
+        title="Cloud accounts"
+        subtitle="Connect AWS, Azure, GCP, or Snowflake with read-only roles, then launch inventory, CIS, and AI-estate scans from your control plane. Secrets are encrypted at rest and never returned to the browser."
+        scopeChip={
+          <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-200">
+            {deploymentModeLabel(counts?.deployment_mode)} · brokered read-only
+          </span>
+        }
+        actions={
+          <>
             <button
               onClick={() => void refresh()}
-              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-2 text-sm text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
             >
               <RefreshCcw className="h-4 w-4" />
               Refresh
@@ -624,33 +567,33 @@ export default function ConnectionsPage() {
               <Plus className="h-4 w-4" />
               Add cloud account
             </button>
+          </>
+        }
+        banner={
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Connections" value={loading ? "…" : connections.length} />
+            <StatCard label="Active" value={loading ? "…" : activeCount} accent="info" />
+            <StatCard label="Providers" value={PROVIDER_OPTIONS.length} />
+            <StatCard label="Secret storage" value="Encrypted" accent="info" />
           </div>
-        </div>
+        }
+      />
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="Connections"
-            value={loading ? "…" : connections.length}
-          />
-          <StatCard
-            label="Active"
-            value={loading ? "…" : activeCount}
-            accent="info"
-          />
-          <StatCard label="Providers" value="4" />
-          <StatCard label="Secret storage" value="Encrypted" />
-        </div>
+      {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
+      {!canManage ? (
+        <p className="text-sm text-amber-300">
+          Your role can review connections but cannot create, scan, or delete them.
+        </p>
+      ) : null}
 
-        {message ? (
-          <p className="mt-4 text-sm text-emerald-400">{message}</p>
-        ) : null}
-        {!canManage ? (
-          <p className="mt-3 text-sm text-amber-300">
-            Your role can review connections but cannot create, scan, or delete
-            them.
-          </p>
-        ) : null}
-      </section>
+      <div className="flex flex-wrap items-center gap-2">
+        <ServiceStateChip
+          serviceId="cloud_accounts"
+          entry={cloudService}
+          registry={counts?.services}
+          showUnlock={false}
+        />
+      </div>
 
       <ServiceStateBanner
         serviceId="cloud_accounts"
@@ -661,7 +604,7 @@ export default function ConnectionsPage() {
       {/* Connect & deploy — provider connector catalog */}
       <Section
         label="Connect a provider"
-        description="Pick a read-only connector. Each one assumes a read-only role/identity and runs the same inventory + CIS discovery the platform uses elsewhere."
+        description="Pick a cloud. Each connector ships a Terraform module, CLI onboarding, and a guided wizard for role ARN, external ID, and encrypted secrets."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {PROVIDER_OPTIONS.map((option) => (
@@ -675,32 +618,6 @@ export default function ConnectionsPage() {
           ))}
         </div>
       </Section>
-
-      {/* Security posture — onboarding copy only when no accounts are connected */}
-      {!loading && connections.length === 0 && (
-      <Section
-        label="Security posture"
-        description="What every connection guarantees — each card is enforced by the connection store, broker, and API gate."
-      >
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {SECURITY_FACTS.map(({ icon: Icon, title, detail }) => (
-            <Card key={title} className="flex gap-3">
-              <span className="h-fit rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2">
-                <Icon className="h-4 w-4 text-emerald-400" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-[var(--foreground)]">
-                  {title}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
-                  {detail}
-                </p>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </Section>
-      )}
 
       {/* Connected accounts */}
       <Card flush className="overflow-hidden p-5">
@@ -815,6 +732,34 @@ export default function ConnectionsPage() {
 
 // ── Connector catalog card ────────────────────────────────────────────────────
 
+// ── Copy + connector cards ────────────────────────────────────────────────────
+
+function CopyTextButton({
+  text,
+  label = "Copy",
+}: {
+  text: string;
+  label?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void copyTextToClipboard(text).then((ok) => {
+          if (!ok) return;
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+    >
+      <Copy className="h-3 w-3" />
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
 function ConnectorCard({
   option,
   connectedCount,
@@ -826,6 +771,8 @@ function ConnectorCard({
   canManage: boolean;
   onConnect: () => void;
 }) {
+  const meta = cloudProviderMeta(option.value);
+  const deployScript = buildTerraformDeployScript(option.value);
   const authSummary = [
     option.roleField.label,
     ...option.authFields.map((field) => field.label),
@@ -835,8 +782,8 @@ function ConnectorCard({
     <Card className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
-            <ProviderLogo provider={option.value} className="h-6 w-6" />
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[linear-gradient(145deg,var(--surface-elevated),var(--surface-muted))] shadow-inner shadow-black/20">
+            <ProviderLogo provider={option.value} className="h-7 w-7" />
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-[var(--foreground)]">
@@ -845,10 +792,28 @@ function ConnectorCard({
             <p className="truncate text-[11px] text-[var(--text-secondary)]">
               {option.tagline}
             </p>
+            {meta ? (
+              <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                Read-only · Terraform module
+              </p>
+            ) : null}
           </div>
         </div>
         <ReadinessBadge readiness={option.readiness} />
       </div>
+
+      {meta ? (
+        <div className="flex flex-wrap gap-1.5">
+          {meta.scanSurfaces.map((surface) => (
+            <span
+              key={surface}
+              className="rounded-full border border-purple-500/25 bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-200"
+            >
+              {surface}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <dl className="space-y-2 text-[11px]">
         <CardFact icon={KeyRound} term="Permissions" detail={option.permissions} />
@@ -868,7 +833,7 @@ function ConnectorCard({
       ) : null}
 
       <Collapsible
-        title="Setup steps & CLI"
+        title="Setup steps & deploy script"
         icon={Terminal}
         defaultOpen={false}
         className="bg-[color:var(--surface-elevated)]/40"
@@ -878,6 +843,29 @@ function ConnectorCard({
             <li key={stepText}>{stepText}</li>
           ))}
         </ol>
+        {meta?.deployNotes.length ? (
+          <ul className="mt-2 space-y-1 text-[11px] text-emerald-300/90">
+            {meta.deployNotes.map((note) => (
+              <li key={note} className="flex items-start gap-1.5">
+                <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
+                {note}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+              Terraform deploy
+            </p>
+            {deployScript ? (
+              <CopyTextButton text={deployScript} label="Copy script" />
+            ) : null}
+          </div>
+          <pre className="max-h-36 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]">
+            {deployScript || option.cli}
+          </pre>
+        </div>
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
           <Terminal className="h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
           <code className="overflow-x-auto whitespace-nowrap font-mono text-[11px] text-[var(--foreground)]">
@@ -1288,6 +1276,7 @@ function AddConnectionWizard({
   );
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [generatedExternalId, setGeneratedExternalId] = useState("");
 
   const provider = useMemo(
     () => providerOption(form.provider) ?? PROVIDER_OPTIONS[0]!,
@@ -1309,6 +1298,7 @@ function AddConnectionWizard({
     setForm((current) => {
       // Re-selecting the already-active provider must not wipe entered fields.
       if (current.provider === value) return current;
+      setGeneratedExternalId("");
       // Reset provider-specific fields so a previous provider's params don't leak.
       return {
         ...current,
@@ -1320,6 +1310,24 @@ function AddConnectionWizard({
       };
     });
   }
+
+  function goNext() {
+    if (step === 1 && generatedExternalId && !form.external_id.trim()) {
+      update("external_id", generatedExternalId);
+    }
+    setStep((current) => (current + 1) as 0 | 1 | 2);
+  }
+
+  function handleGenerateExternalId() {
+    const value = generateConnectionExternalId();
+    setGeneratedExternalId(value);
+    if (step === 2 || !form.external_id.trim()) {
+      update("external_id", value);
+    }
+  }
+
+  const providerMeta = cloudProviderMeta(provider.value);
+  const deployScript = buildTerraformDeployScript(provider.value);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1453,6 +1461,11 @@ function AddConnectionWizard({
                           <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
                             {option.tagline}
                           </span>
+                          {cloudProviderMeta(option.value) ? (
+                            <span className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-purple-300/80">
+                              Read-only broker
+                            </span>
+                          ) : null}
                         </span>
                       </button>
                     );
@@ -1475,6 +1488,56 @@ function AddConnectionWizard({
                       <li key={stepText}>{stepText}</li>
                     ))}
                   </ol>
+                  {providerMeta?.deployNotes.length ? (
+                    <ul className="mt-3 space-y-1 text-emerald-300/90">
+                      {providerMeta.deployNotes.map((note) => (
+                        <li key={note} className="flex items-start gap-1.5">
+                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
+                          {note}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="mt-4 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                        Terraform deploy script
+                      </p>
+                      {deployScript ? (
+                        <CopyTextButton text={deployScript} label="Copy script" />
+                      ) : null}
+                    </div>
+                    <pre className="max-h-40 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]">
+                      {deployScript || provider.cli}
+                    </pre>
+                  </div>
+                  {provider.value === "aws" ? (
+                    <div className="mt-4 rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[11px] font-medium text-emerald-200">
+                          External ID for trust policy
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleGenerateExternalId}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-500"
+                        >
+                          <Fingerprint className="h-3 w-3" />
+                          Generate external ID
+                        </button>
+                      </div>
+                      {generatedExternalId ? (
+                        <p className="mt-2 break-all font-mono text-[11px] text-[var(--foreground)]">
+                          {generatedExternalId}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">
+                          Generate a high-entropy ExternalId before applying Terraform.
+                          It pre-fills the secret field on the next step.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                   <div className="mt-3 flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
                     <Terminal className="h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
                     <code className="overflow-x-auto whitespace-nowrap font-mono text-[11px] text-[var(--foreground)]">
@@ -1532,8 +1595,20 @@ function AddConnectionWizard({
                   </label>
                 ))}
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                    {provider.secretField.label}
+                  <span className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                      {provider.secretField.label}
+                    </span>
+                    {provider.value === "aws" ? (
+                      <button
+                        type="button"
+                        onClick={handleGenerateExternalId}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-200 transition hover:border-emerald-500"
+                      >
+                        <Fingerprint className="h-3 w-3" />
+                        Generate
+                      </button>
+                    ) : null}
                   </span>
                   {provider.secretField.multiline ? (
                     <textarea
@@ -1605,7 +1680,7 @@ function AddConnectionWizard({
               <button
                 key="wizard-next"
                 type="button"
-                onClick={() => setStep((s) => (s + 1) as 0 | 1 | 2)}
+                onClick={goNext}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400"
               >
                 Next <ArrowRight className="h-4 w-4" />

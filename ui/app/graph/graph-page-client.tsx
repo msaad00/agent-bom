@@ -7,7 +7,6 @@ import {
   Background,
   Controls,
   MiniMap,
-  Panel,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -21,7 +20,6 @@ import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
 import {
   GraphEvidenceExportButton,
-  GraphLegend,
   FullscreenButton,
 } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
@@ -676,6 +674,9 @@ function GraphPageInner() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
+  const [attackPathQueue, setAttackPathQueue] = useState<UnifiedGraphResponse | null>(
+    null,
+  );
   const [pageOffset, setPageOffset] = useState(0);
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
   const [loadingGraph, setLoadingGraph] = useState(false);
@@ -924,6 +925,44 @@ function GraphPageInner() {
     investigationMode,
   ]);
 
+  useEffect(() => {
+    if (!selectedScanId) {
+      setAttackPathQueue(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getGraphAttackPaths({ scanId: selectedScanId, limit: 75 })
+      .then((result) => {
+        if (!cancelled) setAttackPathQueue(result);
+      })
+      .catch(() => {
+        if (!cancelled) setAttackPathQueue(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedScanId]);
+
+  const mergedGraphData = useMemo(() => {
+    if (!graphData) return null;
+    if (!attackPathQueue) return graphData;
+    const nodeById = new Map(graphData.nodes.map((node) => [node.id, node]));
+    for (const node of attackPathQueue.nodes) nodeById.set(node.id, node);
+    const edgeById = new Map(graphData.edges.map((edge) => [edge.id, edge]));
+    for (const edge of attackPathQueue.edges) edgeById.set(edge.id, edge);
+    const attack_paths =
+      attackPathQueue.attack_paths.length > 0
+        ? attackPathQueue.attack_paths
+        : graphData.attack_paths;
+    return {
+      ...graphData,
+      nodes: [...nodeById.values()],
+      edges: [...edgeById.values()],
+      attack_paths,
+    };
+  }, [attackPathQueue, graphData]);
+
   const activeSnapshot = useMemo(
     () =>
       snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
@@ -999,19 +1038,19 @@ function GraphPageInner() {
   }, [selectedNodeId, selectedScanId]);
 
   const graphNodeById = useMemo(
-    () => new Map((graphData?.nodes ?? []).map((node) => [node.id, node])),
-    [graphData?.nodes],
+    () => new Map((mergedGraphData?.nodes ?? []).map((node) => [node.id, node])),
+    [mergedGraphData?.nodes],
   );
   const activeScopePreset = graphScopePresetForFilters(filters);
 
   const attackPaths = useMemo(
     () =>
-      [...(graphData?.attack_paths ?? [])].sort(
+      [...(mergedGraphData?.attack_paths ?? [])].sort(
         (left, right) =>
           right.composite_risk - left.composite_risk ||
           right.hops.length - left.hops.length,
       ),
-    [graphData?.attack_paths],
+    [mergedGraphData?.attack_paths],
   );
 
   const effectiveSelectedAttackPathKey =
@@ -1053,6 +1092,7 @@ function GraphPageInner() {
     selectedAttackPath: Boolean(selectedAttackPath),
     reachabilityActive: Boolean(reachabilitySummary),
     blastRadiusActive: Boolean(blastRadius),
+    attackPathCount: attackPaths.length,
   });
 
   const rollupNavigationActive =
@@ -1126,7 +1166,7 @@ function GraphPageInner() {
           null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
       };
     }
-    if (!graphData) {
+    if (!mergedGraphData) {
       return {
         nodes: [],
         edges: [],
@@ -1136,9 +1176,9 @@ function GraphPageInner() {
           null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
       };
     }
-    return buildUnifiedFlowGraph(graphData, filters);
+    return buildUnifiedFlowGraph(mergedGraphData, filters);
   }, [
-    graphData,
+    mergedGraphData,
     filters,
     rollupNavigationActive,
     rollupView,
@@ -1821,8 +1861,8 @@ function GraphPageInner() {
     liveRendererParams?.get("renderer") === "webgl" ||
     liveRendererParams?.get("webgl") === "1";
   const graphRenderer = decideGraphRenderer({
-    nodeCount: sourceNodeCount,
-    edgeCount: graphData?.edges.length ?? displayEdges.length,
+    nodeCount: renderedNodeCount,
+    edgeCount: displayEdges.length,
     captureMode,
     selectedAttackPath: Boolean(selectedAttackPath),
     reachabilityActive: Boolean(reachabilitySummary),
@@ -2091,6 +2131,8 @@ function GraphPageInner() {
     setRollupDismissed(true);
     setRollupStack([]);
     setRollupError(null);
+    setAutoPathDismissed(false);
+    setPageOffset(0);
   }, []);
 
   const navigateRollupBreadcrumb = useCallback((index: number) => {
@@ -2552,11 +2594,19 @@ function GraphPageInner() {
         </div>
 
         <details className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70">
-          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
-            Graph evaluation · score {Math.round(graphEvaluation.score)} ({graphEvaluation.grade})
+          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-zinc-400 [&::-webkit-details-marker]:hidden">
+            Operator details · evaluation, diff, lenses
           </summary>
-          <GraphEvaluationSummary evaluation={graphEvaluation} />
-        </details>
+          <div className="space-y-3 border-t border-zinc-800/80 px-3 py-3">
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                Graph evaluation
+              </p>
+              <p className="mt-1 text-xs text-zinc-300">
+                Score {Math.round(graphEvaluation.score)} ({graphEvaluation.grade})
+              </p>
+              <GraphEvaluationSummary evaluation={graphEvaluation} />
+            </div>
 
         {/* Snapshot diff + how-to-read default-collapsed so the canvas owns the
             viewport. The four redundant SnapshotMetaCards (Snapshot/Topology/
@@ -2566,7 +2616,7 @@ function GraphPageInner() {
             stop them from owning a full screen of vertical space on every
             page-load. */}
         {activeSnapshot && (
-          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
+          <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
             <summary className="flex flex-wrap items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-3">
                 <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
@@ -2650,7 +2700,7 @@ function GraphPageInner() {
         )}
 
         {graphDiff && (
-          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+          <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
             <summary className="cursor-pointer list-none text-xs font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
               Snapshot drift lens · {drift.critical} critical changes
             </summary>
@@ -2681,7 +2731,7 @@ function GraphPageInner() {
           />
         ) : null}
 
-        <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+        <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
           <summary className="cursor-pointer list-none text-xs font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
             Evidence lens · {evidenceCounts.all} nodes
           </summary>
@@ -2699,7 +2749,7 @@ function GraphPageInner() {
           </div>
         </details>
 
-        <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400 group">
+        <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400 group">
           <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
             <span className="font-medium text-zinc-200">
               How to read this graph
@@ -2746,45 +2796,11 @@ function GraphPageInner() {
             </li>
           </ul>
         </details>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <button
-            type="button"
-            onClick={() =>
-              setPageOffset((current) =>
-                Math.max(0, current - filters.pageSize),
-              )
-            }
-            disabled={loadingGraph || pageOffset === 0}
-            className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Previous page
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setPageOffset((current) => current + filters.pageSize)
-            }
-            disabled={loadingGraph || !graphData?.pagination.has_more}
-            className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Next page
-          </button>
-          <span className="text-zinc-500">
-            Page {pageNumber} of {totalPages}
-          </span>
-          {graphData?.pagination.has_more && (
-            <span className="text-amber-400">
-              Large snapshot: narrow the graph or keep paging.
-            </span>
-          )}
-        </div>
+          </div>
+        </details>
 
         {attackPaths.length > 0 && (
-          <details
-            className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3 group"
-            {...(selectedAttackPathKey ? { open: true } : {})}
-          >
+          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3 group">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.24em] text-orange-400">
@@ -2923,8 +2939,29 @@ function GraphPageInner() {
       <div className="flex-1 flex relative min-h-[68vh]">
         <div className="flex-1 relative min-h-[60vh] flex flex-col">
           <div className="mb-2 shrink-0 px-1">
-            <GraphLensSwitcher variant="compact" />
+            <GraphLensSwitcher variant="compact" legendItems={legendItems} />
           </div>
+          {selectedAttackPath && (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
+              <span>
+                Focused attack path · risk{" "}
+                {selectedAttackPath.composite_risk.toFixed(1)} ·{" "}
+                {Math.max(0, selectedAttackPath.hops.length - 1)} hops
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedAttackPathKey(null);
+                    setAutoPathDismissed(true);
+                  }}
+                  className="rounded-lg border border-orange-400/30 bg-orange-950/40 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
+                >
+                  Clear focus
+                </button>
+              </div>
+            </div>
+          )}
           <div className="relative min-h-0 flex-1">
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
@@ -3018,15 +3055,46 @@ function GraphPageInner() {
                   maskColor={MINIMAP_MASK}
                 />
               )}
-              {/* Dock legend on the canvas itself so node-color -> entity-type
-                  is one glance away. */}
-              <Panel position="top-right" className="!m-2">
-                <GraphLegend items={legendItems} />
-              </Panel>
             </ReactFlow>
           )}
 
           {loadingGraph && graphData && <GraphRefreshOverlay />}
+
+          {graphData && graphData.pagination.total > filters.pageSize && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-800/80 px-1 pt-2 text-xs">
+              <button
+                type="button"
+                onClick={() =>
+                  setPageOffset((current) =>
+                    Math.max(0, current - filters.pageSize),
+                  )
+                }
+                disabled={loadingGraph || pageOffset === 0}
+                className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous page
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPageOffset((current) => current + filters.pageSize)
+                }
+                disabled={loadingGraph || !graphData?.pagination.has_more}
+                className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next page
+              </button>
+              <span className="text-zinc-500">
+                Page {pageNumber} of {totalPages} · showing {pageStart}-{pageEnd} of{" "}
+                {graphData.pagination.total} nodes
+              </span>
+              {graphData.pagination.has_more && (
+                <span className="text-amber-400">
+                  Narrow scope or focus an attack path for a readable graph.
+                </span>
+              )}
+            </div>
+          )}
 
           {selectedNode && (
             <LineageDetailPanel
@@ -3318,7 +3386,7 @@ function RollupNavigationPanel({
           <Layers className="mt-0.5 h-4 w-4 text-emerald-300" />
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-300">
-              Estate roll-up
+              Scope roll-up
             </p>
             <p className="mt-1 text-sm font-medium text-emerald-50">
               {active
@@ -3347,7 +3415,7 @@ function RollupNavigationPanel({
           onClick={onDismiss}
           className="rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-2.5 py-1 text-emerald-100 transition hover:border-emerald-300"
         >
-          Show full graph
+          Open node view
         </button>
       </div>
 

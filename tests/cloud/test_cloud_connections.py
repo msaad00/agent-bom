@@ -643,6 +643,25 @@ def test_api_rejects_underprivileged_role() -> None:
     assert resp.status_code == 403
 
 
+def test_api_viewer_can_list_and_get_but_not_mutate() -> None:
+    store = InMemoryConnectionStore()
+    record = _record("tenant-alpha")
+    store.put(record)
+    set_connection_store(store)
+
+    client = TestClient(_app())
+    headers = _proxy_headers(role="viewer", tenant="tenant-alpha")
+
+    assert client.get("/v1/cloud/connections", headers=headers).status_code == 200
+    assert client.get(f"/v1/cloud/connections/{record.id}", headers=headers).status_code == 200
+    assert client.patch(
+        f"/v1/cloud/connections/{record.id}",
+        json={"scan_interval_minutes": 60},
+        headers=headers,
+    ).status_code == 403
+    assert client.delete(f"/v1/cloud/connections/{record.id}", headers=headers).status_code == 403
+
+
 def test_api_create_response_never_contains_secret() -> None:
     client = TestClient(_app())
     resp = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers())

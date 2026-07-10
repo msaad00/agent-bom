@@ -1,7 +1,7 @@
 # Brand mark variants (A/B)
 
 Canonical mark is `../mark-{light,dark}.svg`:
-**human + agent → BOM inventory** (dual audience for operators and headless agents).
+**BOM with agent O** (bill-of-materials wordmark where O is the agent face).
 
 Optional alternatives kept for review:
 

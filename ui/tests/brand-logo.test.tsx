@@ -12,8 +12,8 @@ describe("BrandLogo", () => {
     const { container } = render(<BrandLogo />);
     const images = container.querySelectorAll("img");
     expect(images).toHaveLength(2);
-    expect(images[0]?.getAttribute("src")).toBe("/brand/mark-dark.svg");
-    expect(images[1]?.getAttribute("src")).toBe("/brand/wordmark-dark.svg");
+    expect(images[0]?.getAttribute("src")).toMatch(/^\/brand\/mark-dark\.svg\?/);
+    expect(images[1]?.getAttribute("src")).toMatch(/^\/brand\/wordmark-dark\.svg\?/);
     expect(images[1]).toHaveAttribute("alt", "agent-bom");
   });
 
@@ -21,7 +21,7 @@ describe("BrandLogo", () => {
     const { container } = render(<BrandLogo showWordmark={false} />);
     const images = container.querySelectorAll("img");
     expect(images).toHaveLength(1);
-    expect(images[0]).toHaveAttribute("src", "/brand/mark-dark.svg");
+    expect(images[0]?.getAttribute("src")).toMatch(/^\/brand\/mark-dark\.svg\?/);
   });
 
   it("renders the canonical tagline when requested", () => {

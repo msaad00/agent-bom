@@ -1,4 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="ISO">
+  <!-- Recognition-style ISO globe (not an official trademark lockup). -->
   <rect width="32" height="32" rx="8" fill="#E30613"/>
-  <text x="16" y="21" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" letter-spacing="0.08em">ISO</text>
+  <g fill="none" stroke="#FFFFFF" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="16" cy="16" r="9.2"/>
+    <!-- meridians -->
+    <ellipse cx="16" cy="16" rx="3.4" ry="9.2"/>
+    <ellipse cx="16" cy="16" rx="6.6" ry="9.2"/>
+    <!-- parallels -->
+    <path d="M7.2 12.2c2.4-1.1 5.1-1.7 8.8-1.7s6.4.6 8.8 1.7"/>
+    <path d="M6.8 16h18.4"/>
+    <path d="M7.2 19.8c2.4 1.1 5.1 1.7 8.8 1.7s6.4-.6 8.8-1.7"/>
+  </g>
 </svg>

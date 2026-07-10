@@ -63,7 +63,7 @@ def test_token_stored_only_as_hash(store):
 
 def test_revoke_fails_closed(store):
     identity, raw = issue_identity(store, agent_id="agent-a", tenant_id="t1")
-    revoke_identity(store, identity.identity_id, reason="compromised")
+    revoke_identity(store, identity.identity_id, tenant_id=identity.tenant_id, reason="compromised")
     agent_id, error = verify_token(store, raw)
     assert agent_id == "anonymous" and "revoked" in error
 
@@ -79,11 +79,11 @@ def test_expired_fails_closed(store):
 
 def test_rotate_keeps_old_live_during_overlap_then_new_works(store):
     identity, old_raw = issue_identity(store, agent_id="agent-a", tenant_id="t1")
-    new_identity, new_raw = rotate_identity(store, identity.identity_id, overlap_seconds=3600)
+    new_identity, new_raw = rotate_identity(store, identity.identity_id, tenant_id=identity.tenant_id, overlap_seconds=3600)
     # Both tokens authenticate during the overlap window.
     assert verify_token(store, old_raw) == ("agent-a", None)
     assert verify_token(store, new_raw) == ("agent-a", None)
-    old = store.get(identity.identity_id)
+    old = store.get(identity.identity_id, tenant_id=identity.tenant_id)
     assert old.status == "rotating" and old.rotated_to_id == new_identity.identity_id
 
 
@@ -120,14 +120,14 @@ def test_rotate_preserves_owner_attribution(store):
         owner="alice@example.com",
         owner_type="user",
     )
-    new_identity, _ = rotate_identity(store, identity.identity_id)
+    new_identity, _ = rotate_identity(store, identity.identity_id, tenant_id=identity.tenant_id)
     assert new_identity.owner == "alice@example.com"
     assert new_identity.owner_type == "user"
 
 
 def test_revoke_preserves_owner_attribution(store):
     identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="t1", owner="svc-deployer", owner_type="service")
-    revoked = revoke_identity(store, identity.identity_id, reason="rotation")
+    revoked = revoke_identity(store, identity.identity_id, tenant_id=identity.tenant_id, reason="rotation")
     assert revoked.status == "revoked"
     assert revoked.owner == "svc-deployer" and revoked.owner_type == "service"
 
@@ -156,7 +156,7 @@ def test_resolve_agent_id_honors_lifecycle(store):
     agent_identity.set_local_identity_verifier(lambda tok: verify_token(store, tok))
     try:
         assert agent_identity.resolve_agent_id(raw, {}) == ("agent-a", None)
-        revoke_identity(store, identity.identity_id)
+        revoke_identity(store, identity.identity_id, tenant_id=identity.tenant_id)
         resolved, error = agent_identity.resolve_agent_id(raw, {})
         assert resolved == agent_identity.ANONYMOUS and "revoked" in error
     finally:
@@ -227,10 +227,10 @@ def test_get_unknown_identity_404s(client):
 
 def test_double_rotation_is_rejected(store):
     identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="t1")
-    first = rotate_identity(store, identity.identity_id)
+    first = rotate_identity(store, identity.identity_id, tenant_id=identity.tenant_id)
     assert first is not None
     # The original is now 'rotating'; rotating it again would orphan the chain.
-    assert rotate_identity(store, identity.identity_id) is None
+    assert rotate_identity(store, identity.identity_id, tenant_id=identity.tenant_id) is None
 
 
 def test_jit_grant_is_time_bound_and_revocable(store):
@@ -628,7 +628,7 @@ async def test_mcp_identity_issue_then_grant_and_revoke_jit(store):
     assert issued["mcp_write_policy"]["required_scope"] == "identity:write"
     assert issued["mcp_write_policy"]["actor"] == _AUTHENTICATED_OPERATOR
     identity_id = issued["identity"]["identity_id"]
-    assert store.get(identity_id) is not None
+    assert store.get(identity_id, tenant_id=issued["identity"]["tenant_id"]) is not None
 
     granted = json.loads(
         await identity_grant_jit_impl(

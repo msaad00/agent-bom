@@ -447,7 +447,7 @@ def test_update_state():
     resp = client.put("/v1/fleet/a-1/state", json={"state": "approved"})
     assert resp.status_code == 200
     assert resp.json()["lifecycle_state"] == "approved"
-    assert store.get("a-1").lifecycle_state == FleetLifecycleState.APPROVED
+    assert store.get("a-1", tenant_id="default").lifecycle_state == FleetLifecycleState.APPROVED
 
 
 def test_update_state_invalid():
@@ -474,7 +474,7 @@ def test_update_metadata():
         json={"owner": "alice", "environment": "production", "tags": ["critical"]},
     )
     assert resp.status_code == 200
-    agent = store.get("a-1")
+    agent = store.get("a-1", tenant_id="default")
     assert agent.owner == "alice"
     assert agent.environment == "production"
     assert agent.tags == ["critical"]

@@ -153,7 +153,7 @@ def test_sqlite_list_tenants(sqlite_store):
 def test_sqlite_tenant_preserved_on_update(sqlite_store):
     sqlite_store.put(_make_agent("a1", "agent1", "team-x"))
     sqlite_store.update_state("a1", FleetLifecycleState.APPROVED)
-    agent = sqlite_store.get("a1")
+    agent = sqlite_store.get("a1", tenant_id="team-x")
     assert agent is not None
     assert agent.tenant_id == "team-x"
     assert agent.lifecycle_state == FleetLifecycleState.APPROVED

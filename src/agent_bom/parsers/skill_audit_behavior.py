@@ -69,6 +69,52 @@ _BEHAVIORAL_PATTERNS: list[_BehavioralPattern] = [
         description="Review and remove direct credential/secret file access. Use scoped environment variables instead.",
     ),
     _BehavioralPattern(
+        category="credential_exfiltration",
+        severity="critical",
+        title="Natural-language credential exfiltration",
+        # Prose-level exfiltration: a concrete sensitive credential/secret path
+        # COMBINED (in either order, within a short window) with an action that
+        # sends it to an external URL. Requiring BOTH the path and the
+        # send-to-URL action keeps benign skills that merely mention
+        # "credentials" or cite a docs URL from matching.
+        pattern=re.compile(
+            r"(?:"
+            r"(?:~?/?\.aws/credentials|~?/?\.aws/config|~?/\.ssh/id_[a-z0-9_]+|~?/\.ssh/id_rsa|~?/\.ssh/id_ed25519"
+            r"|~?/\.netrc|~?/\.config/gcloud|~?/\.kube/config|~?/\.docker/config\.json|/etc/shadow"
+            r"|(?<![\w.])\.env(?![\w])|Cookies(?:\.sqlite)?|Login\s+Data)"
+            r"[\s\S]{0,240}?"
+            r"(?:upload|exfiltrat\w*|post(?:ing|ed)?|send(?:ing)?|curl|wget|fetch(?:ing)?|transmit\w*|push(?:ing)?|leak)"
+            r"[\s\S]{0,120}?https?://"
+            r"|"
+            r"(?:upload|exfiltrat\w*|post(?:ing|ed)?|send(?:ing)?|curl|wget|fetch(?:ing)?|transmit\w*|leak)"
+            r"[\s\S]{0,120}?https?://[\s\S]{0,240}?"
+            r"(?:~?/?\.aws/credentials|~?/?\.aws/config|~?/\.ssh/id_[a-z0-9_]+|~?/\.ssh/id_rsa|~?/\.ssh/id_ed25519"
+            r"|~?/\.netrc|~?/\.config/gcloud|~?/\.kube/config|~?/\.docker/config\.json|/etc/shadow"
+            r"|(?<![\w.])\.env(?![\w])|Cookies(?:\.sqlite)?|Login\s+Data)"
+            r")",
+            re.IGNORECASE,
+        ),
+        description=(
+            "This skill instructs reading a credential/secret file and sending it to an external URL — "
+            "credential exfiltration. Remove the instruction; never transmit local secrets off-host."
+        ),
+    ),
+    _BehavioralPattern(
+        category="remote_code_execution",
+        severity="high",
+        title="Remote script piped to a shell",
+        # `curl <url> | bash` / `wget <url> | sh` — fetch-and-execute of remote
+        # code. High-confidence: the pipe-into-shell is the dangerous signal.
+        pattern=re.compile(
+            r"\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:bash|sh|zsh|python[23]?)\b",
+            re.IGNORECASE,
+        ),
+        description=(
+            "Piping a remotely-fetched script straight into a shell runs unreviewed remote code. "
+            "Download, inspect, and pin the script instead of executing it inline."
+        ),
+    ),
+    _BehavioralPattern(
         category="confirmation_bypass",
         severity="critical",
         title="Safety confirmation bypass",
@@ -934,6 +980,8 @@ _BEHAVIOR_FAMILIES: dict[str, str] = {
     "input_injection": "prompt_coercion",
     "credential_file_access": "data_access",
     "data_exfiltration": "data_access",
+    "credential_exfiltration": "data_access",
+    "remote_code_execution": "code_execution",
     "excessive_permissions": "data_access",
     "persistence_mechanism": "persistence",
     "missing_capability_declaration": "data_access",

@@ -479,19 +479,25 @@ class PostgresCredentialRefStore:
             )
             conn.commit()
 
-    def get(self, credential_ref_id: str):
+    def get(self, credential_ref_id: str, *, tenant_id: str):
         from .models import CredentialRefRecord
 
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT data FROM credential_refs WHERE credential_ref_id = %s", (credential_ref_id,)).fetchone()
+            row = conn.execute(
+                "SELECT data FROM credential_refs WHERE credential_ref_id = %s AND tenant_id = %s",
+                (credential_ref_id, tenant_id),
+            ).fetchone()
             if row is None:
                 return None
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
             return CredentialRefRecord.model_validate_json(raw)
 
-    def delete(self, credential_ref_id: str) -> bool:
+    def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool:
         with _tenant_connection(self._pool) as conn:
-            cursor = conn.execute("DELETE FROM credential_refs WHERE credential_ref_id = %s", (credential_ref_id,))
+            cursor = conn.execute(
+                "DELETE FROM credential_refs WHERE credential_ref_id = %s AND tenant_id = %s",
+                (credential_ref_id, tenant_id),
+            )
             conn.commit()
             return cursor.rowcount > 0
 

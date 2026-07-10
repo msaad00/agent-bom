@@ -229,7 +229,11 @@ class WebhookChannel:
                 )
                 return bool(resp and resp.status_code < 400)
         except Exception:
-            logger.exception("Webhook channel delivery failed for %s", self.url)
+            from agent_bom.security import redact_secret_url
+
+            # The webhook URL can itself be the secret (Slack-style incoming
+            # webhooks embed the token in the path), so never log it verbatim.
+            logger.exception("Webhook channel delivery failed for %s", redact_secret_url(self.url))
             return False
 
 

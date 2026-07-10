@@ -98,7 +98,10 @@ def test_scan_next_steps_footer():
     out = buf.getvalue()
     assert "Next" in out
     assert "agent-bom graph" in out
-    assert "agent-bom report -f html" in out
+    # The HTML report suggestion must use `scan` (which owns -f/-o); `report`
+    # is a command group with no -f option and would error "No such option: -f".
+    assert "agent-bom scan . -f html -o agent-bom-report.html" in out
+    assert "agent-bom report -f html" not in out
 
 
 def test_run_benchmarks_does_not_render_cis_inline(monkeypatch):

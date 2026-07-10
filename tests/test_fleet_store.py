@@ -42,13 +42,13 @@ def _make(
 def test_put_and_get():
     store = InMemoryFleetStore()
     store.put(_make())
-    assert store.get("a-1") is not None
-    assert store.get("a-1").name == "test-agent"
+    assert store.get("a-1", tenant_id="default") is not None
+    assert store.get("a-1", tenant_id="default").name == "test-agent"
 
 
 def test_get_missing():
     store = InMemoryFleetStore()
-    assert store.get("nope") is None
+    assert store.get("nope", tenant_id="default") is None
 
 
 def test_get_by_name():
@@ -62,9 +62,9 @@ def test_get_by_name():
 def test_delete():
     store = InMemoryFleetStore()
     store.put(_make())
-    assert store.delete("a-1") is True
-    assert store.get("a-1") is None
-    assert store.delete("a-1") is False
+    assert store.delete("a-1", tenant_id="default") is True
+    assert store.get("a-1", tenant_id="default") is None
+    assert store.delete("a-1", tenant_id="default") is False
 
 
 def test_list_all():
@@ -87,7 +87,7 @@ def test_update_state():
     store = InMemoryFleetStore()
     store.put(_make())
     assert store.update_state("a-1", FleetLifecycleState.APPROVED) is True
-    assert store.get("a-1").lifecycle_state == FleetLifecycleState.APPROVED
+    assert store.get("a-1", tenant_id="default").lifecycle_state == FleetLifecycleState.APPROVED
 
 
 def test_update_state_missing():
@@ -117,7 +117,7 @@ def test_fleet_store_revalidates_agent_before_write():
     agent.tenant_id = " tenant-a "
     agent.updated_at = "2026-04-23T11:05:00"
     store.put(agent)
-    stored = store.get("a-1")
+    stored = store.get("a-1", tenant_id="tenant-a")
     assert stored is not None
     assert stored.tenant_id == "tenant-a"
     assert stored.updated_at == "2026-04-23T11:05:00Z"
@@ -136,8 +136,8 @@ def test_sqlite_put_get():
     store, path = _sqlite_store()
     try:
         store.put(_make())
-        assert store.get("a-1") is not None
-        assert store.get("a-1").name == "test-agent"
+        assert store.get("a-1", tenant_id="default") is not None
+        assert store.get("a-1", tenant_id="default").name == "test-agent"
     finally:
         path.unlink(missing_ok=True)
 
@@ -157,9 +157,9 @@ def test_sqlite_delete():
     store, path = _sqlite_store()
     try:
         store.put(_make())
-        assert store.delete("a-1") is True
-        assert store.get("a-1") is None
-        assert store.delete("a-1") is False
+        assert store.delete("a-1", tenant_id="default") is True
+        assert store.get("a-1", tenant_id="default") is None
+        assert store.delete("a-1", tenant_id="default") is False
     finally:
         path.unlink(missing_ok=True)
 
@@ -181,7 +181,7 @@ def test_sqlite_update_state():
     try:
         store.put(_make())
         assert store.update_state("a-1", FleetLifecycleState.QUARANTINED) is True
-        assert store.get("a-1").lifecycle_state == FleetLifecycleState.QUARANTINED
+        assert store.get("a-1", tenant_id="default").lifecycle_state == FleetLifecycleState.QUARANTINED
         assert store.update_state("nope", FleetLifecycleState.APPROVED) is False
     finally:
         path.unlink(missing_ok=True)
@@ -194,7 +194,7 @@ def test_sqlite_upsert():
         store.put(agent)
         agent.owner = "alice"
         store.put(agent)
-        assert store.get("a-1").owner == "alice"
+        assert store.get("a-1", tenant_id="default").owner == "alice"
         assert len(store.list_all()) == 1
     finally:
         path.unlink(missing_ok=True)

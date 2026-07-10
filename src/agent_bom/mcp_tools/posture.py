@@ -228,9 +228,11 @@ async def access_review_impl(
 ) -> str:
     """Implementation of the access_review tool: list / get recertification campaigns.
 
-    Read-only. Pass ``campaign_id`` to fetch one campaign with its review items;
-    omit it to list campaigns (overdue statuses refreshed). Creating a campaign
-    or submitting a decision is a WRITE and is intentionally not exposed here.
+    Not read-only: fetching/listing recomputes and persists each campaign's
+    status (to surface overdue), so this is an idempotent write. Pass
+    ``campaign_id`` to fetch one campaign with its review items; omit it to list
+    campaigns. Creating a campaign or submitting a decision is a separate WRITE
+    not exposed here.
     """
     try:
         from agent_bom.api.access_review import get_access_review_store, refresh_campaign_status

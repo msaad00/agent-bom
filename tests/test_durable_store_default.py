@@ -79,7 +79,7 @@ def test_issued_identity_survives_restart(durable_state_dir):
     # Second "process": a fresh store reads the issued identity back.
     store2 = get_agent_identity_store()
     assert store2 is not store
-    fetched = store2.get(identity.identity_id)
+    fetched = store2.get(identity.identity_id, tenant_id="t-durable")
     assert fetched is not None
     assert fetched.agent_id == "agent-restart"
     assert fetched.tenant_id == "t-durable"
@@ -188,7 +188,7 @@ def test_ephemeral_opt_out_does_not_persist(durable_state_dir, monkeypatch):
     set_agent_identity_store(None)
 
     store2 = get_agent_identity_store()
-    assert store2.get(identity.identity_id) is None
+    assert store2.get(identity.identity_id, tenant_id="t-eph") is None
     # No durable file is created for the ephemeral tier.
     assert not (durable_state_dir / durable_store.DEFAULT_STATE_DB_FILENAME).exists()
     assert not os.path.exists(durable_state_dir / durable_store.DEFAULT_STATE_DB_FILENAME)

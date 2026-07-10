@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import logging
 import math
 import os
@@ -360,6 +361,31 @@ def sanitize_url(value: str | None) -> str | None:
     if parsed.port:
         host = f"{host}:{parsed.port}"
     return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+
+
+def redact_secret_url(value: str | None) -> str:
+    """Redact a secret-bearing URL down to scheme+host plus a short fingerprint.
+
+    Unlike :func:`sanitize_url`, this also drops the *path*: for incoming
+    webhooks (Slack-style) the URL path segments carry the secret token, so the
+    URL itself is credential material. The returned form keeps just enough
+    (scheme, host, and a stable 8-char fingerprint of the full URL) for an
+    operator to correlate failures without exposing the secret in logs or an
+    audit export.
+    """
+    if not value:
+        return "<none>"
+    fingerprint = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return f"<redacted-url>#{fingerprint}"
+    if not parsed.scheme or not parsed.netloc:
+        return f"<redacted-url>#{fingerprint}"
+    host = parsed.hostname or parsed.netloc.rsplit("@", 1)[-1]
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return f"{parsed.scheme}://{host}/…#{fingerprint}"
 
 
 def sanitize_text(value: object, max_len: int = 1000) -> str:

@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Scan,
-  Server,
   Bug,
   MessageSquareQuote,
   Database,
@@ -71,8 +70,6 @@ interface NavGroup {
    * (not a generic "More" bucket).
    */
   secondary?: NavLink[];
-  /** Accent color from architecture diagram — matches the product layer */
-  accent: string;
 }
 
 function activeGroupForPath(path: string | null): string {
@@ -88,7 +85,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Command",
     icon: LayoutGrid,
-    accent: "#58a6ff",
     links: [
       { href: "/", label: "Overview", icon: LayoutGrid },
       { href: "/findings", label: "Findings", icon: Bug },
@@ -104,7 +100,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "AI Estate",
     icon: Bot,
-    accent: "#3fb950",
     links: [
       { href: "/agents", label: "Agents", icon: Bot },
       { href: "/manifest", label: "Agent BOM", icon: ClipboardList },
@@ -114,7 +109,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Cloud & Data",
     icon: Cloud,
-    accent: "#a371f7",
     links: [
       { href: "/connections", label: "Cloud Accounts", icon: Cloud, capability: "scan.run" },
       { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
@@ -126,7 +120,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Runtime",
     icon: Shield,
-    accent: "#f778ba",
     links: [
       { href: "/runtime", label: "Runtime", icon: Shield },
       { href: "/traces", label: "Traces", icon: Radio },
@@ -135,7 +128,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Governance",
     icon: Eye,
-    accent: "#3fb950",
     links: [
       { href: "/compliance", label: "Compliance", icon: FileCheck },
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
@@ -145,13 +137,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Reference",
     icon: Boxes,
-    accent: "#d29922",
     links: [{ href: "/registry", label: "MCP Catalog", icon: Boxes }],
   },
   {
     label: "Operations",
     icon: Activity,
-    accent: "#db6d28",
     links: [
       { href: "/cost", label: "AI Spend", icon: DollarSign },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
@@ -459,16 +449,16 @@ export function Nav() {
                   collapsed ? "justify-center px-2 py-3" : ""
                 } ${
                   hasActiveChild
-                    ? "text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
-                    : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
+                    ? "border-[color:var(--border-strong)] text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
+                    : "border-transparent text-[color:var(--text-secondary)] hover:border-[color:var(--border-subtle)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                 }`}
-                style={{ borderLeftColor: group.accent }}
                 aria-expanded={collapsed ? collapsedFlyoutGroup === group.label : isExpanded}
                 aria-label={collapsed ? group.label : undefined}
               >
                 <GroupIcon
-                  className={`${collapsed ? "h-5 w-5" : "h-4 w-4"} shrink-0`}
-                  style={{ color: hasActiveChild ? group.accent : group.accent + "99" }}
+                  className={`${collapsed ? "h-5 w-5" : "h-4 w-4"} shrink-0 ${
+                    hasActiveChild ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]"
+                  }`}
                 />
                 {!collapsed && (
                   <>
@@ -509,18 +499,16 @@ export function Nav() {
                         href={href}
                         className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all group relative ${
                           active
-                            ? "border-l-2 ml-0 pl-2.5"
+                            ? "border-l-2 border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)] ml-0 pl-2.5"
                             : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                         }`}
-                        style={active ? {
-                          color: group.accent,
-                          borderLeftColor: group.accent,
-                          backgroundColor: `${group.accent}10`,
-                        } : undefined}
                       >
                         <Icon
-                          className={`w-3.5 h-3.5 shrink-0 ${!active && "text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)]"}`}
-                          style={active ? { color: group.accent } : undefined}
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            active
+                              ? "text-[color:var(--foreground)]"
+                              : "text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)]"
+                          }`}
                         />
                         <span className="truncate">{label}</span>
 
@@ -581,14 +569,14 @@ export function Nav() {
                               href={href}
                               className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
                                 active
-                                  ? "border-l-2 ml-0 pl-2.5 font-medium"
+                                  ? "border-l-2 border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)] ml-0 pl-2.5 font-medium"
                                   : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                               }`}
-                              style={active ? { color: group.accent, borderLeftColor: group.accent } : undefined}
                             >
                               <Icon
-                                className="h-3.5 w-3.5 shrink-0 opacity-80"
-                                style={active ? { color: group.accent } : undefined}
+                                className={`h-3.5 w-3.5 shrink-0 ${
+                                  active ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)] opacity-80"
+                                }`}
                               />
                               <span className="truncate">{label}</span>
                             </Link>
@@ -609,15 +597,9 @@ export function Nav() {
                   onFocus={cancelCollapsedFlyoutClose}
                   onBlur={scheduleCollapsedFlyoutClose}
                 >
-                  <div
-                    className="rounded-2xl border bg-[color:var(--surface)] p-3 shadow-2xl shadow-black/45"
-                    style={{ borderColor: `${group.accent}55` }}
-                  >
+                  <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 shadow-2xl shadow-black/45">
                     <div className="mb-3 flex items-start gap-3">
-                      <div
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
-                        style={{ borderColor: `${group.accent}66`, backgroundColor: `${group.accent}16`, color: group.accent }}
-                      >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--foreground)]">
                         <GroupIcon className="h-5 w-5" />
                       </div>
                       <div className="min-w-0">
@@ -646,8 +628,11 @@ export function Nav() {
                             onClick={() => setCollapsedFlyoutGroup(null)}
                           >
                             <Icon
-                              className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] group-hover/link:text-[color:var(--foreground)]"
-                              style={active ? { color: group.accent } : undefined}
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${
+                                active
+                                  ? "text-[color:var(--foreground)]"
+                                  : "text-[color:var(--text-tertiary)] group-hover/link:text-[color:var(--foreground)]"
+                              }`}
                             />
                             <span className="min-w-0">
                               <span className="block text-sm font-medium">{label}</span>
@@ -674,8 +659,9 @@ export function Nav() {
                             onClick={() => setCollapsedFlyoutGroup(null)}
                           >
                             <Icon
-                              className="mt-0.5 h-4 w-4 shrink-0 opacity-70"
-                              style={active ? { color: group.accent } : undefined}
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${
+                                active ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)] opacity-70"
+                              }`}
                             />
                             <span className="min-w-0">
                               <span className="block text-[13px]">{label}</span>

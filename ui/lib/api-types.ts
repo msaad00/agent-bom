@@ -535,6 +535,26 @@ export type GraphExportFormat =
 
 export type DeploymentMode = "local" | "fleet" | "cluster" | "hybrid";
 
+export type ServiceState = "locked" | "connected" | "live";
+
+export type ServiceId =
+  | "cloud_accounts"
+  | "data_sources"
+  | "local_agents"
+  | "fleet"
+  | "runtime_proxy"
+  | "runtime_gateway"
+  | "runtime_traces"
+  | "ai_spend"
+  | "compliance";
+
+export interface ServiceEntry {
+  state: ServiceState;
+  count: number;
+  requires?: string[] | undefined;
+  detail?: string | undefined;
+}
+
 export interface PostureCountsResponse {
   critical: number;
   high: number;
@@ -557,6 +577,7 @@ export interface PostureCountsResponse {
   has_registry?: boolean | undefined;
   scan_sources?: string[] | undefined;
   scan_count?: number | undefined;
+  services?: Partial<Record<ServiceId, ServiceEntry>> | undefined;
 }
 
 export interface RemediationItem {

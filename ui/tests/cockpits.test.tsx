@@ -24,6 +24,7 @@ const { apiMock } = vi.hoisted(() => ({
     discoverNonHumanIdentities: vi.fn(),
     listDriftIncidents: vi.fn(),
     resolveDriftIncident: vi.fn(),
+    getPostureCounts: vi.fn(),
     formatDate: (s: string) => s,
   },
 }));
@@ -37,6 +38,18 @@ beforeEach(() => {
   Object.values(apiMock).forEach(
     (fn) => typeof fn === "function" && "mockReset" in fn && fn.mockReset(),
   );
+  apiMock.getPostureCounts.mockResolvedValue({
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
+    kev: 0,
+    compound_issues: 0,
+    services: {
+      ai_spend: { state: "live", count: 1 },
+    },
+  });
 });
 
 afterEach(() => vi.restoreAllMocks());

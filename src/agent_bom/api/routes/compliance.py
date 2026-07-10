@@ -1712,6 +1712,10 @@ async def get_posture_counts(request: Request) -> dict:
                 counts["compound_issues"] += 1
 
     counts.update(_derive_deployment_context(request, tenant_jobs))
+    tenant_id = require_request_tenant_id(request)
+    from agent_bom.api.service_registry import derive_service_registry
+
+    counts["services"] = derive_service_registry(tenant_id, dict(counts))["services"]
     return counts
 
 

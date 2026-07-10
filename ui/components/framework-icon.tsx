@@ -10,8 +10,11 @@ type FrameworkIconProps = {
   className?: string;
 };
 
-/** Small framework mark — vendored SVG when available, monogram badge otherwise. */
-export function FrameworkIcon({ frameworkId, size = 20, className = "" }: FrameworkIconProps) {
+/**
+ * Framework brand tile — full-color vendored marks (console-style), with
+ * monogram fallback when no asset ships or the image fails to load.
+ */
+export function FrameworkIcon({ frameworkId, size = 24, className = "" }: FrameworkIconProps) {
   const meta = frameworkLogoMeta(frameworkId);
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -26,7 +29,7 @@ export function FrameworkIcon({ frameworkId, size = 20, className = "" }: Framew
         src={meta.src}
         alt=""
         aria-hidden="true"
-        className={`shrink-0 object-contain opacity-90 ${className}`}
+        className={`shrink-0 rounded-md object-contain shadow-sm ring-1 ring-[color:var(--border-subtle)] ${className}`}
         style={dimension}
         onError={() => setImageFailed(true)}
       />

@@ -311,7 +311,7 @@ function ComplianceSnapshotPanel({
                 href="/compliance"
                 className="flex items-center gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 transition hover:border-[color:var(--border-strong)]"
               >
-                <FrameworkIcon frameworkId={framework.id} size={20} />
+                <FrameworkIcon frameworkId={framework.id} size={28} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-[color:var(--foreground)]">{framework.label}</p>
                   <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">

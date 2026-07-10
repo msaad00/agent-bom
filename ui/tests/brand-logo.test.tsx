@@ -26,6 +26,6 @@ describe("BrandLogo", () => {
 
   it("renders the canonical tagline when requested", () => {
     const { getByText } = render(<BrandLogo showTagline />);
-    expect(getByText("AI agent bill of materials")).toBeInTheDocument();
+    expect(getByText("BOM for humans & agents")).toBeInTheDocument();
   });
 });

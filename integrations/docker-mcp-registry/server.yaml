@@ -19,7 +19,7 @@ about:
   description: >-
     Open security scanner and graph for agentic infrastructure —
     discover agents and MCP, map blast radius, and inspect runtime.
-  icon: https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-dark.svg
+  icon: https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-dark.svg
 
 source:
   project: https://github.com/msaad00/agent-bom

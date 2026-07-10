@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" role="img" aria-label="CIS">
-  <path d="M12 3 20 7.5V16.5L12 21 4 16.5V7.5L12 3Z" stroke="currentColor" stroke-width="1.5" fill="currentColor" fill-opacity="0.08"/>
-  <path d="M9.2 12.2 11 14l3.8-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="CIS">
+  <rect width="32" height="32" rx="7" fill="#0055A5"/>
+  <path d="M16 5.5 25.5 11v10L16 26.5 6.5 21V11L16 5.5Z" fill="#FFFFFF" fill-opacity="0.15" stroke="#FFFFFF" stroke-width="1.4"/>
+  <path d="M11.5 16.2 14.2 18.8 20.5 12.8" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="16" y="28" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="5" font-weight="700" fill="#B3D4F5" letter-spacing="0.12em">CIS</text>
 </svg>

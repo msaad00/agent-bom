@@ -171,12 +171,14 @@ def _boto3_client(service: str, provider: str) -> Any:
 
 
 def _resolve_env() -> bytes:
-    """Resolve the base64 Fernet key from ``AGENT_BOM_CONNECTIONS_KEY``."""
-    raw = os.environ.get(CONNECTIONS_KEY_ENV, "").strip()
+    """Resolve the base64 Fernet key from ``AGENT_BOM_CONNECTIONS_KEY`` or ``*_FILE``."""
+    from agent_bom.api.secret_source import resolve_secret
+
+    raw = resolve_secret(CONNECTIONS_KEY_ENV)
     if not raw:
         raise ConnectionSecretError(
-            f"{CONNECTIONS_KEY_ENV} is not set; refusing to store or read a connection secret in plaintext. "
-            "Provide a base64 Fernet key (or set "
+            f"{CONNECTIONS_KEY_ENV} (or {CONNECTIONS_KEY_ENV}_FILE) is not set; refusing to store or "
+            "read a connection secret in plaintext. Provide a base64 Fernet key (or set "
             f"{CONNECTIONS_KEY_PROVIDER_ENV} to a managed key provider)."
         )
     return raw.encode("ascii")
@@ -205,11 +207,13 @@ def _resolve_aws_secrets() -> bytes:
 def _resolve_aws_kms() -> bytes:
     """Unwrap the KMS-wrapped data key in ``AGENT_BOM_CONNECTIONS_KEY``.
 
-    The env var holds the base64 ``CiphertextBlob`` produced by KMS
+    The env var (or ``*_FILE``) holds the base64 ``CiphertextBlob`` produced by KMS
     ``GenerateDataKey``; ``kms:Decrypt`` recovers the 32-byte data key, which is
     encoded into a ``Fernet`` key.
     """
-    wrapped = os.environ.get(CONNECTIONS_KEY_ENV, "").strip()
+    from agent_bom.api.secret_source import resolve_secret
+
+    wrapped = resolve_secret(CONNECTIONS_KEY_ENV)
     if not wrapped:
         raise ConnectionSecretError(
             f"{CONNECTIONS_KEY_PROVIDER_ENV}={PROVIDER_AWS_KMS} requires {CONNECTIONS_KEY_ENV} "

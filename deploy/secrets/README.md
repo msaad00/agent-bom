@@ -1,36 +1,42 @@
 # Compose secrets directory
 
-Used by `deploy/docker-compose.platform.yml` (and any production-shaped compose
-overlay) to mount Postgres credentials as files instead of env vars.
+Used by `deploy/docker-compose.platform.yml`, `docker-compose.fullstack.yml`,
+and `docker-compose.yml` to mount credentials as files instead of env vars.
+Secrets must never live in `.env`, compose interpolation, or git.
 
-Populate before `docker compose up`:
-
-```bash
-# Postgres admin password (mandatory for platform.yml)
-printf %s "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
-chmod 0400 deploy/secrets/postgres_password
-```
-
-`postgres_password.example` is a non-secret placeholder for documentation only.
-The platform compose file defaults to `deploy/secrets/postgres_password` so a
-shared stack fails closed if a real secret file is missing.
-
-The `chmod 0400` prevents the file from being world-readable; Docker still
-mounts it read-only inside the container at `/run/secrets/postgres_password`.
-
-The postgres image natively reads `POSTGRES_PASSWORD_FILE` from this mount,
-so the password never appears in `docker inspect`, `docker compose config`,
-or process environment listings. Tracking: #1962.
-
-Hosted POC preflight:
+Populate before `docker compose up` (or run
+`python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose`):
 
 ```bash
-POSTGRES_PASSWORD=preflight POSTGRES_APP_PASSWORD=preflight docker compose \
-  -f deploy/docker-compose.platform.yml \
-  -f deploy/docker-compose.hosted-poc.yml \
-  config | grep -E '0.0.0.0:3000|0.0.0.0:8422|postgres_password.example' && \
-  { echo "Unsafe hosted compose output"; exit 1; } || true
+mkdir -p deploy/secrets
+
+# Postgres: bootstrap (image init only) + DML-only app role (API)
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+
+# Control-plane crypto / auth material
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/api_key
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/audit_hmac_key
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/browser_session_signing_key
+printf %s "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" \
+  > deploy/secrets/connections_key
+
+# Optional (mount manually or via preflight --write-secret)
+# printf %s "$(openssl rand -hex 32)" > deploy/secrets/rate_limit_key
+# printf %s "$(openssl rand -hex 32)" > deploy/secrets/trust_proxy_auth_secret
+# printf %s "$(openssl rand -hex 32)" > deploy/secrets/scim_bearer_token
+
+chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
+  deploy/secrets/api_key deploy/secrets/audit_hmac_key \
+  deploy/secrets/browser_session_signing_key deploy/secrets/connections_key
 ```
 
-For the hosted POC, also set `AGENT_BOM_SESSION_COOKIE_SECURE=1`; the hosted
-overlay sets it for the API service by default.
+`*.example` files are non-secret documentation placeholders only.
+Compose defaults to the real `deploy/secrets/*` paths so a shared stack fails
+closed if a real secret file is missing.
+
+The API reads `AGENT_BOM_*_FILE` mounts (file wins over plain env). Helm may
+still inject via Secret→env; compose/local is file-only.
+
+The API never connects as the Postgres bootstrap/admin/superuser role — only
+`agent_bom_app`.

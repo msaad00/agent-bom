@@ -51,7 +51,9 @@ def scim_base_path() -> str:
 
 def scim_enabled_from_env() -> bool:
     """Return whether any dedicated SCIM bearer token source is configured."""
-    return bool(os.environ.get(_SCIM_SINGLE_TOKEN_ENV, "").strip() or os.environ.get(_SCIM_TOKEN_MAPPING_ENV, "").strip())
+    from agent_bom.api.secret_source import secret_is_configured
+
+    return bool(secret_is_configured(_SCIM_SINGLE_TOKEN_ENV) or os.environ.get(_SCIM_TOKEN_MAPPING_ENV, "").strip())
 
 
 def scim_tenant_id_from_env() -> str:
@@ -115,8 +117,10 @@ def _mapping_scim_bearer_token_bindings() -> list[SCIMBearerTokenBinding]:
 
 def configured_scim_bearer_token_bindings() -> list[SCIMBearerTokenBinding]:
     """Return configured SCIM bearer token bindings without exposing them to callers."""
+    from agent_bom.api.secret_source import resolve_secret
+
     bindings: list[SCIMBearerTokenBinding] = []
-    single_token = os.environ.get(_SCIM_SINGLE_TOKEN_ENV, "").strip()
+    single_token = resolve_secret(_SCIM_SINGLE_TOKEN_ENV)
     if single_token:
         bindings.append(
             SCIMBearerTokenBinding(

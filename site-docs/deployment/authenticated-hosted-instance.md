@@ -44,29 +44,14 @@ keeps browser-session cookies Secure. Auth env is wired by the platform base.
 ### 1a. Generate secrets and the non-superuser DB role
 
 The app connects as `agent_bom_app`, the DML-only role created by
-`deploy/supabase/postgres/init.sql` on first boot. Provide its password via
-`POSTGRES_APP_PASSWORD`; the init wrapper (`init-wrapper.sh`) injects it and the
-init SQL creates the role `NOSUPERUSER NOBYPASSRLS`, satisfying the RLS
-superuser guard (#3665) by least privilege.
+`deploy/supabase/postgres/init.sql` on first boot. Provide its secret via
+`deploy/secrets/postgres_app_password` (Docker secret mount); the init wrapper
+reads that file and the init SQL creates the role `NOSUPERUSER NOBYPASSRLS`,
+satisfying the RLS superuser guard (#3665) by least privilege. Never put
+Postgres or control-plane secrets in `.env` or compose environment variables.
 
 ```bash
 cp .env.example .env
-
-# Postgres: superuser owner (schema init only) + DML-only app role (runtime)
-export POSTGRES_PASSWORD="$(openssl rand -hex 32)"
-export POSTGRES_APP_USER=agent_bom_app
-export POSTGRES_APP_PASSWORD="$(openssl rand -hex 32)"
-
-# Control-plane secrets
-export AGENT_BOM_API_KEY="$(openssl rand -hex 32)"          # bootstrap admin key
-export AGENT_BOM_AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
-export AGENT_BOM_BROWSER_SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
-export AGENT_BOM_CONNECTIONS_KEY="$(
-  python - <<'PY'
-from cryptography.fernet import Fernet
-print(Fernet.generate_key().decode())
-PY
-)"
 
 # Public URL wiring (Caddy terminates TLS on 443)
 export AGENT_BOM_HOSTED_DOMAIN="app.agent-bom.com"
@@ -74,16 +59,15 @@ export ACME_EMAIL="ops@example.com"
 export NEXT_PUBLIC_API_URL="https://app.agent-bom.com"
 export CORS_ORIGINS="https://app.agent-bom.com,http://ui:3000"
 
-# Mount the Postgres superuser password as a Docker secret (fails closed if absent)
-mkdir -p deploy/secrets
-printf '%s' "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
-chmod 0400 deploy/secrets/postgres_password
+# Secrets: file mounts only (Postgres + control-plane)
+python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose
+# Or see deploy/secrets/README.md
 ```
 
-`AGENT_BOM_API_KEY` seeds a single **admin** key. To seed viewer/analyst keys
-by env instead of (or in addition to) OIDC, set
-`AGENT_BOM_API_KEYS="<raw-key>:viewer,<raw-key>:analyst"` — each entry is
-`<raw-key>:<admin|analyst|viewer>`.
+The `api_key` secret file seeds a single **admin** key via
+`AGENT_BOM_API_KEY_FILE`. To seed viewer/analyst keys from a file instead of
+(or in addition to) OIDC, write `deploy/secrets/api_keys` with
+`<raw-key>:viewer,<raw-key>:analyst` and mount it as `AGENT_BOM_API_KEYS_FILE`.
 
 ### 1b. Optional — wire OIDC / SAML SSO instead of (or alongside) API keys
 

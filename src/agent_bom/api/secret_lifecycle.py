@@ -140,7 +140,9 @@ def _env_secret_posture(
     required_env: str | None = None,
     key_id_env: str | None = None,
 ) -> dict[str, Any]:
-    configured = bool(os.environ.get(source_env, "").strip())
+    from agent_bom.api.secret_source import secret_is_configured
+
+    configured = secret_is_configured(source_env)
     required = _env_enabled(required_env) if required_env else False
     key_id = os.environ.get(key_id_env, "").strip() if key_id_env else ""
     rotation_days_env = f"{source_env}_ROTATION_DAYS"
@@ -172,7 +174,9 @@ def _env_secret_posture(
 
 
 def _browser_session_signing_posture() -> dict[str, Any]:
-    dedicated = os.environ.get("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "").strip()
+    from agent_bom.api.secret_source import resolve_secret
+
+    dedicated = resolve_secret("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY")
     required = _browser_signing_key_required()
 
     if dedicated:
@@ -394,13 +398,14 @@ def _rate_limit_key_status() -> dict[str, Any]:
 
 
 def _env_rate_limit_key_status() -> dict[str, Any]:
+    from agent_bom.api.secret_source import resolve_secret
     from agent_bom.config import (
         RATE_LIMIT_KEY_LAST_ROTATED,
         RATE_LIMIT_KEY_MAX_AGE_DAYS,
         RATE_LIMIT_KEY_ROTATION_DAYS,
     )
 
-    raw_key = os.environ.get("AGENT_BOM_RATE_LIMIT_KEY", "").strip()
+    raw_key = resolve_secret("AGENT_BOM_RATE_LIMIT_KEY")
     last_rotated = RATE_LIMIT_KEY_LAST_ROTATED or None
     rotation_days = RATE_LIMIT_KEY_ROTATION_DAYS
     max_age_days = RATE_LIMIT_KEY_MAX_AGE_DAYS

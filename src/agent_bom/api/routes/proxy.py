@@ -765,18 +765,19 @@ def _ws_auth_required() -> bool:
     import os as _os
 
     from agent_bom.api.oidc import oidc_enabled_from_env
+    from agent_bom.api.secret_source import secret_is_configured
 
     configured = any(
         (
-            _os.environ.get("AGENT_BOM_API_KEY"),
-            _os.environ.get("AGENT_BOM_API_KEYS", "").strip(),
+            secret_is_configured("AGENT_BOM_API_KEY"),
+            secret_is_configured("AGENT_BOM_API_KEYS"),
             oidc_enabled_from_env(),
             _os.environ.get("AGENT_BOM_SAML_IDP_ENTITY_ID", "").strip(),
             _os.environ.get("AGENT_BOM_SAML_IDP_SSO_URL", "").strip(),
             _os.environ.get("AGENT_BOM_SAML_IDP_X509_CERT", "").strip(),
             _os.environ.get("AGENT_BOM_SAML_SP_ENTITY_ID", "").strip(),
             _os.environ.get("AGENT_BOM_SAML_SP_ACS_URL", "").strip(),
-            _os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN"),
+            secret_is_configured("AGENT_BOM_SCIM_BEARER_TOKEN"),
             _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"},
         )
     )
@@ -797,7 +798,9 @@ def _ws_auth_from_trusted_proxy(websocket: WebSocket) -> _WebSocketAuthContext |
     if _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() not in {"1", "true", "yes", "on"}:
         return None
 
-    secret = _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
+    from agent_bom.api.secret_source import resolve_secret
+
+    secret = resolve_secret("AGENT_BOM_TRUST_PROXY_AUTH_SECRET")
     presented_secret = websocket.headers.get("x-agent-bom-proxy-secret", "").strip()
     from agent_bom.api.middleware import _trusted_proxy_secret_is_strong
 
@@ -826,13 +829,14 @@ def _ws_auth_from_trusted_proxy(websocket: WebSocket) -> _WebSocketAuthContext |
 
 def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthContext | None:
     import hmac as _hmac
-    import os as _os
+
+    from agent_bom.api.secret_source import resolve_secret
 
     token = str(token or "").strip()
     if not token:
         return None
 
-    static_key = _os.environ.get("AGENT_BOM_API_KEY")
+    static_key = resolve_secret("AGENT_BOM_API_KEY")
     if static_key and _hmac.compare_digest(token, static_key):
         return _WebSocketAuthContext(tenant_id="default", role="admin", auth_method="static_api_key")
 
@@ -846,7 +850,7 @@ def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthCon
     # Direct ASGI imports may configure AGENT_BOM_API_KEYS after module import.
     # Mirror the env key fallback so WebSockets do not bypass RBAC-key auth
     # when the HTTP middleware is protected.
-    for item in _os.environ.get("AGENT_BOM_API_KEYS", "").split(","):
+    for item in resolve_secret("AGENT_BOM_API_KEYS").split(","):
         raw_key, sep, role_value = item.strip().partition(":")
         if sep and raw_key and _hmac.compare_digest(token, raw_key.strip()) and _role_allows(role_value, "viewer"):
             return _WebSocketAuthContext(tenant_id="default", role=role_value.strip().lower(), auth_method="api_key")

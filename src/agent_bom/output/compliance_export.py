@@ -272,7 +272,9 @@ def export_compliance_bundle(
         "compliance_mapping.json": _json_bytes(control_mapping),
         "summary.txt": "\n".join(summary_lines).encode("utf-8"),
     }
-    signature_key = os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY", "")
+    from agent_bom.api.secret_source import resolve_secret
+
+    signature_key = resolve_secret("AGENT_BOM_AUDIT_HMAC_KEY")
     signature_status = "signed" if signature_key else "unsigned_local_bundle"
     manifest = {
         "schema_version": "agent-bom.compliance_cli_bundle/v1",

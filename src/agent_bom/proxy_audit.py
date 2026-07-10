@@ -736,7 +736,9 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
         # `agent-bom audit --verify-chain` process can validate the chain.
         # Without this, default-config CI sees every clean chain as tampered
         # because writer and verifier each mint independent ephemeral keys.
-        if not prev_hash and not (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip():
+        from agent_bom.api.secret_source import secret_is_configured
+
+        if not prev_hash and not secret_is_configured("AGENT_BOM_AUDIT_HMAC_KEY"):
             try:
                 if log_key and not log_key.startswith(("sink:", "fd:")):
                     persist_ephemeral_chain_key(log_key, audit_chain_key())

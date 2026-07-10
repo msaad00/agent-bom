@@ -288,6 +288,17 @@ For same-origin enterprise ingress:
 - use **trusted proxy mode** only when your reverse proxy is already enforcing
   user identity and tenant headers
 
+### Secret sourcing (compose vs Helm)
+
+Compose / hosted POC stacks mount control-plane secrets as Docker secret
+**files** (`AGENT_BOM_*_FILE` under `/run/secrets/...`). Do not put API keys,
+HMAC material, connection crypto, or proxy attestation secrets in `.env`.
+
+Helm may still inject the same values via Kubernetes Secret → process env
+(`secretKeyRef` / ExternalSecrets). The API accepts either form (`*_FILE`
+wins when set). Volume-mounted files in pods are a later hardening step; env
+injection remains valid for one release on Kubernetes.
+
 ## Browser UI and API trust split
 
 The Node UI should be auth-aware and role-aware, but it should never be the

@@ -985,12 +985,33 @@ def test_reset_pool():
     # Should not raise
 
 
+def test_resolve_postgres_url_injects_password_file(monkeypatch, tmp_path):
+    from agent_bom.api.postgres_common import resolve_postgres_url
+
+    secret = tmp_path / "postgres_app_password"
+    secret.write_text("s3cret-value", encoding="utf-8")
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app@postgres:5432/agent_bom")
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_PASSWORD_FILE", str(secret))
+
+    url = resolve_postgres_url()
+    assert url.startswith("postgresql://agent_bom_app:s3cret-value@postgres:5432/agent_bom")
+
+
+def test_resolve_postgres_url_rejects_privileged_role_names(monkeypatch):
+    from agent_bom.api.postgres_common import resolve_postgres_url
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://postgres@db:5432/agent_bom")
+    with pytest.raises(ValueError, match="privileged role"):
+        resolve_postgres_url()
+
+
 def test_get_pool_missing_env(monkeypatch):
     """Missing AGENT_BOM_POSTGRES_URL raises ValueError (or ImportError if psycopg not installed)."""
     from agent_bom.api.postgres_store import _get_pool, reset_pool
 
     reset_pool()
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_PASSWORD_FILE", raising=False)
 
     with pytest.raises((ValueError, ImportError)):
         _get_pool()

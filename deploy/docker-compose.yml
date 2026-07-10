@@ -11,9 +11,11 @@ version: '3.8'
 # interactive API+UI dev stack, use docker-compose.fullstack.yml. For a
 # production-shaped deployment, use docker-compose.platform.yml.
 #
-# Usage:
-#   cp .env.example .env   # set POSTGRES_PASSWORD (required)
-#   docker compose up
+# Credentials: file-mounted Docker secrets only (never .env passwords):
+#   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
+#   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+#   chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password
+#   docker compose -f deploy/docker-compose.yml up
 
 services:
   # agent-bom scanner service
@@ -22,9 +24,9 @@ services:
     image: agent-bom:latest
     container_name: agent-bom-scanner
     environment:
-      # PostgreSQL — app user (DML only) when POSTGRES_APP_PASSWORD is set,
-      # falls back to admin user for dev convenience
-      - AGENT_BOM_POSTGRES_URL=postgresql://${POSTGRES_APP_USER:-${POSTGRES_USER:-agent_bom}}:${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}}@postgres:5432/${POSTGRES_DB:-agent_bom}
+      # DML-only app role — never bootstrap/admin. Password from secret file.
+      - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password
       # API keys
       - NVD_API_KEY=${NVD_API_KEY:-}
       # Cloud credentials
@@ -43,6 +45,8 @@ services:
       - REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE:-}
       - CURL_CA_BUNDLE=${CURL_CA_BUNDLE:-}
       - PIP_CERT=${PIP_CERT:-}
+    secrets:
+      - postgres_app_password
     volumes:
       # Mount local config directories (read-only)
       # macOS/Linux: ~/.config, ~/.claude
@@ -87,9 +91,12 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-agent_bom}
       POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    secrets:
+      - postgres_password
+      - postgres_app_password
     ports:
       # Exposed for dev — platform compose does NOT expose this
       - "${POSTGRES_PORT:-5432}:5432"
@@ -118,6 +125,12 @@ services:
 volumes:
   redis-data:
   postgres-data:
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}
+  postgres_app_password:
+    file: ${POSTGRES_APP_PASSWORD_FILE:-./secrets/postgres_app_password}
 
 networks:
   backend:

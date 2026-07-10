@@ -77,6 +77,9 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     assert "postgres_password" in secrets_block, (
         "docker-compose.platform.yml must declare a top-level secrets: block with a postgres_password entry sourced from a file mount."
     )
+    assert "postgres_app_password" in secrets_block, (
+        "platform compose must also declare postgres_app_password for the DML-only agent_bom_app role."
+    )
     secret_file = secrets_block["postgres_password"].get("file")
     assert secret_file, (
         "postgres_password secret must be file-sourced (file: ./secrets/postgres_password) so docker-compose binds it read-only."
@@ -93,6 +96,7 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     assert env.get("POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_password", (
         "platform postgres must read POSTGRES_PASSWORD_FILE from the mounted secret so the password never appears in docker inspect output."
     )
+    assert env.get("POSTGRES_APP_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
     # The raw POSTGRES_PASSWORD env passthrough must NOT coexist with the
     # file-based variant — if both are set, the postgres image picks the
     # plain one and the secret is silently bypassed.
@@ -100,28 +104,70 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
         "platform postgres must use POSTGRES_PASSWORD_FILE only; remove the raw "
         "POSTGRES_PASSWORD env passthrough so the secret is enforced."
     )
+    assert "POSTGRES_APP_PASSWORD" not in env
 
     assert "postgres_password" in (postgres.get("secrets") or []), (
         "platform postgres service must list postgres_password under its secrets: block so the file mount is created."
     )
+    assert "postgres_app_password" in (postgres.get("secrets") or [])
+
+    api = (data.get("services") or {}).get("api") or {}
+    api_env = api.get("environment") or []
+    api_map = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in api_env if isinstance(item, str) and "=" in item}
+    assert api_map.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
+    assert api_map.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
+    assert "postgres_app_password" in (api.get("secrets") or [])
 
 
-def test_env_example_keeps_obvious_placeholder_values_for_local_rendering() -> None:
+def test_env_example_does_not_store_postgres_passwords() -> None:
+    text = ENV_EXAMPLE.read_text(encoding="utf-8")
     env_values: dict[str, str] = {}
-    for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
         key, value = stripped.split("=", 1)
         env_values[key] = value
 
-    for key in ("POSTGRES_PASSWORD", "POSTGRES_APP_PASSWORD"):
-        assert env_values.get(key), f".env.example must set a non-empty {key} placeholder for compose first-run rendering"
-        assert "change-me" in env_values[key], f".env.example {key} should be an obvious placeholder, not a real-looking secret"
+    assert "POSTGRES_PASSWORD" not in env_values
+    assert "POSTGRES_APP_PASSWORD" not in env_values
+    assert "Do NOT put Postgres passwords" in text
 
-    placeholder = COMPOSE_DIR / "secrets" / "postgres_password.example"
-    assert placeholder.exists(), "documented placeholder must remain available for local inspection examples"
-    assert placeholder.read_text(encoding="utf-8").strip() == env_values["POSTGRES_PASSWORD"]
+    for name in ("postgres_password.example", "postgres_app_password.example"):
+        placeholder = COMPOSE_DIR / "secrets" / name
+        assert placeholder.exists(), f"documented placeholder must remain available: {name}"
+        assert "REPLACE_ME" in placeholder.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "compose_name",
+    ("docker-compose.yml", "docker-compose.fullstack.yml", "docker-compose.platform.yml"),
+)
+def test_compose_stacks_never_interpolate_postgres_passwords(compose_name: str) -> None:
+    path = COMPOSE_DIR / compose_name
+    text = path.read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    assert "${POSTGRES_PASSWORD}" not in text
+    assert "${POSTGRES_PASSWORD:?" not in text
+    assert "${POSTGRES_APP_PASSWORD}" not in text
+    assert "${POSTGRES_APP_PASSWORD:?" not in text
+    assert "${POSTGRES_APP_PASSWORD:-" not in text
+    # Path overrides for secret *files* are allowed (POSTGRES_PASSWORD_FILE).
+    assert "POSTGRES_PASSWORD_FILE" in text
+    assert "POSTGRES_APP_PASSWORD_FILE" in text or "postgres_app_password" in text
+
+    services = data.get("services") or {}
+    for name, service in services.items():
+        env = service.get("environment") or {}
+        if isinstance(env, list):
+            env = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in env if isinstance(item, str) and "=" in item}
+        assert "POSTGRES_PASSWORD" not in env, f"{compose_name}:{name} must not set POSTGRES_PASSWORD"
+        assert "POSTGRES_APP_PASSWORD" not in env, f"{compose_name}:{name} must not set POSTGRES_APP_PASSWORD"
+        for key, value in env.items():
+            if key == "AGENT_BOM_POSTGRES_URL":
+                assert value.startswith("postgresql://agent_bom_app@"), (
+                    f"{compose_name}:{name} must connect as agent_bom_app without an embedded password"
+                )
 
 
 def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
@@ -156,10 +202,14 @@ def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home(
 
     assert "--allow-insecure-no-auth" not in api.get("command", "")
     assert "AGENT_BOM_API_KEY:?" in env.get("AGENT_BOM_API_KEY", "")
+    assert env.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
+    assert env.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
     assert api.get("ports") == ["127.0.0.1:${API_PORT:-8422}:8422"]
     assert "~/.config:/home/abom/.config:ro" in (api.get("volumes") or [])
     assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])
-
+    assert "postgres_app_password" in (api.get("secrets") or [])
+    assert "postgres_password" in ((data.get("secrets") or {}))
+    assert "postgres_app_password" in ((data.get("secrets") or {}))
 
 def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     path = COMPOSE_DIR / "docker-compose.hosted-poc.yml"

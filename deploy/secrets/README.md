@@ -1,36 +1,30 @@
 # Compose secrets directory
 
-Used by `deploy/docker-compose.platform.yml` (and any production-shaped compose
-overlay) to mount Postgres credentials as files instead of env vars.
+Used by `deploy/docker-compose.platform.yml`, `docker-compose.fullstack.yml`,
+and `docker-compose.yml` to mount Postgres credentials as files instead of env
+vars. Passwords must never live in `.env`, compose interpolation, or git.
 
 Populate before `docker compose up`:
 
 ```bash
-# Postgres admin password (mandatory for platform.yml)
-printf %s "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
+# Bootstrap role secret (Postgres image init only — API never uses this role)
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
 chmod 0400 deploy/secrets/postgres_password
+
+# DML-only app role secret (agent_bom_app — what the API uses)
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+chmod 0400 deploy/secrets/postgres_app_password
 ```
 
-`postgres_password.example` is a non-secret placeholder for documentation only.
-The platform compose file defaults to `deploy/secrets/postgres_password` so a
-shared stack fails closed if a real secret file is missing.
+`*.example` files are non-secret documentation placeholders only.
+Compose defaults to the real `deploy/secrets/postgres_*` paths so a shared
+stack fails closed if a real secret file is missing.
 
 The `chmod 0400` prevents the file from being world-readable; Docker still
-mounts it read-only inside the container at `/run/secrets/postgres_password`.
+mounts it read-only inside the container at `/run/secrets/...`.
 
-The postgres image natively reads `POSTGRES_PASSWORD_FILE` from this mount,
-so the password never appears in `docker inspect`, `docker compose config`,
-or process environment listings. Tracking: #1962.
+The postgres image reads `POSTGRES_PASSWORD_FILE` from the bootstrap mount.
+The API reads `AGENT_BOM_POSTGRES_PASSWORD_FILE` for `agent_bom_app` and never
+connects as the bootstrap/admin/superuser role.
 
-Hosted POC preflight:
-
-```bash
-POSTGRES_PASSWORD=preflight POSTGRES_APP_PASSWORD=preflight docker compose \
-  -f deploy/docker-compose.platform.yml \
-  -f deploy/docker-compose.hosted-poc.yml \
-  config | grep -E '0.0.0.0:3000|0.0.0.0:8422|postgres_password.example' && \
-  { echo "Unsafe hosted compose output"; exit 1; } || true
-```
-
-For the hosted POC, also set `AGENT_BOM_SESSION_COOKIE_SECURE=1`; the hosted
-overlay sets it for the API service by default.
+Hosted POC preflight writes both secret files when asked (`--write-secret`).

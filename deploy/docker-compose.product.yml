@@ -21,10 +21,8 @@ version: "3.8"
 #   - AGENT_BOM_ALLOW_UNAUTHENTICATED_API=0   anonymous API access is off
 #   - NO_AUTH_ROLE is NOT set         there is no implicit unauthenticated role
 #   - Postgres URL REQUIRES the non-superuser app role (agent_bom_app), so the
-#     RLS superuser guard (#3665) is satisfied by least privilege, not by the
-#     AGENT_BOM_ALLOW_SUPERUSER_DB escape hatch. The user defaults to the fixed
-#     `agent_bom_app` role name; the password `:?` guard fails closed until the
-#     operator has provisioned that DML-only role.
+#     RLS superuser guard (#3665) is satisfied by least privilege. Password is
+#     mounted from deploy/secrets/postgres_app_password — never from env.
 #   - Session cookies stay Secure because Caddy terminates public TLS on 443 and
 #     proxies to the loopback-bound API/UI (see deploy/caddy/Caddyfile.hosted-poc).
 #
@@ -41,12 +39,10 @@ services:
   api:
     environment:
       # Connect as the DML-only, NOSUPERUSER/NOBYPASSRLS app role that
-      # deploy/supabase/postgres/init.sql creates. That role name is hardcoded to
-      # `agent_bom_app` in init.sql, so POSTGRES_APP_USER MUST be `agent_bom_app`
-      # — it defaults to exactly that and there is no reason to override it. The
-      # password has no default and fails closed: provision the role first. No
-      # admin/superuser fallback.
-      - AGENT_BOM_POSTGRES_URL=postgresql://${POSTGRES_APP_USER:-agent_bom_app}:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD to the agent_bom_app role password from init.sql}@postgres:5432/${POSTGRES_DB:-agent_bom}
+      # deploy/supabase/postgres/init.sql creates. Password from Docker secret
+      # only — no admin/superuser fallback and no password in env.
+      - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password
       # Anti-demo guards: opposite of docker-compose.hosted-poc.yml.
       - AGENT_BOM_DEMO_ESTATE=0
       - AGENT_BOM_ALLOW_UNAUTHENTICATED_API=0
@@ -54,3 +50,5 @@ services:
       - AGENT_BOM_SESSION_COOKIE_SECURE=1
       # Audit trail must be HMAC-signed and verifiable across restarts.
       - AGENT_BOM_REQUIRE_AUDIT_HMAC=1
+    secrets:
+      - postgres_app_password

@@ -58,20 +58,29 @@ One command brings up API + UI + Postgres with Docker Compose. Best for trying
 the full product, a single-team pilot, or an air-gapped VM.
 
 ```bash
-cp .env.example .env            # set POSTGRES_PASSWORD at minimum
+cp .env.example .env
+mkdir -p deploy/secrets
+printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
+printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password
 docker compose -f deploy/docker-compose.fullstack.yml up
 ```
+
+Postgres passwords are Docker secret files only — never `.env` or compose env.
+The API connects as `agent_bom_app` (DML-only), not the image bootstrap role.
 
 Then open:
 
 - Dashboard → <http://localhost:3000>
 - API docs → <http://localhost:8422/docs>
 
-To point at a managed Postgres instead of the bundled one, set
-`AGENT_BOM_POSTGRES_URL` and remove the `postgres` service:
+To point at a managed Postgres instead of the bundled one, set a password-free
+`AGENT_BOM_POSTGRES_URL` (app role only) plus
+`AGENT_BOM_POSTGRES_PASSWORD_FILE`, and remove the `postgres` service:
 
 ```bash
-AGENT_BOM_POSTGRES_URL=postgresql://user:pass@db.example.com:5432/agent_bom \
+AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@db.example.com:5432/agent_bom \
+AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password \
   docker compose -f deploy/docker-compose.fullstack.yml up api ui
 ```
 

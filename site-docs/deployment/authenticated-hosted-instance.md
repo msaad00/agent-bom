@@ -44,18 +44,14 @@ keeps browser-session cookies Secure. Auth env is wired by the platform base.
 ### 1a. Generate secrets and the non-superuser DB role
 
 The app connects as `agent_bom_app`, the DML-only role created by
-`deploy/supabase/postgres/init.sql` on first boot. Provide its password via
-`POSTGRES_APP_PASSWORD`; the init wrapper (`init-wrapper.sh`) injects it and the
-init SQL creates the role `NOSUPERUSER NOBYPASSRLS`, satisfying the RLS
-superuser guard (#3665) by least privilege.
+`deploy/supabase/postgres/init.sql` on first boot. Provide its secret via
+`deploy/secrets/postgres_app_password` (Docker secret mount); the init wrapper
+reads that file and the init SQL creates the role `NOSUPERUSER NOBYPASSRLS`,
+satisfying the RLS superuser guard (#3665) by least privilege. Never put
+Postgres passwords in `.env` or compose environment variables.
 
 ```bash
 cp .env.example .env
-
-# Postgres: superuser owner (schema init only) + DML-only app role (runtime)
-export POSTGRES_PASSWORD="$(openssl rand -hex 32)"
-export POSTGRES_APP_USER=agent_bom_app
-export POSTGRES_APP_PASSWORD="$(openssl rand -hex 32)"
 
 # Control-plane secrets
 export AGENT_BOM_API_KEY="$(openssl rand -hex 32)"          # bootstrap admin key
@@ -74,10 +70,11 @@ export ACME_EMAIL="ops@example.com"
 export NEXT_PUBLIC_API_URL="https://app.agent-bom.com"
 export CORS_ORIGINS="https://app.agent-bom.com,http://ui:3000"
 
-# Mount the Postgres superuser password as a Docker secret (fails closed if absent)
+# Postgres: bootstrap secret (image init only) + DML-only app role (runtime)
 mkdir -p deploy/secrets
-printf '%s' "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
-chmod 0400 deploy/secrets/postgres_password
+printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
+printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password
 ```
 
 `AGENT_BOM_API_KEY` seeds a single **admin** key. To seed viewer/analyst keys

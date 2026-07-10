@@ -76,8 +76,6 @@ Generate local secrets on the VM:
 ```bash
 cp .env.example .env
 
-export POSTGRES_PASSWORD="$(openssl rand -hex 32)"
-export POSTGRES_APP_PASSWORD="$(openssl rand -hex 32)"
 export AGENT_BOM_API_KEY="$(openssl rand -hex 32)"
 export AGENT_BOM_AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
 export AGENT_BOM_BROWSER_SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
@@ -91,9 +89,11 @@ export NEXT_PUBLIC_API_URL="https://demo.agent-bom.com"
 export CORS_ORIGINS="https://demo.agent-bom.com,http://ui:3000"
 export AGENT_BOM_SESSION_COOKIE_SECURE=1
 
+# Postgres secrets are file mounts only — never .env / compose env.
 mkdir -p deploy/secrets
-printf '%s' "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
-chmod 0400 deploy/secrets/postgres_password
+printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
+printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password
 ```
 
 Start the platform:

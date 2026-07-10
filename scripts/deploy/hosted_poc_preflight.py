@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import os
+import secrets
 import stat
 import subprocess
 import sys
@@ -17,8 +18,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 REQUIRED_ENV = (
-    "POSTGRES_PASSWORD",
-    "POSTGRES_APP_PASSWORD",
     "AGENT_BOM_API_KEY",
     "AGENT_BOM_AUDIT_HMAC_KEY",
     "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY",
@@ -31,12 +30,14 @@ SECRET_MIN_LENGTH = 32
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 TRUTHY = {"1", "true", "yes", "on"}
 UNIQUE_SECRET_ENV = (
-    "POSTGRES_PASSWORD",
-    "POSTGRES_APP_PASSWORD",
     "AGENT_BOM_API_KEY",
     "AGENT_BOM_AUDIT_HMAC_KEY",
     "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY",
     "AGENT_BOM_CONNECTIONS_KEY",
+)
+POSTGRES_SECRET_NAMES = (
+    "postgres_password",
+    "postgres_app_password",
 )
 
 
@@ -54,7 +55,7 @@ def _validate_secret_lengths(errors: list[str]) -> None:
         if not value:
             _fail(errors, f"{name} is required")
             continue
-        if name.endswith("_KEY") or name.startswith("POSTGRES_"):
+        if name.endswith("_KEY"):
             if len(value) < SECRET_MIN_LENGTH:
                 _fail(errors, f"{name} must be at least {SECRET_MIN_LENGTH} characters")
             if "change-me" in value.lower() or "replace" in value.lower():
@@ -85,6 +86,38 @@ def _validate_secret_uniqueness(errors: list[str]) -> None:
             _fail(errors, f"{name} must not reuse the same secret value as {previous}")
             continue
         seen[value] = name
+
+
+def _validate_no_postgres_password_env(errors: list[str]) -> None:
+    for name in ("POSTGRES_PASSWORD", "POSTGRES_APP_PASSWORD"):
+        if os.environ.get(name, "").strip():
+            _fail(
+                errors,
+                f"{name} must not be set — write deploy/secrets/postgres_* files instead "
+                "(never store Postgres passwords in env / .env)",
+            )
+
+
+def _secrets_dir(root: Path) -> Path:
+    return root / "deploy" / "secrets"
+
+
+def _validate_postgres_secret_files(root: Path, errors: list[str]) -> None:
+    values: dict[str, str] = {}
+    for name in POSTGRES_SECRET_NAMES:
+        path = _secrets_dir(root) / name
+        if not path.is_file():
+            _fail(errors, f"missing Postgres secret file: {path}")
+            continue
+        value = path.read_text(encoding="utf-8").strip()
+        if len(value) < SECRET_MIN_LENGTH:
+            _fail(errors, f"{path.name} must be at least {SECRET_MIN_LENGTH} characters")
+        if "replace_me" in value.lower() or "change-me" in value.lower() or "example" in value.lower():
+            _fail(errors, f"{path.name} still looks like a placeholder")
+        previous = next((other for other, other_value in values.items() if other_value == value), None)
+        if previous:
+            _fail(errors, f"{path.name} must not reuse the same secret value as {previous}")
+        values[path.name] = value
 
 
 def _validate_public_url(errors: list[str]) -> str:
@@ -134,15 +167,17 @@ def _validate_auth_and_bindings(errors: list[str]) -> None:
         _fail(errors, "AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC must be unset or false")
 
 
-def _write_postgres_secret(root: Path, *, force: bool) -> None:
-    secret_path = root / "deploy" / "secrets" / "postgres_password"
-    secret_path.parent.mkdir(parents=True, exist_ok=True)
-    if secret_path.exists() and not force:
-        print(f"postgres secret already exists: {secret_path}")
-        return
-    secret_path.write_text(os.environ["POSTGRES_PASSWORD"], encoding="utf-8")
-    secret_path.chmod(stat.S_IRUSR)
-    print(f"wrote {secret_path} with mode 0400")
+def _write_postgres_secrets(root: Path, *, force: bool) -> None:
+    secrets_dir = _secrets_dir(root)
+    secrets_dir.mkdir(parents=True, exist_ok=True)
+    for name in POSTGRES_SECRET_NAMES:
+        secret_path = secrets_dir / name
+        if secret_path.exists() and not force:
+            print(f"postgres secret already exists: {secret_path}")
+            continue
+        secret_path.write_text(secrets.token_hex(32), encoding="utf-8")
+        secret_path.chmod(stat.S_IRUSR)
+        print(f"wrote {secret_path} with mode 0400")
 
 
 def _compose_config(root: Path) -> str:
@@ -166,19 +201,29 @@ def _validate_compose_config(errors: list[str], rendered: str) -> None:
         "0.0.0.0:3000": "UI must not bind publicly",
         "0.0.0.0:8422": "API must not bind publicly",
         "postgres_password.example": "platform compose must not mount the placeholder Postgres password",
+        "postgres_app_password.example": "platform compose must not mount the placeholder app password",
         "--allow-insecure-no-auth": "hosted compose must not allow unauthenticated API mode",
         "AGENT_BOM_ALLOW_UNAUTHENTICATED_API": "hosted compose must not opt into unauthenticated API",
         "NEXT_PUBLIC_API_URL: http://localhost": "UI must not bake localhost API URL",
+        "POSTGRES_PASSWORD:": "compose must not interpolate POSTGRES_PASSWORD from env",
+        "POSTGRES_APP_PASSWORD:": "compose must not interpolate POSTGRES_APP_PASSWORD from env",
     }
     for needle, message in forbidden.items():
         if needle in rendered:
             _fail(errors, message)
     if "AGENT_BOM_SESSION_COOKIE_SECURE=1" not in rendered and 'AGENT_BOM_SESSION_COOKIE_SECURE: "1"' not in rendered:
         _fail(errors, "compose output must set AGENT_BOM_SESSION_COOKIE_SECURE=1")
+    if "AGENT_BOM_POSTGRES_PASSWORD_FILE" not in rendered:
+        _fail(errors, "compose output must mount AGENT_BOM_POSTGRES_PASSWORD_FILE for agent_bom_app")
+    if "postgresql://agent_bom_app@" not in rendered and "postgresql://agent_bom_app%40" not in rendered:
+        # url may stay unescaped
+        if "agent_bom_app@" not in rendered:
+            _fail(errors, "compose output must connect as agent_bom_app (never bootstrap/admin)")
 
 
 def run_preflight(root: Path, *, skip_compose: bool, write_secret: bool, force: bool) -> list[str]:
     errors: list[str] = []
+    _validate_no_postgres_password_env(errors)
     _validate_secret_lengths(errors)
     _validate_fernet_key(errors)
     _validate_secret_uniqueness(errors)
@@ -187,7 +232,9 @@ def run_preflight(root: Path, *, skip_compose: bool, write_secret: bool, force: 
     _validate_auth_and_bindings(errors)
 
     if write_secret and not errors:
-        _write_postgres_secret(root, force=force)
+        _write_postgres_secrets(root, force=force)
+
+    _validate_postgres_secret_files(root, errors)
 
     if not skip_compose:
         try:
@@ -201,27 +248,24 @@ def run_preflight(root: Path, *, skip_compose: bool, write_secret: bool, force: 
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Preflight a hosted agent-bom POC compose deployment")
-    parser.add_argument("--root", type=Path, default=_repo_root(), help="repository root")
-    parser.add_argument("--skip-compose", action="store_true", help="skip docker compose config rendering")
-    parser.add_argument(
-        "--write-postgres-secret",
-        action="store_true",
-        help="write deploy/secrets/postgres_password from POSTGRES_PASSWORD",
-    )
-    parser.add_argument("--force", action="store_true", help="overwrite deploy/secrets/postgres_password when writing")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=_repo_root())
+    parser.add_argument("--skip-compose", action="store_true")
+    parser.add_argument("--write-secret", action="store_true")
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
 
     errors = run_preflight(
-        args.root.resolve(),
+        args.root,
         skip_compose=args.skip_compose,
-        write_secret=args.write_postgres_secret,
+        write_secret=args.write_secret,
         force=args.force,
     )
     if errors:
-        print("Hosted POC preflight failed; review the hosted POC environment and compose overlays.", file=sys.stderr)
+        for error in errors:
+            print(f"error: {error}", file=sys.stderr)
         return 1
-    print("Hosted POC preflight passed.")
+    print("hosted POC preflight OK")
     return 0
 
 

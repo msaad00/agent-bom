@@ -140,8 +140,18 @@ def test_preflight_can_write_postgres_secrets(tmp_path: Path) -> None:
     assert oct(app.stat().st_mode & 0o777) == "0o400"
 
 
-def test_cli_returns_nonzero_on_failed_preflight(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_cli_returns_nonzero_without_printing_secret_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     _seed_postgres_secrets(tmp_path)
+    postgres_password = "database-secret-value-that-must-not-be-logged"
+    (tmp_path / "deploy" / "secrets" / "postgres_password").write_text(postgres_password, encoding="utf-8")
     monkeypatch.setenv("NEXT_PUBLIC_API_URL", "http://localhost:8422")
+    monkeypatch.setenv("POSTGRES_PASSWORD", postgres_password)
 
     assert main(["--root", str(tmp_path), "--skip-compose"]) == 1
+    captured = capsys.readouterr()
+    assert postgres_password not in captured.out
+    assert postgres_password not in captured.err

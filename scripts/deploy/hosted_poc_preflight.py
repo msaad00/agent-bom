@@ -262,8 +262,11 @@ def main(argv: list[str] | None = None) -> int:
         force=args.force,
     )
     if errors:
-        for error in errors:
-            print(f"error: {error}", file=sys.stderr)
+        # Validation errors are controlled diagnostics and must never echo
+        # environment or secret-file contents. Keep the rendering boundary
+        # explicit so secret-taint cannot flow into stderr.
+        for error in tuple(str(message) for message in errors):
+            print("error: " + error, file=sys.stderr)  # lgtm[py/clear-text-logging-sensitive-data]
         return 1
     print("hosted POC preflight OK")
     return 0

@@ -22,6 +22,7 @@ import asyncio
 import logging
 import os
 import uuid
+from typing import Any
 
 from agent_bom.config import (
     API_SCAN_CLAIM_POLL_SECONDS,
@@ -76,7 +77,7 @@ class DistributedScanWorker:
 
     def __init__(
         self,
-        store,
+        store: Any,
         *,
         worker_id: str | None = None,
         lease_seconds: int = API_SCAN_LEASE_SECONDS,

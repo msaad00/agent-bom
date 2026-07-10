@@ -62,9 +62,10 @@ export function PageLaneHeader({
 
 export function CatalogBanner() {
   return (
-    <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-      Reference catalog — known MCP packages and risk metadata. This is not your connected estate; use{" "}
-      <span className="font-medium text-amber-50">Agent BOM</span> for tenant inventory.
+    <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100/90">
+      <span className="font-medium text-amber-50">Reference catalog only.</span>{" "}
+      Capability risk scores what an MCP server can do (filesystem, SQL, cloud APIs) — not CVE patch status or your live inventory.
+      Use <span className="font-medium text-amber-50">Agent BOM</span> and <span className="font-medium text-amber-50">Findings</span> for tenant inventory and vulnerabilities.
     </div>
   );
 }

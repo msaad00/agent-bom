@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <DemoEstateLabel />
       <Nav />
       <AuthGate>
-        <main id="main-content" className="min-h-screen pt-14 transition-[padding-left] duration-200 lg:pl-[240px]">
+        <main id="main-content" className="min-h-screen pt-16 transition-[padding-left] duration-200 lg:pl-[60px]">
           <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
             {children}
           </div>

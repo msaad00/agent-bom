@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Scan,
-  Server,
   Bug,
   MessageSquareQuote,
   Database,
@@ -24,7 +23,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Search,
-  LayoutDashboard,
+  LayoutGrid,
   Wrench,
   RefreshCw,
   Focus,
@@ -33,8 +32,12 @@ import {
   DollarSign,
   Fingerprint,
   Radar,
+  Bot,
   Boxes,
   Cloud,
+  ClipboardList,
+  FileCheck,
+  Layers,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
@@ -63,12 +66,10 @@ interface NavGroup {
   icon: React.ElementType;
   links: NavLink[];
   /**
-   * Closely-related deep-dive destinations that stay reachable from nav but are
-   * tucked under a "More" disclosure so the group isn't a long flat list.
+   * Graph lens destinations grouped under Command with an explicit subheader
+   * (not a generic "More" bucket).
    */
   secondary?: NavLink[];
-  /** Accent color from architecture diagram — matches the product layer */
-  accent: string;
 }
 
 function activeGroupForPath(path: string | null): string {
@@ -83,34 +84,31 @@ function activeGroupForPath(path: string | null): string {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Command",
-    icon: LayoutDashboard,
-    accent: "#58a6ff",
+    icon: LayoutGrid,
     links: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/", label: "Overview", icon: LayoutGrid },
       { href: "/findings", label: "Findings", icon: Bug },
       { href: "/security-graph", label: "Security Graph", icon: Network },
       { href: "/remediation", label: "Remediation", icon: Wrench },
     ],
     secondary: [
-      { href: "/graph", label: "Lineage Lens", icon: GitBranch },
-      { href: "/mesh", label: "Agent Mesh Lens", icon: Waypoints },
-      { href: "/context", label: "Context Lens", icon: Network },
+      { href: "/graph", label: "Lineage", icon: GitBranch },
+      { href: "/mesh", label: "Agent Mesh", icon: Waypoints },
+      { href: "/context", label: "Context", icon: Layers },
     ],
   },
   {
-    label: "AI Estate",
-    icon: Server,
-    accent: "#3fb950",
+    label: "AI inventory",
+    icon: Bot,
     links: [
-      { href: "/agents", label: "Agents", icon: Server },
-      { href: "/manifest", label: "Agent BOM", icon: Waypoints },
+      { href: "/agents", label: "Agents", icon: Bot },
+      { href: "/manifest", label: "Agent BOM", icon: ClipboardList },
       { href: "/fleet", label: "Fleet", icon: Users },
     ],
   },
   {
     label: "Cloud & Data",
     icon: Cloud,
-    accent: "#a371f7",
     links: [
       { href: "/connections", label: "Cloud Accounts", icon: Cloud, capability: "scan.run" },
       { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
@@ -122,7 +120,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Runtime",
     icon: Shield,
-    accent: "#f778ba",
     links: [
       { href: "/runtime", label: "Runtime", icon: Shield },
       { href: "/traces", label: "Traces", icon: Radio },
@@ -131,9 +128,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Governance",
     icon: Eye,
-    accent: "#3fb950",
     links: [
-      { href: "/compliance", label: "Compliance", icon: Shield },
+      { href: "/compliance", label: "Compliance", icon: FileCheck },
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
       { href: "/audit", label: "Audit Log", icon: FileText },
     ],
@@ -141,13 +137,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Reference",
     icon: Boxes,
-    accent: "#d29922",
     links: [{ href: "/registry", label: "MCP Catalog", icon: Boxes }],
   },
   {
     label: "Operations",
     icon: Activity,
-    accent: "#db6d28",
     links: [
       { href: "/cost", label: "AI Spend", icon: DollarSign },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
@@ -158,16 +152,61 @@ const NAV_GROUPS: NavGroup[] = [
 
 const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
 
-/** Curated first-session proof path (#3618). Full nav stays in groups + ⌘K. */
-// Reuse the canonical nav labels so proof-path tiles don't give the same route
-// a second name (e.g. Findings vs "Queue"). Icons mirror each route's nav icon.
-const PROOF_PATH_LINKS: NavLink[] = [
-  { href: "/security-graph", label: "Security Graph", icon: Network },
-  { href: "/runtime", label: "Runtime", icon: Shield },
-  { href: "/compliance", label: "Compliance", icon: FileText },
-  { href: "/connections", label: "Cloud Accounts", icon: Cloud },
-  { href: "/remediation", label: "Remediation", icon: Wrench },
-];
+/** Per-route icon tint — semantic color without rainbow group chrome. */
+const NAV_LINK_ICON_CLASS: Record<string, string> = {
+  "/": "text-sky-400",
+  "/findings": "text-red-400",
+  "/security-graph": "text-violet-400",
+  "/remediation": "text-emerald-400",
+  "/graph": "text-sky-400",
+  "/mesh": "text-fuchsia-400",
+  "/context": "text-amber-400",
+  "/agents": "text-emerald-400",
+  "/manifest": "text-cyan-400",
+  "/fleet": "text-blue-400",
+  "/connections": "text-purple-400",
+  "/sources": "text-indigo-400",
+  "/scan": "text-orange-400",
+  "/identity": "text-pink-400",
+  "/drift": "text-rose-400",
+  "/runtime": "text-pink-400",
+  "/traces": "text-violet-400",
+  "/compliance": "text-emerald-400",
+  "/governance": "text-amber-400",
+  "/audit": "text-stone-400",
+  "/registry": "text-amber-400",
+  "/cost": "text-yellow-400",
+  "/jobs": "text-orange-400",
+  "/activity": "text-lime-400",
+};
+
+const NAV_GROUP_ICON_CLASS: Record<string, string> = {
+  Command: "text-sky-400",
+  "AI inventory": "text-emerald-400",
+  "Cloud & Data": "text-purple-400",
+  Runtime: "text-pink-400",
+  Governance: "text-emerald-400",
+  Reference: "text-amber-400",
+  Operations: "text-orange-400",
+};
+
+function navLinkIconClass(href: string, active: boolean, hoverGroup = "group"): string {
+  const tone = NAV_LINK_ICON_CLASS[href];
+  if (tone) {
+    return active ? tone : `${tone} opacity-80 ${hoverGroup}-hover:opacity-100`;
+  }
+  return active
+    ? "text-[color:var(--foreground)]"
+    : `text-[color:var(--text-tertiary)] ${hoverGroup}-hover:text-[color:var(--text-secondary)]`;
+}
+
+function navGroupIconClass(label: string, hasActiveChild: boolean): string {
+  const tone = NAV_GROUP_ICON_CLASS[label];
+  if (tone) {
+    return hasActiveChild ? tone : `${tone} opacity-75`;
+  }
+  return hasActiveChild ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]";
+}
 
 // ─── Risk counts for badges ─────────────────────────────────────────────────
 
@@ -176,7 +215,7 @@ const PROOF_PATH_LINKS: NavLink[] = [
 export function Nav() {
   const path = usePathname();
   const [captureMode, setCaptureMode] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(captureMode ? ALL_GROUP_LABELS : [activeGroupForPath(path)])
@@ -218,7 +257,7 @@ export function Nav() {
   useEffect(() => {
     const main = document.getElementById("main-content");
     if (main) {
-      main.style.paddingLeft = collapsed ? "60px" : "";
+      main.style.paddingLeft = collapsed ? "60px" : "240px";
     }
   }, [collapsed]);
 
@@ -380,33 +419,33 @@ export function Nav() {
     []
   );
 
-  const sidebarContent = (
+  const renderSidebarContent = (isCollapsed: boolean, allowCollapse: boolean) => (
     <>
       {/* Sidebar controls */}
       <div
         className={`border-b border-[color:var(--border-subtle)] ${
-          collapsed
+          isCollapsed
             ? "flex h-11 items-center justify-center px-2"
             : "flex h-11 items-center justify-between px-3"
         }`}
       >
-        {!collapsed && (
+        {!isCollapsed && (
           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
             Navigate
           </span>
         )}
-        <button
+        {allowCollapse && <button
           onClick={() => setCollapsed((value) => !value)}
           className="hidden rounded-md p-1.5 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)] lg:flex"
-          title={collapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={isCollapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-        </button>
+          {isCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+        </button>}
       </div>
 
       {/* Search */}
-      {!collapsed && (
+      {!isCollapsed && (
         <div className="px-3 py-3">
           <button
             onClick={() => setSearchOpen(true)}
@@ -418,7 +457,7 @@ export function Nav() {
           </button>
         </div>
       )}
-      {collapsed && (
+      {isCollapsed && (
         <div className="px-2 py-3 flex justify-center">
           <button
             onClick={() => { setCollapsed(false); setSearchOpen(true); }}
@@ -430,37 +469,8 @@ export function Nav() {
         </div>
       )}
 
-      {/* Proof path — curated golden-workflow entry points */}
-      {!collapsed && (
-        <div className="px-3 pb-1">
-          <p className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
-            Proof path
-          </p>
-          <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
-            {PROOF_PATH_LINKS.map((link) => {
-              const Icon = link.icon;
-              const active = link.href === "/" ? path === "/" : Boolean(path?.startsWith(link.href));
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap transition-colors ${
-                    active
-                      ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                      : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span>{link.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Navigation Groups */}
-      <nav className={`${collapsed ? "overflow-visible" : "overflow-y-auto scrollbar-thin"} flex-1 px-2 py-2 space-y-2`}>
+      <nav className={`${isCollapsed ? "overflow-visible" : "overflow-y-auto scrollbar-thin"} flex-1 px-2 py-2 space-y-2`}>
         {navGroups.map((group) => {
           const isExpanded = captureMode || expandedGroups.has(group.label);
           const GroupIcon = group.icon;
@@ -472,7 +482,7 @@ export function Nav() {
             <div
               key={group.label}
               className={`rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] ${
-                collapsed ? "group/navlane relative" : ""
+                isCollapsed ? "group/navlane relative" : ""
               }`}
             >
               {/* Group Header */}
@@ -481,32 +491,30 @@ export function Nav() {
                   if (captureMode) {
                     return;
                   }
-                  if (collapsed) {
+                  if (isCollapsed) {
                     return;
                   } else {
                     toggleGroup(group.label);
                   }
                 }}
-                onMouseEnter={(event) => openCollapsedFlyout(group.label, event.currentTarget)}
-                onMouseLeave={scheduleCollapsedFlyoutClose}
-                onFocus={(event) => openCollapsedFlyout(group.label, event.currentTarget)}
-                onBlur={scheduleCollapsedFlyoutClose}
+                onMouseEnter={isCollapsed ? (event) => openCollapsedFlyout(group.label, event.currentTarget) : undefined}
+                onMouseLeave={isCollapsed ? scheduleCollapsedFlyoutClose : undefined}
+                onFocus={isCollapsed ? (event) => openCollapsedFlyout(group.label, event.currentTarget) : undefined}
+                onBlur={isCollapsed ? scheduleCollapsedFlyoutClose : undefined}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors border-l-2 ${
-                  collapsed ? "justify-center px-2 py-3" : ""
+                  isCollapsed ? "justify-center px-2 py-3" : ""
                 } ${
                   hasActiveChild
-                    ? "text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
-                    : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
+                    ? "border-[color:var(--border-strong)] text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
+                    : "border-transparent text-[color:var(--text-secondary)] hover:border-[color:var(--border-subtle)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                 }`}
-                style={{ borderLeftColor: group.accent }}
-                aria-expanded={collapsed ? collapsedFlyoutGroup === group.label : isExpanded}
-                aria-label={collapsed ? group.label : undefined}
+                aria-expanded={isCollapsed ? collapsedFlyoutGroup === group.label : isExpanded}
+                aria-label={isCollapsed ? group.label : undefined}
               >
                 <GroupIcon
-                  className={`${collapsed ? "h-5 w-5" : "h-4 w-4"} shrink-0`}
-                  style={{ color: hasActiveChild ? group.accent : group.accent + "99" }}
+                  className={`${isCollapsed ? "h-5 w-5" : "h-4 w-4"} shrink-0 ${navGroupIconClass(group.label, hasActiveChild)}`}
                 />
-                {!collapsed && (
+                {!isCollapsed && (
                   <>
                     <div className="min-w-0 flex-1 text-left">
                       <span className="block uppercase tracking-wider text-[10px] font-semibold">
@@ -526,7 +534,7 @@ export function Nav() {
               </button>
 
               {/* Group Links */}
-              {(isExpanded || collapsed) && !collapsed && (
+              {isExpanded && !isCollapsed && (
                 <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-[color:var(--border-subtle)] pl-2">
                   {group.visibleLinks.map(({ href, label, icon: Icon }) => {
                     const active =
@@ -545,19 +553,11 @@ export function Nav() {
                         href={href}
                         className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all group relative ${
                           active
-                            ? "border-l-2 ml-0 pl-2.5"
+                            ? "border-l-2 border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)] ml-0 pl-2.5"
                             : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                         }`}
-                        style={active ? {
-                          color: group.accent,
-                          borderLeftColor: group.accent,
-                          backgroundColor: `${group.accent}10`,
-                        } : undefined}
                       >
-                        <Icon
-                          className={`w-3.5 h-3.5 shrink-0 ${!active && "text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)]"}`}
-                          style={active ? { color: group.accent } : undefined}
-                        />
+                        <Icon className={`w-3.5 h-3.5 shrink-0 ${navLinkIconClass(href, active)}`} />
                         <span className="truncate">{label}</span>
 
                         {/* Capable-but-unconnected hint */}
@@ -596,7 +596,7 @@ export function Nav() {
                             className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12px] text-[color:var(--text-tertiary)] transition-colors hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
                             title="Hidden until this deployment mode is detected"
                           >
-                            <Icon className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                            <Icon className={`h-3.5 w-3.5 shrink-0 opacity-60 ${NAV_LINK_ICON_CLASS[href] ?? ""}`} />
                             <span className="truncate">{label}</span>
                           </Link>
                         ))}
@@ -604,39 +604,35 @@ export function Nav() {
                     </details>
                   )}
                   {group.secondaryLinks.length > 0 && (
-                    <details className="mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2">
-                      <summary className="cursor-pointer list-none text-[11px] font-medium uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
-                        More ({group.secondaryLinks.length})
-                      </summary>
-                      <div className="mt-2 space-y-0.5">
+                    <div className="mt-2 border-t border-[color:var(--border-subtle)] pt-2">
+                      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                        Graph lenses
+                      </p>
+                      <div className="space-y-0.5">
                         {group.secondaryLinks.map(({ href, label, icon: Icon }) => {
                           const active = path.startsWith(href);
                           return (
                             <Link
                               key={href}
                               href={href}
-                              className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12px] transition-colors ${
+                              className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
                                 active
-                                  ? "font-medium"
-                                  : "text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
+                                  ? "border-l-2 border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)] ml-0 pl-2.5 font-medium"
+                                  : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                               }`}
-                              style={active ? { color: group.accent } : undefined}
                             >
-                              <Icon
-                                className="h-3.5 w-3.5 shrink-0 opacity-70"
-                                style={active ? { color: group.accent } : undefined}
-                              />
+                              <Icon className={`h-3.5 w-3.5 shrink-0 ${navLinkIconClass(href, active)}`} />
                               <span className="truncate">{label}</span>
                             </Link>
                           );
                         })}
                       </div>
-                    </details>
+                    </div>
                   )}
                 </div>
               )}
 
-              {collapsed && collapsedFlyoutGroup === group.label && (
+              {isCollapsed && collapsedFlyoutGroup === group.label && (
                 <div
                   className="fixed left-[52px] z-[70] w-[340px] pl-4"
                   style={{ top: collapsedFlyoutTop }}
@@ -645,16 +641,10 @@ export function Nav() {
                   onFocus={cancelCollapsedFlyoutClose}
                   onBlur={scheduleCollapsedFlyoutClose}
                 >
-                  <div
-                    className="rounded-2xl border bg-[color:var(--surface)] p-3 shadow-2xl shadow-black/45"
-                    style={{ borderColor: `${group.accent}55` }}
-                  >
+                  <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 shadow-2xl shadow-black/45">
                     <div className="mb-3 flex items-start gap-3">
-                      <div
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
-                        style={{ borderColor: `${group.accent}66`, backgroundColor: `${group.accent}16`, color: group.accent }}
-                      >
-                        <GroupIcon className="h-5 w-5" />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
+                        <GroupIcon className={`h-5 w-5 ${navGroupIconClass(group.label, hasActiveChild)}`} />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--foreground)]">
@@ -682,8 +672,7 @@ export function Nav() {
                             onClick={() => setCollapsedFlyoutGroup(null)}
                           >
                             <Icon
-                              className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] group-hover/link:text-[color:var(--foreground)]"
-                              style={active ? { color: group.accent } : undefined}
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${navLinkIconClass(href, active, "group/link")}`}
                             />
                             <span className="min-w-0">
                               <span className="block text-sm font-medium">{label}</span>
@@ -691,6 +680,11 @@ export function Nav() {
                           </Link>
                         );
                       })}
+                      {group.secondaryLinks.length > 0 && (
+                        <p className="mt-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                          Graph lenses
+                        </p>
+                      )}
                       {group.secondaryLinks.map(({ href, label, icon: Icon }) => {
                         const active = path.startsWith(href);
                         return (
@@ -705,8 +699,7 @@ export function Nav() {
                             onClick={() => setCollapsedFlyoutGroup(null)}
                           >
                             <Icon
-                              className="mt-0.5 h-4 w-4 shrink-0 opacity-70"
-                              style={active ? { color: group.accent } : undefined}
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${navLinkIconClass(href, active, "group/link")}`}
                             />
                             <span className="min-w-0">
                               <span className="block text-[13px]">{label}</span>
@@ -729,32 +722,27 @@ export function Nav() {
         })}
       </nav>
 
-      {/* Bottom section */}
-      <div className={`border-t border-[color:var(--border-subtle)] ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
-        <div className="space-y-2">
-          <SessionStatus collapsed={collapsed} loading={authLoading} session={session} />
-          <DemoNavSignIn collapsed={collapsed} />
-          <Link
-            href={`/help?from=${encodeURIComponent(path ?? "/")}`}
-            className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] ${collapsed ? "justify-center px-2" : ""}`}
-            title="Share feedback or report a bug"
-          >
-            <MessageSquareQuote className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>Feedback &amp; Bug Report</span>}
-          </Link>
-          <ThemeToggle compact={collapsed} />
-          <ApiStatus collapsed={collapsed} />
-        </div>
-      </div>
+      {/* Bottom section — collapsed by default so nav lanes keep vertical space */}
+      <SidebarFooter
+        collapsed={isCollapsed}
+        authLoading={authLoading}
+        session={session}
+        path={path}
+      />
     </>
   );
 
   return (
     <>
       {/* Product chrome — Snowflake-style top bar with canonical agent-bom lockup */}
-      <header className="fixed inset-x-0 top-0 z-[60] flex h-14 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
+      <header className="fixed inset-x-0 top-0 z-[60] flex h-16 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
         <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
-          <BrandLogo className="transition-transform duration-200 group-hover:scale-[1.01]" />
+          <BrandLogo
+            showTagline
+            markClassName="h-9 w-9"
+            wordmarkClassName="h-[26px] w-auto max-w-[11rem]"
+            className="transition-transform duration-200 group-hover:scale-[1.01]"
+          />
         </Link>
         {counts?.deployment_mode && (
           <span className="hidden rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] sm:inline-flex">
@@ -795,19 +783,19 @@ export function Nav() {
 
       {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:flex flex-col fixed left-0 top-14 bottom-0 z-40 bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] transition-[width] duration-200 ${
+        className={`hidden lg:flex flex-col fixed left-0 top-16 bottom-0 z-40 bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[240px]"
         }`}
       >
-        {sidebarContent}
+        {renderSidebarContent(collapsed, true)}
       </aside>
 
       {/* Mobile Drawer Overlay */}
       {mobileOpen && (
         <>
           <div className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="lg:hidden fixed left-0 top-14 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
-            {sidebarContent}
+          <aside aria-label="Mobile navigation" className="lg:hidden fixed left-0 top-16 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
+            {renderSidebarContent(false, false)}
           </aside>
         </>
       )}
@@ -826,14 +814,73 @@ export function Nav() {
   );
 }
 
+function SidebarFooter({
+  collapsed,
+  authLoading,
+  session,
+  path,
+}: {
+  collapsed: boolean;
+  authLoading: boolean;
+  session: ReturnType<typeof useAuthState>["session"];
+  path: string | null;
+}) {
+  const feedbackLink = (
+    <Link
+      href={`/help?from=${encodeURIComponent(path ?? "/")}`}
+      className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] ${collapsed ? "justify-center px-2" : ""}`}
+      title="Share feedback or report a bug"
+    >
+      <MessageSquareQuote className="h-4 w-4 shrink-0" />
+      {!collapsed && <span>Feedback &amp; Bug Report</span>}
+    </Link>
+  );
+
+  if (collapsed) {
+    return (
+      <div className="border-t border-[color:var(--border-subtle)] px-2 py-3">
+        <div className="space-y-2">
+          <SessionStatus collapsed loading={authLoading} session={session} />
+          <DemoNavSignIn collapsed />
+          {feedbackLink}
+        </div>
+      </div>
+    );
+  }
+
+  const footerHint = authLoading
+    ? "Checking session…"
+    : session?.authenticated
+      ? `Signed in · ${session.subject ?? session.role_summary?.display_name ?? session.role ?? "user"}`
+      : "Sign-in required";
+
+  return (
+    <div className="border-t border-[color:var(--border-subtle)] px-3 py-3">
+      <details className="group/footer">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[11px] text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+          <span className="truncate">{footerHint}</span>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open/footer:rotate-90" />
+        </summary>
+        <div className="mt-2 space-y-2">
+          <SessionStatus collapsed={false} loading={authLoading} session={session} embedded />
+          <DemoNavSignIn />
+          {feedbackLink}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function SessionStatus({
   collapsed,
   loading,
   session,
+  embedded = false,
 }: {
   collapsed: boolean;
   loading: boolean;
   session: ReturnType<typeof useAuthState>["session"];
+  embedded?: boolean;
 }) {
   if (collapsed) {
     if (loading) {
@@ -859,8 +906,11 @@ function SessionStatus({
   }
 
   if (!session?.authenticated) {
+    if (embedded) {
+      return null;
+    }
     return (
-      <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+      <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)]">
         Sign-in required for protected control-plane actions
       </div>
     );

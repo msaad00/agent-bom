@@ -54,12 +54,12 @@ Coverage depth and honest boundaries:
 [AI infrastructure scanning](docs/AI_INFRASTRUCTURE_SCANNING.md) ·
 [product boundaries](docs/PRODUCT_BOUNDARIES.md)
 
-<details>
-<summary><b>See it in action</b> — CLI demo and dashboard screenshots</summary>
-
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
 </p>
+
+<details>
+<summary><b>Product screenshots</b> — packaged dashboard on seeded demo data</summary>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Risk overview dashboard with posture grade and attack paths" width="900" />

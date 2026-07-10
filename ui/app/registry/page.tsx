@@ -156,6 +156,12 @@ function RegistryDetail({ serverId }: { serverId: string }) {
                   <span>{server.category}</span>
                 </>
               )}
+              {server.latest_version && (
+                <>
+                  <span className="text-zinc-700">&middot;</span>
+                  <span className="font-mono text-xs">{server.latest_version}</span>
+                </>
+              )}
             </div>
             {server.description && (
               <p className="text-sm text-zinc-400 mt-2">{server.description}</p>
@@ -163,8 +169,11 @@ function RegistryDetail({ serverId }: { serverId: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`text-xs px-2 py-1 rounded border font-mono uppercase font-medium ${riskColor(server.risk_level)}`}>
-            {server.risk_level}
+          <span
+            className={`text-xs px-2 py-1 rounded border font-mono uppercase font-medium ${riskColor(server.risk_level)}`}
+            title={server.risk_justification ?? "Capability risk"}
+          >
+            {server.risk_level} capability
           </span>
           {server.verified && (
             <span className="text-[10px] px-1.5 py-0.5 rounded border font-mono border-emerald-800 bg-emerald-950 text-emerald-400">
@@ -352,7 +361,7 @@ function RegistryList() {
       <PageLaneHeader
         lane="reference"
         title="MCP Catalog"
-        subtitle={`${servers.length.toLocaleString()} known servers · ${riskCounts.high} high · ${riskCounts.medium} medium risk`}
+        subtitle={`${servers.length.toLocaleString()} known servers · capability risk (not CVE status) · ${riskCounts.high} high · ${riskCounts.medium} medium`}
         banner={<CatalogBanner />}
       />
 
@@ -436,7 +445,13 @@ function RegistryList() {
               <tr>
                 <th className="px-4 py-3 font-medium">Server</th>
                 <th className="px-4 py-3 font-medium">Publisher</th>
-                <th className="px-4 py-3 font-medium">Risk</th>
+                <th className="px-4 py-3 font-medium">Version</th>
+                <th
+                  className="px-4 py-3 font-medium"
+                  title="Inherent tool capability risk — not whether the publisher has unpatched CVEs"
+                >
+                  Capability
+                </th>
                 <th className="px-4 py-3 font-medium">Tools</th>
                 <th className="px-4 py-3 font-medium">Creds</th>
                 <th className="px-4 py-3 font-medium">Category</th>
@@ -451,8 +466,12 @@ function RegistryList() {
                 >
                   <td className="px-4 py-3 font-medium text-zinc-200">{server.name}</td>
                   <td className="px-4 py-3 text-zinc-500">{server.publisher ?? "—"}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-zinc-400">{server.latest_version ?? "—"}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${riskColor(server.risk_level)}`}>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${riskColor(server.risk_level)}`}
+                      title={server.risk_justification ?? "Capability risk from tools, credentials, and category."}
+                    >
                       {server.risk_level}
                     </span>
                   </td>
@@ -487,6 +506,7 @@ function RegistryList() {
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${riskColor(server.risk_level)}`}
+                    title={server.risk_justification ?? "Capability risk"}
                   >
                     {server.risk_level}
                   </span>
@@ -505,6 +525,9 @@ function RegistryList() {
                   <span className="flex items-center gap-0.5">
                     <Package className="w-2.5 h-2.5" /> {server.packages[0]!.ecosystem}
                   </span>
+                )}
+                {server.latest_version && (
+                  <span className="font-mono">{server.latest_version}</span>
                 )}
                 {server.tools && server.tools.length > 0 && (
                   <span className="flex items-center gap-0.5">

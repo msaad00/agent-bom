@@ -26,7 +26,7 @@ export function DemoNavSignIn({ collapsed = false }: { collapsed?: boolean }) {
     <a
       href={ctaHref()}
       data-testid="demo-nav-sign-in"
-      className={`flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-300 transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/15 ${
+      className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] font-medium text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-strong)] ${
         collapsed ? "justify-center px-2" : ""
       }`}
       title="Sign in to connect your cloud"

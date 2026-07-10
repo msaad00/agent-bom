@@ -801,10 +801,14 @@ function FindingsPage() {
               onClick={handleExportVex}
               disabled={vexExporting || vexEligibleCount === 0}
               className="flex items-center gap-1.5 rounded-lg border border-emerald-900 bg-emerald-950/40 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70 disabled:cursor-not-allowed disabled:opacity-50"
-              title={vexEligibleCount > 0 ? "Export signed OpenVEX for not_affected triage decisions" : "Record a not_affected triage decision before exporting VEX"}
+              title={
+                vexEligibleCount > 0
+                  ? "Export signed OpenVEX JSON for findings triaged as not_affected"
+                  : "Mark a finding not_affected with justification to enable OpenVEX export"
+              }
             >
               {vexExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
-              Export VEX
+              Export OpenVEX
             </button>
             <button
               onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
@@ -869,13 +873,18 @@ function FindingsPage() {
               <div>
                 <h2 className="text-sm font-semibold text-zinc-200">Findings queue</h2>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Triage one finding at a time. Rows stay compact; evidence, reachability, fixes, and VEX decisions open in the drawer.
+                  Triage one finding at a time. Evidence, reachability, fixes, and OpenVEX disposition live in the drawer.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
                 <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{PAGE_SIZE} per page</span>
                 <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{displayed.length} filtered</span>
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{vexEligibleCount} VEX-ready</span>
+                <span
+                  className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1"
+                  title="OpenVEX export is available after a finding is triaged as not_affected with justification"
+                >
+                  {vexEligibleCount} OpenVEX-ready
+                </span>
               </div>
             </div>
 

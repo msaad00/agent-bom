@@ -492,7 +492,7 @@ export default function MeshPage() {
         <div className="min-w-0">
           <h1 className="text-lg font-semibold text-foreground">Agent Mesh</h1>
           <p className="break-words text-sm text-[var(--text-secondary)]">
-            Evidence-scoped path view across agents, MCP servers, tools, packages, credential references, and findings
+            Agent, MCP server, tool, package, and finding relationships from graph evidence.
           </p>
           <p className="mt-1 break-words text-xs text-[var(--text-tertiary)]">
             Default view ranks the highest-risk agent first and hides lower-priority nodes until you expand filters.

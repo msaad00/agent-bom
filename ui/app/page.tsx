@@ -13,6 +13,7 @@ import {
   OverviewResponse,
   OverviewDomain,
   formatDate,
+  type PostureCountsResponse,
 } from "@/lib/api";
 import { TrustStackSignals } from "@/components/trust-stack";
 import { ActivityFeed } from "@/components/activity-feed";
@@ -37,8 +38,8 @@ import {
   blastTools,
 } from "@/lib/dashboard-data";
 import {
-  ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
-  AlertTriangle, Layers, GitBranch, ChevronRight, BarChart3, LayoutGrid,
+  ShieldAlert, ArrowRight, Clock,
+  AlertTriangle, GitBranch, ChevronRight, BarChart3, LayoutGrid,
 } from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -231,7 +232,6 @@ export default function Dashboard() {
   const kevCount = useMemo(() => allBlast.filter((b) => (b.is_kev ?? b.cisa_kev) === true).length, [allBlast]);
   const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
   const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
-  const impactedAgentCount = useMemo(() => new Set(allBlast.flatMap(blastAgents)).size, [allBlast]);
   const estateSummary = useMemo(() => aggregateEstate(agentList), [agentList]);
 
   // Real signals feeding the AI trust stack — data sources connected (L1),
@@ -316,7 +316,6 @@ export default function Dashboard() {
   const displayedAgentCount = importedReport ? (importedReport.agents?.length ?? 0) : (agentsLoading ? null : effectiveAgentCount);
   const isLoading = jobsLoading && !importedReport;
   const summaryReady = !jobsLoading || Boolean(importedReport);
-  const agentsReady = !agentsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
   const criticalCount = detailsReady
@@ -344,72 +343,96 @@ export default function Dashboard() {
 
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} kind={apiErrorKind} detail={apiErrorDetail} />;
 
+  const postureGrade = posture?.grade ?? overview?.posture.grade ?? "—";
+  const postureScore = posture?.score ?? overview?.posture.score;
+  const latestScanShort =
+    summaryReady && effectiveRecentJobs[0]?.created_at
+      ? formatShortScanTime(effectiveRecentJobs[0].created_at)
+      : null;
+
   return (
-    <div className="space-y-5">
-      <ScorecardStrip
-        posture={posture ?? (overview ? { grade: overview.posture.grade, score: overview.posture.score, summary: overview.posture.summary, dimensions: {} } : null)}
-        overview={overview}
+    <div className="space-y-8">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Overview</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
+            Posture and exposure from the latest completed scan.
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Link
+            href="/scan"
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+          >
+            Run scan <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            href="/security-graph"
+            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+          >
+            Security graph <GitBranch className="h-4 w-4" />
+          </Link>
+        </div>
+      </header>
+
+      <OverviewSummaryBar
+        grade={postureGrade}
+        score={postureScore}
         critical={criticalCount}
         high={highCount}
-        counts={counts}
+        agents={displayedAgentCount}
+        cves={summaryReady ? displayedUniqueCVEs : null}
+        scans={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
+        latestScan={jobsLoading ? null : latestScanShort}
+        mode={deploymentModeLabel(counts?.deployment_mode)}
         summaryReady={summaryReady}
       />
 
-      <section className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Exposure command center</h1>
-            <p className="mt-1 text-sm text-zinc-400">
-              {(displayedAgentCount ?? "—")} agents · {summaryReady ? displayedPackages : "—"} packages · {summaryReady ? displayedUniqueCVEs : "—"} CVEs
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <MetricChip label="KEV" value={String(summaryReady ? displayedKevCount : 0)} tone="red" />
-              <MetricChip label="Credentials" value={String(summaryReady ? displayedCredentialExposure : 0)} tone="amber" />
-              <MetricChip label="Tools" value={String(summaryReady ? displayedReachableTools : 0)} tone="sky" />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/scan" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
-              Run scan <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link href="/security-graph" className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500">
-              Security graph <GitBranch className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-medium text-[color:var(--foreground)]">Top exposure path</h2>
           {topExposurePath ? (
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">Top path</p>
-                <span className="rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 font-mono text-xs text-red-200">
-                  {topExposurePath.riskScore.toFixed(1)}
-                </span>
-              </div>
-              <AttackPathCard nodes={topExposurePath.nodes} riskScore={topExposurePath.riskScore} href={topExposurePath.href} captureMode compact />
-            </div>
-          ) : (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              No scored exposure path yet. Run a scan to populate attack-path evidence.
-            </div>
-          )}
-          <div className="grid grid-cols-3 gap-2">
-            <QuickLink href="/findings?severity=critical" label="Critical" value={String(severity.critical)} />
-            <QuickLink href="/security-graph" label="Identity" value={String(credentialExposureCount || estateSummary.credentialedServers)} />
-            <QuickLink href="/agents" label="Services" value={String(impactedAgentCount || estateSummary.servers || (displayedAgentCount ?? 0))} />
-          </div>
+            <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-xs text-[color:var(--text-secondary)]">
+              {topExposurePath.riskScore.toFixed(1)}
+            </span>
+          ) : null}
         </div>
+        {topExposurePath ? (
+          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+            <AttackPathCard
+              nodes={topExposurePath.nodes}
+              riskScore={topExposurePath.riskScore}
+              href={topExposurePath.href}
+              captureMode
+              compact
+            />
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">
+            No scored exposure path yet. Run a scan to populate attack-path evidence.
+          </div>
+        )}
       </section>
 
-      {/* Top exposure paths — the fix-first shortlist, kept above the fold. */}
+      <DomainSignalsPanel
+        overview={overview}
+        counts={counts}
+        summaryReady={summaryReady}
+        scanCount={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
+        latestScanLabel={latestScanShort}
+        kev={summaryReady ? displayedKevCount : null}
+        credentials={summaryReady ? displayedCredentialExposure : null}
+        tools={summaryReady ? displayedReachableTools : null}
+        packages={summaryReady ? displayedPackages : null}
+      />
+
       {(!isLoading) && allBlast.length > 0 && (
-        <details className="group/attack rounded-2xl border border-zinc-800/90 bg-zinc-950/70 p-4">
+        <details className="group/attack rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 select-none">
             <div className="flex items-center gap-2">
-              <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/attack:rotate-90" />
-              <h2 className="text-sm font-semibold text-zinc-300">Exposure paths</h2>
-              <span className="rounded-full border border-zinc-800 bg-zinc-900/90 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
+              <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open/attack:rotate-90" />
+              <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Exposure paths</h2>
+              <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]">
                 {Math.min(allBlast.length, 5)}
               </span>
             </div>
@@ -445,37 +468,17 @@ export default function Dashboard() {
         </details>
       )}
 
-      {/* Exposure KPIs — coverage + backlog snapshot. */}
-      <details className="group/metrics rounded-2xl border border-zinc-800/90 bg-zinc-950/70 p-4">
-        <summary className="flex cursor-pointer list-none items-center gap-2 select-none">
-          <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/metrics:rotate-90" />
-          <h2 className="text-sm font-semibold text-zinc-300">Exposure KPIs</h2>
-        </summary>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
-          <StatCard icon={Server} label="Agents" value={agentsReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
-          <StatCard icon={Package} label="Packages" value={summaryReady ? String(displayedPackages) : "—"} color="orange" href="/findings" />
-          <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(displayedUniqueCVEs) : "—"} color="red" href="/findings" />
-          <StatCard icon={Zap} label="Critical" value={summaryReady ? String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0)) : "—"} color="red" href="/findings?severity=critical" />
-        </div>
-      </details>
-
-      {/* Tabbed area: the command-center feed is the default; deep analytics
-          (recharts + long tables) lives behind a tab so it never loads on first
-          paint. */}
       <div>
-        <div className="mb-4 inline-flex rounded-2xl border border-zinc-800 bg-zinc-950/70 p-1">
-          <TabButton icon={LayoutGrid} label="Overview" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
+        <div className="mb-4 inline-flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-1">
+          <TabButton icon={LayoutGrid} label="Feed" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
           <TabButton icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
         </div>
 
         {activeTab === "command" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <section className="lg:col-span-2">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
-                  Recent scans
-                </h2>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-medium text-[color:var(--foreground)]">Recent scans</h2>
                 {effectiveRecentJobs.length > 8 && (
                   <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
                     View all <ArrowRight className="w-3 h-3" />
@@ -483,7 +486,7 @@ export default function Dashboard() {
                 )}
               </div>
               {jobsLoading && !importedReport ? (
-                <div className="text-zinc-500 text-sm">Loading...</div>
+                <div className="text-sm text-[color:var(--text-secondary)]">Loading…</div>
               ) : effectiveRecentJobs.length === 0 ? (
                 <EmptyState />
               ) : (
@@ -496,9 +499,7 @@ export default function Dashboard() {
             </section>
 
             <section>
-              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-                Activity
-              </h2>
+              <h2 className="mb-3 text-sm font-medium text-[color:var(--foreground)]">Activity</h2>
               <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
             </section>
           </div>
@@ -523,26 +524,189 @@ export default function Dashboard() {
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
-function MetricChip({ label, value, tone }: { label: string; value: string; tone: "red" | "amber" | "sky" }) {
-  const toneClass =
-    tone === "red"
-      ? "border-red-500/20 bg-red-500/10 text-red-100"
-      : tone === "amber"
-        ? "border-amber-500/20 bg-amber-500/10 text-amber-100"
-        : "border-sky-500/20 bg-sky-500/10 text-sky-100";
+function formatShortScanTime(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function OverviewSummaryBar({
+  grade,
+  score,
+  critical,
+  high,
+  agents,
+  cves,
+  scans,
+  latestScan,
+  mode,
+  summaryReady,
+}: {
+  grade: string;
+  score?: number | undefined;
+  critical: number;
+  high: number;
+  agents: number | null;
+  cves: number | null;
+  scans: number | null;
+  latestScan: string | null;
+  mode: string;
+  summaryReady: boolean;
+}) {
   return (
-    <span className={`rounded-lg border px-2.5 py-1 font-mono text-xs ${toneClass}`}>
-      {label} {value}
-    </span>
+    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-4 py-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
+        <SummaryMetric label="Posture" value={grade} sub={typeof score === "number" ? String(score) : undefined} />
+        <SummaryMetric label="Critical" value={summaryReady ? String(critical) : "—"} href="/findings?severity=critical" tone="critical" />
+        <SummaryMetric label="High" value={summaryReady ? String(high) : "—"} href="/findings?severity=high" tone="high" />
+        <SummaryMetric label="Agents" value={summaryReady && agents != null ? String(agents) : "—"} href="/agents" />
+        <SummaryMetric label="CVEs" value={summaryReady && cves != null ? String(cves) : "—"} href="/findings" />
+        <SummaryMetric label="Scans" value={summaryReady && scans != null ? String(scans) : "—"} href="/jobs" />
+        <SummaryMetric label="Last scan" value={latestScan ?? "—"} text />
+        <SummaryMetric label="Mode" value={mode} text />
+      </div>
+    </div>
   );
 }
 
-function QuickLink({ href, label, value }: { href: string; label: string; value: string }) {
+function SummaryMetric({
+  label,
+  value,
+  sub,
+  href,
+  tone,
+  text,
+}: {
+  label: string;
+  value: string;
+  sub?: string | undefined;
+  href?: string | undefined;
+  tone?: "critical" | "high" | undefined;
+  text?: boolean | undefined;
+}) {
+  const valueClass =
+    tone === "critical"
+      ? "text-red-500 dark:text-red-400"
+      : tone === "high"
+        ? "text-orange-500 dark:text-orange-400"
+        : "text-[color:var(--foreground)]";
+
+  const inner = (
+    <div className="min-w-0">
+      <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</p>
+      <div className="mt-0.5 flex items-baseline gap-1.5">
+        <p className={`truncate ${text ? "text-sm font-medium" : `font-mono text-lg font-semibold ${valueClass}`}`}>
+          {value}
+        </p>
+        {sub ? <span className="font-mono text-[10px] text-[color:var(--text-tertiary)]">{sub}</span> : null}
+      </div>
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className="rounded-lg transition-colors hover:bg-[color:var(--surface-muted)]">
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
+}
+
+function DomainSignalsPanel({
+  overview,
+  counts,
+  summaryReady,
+  scanCount,
+  latestScanLabel,
+  kev,
+  credentials,
+  tools,
+  packages,
+}: {
+  overview: OverviewResponse | null;
+  counts: ReturnType<typeof useDeploymentContext>["counts"];
+  summaryReady: boolean;
+  scanCount: number | null;
+  latestScanLabel: string | null;
+  kev: number | null;
+  credentials: number | null;
+  tools: number | null;
+  packages: number | null;
+}) {
+  const domains = overview ? Object.values(overview.domains) : [];
+  const activeDomains = domains.filter((d) => d.status !== "idle").length;
+  const coverage = domains.length > 0 ? Math.round((activeDomains / domains.length) * 100) : null;
+  const activeServices = countActiveServices(counts?.services);
+  const connected = hasDeploymentSignals(counts);
+
+  if (domains.length === 0 && !summaryReady) {
+    return null;
+  }
+
   return (
-    <Link href={href} className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3 text-center transition hover:border-zinc-600">
-      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
-      <p className="mt-1 font-mono text-xl font-semibold text-zinc-100">{value}</p>
-    </Link>
+    <details className="group/signals rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 select-none">
+        <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open/signals:rotate-90" />
+        <span className="text-sm font-medium text-[color:var(--foreground)]">Domain & service signals</span>
+        <span className="text-xs text-[color:var(--text-tertiary)]">
+          {coverage != null ? `${coverage}% coverage` : "rollup"}
+        </span>
+      </summary>
+      <div className="space-y-4 border-t border-[color:var(--border-subtle)] px-4 py-4">
+        <div className="flex flex-wrap gap-2 text-xs">
+          <SignalChip label="KEV" value={summaryReady && kev != null ? String(kev) : "—"} />
+          <SignalChip label="Credentials" value={summaryReady && credentials != null ? String(credentials) : "—"} />
+          <SignalChip label="Tools" value={summaryReady && tools != null ? String(tools) : "—"} />
+          <SignalChip label="Packages" value={summaryReady && packages != null ? String(packages) : "—"} />
+          <SignalChip label="Active services" value={summaryReady ? String(activeServices) : "—"} />
+          <SignalChip label="Connect" value={connected ? "Live" : "Setup"} />
+        </div>
+        {domains.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {domains.map((domain) => {
+              const tone = statusTone(domain.status);
+              return (
+                <Link
+                  key={domain.href}
+                  href={domain.graph_href ?? domain.href}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 transition-colors hover:border-[color:var(--border-strong)]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-[color:var(--foreground)]">{domain.label}</p>
+                    <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{domain.metric_label}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={`font-mono text-sm font-semibold ${tone.text}`}>{domain.metric}</span>
+                    <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
+        {(scanCount != null || latestScanLabel) && (
+          <p className="text-xs text-[color:var(--text-tertiary)]">
+            {scanCount != null ? `${scanCount} completed scan${scanCount === 1 ? "" : "s"}` : null}
+            {scanCount != null && latestScanLabel ? " · " : null}
+            {latestScanLabel ? `Latest ${latestScanLabel}` : null}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function SignalChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-[color:var(--text-secondary)]">
+      <span className="text-[color:var(--text-tertiary)]">{label}</span> {value}
+    </span>
   );
 }
 
@@ -562,10 +726,10 @@ function TabButton({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+      className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
         active
-          ? "bg-zinc-800 text-zinc-100"
-          : "text-zinc-500 hover:text-zinc-200"
+          ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+          : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -587,156 +751,9 @@ function statusTone(status: OverviewDomain["status"]): { dot: string; text: stri
   }
 }
 
-function ScorecardStrip({
-  posture,
-  overview,
-  critical,
-  high,
-  counts,
-  summaryReady,
-}: {
-  posture: PostureResponse | null;
-  overview: OverviewResponse | null;
-  critical: number;
-  high: number;
-  counts: ReturnType<typeof useDeploymentContext>["counts"];
-  summaryReady: boolean;
-}) {
-  const domains = overview ? Object.values(overview.domains) : [];
-  const activeDomains = domains.filter((d) => d.status !== "idle").length;
-  const coverage = domains.length > 0 ? Math.round((activeDomains / domains.length) * 100) : null;
-  const connected = hasDeploymentSignals(counts);
-  const grade = posture?.grade ?? "—";
-  const score = posture?.score;
-
-  return (
-    <section className="rounded-[28px] border border-zinc-800/80 bg-zinc-950/60 p-5">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {/* Posture grade + score */}
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-200/70">Posture grade</p>
-          <div className="mt-1 flex items-end gap-2">
-            <span className="font-mono text-3xl font-semibold text-emerald-100">{grade}</span>
-            {typeof score === "number" && (
-              <span className="mb-1 font-mono text-xs text-emerald-200/70">score {score}</span>
-            )}
-          </div>
-          <p className="mt-1 text-xs text-emerald-100/60">overall risk grade</p>
-        </div>
-
-        {/* Critical */}
-        <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Critical</p>
-          <p className="mt-1 font-mono text-3xl font-semibold text-red-100">{summaryReady ? critical : "—"}</p>
-          <p className="mt-1 text-xs text-red-100/60">open critical findings</p>
-        </Link>
-
-        {/* High */}
-        <Link href="/findings?severity=high" className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 transition-colors hover:border-orange-400/40">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-orange-200/70">High</p>
-          <p className="mt-1 font-mono text-3xl font-semibold text-orange-100">{summaryReady ? high : "—"}</p>
-          <p className="mt-1 text-xs text-orange-100/60">open high findings</p>
-        </Link>
-
-        {/* Coverage */}
-        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Coverage</p>
-          <p className="mt-1 font-mono text-3xl font-semibold text-sky-100">{coverage != null ? `${coverage}%` : "—"}</p>
-          <p className="mt-1 text-xs text-sky-100/60">{activeDomains}/{domains.length || 5} domains active</p>
-        </div>
-
-        {/* Connect status */}
-        <Link href="/connections" className="rounded-2xl border border-zinc-700/60 bg-zinc-900/60 p-4 transition-colors hover:border-zinc-500">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Connect status</p>
-          <div className="mt-1 flex items-center gap-2">
-            <span className={`h-2.5 w-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
-            <span className="text-lg font-semibold text-zinc-100">{connected ? "Connected" : "Not connected"}</span>
-          </div>
-          <p className="mt-1 text-xs text-zinc-500">{deploymentModeLabel(counts?.deployment_mode)} mode</p>
-        </Link>
-      </div>
-
-      {/* Cross-domain tiles folded in from the former /overview landing page. */}
-      {domains.length > 0 && (
-        <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {domains.map((domain) => {
-            const tone = statusTone(domain.status);
-            return (
-              <Link
-                key={domain.href}
-                href={domain.graph_href ?? domain.href}
-                className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5 transition-colors hover:border-zinc-600"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-zinc-300">{domain.label}</p>
-                  <p className="truncate text-[10px] text-zinc-500">{domain.metric_label}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`font-mono text-sm font-semibold ${tone.text}`}>{domain.metric}</span>
-                  <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  color,
-  href,
-  trend,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  color: "emerald" | "blue" | "orange" | "red" | "zinc";
-  href?: string;
-  trend?: { direction: "up" | "down" | "flat"; label: string };
-}) {
-  // Architecture diagram colors as top borders
-  const colors = {
-    emerald: { text: "text-emerald-400", glow: "shadow-emerald-500/5", accent: "bg-emerald-500", topBorder: "#3fb950" },
-    blue:    { text: "text-blue-400",    glow: "shadow-blue-500/5",    accent: "bg-blue-500",    topBorder: "#58a6ff" },
-    orange:  { text: "text-orange-400",  glow: "shadow-orange-500/5",  accent: "bg-orange-500",  topBorder: "#d29922" },
-    red:     { text: "text-red-400",     glow: "shadow-red-500/5",     accent: "bg-red-500",     topBorder: "#f85149" },
-    zinc:    { text: "text-zinc-400",    glow: "shadow-zinc-500/5",    accent: "bg-zinc-500",    topBorder: "#52525b" },
-  };
-  const c = colors[color];
-  const inner = (
-    <div
-      className={`rounded-xl border p-4 ${href ? "cursor-pointer transition-all hover:border-[var(--border-strong)]" : ""} shadow-lg ${c.glow}`}
-      style={{
-        backgroundColor: "var(--surface)",
-        borderColor: "var(--border-subtle)",
-        borderTop: `2px solid ${c.topBorder}`,
-        boxShadow: "0 18px 36px -24px var(--shadow-color)",
-      }}
-    >
-      <div className="flex items-center justify-between mb-2">
-        <Icon className={`w-4 h-4 ${c.text}`} />
-        {trend && (
-          <span className={`text-[10px] font-medium ${
-            trend.direction === "down" ? "text-emerald-400" : trend.direction === "up" ? "text-red-400" : "text-[var(--text-tertiary)]"
-          }`}>
-            {trend.direction === "up" ? "↑" : trend.direction === "down" ? "↓" : "•"} {trend.label}
-          </span>
-        )}
-      </div>
-      <div className="text-2xl font-bold font-mono tracking-tight">{value}</div>
-      <div className="flex items-center justify-between mt-1">
-        <div className="text-xs text-[var(--text-tertiary)]">{label}</div>
-        <div className={`w-8 h-1 rounded-full ${c.accent} opacity-30`} />
-      </div>
-    </div>
-  );
-  if (href) return <Link href={href}>{inner}</Link>;
-  return inner;
+function countActiveServices(services: PostureCountsResponse["services"]): number {
+  if (!services) return 0;
+  return Object.values(services).filter((entry) => entry.state === "live" || entry.state === "connected").length;
 }
 
 function JobRow({ job }: { job: JobListItem }) {

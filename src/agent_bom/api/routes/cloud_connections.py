@@ -409,6 +409,15 @@ def _test_connection_broker(record: CloudConnectionRecord) -> None:
             _logger.debug("Snowflake broker connection close failed for test connection %s", record.id)
 
 
+def _reject_showcase_connection(record: CloudConnectionRecord) -> None:
+    """Keep synthetic demo rows from entering a real credential or scan path."""
+    if record.auth_params.get("demo") is True:
+        raise HTTPException(
+            status_code=409,
+            detail="Showcase connections are synthetic and cannot run connection tests or scans.",
+        )
+
+
 def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
     """Broker the connection into a read-only session and run inventory + CIS.
 
@@ -626,6 +635,7 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
     """
 
     record = _require_connection(request, connection_id)
+    _reject_showcase_connection(record)
     tenant_id = record.tenant_id
     actor = _actor(request)
 
@@ -683,6 +693,7 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
     broker-enabled.
     """
     record = _require_connection(request, connection_id)
+    _reject_showcase_connection(record)
     tenant_id = record.tenant_id
     actor = _actor(request)
 

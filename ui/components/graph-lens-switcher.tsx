@@ -103,14 +103,9 @@ export function GraphLensSwitcher({
               variant === "floating" ? "hidden sm:block" : ""
             }`}
           >
-            One graph, multiple lenses — switch how you read the same estate.
+            One graph, multiple lenses — switch how you read the same inventory.
           </p>
         </div>
-      )}
-      {variant === "compact" && (
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-          Lens
-        </p>
       )}
       <InsightLayerToggle layers={layers} onToggle={onToggle} />
     </div>

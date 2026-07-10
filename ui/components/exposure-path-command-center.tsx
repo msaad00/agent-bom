@@ -56,17 +56,18 @@ export function ExposurePathCommandCenter({
   const fixLabel = pathFixLabel(path);
   const evidence = path.evidence;
   const primaryAction = actions[0];
-  const investigationBrief = buildInvestigationBrief(path, fixLabel);
   const hopCount = Math.max(0, path.hops.length - 1);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Command center</p>
-          <h2 className="mt-1 text-lg font-semibold leading-7 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+          <h2 className="text-lg font-semibold leading-7 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
             {pathDisplayTitle(path)}
           </h2>
+          {path.summary ? (
+            <p className="mt-1 text-sm text-[color:var(--text-secondary)]">{path.summary}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <MetricPill label="Risk" value={path.riskScore.toFixed(1)} tone="red" />
@@ -76,19 +77,13 @@ export function ExposurePathCommandCenter({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {investigationBrief.map((item) => (
-          <BriefChip key={item.label} label={item.label} value={item.value} detail={item.detail} />
-        ))}
-      </div>
-
       <section aria-label="Selected exposure path graph">
         <ExposurePathGraph path={path} />
       </section>
 
       <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
-          <span>Relationship proof & evidence drawer</span>
+          <span>Evidence</span>
           <ChevronDown className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open:rotate-180" />
         </summary>
         <div className="space-y-4 border-t border-[color:var(--border-subtle)] px-4 py-4">
@@ -137,13 +132,10 @@ export function ExposurePathCommandCenter({
       {primaryAction && (
         <Link
           href={primaryAction.href}
-          className="flex items-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm transition hover:border-emerald-400/60"
+          className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
         >
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-          <span>
-            <span className="block font-semibold text-[color:var(--foreground)]">{primaryAction.title}</span>
-            <span className="mt-1 block text-xs leading-5 text-[color:var(--text-secondary)]">{primaryAction.detail}</span>
-          </span>
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-[color:var(--text-secondary)]" />
+          <span>{primaryAction.title}</span>
         </Link>
       )}
     </div>
@@ -161,9 +153,9 @@ function MetricPill({
 }) {
   const toneClass =
     tone === "red"
-      ? "border-red-500/25 bg-red-500/10 text-red-200"
+      ? "border-red-500/30 bg-red-500/10 text-[color:var(--foreground)]"
       : tone === "green"
-        ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+        ? "border-emerald-500/30 bg-emerald-500/10 text-[color:var(--foreground)]"
         : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--foreground)]";
 
   return (
@@ -174,57 +166,11 @@ function MetricPill({
   );
 }
 
-function BriefChip({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return (
-    <div
-      className="min-w-[9rem] max-w-full flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2"
-      title={detail ? `${label}: ${detail}` : label}
-    >
-      <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</div>
-      <div className="mt-0.5 truncate text-sm font-medium text-[color:var(--foreground)]">{value}</div>
-    </div>
-  );
-}
-
-function buildInvestigationBrief(path: ExposurePath, fixLabel: string | undefined) {
-  const exposed = firstNonEmpty(path.exposedCredentials, path.reachableTools, path.affectedServers, path.affectedAgents);
-  const finding = path.findings[0] ?? path.target.label;
-  const proofCount = path.relationships.length;
-
-  return [
-    { label: "What is exposed", value: exposed.value, detail: exposed.label },
-    { label: "Why it matters", value: finding, detail: path.severity || "ranked by graph risk" },
-    { label: "What proves it", value: `${proofCount} relationship${proofCount === 1 ? "" : "s"}`, detail: path.provenance?.source ?? "graph evidence" },
-    { label: "What fixes it", value: fixLabel ?? "triage path", detail: path.fix?.version ? `Target ${path.fix.version}` : primaryFixDetail(path) },
-  ];
-}
-
-function firstNonEmpty(...groups: string[][]) {
-  const labels = ["credentials", "tools", "servers", "agents"];
-  for (let index = 0; index < groups.length; index += 1) {
-    const values = groups[index] ?? [];
-    if (values.length > 0) {
-      const first = values[0] ?? "unknown";
-      return {
-        value: values.length > 1 ? `${first} +${values.length - 1}` : first,
-        label: labels[index] ?? "entities",
-      };
-    }
-  }
-  return { value: "path target", label: "selected exposure path" };
-}
-
-function primaryFixDetail(path: ExposurePath): string {
-  if (path.fix?.label) return path.fix.label;
-  if (path.dependencyContext?.packageName) return path.dependencyContext.packageName;
-  return "validate, contain, or accept risk";
-}
-
 function ExposurePathGraph({ path }: { path: ExposurePath }) {
   const layout = buildPathGraphLayout(path);
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)] bg-[#05070b]">
+    <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1">
       <svg
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         role="img"

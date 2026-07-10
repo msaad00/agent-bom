@@ -33,10 +33,8 @@ function isApiReachabilityFailure(message: string): boolean {
 
 export function LoginPanel({
   title = "Sign in to agent-bom",
-  onAuthenticated,
 }: {
   title?: string;
-  onAuthenticated?: (() => void) | undefined;
 }) {
   const { session, loading, error, refresh } = useAuthState();
   const [apiKey, setApiKey] = useState("");
@@ -51,7 +49,6 @@ export function LoginPanel({
   }
 
   if (session && (!session.auth_required || session.authenticated)) {
-    onAuthenticated?.();
     return null;
   }
 
@@ -133,7 +130,6 @@ export function LoginPanel({
                 return;
               }
               await refresh();
-              onAuthenticated?.();
             }}
           >
             <label

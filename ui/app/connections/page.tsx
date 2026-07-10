@@ -676,10 +676,11 @@ export default function ConnectionsPage() {
         </div>
       </Section>
 
-      {/* Security posture */}
+      {/* Security posture — onboarding copy only when no accounts are connected */}
+      {!loading && connections.length === 0 && (
       <Section
         label="Security posture"
-        description="What every connection guarantees — each card is enforced by the connection store, broker, and API gate, not marketing copy."
+        description="What every connection guarantees — each card is enforced by the connection store, broker, and API gate."
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {SECURITY_FACTS.map(({ icon: Icon, title, detail }) => (
@@ -699,6 +700,7 @@ export default function ConnectionsPage() {
           ))}
         </div>
       </Section>
+      )}
 
       {/* Connected accounts */}
       <Card flush className="overflow-hidden p-5">

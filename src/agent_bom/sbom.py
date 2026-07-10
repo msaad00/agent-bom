@@ -348,11 +348,14 @@ def _spdx3_annotation_kv(elem: dict) -> dict[str, str]:
 def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
     """Attach SPDX 3.0 vulnerability assessments (AFFECTS) to packages in place.
 
-    agent-bom emits each vulnerability as a ``security/Vulnerability`` element and
-    links it to the affected package via a ``security/VulnAssessmentRelationship``
-    (``relationshipType: AFFECTS``) in the top-level ``relationships`` array. The
-    severity/fix/KEV/EPSS/CWE enrichments ride on the relationship and on the
-    vulnerability element's annotations.
+    agent-bom emits each vulnerability as a ``security_Vulnerability`` element and
+    links it to the affected package via a ``security_VexAffectedVulnAssessmentRelationship``
+    (``relationshipType: affects``) in the top-level ``relationships`` array, with
+    the CVSS score carried on a sibling ``security_CvssV3VulnAssessmentRelationship``
+    (``relationshipType: hasAssessmentFor``). The severity/fix/KEV/EPSS/CWE
+    enrichments ride on those relationships and on the vulnerability element's
+    annotations. Legacy documents that inline a ``score`` object and use the
+    upper-cased ``AFFECTS``/``remediation`` shape are still accepted.
     """
     elements = data.get("elements", [])
     vuln_elems: dict[str, dict] = {}
@@ -366,8 +369,19 @@ def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
     relationships = list(data.get("relationships", []))
     relationships += [e for e in elements if isinstance(e, dict) and "Relationship" in str(e.get("type") or "")]
 
+    # Index CVSS assessment relationships by the vulnerability they assess so the
+    # (score-less) affects relationship can recover severity/score.
+    cvss_by_vuln: dict[str, dict] = {}
     for rel in relationships:
-        if not isinstance(rel, dict) or rel.get("relationshipType") != "AFFECTS":
+        if not isinstance(rel, dict):
+            continue
+        if "cvss" in str(rel.get("type") or "").lower() or rel.get("security_score") is not None:
+            frm = rel.get("from", "")
+            if frm:
+                cvss_by_vuln[frm] = rel
+
+    for rel in relationships:
+        if not isinstance(rel, dict) or str(rel.get("relationshipType") or "").lower() != "affects":
             continue
         vuln_elem = vuln_elems.get(rel.get("from", ""))
         if vuln_elem is None:
@@ -376,23 +390,25 @@ def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
         if isinstance(targets, str):
             targets = [targets]
 
+        cvss_rel = cvss_by_vuln.get(rel.get("from", ""), {})
         vuln_id = vuln_elem.get("name") or ""
         raw_score = vuln_elem.get("score")
         score_obj: dict = raw_score if isinstance(raw_score, dict) else {}
-        sev_str = rel.get("severity") or score_obj.get("severity") or "unknown"
+        sev_str = rel.get("severity") or cvss_rel.get("security_severity") or score_obj.get("severity") or "unknown"
         try:
             severity = Severity(str(sev_str).lower())
         except ValueError:
             severity = Severity.UNKNOWN
         cvss_score: float | None = None
-        if score_obj.get("score") is not None:
+        raw_cvss = cvss_rel.get("security_score") if cvss_rel.get("security_score") is not None else score_obj.get("score")
+        if raw_cvss is not None:
             try:
-                cvss_score = float(score_obj["score"])
+                cvss_score = float(raw_cvss)
             except (TypeError, ValueError):
                 cvss_score = None
 
         fixed_version = None
-        remediation = rel.get("remediation") or ""
+        remediation = rel.get("security_actionStatement") or rel.get("remediation") or ""
         if remediation.startswith("Upgrade to "):
             fixed_version = remediation[len("Upgrade to ") :].strip() or None
 
@@ -444,7 +460,7 @@ def parse_spdx(data: dict) -> list[Package]:
     _spdx3_direct_ids: set[str] = set()
     _doc_id = data.get("SPDXID", "")
     for rel in [*data.get("elements", []), *data.get("relationships", [])]:
-        if not isinstance(rel, dict) or rel.get("relationshipType") != "DEPENDS_ON":
+        if not isinstance(rel, dict) or str(rel.get("relationshipType") or "").lower() != "dependson":
             continue
         if rel.get("from", "") == _doc_id and _doc_id:
             to = rel.get("to", [])
@@ -456,10 +472,10 @@ def parse_spdx(data: dict) -> list[Package]:
         for elem in data.get("elements", []):
             if not isinstance(elem, dict):
                 continue
-            if elem.get("type") not in ("software/Package", "SOFTWARE_PACKAGE"):
+            if elem.get("type") not in ("software/Package", "SOFTWARE_PACKAGE", "software_Package"):
                 continue
             # Skip non-library elements (agent-bom emits agents and MCP servers as
-            # SOFTWARE_PACKAGE/APPLICATION; only LIBRARY-purpose elements are deps).
+            # a package with APPLICATION purpose; only LIBRARY-purpose elements are deps).
             if _spdx3_primary_purpose(elem) == "APPLICATION":
                 continue
             name = elem.get("name", "")
@@ -597,7 +613,7 @@ def detect_sbom_resource_name(data: dict) -> str | None:
     # SPDX 3.0
     if data.get("spdxVersion", "").startswith("SPDX-3"):
         for elem in data.get("elements", []):
-            if isinstance(elem, dict) and elem.get("type") in ("software/Package", "SOFTWARE_PACKAGE"):
+            if isinstance(elem, dict) and elem.get("type") in ("software/Package", "SOFTWARE_PACKAGE", "software_Package"):
                 return elem.get("name") or None
 
     return None

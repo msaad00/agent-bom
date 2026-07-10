@@ -990,6 +990,12 @@ class SQLiteComplianceHubStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
+            # Without a busy timeout, concurrent writers hit "database is locked"
+            # immediately and their writes are silently lost. Mirror the primary
+            # schema (db/schema.py): wait up to 30s for the write lock and use
+            # NORMAL sync, which is durable enough under WAL.
+            self._local.conn.execute("PRAGMA busy_timeout=30000")
+            self._local.conn.execute("PRAGMA synchronous=NORMAL")
         conn: sqlite3.Connection = self._local.conn
         return conn
 

@@ -399,6 +399,12 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     pkg_properties.append({"name": "agent-bom:parent-package", "value": pkg.parent_package})
                 if pkg.scorecard_score is not None:
                     pkg_properties.append({"name": "agent-bom:scorecard-score", "value": str(pkg.scorecard_score)})
+                if pkg.is_malicious:
+                    # Surface the malicious flag so a MAL- package is
+                    # distinguishable from an ordinary library component.
+                    pkg_properties.append({"name": "agent-bom:is-malicious", "value": "true"})
+                    if pkg.malicious_reason:
+                        pkg_properties.append({"name": "agent-bom:malicious-reason", "value": pkg.malicious_reason})
 
                 pkg_component: dict = {
                     "type": "library",

@@ -33,6 +33,7 @@ import {
   DollarSign,
   Fingerprint,
   Radar,
+  Bot,
   Boxes,
   Cloud,
   ClipboardList,
@@ -102,10 +103,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "AI Estate",
-    icon: Server,
+    icon: Bot,
     accent: "#3fb950",
     links: [
-      { href: "/agents", label: "Agents", icon: Server },
+      { href: "/agents", label: "Agents", icon: Bot },
       { href: "/manifest", label: "Agent BOM", icon: ClipboardList },
       { href: "/fleet", label: "Fleet", icon: Users },
     ],

@@ -152,6 +152,62 @@ const NAV_GROUPS: NavGroup[] = [
 
 const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
 
+/** Per-route icon tint — semantic color without rainbow group chrome. */
+const NAV_LINK_ICON_CLASS: Record<string, string> = {
+  "/": "text-sky-400",
+  "/findings": "text-red-400",
+  "/security-graph": "text-violet-400",
+  "/remediation": "text-emerald-400",
+  "/graph": "text-sky-400",
+  "/mesh": "text-fuchsia-400",
+  "/context": "text-amber-400",
+  "/agents": "text-emerald-400",
+  "/manifest": "text-cyan-400",
+  "/fleet": "text-blue-400",
+  "/connections": "text-purple-400",
+  "/sources": "text-indigo-400",
+  "/scan": "text-orange-400",
+  "/identity": "text-pink-400",
+  "/drift": "text-rose-400",
+  "/runtime": "text-pink-400",
+  "/traces": "text-violet-400",
+  "/compliance": "text-emerald-400",
+  "/governance": "text-amber-400",
+  "/audit": "text-stone-400",
+  "/registry": "text-amber-400",
+  "/cost": "text-yellow-400",
+  "/jobs": "text-orange-400",
+  "/activity": "text-lime-400",
+};
+
+const NAV_GROUP_ICON_CLASS: Record<string, string> = {
+  Command: "text-sky-400",
+  "AI inventory": "text-emerald-400",
+  "Cloud & Data": "text-purple-400",
+  Runtime: "text-pink-400",
+  Governance: "text-emerald-400",
+  Reference: "text-amber-400",
+  Operations: "text-orange-400",
+};
+
+function navLinkIconClass(href: string, active: boolean, hoverGroup = "group"): string {
+  const tone = NAV_LINK_ICON_CLASS[href];
+  if (tone) {
+    return active ? tone : `${tone} opacity-80 ${hoverGroup}-hover:opacity-100`;
+  }
+  return active
+    ? "text-[color:var(--foreground)]"
+    : `text-[color:var(--text-tertiary)] ${hoverGroup}-hover:text-[color:var(--text-secondary)]`;
+}
+
+function navGroupIconClass(label: string, hasActiveChild: boolean): string {
+  const tone = NAV_GROUP_ICON_CLASS[label];
+  if (tone) {
+    return hasActiveChild ? tone : `${tone} opacity-75`;
+  }
+  return hasActiveChild ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]";
+}
+
 // ─── Risk counts for badges ─────────────────────────────────────────────────
 
 // ─── Sidebar Component ──────────────────────────────────────────────────────
@@ -363,33 +419,33 @@ export function Nav() {
     []
   );
 
-  const sidebarContent = (
+  const renderSidebarContent = (isCollapsed: boolean, allowCollapse: boolean) => (
     <>
       {/* Sidebar controls */}
       <div
         className={`border-b border-[color:var(--border-subtle)] ${
-          collapsed
+          isCollapsed
             ? "flex h-11 items-center justify-center px-2"
             : "flex h-11 items-center justify-between px-3"
         }`}
       >
-        {!collapsed && (
+        {!isCollapsed && (
           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
             Navigate
           </span>
         )}
-        <button
+        {allowCollapse && <button
           onClick={() => setCollapsed((value) => !value)}
           className="hidden rounded-md p-1.5 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)] lg:flex"
-          title={collapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={isCollapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-        </button>
+          {isCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+        </button>}
       </div>
 
       {/* Search */}
-      {!collapsed && (
+      {!isCollapsed && (
         <div className="px-3 py-3">
           <button
             onClick={() => setSearchOpen(true)}
@@ -401,7 +457,7 @@ export function Nav() {
           </button>
         </div>
       )}
-      {collapsed && (
+      {isCollapsed && (
         <div className="px-2 py-3 flex justify-center">
           <button
             onClick={() => { setCollapsed(false); setSearchOpen(true); }}
@@ -414,7 +470,7 @@ export function Nav() {
       )}
 
       {/* Navigation Groups */}
-      <nav className={`${collapsed ? "overflow-visible" : "overflow-y-auto scrollbar-thin"} flex-1 px-2 py-2 space-y-2`}>
+      <nav className={`${isCollapsed ? "overflow-visible" : "overflow-y-auto scrollbar-thin"} flex-1 px-2 py-2 space-y-2`}>
         {navGroups.map((group) => {
           const isExpanded = captureMode || expandedGroups.has(group.label);
           const GroupIcon = group.icon;
@@ -426,7 +482,7 @@ export function Nav() {
             <div
               key={group.label}
               className={`rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] ${
-                collapsed ? "group/navlane relative" : ""
+                isCollapsed ? "group/navlane relative" : ""
               }`}
             >
               {/* Group Header */}
@@ -435,32 +491,30 @@ export function Nav() {
                   if (captureMode) {
                     return;
                   }
-                  if (collapsed) {
+                  if (isCollapsed) {
                     return;
                   } else {
                     toggleGroup(group.label);
                   }
                 }}
-                onMouseEnter={(event) => openCollapsedFlyout(group.label, event.currentTarget)}
-                onMouseLeave={scheduleCollapsedFlyoutClose}
-                onFocus={(event) => openCollapsedFlyout(group.label, event.currentTarget)}
-                onBlur={scheduleCollapsedFlyoutClose}
+                onMouseEnter={isCollapsed ? (event) => openCollapsedFlyout(group.label, event.currentTarget) : undefined}
+                onMouseLeave={isCollapsed ? scheduleCollapsedFlyoutClose : undefined}
+                onFocus={isCollapsed ? (event) => openCollapsedFlyout(group.label, event.currentTarget) : undefined}
+                onBlur={isCollapsed ? scheduleCollapsedFlyoutClose : undefined}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors border-l-2 ${
-                  collapsed ? "justify-center px-2 py-3" : ""
+                  isCollapsed ? "justify-center px-2 py-3" : ""
                 } ${
                   hasActiveChild
                     ? "border-[color:var(--border-strong)] text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
                     : "border-transparent text-[color:var(--text-secondary)] hover:border-[color:var(--border-subtle)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                 }`}
-                aria-expanded={collapsed ? collapsedFlyoutGroup === group.label : isExpanded}
-                aria-label={collapsed ? group.label : undefined}
+                aria-expanded={isCollapsed ? collapsedFlyoutGroup === group.label : isExpanded}
+                aria-label={isCollapsed ? group.label : undefined}
               >
                 <GroupIcon
-                  className={`${collapsed ? "h-5 w-5" : "h-4 w-4"} shrink-0 ${
-                    hasActiveChild ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]"
-                  }`}
+                  className={`${isCollapsed ? "h-5 w-5" : "h-4 w-4"} shrink-0 ${navGroupIconClass(group.label, hasActiveChild)}`}
                 />
-                {!collapsed && (
+                {!isCollapsed && (
                   <>
                     <div className="min-w-0 flex-1 text-left">
                       <span className="block uppercase tracking-wider text-[10px] font-semibold">
@@ -480,7 +534,7 @@ export function Nav() {
               </button>
 
               {/* Group Links */}
-              {(isExpanded || collapsed) && !collapsed && (
+              {isExpanded && !isCollapsed && (
                 <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-[color:var(--border-subtle)] pl-2">
                   {group.visibleLinks.map(({ href, label, icon: Icon }) => {
                     const active =
@@ -503,13 +557,7 @@ export function Nav() {
                             : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                         }`}
                       >
-                        <Icon
-                          className={`w-3.5 h-3.5 shrink-0 ${
-                            active
-                              ? "text-[color:var(--foreground)]"
-                              : "text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)]"
-                          }`}
-                        />
+                        <Icon className={`w-3.5 h-3.5 shrink-0 ${navLinkIconClass(href, active)}`} />
                         <span className="truncate">{label}</span>
 
                         {/* Capable-but-unconnected hint */}
@@ -548,7 +596,7 @@ export function Nav() {
                             className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12px] text-[color:var(--text-tertiary)] transition-colors hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
                             title="Hidden until this deployment mode is detected"
                           >
-                            <Icon className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                            <Icon className={`h-3.5 w-3.5 shrink-0 opacity-60 ${NAV_LINK_ICON_CLASS[href] ?? ""}`} />
                             <span className="truncate">{label}</span>
                           </Link>
                         ))}
@@ -573,11 +621,7 @@ export function Nav() {
                                   : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                               }`}
                             >
-                              <Icon
-                                className={`h-3.5 w-3.5 shrink-0 ${
-                                  active ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)] opacity-80"
-                                }`}
-                              />
+                              <Icon className={`h-3.5 w-3.5 shrink-0 ${navLinkIconClass(href, active)}`} />
                               <span className="truncate">{label}</span>
                             </Link>
                           );
@@ -588,7 +632,7 @@ export function Nav() {
                 </div>
               )}
 
-              {collapsed && collapsedFlyoutGroup === group.label && (
+              {isCollapsed && collapsedFlyoutGroup === group.label && (
                 <div
                   className="fixed left-[52px] z-[70] w-[340px] pl-4"
                   style={{ top: collapsedFlyoutTop }}
@@ -599,8 +643,8 @@ export function Nav() {
                 >
                   <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 shadow-2xl shadow-black/45">
                     <div className="mb-3 flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--foreground)]">
-                        <GroupIcon className="h-5 w-5" />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
+                        <GroupIcon className={`h-5 w-5 ${navGroupIconClass(group.label, hasActiveChild)}`} />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--foreground)]">
@@ -628,11 +672,7 @@ export function Nav() {
                             onClick={() => setCollapsedFlyoutGroup(null)}
                           >
                             <Icon
-                              className={`mt-0.5 h-4 w-4 shrink-0 ${
-                                active
-                                  ? "text-[color:var(--foreground)]"
-                                  : "text-[color:var(--text-tertiary)] group-hover/link:text-[color:var(--foreground)]"
-                              }`}
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${navLinkIconClass(href, active, "group/link")}`}
                             />
                             <span className="min-w-0">
                               <span className="block text-sm font-medium">{label}</span>
@@ -659,9 +699,7 @@ export function Nav() {
                             onClick={() => setCollapsedFlyoutGroup(null)}
                           >
                             <Icon
-                              className={`mt-0.5 h-4 w-4 shrink-0 ${
-                                active ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)] opacity-70"
-                              }`}
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${navLinkIconClass(href, active, "group/link")}`}
                             />
                             <span className="min-w-0">
                               <span className="block text-[13px]">{label}</span>
@@ -686,7 +724,7 @@ export function Nav() {
 
       {/* Bottom section — collapsed by default so nav lanes keep vertical space */}
       <SidebarFooter
-        collapsed={collapsed}
+        collapsed={isCollapsed}
         authLoading={authLoading}
         session={session}
         path={path}
@@ -749,15 +787,15 @@ export function Nav() {
           collapsed ? "w-[60px]" : "w-[240px]"
         }`}
       >
-        {sidebarContent}
+        {renderSidebarContent(collapsed, true)}
       </aside>
 
       {/* Mobile Drawer Overlay */}
       {mobileOpen && (
         <>
           <div className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="lg:hidden fixed left-0 top-16 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
-            {sidebarContent}
+          <aside aria-label="Mobile navigation" className="lg:hidden fixed left-0 top-16 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
+            {renderSidebarContent(false, false)}
           </aside>
         </>
       )}
@@ -824,7 +862,7 @@ function SidebarFooter({
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open/footer:rotate-90" />
         </summary>
         <div className="mt-2 space-y-2">
-          <SessionStatus collapsed={false} loading={authLoading} session={session} />
+          <SessionStatus collapsed={false} loading={authLoading} session={session} embedded />
           <DemoNavSignIn />
           {feedbackLink}
         </div>
@@ -837,10 +875,12 @@ function SessionStatus({
   collapsed,
   loading,
   session,
+  embedded = false,
 }: {
   collapsed: boolean;
   loading: boolean;
   session: ReturnType<typeof useAuthState>["session"];
+  embedded?: boolean;
 }) {
   if (collapsed) {
     if (loading) {

@@ -137,6 +137,20 @@ describe('Nav', () => {
     expect(screen.queryByText('Proof path')).not.toBeInTheDocument()
   })
 
+  it('opens the mobile drawer with usable expanded navigation links', () => {
+    render(<Nav />)
+
+    fireEvent.click(screen.getByRole('button', { name: /open navigation menu/i }))
+
+    const drawer = screen.getByLabelText('Mobile navigation')
+    expect(within(drawer).getByText('Command')).toBeInTheDocument()
+    expect(within(drawer).getByRole('link', { name: /findings/i })).toHaveAttribute(
+      'href',
+      '/findings'
+    )
+    expect(within(drawer).queryByRole('button', { name: /expand sidebar/i })).not.toBeInTheDocument()
+  })
+
   it('surfaces curated workflow links in the command palette', () => {
     render(<Nav />)
     fireEvent.keyDown(window, { key: 'k', metaKey: true })

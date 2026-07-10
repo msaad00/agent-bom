@@ -110,7 +110,7 @@ def register_findings(
 ) -> dict[str, Any]:
     """Append the report's CVE findings to the Iceberg table as a new snapshot.
 
-    Creates the namespace and table (matching the shared 27-col Parquet schema)
+    Creates the namespace and table (matching the shared 28-col Parquet schema)
     if they do not yet exist, then appends a data file and commits a snapshot.
     Returns a small summary dict for logging.
 

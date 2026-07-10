@@ -45,6 +45,7 @@ _COLUMNS = [
     "kev_date_added",
     "kev_due_date",
     "compliance_tags",
+    "reachability",
     "symbol_reachability",
     "reachable_affected_symbols",
     "graph_reachable",
@@ -86,6 +87,7 @@ def _row_dict(finding) -> dict[str, Any]:
         "kev_date_added": evidence(finding, "kev_date_added", "") or None,
         "kev_due_date": evidence(finding, "kev_due_date", "") or None,
         "compliance_tags": ";".join(framework_qualified_finding_tags(finding)) or None,
+        "reachability": finding.reachability or None,
         "symbol_reachability": evidence(finding, "symbol_reachability", "") or None,
         "reachable_affected_symbols": ";".join(evidence(finding, "reachable_affected_symbols", []) or []) or None,
         "graph_reachable": evidence(finding, "graph_reachable", None),
@@ -94,7 +96,7 @@ def _row_dict(finding) -> dict[str, Any]:
 
 
 def to_arrow_table(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None):
-    """Build a PyArrow table of CVE findings using the shared 27-col schema.
+    """Build a PyArrow table of CVE findings using the shared 28-col schema.
 
     Shared by the Parquet file writer and the Iceberg catalog exporter so lake
     consumers always see one consistent table shape.
@@ -148,6 +150,7 @@ def _schema(pa):
             ("kev_date_added", pa.string()),
             ("kev_due_date", pa.string()),
             ("compliance_tags", pa.string()),
+            ("reachability", pa.string()),
             ("symbol_reachability", pa.string()),
             ("reachable_affected_symbols", pa.string()),
             ("graph_reachable", pa.bool_()),

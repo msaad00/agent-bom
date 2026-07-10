@@ -171,6 +171,18 @@ def to_spdx2(report: AIBOMReport, version: str = "2.3") -> dict:
                             }
                         ]
                     annotations = _vuln_annotations(pkg, created)
+                    if pkg.is_malicious:
+                        # SPDX 2.x has no malicious-package object; surface the
+                        # flag as an annotation so a MAL- package is not emitted
+                        # as an indistinguishable ordinary library.
+                        annotations.append(
+                            {
+                                "annotationType": "OTHER",
+                                "annotator": "Tool: agent-bom",
+                                "annotationDate": created,
+                                "comment": f"agent-bom:malicious=true reason={pkg.malicious_reason or 'flagged malicious'}",
+                            }
+                        )
                     if annotations:
                         pkg_entry["annotations"] = annotations
                     spdx_packages.append(pkg_entry)

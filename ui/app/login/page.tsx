@@ -21,14 +21,7 @@ function LoginPageContent() {
     }
   }, [loading, returnTo, router, session]);
 
-  return (
-    <LoginPanel
-      title="Sign in to agent-bom"
-      onAuthenticated={() => {
-        router.replace(returnTo);
-      }}
-    />
-  );
+  return <LoginPanel title="Sign in to agent-bom" />;
 }
 
 export default function LoginPage() {

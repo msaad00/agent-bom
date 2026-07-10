@@ -11,11 +11,13 @@ export function MeshStats({
   pathFocusActive = false,
   onTogglePathFocus,
   captureMode = false,
+  compact = false,
 }: {
   stats: MeshStatsData;
   pathFocusActive?: boolean;
   onTogglePathFocus?: (() => void) | undefined;
   captureMode?: boolean;
+  compact?: boolean;
 }) {
   const totalSev = stats.criticalCount + stats.highCount + stats.mediumCount + stats.lowCount;
   const omittedTotal =
@@ -36,13 +38,26 @@ export function MeshStats({
       )}
 
       {!captureMode && (
-      <div className="flex items-center gap-4 px-4 py-2 text-xs flex-wrap">
-        <Stat icon={ShieldAlert} label="Agents" value={stats.totalAgents} color="text-emerald-400" />
-        <Stat icon={Server} label="Shared Servers" value={stats.sharedServers} color="text-cyan-400" />
-        <Stat icon={Package} label="Packages" value={stats.totalPackages} color="text-zinc-400" />
-        <Stat icon={Bug} label="Vulns" value={stats.totalVulnerabilities} color="text-red-400" />
-        <Stat icon={KeyRound} label="Credential refs" value={stats.uniqueCredentials} color="text-amber-400" />
-        <Stat icon={Wrench} label="Tool Overlap" value={stats.toolOverlap} color="text-purple-400" />
+      <div className={`flex items-center gap-3 px-4 text-xs flex-wrap ${compact ? "py-1.5" : "py-2"}`}>
+        {compact ? (
+          <>
+            <Stat icon={ShieldAlert} label="Agents" value={stats.totalAgents} color="text-emerald-400" />
+            <Stat icon={Package} label="Pkgs" value={stats.totalPackages} color="text-zinc-400" />
+            <Stat icon={Bug} label="Vulns" value={stats.totalVulnerabilities} color="text-red-400" />
+            {stats.sharedServers > 0 && (
+              <Stat icon={Server} label="Shared" value={stats.sharedServers} color="text-cyan-400" />
+            )}
+          </>
+        ) : (
+          <>
+            <Stat icon={ShieldAlert} label="Agents" value={stats.totalAgents} color="text-emerald-400" />
+            <Stat icon={Server} label="Shared Servers" value={stats.sharedServers} color="text-cyan-400" />
+            <Stat icon={Package} label="Packages" value={stats.totalPackages} color="text-zinc-400" />
+            <Stat icon={Bug} label="Vulns" value={stats.totalVulnerabilities} color="text-red-400" />
+            <Stat icon={KeyRound} label="Credential refs" value={stats.uniqueCredentials} color="text-amber-400" />
+            <Stat icon={Wrench} label="Tool Overlap" value={stats.toolOverlap} color="text-purple-400" />
+          </>
+        )}
 
         {/* Severity breakdown mini-bar */}
         {totalSev > 0 && (
@@ -98,12 +113,11 @@ export function MeshStats({
         {omittedTotal > 0 && (
           <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
             <span className="font-semibold text-foreground">{omittedTotal}</span>
-            <span>lower-priority nodes hidden</span>
+            <span>{compact ? "hidden" : "lower-priority nodes hidden"}</span>
           </div>
         )}
 
-        {/* Credential blast */}
-        {stats.credentialBlast.length > 0 && (
+        {!compact && stats.credentialBlast.length > 0 && (
           <div className="ml-auto flex items-center gap-1.5 text-amber-400">
             <KeyRound className="w-3 h-3" />
             <span className="text-[10px]">

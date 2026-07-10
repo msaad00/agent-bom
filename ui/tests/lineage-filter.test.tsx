@@ -22,8 +22,8 @@ describe("FilterPanel", () => {
   it("defaults to a bounded, readable graph scope", () => {
     expect(DEFAULT_FILTERS.maxDepth).toBe(2);
     expect(DEFAULT_FILTERS.pageSize).toBe(50);
-    expect(DEFAULT_FILTERS.vulnOnly).toBe(true);
-    expect(DEFAULT_FILTERS.severity).toBe("high");
+    expect(DEFAULT_FILTERS.vulnOnly).toBe(false);
+    expect(DEFAULT_FILTERS.severity).toBeNull();
     expect(graphScopePresetForFilters(DEFAULT_FILTERS)).toBe("relevant");
     expect(graphScopeLabelForFilters(DEFAULT_FILTERS)).toBe("Relevant paths");
   });

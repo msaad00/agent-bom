@@ -1,12 +1,16 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { PaginationBar } from "@/components/pagination-bar";
+import { JobPipelinePanel } from "@/components/job-pipeline-panel";
+import { ScanPipeline } from "@/components/scan-pipeline";
 import { api, formatDate, type JobListItem, type JobStatus, type ScanSchedule, type SourceRecord } from "@/lib/api";
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock,
   Download,
   Loader2,
@@ -81,13 +85,8 @@ function evidenceSummary(job: JobListItem): string {
   return `${vulns} CVEs · ${critical} critical · ${packages} packages`;
 }
 
-function scheduleSourceId(schedule: ScanSchedule): string {
-  const raw = schedule.scan_config?.source_id;
-  return typeof raw === "string" ? raw.trim() : "";
-}
 
 function JobsPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const queryParam = searchParams.get("q") ?? "";
   const [jobs, setJobs] = useState<JobListItem[]>([]);
@@ -99,6 +98,7 @@ function JobsPageContent() {
   const [search, setSearch] = useState(queryParam);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
@@ -148,11 +148,18 @@ function JobsPageContent() {
     () => new Map(sources.filter((source) => source.last_job_id).map((source) => [source.last_job_id as string, source])),
     [sources],
   );
-  const scheduledSourceIds = useMemo(
-    () => new Set(schedules.map(scheduleSourceId).filter(Boolean)),
-    [schedules],
-  );
   const evidenceReadyJobs = useMemo(() => jobs.filter((job) => job.status === "done"), [jobs]);
+  const featuredJob = useMemo(() => {
+    const running = jobs.find((job) => job.status === "running");
+    if (running) return running;
+    return [...jobs]
+      .filter((job) => job.status === "done" || job.status === "failed")
+      .sort((left, right) => {
+        const leftAt = new Date(left.completed_at ?? left.created_at).getTime();
+        const rightAt = new Date(right.completed_at ?? right.created_at).getTime();
+        return rightAt - leftAt;
+      })[0];
+  }, [jobs]);
 
   const filteredJobs = jobs
     .filter((j) => statusFilter === "all" || j.status === statusFilter)
@@ -219,17 +226,31 @@ function JobsPageContent() {
       {!loading && (jobs.length > 0 || sources.length > 0 || schedules.length > 0) && (
         <section
           data-testid="source-job-evidence-workflow"
-          className="border border-zinc-800 bg-zinc-950 rounded-xl overflow-hidden"
+          className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950 p-5"
         >
-          <div className="flex flex-col gap-4 border-b border-zinc-800 bg-zinc-900/60 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
                 Source → job → evidence
               </p>
               <h2 className="mt-1 text-base font-semibold text-zinc-100">Control-plane workflow</h2>
               <p className="mt-1 max-w-3xl text-sm text-zinc-500">
-                Registered sources create scan jobs; completed jobs become findings, graph, and compliance evidence for operators and API clients.
+                Registered sources enqueue scan jobs. Each job runs the six-stage read-only pipeline below, then publishes findings, graph, and compliance evidence.
               </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-400">
+                <span className="rounded-full border border-zinc-800 px-2.5 py-1">
+                  {sources.length} sources · {sources.filter((source) => source.enabled).length} enabled
+                </span>
+                <span className="rounded-full border border-zinc-800 px-2.5 py-1">
+                  {jobs.filter((job) => job.status === "running").length} running · {jobs.length} total jobs
+                </span>
+                <span className="rounded-full border border-zinc-800 px-2.5 py-1">
+                  {evidenceReadyJobs.length} evidence-ready
+                </span>
+                <span className="rounded-full border border-zinc-800 px-2.5 py-1">
+                  {schedules.filter((schedule) => schedule.enabled).length} active schedules
+                </span>
+              </div>
             </div>
             <Link
               href="/sources"
@@ -238,46 +259,24 @@ function JobsPageContent() {
               Manage sources
             </Link>
           </div>
-          <div className="grid gap-px bg-zinc-800 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              {
-                label: "Registered sources",
-                value: sources.length,
-                detail: `${sources.filter((source) => source.enabled).length} enabled`,
-                icon: ShieldAlert,
-              },
-              {
-                label: "Scheduled sources",
-                value: scheduledSourceIds.size,
-                detail: `${schedules.filter((schedule) => schedule.enabled).length} schedules active`,
-                icon: Clock,
-              },
-              {
-                label: "Scan jobs",
-                value: jobs.length,
-                detail: `${jobs.filter((job) => job.status === "running").length} running now`,
-                icon: Search,
-              },
-              {
-                label: "Evidence-ready",
-                value: evidenceReadyJobs.length,
-                detail: "findings · graph · compliance",
-                icon: CheckCircle2,
-              },
-            ].map((item) => (
-              <div key={item.label} className="bg-zinc-950 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <item.icon className="h-4 w-4 text-zinc-500" />
-                  <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                    live
-                  </span>
-                </div>
-                <p className="mt-4 text-2xl font-semibold text-zinc-100">{item.value}</p>
-                <p className="mt-1 text-xs text-zinc-500">{item.label}</p>
-                <p className="mt-2 text-xs text-zinc-600">{item.detail}</p>
+
+          {featuredJob ? (
+            <JobPipelinePanel
+              jobId={featuredJob.job_id}
+              status={featuredJob.status}
+              createdAt={featuredJob.created_at}
+              completedAt={featuredJob.completed_at}
+            />
+          ) : (
+            <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/30 p-4">
+              <p className="text-sm text-zinc-400">
+                Run a scan to see the live six-stage pipeline DAG with per-step timing and activity.
+              </p>
+              <div className="mt-4">
+                <ScanPipeline steps={new Map()} className="h-[180px]" />
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -318,6 +317,7 @@ function JobsPageContent() {
             <table className="w-full text-sm">
               <thead className="bg-zinc-900 border-b border-zinc-800">
                 <tr>
+                  <th className="w-10 px-3 py-3" aria-label="Expand pipeline" />
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Job ID</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Source</th>
@@ -332,16 +332,39 @@ function JobsPageContent() {
                   const linkedSource = sourceForJob(job, sourceById, sourceByLastJobId);
                   const sourceId = sourceIdForJob(job);
                   const evidenceReady = job.status === "done";
+                  const expanded = expandedJobId === job.job_id;
                   return (
+                    <Fragment key={job.job_id}>
                     <tr
-                      key={job.job_id}
                       className="hover:bg-zinc-900 transition-colors cursor-pointer group"
-                      onClick={() => router.push(`/scan?id=${job.job_id}`)}
+                      onClick={() => setExpandedJobId((current) => (current === job.job_id ? null : job.job_id))}
                     >
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          aria-label={expanded ? "Collapse pipeline" : "Expand pipeline"}
+                          aria-expanded={expanded}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpandedJobId((current) => (current === job.job_id ? null : job.job_id));
+                          }}
+                          className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                        >
+                          {expanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                      </td>
                       <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-zinc-300">
+                        <Link
+                          href={`/scan?id=${encodeURIComponent(job.job_id)}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="font-mono text-xs text-zinc-300 hover:text-emerald-300"
+                        >
                           {job.job_id.slice(0, 8)}…
-                        </span>
+                        </Link>
                       </td>
                       <td className="px-4 py-3">
                         <div className={`flex items-center gap-1.5 ${statusColor(job.status)}`}>
@@ -404,11 +427,24 @@ function JobsPageContent() {
                         </button>
                       </td>
                     </tr>
+                    {expanded ? (
+                      <tr key={`${job.job_id}-pipeline`} className="bg-zinc-900/40">
+                        <td colSpan={8} className="px-4 py-4">
+                          <JobPipelinePanel
+                            jobId={job.job_id}
+                            status={job.status}
+                            createdAt={job.created_at}
+                            completedAt={job.completed_at}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                    </Fragment>
                   );
                 })}
                 {pagedJobs.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-zinc-600 text-sm">
+                    <td colSpan={8} className="px-4 py-8 text-center text-zinc-600 text-sm">
                       No jobs match your filters.
                     </td>
                   </tr>

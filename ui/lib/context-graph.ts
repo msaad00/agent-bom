@@ -147,6 +147,29 @@ const EDGE_COLORS: Record<string, string> = {
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
 
+const UNTRUSTED_METADATA_PREFIX = "[UNTRUSTED MCP METADATA] ";
+
+/** Strip scanner trust prefix; omit empty external-metadata placeholders. */
+export function displayContextDescription(raw: string | undefined): string | undefined {
+  if (!raw?.trim()) return undefined;
+  const text = raw.startsWith(UNTRUSTED_METADATA_PREFIX)
+    ? raw.slice(UNTRUSTED_METADATA_PREFIX.length).trim()
+    : raw.trim();
+  return text || undefined;
+}
+
+export function topLateralPathForAgent(
+  paths: LateralPath[],
+  selectedAgent: string | undefined,
+): LateralPath | null {
+  if (!selectedAgent) return null;
+  const sourceId = `agent:${selectedAgent}`;
+  const ranked = paths
+    .filter((path) => path.source === sourceId)
+    .sort((left, right) => right.composite_risk - left.composite_risk);
+  return ranked[0] ?? null;
+}
+
 /**
  * Build ReactFlow nodes/edges from context graph API data.
  * When `selectedAgent` is provided, lateral paths from that agent are
@@ -155,18 +178,29 @@ const EDGE_COLORS: Record<string, string> = {
 export function buildContextFlowGraph(
   data: ContextGraphData,
   selectedAgent?: string,
-): { nodes: Node[]; edges: Edge[] } {
+  options?: { topPathOnly?: boolean },
+): { nodes: Node[]; edges: Edge[]; focusedPath: LateralPath | null } {
+  const focusedPath =
+    options?.topPathOnly && selectedAgent
+      ? topLateralPathForAgent(data.lateral_paths, selectedAgent)
+      : null;
+
   // Collect IDs on the selected agent's lateral paths
   const pathNodeIds = new Set<string>();
   const pathEdgePairs = new Set<string>();
-  if (selectedAgent) {
-    for (const p of data.lateral_paths) {
-      if (p.source === `agent:${selectedAgent}`) {
-        for (const h of p.hops) pathNodeIds.add(h);
-        for (let i = 0; i < p.hops.length - 1; i++) {
-          pathEdgePairs.add(`${p.hops[i]}→${p.hops[i + 1]}`);
-          pathEdgePairs.add(`${p.hops[i + 1]}→${p.hops[i]}`); // bidirectional
-        }
+  const pathsForScope =
+    focusedPath != null
+      ? [focusedPath]
+      : selectedAgent
+        ? data.lateral_paths.filter((path) => path.source === `agent:${selectedAgent}`)
+        : [];
+
+  if (selectedAgent && pathsForScope.length > 0) {
+    for (const p of pathsForScope) {
+      for (const h of p.hops) pathNodeIds.add(h);
+      for (let i = 0; i < p.hops.length - 1; i++) {
+        pathEdgePairs.add(`${p.hops[i]}→${p.hops[i + 1]}`);
+        pathEdgePairs.add(`${p.hops[i + 1]}→${p.hops[i]}`); // bidirectional
       }
     }
   }
@@ -217,7 +251,7 @@ export function buildContextFlowGraph(
         epssScore: (n.metadata?.epss_score as number) ?? undefined,
         isKev: n.metadata?.is_kev === true,
         effectiveReach: readReachBreakdown(n.metadata?.effective_reach),
-        description: (n.metadata?.description as string) ?? undefined,
+        description: displayContextDescription(n.metadata?.description as string | undefined),
         serverName: (n.metadata?.agent as string) ?? undefined,
         serverCount: (n.metadata?.server_count as number) ?? undefined,
       };
@@ -286,5 +320,5 @@ export function buildContextFlowGraph(
       };
     });
 
-  return { nodes, edges };
+  return { nodes, edges, focusedPath };
 }

@@ -23,17 +23,6 @@ import {
   formatDate,
 } from "@/lib/api";
 import {
-  Shield,
-  ShieldCheck,
-  ShieldAlert,
-  ShieldX,
-  CheckCircle,
-  AlertTriangle,
-  XCircle,
-  Package,
-  Server,
-  ChevronDown,
-  ChevronRight,
   Scan,
   Grid3X3,
   List,
@@ -41,9 +30,17 @@ import {
   Download,
   Loader2,
 } from "lucide-react";
+import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
+import { ComplianceControlRow } from "@/components/compliance-control-row";
+import { ComplianceFrameworkStrip } from "@/components/compliance-framework-strip";
+import { postureLabel, statusColor } from "@/components/compliance-status";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
+import {
+  complianceFrameworkSummaries,
+  controlMatchesQuery,
+} from "@/lib/compliance-frameworks";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
@@ -62,53 +59,6 @@ function downloadBlobToFile(blob: Blob, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-// ─── Status helpers ──────────────────────────────────────────────────────────
-
-function statusColor(status: string): string {
-  switch (status) {
-    case "pass":    return "text-emerald-600 dark:text-emerald-400";
-    case "warning": return "text-yellow-600 dark:text-yellow-400";
-    case "fail":    return "text-red-600 dark:text-red-400";
-    default:        return "text-[color:var(--text-secondary)]";
-  }
-}
-
-function statusBg(status: string): string {
-  switch (status) {
-    case "pass":    return "bg-emerald-50 border-emerald-300 dark:bg-emerald-950 dark:border-emerald-800";
-    case "warning": return "bg-yellow-50 border-yellow-300 dark:bg-yellow-950 dark:border-yellow-800";
-    case "fail":    return "bg-red-50 border-red-300 dark:bg-red-950 dark:border-red-800";
-    default:        return "bg-[color:var(--surface)] border-[color:var(--border-subtle)]";
-  }
-}
-
-function StatusIcon({ status, className }: { status: string; className?: string }) {
-  switch (status) {
-    case "pass":    return <CheckCircle className={`${className ?? "w-4 h-4"} text-emerald-600 dark:text-emerald-400`} />;
-    case "warning": return <AlertTriangle className={`${className ?? "w-4 h-4"} text-yellow-600 dark:text-yellow-400`} />;
-    case "fail":    return <XCircle className={`${className ?? "w-4 h-4"} text-red-600 dark:text-red-400`} />;
-    default:        return <Shield className={`${className ?? "w-4 h-4"} text-[color:var(--text-secondary)]`} />;
-  }
-}
-
-function PostureIcon({ status }: { status: string }) {
-  switch (status) {
-    case "pass":    return <ShieldCheck className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />;
-    case "warning": return <ShieldAlert className="w-10 h-10 text-yellow-600 dark:text-yellow-400" />;
-    case "fail":    return <ShieldX className="w-10 h-10 text-red-600 dark:text-red-400" />;
-    default:        return <Shield className="w-10 h-10 text-[color:var(--text-secondary)]" />;
-  }
-}
-
-function postureLabel(status: string): string {
-  switch (status) {
-    case "pass":    return "COMPLIANT";
-    case "warning": return "NEEDS ATTENTION";
-    case "fail":    return "NON-COMPLIANT";
-    default:        return "NO DATA";
-  }
 }
 
 // ─── Score Ring ──────────────────────────────────────────────────────────────
@@ -139,252 +89,6 @@ function ScoreRing({ score, status }: { score: number; status: string }) {
   );
 }
 
-// ─── Framework Summary Bar ──────────────────────────────────────────────────
-
-function FrameworkBar({
-  label, pass: p, warn, fail, total,
-}: {
-  label: string; pass: number; warn: number; fail: number; total: number;
-}) {
-  const pPct = (p / total) * 100;
-  const wPct = (warn / total) * 100;
-  const fPct = (fail / total) * 100;
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-[color:var(--text-secondary)]">{label}</span>
-        <span className="text-xs text-[color:var(--text-tertiary)]">{p}/{total} pass</span>
-      </div>
-      <div className="h-2.5 rounded-full bg-[color:var(--surface-muted)] overflow-hidden flex">
-        {p > 0 && (
-          <div className="bg-emerald-500 transition-all duration-700" style={{ width: `${pPct}%` }} />
-        )}
-        {warn > 0 && (
-          <div className="bg-yellow-500 transition-all duration-700" style={{ width: `${wPct}%` }} />
-        )}
-        {fail > 0 && (
-          <div className="bg-red-500 transition-all duration-700" style={{ width: `${fPct}%` }} />
-        )}
-      </div>
-      <div className="flex gap-4 text-xs text-[color:var(--text-tertiary)]">
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" /> {p} pass
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-yellow-500" /> {warn} warning
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-red-500" /> {fail} fail
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Control Card ───────────────────────────────────────────────────────────
-
-function ControlCard({ control, catalog }: { control: ComplianceControl; catalog?: Record<string, string> | undefined }) {
-  const [expanded, setExpanded] = useState(false);
-  const name = catalog?.[control.code] ?? control.name;
-  const sev = {
-    critical: control.severity_breakdown.critical ?? 0,
-    high: control.severity_breakdown.high ?? 0,
-    medium: control.severity_breakdown.medium ?? 0,
-    low: control.severity_breakdown.low ?? 0,
-  };
-  const hasSev = sev.critical > 0 || sev.high > 0 || sev.medium > 0 || sev.low > 0;
-
-  return (
-    <div
-      className={`border rounded-xl p-4 transition-colors ${statusBg(control.status)}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0">
-          <StatusIcon status={control.status} className="w-5 h-5 mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm font-semibold text-[color:var(--foreground)]">{control.code}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                control.status === "pass"
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300"
-                  : control.status === "warning"
-                  ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/60 dark:text-yellow-300"
-                  : "bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300"
-              }`}>
-                {control.status === "pass" ? "Pass" : control.status === "warning" ? "Needs Attention" : "Fail"}
-              </span>
-            </div>
-            <p className="text-sm text-[color:var(--text-secondary)] mt-1 leading-snug">{name}</p>
-          </div>
-        </div>
-        {control.findings > 0 && (
-          <span className="text-xs font-mono px-2 py-1 rounded bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] shrink-0">
-            {control.findings} finding{control.findings !== 1 ? "s" : ""}
-          </span>
-        )}
-      </div>
-
-      {/* Severity dots */}
-      {hasSev && (
-        <div className="flex gap-3 mt-3 ml-8 text-xs text-[color:var(--text-tertiary)]">
-          {sev.critical > 0 && (
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500" /> {sev.critical} critical
-            </span>
-          )}
-          {sev.high > 0 && (
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-orange-500" /> {sev.high} high
-            </span>
-          )}
-          {sev.medium > 0 && (
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-yellow-500" /> {sev.medium} medium
-            </span>
-          )}
-          {sev.low > 0 && (
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500" /> {sev.low} low
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Expandable details */}
-      {(control.affected_packages.length > 0 || control.affected_agents.length > 0) && (
-        <div className="mt-3 ml-8">
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-xs text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)] transition-colors"
-          >
-            {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            Details
-          </button>
-          {expanded && (
-            <div className="mt-2 space-y-2">
-              {control.affected_packages.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs text-[color:var(--text-tertiary)] mb-1">
-                    <Package className="w-3 h-3" /> Affected Packages
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {control.affected_packages?.map((pkg) => (
-                      <span key={pkg} className="text-xs px-2 py-0.5 rounded bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] font-mono">
-                        {pkg}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {control.affected_agents.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs text-[color:var(--text-tertiary)] mb-1">
-                    <Server className="w-3 h-3" /> Affected Agents
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {control.affected_agents?.map((agent) => (
-                      <span key={agent} className="text-xs px-2 py-0.5 rounded bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]">
-                        {agent}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FrameworkSection({
-  title,
-  subtitle,
-  accentClass,
-  controls,
-  catalog,
-  query,
-  statusFilter,
-  emptyMessage,
-  defaultOpen = true,
-}: {
-  title: string;
-  subtitle?: string | undefined;
-  accentClass: string;
-  controls: ComplianceControl[];
-  catalog?: Record<string, string> | undefined;
-  query: string;
-  statusFilter: "all" | "pass" | "warning" | "fail";
-  emptyMessage?: string | undefined;
-  defaultOpen?: boolean | undefined;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleControls = useMemo(
-    () =>
-      controls.filter((control) => {
-        const matchesStatus = statusFilter === "all" || control.status === statusFilter;
-        const searchable = [
-          control.code,
-          control.name,
-          ...control.affected_packages,
-          ...control.affected_agents,
-        ]
-          .join(" ")
-          .toLowerCase();
-        const matchesQuery = !normalizedQuery || searchable.includes(normalizedQuery);
-        return matchesStatus && matchesQuery;
-      }),
-    [controls, normalizedQuery, statusFilter],
-  );
-  const failCount = controls.filter((control) => control.status === "fail").length;
-  const warningCount = controls.filter((control) => control.status === "warning").length;
-
-  return (
-    <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
-      <button
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className={`text-lg font-semibold ${accentClass}`}>{title}</h2>
-            {subtitle ? <span className="text-xs text-[color:var(--text-tertiary)]">{subtitle}</span> : null}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-3 text-xs text-[color:var(--text-tertiary)]">
-            <span>{controls.length} controls</span>
-            <span>{failCount} fail</span>
-            <span>{warningCount} warning</span>
-            {visibleControls.length !== controls.length ? <span>{visibleControls.length} shown</span> : null}
-          </div>
-        </div>
-        {open ? <ChevronDown className="h-4 w-4 text-[color:var(--text-tertiary)]" /> : <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)]" />}
-      </button>
-      {open ? (
-        <div className="border-t border-[color:var(--border-subtle)] px-5 py-5">
-          {controls.length === 0 && emptyMessage ? (
-            <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
-              {emptyMessage}
-            </div>
-          ) : visibleControls.length === 0 ? (
-            <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
-              No controls match the current filters.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {visibleControls.map((control) => (
-                <ControlCard key={control.code} control={control} catalog={catalog} />
-              ))}
-            </div>
-          )}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 function CompliancePageContent() {
@@ -405,6 +109,133 @@ function CompliancePageContent() {
   const [statusFilter, setStatusFilter] = useState<"all" | "pass" | "warning" | "fail">("all");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [selectedFrameworkId, setSelectedFrameworkId] = useState("");
+  const [selectedControl, setSelectedControl] = useState<{
+    control: ComplianceControl;
+    frameworkLabel: string;
+    catalog?: Record<string, string> | undefined;
+  } | null>(null);
+
+  const hasMcp = data?.has_mcp_context ?? false;
+
+  const detailSections = useMemo(() => {
+    if (!data) return [];
+    return [
+      {
+        id: "owasp-llm",
+        title: "OWASP LLM Top 10",
+        subtitle: "2025 Edition",
+        controls: data.owasp_llm_top10,
+        catalog: OWASP_LLM_TOP10,
+        emptyMessage: undefined as string | undefined,
+      },
+      {
+        id: "owasp-mcp",
+        title: "OWASP MCP Top 10",
+        subtitle: "MCP security risks",
+        controls: hasMcp ? data.owasp_mcp_top10 : [],
+        catalog: OWASP_MCP_TOP10,
+        emptyMessage: "MCP-specific controls appear after a scan with MCP server context.",
+      },
+      {
+        id: "atlas",
+        title: "MITRE ATLAS",
+        subtitle: "Adversarial ML techniques",
+        controls: data.mitre_atlas,
+        catalog: MITRE_ATLAS,
+        emptyMessage: undefined,
+      },
+      {
+        id: "nist-ai-rmf",
+        title: "NIST AI RMF 1.0",
+        subtitle: "Govern / Map / Measure / Manage",
+        controls: data.nist_ai_rmf,
+        catalog: NIST_AI_RMF,
+        emptyMessage: undefined,
+      },
+      {
+        id: "owasp-agentic",
+        title: "OWASP Agentic Top 10",
+        subtitle: "2026 Edition",
+        controls: hasMcp ? data.owasp_agentic_top10 : [],
+        catalog: OWASP_AGENTIC_TOP10,
+        emptyMessage: "Agentic controls appear after a scan with agent and MCP context.",
+      },
+      {
+        id: "eu-ai-act",
+        title: "EU AI Act",
+        subtitle: "Regulation (EU) 2024/1689",
+        controls: data.eu_ai_act,
+        catalog: EU_AI_ACT,
+        emptyMessage: undefined,
+      },
+      {
+        id: "nist-csf",
+        title: "NIST CSF 2.0",
+        subtitle: "Cybersecurity Framework",
+        controls: data.nist_csf,
+        catalog: NIST_CSF,
+        emptyMessage: undefined,
+      },
+      {
+        id: "iso27001",
+        title: "ISO/IEC 27001:2022",
+        subtitle: "Annex A controls",
+        controls: data.iso_27001,
+        catalog: ISO_27001,
+        emptyMessage: undefined,
+      },
+      {
+        id: "soc2",
+        title: "SOC 2",
+        subtitle: "Trust Services Criteria",
+        controls: data.soc2,
+        catalog: SOC2_TSC,
+        emptyMessage: undefined,
+      },
+      {
+        id: "cis",
+        title: "CIS Controls v8",
+        subtitle: "Critical security controls",
+        controls: data.cis_controls,
+        catalog: CIS_CONTROLS,
+        emptyMessage: undefined,
+      },
+      {
+        id: "cmmc",
+        title: "CMMC 2.0",
+        subtitle: "Level 2 practices",
+        controls: data.cmmc,
+        catalog: CMMC_PRACTICES,
+        emptyMessage: undefined,
+      },
+    ];
+  }, [data, hasMcp]);
+
+  const frameworks = useMemo(
+    () => (data ? complianceFrameworkSummaries(data, hasMcp) : []),
+    [data, hasMcp],
+  );
+
+  const selectedSection = useMemo(
+    () => detailSections.find((section) => section.id === selectedFrameworkId) ?? detailSections[0],
+    [detailSections, selectedFrameworkId],
+  );
+
+  const visibleControls = useMemo(() => {
+    if (!selectedSection) return [];
+    return selectedSection.controls.filter((control) => {
+      const matchesStatus = statusFilter === "all" || control.status === statusFilter;
+      return matchesStatus && controlMatchesQuery(control, controlQuery);
+    });
+  }, [controlQuery, selectedSection, statusFilter]);
+
+  useEffect(() => {
+    if (!frameworks.length || selectedFrameworkId) return;
+    const firstFailing = frameworks.find((framework) => !framework.disabled && framework.fail > 0);
+    const fallback = frameworks.find((framework) => !framework.disabled);
+    setSelectedFrameworkId(firstFailing?.id ?? fallback?.id ?? "");
+  }, [frameworks, selectedFrameworkId]);
 
   const handleExportPack = async () => {
     setExporting(true);
@@ -473,370 +304,97 @@ function CompliancePageContent() {
 
   if (!data) return null;
 
-  const { summary: s } = data;
-  const hasMcp = data.has_mcp_context ?? false;
-  const detailSections: Array<{
-    id: string;
-    title: string;
-    subtitle?: string | undefined;
-    accentClass: string;
-    controls: ComplianceControl[];
-    catalog?: Record<string, string>;
-    emptyMessage?: string | undefined;
-  }> = [
-    {
-      id: "owasp-llm",
-      title: "OWASP LLM Top 10",
-      subtitle: "2025 Edition",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.owasp_llm_top10,
-      catalog: OWASP_LLM_TOP10,
-    },
-    {
-      id: "owasp-mcp",
-      title: "OWASP MCP Top 10",
-      subtitle: "MCP security risks",
-      accentClass: hasMcp ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]",
-      controls: hasMcp ? data.owasp_mcp_top10 : [],
-      catalog: OWASP_MCP_TOP10,
-      emptyMessage: "MCP-specific controls appear after a scan with MCP server context.",
-    },
-    {
-      id: "atlas",
-      title: "MITRE ATLAS",
-      subtitle: "Adversarial ML techniques",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.mitre_atlas,
-      catalog: MITRE_ATLAS,
-    },
-    {
-      id: "nist-ai-rmf",
-      title: "NIST AI RMF 1.0",
-      subtitle: "Govern / Map / Measure / Manage",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.nist_ai_rmf,
-      catalog: NIST_AI_RMF,
-    },
-    {
-      id: "owasp-agentic",
-      title: "OWASP Agentic Top 10",
-      subtitle: "2026 Edition",
-      accentClass: hasMcp ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]",
-      controls: hasMcp ? data.owasp_agentic_top10 : [],
-      catalog: OWASP_AGENTIC_TOP10,
-      emptyMessage: "Agentic controls appear after a scan with agent and MCP context.",
-    },
-    {
-      id: "eu-ai-act",
-      title: "EU AI Act",
-      subtitle: "Regulation (EU) 2024/1689",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.eu_ai_act,
-      catalog: EU_AI_ACT,
-    },
-    {
-      id: "nist-csf",
-      title: "NIST CSF 2.0",
-      subtitle: "Cybersecurity Framework",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.nist_csf,
-      catalog: NIST_CSF,
-    },
-    {
-      id: "iso27001",
-      title: "ISO/IEC 27001:2022",
-      subtitle: "Annex A controls",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.iso_27001,
-      catalog: ISO_27001,
-    },
-    {
-      id: "soc2",
-      title: "SOC 2",
-      subtitle: "Trust Services Criteria",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.soc2,
-      catalog: SOC2_TSC,
-    },
-    {
-      id: "cis",
-      title: "CIS Controls v8",
-      subtitle: "Critical security controls",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.cis_controls,
-      catalog: CIS_CONTROLS,
-    },
-    {
-      id: "cmmc",
-      title: "CMMC 2.0",
-      subtitle: "Level 2 practices",
-      accentClass: "text-[color:var(--foreground)]",
-      controls: data.cmmc,
-      catalog: CMMC_PRACTICES,
-    },
-  ];
-
   return (
-    <div className="space-y-8">
-      {/* ── Posture Header ─────────────────────────────────────────────── */}
-      <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-2xl p-6">
-        <div className="flex items-center gap-6">
-          <ScoreRing score={data.overall_score} status={data.overall_status} />
-          <div className="flex-1 space-y-2">
-            <div className="flex items-center gap-3">
-              <PostureIcon status={data.overall_status} />
-              <div>
-                <h1 className={`text-xl font-bold ${statusColor(data.overall_status)}`}>
-                  {postureLabel(data.overall_status)}
-                </h1>
-                <p className="text-sm text-[color:var(--text-tertiary)]">
-                  AI Supply Chain Compliance Posture
+    <div className="space-y-5">
+      {/* ── Trust center header ─────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-5">
+            <ScoreRing score={data.overall_score} status={data.overall_status} />
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
+                Trust center
+              </p>
+              <h1 className={`text-2xl font-bold ${statusColor(data.overall_status)}`}>
+                {postureLabel(data.overall_status)}
+              </h1>
+              <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
+                AI supply chain compliance posture
+              </p>
+              <div className="mt-2 flex flex-wrap gap-4 text-xs text-[color:var(--text-tertiary)]">
+                <span>
+                  {data.scan_count} scan{data.scan_count !== 1 ? "s" : ""} analyzed
+                </span>
+                {data.latest_scan ? <span>Latest {formatDate(data.latest_scan)}</span> : null}
+                <span>
+                  {frameworks.reduce((total, framework) => total + framework.fail, 0)} failing controls
+                </span>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => void handleExportPack()}
+            disabled={exporting}
+            title="Download a signed evidence pack covering every framework"
+            className="flex items-center gap-1.5 self-start rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+            data-testid="compliance-export-pack"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {exporting ? "Exporting…" : "Export pack"}
+          </button>
+        </div>
+        {exportError ? (
+          <p className="mt-2 text-right text-xs text-red-400">{exportError}</p>
+        ) : null}
+
+        <div className="mt-5">
+          <ComplianceFrameworkStrip
+            frameworks={frameworks}
+            selectedId={selectedFrameworkId}
+            onSelect={setSelectedFrameworkId}
+          />
+        </div>
+
+        {(hubPosture && hubPosture.totals.combined > 0) || mitreCatalog || atlasCatalog ? (
+          <details className="mt-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3">
+            <summary className="cursor-pointer text-xs font-medium text-[color:var(--text-secondary)]">
+              Operator & catalog context
+            </summary>
+            <div className="mt-3 space-y-3 text-xs text-[color:var(--text-tertiary)]">
+              {hubPosture && hubPosture.totals.combined > 0 ? (
+                <p>
+                  Compliance hub: {hubPosture.totals.combined.toLocaleString()} findings (
+                  {hubPosture.totals.native.toLocaleString()} native ·{" "}
+                  {hubPosture.totals.hub.toLocaleString()} ingested). Import via{" "}
+                  <code className="rounded bg-[color:var(--surface)] px-1 py-0.5">
+                    POST /v1/compliance/ingest
+                  </code>
+                  .
                 </p>
-              </div>
+              ) : null}
+              {mitreCatalog ? (
+                <p>
+                  MITRE ATT&CK {mitreCatalog.attack_version || "catalog"} ·{" "}
+                  {mitreCatalog.technique_count} techniques · refresh with{" "}
+                  <code className="rounded bg-[color:var(--surface)] px-1 py-0.5">
+                    agent-bom db update-frameworks
+                  </code>
+                  .
+                </p>
+              ) : null}
+              {atlasCatalog ? (
+                <p>
+                  MITRE ATLAS {atlasCatalog.atlas_version || "catalog"} ·{" "}
+                  {atlasCatalog.technique_count} techniques · refresh with{" "}
+                  <code className="rounded bg-[color:var(--surface)] px-1 py-0.5">
+                    agent-bom db update-frameworks --framework atlas
+                  </code>
+                  .
+                </p>
+              ) : null}
             </div>
-            <div className="flex gap-6 text-xs text-[color:var(--text-tertiary)]">
-              <span>
-                {data.scan_count} scan{data.scan_count !== 1 ? "s" : ""} analyzed
-              </span>
-              {data.latest_scan && (
-                <span>Latest: {formatDate(data.latest_scan)}</span>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1 self-start">
-            <button
-              onClick={() => void handleExportPack()}
-              disabled={exporting}
-              title="Download a signed evidence pack covering every framework"
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
-              data-testid="compliance-export-pack"
-            >
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              {exporting ? "Exporting…" : "Export pack"}
-            </button>
-            {exportError && (
-              <span className="max-w-[220px] text-right text-xs text-red-400">{exportError}</span>
-            )}
-          </div>
-        </div>
-
-        {/* Compliance Hub aggregate (#1044) — surfaces external ingest counts
-            alongside the native posture so the page tells one unified story. */}
-        {hubPosture && hubPosture.totals.combined > 0 ? (
-          <div className="mt-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-[0.24em] text-emerald-600 dark:text-emerald-400">Compliance Hub</div>
-                <div className="text-sm text-[color:var(--foreground)]">
-                  {hubPosture.totals.combined.toLocaleString()} finding{hubPosture.totals.combined !== 1 ? "s" : ""} across all sources
-                  {hubPosture.totals.hub > 0 ? (
-                    <>
-                      {" "}<span className="text-emerald-600 dark:text-emerald-400">({hubPosture.totals.hub.toLocaleString()} ingested external)</span>
-                    </>
-                  ) : null}
-                </div>
-                <div className="text-xs text-[color:var(--text-tertiary)]">
-                  Native: {hubPosture.totals.native.toLocaleString()} · Hub-ingested: {hubPosture.totals.hub.toLocaleString()}
-                  {Object.keys(hubPosture.framework_counts.combined).length > 0 ? (
-                    <> · Frameworks lit: {Object.keys(hubPosture.framework_counts.combined).length}</>
-                  ) : null}
-                </div>
-              </div>
-              <div className="text-xs text-[color:var(--text-tertiary)] lg:max-w-sm">
-                Import SARIF / CycloneDX / CSV / JSON via{" "}
-                <code className="rounded bg-[color:var(--surface)] px-1.5 py-0.5 text-[color:var(--text-secondary)]">POST /v1/compliance/ingest</code>{" "}
-                — every external finding is auto-mapped to the same framework set as native scans.
-              </div>
-            </div>
-          </div>
+          </details>
         ) : null}
-
-        {/* Framework mini-cards */}
-        {mitreCatalog ? (
-          <div className="mt-6 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-[0.24em] text-cyan-400">MITRE ATT&CK catalog</div>
-                <div className="text-sm text-[color:var(--text-secondary)]">
-                  {mitreCatalog.attack_version || "unknown version"} · {mitreCatalog.technique_count} techniques · {mitreCatalog.cwe_mapping_count} CWE mappings
-                </div>
-                <div className="text-xs text-[color:var(--text-tertiary)]">
-                  Source: {mitreCatalog.source}
-                  {mitreCatalog.updated_at ? ` · updated ${formatDate(mitreCatalog.updated_at)}` : ""}
-                </div>
-              </div>
-              <div className="text-xs text-[color:var(--text-tertiary)] lg:max-w-sm">
-                Bundled by default for deterministic scans. Refresh explicitly with{" "}
-                <code className="rounded bg-[color:var(--surface)] px-1.5 py-0.5 text-[color:var(--text-secondary)]">agent-bom db update-frameworks</code>{" "}
-                when you want a newer upstream snapshot.
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {atlasCatalog ? (
-          <div className="mt-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-[0.24em] text-fuchsia-400">MITRE ATLAS catalog</div>
-                <div className="text-sm text-[color:var(--text-secondary)]">
-                  {atlasCatalog.atlas_version || "unknown version"} ·{" "}
-                  {typeof atlasCatalog.curated_count === "number"
-                    ? `${atlasCatalog.curated_count} curated / ${atlasCatalog.technique_count} upstream`
-                    : `${atlasCatalog.technique_count} techniques`}{" "}
-                  · {atlasCatalog.tactic_count} tactics
-                </div>
-                <div className="text-xs text-[color:var(--text-tertiary)]">
-                  Source: {atlasCatalog.source}
-                  {atlasCatalog.updated_at ? ` · updated ${formatDate(atlasCatalog.updated_at)}` : ""}
-                </div>
-              </div>
-              <div className="text-xs text-[color:var(--text-tertiary)] lg:max-w-sm">
-                Curated tag surface stays load-bearing for tagging precision; the bundled
-                upstream catalog powers coverage rollups. Refresh explicitly with{" "}
-                <code className="rounded bg-[color:var(--surface)] px-1.5 py-0.5 text-[color:var(--text-secondary)]">
-                  agent-bom db update-frameworks --framework atlas
-                </code>
-                .
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-[color:var(--text-tertiary)] mb-1">OWASP LLM Top 10</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.owasp_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ 10 pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.owasp_fail > 0 && <span className="text-red-400">{s.owasp_fail} fail</span>}
-              {s.owasp_warn > 0 && <span className="text-yellow-400">{s.owasp_warn} warn</span>}
-            </div>
-          </div>
-          <div className={`bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)] ${!hasMcp ? "opacity-40" : ""}`}>
-            <div className="text-xs text-amber-500/80 mb-1">OWASP MCP Top 10</div>
-            {hasMcp ? (
-              <>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.owasp_mcp_pass}</span>
-                  <span className="text-sm text-[color:var(--text-tertiary)]">/ 10 pass</span>
-                </div>
-                <div className="flex gap-2 mt-2 text-xs">
-                  {s.owasp_mcp_fail > 0 && <span className="text-red-400">{s.owasp_mcp_fail} fail</span>}
-                  {s.owasp_mcp_warn > 0 && <span className="text-yellow-400">{s.owasp_mcp_warn} warn</span>}
-                </div>
-              </>
-            ) : (
-              <div className="text-xs text-[color:var(--text-tertiary)] mt-1">No MCP servers detected</div>
-            )}
-          </div>
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-[color:var(--text-tertiary)] mb-1">MITRE ATLAS</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.atlas_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.mitre_atlas.length} pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.atlas_fail > 0 && <span className="text-red-400">{s.atlas_fail} fail</span>}
-              {s.atlas_warn > 0 && <span className="text-yellow-400">{s.atlas_warn} warn</span>}
-            </div>
-          </div>
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-[color:var(--text-tertiary)] mb-1">NIST AI RMF</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.nist_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.nist_ai_rmf.length} pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.nist_fail > 0 && <span className="text-red-400">{s.nist_fail} fail</span>}
-              {s.nist_warn > 0 && <span className="text-yellow-400">{s.nist_warn} warn</span>}
-            </div>
-          </div>
-          <div className={`bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)] ${!hasMcp ? "opacity-40" : ""}`}>
-            <div className="text-xs text-fuchsia-500/80 mb-1">OWASP Agentic Top 10</div>
-            {hasMcp ? (
-              <>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.owasp_agentic_pass}</span>
-                  <span className="text-sm text-[color:var(--text-tertiary)]">/ 10 pass</span>
-                </div>
-                <div className="flex gap-2 mt-2 text-xs">
-                  {s.owasp_agentic_fail > 0 && <span className="text-red-400">{s.owasp_agentic_fail} fail</span>}
-                  {s.owasp_agentic_warn > 0 && <span className="text-yellow-400">{s.owasp_agentic_warn} warn</span>}
-                </div>
-              </>
-            ) : (
-              <div className="text-xs text-[color:var(--text-tertiary)] mt-1">No agents detected</div>
-            )}
-          </div>
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-blue-500/80 mb-1">EU AI Act</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.eu_ai_act_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.eu_ai_act.length} pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.eu_ai_act_fail > 0 && <span className="text-red-400">{s.eu_ai_act_fail} fail</span>}
-              {s.eu_ai_act_warn > 0 && <span className="text-yellow-400">{s.eu_ai_act_warn} warn</span>}
-            </div>
-          </div>
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-teal-500/80 mb-1">NIST CSF 2.0</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.nist_csf_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.nist_csf.length} pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.nist_csf_fail > 0 && <span className="text-red-400">{s.nist_csf_fail} fail</span>}
-              {s.nist_csf_warn > 0 && <span className="text-yellow-400">{s.nist_csf_warn} warn</span>}
-            </div>
-          </div>
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-sky-500/80 mb-1">ISO 27001</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.iso_27001_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.iso_27001.length} pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.iso_27001_fail > 0 && <span className="text-red-400">{s.iso_27001_fail} fail</span>}
-              {s.iso_27001_warn > 0 && <span className="text-yellow-400">{s.iso_27001_warn} warn</span>}
-            </div>
-          </div>
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-indigo-500/80 mb-1">SOC 2</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.soc2_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.soc2.length} pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.soc2_fail > 0 && <span className="text-red-400">{s.soc2_fail} fail</span>}
-              {s.soc2_warn > 0 && <span className="text-yellow-400">{s.soc2_warn} warn</span>}
-            </div>
-          </div>
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-lime-500/80 mb-1">CIS Controls v8</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.cis_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.cis_controls.length} pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.cis_fail > 0 && <span className="text-red-400">{s.cis_fail} fail</span>}
-              {s.cis_warn > 0 && <span className="text-yellow-400">{s.cis_warn} warn</span>}
-            </div>
-          </div>
-          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
-            <div className="text-xs text-rose-500/80 mb-1">CMMC 2.0</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.cmmc_pass}</span>
-              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.cmmc.length} pass</span>
-            </div>
-            <div className="flex gap-2 mt-2 text-xs">
-              {s.cmmc_fail > 0 && <span className="text-red-400">{s.cmmc_fail} fail</span>}
-              {s.cmmc_warn > 0 && <span className="text-yellow-400">{s.cmmc_warn} warn</span>}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* ── View Toggle ────────────────────────────────────────────────── */}
@@ -882,62 +440,45 @@ function CompliancePageContent() {
       {/* ── Matrix View ───────────────────────────────────────────────── */}
       {viewMode === "matrix" && <ComplianceMatrix data={data} />}
 
-      {/* ── Detail View ───────────────────────────────────────────────── */}
-      {viewMode === "detail" && (
+      {viewMode === "detail" && selectedSection ? (
       <>
-
-      {/* ── Framework Coverage Bars ────────────────────────────────────── */}
-      <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-2xl p-6 space-y-5">
-        <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-wider">Framework Coverage</h2>
-        <FrameworkBar label="OWASP LLM Top 10" pass={s.owasp_pass} warn={s.owasp_warn} fail={s.owasp_fail} total={10} />
-        <FrameworkBar label="MITRE ATLAS" pass={s.atlas_pass} warn={s.atlas_warn} fail={s.atlas_fail} total={data.mitre_atlas.length} />
-        {hasMcp && <FrameworkBar label="OWASP MCP Top 10" pass={s.owasp_mcp_pass} warn={s.owasp_mcp_warn} fail={s.owasp_mcp_fail} total={10} />}
-        <FrameworkBar label="NIST AI RMF" pass={s.nist_pass} warn={s.nist_warn} fail={s.nist_fail} total={data.nist_ai_rmf.length} />
-        {hasMcp && <FrameworkBar label="OWASP Agentic Top 10" pass={s.owasp_agentic_pass} warn={s.owasp_agentic_warn} fail={s.owasp_agentic_fail} total={10} />}
-        <FrameworkBar label="EU AI Act" pass={s.eu_ai_act_pass} warn={s.eu_ai_act_warn} fail={s.eu_ai_act_fail} total={data.eu_ai_act.length} />
-        <FrameworkBar label="NIST CSF 2.0" pass={s.nist_csf_pass} warn={s.nist_csf_warn} fail={s.nist_csf_fail} total={data.nist_csf.length} />
-        <FrameworkBar label="ISO 27001" pass={s.iso_27001_pass} warn={s.iso_27001_warn} fail={s.iso_27001_fail} total={data.iso_27001.length} />
-        <FrameworkBar label="SOC 2" pass={s.soc2_pass} warn={s.soc2_warn} fail={s.soc2_fail} total={data.soc2.length} />
-        <FrameworkBar label="CIS Controls v8" pass={s.cis_pass} warn={s.cis_warn} fail={s.cis_fail} total={data.cis_controls.length} />
-        <a
-          href="#cloud-cis-benchmarks"
-          className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-          Drill into cloud CIS benchmark checks (AWS / Azure / GCP / Snowflake / Databricks)
-        </a>
-        <FrameworkBar label="CMMC 2.0" pass={s.cmmc_pass} warn={s.cmmc_warn} fail={s.cmmc_fail} total={data.cmmc.length} />
-      </div>
-
       <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Control explorer</h2>
-            <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Filter once, then expand only the frameworks you need.</p>
+            <h2 className="text-base font-semibold text-[color:var(--foreground)]">
+              {selectedSection.title}
+            </h2>
+            {selectedSection.subtitle ? (
+              <p className="mt-0.5 text-xs text-[color:var(--text-tertiary)]">{selectedSection.subtitle}</p>
+            ) : null}
+            <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+              {visibleControls.length} of {selectedSection.controls.length} controls shown · click a row for evidence
+            </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative min-w-[240px]">
+            <div className="relative min-w-[220px]">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
               <input
                 type="text"
                 value={controlQuery}
                 onChange={(e) => setControlQuery(e.target.value)}
-                placeholder="Search control, package, or agent"
-                className="w-full rounded-lg border border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:outline-none focus:border-[color:var(--border-strong)]"
+                placeholder="Search control, package, agent"
+                className="w-full rounded-lg border border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
               />
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] p-0.5">
               {(["all", "fail", "warning", "pass"] as const).map((value) => (
                 <button
                   key={value}
+                  type="button"
                   onClick={() => setStatusFilter(value)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     statusFilter === value
-                      ? "bg-[color:var(--surface-muted)] text-[color:var(--foreground)]"
-                      : "text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
+                      ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                      : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
                   }`}
                 >
-                  {value === "all" ? "All" : value === "pass" ? "Passing" : value === "warning" ? "Warnings" : "Failing"}
+                  {value === "all" ? "All" : value === "pass" ? "Pass" : value === "warning" ? "Warn" : "Fail"}
                 </button>
               ))}
             </div>
@@ -945,27 +486,52 @@ function CompliancePageContent() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        {detailSections.map((section) => (
-          <FrameworkSection
-            key={section.id}
-            title={section.title}
-            subtitle={section.subtitle}
-            accentClass={section.accentClass}
-            controls={section.controls}
-            catalog={section.catalog}
-            query={controlQuery}
-            statusFilter={statusFilter}
-            emptyMessage={section.emptyMessage}
-          />
-        ))}
-      </div>
+      <section className="space-y-2">
+        {selectedSection.controls.length === 0 && selectedSection.emptyMessage ? (
+          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
+            {selectedSection.emptyMessage}
+          </div>
+        ) : visibleControls.length === 0 ? (
+          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
+            No controls match the current filters.
+          </div>
+        ) : (
+          visibleControls.map((control) => (
+            <ComplianceControlRow
+              key={control.code}
+              control={control}
+              catalogName={selectedSection.catalog?.[control.code] ?? control.name}
+              onOpen={() =>
+                setSelectedControl({
+                  control,
+                  frameworkLabel: selectedSection.title,
+                  catalog: selectedSection.catalog,
+                })
+              }
+            />
+          ))
+        )}
+      </section>
 
-      {/* ── Cloud CIS benchmark drill-down ─────────────────────────────── */}
-      <CISBenchmarkDetail />
+      <details className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
+        <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-[color:var(--foreground)]">
+          Cloud CIS benchmark drill-down (AWS / Azure / GCP / Snowflake / Databricks)
+        </summary>
+        <div className="border-t border-[color:var(--border-subtle)] px-2 pb-2">
+          <CISBenchmarkDetail />
+        </div>
+      </details>
 
+      {selectedControl ? (
+        <ComplianceControlDrawer
+          control={selectedControl.control}
+          frameworkLabel={selectedControl.frameworkLabel}
+          catalogName={selectedControl.catalog?.[selectedControl.control.code]}
+          onClose={() => setSelectedControl(null)}
+        />
+      ) : null}
       </>
-      )}
+      ) : null}
 
       {/* ── Empty state ───────────────────────────────────────────────── */}
       {data.scan_count === 0 && (

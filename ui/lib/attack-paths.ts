@@ -156,6 +156,14 @@ function highestNodeSeverity(hops: ExposureEntityRef[], fallback: string): strin
   );
 }
 
+function parsePackageHopLabel(label: string): { packageName: string; packageVersion?: string } {
+  const at = label.lastIndexOf("@");
+  if (at > 0) {
+    return { packageName: label.slice(0, at), packageVersion: label.slice(at + 1) };
+  }
+  return { packageName: label };
+}
+
 export function toExposurePathFromAttackPath(
   path: AttackPath,
   nodeById: Map<string, UnifiedNode>,
@@ -204,7 +212,8 @@ export function toExposurePathFromAttackPath(
     reachableTools,
     exposedCredentials,
     dependencyContext: {
-      packageName: packages[0]?.label,
+      packageName: packages[0] ? parsePackageHopLabel(packages[0].label).packageName : undefined,
+      packageVersion: packages[0] ? parsePackageHopLabel(packages[0].label).packageVersion : undefined,
       serverName: servers[0]?.label,
     },
     evidence: {

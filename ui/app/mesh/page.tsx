@@ -44,7 +44,7 @@ import {
   readableGraphEdges,
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
-import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { FullscreenButton } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
@@ -199,7 +199,7 @@ export default function MeshPage() {
     packages: true,
     vulnerabilities: true,
     credentials: true,
-    tools: true,
+    tools: false,
   });
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("high");
   const [vulnerableOnly, setVulnerableOnly] = useState(true);
@@ -319,14 +319,14 @@ export default function MeshPage() {
 
   const { nodes: visibleNodes, edges: visibleEdges } = useGraphLayout(layoutMode, rawNodes, rawEdges, {
     radial: {
-      baseRadius: captureMode ? 170 : 240,
-      ringSpacing: captureMode ? 150 : 220,
+      baseRadius: captureMode ? 170 : 260,
+      ringSpacing: captureMode ? 150 : 240,
     },
     dagre: {
-      nodeWidth: captureMode ? 170 : 230,
-      nodeHeight: captureMode ? 64 : 84,
-      rankSep: captureMode ? 88 : 140,
-      nodeSep: captureMode ? 20 : 34,
+      nodeWidth: captureMode ? 190 : 260,
+      nodeHeight: captureMode ? 72 : 96,
+      rankSep: captureMode ? 100 : 160,
+      nodeSep: captureMode ? 28 : 48,
     },
   });
 
@@ -356,39 +356,55 @@ export default function MeshPage() {
     return new Set(stats.topExposurePath.nodeIds);
   }, [hoveredNodeId, pathFocusEnabled, searchQuery, stats.topExposurePath]);
 
+  const pathFocusActive = Boolean(pathFocusIds);
+
   const displayNodes = useMemo(() => {
     if (searchMatches && searchMatches.size > 0) {
       return visibleNodes?.map((n) => ({
         ...n,
-        data: { ...n.data, dimmed: !searchMatches.has(n.id), highlighted: searchMatches.has(n.id) },
+        data: { ...n.data, dimmed: !searchMatches.has(n.id), highlighted: searchMatches.has(n.id), renderBand: "detail" as const },
       }));
     }
     if (pathFocusIds) {
-      const pathNodes = visibleNodes?.map((n) => ({
-        ...n,
-        data: { ...n.data, dimmed: !pathFocusIds.has(n.id), highlighted: pathFocusIds.has(n.id) },
-      }));
-      return captureMode ? pathNodes.filter((n) => pathFocusIds.has(n.id)) : pathNodes;
+      return visibleNodes
+        ?.filter((n) => pathFocusIds.has(n.id))
+        .map((n) => ({
+          ...n,
+          data: { ...n.data, dimmed: false, highlighted: true, renderBand: "detail" as const },
+        }));
     }
-    if (!connectedIds) return visibleNodes;
+    if (!connectedIds) {
+      return visibleNodes?.map((n) => ({
+        ...n,
+        data: { ...n.data, renderBand: "detail" as const },
+      }));
+    }
     return visibleNodes?.map((n) => ({
       ...n,
-      data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) },
+      data: {
+        ...n.data,
+        dimmed: !connectedIds.has(n.id),
+        highlighted: connectedIds.has(n.id),
+        renderBand: "detail" as const,
+      },
     }));
-  }, [visibleNodes, connectedIds, searchMatches, pathFocusIds, captureMode]);
+  }, [visibleNodes, connectedIds, searchMatches, pathFocusIds]);
 
   const displayEdges = useMemo(() => {
     const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds ?? pathFocusIds;
-    const scopedEdges = captureMode && pathFocusIds
-      ? visibleEdges.filter((edge) => pathFocusIds.has(edge.source) && pathFocusIds.has(edge.target))
-      : visibleEdges;
+    const scopedEdges =
+      pathFocusIds
+        ? visibleEdges.filter(
+            (edge) => pathFocusIds.has(edge.source) && pathFocusIds.has(edge.target),
+          )
+        : visibleEdges;
     return readableGraphEdges(scopedEdges, activeSet, {
-      baseOpacity: 0.3,
-      highSignalOpacity: 0.58,
+      baseOpacity: pathFocusActive ? 0.72 : 0.3,
+      highSignalOpacity: pathFocusActive ? 0.95 : 0.58,
       inactiveOpacity: 0.06,
       captureMode,
     });
-  }, [visibleEdges, connectedIds, searchMatches, pathFocusIds, captureMode]);
+  }, [visibleEdges, connectedIds, searchMatches, pathFocusIds, pathFocusActive, captureMode]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -488,65 +504,71 @@ export default function MeshPage() {
           </p>
         </div>
       ) : (
-      <div className={`flex flex-col gap-3 border-b border-[var(--border-subtle)] lg:flex-row lg:items-center lg:justify-between px-4 py-3`}>
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-foreground">Agent Mesh</h1>
-          <p className="break-words text-sm text-[var(--text-secondary)]">
-            Agent, MCP server, tool, package, and finding relationships from graph evidence.
-          </p>
-          <p className="mt-1 break-words text-xs text-[var(--text-tertiary)]">
-            Default view ranks the highest-risk agent first and hides lower-priority nodes until you expand filters.
-          </p>
-        </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <div className="flex max-w-full items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
-            {[
-              { key: "radial" as const, label: "Risk Map", icon: Orbit },
-              { key: "topology" as const, label: "Dependency Flow", icon: Network },
-              { key: "spawn-tree" as const, label: "Spawn Tree", icon: GitBranch },
-            ].map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setLayoutMode(key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                  layoutMode === key
-                    ? "bg-emerald-600 text-white"
-                    : "text-zinc-400 hover:text-zinc-200"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
-              </button>
-            ))}
+      <div className="flex flex-col gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold text-foreground">Agent Mesh</h1>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Agent → server → package → finding. Path focus shows the highest-risk chain first.
+            </p>
           </div>
-          <select
-            value={selectedJob}
-            onChange={(e) => setSelectedJob(e.target.value)}
-            className="min-w-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
-          >
-            {jobs?.map((j) => (
-              <option key={j.job_id} value={j.job_id}>
-                Scan {j.job_id.slice(0, 8)} — {new Date(j.created_at).toLocaleDateString()}
-              </option>
-            ))}
-          </select>
-          <FullscreenButton />
-          <GraphLegend items={legendItems} />
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="flex max-w-full items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
+              {[
+                { key: "radial" as const, label: "Risk Map", icon: Orbit },
+                { key: "topology" as const, label: "Flow", icon: Network },
+                { key: "spawn-tree" as const, label: "Spawn", icon: GitBranch },
+              ].map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setLayoutMode(key)}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    layoutMode === key
+                      ? "bg-emerald-600 text-white"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={selectedJob}
+              onChange={(e) => setSelectedJob(e.target.value)}
+              className="min-w-0 max-w-[14rem] truncate rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600"
+            >
+              {jobs?.map((j) => (
+                <option key={j.job_id} value={j.job_id}>
+                  Scan {j.job_id.slice(0, 8)} — {new Date(j.created_at).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+            <FullscreenButton />
+          </div>
         </div>
+        <GraphLensSwitcher variant="compact" legendItems={legendItems} />
       </div>
       )}
 
       {/* Stats bar */}
       <MeshStats
         stats={stats}
-        pathFocusActive={Boolean(pathFocusIds)}
+        pathFocusActive={pathFocusActive}
         onTogglePathFocus={stats.topExposurePath ? () => setPathFocusEnabled((current) => !current) : undefined}
         captureMode={captureMode}
+        compact
       />
 
       {/* Filter toolbar */}
       {!captureMode && (
+      <details className="group border-b border-zinc-800" open={!pathFocusActive}>
+        <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-1.5 text-[11px] text-zinc-500 [&::-webkit-details-marker]:hidden">
+          <span className="font-medium uppercase tracking-[0.16em]">Scope & filters</span>
+          <span className="text-[10px] uppercase tracking-[0.14em] group-open:hidden">show</span>
+          <span className="hidden text-[10px] uppercase tracking-[0.14em] group-open:inline">hide</span>
+        </summary>
       <MeshToolbar
         nodeFilter={nodeFilter}
         setNodeFilter={setNodeFilter}
@@ -560,15 +582,11 @@ export default function MeshPage() {
         selectedAgents={selectedAgents}
         toggleAgent={toggleAgent}
       />
+      </details>
       )}
 
       {/* Graph */}
       <div className="flex-1 flex flex-col min-h-0">
-        {!captureMode && (
-        <div className="mb-2 shrink-0 px-1">
-          <GraphLensSwitcher variant="compact" />
-        </div>
-        )}
         <div className="relative min-h-0 flex-1">
         {detailLoading && activeResult && (
           <GraphRefreshOverlay label="Updating agent mesh" />

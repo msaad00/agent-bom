@@ -30,6 +30,8 @@ export interface GraphRollupEligibilityInput {
   selectedAttackPath: boolean;
   reachabilityActive: boolean;
   blastRadiusActive: boolean;
+  /** When ranked attack paths exist, prefer path-focused canvas over roll-up. */
+  attackPathCount?: number;
 }
 
 /** Whether the graph should fetch and prefer the CONTAINS roll-up view. */
@@ -38,6 +40,7 @@ export function graphRollupEligible(input: GraphRollupEligibilityInput): boolean
   if (input.rollupPreference === "off" || input.rollupDismissed) return false;
   if (input.investigationMode) return false;
   if (input.selectedAttackPath) return false;
+  if ((input.attackPathCount ?? 0) > 0) return false;
   if (input.reachabilityActive) return false;
   if (input.blastRadiusActive) return false;
   return true;

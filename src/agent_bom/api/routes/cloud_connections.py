@@ -6,11 +6,11 @@ plus the encrypted ``ExternalId`` (or provider equivalent) the credential broker
 presents. These endpoints manage that record; the secret is encrypted at rest
 and is **never** returned in any response.
 
-Every endpoint enforces the same gate the sibling cloud routes use:
-``require_request_tenant_id`` plus the ``scan`` permission ({admin, analyst})
-via the shared RBAC dependency, so there is no unauthenticated access and an
-under-privileged role is rejected with 403. Reads and deletes are tenant-scoped:
-a tenant can only see or remove its own connections.
+Every endpoint enforces ``require_request_tenant_id`` plus RBAC via the shared
+dependency. **Reads** (list/get) require the ``read`` permission (admin, analyst,
+viewer). **Mutations** (create, update schedule, delete, test, scan) require
+``scan`` (admin, analyst). Under-privileged roles are rejected with 403. Reads
+and deletes are tenant-scoped: a tenant can only see or remove its own connections.
 
 Endpoints:
     POST   /v1/cloud/connections          create a connection (encrypts the secret)
@@ -73,7 +73,8 @@ _MAX_SCAN_INTERVAL_MINUTES = 7 * 24 * 60
 router = APIRouter(tags=["cloud-connections"])
 _logger = logging.getLogger(__name__)
 
-# Same RBAC gate the sibling cloud scan routes use — a scan-class action.
+# Read metadata (list/get) is viewer-safe; mutations stay scan-class.
+_READ_DEP = require_authenticated_permission("read")
 _SCAN_DEP = require_authenticated_permission("scan")
 
 _REGION_RE = re.compile(r"[a-z]{2}(-gov)?-[a-z]+-\d{1,2}")
@@ -245,7 +246,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
 
 
 @router.get("/cloud/connections")
-async def list_connections(request: Request, _role: Any = _SCAN_DEP) -> dict[str, Any]:
+async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the authenticated tenant's connections (non-secret metadata only)."""
     tenant_id = _tenant(request)
     records = get_connection_store().list_for_tenant(tenant_id)
@@ -266,7 +267,7 @@ def _require_connection(request: Request, connection_id: str) -> CloudConnection
 
 
 @router.get("/cloud/connections/{connection_id}")
-async def get_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> dict[str, Any]:
+async def get_connection(request: Request, connection_id: str, _role: Any = _READ_DEP) -> dict[str, Any]:
     """Return one connection's non-secret metadata (tenant-scoped)."""
     return _require_connection(request, connection_id).to_public_dict()
 

@@ -11,13 +11,14 @@ import {
   JobListItem,
   PostureResponse,
   OverviewResponse,
-  OverviewDomain,
   formatDate,
   type PostureCountsResponse,
 } from "@/lib/api";
 import { TrustStackSignals } from "@/components/trust-stack";
 import { ActivityFeed } from "@/components/activity-feed";
-import { AttackPathCard } from "@/components/attack-path-card";
+import { OverviewCockpit, type ExposurePathView } from "@/components/overview-cockpit";
+import { useAuthState } from "@/components/auth-provider";
+import { useOverviewPersona } from "@/hooks/use-overview-persona";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -39,7 +40,7 @@ import {
 } from "@/lib/dashboard-data";
 import {
   ShieldAlert, ArrowRight, Clock,
-  AlertTriangle, GitBranch, ChevronRight, BarChart3, LayoutGrid,
+  AlertTriangle, GitBranch, BarChart3, LayoutGrid,
 } from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -81,6 +82,8 @@ export default function Dashboard() {
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
   const seededEvidence = captureMode || Boolean(counts?.scan_sources?.some((source) => source.includes("demo")));
+  const { session } = useAuthState();
+  const { persona, selectPersona } = useOverviewPersona(session);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -271,7 +274,7 @@ export default function Dashboard() {
     if (!topRisk) return null;
     const agents = blastAgents(topRisk);
     const credentials = blastCredentials(topRisk);
-    const nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[] = [
+    const nodes: ExposurePathView["nodes"] = [
       { type: "cve", label: topRisk.vulnerability_id, severity: topRisk.severity?.toLowerCase() },
     ];
     if (topRisk.package) nodes.push({ type: "package", label: topRisk.package });
@@ -279,6 +282,7 @@ export default function Dashboard() {
     if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
     if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
     return {
+      key: `${topRisk.vulnerability_id}:${topRisk.package ?? "unknown"}`,
       nodes,
       riskScore: topRisk.risk_score ?? topRisk.blast_score / 10,
       href: buildSecurityGraphHref({
@@ -288,6 +292,33 @@ export default function Dashboard() {
       }),
     };
   }, [topRisk]);
+
+  const exposurePaths = useMemo<ExposurePathView[]>(() => {
+    return [...allBlast]
+      .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
+      .slice(0, 5)
+      .map((blast, index) => {
+        const agents = blastAgents(blast);
+        const credentials = blastCredentials(blast);
+        const nodes: ExposurePathView["nodes"] = [
+          { type: "cve", label: blast.vulnerability_id, severity: blast.severity?.toLowerCase() },
+        ];
+        if (blast.package) nodes.push({ type: "package", label: blast.package });
+        if (blast.affected_servers && blast.affected_servers.length > 0) nodes.push({ type: "server", label: blast.affected_servers[0]! });
+        if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
+        if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
+        return {
+          key: `${blast.vulnerability_id}:${blast.package ?? "unknown"}:${index}`,
+          nodes,
+          riskScore: blast.risk_score ?? blast.blast_score / 10,
+          href: buildSecurityGraphHref({
+            cve: blast.vulnerability_id,
+            packageName: blast.package,
+            agentName: agents[0],
+          }),
+        };
+      });
+  }, [allBlast]);
 
   // Total packages scanned across all jobs
   const totalPackages = useMemo(() => {
@@ -314,7 +345,6 @@ export default function Dashboard() {
     return latest?.summary ?? null;
   }, [effectiveRecentJobs]);
   const displayedAgentCount = importedReport ? (importedReport.agents?.length ?? 0) : (agentsLoading ? null : effectiveAgentCount);
-  const isLoading = jobsLoading && !importedReport;
   const summaryReady = !jobsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
@@ -351,12 +381,12 @@ export default function Dashboard() {
       : null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Overview</h1>
           <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-            Posture and exposure from the latest completed scan.
+            Executive and engineering lenses on posture, exposure, and domain coverage.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -375,104 +405,44 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <OverviewSummaryBar
+      <OverviewCockpit
         grade={postureGrade}
         score={postureScore}
+        postureSummary={posture?.summary ?? overview?.posture.summary}
         critical={criticalCount}
         high={highCount}
+        kev={summaryReady ? displayedKevCount : null}
+        credentials={summaryReady ? displayedCredentialExposure : null}
         agents={displayedAgentCount}
         cves={summaryReady ? displayedUniqueCVEs : null}
         scans={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
         latestScan={jobsLoading ? null : latestScanShort}
         mode={deploymentModeLabel(counts?.deployment_mode)}
         summaryReady={summaryReady}
+        severity={severity}
+        domains={overview?.domains ?? null}
+        topPath={topExposurePath}
+        exposurePaths={exposurePaths}
+        signals={{
+          tools: summaryReady ? displayedReachableTools : null,
+          packages: summaryReady ? displayedPackages : null,
+          activeServices: countActiveServices(counts?.services),
+          connected: hasDeploymentSignals(counts),
+        }}
+        persona={persona}
+        onPersonaChange={selectPersona}
       />
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-[color:var(--foreground)]">Top exposure path</h2>
-          {topExposurePath ? (
-            <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-xs text-[color:var(--text-secondary)]">
-              {topExposurePath.riskScore.toFixed(1)}
-            </span>
-          ) : null}
-        </div>
-        {topExposurePath ? (
-          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <AttackPathCard
-              nodes={topExposurePath.nodes}
-              riskScore={topExposurePath.riskScore}
-              href={topExposurePath.href}
-              captureMode
-              compact
-            />
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">
-            No scored exposure path yet. Run a scan to populate attack-path evidence.
-          </div>
-        )}
-      </section>
-
-      <DomainSignalsPanel
-        overview={overview}
-        counts={counts}
-        summaryReady={summaryReady}
-        scanCount={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
-        latestScanLabel={latestScanShort}
-        kev={summaryReady ? displayedKevCount : null}
-        credentials={summaryReady ? displayedCredentialExposure : null}
-        tools={summaryReady ? displayedReachableTools : null}
-        packages={summaryReady ? displayedPackages : null}
-      />
-
-      {(!isLoading) && allBlast.length > 0 && (
-        <details className="group/attack rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 select-none">
-            <div className="flex items-center gap-2">
-              <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open/attack:rotate-90" />
-              <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Exposure paths</h2>
-              <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]">
-                {Math.min(allBlast.length, 5)}
-              </span>
-            </div>
-          </summary>
-          <div className="mt-4 space-y-2">
-            {[...allBlast]
-              .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
-              .slice(0, 5)
-              .map((b, index) => {
-                const nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[] = [
-                  { type: "cve", label: b.vulnerability_id, severity: b.severity?.toLowerCase() },
-                ];
-                if (b.package) nodes.push({ type: "package", label: b.package });
-                if (b.affected_servers && b.affected_servers.length > 0) nodes.push({ type: "server", label: b.affected_servers[0]! });
-                const agents = blastAgents(b);
-                const credentials = blastCredentials(b);
-                if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
-                if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
-                return (
-                  <AttackPathCard
-                    key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`}
-                    nodes={nodes}
-                    riskScore={b.risk_score ?? b.blast_score / 10}
-                    href={buildSecurityGraphHref({
-                      cve: b.vulnerability_id,
-                      packageName: b.package,
-                      agentName: agents[0],
-                    })}
-                  />
-                );
-              })}
-          </div>
-        </details>
-      )}
 
       <div>
         <div className="mb-4 inline-flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-1">
-          <TabButton icon={LayoutGrid} label="Feed" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
+          <TabButton icon={LayoutGrid} label="Operations" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
           <TabButton icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
         </div>
+        {activeTab === "analytics" && persona === "executive" ? (
+          <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
+            Technical charts and topology for engineering teams. Switch to the Engineer lens above for attack-path context on Overview.
+          </p>
+        ) : null}
 
         {activeTab === "command" ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -535,181 +505,6 @@ function formatShortScanTime(iso: string): string {
   });
 }
 
-function OverviewSummaryBar({
-  grade,
-  score,
-  critical,
-  high,
-  agents,
-  cves,
-  scans,
-  latestScan,
-  mode,
-  summaryReady,
-}: {
-  grade: string;
-  score?: number | undefined;
-  critical: number;
-  high: number;
-  agents: number | null;
-  cves: number | null;
-  scans: number | null;
-  latestScan: string | null;
-  mode: string;
-  summaryReady: boolean;
-}) {
-  return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-4 py-3">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
-        <SummaryMetric label="Posture" value={grade} sub={typeof score === "number" ? String(score) : undefined} />
-        <SummaryMetric label="Critical" value={summaryReady ? String(critical) : "—"} href="/findings?severity=critical" tone="critical" />
-        <SummaryMetric label="High" value={summaryReady ? String(high) : "—"} href="/findings?severity=high" tone="high" />
-        <SummaryMetric label="Agents" value={summaryReady && agents != null ? String(agents) : "—"} href="/agents" />
-        <SummaryMetric label="CVEs" value={summaryReady && cves != null ? String(cves) : "—"} href="/findings" />
-        <SummaryMetric label="Scans" value={summaryReady && scans != null ? String(scans) : "—"} href="/jobs" />
-        <SummaryMetric label="Last scan" value={latestScan ?? "—"} text />
-        <SummaryMetric label="Mode" value={mode} text />
-      </div>
-    </div>
-  );
-}
-
-function SummaryMetric({
-  label,
-  value,
-  sub,
-  href,
-  tone,
-  text,
-}: {
-  label: string;
-  value: string;
-  sub?: string | undefined;
-  href?: string | undefined;
-  tone?: "critical" | "high" | undefined;
-  text?: boolean | undefined;
-}) {
-  const valueClass =
-    tone === "critical"
-      ? "text-red-500 dark:text-red-400"
-      : tone === "high"
-        ? "text-orange-500 dark:text-orange-400"
-        : "text-[color:var(--foreground)]";
-
-  const inner = (
-    <div className="min-w-0">
-      <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</p>
-      <div className="mt-0.5 flex items-baseline gap-1.5">
-        <p className={`truncate ${text ? "text-sm font-medium" : `font-mono text-lg font-semibold ${valueClass}`}`}>
-          {value}
-        </p>
-        {sub ? <span className="font-mono text-[10px] text-[color:var(--text-tertiary)]">{sub}</span> : null}
-      </div>
-    </div>
-  );
-
-  if (href) {
-    return (
-      <Link href={href} className="rounded-lg transition-colors hover:bg-[color:var(--surface-muted)]">
-        {inner}
-      </Link>
-    );
-  }
-  return inner;
-}
-
-function DomainSignalsPanel({
-  overview,
-  counts,
-  summaryReady,
-  scanCount,
-  latestScanLabel,
-  kev,
-  credentials,
-  tools,
-  packages,
-}: {
-  overview: OverviewResponse | null;
-  counts: ReturnType<typeof useDeploymentContext>["counts"];
-  summaryReady: boolean;
-  scanCount: number | null;
-  latestScanLabel: string | null;
-  kev: number | null;
-  credentials: number | null;
-  tools: number | null;
-  packages: number | null;
-}) {
-  const domains = overview ? Object.values(overview.domains) : [];
-  const activeDomains = domains.filter((d) => d.status !== "idle").length;
-  const coverage = domains.length > 0 ? Math.round((activeDomains / domains.length) * 100) : null;
-  const activeServices = countActiveServices(counts?.services);
-  const connected = hasDeploymentSignals(counts);
-
-  if (domains.length === 0 && !summaryReady) {
-    return null;
-  }
-
-  return (
-    <details className="group/signals rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 select-none">
-        <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open/signals:rotate-90" />
-        <span className="text-sm font-medium text-[color:var(--foreground)]">Domain & service signals</span>
-        <span className="text-xs text-[color:var(--text-tertiary)]">
-          {coverage != null ? `${coverage}% coverage` : "rollup"}
-        </span>
-      </summary>
-      <div className="space-y-4 border-t border-[color:var(--border-subtle)] px-4 py-4">
-        <div className="flex flex-wrap gap-2 text-xs">
-          <SignalChip label="KEV" value={summaryReady && kev != null ? String(kev) : "—"} />
-          <SignalChip label="Credentials" value={summaryReady && credentials != null ? String(credentials) : "—"} />
-          <SignalChip label="Tools" value={summaryReady && tools != null ? String(tools) : "—"} />
-          <SignalChip label="Packages" value={summaryReady && packages != null ? String(packages) : "—"} />
-          <SignalChip label="Active services" value={summaryReady ? String(activeServices) : "—"} />
-          <SignalChip label="Connect" value={connected ? "Live" : "Setup"} />
-        </div>
-        {domains.length > 0 ? (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            {domains.map((domain) => {
-              const tone = statusTone(domain.status);
-              return (
-                <Link
-                  key={domain.href}
-                  href={domain.graph_href ?? domain.href}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 transition-colors hover:border-[color:var(--border-strong)]"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-medium text-[color:var(--foreground)]">{domain.label}</p>
-                    <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{domain.metric_label}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className={`font-mono text-sm font-semibold ${tone.text}`}>{domain.metric}</span>
-                    <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        ) : null}
-        {(scanCount != null || latestScanLabel) && (
-          <p className="text-xs text-[color:var(--text-tertiary)]">
-            {scanCount != null ? `${scanCount} completed scan${scanCount === 1 ? "" : "s"}` : null}
-            {scanCount != null && latestScanLabel ? " · " : null}
-            {latestScanLabel ? `Latest ${latestScanLabel}` : null}
-          </p>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function SignalChip({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-[color:var(--text-secondary)]">
-      <span className="text-[color:var(--text-tertiary)]">{label}</span> {value}
-    </span>
-  );
-}
-
 function TabButton({
   icon: Icon,
   label,
@@ -736,19 +531,6 @@ function TabButton({
       {label}
     </button>
   );
-}
-
-function statusTone(status: OverviewDomain["status"]): { dot: string; text: string } {
-  switch (status) {
-    case "critical":
-      return { dot: "bg-red-500", text: "text-red-300" };
-    case "warn":
-      return { dot: "bg-amber-500", text: "text-amber-300" };
-    case "ok":
-      return { dot: "bg-emerald-500", text: "text-emerald-300" };
-    default:
-      return { dot: "bg-zinc-600", text: "text-zinc-500" };
-  }
 }
 
 function countActiveServices(services: PostureCountsResponse["services"]): number {

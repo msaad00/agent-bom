@@ -38,18 +38,63 @@ const LOGO_PATH: Partial<Record<FrameworkLogoId, string>> = {
   cis: "/logos/frameworks/cis.svg",
 };
 
+/** Theme-token badges — readable on both light and dark (no dark-only pastels). */
 const META: Record<FrameworkLogoId, Omit<FrameworkLogoMeta, "src">> = {
-  "owasp-llm": { id: "owasp-llm", monogram: "OW", badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-200" },
-  "owasp-mcp": { id: "owasp-mcp", monogram: "MC", badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-200" },
-  "owasp-agentic": { id: "owasp-agentic", monogram: "AG", badgeClass: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200" },
-  atlas: { id: "atlas", monogram: "AT", badgeClass: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200" },
-  "nist-ai-rmf": { id: "nist-ai-rmf", monogram: "AI", badgeClass: "border-sky-500/30 bg-sky-500/10 text-sky-200" },
-  "nist-csf": { id: "nist-csf", monogram: "CS", badgeClass: "border-teal-500/30 bg-teal-500/10 text-teal-200" },
-  "eu-ai-act": { id: "eu-ai-act", monogram: "EU", badgeClass: "border-blue-500/30 bg-blue-500/10 text-blue-200" },
-  iso27001: { id: "iso27001", monogram: "ISO", badgeClass: "border-sky-500/30 bg-sky-500/10 text-sky-200" },
-  soc2: { id: "soc2", monogram: "S2", badgeClass: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200" },
-  cis: { id: "cis", monogram: "CIS", badgeClass: "border-lime-500/30 bg-lime-500/10 text-lime-200" },
-  cmmc: { id: "cmmc", monogram: "CM", badgeClass: "border-rose-500/30 bg-rose-500/10 text-rose-200" },
+  "owasp-llm": {
+    id: "owasp-llm",
+    monogram: "OW",
+    badgeClass: "border-amber-600/45 bg-amber-500/15 text-[color:var(--foreground)]",
+  },
+  "owasp-mcp": {
+    id: "owasp-mcp",
+    monogram: "MC",
+    badgeClass: "border-amber-600/45 bg-amber-500/15 text-[color:var(--foreground)]",
+  },
+  "owasp-agentic": {
+    id: "owasp-agentic",
+    monogram: "AG",
+    badgeClass: "border-fuchsia-600/45 bg-fuchsia-500/15 text-[color:var(--foreground)]",
+  },
+  atlas: {
+    id: "atlas",
+    monogram: "AT",
+    badgeClass: "border-fuchsia-600/45 bg-fuchsia-500/15 text-[color:var(--foreground)]",
+  },
+  "nist-ai-rmf": {
+    id: "nist-ai-rmf",
+    monogram: "AI",
+    badgeClass: "border-sky-600/45 bg-sky-500/15 text-[color:var(--foreground)]",
+  },
+  "nist-csf": {
+    id: "nist-csf",
+    monogram: "CS",
+    badgeClass: "border-teal-600/45 bg-teal-500/15 text-[color:var(--foreground)]",
+  },
+  "eu-ai-act": {
+    id: "eu-ai-act",
+    monogram: "EU",
+    badgeClass: "border-blue-600/45 bg-blue-500/15 text-[color:var(--foreground)]",
+  },
+  iso27001: {
+    id: "iso27001",
+    monogram: "ISO",
+    badgeClass: "border-sky-600/45 bg-sky-500/15 text-[color:var(--foreground)]",
+  },
+  soc2: {
+    id: "soc2",
+    monogram: "S2",
+    badgeClass: "border-indigo-600/45 bg-indigo-500/15 text-[color:var(--foreground)]",
+  },
+  cis: {
+    id: "cis",
+    monogram: "CIS",
+    badgeClass: "border-lime-600/45 bg-lime-500/15 text-[color:var(--foreground)]",
+  },
+  cmmc: {
+    id: "cmmc",
+    monogram: "CM",
+    badgeClass: "border-rose-600/45 bg-rose-500/15 text-[color:var(--foreground)]",
+  },
 };
 
 const ALIASES: Record<string, FrameworkLogoId> = {

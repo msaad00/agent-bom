@@ -38,6 +38,19 @@ describe("ExposurePath", () => {
     expect(pathDisplayTitle(path({}))).toBe("analyst-agent -> werkzeug@2.2.2 -> CVE-2026-0001");
   });
 
+  it("does not duplicate package versions when the package label already includes one", () => {
+    expect(
+      pathDisplayTitle(
+        path({
+          dependencyContext: {
+            packageName: "form-data@4.0.0",
+            serverName: "github",
+          },
+        }),
+      ),
+    ).toBe("analyst-agent -> form-data@4.0.0 -> CVE-2026-0001");
+  });
+
   it("prefers fix versions for compact remediation labels", () => {
     expect(pathFixLabel(path({ fix: { label: "Upgrade werkzeug", version: "2.2.3" } }))).toBe("2.2.3");
     expect(pathFixLabel(path({ fix: { label: "Rotate credential" } }))).toBe("Rotate credential");

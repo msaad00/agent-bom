@@ -16,11 +16,12 @@ def test_how_it_works_includes_pipeline_steps() -> None:
     for step in ("Discover", "Extract", "Scan", "Enrich", "Analyze", "Report"):
         assert step in svg
     assert "PIPELINE" not in svg
-    assert 'fill="#FF9900"' in svg
-    assert "cl-azure-" in svg
-    assert "snowflake" in svg.lower()
-    # Snowflake mark must carry explicit fill when inlined (root <svg fill= is stripped).
-    assert 'fill="#29B5E8"' in svg
+    assert 'fill="#FF9900"' in svg or 'fill="#f90"' in svg
+    assert 'fill="#035bda"' in svg or 'fill="#0078D4"' in svg
+    # Official Snowflake horizontal wordmark (icon + path-set wordmark), not a caption label.
+    assert "M9.734" in svg
+    assert re.search(r"<text[^>]*>\s*Snowflake\s*</text>", svg) is None
+    assert 'fill="#29B5E8"' in svg or 'fill="#29b5e8"' in svg
 
 
 def test_architecture_includes_core_surfaces() -> None:

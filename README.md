@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-light.svg" alt="agent-bom — AI agent bill of materials" width="380" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-light.svg" alt="agent-bom — BOM for humans & agents" width="380" />
   </picture>
 </p>
 
@@ -193,13 +193,28 @@ Matching mechanics and release evidence:
 <details>
 <summary><b>Agent view</b> — capability manifest (strict MCP + REST)</summary>
 
-Machine-readable detail lives in [`docs/AGENT_CAPABILITY.md`](docs/AGENT_CAPABILITY.md).
-Summary:
-
 ```text
+DESCRIPTION
+Open security scanner and self-hosted control plane. Scan → graph → prove path →
+enforce on selected runtime hops. Same evidence for humans and headless agents.
+
+CAPABILITIES
 MCP security tools       70 tools · 6 resources · 8 workflow prompts
 REST API                 283 ops · OpenAPI docs/openapi/v1.json
-Runtime proxy / gateway  stdio policy · HTTP/SSE relay · KPI rollup
+Graph / blast radius     UnifiedGraph · attack paths · hop counts · SARIF export
+Runtime proxy            stdio MCP inline policy (7 detectors)
+Runtime gateway          HTTP/SSE relay · /v1/gateway/feed · KPI rollup
+Fleet inventory          MCP configs · transports · credential refs
+Auth                     API keys · OAuth AS · OIDC · SAML · SCIM
+Deployment               CLI · Docker · Helm · customer VPC (not managed SaaS)
+
+NOT SHIPPED
+No 1,000+ MCP app library · No Cedar engine · No turnkey SIEM tiles
+
+ENDPOINTS
+MCP server               agent-bom mcp server
+Control plane            agent-bom serve
+Gateway KPIs             GET /v1/gateway/feed/kpis
 Full manifest            docs/AGENT_CAPABILITY.md
 ```
 
@@ -235,19 +250,19 @@ detail in [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md).
 
 | Need | Surface | First action | Main artifact |
 |---|---|---|---|
-| Scan a repo, image, or local agent config | CLI / CI | `agent-bom scan -p .` | JSON, SARIF, SBOM, HTML |
-| Ingest external scanner / SARIF evidence | CLI / CI | `agent-bom scan --external-scan report.json` | JSON, SARIF, blast radius |
+| Scan a repo, image, or local agent config | CLI / CI | `agent-bom agents -p .` | JSON, SARIF, SBOM, HTML |
+| Ingest external scanner / SARIF evidence | CLI / CI | `agent-bom agents --external-scan report.json` | JSON, SARIF, blast radius |
 | Connect cloud and data-estate evidence | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
 | Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
 | Give agents security tools | MCP server | `agent-bom mcp server` | strict MCP tool responses |
 | Govern runtime tool calls | Proxy / gateway | configure proxy or gateway policy | allow/warn/block audit trail |
-| Package evidence for audit | Reports / exports | `agent-bom scan -p . -f html -o report.html` | SARIF, CycloneDX, SPDX, OCSF, compliance bundle |
+| Package evidence for audit | Reports / exports | `agent-bom agents -p . -f html -o report.html` | SARIF, CycloneDX, SPDX, OCSF, compliance bundle |
 
 | Goal | Command |
 |---|---|
 | Multi-hop exposure paths | `agent-bom graph` |
 | LLM cost forecast (FinOps) | `agent-bom cost forecast` — see [docs/COST_MODEL.md](docs/COST_MODEL.md) |
-| External scanner / SARIF ingest | `agent-bom scan --external-scan <file>` — see [docs/INGEST_PATHS.md](docs/INGEST_PATHS.md) |
+| External scanner / SARIF ingest | `agent-bom agents --external-scan <file>` — see [docs/INGEST_PATHS.md](docs/INGEST_PATHS.md) |
 | Non-human identity posture | `agent-bom identity credential-expiry` |
 | Advisory remediation plan | `agent-bom remediate -p .` |
 | Gated-capability readiness | `agent-bom capabilities` |
@@ -268,7 +283,7 @@ no network I/O until you opt in.
 | AWS | `AGENT_BOM_AWS_INVENTORY=1` | `agent-bom cloud aws` |
 | Azure | `AGENT_BOM_AZURE_INVENTORY=1` | `agent-bom cloud azure` |
 | GCP | `AGENT_BOM_GCP_INVENTORY=1` | `agent-bom cloud gcp` |
-| Snowflake | SSO or key-pair auth | `pip install 'agent-bom[snowflake]'` then `agent-bom scan --snowflake` |
+| Snowflake | SSO or key-pair auth | `pip install 'agent-bom[snowflake]'` then `agent-bom agents --snowflake` |
 
 Setup and grants: [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md) · full intake
 map: [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)

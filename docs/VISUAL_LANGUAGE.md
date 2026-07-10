@@ -9,7 +9,7 @@ social cards, CLI splash.
   sentence or in a Title Case heading. Never `Agent-BOM`, `AgentBOM`, or
   `Agent-Bom` (the title-cased `X-Agent-Bom-*` HTTP headers are a separate wire
   convention and are intentionally left as-is).
-- **Tagline (short, for the wordmark/badges):** "AI agent bill of materials".
+- **Tagline (short, for the wordmark/badges):** "BOM for humans & agents".
 - **Tagline (full, for prose/meta):** "Security scanner for the AI supply chain and
   infrastructure — from agent to runtime."
 - **Positioning line (README hero):** "Open security scanner and self-hosted control
@@ -17,9 +17,9 @@ social cards, CLI splash.
 - **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
   dark `#34d399 → #06b6d4` / `#22d3ee`. Ink `#1f2937` (light) / `#e6edf3` (dark);
   muted `#6b7280` / `#8b949e`.
-- **Mark:** a rounded tile with a BOM manifest card — stacked inventory rows and one
-  finding highlight. Reads as bill-of-materials inventory, not a generic network graph.
-  A/B explorations live in `docs/images/brand/variants/`.
+- **Mark:** dual audience + BOM — a human silhouette and an agent head linked
+  above inventory rows (one finding highlight). Reads as humans & headless agents
+  sharing one bill of materials. A/B leftovers live in `docs/images/brand/variants/`.
 
 Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or
 network refs, light + dark pairs):
@@ -30,12 +30,9 @@ network refs, light + dark pairs):
 | `mark-{light,dark}.svg` | Icon-only mark — square avatars, favicons, tight spaces |
 | `wordmark-{light,dark}.svg` | Wordmark only — inline headers where the mark is redundant |
 
-Canonical lockups live only under `docs/images/brand/logo-{light,dark}.svg`
-(no root `docs/images/logo-*` aliases).
-Copy `docs/images/brand/mark-*` and `wordmark-*` into `ui/public/brand/` when the
-mark changes; regenerate `ui/app/favicon.ico` and `site-docs/assets/brand/mark.svg`
-/ `mark-mono.svg` from the same source. The MkDocs site uses `mark-mono.svg`
-(white, for the colored header bar) as `theme.logo` and `mark.svg` as the favicon.
+`docs/images/logo-{light,dark}.svg` are kept as compatibility aliases of the lockup.
+The MkDocs site uses `site-docs/assets/brand/mark-mono.svg` (white, for the colored
+header bar) as `theme.logo` and `mark.svg` as the favicon.
 
 
 
@@ -134,7 +131,7 @@ it harder to read.
 
 Current ASCII surface:
 - The CVE blast-radius tree at the top of the README — it is what
-  `agent-bom scan --offline` actually prints
+  `agent-bom agents --offline` actually prints
 - All `bash` / `yaml` / `json` code blocks — those are commands, not diagrams
 
 ## When in doubt

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-light.svg" alt="agent-bom — AI agent bill of materials" width="380">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-light.svg" alt="agent-bom — BOM for humans & agents" width="380">
   </picture>
 </p>
 
@@ -48,7 +48,7 @@ Package risk is only the start. agent-bom maps the reachable path from a vulnera
 
 ```bash
 pip install agent-bom
-agent-bom scan                           # auto-discover local AI agents + MCP servers
+agent-bom agents                         # auto-discover local AI agents + MCP servers
 agent-bom skills scan .                 # scan skills / instruction files
 agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 ```
@@ -60,8 +60,8 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 
 | Lane | First command | Artifact |
 |---|---|---|
-| **Local AI BOM** | `agent-bom scan --demo --offline` | terminal findings and graph-ready inventory |
-| **Repository scan** | `agent-bom scan -p . -f html -o agent-bom-report.html` | local HTML review plus exportable evidence |
+| **Local AI BOM** | `agent-bom agents --demo --offline` | terminal findings and graph-ready inventory |
+| **Repository scan** | `agent-bom agents -p . -f html -o agent-bom-report.html` | local HTML review plus exportable evidence |
 | **Cloud posture gate** | `agent-bom iac infra/ && agent-bom cloud aws --cis` | pre-cloud IaC findings plus point-in-time or scheduled posture evidence |
 | **CI evidence** | `uses: msaad00/agent-bom@v0.94.2` | SARIF, pull-request summary, optional code scanning |
 | **Assistant tools** | `agent-bom mcp server` | read-mostly security tools for MCP clients |

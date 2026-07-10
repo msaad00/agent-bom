@@ -2,7 +2,7 @@ manifest_version: 1
 
 version:
   name: agent-bom
-  label: "agent-bom — AI agent bill of materials"
+  label: "agent-bom — BOM for humans & agents"
   comment: >-
     Map the full trust chain from AI agents and MCP servers to CVEs,
     credentials, and blast radius. Discover, scan, and secure your

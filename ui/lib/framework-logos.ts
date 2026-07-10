@@ -28,15 +28,15 @@ export type FrameworkLogoMeta = {
 };
 
 /** Bump when framework SVGs change so browsers drop stale caches. */
-const LOGO_ASSET_REV = "v3";
+const LOGO_ASSET_REV = "v4";
 
 const LOGO_PATH: Partial<Record<FrameworkLogoId, string>> = {
   "owasp-llm": `/logos/frameworks/owasp.svg?${LOGO_ASSET_REV}`,
   "owasp-mcp": `/logos/frameworks/owasp.svg?${LOGO_ASSET_REV}`,
   "owasp-agentic": `/logos/frameworks/owasp.svg?${LOGO_ASSET_REV}`,
   atlas: `/logos/frameworks/mitre-atlas.svg?${LOGO_ASSET_REV}`,
-  "nist-ai-rmf": `/logos/frameworks/nist.svg?${LOGO_ASSET_REV}`,
-  "nist-csf": `/logos/frameworks/nist.svg?${LOGO_ASSET_REV}`,
+  "nist-ai-rmf": `/logos/frameworks/nist-ai-rmf.svg?${LOGO_ASSET_REV}`,
+  "nist-csf": `/logos/frameworks/nist-csf.svg?${LOGO_ASSET_REV}`,
   iso27001: `/logos/frameworks/iso.svg?${LOGO_ASSET_REV}`,
   cis: `/logos/frameworks/cis.svg?${LOGO_ASSET_REV}`,
   "eu-ai-act": `/logos/frameworks/eu-ai-act.svg?${LOGO_ASSET_REV}`,

@@ -1036,6 +1036,14 @@ function FragmentRow({
         </td>
         <td className="px-4 py-3">
           <div className="flex justify-end gap-2">
+            <Link
+              href={`/scan?connection=${encodeURIComponent(connection.id)}`}
+              title="Open this account in New Scan with scope summary"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:border-emerald-600"
+            >
+              <FileSearch className="h-3.5 w-3.5" />
+              New Scan
+            </Link>
             <button
               onClick={onTest}
               disabled={isBusy || !canManage || !scannable}

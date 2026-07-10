@@ -303,11 +303,10 @@ def main(argv: list[str] | None = None) -> int:
         force=args.force,
     )
     if errors:
-        # All diagnostics are controlled templates: validators never append
-        # environment values or secret-file contents. Keep the output boundary
-        # explicit and suppress the false-positive taint from the shared list.
-        for error in tuple(str(message) for message in errors):
-            print("error: " + error, file=sys.stderr)  # lgtm[py/clear-text-logging-sensitive-data]
+        # Do not render validation objects: secret-file checks intentionally
+        # share this result collection, so keeping it away from output is the
+        # strongest guarantee that secret contents cannot reach logs.
+        print("error: hosted POC preflight failed; review configuration and secret files", file=sys.stderr)
         return 1
     print("hosted POC preflight OK")
     return 0

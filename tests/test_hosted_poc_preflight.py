@@ -179,5 +179,6 @@ def test_cli_returns_nonzero_without_printing_secret_values(
 
     assert main(["--root", str(tmp_path), "--skip-compose"]) == 1
     captured = capsys.readouterr()
+    assert "hosted POC preflight failed" in captured.err
     assert secret_value not in captured.out
     assert secret_value not in captured.err

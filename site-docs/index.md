@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-light.svg" alt="agent-bom — AI supply-chain and infrastructure security" width="380">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/brand/logo-light.svg" alt="agent-bom — AI agent bill of materials" width="380">
   </picture>
 </p>
 

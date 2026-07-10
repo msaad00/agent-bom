@@ -88,7 +88,7 @@ def test_scan_cloned_repo_tree_discovers_jupyter_notebooks(tmp_path: Path) -> No
     (tmp_path / "analysis.ipynb").write_text(json.dumps(notebook), encoding="utf-8")
 
     agents: list = []
-    result = scan_cloned_repo_tree(str(tmp_path), agents=agents, warnings=[])
+    scan_cloned_repo_tree(str(tmp_path), agents=agents, warnings=[])
 
     assert any(agent.source == "jupyter" or "jupyter" in agent.name.lower() for agent in agents)
 

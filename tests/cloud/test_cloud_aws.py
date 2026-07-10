@@ -285,7 +285,10 @@ def test_discover_continues_when_sts_account_resolution_is_denied():
             "foundationModel": "anthropic.claude-3-sonnet",
         }
     }
-    mock_session.client.side_effect = lambda service, **_kwargs: {"sts": mock_sts, "bedrock-agent": mock_bedrock}.get(service, _empty_boto_stub())
+    mock_session.client.side_effect = lambda service, **_kwargs: {
+        "sts": mock_sts,
+        "bedrock-agent": mock_bedrock,
+    }.get(service, _empty_boto_stub())
 
     with patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
         from agent_bom.cloud import aws

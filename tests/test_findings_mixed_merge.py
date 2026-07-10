@@ -7,11 +7,11 @@ from uuid import uuid4
 from starlette.testclient import TestClient
 
 from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore, set_compliance_hub_store
+from agent_bom.api.models import JobStatus
 from agent_bom.api.routes.scan import _finding_sort_key, _merged_scan_bulk_page
 from agent_bom.api.server import ScanJob, ScanRequest, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store
-from agent_bom.api.models import JobStatus
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 

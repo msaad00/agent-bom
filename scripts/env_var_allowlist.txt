@@ -424,3 +424,7 @@ AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS
 # scalar config knobs suitable for the generated config reference.
 AGENT_BOM_POSTURE_POLICY
 AGENT_BOM_POSTURE_POLICY_FILE
+
+# File-only Postgres credential consumed by postgres_common.py. The value is a
+# mounted secret path, not a scalar application setting for config.py.
+AGENT_BOM_POSTGRES_PASSWORD_FILE

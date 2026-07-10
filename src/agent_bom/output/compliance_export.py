@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import os
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass

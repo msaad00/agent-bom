@@ -57,35 +57,57 @@ export function ExposurePathCommandCenter({
   const evidence = path.evidence;
   const primaryAction = actions[0];
   const hopCount = Math.max(0, path.hops.length - 1);
+  const severityTone =
+    path.severity === "critical"
+      ? "from-red-500/80 via-red-500/20 to-transparent"
+      : path.severity === "high"
+        ? "from-orange-500/70 via-orange-500/15 to-transparent"
+        : "from-sky-500/50 via-sky-500/10 to-transparent";
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold leading-7 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
-            {pathDisplayTitle(path)}
-          </h2>
-          {path.summary ? (
-            <p className="mt-1 text-sm text-[color:var(--text-secondary)]">{path.summary}</p>
-          ) : null}
+    <div className="relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(160deg,var(--surface),var(--surface-elevated))] shadow-xl shadow-black/20">
+      <div className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${severityTone}`} aria-hidden="true" />
+      <div className="space-y-5 p-5 pl-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-red-500/35 bg-red-500/12 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-red-200">
+                {String(path.severity)} risk
+              </span>
+              <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-0.5 font-mono text-[11px] text-[color:var(--foreground)]">
+                {path.riskScore.toFixed(1)}
+              </span>
+              {evidence?.isKev ? (
+                <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200">
+                  CISA KEV
+                </span>
+              ) : null}
+            </div>
+            <h2 className="text-xl font-semibold leading-8 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+              {pathDisplayTitle(path)}
+            </h2>
+            <p className="max-w-3xl text-sm leading-6 text-[color:var(--text-secondary)]">
+              {path.summary ||
+                "A reachable package or service on this path inherits downstream credential and tool exposure from the agent runtime."}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <MetricPill label="Risk" value={path.riskScore.toFixed(1)} tone="red" />
+            <MetricPill label="Hops" value={String(hopCount)} />
+            <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
+            {fixLabel ? <MetricPill label="Fix" value={fixLabel} tone="green" /> : null}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <MetricPill label="Risk" value={path.riskScore.toFixed(1)} tone="red" />
-          <MetricPill label="Hops" value={String(hopCount)} />
-          <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
-          {fixLabel && <MetricPill label="Fix" value={fixLabel} tone="green" />}
-        </div>
-      </div>
 
-      <section aria-label="Selected exposure path graph">
-        <ExposurePathGraph path={path} />
-      </section>
+        <section aria-label="Selected exposure path graph" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[#05070b] p-1">
+          <ExposurePathGraph path={path} />
+        </section>
 
-      <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
-          <span>Evidence</span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open:rotate-180" />
-        </summary>
+        <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
+            <span>Evidence & relationships</span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open:rotate-180" />
+          </summary>
         <div className="space-y-4 border-t border-[color:var(--border-subtle)] px-4 py-4">
           <section aria-label="Relationship proof">
             <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
@@ -130,14 +152,17 @@ export function ExposurePathCommandCenter({
       </details>
 
       {primaryAction && (
-        <Link
-          href={primaryAction.href}
-          className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-        >
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-[color:var(--text-secondary)]" />
-          <span>{primaryAction.title}</span>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={primaryAction.href}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-700/50 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/15"
+          >
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{primaryAction.title}</span>
+          </Link>
+        </div>
       )}
+      </div>
     </div>
   );
 }
@@ -170,17 +195,20 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
   const layout = buildPathGraphLayout(path);
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1">
+    <div className="overflow-x-auto p-2">
       <svg
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         role="img"
         aria-label={`Selected exposure path graph for ${pathDisplayTitle(path)}`}
-        className="block h-auto min-w-[640px] w-full md:min-w-0"
+        className="block h-auto min-w-[720px] w-full md:min-w-0"
       >
         <defs>
           <marker id="exposure-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
             <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8" />
           </marker>
+          <filter id="node-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000000" floodOpacity="0.45" />
+          </filter>
         </defs>
 
         <rect x="0" y="0" width={layout.width} height={layout.height} fill="#05070b" />
@@ -212,20 +240,34 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
         {layout.nodes.map((node, index) => {
           const style = GRAPH_ROLE_STYLE[node.role] ?? GRAPH_ROLE_STYLE.unknown;
           const meta = ROLE_META[node.role] ?? ROLE_META.unknown;
+          const titleLines = wrapGraphText(node.label, 18, 2);
           return (
             <g key={`${node.id}-${index}`} transform={`translate(${node.x} ${node.y})`}>
-              <rect width={layout.nodeWidth} height={layout.nodeHeight} rx="12" fill={style.fill} stroke={style.stroke} strokeWidth="2" />
-              <text x="14" y="22" fill={style.accent} fontSize="9" fontWeight="700" letterSpacing="1.5" fontFamily="var(--font-mono), monospace">
+              <rect
+                width={layout.nodeWidth}
+                height={layout.nodeHeight}
+                rx="14"
+                fill={style.fill}
+                stroke={style.stroke}
+                strokeWidth="2"
+                filter="url(#node-glow)"
+              />
+              <text x="14" y="20" fill={style.accent} fontSize="9" fontWeight="700" letterSpacing="1.4" fontFamily="var(--font-mono), monospace">
                 {meta.label.toUpperCase()}
               </text>
-              <text x="14" y="44" fill={style.text} fontSize="13" fontWeight="600" fontFamily="var(--font-sans), system-ui">
-                {wrapGraphText(node.label, 16, 2).map((line, lineIndex) => (
+              <text x="14" y="40" fill={style.text} fontSize="13" fontWeight="600" fontFamily="var(--font-sans), system-ui">
+                {titleLines.map((line, lineIndex) => (
                   <tspan key={`${node.id}-line-${lineIndex}`} x="14" dy={lineIndex === 0 ? 0 : 15}>
                     {line}
                   </tspan>
                 ))}
               </text>
-              <title>{`${meta.label}: ${node.label}`}</title>
+              {node.subtitle ? (
+                <text x="14" y="58" fill="#94a3b8" fontSize="10" fontFamily="var(--font-sans), system-ui">
+                  {truncateGraphText(node.subtitle, 24)}
+                </text>
+              ) : null}
+              <title>{`${meta.label}: ${node.label}${node.subtitle ? ` · ${node.subtitle}` : ""}`}</title>
             </g>
           );
         })}
@@ -235,9 +277,9 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 }
 
 function buildPathGraphLayout(path: ExposurePath) {
-  const width = 920;
-  const nodeWidth = 168;
-  const nodeHeight = 72;
+  const width = 980;
+  const nodeWidth = 196;
+  const nodeHeight = 78;
   const columns = Math.min(4, Math.max(1, path.hops.length));
   const rows = Math.max(1, Math.ceil(path.hops.length / columns));
   const xGap = columns > 1 ? (width - nodeWidth - 48) / (columns - 1) : 0;
@@ -287,8 +329,15 @@ function buildPathGraphLayout(path: ExposurePath) {
 
 function relationshipForPathStep(path: ExposurePath, source: string, target: string, index: number): string {
   const byEndpoints = path.relationships.find((relationship) => relationship.source === source && relationship.target === target);
-  if (byEndpoints) return byEndpoints.relationship;
-  return path.relationships[index]?.relationship ?? "reaches";
+  const raw = byEndpoints?.relationship ?? path.relationships[index]?.relationship ?? "reaches";
+  return humanizeRelationship(raw);
+}
+
+function humanizeRelationship(value: string): string {
+  return value
+    .replace(/[_:]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function truncateGraphText(value: string, maxLength: number): string {

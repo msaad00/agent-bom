@@ -1,3 +1,9 @@
+import {
+  formatExposureEntityDisplay,
+  formatExposureEntityTitle,
+  formatExposurePathSequence,
+} from "@/lib/entity-display";
+
 export type ExposureSeverity = "critical" | "high" | "medium" | "low" | "none" | string;
 
 export type ExposureEntityRole =
@@ -14,6 +20,7 @@ export type ExposureEntityRole =
 export interface ExposureEntityRef {
   id: string;
   label: string;
+  subtitle?: string | undefined;
   role: ExposureEntityRole;
   severity?: ExposureSeverity | undefined;
   riskScore?: number | undefined;
@@ -128,6 +135,14 @@ export function highestExposureSeverity(paths: ExposurePath[]): ExposureSeverity
 }
 
 export function pathDisplayTitle(path: ExposurePath): string {
+  if (path.hops.length > 0) {
+    return formatExposurePathSequence(
+      path.hops.map((hop) => ({
+        label: hop.label,
+        role: hop.role,
+      })),
+    );
+  }
   const finding = path.findings[0] || path.target.label;
   const rawPackage = path.dependencyContext?.packageName ?? "";
   let dependency = "";
@@ -142,8 +157,11 @@ export function pathDisplayTitle(path: ExposurePath): string {
       dependency = rawPackage;
     }
   }
-  const agent = path.affectedAgents[0] || path.source.label;
-  return [agent, dependency, finding].filter(Boolean).join(" -> ") || path.label;
+  const agent = formatExposureEntityTitle(
+    path.affectedAgents[0] || path.source.label,
+    "agent",
+  );
+  return [agent, dependency, finding].filter(Boolean).join(" → ") || path.label;
 }
 
 export function pathFixLabel(path: ExposurePath): string | undefined {

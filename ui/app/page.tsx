@@ -13,6 +13,7 @@ import {
   OverviewResponse,
   OverviewDomain,
   formatDate,
+  type PostureCountsResponse,
 } from "@/lib/api";
 import { TrustStackSignals } from "@/components/trust-stack";
 import { ActivityFeed } from "@/components/activity-feed";
@@ -353,12 +354,19 @@ export default function Dashboard() {
         high={highCount}
         counts={counts}
         summaryReady={summaryReady}
+        scanCount={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
+        latestScanLabel={
+          summaryReady && effectiveRecentJobs[0]?.created_at
+            ? formatDate(effectiveRecentJobs[0].created_at)
+            : null
+        }
+        jobsReady={!jobsLoading}
       />
 
       <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold tracking-tight text-[color:var(--foreground)]">Dashboard</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-[color:var(--foreground)]">Overview</h1>
             <p className="mt-0.5 text-sm text-[color:var(--text-secondary)]">
               {(displayedAgentCount ?? "—")} agents · {summaryReady ? displayedPackages : "—"} packages · {summaryReady ? displayedUniqueCVEs : "—"} CVEs
             </p>
@@ -587,6 +595,11 @@ function statusTone(status: OverviewDomain["status"]): { dot: string; text: stri
   }
 }
 
+function countActiveServices(services: PostureCountsResponse["services"]): number {
+  if (!services) return 0;
+  return Object.values(services).filter((entry) => entry.state === "live" || entry.state === "connected").length;
+}
+
 function ScorecardStrip({
   posture,
   overview,
@@ -594,6 +607,9 @@ function ScorecardStrip({
   high,
   counts,
   summaryReady,
+  scanCount,
+  latestScanLabel,
+  jobsReady,
 }: {
   posture: PostureResponse | null;
   overview: OverviewResponse | null;
@@ -601,6 +617,9 @@ function ScorecardStrip({
   high: number;
   counts: ReturnType<typeof useDeploymentContext>["counts"];
   summaryReady: boolean;
+  scanCount: number | null;
+  latestScanLabel: string | null;
+  jobsReady: boolean;
 }) {
   const domains = overview ? Object.values(overview.domains) : [];
   const activeDomains = domains.filter((d) => d.status !== "idle").length;
@@ -608,6 +627,7 @@ function ScorecardStrip({
   const connected = hasDeploymentSignals(counts);
   const grade = posture?.grade ?? "—";
   const score = posture?.score;
+  const activeServices = countActiveServices(counts?.services);
 
   return (
     <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2">
@@ -645,6 +665,43 @@ function ScorecardStrip({
             <span className="text-sm font-semibold text-[color:var(--foreground)]">{connected ? "Live" : "Setup"}</span>
           </div>
           <p className="text-[10px] text-[color:var(--text-tertiary)]">{deploymentModeLabel(counts?.deployment_mode)}</p>
+        </Link>
+      </div>
+
+      <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+        <Link
+          href="/jobs"
+          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-2 transition-colors hover:border-[color:var(--border-strong)]"
+        >
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Scans</p>
+          <p className="font-mono text-sm font-semibold text-[color:var(--foreground)]">
+            {summaryReady && scanCount != null ? scanCount : "—"}
+          </p>
+        </Link>
+        <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-2">
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Latest scan</p>
+          <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
+            {!jobsReady ? "…" : latestScanLabel ?? "—"}
+          </p>
+        </div>
+        <Link
+          href="/connections"
+          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-2 transition-colors hover:border-[color:var(--border-strong)]"
+        >
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Active services</p>
+          <p className="font-mono text-sm font-semibold text-[color:var(--foreground)]">
+            {summaryReady ? activeServices : "—"}
+          </p>
+        </Link>
+        <Link
+          href="/activity"
+          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-2 transition-colors hover:border-[color:var(--border-strong)]"
+        >
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Deployment</p>
+          <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
+            {deploymentModeLabel(counts?.deployment_mode)}
+          </p>
+          <p className="text-[10px] text-[color:var(--text-tertiary)]">{connected ? "signals detected" : "awaiting first scan"}</p>
         </Link>
       </div>
 

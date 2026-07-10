@@ -86,9 +86,9 @@ describe('Nav', () => {
     expect(screen.getByText('Operations')).toBeInTheDocument()
   })
 
-  it('contains link to Dashboard (/)', () => {
+  it('contains link to Overview (/)', () => {
     renderExpandedNav()
-    const links = screen.getAllByRole('link', { name: /dashboard/i })
+    const links = screen.getAllByRole('link', { name: /overview/i })
     expect(links.length).toBeGreaterThan(0)
   })
 
@@ -158,10 +158,10 @@ describe('Nav', () => {
 
   it('keeps graph lenses tucked under Command instead of primary sidebar links', () => {
     renderExpandedNav()
-    expect(screen.getByText(/more \(3\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/graph lenses/i)).toBeInTheDocument()
     const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
     expect(hrefs).toContain('/security-graph')
-    expect(screen.queryByRole('link', { name: /^lineage$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^lineage$/i })).toBeInTheDocument()
     expect(hrefs).toContain('/graph')
     expect(hrefs).toContain('/mesh')
     expect(hrefs).toContain('/context')
@@ -218,10 +218,10 @@ describe('Nav', () => {
     const palette = screen.getByRole('dialog', { name: /command palette/i })
     expect(palette).toBeInTheDocument()
     expect(within(palette).getByRole('button', { name: /refresh current view/i })).toBeInTheDocument()
-    expect(within(palette).getByRole('link', { name: /dashboard/i })).toHaveAttribute('href', '/')
-    expect(within(palette).getByRole('link', { name: /lineage lens/i })).toHaveAttribute('href', '/graph')
-    expect(within(palette).getByRole('link', { name: /agent mesh lens/i })).toHaveAttribute('href', '/mesh')
-    expect(within(palette).getByRole('link', { name: /context lens/i })).toHaveAttribute('href', '/context')
+    expect(within(palette).getByRole('link', { name: /overview/i })).toHaveAttribute('href', '/')
+    expect(within(palette).getByRole('link', { name: /lineage/i })).toHaveAttribute('href', '/graph')
+    expect(within(palette).getByRole('link', { name: /agent mesh/i })).toHaveAttribute('href', '/mesh')
+    expect(within(palette).getByRole('link', { name: /context/i })).toHaveAttribute('href', '/context')
   })
 
   it('renders the canonical agent-bom brand lockup in the top bar', () => {
@@ -282,7 +282,7 @@ describe('Nav', () => {
     render(<Nav />)
 
     await waitFor(() => {
-      expect(screen.getAllByRole('link', { name: /dashboard/i }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: /overview/i }).length).toBeGreaterThan(0)
       expect(screen.getAllByRole('link', { name: /new scan/i }).length).toBeGreaterThan(0)
       expect(screen.getAllByRole('link', { name: /runtime/i }).length).toBeGreaterThan(0)
       expect(screen.getAllByRole('link', { name: /remediation/i }).length).toBeGreaterThan(0)

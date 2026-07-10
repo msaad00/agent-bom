@@ -24,7 +24,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Search,
-  LayoutDashboard,
+  LayoutGrid,
   Wrench,
   RefreshCw,
   Focus,
@@ -35,6 +35,9 @@ import {
   Radar,
   Boxes,
   Cloud,
+  ClipboardList,
+  FileCheck,
+  Layers,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
@@ -63,8 +66,8 @@ interface NavGroup {
   icon: React.ElementType;
   links: NavLink[];
   /**
-   * Closely-related deep-dive destinations that stay reachable from nav but are
-   * tucked under a "More" disclosure so the group isn't a long flat list.
+   * Graph lens destinations grouped under Command with an explicit subheader
+   * (not a generic "More" bucket).
    */
   secondary?: NavLink[];
   /** Accent color from architecture diagram — matches the product layer */
@@ -83,18 +86,18 @@ function activeGroupForPath(path: string | null): string {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Command",
-    icon: LayoutDashboard,
+    icon: LayoutGrid,
     accent: "#58a6ff",
     links: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/", label: "Overview", icon: LayoutGrid },
       { href: "/findings", label: "Findings", icon: Bug },
       { href: "/security-graph", label: "Security Graph", icon: Network },
       { href: "/remediation", label: "Remediation", icon: Wrench },
     ],
     secondary: [
-      { href: "/graph", label: "Lineage Lens", icon: GitBranch },
-      { href: "/mesh", label: "Agent Mesh Lens", icon: Waypoints },
-      { href: "/context", label: "Context Lens", icon: Network },
+      { href: "/graph", label: "Lineage", icon: GitBranch },
+      { href: "/mesh", label: "Agent Mesh", icon: Waypoints },
+      { href: "/context", label: "Context", icon: Layers },
     ],
   },
   {
@@ -103,7 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
     accent: "#3fb950",
     links: [
       { href: "/agents", label: "Agents", icon: Server },
-      { href: "/manifest", label: "Agent BOM", icon: Waypoints },
+      { href: "/manifest", label: "Agent BOM", icon: ClipboardList },
       { href: "/fleet", label: "Fleet", icon: Users },
     ],
   },
@@ -133,7 +136,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Eye,
     accent: "#3fb950",
     links: [
-      { href: "/compliance", label: "Compliance", icon: Shield },
+      { href: "/compliance", label: "Compliance", icon: FileCheck },
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
       { href: "/audit", label: "Audit Log", icon: FileText },
     ],
@@ -564,26 +567,26 @@ export function Nav() {
                     </details>
                   )}
                   {group.secondaryLinks.length > 0 && (
-                    <details className="mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2">
-                      <summary className="cursor-pointer list-none text-[11px] font-medium uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
-                        More ({group.secondaryLinks.length})
-                      </summary>
-                      <div className="mt-2 space-y-0.5">
+                    <div className="mt-2 border-t border-[color:var(--border-subtle)] pt-2">
+                      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                        Graph lenses
+                      </p>
+                      <div className="space-y-0.5">
                         {group.secondaryLinks.map(({ href, label, icon: Icon }) => {
                           const active = path.startsWith(href);
                           return (
                             <Link
                               key={href}
                               href={href}
-                              className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12px] transition-colors ${
+                              className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
                                 active
-                                  ? "font-medium"
-                                  : "text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
+                                  ? "border-l-2 ml-0 pl-2.5 font-medium"
+                                  : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                               }`}
-                              style={active ? { color: group.accent } : undefined}
+                              style={active ? { color: group.accent, borderLeftColor: group.accent } : undefined}
                             >
                               <Icon
-                                className="h-3.5 w-3.5 shrink-0 opacity-70"
+                                className="h-3.5 w-3.5 shrink-0 opacity-80"
                                 style={active ? { color: group.accent } : undefined}
                               />
                               <span className="truncate">{label}</span>
@@ -591,7 +594,7 @@ export function Nav() {
                           );
                         })}
                       </div>
-                    </details>
+                    </div>
                   )}
                 </div>
               )}
@@ -651,6 +654,11 @@ export function Nav() {
                           </Link>
                         );
                       })}
+                      {group.secondaryLinks.length > 0 && (
+                        <p className="mt-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                          Graph lenses
+                        </p>
+                      )}
                       {group.secondaryLinks.map(({ href, label, icon: Icon }) => {
                         const active = path.startsWith(href);
                         return (
@@ -714,7 +722,12 @@ export function Nav() {
       {/* Product chrome — Snowflake-style top bar with canonical agent-bom lockup */}
       <header className="fixed inset-x-0 top-0 z-[60] flex h-16 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
         <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
-          <BrandLogo showTagline className="transition-transform duration-200 group-hover:scale-[1.01]" />
+          <BrandLogo
+            showTagline
+            markClassName="h-9 w-9"
+            wordmarkClassName="h-[26px] w-auto max-w-[11rem]"
+            className="transition-transform duration-200 group-hover:scale-[1.01]"
+          />
         </Link>
         {counts?.deployment_mode && (
           <span className="hidden rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] sm:inline-flex">

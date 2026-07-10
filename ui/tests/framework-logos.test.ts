@@ -4,7 +4,10 @@ import { frameworkLogoMeta, normalizeFrameworkLogoId } from "@/lib/framework-log
 
 describe("frameworkLogoMeta", () => {
   it("resolves canonical framework ids", () => {
-    expect(frameworkLogoMeta("owasp-llm")?.src).toBe("/logos/frameworks/owasp.svg");
+    expect(frameworkLogoMeta("owasp-llm")?.src).toContain("/logos/frameworks/owasp.svg");
+    expect(frameworkLogoMeta("atlas")?.src).toContain("mitre-atlas.svg");
+    expect(frameworkLogoMeta("nist-ai-rmf")?.src).toContain("nist.svg");
+    expect(frameworkLogoMeta("atlas")?.src).not.toEqual(frameworkLogoMeta("nist-ai-rmf")?.src);
     expect(frameworkLogoMeta("nist-csf")?.monogram).toBe("CS");
   });
 

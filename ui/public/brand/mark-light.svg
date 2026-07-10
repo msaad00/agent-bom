@@ -6,16 +6,14 @@
     </linearGradient>
   </defs>
   <rect x="5" y="5" width="54" height="54" rx="16" fill="#f8fafc" stroke="url(#abm-chain)" stroke-width="2"/>
-  <circle cx="22" cy="20" r="4.25" fill="url(#abm-chain)"/>
-  <path d="M15.5 31c1.2-4.2 3.6-6.2 6.5-6.2S27.3 26.8 28.5 31" fill="none" stroke="url(#abm-chain)" stroke-width="2.25" stroke-linecap="round"/>
-  <rect x="34" y="15.5" width="14" height="12" rx="3.5" fill="none" stroke="url(#abm-chain)" stroke-width="2"/>
-  <circle cx="39" cy="21" r="1.6" fill="#059669"/>
-  <circle cx="43.5" cy="21" r="1.6" fill="#0891b2"/>
-  <path d="M41 15.5V12.5" stroke="url(#abm-chain)" stroke-width="2" stroke-linecap="round"/>
-  <circle cx="41" cy="11.5" r="1.4" fill="url(#abm-chain)"/>
-  <path d="M28.5 24h5.5" stroke="url(#abm-chain)" stroke-width="1.75" stroke-linecap="round" stroke-opacity="0.75"/>
-  <rect x="16" y="36" width="32" height="3.25" rx="1.5" fill="#059669" fill-opacity="0.28"/>
-  <rect x="16" y="42.5" width="32" height="3.75" rx="1.75" fill="url(#abm-chain)"/>
-  <rect x="45.5" y="43" width="3.25" height="2.75" rx="1" fill="#dc2626"/>
-  <rect x="16" y="49.5" width="22" height="3.25" rx="1.5" fill="#0891b2" fill-opacity="0.28"/>
+  <circle cx="26" cy="20" r="6" fill="url(#abm-chain)"/>
+  <path d="M14 42c2.5-8 7-12 12-12s9.5 4 12 12" fill="none" stroke="url(#abm-chain)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M20 30.5 26 36l6-5.5" fill="none" stroke="url(#abm-chain)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M26 30.5v6l-2 5h4l-2-5" fill="url(#abm-chain)" fill-opacity="0.9"/>
+  <rect x="38" y="16" width="16" height="22" rx="3" fill="#ffffff" stroke="url(#abm-chain)" stroke-width="1.75"/>
+  <rect x="41" y="14" width="10" height="4" rx="1.5" fill="url(#abm-chain)"/>
+  <rect x="41.5" y="22" width="9" height="2.25" rx="1" fill="#059669" fill-opacity="0.35"/>
+  <rect x="41.5" y="27" width="9" height="2.5" rx="1" fill="url(#abm-chain)"/>
+  <rect x="48.5" y="27.25" width="2.25" height="2" rx="0.75" fill="#dc2626"/>
+  <rect x="41.5" y="32.5" width="6.5" height="2.25" rx="1" fill="#0891b2" fill-opacity="0.35"/>
 </svg>

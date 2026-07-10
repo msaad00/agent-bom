@@ -27,15 +27,18 @@ export type FrameworkLogoMeta = {
   badgeClass: string;
 };
 
+/** Bump when framework SVGs change so CSS masks / browsers drop stale caches. */
+const LOGO_ASSET_REV = "v2";
+
 const LOGO_PATH: Partial<Record<FrameworkLogoId, string>> = {
-  "owasp-llm": "/logos/frameworks/owasp.svg",
-  "owasp-mcp": "/logos/frameworks/owasp.svg",
-  "owasp-agentic": "/logos/frameworks/owasp.svg",
-  atlas: "/logos/frameworks/mitre-atlas.svg",
-  "nist-ai-rmf": "/logos/frameworks/nist.svg",
-  "nist-csf": "/logos/frameworks/nist.svg",
-  iso27001: "/logos/frameworks/iso.svg",
-  cis: "/logos/frameworks/cis.svg",
+  "owasp-llm": `/logos/frameworks/owasp.svg?${LOGO_ASSET_REV}`,
+  "owasp-mcp": `/logos/frameworks/owasp.svg?${LOGO_ASSET_REV}`,
+  "owasp-agentic": `/logos/frameworks/owasp.svg?${LOGO_ASSET_REV}`,
+  atlas: `/logos/frameworks/mitre-atlas.svg?${LOGO_ASSET_REV}`,
+  "nist-ai-rmf": `/logos/frameworks/nist.svg?${LOGO_ASSET_REV}`,
+  "nist-csf": `/logos/frameworks/nist.svg?${LOGO_ASSET_REV}`,
+  iso27001: `/logos/frameworks/iso.svg?${LOGO_ASSET_REV}`,
+  cis: `/logos/frameworks/cis.svg?${LOGO_ASSET_REV}`,
 };
 
 /** Theme-token badges — readable on both light and dark (no dark-only pastels). */

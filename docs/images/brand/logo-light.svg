@@ -5,20 +5,18 @@
       <stop offset="100%" stop-color="#0891b2"/>
     </linearGradient>
   </defs>
-  <g transform="translate(8, 16)">
-    <rect x="0" y="0" width="54" height="54" rx="16" fill="#f8fafc" stroke="url(#abg)" stroke-width="2"/>
-    <circle cx="17" cy="15" r="4" fill="url(#abg)"/>
-    <path d="M10.5 26c1.1-4 3.4-5.9 6.5-5.9S22.4 22 23.5 26" fill="none" stroke="url(#abg)" stroke-width="2.1" stroke-linecap="round"/>
-    <rect x="29" y="10.5" width="13.5" height="11.5" rx="3.2" fill="none" stroke="url(#abg)" stroke-width="1.9"/>
-    <circle cx="33.5" cy="15.8" r="1.45" fill="#059669"/>
-    <circle cx="38" cy="15.8" r="1.45" fill="#0891b2"/>
-    <path d="M35.75 10.5V7.6" stroke="url(#abg)" stroke-width="1.9" stroke-linecap="round"/>
-    <circle cx="35.75" cy="6.7" r="1.25" fill="url(#abg)"/>
-    <path d="M23.5 19h5" stroke="url(#abg)" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.7"/>
-    <rect x="11" y="31" width="32" height="3.1" rx="1.5" fill="#059669" fill-opacity="0.28"/>
-    <rect x="11" y="37.2" width="32" height="3.5" rx="1.7" fill="url(#abg)"/>
-    <rect x="40.5" y="37.6" width="3.1" height="2.6" rx="1" fill="#dc2626"/>
-    <rect x="11" y="44" width="22" height="3.1" rx="1.5" fill="#0891b2" fill-opacity="0.28"/>
+  <g transform="translate(8, 16) scale(0.84)">
+    <rect x="0" y="0" width="64" height="64" rx="16" fill="#f8fafc" stroke="url(#abg)" stroke-width="2.4"/>
+    <circle cx="26" cy="20" r="6" fill="url(#abg)"/>
+    <path d="M14 42c2.5-8 7-12 12-12s9.5 4 12 12" fill="none" stroke="url(#abg)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M20 30.5 26 36l6-5.5" fill="none" stroke="url(#abg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M26 30.5v6l-2 5h4l-2-5" fill="url(#abg)" fill-opacity="0.9"/>
+    <rect x="38" y="16" width="16" height="22" rx="3" fill="#ffffff" stroke="url(#abg)" stroke-width="1.75"/>
+    <rect x="41" y="14" width="10" height="4" rx="1.5" fill="url(#abg)"/>
+    <rect x="41.5" y="22" width="9" height="2.25" rx="1" fill="#059669" fill-opacity="0.4"/>
+    <rect x="41.5" y="27" width="9" height="2.5" rx="1" fill="url(#abg)"/>
+    <rect x="48.5" y="27.25" width="2.25" height="2" rx="0.75" fill="#dc2626"/>
+    <rect x="41.5" y="32.5" width="6.5" height="2.25" rx="1" fill="#0891b2" fill-opacity="0.4"/>
   </g>
   <text x="88" y="52" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="-0.5" fill="#1f2937">agent<tspan fill="url(#abg)">·bom</tspan></text>
   <text x="90" y="74" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="500" letter-spacing="0.2" fill="#6b7280">BOM for humans &amp; agents</text>

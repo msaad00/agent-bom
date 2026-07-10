@@ -12,6 +12,7 @@ const { apiMock } = vi.hoisted(() => ({
     deleteCloudConnection: vi.fn(),
     testCloudConnection: vi.fn(),
     scanCloudConnection: vi.fn(),
+    getPostureCounts: vi.fn(),
   },
 }));
 
@@ -65,6 +66,18 @@ const CREATED_RECORD = {
 
 beforeEach(() => {
   Object.values(apiMock).forEach((fn) => fn.mockReset());
+  apiMock.getPostureCounts.mockResolvedValue({
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
+    kev: 0,
+    compound_issues: 0,
+    services: {
+      cloud_accounts: { state: "locked", count: 0 },
+    },
+  });
   apiMock.listCloudConnections.mockResolvedValue({
     schema_version: "cloud.connections.v1",
     tenant_id: "tenant-acme",

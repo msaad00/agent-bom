@@ -44,6 +44,8 @@ import {
   toAttackCardNodes,
   toExposurePathFromAttackPath,
 } from "@/lib/attack-paths";
+import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
+import type { UnifiedGraphData } from "@/lib/graph-schema";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const ATTACK_PATH_QUEUE_LIMIT = 75;
@@ -66,6 +68,7 @@ function SecurityGraphPageContent() {
   const [focusApplied, setFocusApplied] = useState(false);
   const [showAllSnapshots, setShowAllSnapshots] = useState(false);
   const [visibleAttackPathCount, setVisibleAttackPathCount] = useState(ATTACK_PATH_QUEUE_PAGE_SIZE);
+  const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
   const captureMode = useCaptureMode();
 
   const focus = useMemo(
@@ -316,8 +319,8 @@ function SecurityGraphPageContent() {
   }, [graphLoadError]);
 
   const loadingGraphMessage = focusLabel
-    ? `Loading attack-path candidates for ${focusLabel} from the persisted graph.`
-    : "Loading attack-path candidates from the persisted graph.";
+    ? `Loading paths for ${focusLabel}…`
+    : "Loading exposure paths…";
 
   useEffect(() => {
     setFocusApplied(false);
@@ -379,7 +382,9 @@ function SecurityGraphPageContent() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Security graph</h1>
-          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">Ranked attack paths from persisted graph evidence.</p>
+          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
+            Ranked exposure paths from your latest graph snapshot.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <GraphEvidenceExportButton
@@ -407,7 +412,7 @@ function SecurityGraphPageContent() {
 
       {selectedExposurePath && (
         <section className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-          <ExposurePathStrip path={selectedExposurePath} />
+          <ExposurePathStrip path={selectedExposurePath} showTitle={false} />
           <div className="p-4">
             <ExposurePathCommandCenter
               path={selectedExposurePath}
@@ -417,30 +422,59 @@ function SecurityGraphPageContent() {
         </section>
       )}
 
+      {graphData && selectedAttackPath && (
+        <SecurityGraphInvestigation
+          graph={graphData as UnifiedGraphData}
+          attackPath={selectedAttackPath}
+          focusMode={investigationFocusMode}
+          onFocusModeChange={setInvestigationFocusMode}
+          fullGraphHref={fullGraphHref}
+          loading={loadingGraph}
+        />
+      )}
+
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Snapshot</p>
                 <h2 className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">
-                  {selectedSnapshot ? `Scan ${selectedSnapshot.scan_id.slice(0, 8)}…` : "No persisted graph snapshot yet"}
+                  {selectedSnapshot ? `Scan ${selectedSnapshot.scan_id.slice(0, 8)}…` : "No graph snapshot yet"}
                 </h2>
                 {selectedSnapshot && (
                   <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-                    Persisted {formatDate(selectedSnapshot.created_at)} · {selectedSnapshot.node_count} nodes · {selectedSnapshot.edge_count} edges
+                    {formatDate(selectedSnapshot.created_at)} · {selectedSnapshot.node_count} nodes · {selectedSnapshot.edge_count} edges
                   </p>
                 )}
               </div>
-              {loadingSnapshots && (
-                <span className="inline-flex items-center gap-2 text-xs text-sky-400">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  loading snapshots
-                </span>
+              {posture && (
+                <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Posture</p>
+                  <div className="mt-1 flex items-baseline gap-2">
+                    <span className="font-mono text-xl font-semibold text-red-300">{posture.grade}</span>
+                    <span className="font-mono text-sm text-[color:var(--foreground)]">{posture.score}</span>
+                  </div>
+                </div>
               )}
             </div>
+            {loadingSnapshots && (
+              <span className="mt-2 inline-flex items-center gap-2 text-xs text-sky-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                loading snapshots
+              </span>
+            )}
+          </div>
+          {fixFirstView && (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <QuickStat label="Matched paths" value={String(fixFirstView.summary.matched_paths)} tone="blue" />
+              <QuickStat label="Covered findings" value={String(fixFirstView.summary.covered_findings)} tone="amber" />
+              <QuickStat label="Highest risk" value={fixFirstView.summary.highest_risk.toFixed(1)} tone="red" />
+            </div>
+          )}
+        </div>
 
-            {snapshots.length > 0 ? (
+        {snapshots.length > 0 ? (
               <>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {displayedSnapshots.map((snapshot) => {
@@ -489,37 +523,6 @@ function SecurityGraphPageContent() {
               )
             )}
 
-            {fixFirstView && (
-              <div className="mt-4 grid gap-3 border-t border-[color:var(--border-subtle)] pt-4 sm:grid-cols-3">
-                <QuickStat label="Matched paths" value={String(fixFirstView.summary.matched_paths)} tone="blue" />
-                <QuickStat label="Covered findings" value={String(fixFirstView.summary.covered_findings)} tone="amber" />
-                <QuickStat label="Highest risk" value={fixFirstView.summary.highest_risk.toFixed(1)} tone="red" />
-              </div>
-            )}
-          </div>
-
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Posture</p>
-            {posture ? (
-              <div className="mt-3">
-                <div className="flex items-baseline gap-3">
-                  <div className="font-mono text-3xl font-semibold text-red-300">{posture.grade}</div>
-                  <div className="font-mono text-lg text-[color:var(--foreground)]">{posture.score}</div>
-                </div>
-                <p className="mt-2 line-clamp-2 text-xs text-[color:var(--text-tertiary)]">{posture.summary}</p>
-                <Link
-                  href="/insights"
-                  className="mt-3 inline-flex items-center gap-1 text-xs text-[color:var(--text-secondary)] transition hover:text-[color:var(--foreground)]"
-                >
-                  Details
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
-            ) : (
-              <div className="mt-3 text-sm text-[color:var(--text-secondary)]">Unavailable for this snapshot.</div>
-            )}
-          </div>
-        </div>
       </section>
 
       {loadingGraph ? (

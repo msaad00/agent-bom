@@ -129,9 +129,19 @@ export function highestExposureSeverity(paths: ExposurePath[]): ExposureSeverity
 
 export function pathDisplayTitle(path: ExposurePath): string {
   const finding = path.findings[0] || path.target.label;
-  const dependency = path.dependencyContext?.packageName
-    ? `${path.dependencyContext.packageName}${path.dependencyContext.packageVersion ? `@${path.dependencyContext.packageVersion}` : ""}`
-    : "";
+  const rawPackage = path.dependencyContext?.packageName ?? "";
+  let dependency = "";
+  if (rawPackage) {
+    const at = rawPackage.lastIndexOf("@");
+    if (at > 0 && !path.dependencyContext?.packageVersion) {
+      dependency = rawPackage;
+    } else if (path.dependencyContext?.packageVersion) {
+      const baseName = at > 0 ? rawPackage.slice(0, at) : rawPackage;
+      dependency = `${baseName}@${path.dependencyContext.packageVersion}`;
+    } else {
+      dependency = rawPackage;
+    }
+  }
   const agent = path.affectedAgents[0] || path.source.label;
   return [agent, dependency, finding].filter(Boolean).join(" -> ") || path.label;
 }

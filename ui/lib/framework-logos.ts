@@ -28,7 +28,7 @@ export type FrameworkLogoMeta = {
 };
 
 /** Bump when framework SVGs change so browsers drop stale caches. */
-const LOGO_ASSET_REV = "v4";
+const LOGO_ASSET_REV = "v5";
 
 const LOGO_PATH: Partial<Record<FrameworkLogoId, string>> = {
   "owasp-llm": `/logos/frameworks/owasp.svg?${LOGO_ASSET_REV}`,

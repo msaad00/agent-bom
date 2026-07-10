@@ -309,18 +309,20 @@ function ComplianceSnapshotPanel({
               <Link
                 key={framework.id}
                 href="/compliance"
-                className="flex items-center gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 transition hover:border-[color:var(--border-strong)]"
+                className="grid min-h-[3.25rem] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-2 transition hover:border-[color:var(--border-strong)]"
               >
-                <FrameworkIcon frameworkId={framework.id} size={28} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-[color:var(--foreground)]">{framework.label}</p>
-                  <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
+                <FrameworkIcon frameworkId={framework.id} size={32} />
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-semibold leading-tight text-[color:var(--foreground)]">
+                    {framework.label}
+                  </p>
+                  <p className="mt-0.5 truncate text-[10px] leading-tight text-[color:var(--text-tertiary)]">
                     {framework.pass}/{framework.total} pass
                     {framework.fail > 0 ? ` · ${framework.fail} fail` : ""}
                   </p>
                 </div>
                 <span
-                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                  className={`justify-self-end rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
                     tone === "fail"
                       ? "bg-red-500/15 text-red-300"
                       : tone === "warn"

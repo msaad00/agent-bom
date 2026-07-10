@@ -66,7 +66,7 @@ interface NavGroup {
   icon: React.ElementType;
   links: NavLink[];
   /**
-   * Graph lens destinations grouped under Command with an explicit subheader
+   * Graph lens destinations grouped under Posture with an explicit subheader
    * (not a generic "More" bucket).
    */
   secondary?: NavLink[];
@@ -83,7 +83,7 @@ function activeGroupForPath(path: string | null): string {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Command",
+    label: "Posture",
     icon: LayoutGrid,
     links: [
       { href: "/", label: "Overview", icon: LayoutGrid },
@@ -181,7 +181,7 @@ const NAV_LINK_ICON_CLASS: Record<string, string> = {
 };
 
 const NAV_GROUP_ICON_CLASS: Record<string, string> = {
-  Command: "text-sky-400",
+  Posture: "text-sky-400",
   "AI inventory": "text-emerald-400",
   "Cloud & Data": "text-purple-400",
   Runtime: "text-pink-400",
@@ -745,7 +745,10 @@ export function Nav() {
           />
         </Link>
         {counts?.deployment_mode && (
-          <span className="hidden rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] sm:inline-flex">
+          <span
+            className="hidden rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] sm:inline-flex"
+            title={`${deploymentModeLabel(counts.deployment_mode)} deployment — evidence scope for this control plane`}
+          >
             {deploymentModeLabel(counts.deployment_mode)}
           </span>
         )}
@@ -966,7 +969,7 @@ function ApiStatus({ collapsed }: { collapsed: boolean }) {
   if (collapsed) {
     return (
       <div className="flex justify-center">
-        <span className={`w-2 h-2 rounded-full ${dotColor}`} title={status === "online" ? `API ${version}` : status} />
+        <span className={`w-2 h-2 rounded-full ${dotColor}`} title={status === "online" ? `Control plane online · v${version}` : status} />
       </div>
     );
   }
@@ -975,7 +978,7 @@ function ApiStatus({ collapsed }: { collapsed: boolean }) {
     <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-[color:var(--text-secondary)]">
       <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
       <span className="truncate">
-        {status === "online" ? `API ${version}` : status === "offline" ? "API Offline" : "Connecting..."}
+        {status === "online" ? `Control plane · v${version}` : status === "offline" ? "Control plane offline" : "Connecting…"}
       </span>
     </div>
   );

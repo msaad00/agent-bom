@@ -17,16 +17,12 @@ import {
 } from "@/lib/api";
 import { TrustStackSignals } from "@/components/trust-stack";
 import { ActivityFeed } from "@/components/activity-feed";
-import { AttackPathCard } from "@/components/attack-path-card";
-import { CoverageCockpit } from "@/components/coverage-cockpit";
 import {
   OverviewCockpit,
   type ExposurePathView,
   type OverviewComplianceSnapshot,
 } from "@/components/overview-cockpit";
 import { PageLaneHeader } from "@/components/page-lane";
-import { useAuthState } from "@/components/auth-provider";
-import { useOverviewPersona } from "@/hooks/use-overview-persona";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -49,7 +45,7 @@ import {
 } from "@/lib/dashboard-data";
 import { buildIssueSeverityMatrix } from "@/lib/finding-issue-type";
 import {
-  ShieldAlert, ArrowRight, Clock, ChevronRight,
+  ShieldAlert, ArrowRight, Clock,
   AlertTriangle, GitBranch, BarChart3, LayoutGrid,
 } from "lucide-react";
 
@@ -89,17 +85,17 @@ export default function Dashboard() {
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<"command" | "analytics">("command");
+  // Overview defaults to Analytics (trends / %) — Connect/Coverage lives on /connections.
+  const [activeTab, setActiveTab] = useState<"command" | "analytics">("analytics");
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
   const seededEvidence = captureMode || Boolean(counts?.scan_sources?.some((source) => source.includes("demo")));
-  const { session } = useAuthState();
-  const { persona, selectPersona } = useOverviewPersona(session);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("tab") === "analytics") {
-      setActiveTab("analytics");
+    const tab = params.get("tab");
+    if (tab === "analytics" || tab === "command") {
+      setActiveTab(tab);
     }
   }, []);
 
@@ -415,7 +411,7 @@ export default function Dashboard() {
       <PageLaneHeader
         lane="command"
         title="Overview"
-        subtitle="Posture, compliance, and activated surfaces across your AI estate."
+        subtitle="Current posture, compliance, and whatever surfaces you’ve connected — cloud, runtime, inventory, and governance."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-200">
             {deploymentModeLabel(counts?.deployment_mode)} · {countActiveServices(counts?.services)} services live
@@ -472,95 +468,13 @@ export default function Dashboard() {
         }}
         compliance={complianceSnapshot}
         services={counts?.services ?? null}
-        persona={persona}
-        onPersonaChange={selectPersona}
       />
-
-      <CoverageCockpit
-        counts={counts}
-        scanCount={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
-        latestScanLabel={latestScanShort}
-      />
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-[color:var(--foreground)]">Top exposure path</h2>
-          {topExposurePath ? (
-            <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-xs text-[color:var(--text-secondary)]">
-              {topExposurePath.riskScore.toFixed(1)}
-            </span>
-          ) : null}
-        </div>
-        {topExposurePath ? (
-          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <AttackPathCard
-              nodes={topExposurePath.nodes}
-              riskScore={topExposurePath.riskScore}
-              href={topExposurePath.href}
-              captureMode
-              compact
-            />
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">
-            No scored exposure path yet. Run a scan to populate attack-path evidence.
-          </div>
-        )}
-      </section>
-
-      {allBlast.length > 0 && (
-        <details className="group/attack rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 select-none">
-            <div className="flex items-center gap-2">
-              <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open/attack:rotate-90" />
-              <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Exposure paths</h2>
-              <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]">
-                {Math.min(allBlast.length, 5)}
-              </span>
-            </div>
-          </summary>
-          <div className="mt-4 space-y-2">
-            {[...allBlast]
-              .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
-              .slice(0, 5)
-              .map((b, index) => {
-                const nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[] = [
-                  { type: "cve", label: b.vulnerability_id, severity: b.severity?.toLowerCase() },
-                ];
-                if (b.package) nodes.push({ type: "package", label: b.package });
-                if (b.affected_servers && b.affected_servers.length > 0) nodes.push({ type: "server", label: b.affected_servers[0]! });
-                const agents = blastAgents(b);
-                const credentials = blastCredentials(b);
-                if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
-                if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
-                return (
-                  <AttackPathCard
-                    key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`}
-                    nodes={nodes}
-                    riskScore={b.risk_score ?? b.blast_score / 10}
-                    href={buildSecurityGraphHref({
-                      cve: b.vulnerability_id,
-                      packageName: b.package,
-                      agentName: agents[0],
-                    })}
-                  />
-                );
-              })}
-          </div>
-        </details>
-      )}
 
       <div>
         <div className="mb-4 inline-flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-1">
-          <TabButton icon={LayoutGrid} label="Operations" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
           <TabButton icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
+          <TabButton icon={LayoutGrid} label="Operations" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
         </div>
-        {activeTab === "analytics" && persona !== "engineer" ? (
-          <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
-            Analytics is ops-depth. Switch altitude to Engineer above for attack-path context on Overview, or stay here for charts.
-          </p>
-        ) : null}
-
         {activeTab === "command" ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <section className="lg:col-span-2">

@@ -877,6 +877,13 @@ ENTITY_LEGEND: list[LegendEntry] = [
         key="misconfiguration", label="Misconfiguration", color="#f97316", shape="triangle", layer=GraphSemanticLayer.FINDING.value
     ),
     LegendEntry(key="model", label="Model", color="#8b5cf6", shape="square", layer=GraphSemanticLayer.ASSET.value),
+    LegendEntry(
+        key="framework",
+        label="AI Framework",
+        color="#06b6d4",
+        shape="square",
+        layer=GraphSemanticLayer.ORCHESTRATION.value,
+    ),
     LegendEntry(key="container", label="Container", color="#6366f1", shape="square", layer=GraphSemanticLayer.INFRA.value),
     LegendEntry(key="cloud_resource", label="Cloud Resource", color="#0ea5e9", shape="square", layer=GraphSemanticLayer.INFRA.value),
     LegendEntry(key="resource", label="Resource", color="#38bdf8", shape="square", layer=GraphSemanticLayer.ASSET.value),
@@ -921,6 +928,7 @@ RELATIONSHIP_LEGEND: list[LegendEntry] = [
     # Static inventory
     LegendEntry(key="hosts", label="Hosts", color="#6b7280"),
     LegendEntry(key="uses", label="Uses", color="#10b981"),
+    LegendEntry(key="uses_framework", label="Uses Framework", color="#06b6d4"),
     LegendEntry(key="depends_on", label="Depends On", color="#52525b"),
     LegendEntry(key="provides_tool", label="Provides Tool", color="#a855f7"),
     LegendEntry(key="exposes_cred", label="Exposes Credential", color="#f59e0b"),
@@ -931,6 +939,7 @@ RELATIONSHIP_LEGEND: list[LegendEntry] = [
     LegendEntry(key="defines", label="Defines", color="#06b6d4"),
     LegendEntry(key="runs", label="Runs", color="#a855f7"),
     LegendEntry(key="configures", label="Configures", color="#f97316"),
+    LegendEntry(key="observes", label="Observes", color="#22d3ee"),
     # Vulnerability
     LegendEntry(key="vulnerable_to", label="Vulnerable To", color="#ef4444"),
     LegendEntry(key="affects", label="Affects", color="#dc2626"),

@@ -1186,6 +1186,94 @@ class TestFrameworkTopology:
         assert edge.relationship == RelationshipType.DELEGATED_TO
         assert edge.evidence["source"] == "source-ast"
 
+        fw_nodes = [n for n in g.nodes.values() if n.entity_type == EntityType.FRAMEWORK]
+        assert len(fw_nodes) == 1
+        assert fw_nodes[0].label == "crewai"
+        assert any(
+            e.relationship == RelationshipType.USES_FRAMEWORK and e.source == "framework-agent:crew"
+            for e in g.edges
+        )
+
+    def test_ai_stack_framework_and_model_components_enter_graph(self):
+        report = _minimal_report()
+        report["ai_inventory"] = {
+            "unique_models": ["gpt-4o"],
+            "components": [
+                {
+                    "type": "agent_framework",
+                    "name": "LangChain",
+                    "package": "langchain",
+                    "ecosystem": "pypi",
+                    "language": "python",
+                    "file": "app.py",
+                    "line": 1,
+                    "is_shadow": False,
+                },
+                {
+                    "type": "observability",
+                    "name": "Langfuse",
+                    "package": "langfuse",
+                    "ecosystem": "pypi",
+                    "language": "python",
+                    "file": "app.py",
+                    "line": 2,
+                    "is_shadow": False,
+                },
+                {
+                    "type": "model_reference",
+                    "name": "gpt-4o-mini",
+                    "package": "",
+                    "ecosystem": "",
+                    "language": "python",
+                    "file": "app.py",
+                    "line": 3,
+                    "is_shadow": False,
+                },
+            ],
+            "framework_agents": [
+                {
+                    "stable_id": "framework-agent:chain",
+                    "name": "chain",
+                    "framework": "LangGraph",
+                    "file_path": "graph.py",
+                    "line_number": 10,
+                    "confidence": "high",
+                    "capabilities": [],
+                    "model_refs": ["claude-3-5-sonnet"],
+                    "credential_refs": [],
+                    "dynamic_edges": False,
+                    "topology_edges": [],
+                }
+            ],
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        frameworks = {n.label.lower(): n for n in g.nodes.values() if n.entity_type == EntityType.FRAMEWORK}
+        assert "langchain" in frameworks
+        assert "langfuse" in frameworks
+        assert "langgraph" in frameworks
+        assert frameworks["langfuse"].attributes.get("framework_kind") == "observability"
+
+        models = {n.label for n in g.nodes.values() if n.entity_type == EntityType.MODEL}
+        assert "gpt-4o" in models
+        assert "gpt-4o-mini" in models
+        assert "claude-3-5-sonnet" in models
+
+        assert any(
+            e.relationship == RelationshipType.USES_FRAMEWORK and e.source == "framework-agent:chain"
+            for e in g.edges
+        )
+        assert any(
+            e.relationship == RelationshipType.SERVES_MODEL and e.source == "framework-agent:chain"
+            for e in g.edges
+        )
+        assert any(
+            e.relationship == RelationshipType.DEPENDS_ON
+            and g.nodes[e.source].entity_type == EntityType.FRAMEWORK
+            for e in g.edges
+        )
+
 
 class TestCrossEnvironmentCorrelation:
     """Cross-environment correlation lands on the unified graph as edges."""

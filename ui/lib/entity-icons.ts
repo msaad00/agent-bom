@@ -6,6 +6,7 @@ import {
   Box,
   Boxes,
   BrainCircuit,
+  Blocks,
   Bug,
   Building2,
   Cloud,
@@ -45,6 +46,7 @@ export type LineageNodeType =
   | "credential"
   | "tool"
   | "model"
+  | "framework"
   | "dataset"
   | "container"
   | "cloudResource"
@@ -93,6 +95,7 @@ export const ENTITY_ICONS: Record<LineageNodeType, EntityIcon> = {
   credential: KeyRound,
   tool: Wrench,
   model: BrainCircuit,
+  framework: Blocks,
   dataset: Database,
   container: Container,
   cloudResource: Box,

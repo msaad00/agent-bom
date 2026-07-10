@@ -131,6 +131,7 @@ const CLUSTER_ORDER: LineageNodeType[] = [
   "misconfiguration",
   "package",
   "model",
+  "framework",
   "dataset",
   "dataStore",
   "directory",

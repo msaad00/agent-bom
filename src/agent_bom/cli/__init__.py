@@ -73,14 +73,14 @@ def _print_startup_banner() -> None:
     prog_name="agent-bom",
     message=(
         f"agent-bom {__version__}\n"
-        "BOM for humans & agents\n"
+        "Open security scanner for AI infrastructure\n"
         f"Python {sys.version.split()[0]} · {sys.platform}\n"
         "Docs:  https://github.com/msaad00/agent-bom"
     ),
 )
 @click.pass_context
 def main(ctx: click.Context, profile: str | None, agent_mode: bool):
-    """agent-bom — BOM for humans & agents.
+    """agent-bom — open security scanner for AI infrastructure.
 
     \b
     Maps the full trust chain: agent → MCP server → packages → CVEs → blast radius.

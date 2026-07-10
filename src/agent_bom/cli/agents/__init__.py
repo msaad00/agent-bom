@@ -932,6 +932,7 @@ def scan(
             tf_dirs=tf_dirs,
             gha_path=gha_path,
             agent_projects=agent_projects,
+            ai_inventory_paths=ai_inventory_paths,
         )
         if auto_targets.auto_enabled:
             jupyter_dirs = auto_targets.jupyter_dirs
@@ -940,6 +941,7 @@ def scan(
             tf_dirs = auto_targets.tf_dirs
             gha_path = auto_targets.gha_path
             agent_projects = auto_targets.agent_projects
+            ai_inventory_paths = auto_targets.ai_inventory_paths
             if not quiet:
                 con.print(
                     "[dim]Auto-detected project scan surfaces: "

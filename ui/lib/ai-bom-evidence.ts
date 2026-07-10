@@ -13,6 +13,7 @@ export type AiBomEntityRollup = {
   agents: number;
   mcpServers: number;
   models: number;
+  frameworks: number;
   packages: number;
   credentials: number;
   cloudAssets: number;
@@ -98,6 +99,7 @@ export function summarizeAiBomEntities(
     agents: manifest?.summary.agents ?? byType.agent ?? 0,
     mcpServers: manifest?.summary.mcp_servers ?? byType.server ?? 0,
     models: byType.model ?? 0,
+    frameworks: byType.framework ?? 0,
     packages: byType.package ?? 0,
     credentials: manifest?.summary.credential_refs ?? byType.credential ?? 0,
     cloudAssets: (byType.cloud_resource ?? 0) + (byType.cloudresource ?? 0) + (byType.container ?? 0),

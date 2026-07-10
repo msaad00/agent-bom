@@ -12,8 +12,15 @@ export const REPO_SCAN_SURFACES: RepoScanSurface[] = [
   {
     id: "agent-frameworks",
     label: "Agent frameworks",
-    detail: "LangChain, CrewAI, OpenAI Agents SDK, ADK, LlamaIndex, AutoGen, and related Python stacks",
+    detail: "LangChain, LangGraph, CrewAI, AutoGen, and related Python stacks as first-class AI BOM framework nodes",
     languages: ["Python"],
+    surfaces: ["api", "cli", "mcp", "ui"],
+  },
+  {
+    id: "ai-inventory",
+    label: "AI SDK & observability",
+    detail: "Import fingerprints for SDKs and observability (Langfuse-class) plus model string refs when present",
+    languages: ["Python", "TypeScript", "JavaScript"],
     surfaces: ["api", "cli", "mcp", "ui"],
   },
   {

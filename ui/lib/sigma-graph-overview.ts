@@ -70,6 +70,7 @@ const SIGMA_DEFAULT_LAYERS: Record<LineageNodeType, boolean> = {
   credential: true,
   tool: true,
   model: true,
+  framework: true,
   dataset: true,
   container: true,
   cloudResource: true,

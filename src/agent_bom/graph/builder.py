@@ -827,6 +827,7 @@ def build_unified_graph_from_report(
     ai_inventory = report_json.get("ai_inventory", {})
     if isinstance(ai_inventory, dict):
         _add_framework_topology(graph, ai_inventory.get("framework_agents", []), data_source_tag)
+        _add_ai_stack_frameworks(graph, ai_inventory, data_source_tag)
 
     # ── Cross-environment correlation (#1892 Phase 1: AWS Bedrock) ──
     _add_cross_env_correlation(graph, agents_data, data_source_tag)
@@ -5820,10 +5821,62 @@ def _add_cross_env_correlation(
 
 
 def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_source: str) -> None:
-    """Add static framework-native agent nodes and topology edges."""
+    """Add framework nodes, model nodes, framework-native agents, and topology edges.
+
+    Frameworks (LangChain, LangGraph, CrewAI, …) are first-class BOM entities.
+    Agents link via ``uses_framework``; model string refs become ``model`` nodes
+    linked via ``serves_model``.
+    """
     if not isinstance(framework_agents, list):
         return
     known_agent_ids: set[str] = set()
+    framework_ids: dict[str, str] = {}
+
+    def _framework_node_id(name: str) -> str:
+        key = name.strip().lower() or "unknown"
+        if key not in framework_ids:
+            framework_ids[key] = stable_node_id(EntityType.FRAMEWORK.value, key)
+        return framework_ids[key]
+
+    def _ensure_framework(name: str, *, kind: str = "orchestration") -> str | None:
+        label = str(name or "").strip()
+        if not label:
+            return None
+        fid = _framework_node_id(label)
+        if not graph.has_node(fid):
+            graph.add_node(
+                UnifiedNode(
+                    id=fid,
+                    entity_type=EntityType.FRAMEWORK,
+                    label=label,
+                    attributes={
+                        "framework": label,
+                        "framework_kind": kind,
+                    },
+                    dimensions=NodeDimensions(surface=label, agent_type="framework"),
+                    data_sources=[data_source, "source-ast"],
+                )
+            )
+        return fid
+
+    def _ensure_model(ref: str) -> str | None:
+        label = str(ref or "").strip()
+        if not label:
+            return None
+        mid = stable_node_id(EntityType.MODEL.value, label.lower())
+        if not graph.has_node(mid):
+            graph.add_node(
+                UnifiedNode(
+                    id=mid,
+                    entity_type=EntityType.MODEL,
+                    label=label,
+                    attributes={"model_ref": label, "source": "framework-agent"},
+                    dimensions=NodeDimensions(surface="model"),
+                    data_sources=[data_source, "source-ast"],
+                )
+            )
+        return mid
+
     for item in framework_agents:
         if not isinstance(item, dict):
             continue
@@ -5831,6 +5884,7 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
         if not agent_id:
             continue
         known_agent_ids.add(agent_id)
+        framework_name = str(item.get("framework") or "").strip()
         graph.add_node(
             UnifiedNode(
                 id=agent_id,
@@ -5838,7 +5892,7 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
                 label=str(item.get("name") or agent_id),
                 attributes={
                     "agent_type": "framework-agent",
-                    "framework": item.get("framework", ""),
+                    "framework": framework_name,
                     "file_path": item.get("file_path", ""),
                     "line_number": item.get("line_number", 0),
                     "confidence": item.get("confidence", ""),
@@ -5847,10 +5901,31 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
                     "capabilities": item.get("capabilities", []),
                     "dynamic_edges": item.get("dynamic_edges", False),
                 },
-                dimensions=NodeDimensions(agent_type="framework-agent", surface=str(item.get("framework", ""))),
+                dimensions=NodeDimensions(agent_type="framework-agent", surface=framework_name),
                 data_sources=[data_source, "source-ast"],
             )
         )
+        fw_id = _ensure_framework(framework_name)
+        if fw_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=agent_id,
+                    target=fw_id,
+                    relationship=RelationshipType.USES_FRAMEWORK,
+                    evidence={"source": "source-ast", "framework": framework_name},
+                )
+            )
+        for model_ref in item.get("model_refs", []) or []:
+            mid = _ensure_model(str(model_ref))
+            if mid:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=agent_id,
+                        target=mid,
+                        relationship=RelationshipType.SERVES_MODEL,
+                        evidence={"source": "source-ast", "model_ref": str(model_ref)},
+                    )
+                )
 
     for item in framework_agents:
         if not isinstance(item, dict):
@@ -5865,6 +5940,7 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
             for node_id, node_name in ((source_id, edge.get("source_name")), (target_id, edge.get("target_name"))):
                 if node_id in known_agent_ids or graph.has_node(node_id):
                     continue
+                edge_fw = str(edge.get("framework") or "").strip()
                 graph.add_node(
                     UnifiedNode(
                         id=node_id,
@@ -5872,14 +5948,24 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
                         label=str(node_name or node_id),
                         attributes={
                             "agent_type": "framework-agent",
-                            "framework": edge.get("framework", ""),
+                            "framework": edge_fw,
                             "synthetic_from_topology_edge": True,
                         },
-                        dimensions=NodeDimensions(agent_type="framework-agent", surface=str(edge.get("framework", ""))),
+                        dimensions=NodeDimensions(agent_type="framework-agent", surface=edge_fw),
                         data_sources=[data_source, "source-ast"],
                     )
                 )
                 known_agent_ids.add(node_id)
+                fw_id = _ensure_framework(edge_fw)
+                if fw_id:
+                    graph.add_edge(
+                        UnifiedEdge(
+                            source=node_id,
+                            target=fw_id,
+                            relationship=RelationshipType.USES_FRAMEWORK,
+                            evidence={"source": "source-ast", "framework": edge_fw},
+                        )
+                    )
             try:
                 relationship = RelationshipType(str(edge.get("relationship") or "delegated_to"))
             except ValueError:
@@ -5899,6 +5985,108 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
                     },
                 )
             )
+
+
+def _add_ai_stack_frameworks(graph: UnifiedGraph, ai_inventory: Any, data_source: str) -> None:
+    """Project SDK/observability imports as first-class framework nodes + package/model links."""
+    if not isinstance(ai_inventory, dict):
+        return
+    components = ai_inventory.get("components")
+    if not isinstance(components, list):
+        return
+
+    def _ensure_model(ref: str, *, source: str = "ai-inventory") -> str | None:
+        label = str(ref or "").strip()
+        if not label or label.upper() == "[REDACTED]":
+            return None
+        mid = stable_node_id(EntityType.MODEL.value, label.lower())
+        if not graph.has_node(mid):
+            graph.add_node(
+                UnifiedNode(
+                    id=mid,
+                    entity_type=EntityType.MODEL,
+                    label=label,
+                    attributes={"model_ref": label, "source": source},
+                    dimensions=NodeDimensions(surface="model"),
+                    data_sources=[data_source, "ai-inventory"],
+                )
+            )
+        return mid
+
+    for comp in components:
+        if not isinstance(comp, dict):
+            continue
+        ctype = str(comp.get("type") or "").strip().lower()
+        name = str(comp.get("name") or comp.get("package") or "").strip()
+        if not name:
+            continue
+
+        if ctype in {"model_reference", "deprecated_model"}:
+            _ensure_model(name, source=ctype)
+            continue
+
+        if ctype not in {"agent_framework", "observability"}:
+            continue
+        kind = "observability" if ctype == "observability" else "orchestration"
+        fid = stable_node_id(EntityType.FRAMEWORK.value, name.lower())
+        if not graph.has_node(fid):
+            graph.add_node(
+                UnifiedNode(
+                    id=fid,
+                    entity_type=EntityType.FRAMEWORK,
+                    label=name,
+                    attributes={
+                        "framework": name,
+                        "framework_kind": kind,
+                        "package": comp.get("package", ""),
+                        "ecosystem": comp.get("ecosystem", ""),
+                        "language": comp.get("language", ""),
+                        "is_shadow": bool(comp.get("is_shadow")),
+                        "file": comp.get("file", ""),
+                        "line": comp.get("line", 0),
+                    },
+                    dimensions=NodeDimensions(surface=name, agent_type=kind),
+                    data_sources=[data_source, "ai-inventory"],
+                )
+            )
+        package_name = str(comp.get("package") or "").strip()
+        ecosystem = str(comp.get("ecosystem") or "pypi").strip() or "pypi"
+        if package_name:
+            pkg_id = stable_node_id(EntityType.PACKAGE.value, ecosystem, package_name, "latest")
+            # Prefer an existing versioned package node if present.
+            existing = [
+                n
+                for n in graph.nodes_by_type(EntityType.PACKAGE)
+                if str(n.attributes.get("name") or n.label).lower() == package_name.lower()
+            ]
+            if existing:
+                pkg_id = existing[0].id
+            elif not graph.has_node(pkg_id):
+                graph.add_node(
+                    UnifiedNode(
+                        id=pkg_id,
+                        entity_type=EntityType.PACKAGE,
+                        label=package_name,
+                        attributes={
+                            "name": package_name,
+                            "ecosystem": ecosystem,
+                            "version": "latest",
+                            "from_ai_inventory": True,
+                        },
+                        data_sources=[data_source, "ai-inventory"],
+                    )
+                )
+            graph.add_edge(
+                UnifiedEdge(
+                    source=fid,
+                    target=pkg_id,
+                    relationship=RelationshipType.DEPENDS_ON,
+                    evidence={"source": "ai-inventory", "framework": name},
+                )
+            )
+
+    for model_name in ai_inventory.get("unique_models") or []:
+        _ensure_model(str(model_name))
 
 
 def _clean_graph_part(value: Any) -> str:

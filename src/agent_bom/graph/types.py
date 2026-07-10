@@ -16,6 +16,9 @@ class EntityType(str, Enum):
     TOOL_CALL = "tool_call"
     MODEL = "model"
     DATASET = "dataset"
+    # AI orchestration / observability stack (LangChain, LangGraph, Langfuse, …)
+    # First-class BOM entity — not only metadata on agents/packages.
+    FRAMEWORK = "framework"
     CONTAINER = "container"
     CLOUD_RESOURCE = "cloud_resource"
     RESOURCE = "resource"
@@ -111,16 +114,18 @@ class RelationshipType(str, Enum):
     # ── Static inventory ──
     HOSTS = "hosts"  # provider → agent
     USES = "uses"  # agent → server
-    DEPENDS_ON = "depends_on"  # server → package
+    USES_FRAMEWORK = "uses_framework"  # agent → framework (LangChain/LangGraph/…)
+    DEPENDS_ON = "depends_on"  # server → package; framework → package
     PROVIDES_TOOL = "provides_tool"  # server → tool
     EXPOSES_CRED = "exposes_cred"  # server → credential
     REACHES_TOOL = "reaches_tool"  # credential → tool
-    SERVES_MODEL = "serves_model"  # server → model
+    SERVES_MODEL = "serves_model"  # server/agent/framework → model
     CONTAINS = "contains"  # container → package
     IMPORTS = "imports"  # source file/module → external import/module
     DEFINES = "defines"  # source file → module/component/tool
     RUNS = "runs"  # CI job → scanner/workflow/tool
     CONFIGURES = "configures"  # config file → agent/server/CI job
+    OBSERVES = "observes"  # observability framework → agent/server (Langfuse-class)
 
     # ── Vulnerability ──
     AFFECTS = "affects"  # vulnerability → package (reverse)

@@ -84,6 +84,7 @@ describe("ai-bom-evidence", () => {
       agents: 0,
       mcpServers: 9,
       models: 1,
+      frameworks: 0,
       packages: 1,
       credentials: 3,
       cloudAssets: 0,

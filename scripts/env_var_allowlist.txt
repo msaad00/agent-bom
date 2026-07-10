@@ -419,3 +419,8 @@ AGENT_BOM_GLOBAL_IP_RATE_LIMIT_RPM
 AGENT_BOM_TRUSTED_PROXY_HOPS
 
 AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS
+
+# Dynamic posture policy inputs are read at runtime by posture.py and are not
+# scalar config knobs suitable for the generated config reference.
+AGENT_BOM_POSTURE_POLICY
+AGENT_BOM_POSTURE_POLICY_FILE

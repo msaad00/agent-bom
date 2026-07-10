@@ -9,7 +9,7 @@ social cards, CLI splash.
   sentence or in a Title Case heading. Never `Agent-BOM`, `AgentBOM`, or
   `Agent-Bom` (the title-cased `X-Agent-Bom-*` HTTP headers are a separate wire
   convention and are intentionally left as-is).
-- **Tagline (short, for the wordmark/badges):** "AI agent bill of materials".
+- **Tagline (short, for the wordmark/badges):** "BOM for humans & agents".
 - **Tagline (full, for prose/meta):** "Security scanner for the AI supply chain and
   infrastructure — from agent to runtime."
 - **Positioning line (README hero):** "Open security scanner and self-hosted control
@@ -17,9 +17,9 @@ social cards, CLI splash.
 - **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
   dark `#34d399 → #06b6d4` / `#22d3ee`. Ink `#1f2937` (light) / `#e6edf3` (dark);
   muted `#6b7280` / `#8b949e`.
-- **Mark:** a rounded tile with a BOM manifest card — stacked inventory rows and one
-  finding highlight. Reads as bill-of-materials inventory, not a generic network graph.
-  A/B explorations live in `docs/images/brand/variants/`.
+- **Mark:** `a·b` lettermark — lowercase a, gradient interpunct, gradient b, with a
+  thin BOM bar cue underneath. Matches the wordmark interpunct and reads at favicon size.
+
 
 Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or
 network refs, light + dark pairs):

@@ -21,7 +21,7 @@
   ],
   "id": null,
   "uid": "agent-bom-overview",
-  "title": "agent-bom — AI Supply Chain Security",
+  "title": "agent-bom — BOM for humans & agents",
   "description": "Security posture overview for AI agent infrastructure scanned by agent-bom",
   "tags": ["agent-bom", "security", "ai", "mcp", "sbom"],
   "timezone": "browser",

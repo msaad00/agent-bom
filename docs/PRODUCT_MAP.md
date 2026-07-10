@@ -13,7 +13,7 @@ backend choices rather than re-deriving the flow.
 
 | Lane | Use it for | Entry point | Backing services | Output |
 |---|---|---|---|---|
-| Local scan | repos, lockfiles, containers, local agent and MCP config | `agent-bom agents`, GitHub Action, Docker | scanner engine, advisory cache, output formatters | JSON, SARIF, CycloneDX, SPDX, HTML |
+| Local scan | repos, lockfiles, containers, local agent and MCP config | `agent-bom scan`, GitHub Action, Docker | scanner engine, advisory cache, output formatters | JSON, SARIF, CycloneDX, SPDX, HTML |
 | Cloud connect | AWS, Azure, GCP, Snowflake inventory and posture | `agent-bom connect`, `agent-bom cloud scan` | read-only provider clients, CIS checks, graph writer | cloud assets, misconfig findings, account/subscription/project edges |
 | Control plane | shared review, graph, audit, fleet, compliance | REST API and dashboard | API, workers, SQLite/Postgres, optional ClickHouse/Snowflake analytics | tenant-scoped findings, posture, graph, audit trail |
 | Agent tools | assistant-readable security queries | `agent-bom mcp server` | MCP server, strict argument validation, shared scanners | read-mostly MCP tool results |
@@ -24,8 +24,8 @@ backend choices rather than re-deriving the flow.
 
 | If you are... | Start with | Then move to |
 |---|---|---|
-| A developer checking a repo or image | `agent-bom agents -p .` | CI gate, SARIF upload, HTML report |
-| A security engineer reviewing agent/MCP risk | `agent-bom agents --demo --offline` or a real project scan | dashboard graph, `agent-bom graph`, MCP tool review |
+| A developer checking a repo or image | `agent-bom scan -p .` | CI gate, SARIF upload, HTML report |
+| A security engineer reviewing agent/MCP risk | `agent-bom scan --demo --offline` or a real project scan | dashboard graph, `agent-bom graph`, MCP tool review |
 | A cloud operator connecting estate inventory | `agent-bom connect <provider>` | `agent-bom cloud scan`, CIS posture, account graph |
 | A platform team piloting a shared service | `agent-bom serve` or Helm | API auth, Postgres, dashboard, workers, audit retention |
 | An assistant/tooling team exposing security to agents | `agent-bom mcp server` | strict MCP config, Shield write scopes, audit reason requirements |

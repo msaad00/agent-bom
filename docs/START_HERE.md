@@ -25,7 +25,7 @@ New here? [`FIRST_RUN.md`](FIRST_RUN.md) is the canonical quickstart —
 CI gate (GitHub Action):
 
 ```yaml
-- uses: msaad00/agent-bom@v0.90.0
+- uses: msaad00/agent-bom@v0.94.2
 ```
 
 - Output formats, exit codes, and the full command set:
@@ -82,7 +82,7 @@ agent-bom cloud gcp --project <project-id> --cis
 agent-bom connect snowflake
 export SNOWFLAKE_ACCOUNT=<org-account> SNOWFLAKE_USER=ABOM_SCANNER
 export SNOWFLAKE_AUTHENTICATOR=snowflake_jwt SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/abom_key.p8
-agent-bom agents --snowflake
+agent-bom scan --snowflake
 
 # Cross-cloud estate inventory for AWS/Azure/GCP (reference counts):
 agent-bom cloud inventory --provider all
@@ -91,7 +91,7 @@ agent-bom cloud inventory --provider all
 - Full grant templates, per-cloud permission catalogs, and the read-only
   rationale: [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md)
 - Cloud CIS misconfigurations and Snowflake posture converge into findings:
-  `agent-bom agents --aws --azure --gcp --snowflake --fail-on-severity high`
+  `agent-bom scan --aws --azure --gcp --snowflake --fail-on-severity high`
 - Exposure paths and non-human identity posture: `agent-bom graph`,
   `agent-bom identity credential-expiry`
 
@@ -102,7 +102,7 @@ scan a repo by URL.
 
 ```bash
 pip install 'agent-bom[mcp-server]'
-agent-bom mcp server                      # stdio MCP server: 70 tools, 6 resources, 6 prompts
+agent-bom mcp server                      # stdio MCP server: 70 tools, 6 resources, 8 prompts
 ```
 
 - MCP server setup + client guides: [`MCP_SERVER.md`](MCP_SERVER.md),

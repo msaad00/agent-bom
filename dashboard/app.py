@@ -90,7 +90,7 @@ def load_report(path: str | None, mode: str | None) -> dict:
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 st.sidebar.title("agent-bom")
-st.sidebar.caption("AI Supply Chain Security")
+st.sidebar.caption("BOM for humans & agents")
 
 source = st.sidebar.radio(
     "Data source",
@@ -761,4 +761,4 @@ with tabs[6]:
 # ─── Footer ───────────────────────────────────────────────────────────────────
 
 st.divider()
-st.caption("agent-bom Dashboard | AI Supply Chain Security | github.com/msaad00/agent-bom")
+st.caption("agent-bom Dashboard | BOM for humans & agents | github.com/msaad00/agent-bom")

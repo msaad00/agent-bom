@@ -277,7 +277,7 @@ describe('Nav', () => {
     const { container } = render(<Nav />)
     const wordmark = container.querySelector('img[alt="agent-bom"]')
     expect(wordmark).toHaveAttribute('src', '/brand/wordmark-dark.svg')
-    expect(screen.getByText('AI agent bill of materials')).toBeInTheDocument()
+    expect(screen.getByText('BOM for humans & agents')).toBeInTheDocument()
   })
 
   it('renders all 7 nav group labels', () => {

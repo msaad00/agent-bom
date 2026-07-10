@@ -18,7 +18,17 @@ material. The index below groups the canonical docs by audience.
 
 ## Orientation (start here)
 
+- [`FIRST_RUN.md`](FIRST_RUN.md) — install → first scan → first artifact (canonical first-run path)
 - [`START_HERE.md`](START_HERE.md) — role-based entry paths (security engineer / platform-SRE / AI-agent developer)
+- [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md) — five-stage evidence flow (canonical product story)
+- [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md) — positioning and persona contract
+- [`PRODUCT_MAP.md`](PRODUCT_MAP.md) — operator chooser: lanes, surfaces, backends
+- [`EDITIONS.md`](EDITIONS.md) — lanes + cost posture (canonical editions statement)
+- [`PRODUCT_BOUNDARIES.md`](PRODUCT_BOUNDARIES.md) — boundary and copy-rules companion to editions
+- [`AGENT_CAPABILITY.md`](AGENT_CAPABILITY.md) — machine-readable capability manifest (MCP/API counts)
+- [`TRUST.md`](TRUST.md) — what we store, what we don't, customer boundary
+- [`CAPTURE.md`](CAPTURE.md) — product-proof screenshot capture protocol
+- [`VISUAL_LANGUAGE.md`](VISUAL_LANGUAGE.md) — brand, media rules, and asset inventory
 - [`../PROJECT_STRUCTURE.md`](../PROJECT_STRUCTURE.md) — repo map: where everything lives, which trees are canonical
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — layered stack, data flow, scan pipeline, blast radius, compliance tagging (mermaid)
 - [`CLI_MAP.md`](CLI_MAP.md) — all 50 top-level commands grouped by domain + intentional aliases

@@ -1,5 +1,5 @@
 site_name: agent-bom
-site_description: AI agent infrastructure security scanner
+site_description: AI agent bill of materials — security scanner for AI, MCP, and cloud infrastructure
 site_url: https://msaad00.github.io/agent-bom
 repo_url: https://github.com/msaad00/agent-bom
 repo_name: msaad00/agent-bom

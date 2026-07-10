@@ -30,8 +30,8 @@ network refs, light + dark pairs):
 | `mark-{light,dark}.svg` | Icon-only mark — square avatars, favicons, tight spaces |
 | `wordmark-{light,dark}.svg` | Wordmark only — inline headers where the mark is redundant |
 
-`docs/images/logo-{light,dark}.svg` are compatibility aliases of the lockup
-(prefer `docs/images/brand/logo-*` for new references).
+Canonical lockups live only under `docs/images/brand/logo-{light,dark}.svg`
+(no root `docs/images/logo-*` aliases).
 Copy `docs/images/brand/mark-*` and `wordmark-*` into `ui/public/brand/` when the
 mark changes; regenerate `ui/app/favicon.ico` and `site-docs/assets/brand/mark.svg`
 / `mark-mono.svg` from the same source. The MkDocs site uses `mark-mono.svg`
@@ -134,7 +134,7 @@ it harder to read.
 
 Current ASCII surface:
 - The CVE blast-radius tree at the top of the README — it is what
-  `agent-bom agents --offline` actually prints
+  `agent-bom scan --offline` actually prints
 - All `bash` / `yaml` / `json` code blocks — those are commands, not diagrams
 
 ## When in doubt

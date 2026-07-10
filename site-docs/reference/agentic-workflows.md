@@ -8,7 +8,7 @@ plane or runtime enforcement rollout.
 |---|---|---|---|---|
 | Local CLI | `agent-bom agents --demo --offline`, then `agent-bom agents -p .` | Reads local agent and MCP configuration from the developer machine. No control-plane credentials required. | Terminal findings, JSON, SARIF, SBOM, HTML, graph export. | Scheduled scan, Docker, GitHub Action. |
 | Claude, Cursor, Windsurf, VS Code, Cortex, Codex CLI | `agent-bom mcp server` | Exposes read-mostly security tools to the assistant. The assistant does not need direct scanner credentials beyond the local process boundary; Shield write actions require admin role, `shield:write` scope, and an audit reason. | MCP tool output, inventory, blast-radius answers, compliance checks, ranked `ExposurePath` JSON, deploy guidance. | Shared MCP configuration, skills, fleet sync. |
-| GitHub Actions | `uses: msaad00/agent-bom@v0.90.0` with SARIF upload enabled | Runs in CI with repository-scoped token permissions. Fork PR behavior depends on GitHub security policy. | `agent-bom-results.sarif`, pull-request summary, code-scanning alert category. | Branch protection, required code scanning, artifact retention. |
+| GitHub Actions | `uses: msaad00/agent-bom@v0.94.2` with SARIF upload enabled | Runs in CI with repository-scoped token permissions. Fork PR behavior depends on GitHub security policy. | `agent-bom-results.sarif`, pull-request summary, code-scanning alert category. | Branch protection, required code scanning, artifact retention. |
 | Skills and instruction files | `agent-bom skills scan . --policy skills-policy.yaml` | Reads repo-local instructions such as `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and `skills/*.md`. | Skill trust findings, referenced package and MCP inventory, credential-env names, policy warn/block result. | Signed skills, provenance verification, registry publishing. |
 | Cloud and AI infrastructure | `agent-bom agents --preset enterprise` plus provider-specific flags only where credentials are approved. | Uses read-only provider APIs or local inventory files. Keep provider secrets in the operator boundary, not in repo docs. | Cloud, warehouse, GPU, model, dataset, and runtime package evidence. | Fleet sync, compliance exports, graph-backed findings. |
 | Runtime proxy | `agent-bom proxy --no-isolate --log audit.jsonl --block-undeclared -- ...` | Wraps selected local MCP traffic. Policy can block before an upstream tool receives the call. Container containment requires a stdio MCP path plus a configured sandbox image or an existing container command. | Tier-A audit JSONL, policy decisions, runtime alerts, metrics, and sandbox posture when isolation is enabled. | Sidecar proxy, gateway policy pull, SIEM export. |
@@ -31,7 +31,7 @@ when the buyer or contributor needs to see the first finding path quickly.
 ### CI Security Review
 
 ```yaml
-- uses: msaad00/agent-bom@v0.90.0
+- uses: msaad00/agent-bom@v0.94.2
   with:
     scan-type: agents
     severity-threshold: high
@@ -66,7 +66,7 @@ by setting `skills-ci: true` (equivalent to the CLI `--ci` flag, i.e.
 `fail-on-verdict=suspicious`):
 
 ```yaml
-- uses: msaad00/agent-bom@v0.90.0
+- uses: msaad00/agent-bom@v0.94.2
   with:
     scan-type: skills
     scan-ref: .
@@ -80,7 +80,7 @@ For finer control, replace `skills-ci` with explicit gates and an optional
 policy file:
 
 ```yaml
-- uses: msaad00/agent-bom@v0.90.0
+- uses: msaad00/agent-bom@v0.94.2
   with:
     scan-type: skills
     scan-ref: .

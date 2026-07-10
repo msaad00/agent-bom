@@ -193,28 +193,13 @@ Matching mechanics and release evidence:
 <details>
 <summary><b>Agent view</b> — capability manifest (strict MCP + REST)</summary>
 
-```text
-DESCRIPTION
-Open security scanner and self-hosted control plane. Scan → graph → prove path →
-enforce on selected runtime hops. Same evidence for humans and headless agents.
+Machine-readable detail lives in [`docs/AGENT_CAPABILITY.md`](docs/AGENT_CAPABILITY.md).
+Summary:
 
-CAPABILITIES
+```text
 MCP security tools       70 tools · 6 resources · 8 workflow prompts
 REST API                 283 ops · OpenAPI docs/openapi/v1.json
-Graph / blast radius     UnifiedGraph · attack paths · hop counts · SARIF export
-Runtime proxy            stdio MCP inline policy (7 detectors)
-Runtime gateway          HTTP/SSE relay · /v1/gateway/feed · KPI rollup
-Fleet inventory          MCP configs · transports · credential refs
-Auth                     API keys · OAuth AS · OIDC · SAML · SCIM
-Deployment               CLI · Docker · Helm · customer VPC (not managed SaaS)
-
-NOT SHIPPED
-No 1,000+ MCP app library · No Cedar engine · No turnkey SIEM tiles
-
-ENDPOINTS
-MCP server               agent-bom mcp server
-Control plane            agent-bom serve
-Gateway KPIs             GET /v1/gateway/feed/kpis
+Runtime proxy / gateway  stdio policy · HTTP/SSE relay · KPI rollup
 Full manifest            docs/AGENT_CAPABILITY.md
 ```
 
@@ -283,7 +268,7 @@ no network I/O until you opt in.
 | AWS | `AGENT_BOM_AWS_INVENTORY=1` | `agent-bom cloud aws` |
 | Azure | `AGENT_BOM_AZURE_INVENTORY=1` | `agent-bom cloud azure` |
 | GCP | `AGENT_BOM_GCP_INVENTORY=1` | `agent-bom cloud gcp` |
-| Snowflake | SSO or key-pair auth | `pip install 'agent-bom[snowflake]'` then `agent-bom agents --snowflake` |
+| Snowflake | SSO or key-pair auth | `pip install 'agent-bom[snowflake]'` then `agent-bom scan --snowflake` |
 
 Setup and grants: [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md) · full intake
 map: [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)

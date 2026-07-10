@@ -62,8 +62,18 @@ Coverage depth and honest boundaries:
 <summary><b>Product screenshots</b> — packaged dashboard on seeded demo data</summary>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Risk overview dashboard with posture grade and attack paths" width="900" />
-  <br/><em>Risk overview — posture grade, KPIs, and fix-first attack paths</em>
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview command center with posture grade, findings breakdown, and scan coverage" width="900" />
+  <br/><em>Overview — posture, coverage, inventory, and scan evidence at a glance</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Cloud accounts onboarding with AWS, Azure, GCP, and Snowflake connectors" width="900" />
+  <br/><em>Cloud accounts — read-only onboarding and CIS discovery per account</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan form with connected account picker and public repo URL mode" width="900" />
+  <br/><em>New Scan — deployment vs account vs ad-hoc scope with auto-detect surfaces</em>
 </p>
 
 <p align="center">

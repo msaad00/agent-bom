@@ -42,6 +42,52 @@ _PYTHON_MANIFESTS = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class RepoStaticSurface:
+    """One auto-detected static scan surface shared by CLI, API repo-tree, and UI catalog."""
+
+    id: str
+    label: str
+    cli_auto_key: str | None = None
+    api_repo_tree: bool = False
+    requires_semgrep: bool = False
+
+
+REPO_STATIC_SURFACES: tuple[RepoStaticSurface, ...] = (
+    RepoStaticSurface("jupyter", "Jupyter notebooks", cli_auto_key="jupyter", api_repo_tree=True),
+    RepoStaticSurface("sast", "SAST / code paths", cli_auto_key="sast", api_repo_tree=True, requires_semgrep=True),
+    RepoStaticSurface("prompts", "Prompt templates", cli_auto_key="prompts", api_repo_tree=False),
+    RepoStaticSurface("terraform", "Terraform & cloud AI infra", cli_auto_key="terraform", api_repo_tree=True),
+    RepoStaticSurface("github_actions", "CI/CD pipelines", cli_auto_key="github_actions", api_repo_tree=True),
+    RepoStaticSurface("python_agents", "Python agent frameworks", cli_auto_key="python_agents", api_repo_tree=True),
+    RepoStaticSurface("skills", "Skills & instruction files", api_repo_tree=True),
+    RepoStaticSurface("iac", "IaC & deployment configs", api_repo_tree=True),
+    RepoStaticSurface("dependencies", "Lockfiles & manifests", api_repo_tree=True),
+    RepoStaticSurface("secrets", "Secrets & credentials", api_repo_tree=True),
+    RepoStaticSurface("weak_crypto", "Weak cryptography", api_repo_tree=True),
+)
+
+
+def repo_static_surface_catalog() -> list[dict[str, str | bool]]:
+    """JSON-serializable catalog for docs, UI parity notes, and API docstrings."""
+    return [
+        {
+            "id": surface.id,
+            "label": surface.label,
+            "cli_auto_key": surface.cli_auto_key or "",
+            "api_repo_tree": surface.api_repo_tree,
+            "requires_semgrep": surface.requires_semgrep,
+        }
+        for surface in REPO_STATIC_SURFACES
+    ]
+
+
+def repo_static_surface_summary() -> str:
+    """One-line summary for scan_cloned_repo_tree docstrings."""
+    api_surfaces = [surface.label for surface in REPO_STATIC_SURFACES if surface.api_repo_tree]
+    return ", ".join(api_surfaces)
+
+
 @dataclass
 class ProjectScanTargets:
     jupyter_dirs: tuple[str, ...]

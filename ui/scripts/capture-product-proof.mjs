@@ -1486,10 +1486,10 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     await page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" });
   }
   await page.waitForLoadState("load");
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(urlPath.includes("capture=1") ? 1200 : 400);
   if (beforeShot) await beforeShot(page);
   if (urlPath.includes("capture=1")) {
-    await page.locator("#demo-estate-watermark").waitFor({ state: "visible", timeout: 10_000 });
+    await page.locator("#demo-estate-watermark").waitFor({ state: "visible", timeout: 30_000 });
   }
   await page.screenshot({ path: path.join(IMAGE_DIR, filename), fullPage: false });
   console.log(`captured ${filename}`);
@@ -1500,12 +1500,22 @@ async function writeScreenshotManifest() {
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Risk overview top frame with headline KPIs, posture grade, and start of attack paths",
+      scope: "Overview command center — posture ring, findings breakdown, scan coverage, environment tabs",
     },
     {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
-      scope: "Risk overview mid-frame with attack paths and exposure KPIs",
+      scope: "Overview lower frame with exposure path and feed/analytics tabs",
+    },
+    {
+      path: "cloud-accounts-live.png",
+      page: "/connections?capture=1",
+      scope: "Cloud accounts onboarding with provider catalog and account stats",
+    },
+    {
+      path: "new-scan-live.png",
+      page: "/scan?capture=1",
+      scope: "New Scan form with connected account, ad-hoc, and public repo modes",
     },
     {
       path: "mesh-live.png",
@@ -1514,7 +1524,7 @@ async function writeScreenshotManifest() {
     },
     {
       path: "gateway-policies-live.png",
-      page: "/gateway?capture=1",
+      page: "/runtime?tab=gateway&capture=1",
       scope: "Runtime gateway KPI rollup and live tool-call feed",
     },
     {
@@ -1578,7 +1588,11 @@ async function fitReactFlow(page, { timeout = 30_000 } = {}) {
   await page.waitForTimeout(150);
   const fitButton = page.locator(".react-flow__controls-fitview").first();
   if ((await fitButton.count()) > 0) {
-    await fitButton.click({ timeout: 5_000 });
+    try {
+      await fitButton.click({ timeout: 5_000, force: true });
+    } catch {
+      await fitButton.dispatchEvent("click");
+    }
   }
   await page.waitForTimeout(500);
 }
@@ -1597,7 +1611,13 @@ async function main() {
 
     await capture(page, "/?capture=1", "dashboard-live.png");
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
-      await scrollTo(dashboardPage, 620);
+      await scrollTo(dashboardPage, 720);
+    });
+    await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {
+      await connectionsPage.getByRole("heading", { name: "Cloud accounts" }).waitFor({ state: "visible", timeout: 10_000 });
+    });
+    await capture(page, "/scan?capture=1", "new-scan-live.png", async (scanPage) => {
+      await scanPage.getByRole("heading", { name: /New Scan|Run scan/i }).first().waitFor({ state: "visible", timeout: 10_000 });
     });
     await capture(page, "/mesh?capture=1", "mesh-live.png");
     await capture(page, "/security-graph?capture=1", "security-graph-live.png");
@@ -1626,11 +1646,11 @@ async function main() {
       },
     );
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
-      await fleetPage.getByText("developer-copilot").first().click();
+      await fleetPage.getByText("developer-copilot").first().click({ force: true });
       await fleetPage.waitForTimeout(500);
       await scrollTo(fleetPage, 130);
     });
-    await capture(page, "/gateway?capture=1", "gateway-policies-live.png", async (gatewayPage) => {
+    await capture(page, "/runtime?tab=gateway&capture=1", "gateway-policies-live.png", async (gatewayPage) => {
       await gatewayPage.getByText("Calls today").first().waitFor({ state: "visible", timeout: 8000 });
       await gatewayPage.getByText("Gateway live feed").first().waitFor({ state: "visible", timeout: 8000 });
       await gatewayPage.waitForTimeout(400);
@@ -1640,7 +1660,7 @@ async function main() {
       await auditPage.waitForTimeout(350);
     });
     await capture(page, "/?tab=analytics", "dependency-map-live.png", async (analyticsPage) => {
-      await analyticsPage.getByRole("button", { name: "Deep analytics" }).waitFor({ state: "visible", timeout: 10_000 });
+      await analyticsPage.getByRole("button", { name: "Analytics" }).waitFor({ state: "visible", timeout: 10_000 });
       await analyticsPage.waitForTimeout(500);
       await scrollTo(analyticsPage, 620);
     });

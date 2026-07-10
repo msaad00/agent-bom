@@ -130,19 +130,6 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
   }, []);
 
   const deploymentLabel = deploymentModeLabel(deploymentMode);
-  const deploymentHint = useMemo(() => {
-    switch (deploymentMode) {
-      case "fleet":
-        return "Fleet control plane — connect cloud accounts for continuous coverage, or run ad-hoc workstation scans.";
-      case "cluster":
-        return "Cluster control plane — prioritize Kubernetes and connected cloud accounts.";
-      case "hybrid":
-        return "Hybrid deployment — cloud connectors plus workstation and cluster scans share one graph.";
-      case "local":
-      default:
-        return "Local control plane — scans run on this machine against paths and kube context you provide.";
-    }
-  }, [deploymentMode]);
 
   const selectedConnection = useMemo(
     () => connections.find((connection) => connection.id === selectedConnectionId) ?? null,
@@ -259,56 +246,36 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
   const repoScanReady = target !== "repository" || Boolean(repoUrlInput.trim());
 
   return (
-    <div className="max-w-5xl">
-      <header className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="max-w-4xl" data-testid="scan-form">
+      <header className="mb-6 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">New Scan</h1>
-            <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
+            <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
               {deploymentLabel}
             </span>
           </div>
-          <p className="mt-1 max-w-2xl text-sm text-[color:var(--text-secondary)]">
-            Pick where evidence comes from: a connected cloud account, an ad-hoc target on this control plane, or a registered data source.
-          </p>
-          <nav aria-label="Related scan surfaces" className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-[color:var(--text-tertiary)]">
-            <RelatedLink href="/sources">Data sources</RelatedLink>
-            <span aria-hidden="true">·</span>
-            <RelatedLink href="/connections">Cloud accounts</RelatedLink>
-            <span aria-hidden="true">·</span>
-            <RelatedLink href="/jobs">Scan jobs</RelatedLink>
-          </nav>
+          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">Choose a source, set the target, run.</p>
         </div>
         <Link
           href="/connections"
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-strong)]"
+          className="hidden shrink-0 items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] sm:inline-flex"
         >
-          Connect cloud account
-          <ArrowRight className="h-4 w-4" />
+          Connect account <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </header>
 
-      <div className="mb-5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-secondary)]">
-        <span className="font-medium text-[color:var(--foreground)]">{deploymentLabel} control plane.</span>{" "}
-        {deploymentHint}
-      </div>
-
-      <section
-        aria-labelledby="scan-mode-heading"
-        className="mb-5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4"
-      >
-        <h2 id="scan-mode-heading" className="text-sm font-semibold text-[color:var(--foreground)]">
-          Where am I scanning?
-        </h2>
-        <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-          Connected accounts use brokered read-only credentials. Ad-hoc scans run on this control plane host. Scheduled sources enqueue jobs from saved configs.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+      <div className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+        <div
+          role="tablist"
+          aria-label="Scan source"
+          className="flex border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
+        >
           {(
             [
-              { id: "connected" as const, label: "Connected account", icon: Cloud, hint: "One onboarded cloud account" },
-              { id: "adhoc" as const, label: "Ad-hoc target", icon: Bot, hint: "Workstation · images · Kubernetes" },
-              { id: "scheduled" as const, label: "Data source", icon: CalendarClock, hint: "Registered source config" },
+              { id: "connected" as const, label: "Cloud account", icon: Cloud },
+              { id: "adhoc" as const, label: "Ad-hoc", icon: Bot },
+              { id: "scheduled" as const, label: "Data source", icon: CalendarClock },
             ] as const
           ).map((option) => {
             const Icon = option.icon;
@@ -317,467 +284,456 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
               <button
                 key={option.id}
                 type="button"
+                role="tab"
+                aria-selected={active}
                 onClick={() => setScanMode(option.id)}
-                className={`min-w-[10rem] rounded-xl border px-3 py-2.5 text-left transition ${
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   active
-                    ? "border-emerald-600/50 bg-emerald-500/10 text-[color:var(--foreground)]"
-                    : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)]"
+                    ? "bg-[color:var(--surface)] text-[color:var(--foreground)] shadow-sm"
+                    : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
                 }`}
               >
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {option.label}
-                </div>
-                <p className="mt-1 text-[11px] text-[color:var(--text-tertiary)]">{option.hint}</p>
+                <Icon className="h-4 w-4 shrink-0" />
+                {option.label}
               </button>
             );
           })}
         </div>
-      </section>
 
-      <form
-        onSubmit={scanMode === "adhoc" ? handleAdhocSubmit : (e) => e.preventDefault()}
-        className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start"
-      >
-        <div className="space-y-5">
-          {scanMode === "connected" && (
-            <Section title="Connected cloud account">
-              {connectionsLoading ? (
-                <p className="text-sm text-[color:var(--text-secondary)]">Loading cloud accounts…</p>
-              ) : connectionsError ? (
-                <p className="text-sm text-red-400">{connectionsError}</p>
-              ) : connections.length === 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-[color:var(--text-secondary)]">
-                    No cloud accounts are connected yet. Onboard one to run read-only inventory and CIS for a specific account boundary.
-                  </p>
-                  <Link
-                    href="/connections"
-                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
-                  >
-                    Connect cloud account
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <label htmlFor="connection-picker" className="text-xs font-medium text-[color:var(--text-secondary)]">
-                    Account
-                  </label>
-                  <select
-                    id="connection-picker"
-                    value={selectedConnectionId}
-                    onChange={(event) => setSelectedConnectionId(event.target.value)}
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
-                  >
-                    {connections.map((connection) => (
-                      <option key={connection.id} value={connection.id}>
-                        {providerDisplayName(connection.provider)} · {connection.display_name}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedConnection && !isScannableConnection(selectedConnection) ? (
-                    <p className="text-xs text-amber-300">
-                      Scanning is not available for this provider yet. Test the connection from Cloud Accounts or choose another account.
-                    </p>
-                  ) : null}
-                  <p className="text-xs text-[color:var(--text-tertiary)]">
-                    Scope is the connected account boundary — not a per-scan region picker. Update regions on the connection record in Cloud Accounts.
-                  </p>
-                </div>
-              )}
-            </Section>
-          )}
+        <form
+          onSubmit={scanMode === "adhoc" ? handleAdhocSubmit : (e) => e.preventDefault()}
+          className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_220px]"
+        >
+          <div className="space-y-4 p-5">
+            {scanMode === "connected" && (
+              <ConnectedAccountPanel
+                connections={connections}
+                connectionsLoading={connectionsLoading}
+                connectionsError={connectionsError}
+                selectedConnectionId={selectedConnectionId}
+                onSelectConnection={setSelectedConnectionId}
+                selectedConnection={selectedConnection}
+              />
+            )}
 
-          {scanMode === "adhoc" && (
-            <>
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    { id: "repository" as const, label: "Public repo", icon: Link2, hint: "GitHub/GitLab URL — shallow clone" },
-                    { id: "workstation" as const, label: "Workstation", icon: Bot, hint: "Agent projects on this machine" },
-                    { id: "containers" as const, label: "Containers", icon: Container, hint: "OCI images and registries" },
-                    { id: "kubernetes" as const, label: "Kubernetes", icon: Server, hint: "Pods in current kube context" },
-                  ] as const
-                ).map((option) => {
-                  const Icon = option.icon;
-                  const active = target === option.id;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => setTarget(option.id)}
-                      className={`min-w-[9.5rem] rounded-xl border px-3 py-2.5 text-left transition ${
-                        active
-                          ? "border-emerald-600/50 bg-emerald-500/10 text-[color:var(--foreground)]"
-                          : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <Icon className="h-4 w-4 shrink-0" />
+            {scanMode === "adhoc" && (
+              <>
+                <div role="tablist" aria-label="Ad-hoc target" className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { id: "repository" as const, label: "Public repo", icon: Link2 },
+                      { id: "workstation" as const, label: "Workstation", icon: Bot },
+                      { id: "containers" as const, label: "Containers", icon: Container },
+                      { id: "kubernetes" as const, label: "Kubernetes", icon: Server },
+                    ] as const
+                  ).map((option) => {
+                    const Icon = option.icon;
+                    const active = target === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setTarget(option.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                          active
+                            ? "border-emerald-600/50 bg-emerald-500/10 text-[color:var(--foreground)]"
+                            : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)]"
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
                         {option.label}
-                      </div>
-                      <p className="mt-1 text-[11px] text-[color:var(--text-tertiary)]">{option.hint}</p>
-                    </button>
-                  );
-                })}
-              </div>
+                      </button>
+                    );
+                  })}
+                </div>
 
-              {target === "repository" && (
-                <Section title="Public git repository">
-                  <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
-                    Paste an https git URL. We shallow-clone on the control plane, auto-detect OSS apps, agent code,
-                    uv.lock/requirements manifests, ingestion pipelines, Terraform/cloud infra, secrets, weak crypto,
-                    MCP configs, and skill files — then visualize findings in the graph.
-                  </p>
-                  <input
-                    type="url"
-                    placeholder="https://github.com/org/agent-repo"
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 font-mono text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
-                    value={repoUrlInput}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setRepoUrlInput(value);
-                      setForm((current) => ({ ...current, repo_url: value.trim() || undefined }));
-                    }}
-                  />
-                  <div className="mt-4 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
-                    <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-                      Auto-detected at scan time · {repoScanLanguageSummary()}
-                    </p>
-                    <ul className="mt-2 space-y-2">
-                      {REPO_SCAN_SURFACES.map((surface) => (
-                        <li key={surface.id} className="text-xs text-[color:var(--text-secondary)]">
-                          <span className="font-medium text-[color:var(--foreground)]">{surface.label}</span>
-                          {" — "}
-                          {surface.detail}
-                        </li>
-                      ))}
-                    </ul>
+                {target === "repository" && (
+                  <div className="space-y-3">
+                    <input
+                      type="url"
+                      aria-label="Public repository URL"
+                      placeholder="https://github.com/org/repo"
+                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 font-mono text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
+                      value={repoUrlInput}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setRepoUrlInput(value);
+                        setForm((current) => ({ ...current, repo_url: value.trim() || undefined }));
+                      }}
+                    />
+                    <RepoSurfaceCatalog />
                   </div>
-                  <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
-                    * SAST runs when Semgrep is installed on the control plane. SaaS connectors (Jira, Slack, ServiceNow) are scanned via{" "}
-                    <Link href="/sources" className="underline hover:text-[color:var(--foreground)]">Data Sources</Link>
-                    , not git URLs.
-                  </p>
-                  <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
-                    Private repos: set <span className="font-mono">AGENT_BOM_REPO_SCAN_TOKEN</span> on the control plane host.
-                  </p>
-                </Section>
-              )}
+                )}
 
-              {target === "workstation" && (
-                <Section title="Python agent projects">
-                  <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
-                    Scan LangChain, CrewAI, or custom agent repos on this workstation. MCP configs in the project are discovered automatically.
-                  </p>
+                {target === "workstation" && (
                   <ListInput
-                    placeholder="/path/to/my-langchain-app"
+                    placeholder="/path/to/agent-project"
                     value={apInput}
                     onChange={setApInput}
                     onAdd={() => addToList("agent_projects", apInput, () => setApInput(""))}
                     items={form.agent_projects ?? []}
                     onRemove={(i) => removeFromList("agent_projects", i)}
                   />
-                </Section>
-              )}
+                )}
 
-              {target === "containers" && (
-                <Section title="Container images">
-                  <ListInput
-                    placeholder="nginx:1.25 or ghcr.io/org/app:v1"
-                    value={imageInput}
-                    onChange={setImageInput}
+                {target === "containers" && (
+                  <ContainerTargetPanel
+                    imageInput={imageInput}
+                    setImageInput={setImageInput}
                     onAdd={() => addToList("images", imageInput, () => setImageInput(""))}
-                    items={[]}
-                    onRemove={() => {}}
+                    queuedImages={queuedImages}
+                    onRemove={(i) => removeFromList("images", i)}
+                    showBulkImages={showBulkImages}
+                    setShowBulkImages={setShowBulkImages}
+                    bulkText={bulkText}
+                    setBulkText={setBulkText}
+                    applyBulk={applyBulk}
+                    parseBulkImages={parseBulkImages}
+                    fileInputRef={fileInputRef}
+                    handleFileUpload={handleFileUpload}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowBulkImages((current) => !current)}
-                    className="mt-3 inline-flex items-center gap-1.5 text-xs text-[color:var(--text-secondary)] transition hover:text-[color:var(--foreground)]"
-                  >
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showBulkImages ? "rotate-180" : ""}`} />
-                    Add multiple images
-                  </button>
-                  {showBulkImages && (
-                    <div className="mt-3 space-y-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
-                      <textarea
-                        placeholder={"# One image per line\nnginx:1.25\nredis:7-alpine"}
-                        value={bulkText}
-                        onChange={(e) => setBulkText(e.target.value)}
-                        rows={4}
-                        className="w-full resize-y rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 font-mono text-sm text-[color:var(--foreground)] placeholder:text-[color:var(--text-tertiary)] focus:border-emerald-600 focus:outline-none"
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={applyBulk}
-                          disabled={!bulkText.trim()}
-                          className="flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          Add {parseBulkImages(bulkText).length || 0} image{parseBulkImages(bulkText).length !== 1 ? "s" : ""}
-                        </button>
-                        <input ref={fileInputRef} type="file" accept=".txt,.csv,.list" onChange={handleFileUpload} className="hidden" />
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)]"
-                        >
-                          <Upload className="h-3.5 w-3.5" />
-                          Import list file
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {queuedImages.length > 0 && (
-                    <div className="mt-3 space-y-1.5">
-                      <div className="text-xs font-medium text-[color:var(--text-tertiary)]">
-                        {queuedImages.length} image{queuedImages.length !== 1 ? "s" : ""} queued
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {queuedImages.map((item, i) => (
-                          <span key={i} className="flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 font-mono text-xs text-[color:var(--foreground)]">
-                            {item}
-                            <button type="button" onClick={() => removeFromList("images", i)}>
-                              <X className="h-3 w-3 text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </Section>
-              )}
+                )}
 
-              {target === "kubernetes" && (
-                <Section title="Kubernetes cluster">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-emerald-500"
-                      checked={form.k8s ?? false}
-                      onChange={(e) => setForm((f) => ({ ...f, k8s: e.target.checked }))}
-                    />
-                    <span className="text-sm text-[color:var(--foreground)]">Scan running pods via current kubectl context</span>
-                  </label>
-                  {form.k8s && (
-                    <div className="mt-3 space-y-1.5">
-                      <label htmlFor="k8s-namespace-filter" className="text-xs font-medium text-[color:var(--text-secondary)]">
-                        Namespace filter
-                      </label>
+                {target === "kubernetes" && (
+                  <div className="space-y-3">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-[color:var(--border-subtle)] text-emerald-500"
+                        checked={form.k8s ?? false}
+                        onChange={(e) => setForm((f) => ({ ...f, k8s: e.target.checked }))}
+                      />
+                      <span className="text-sm text-[color:var(--foreground)]">Scan pods in current kube context</span>
+                    </label>
+                    {form.k8s ? (
                       <input
                         id="k8s-namespace-filter"
+                        aria-label="Namespace filter"
                         type="text"
                         placeholder="All namespaces"
-                        className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
+                        className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
                         value={form.k8s_namespace ?? ""}
                         onChange={(e) => setForm((f) => ({ ...f, k8s_namespace: e.target.value || undefined }))}
                       />
-                      <p className="text-xs text-[color:var(--text-tertiary)]">
-                        Leave blank to scan every namespace visible in your current kube context. Enter one namespace name to limit scope.
-                      </p>
+                    ) : null}
+                  </div>
+                )}
+
+                {target !== "repository" && (
+                  <details className="group rounded-xl border border-[color:var(--border-subtle)]">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-xs font-medium text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+                      Advanced targets
+                      <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="space-y-3 border-t border-[color:var(--border-subtle)] px-4 py-3">
+                      <ListInput
+                        placeholder="Terraform directory"
+                        value={tfInput}
+                        onChange={setTfInput}
+                        onAdd={() => addToList("tf_dirs", tfInput, () => setTfInput(""))}
+                        items={form.tf_dirs ?? []}
+                        onRemove={(i) => removeFromList("tf_dirs", i)}
+                      />
+                      <input
+                        type="text"
+                        placeholder="GitHub Actions repo path"
+                        className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm"
+                        value={form.gha_path ?? ""}
+                        onChange={(e) => setForm((f) => ({ ...f, gha_path: e.target.value || undefined }))}
+                      />
                     </div>
-                  )}
-                </Section>
-              )}
-            </>
-          )}
+                  </details>
+                )}
+              </>
+            )}
 
-          {scanMode === "scheduled" && (
-            <Section title="Registered data source">
-              {sourcesLoading ? (
-                <p className="text-sm text-[color:var(--text-secondary)]">Loading data sources…</p>
-              ) : sources.length === 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-[color:var(--text-secondary)]">
-                    No data sources are registered. Sources enqueue scan jobs from saved connector or repo configs.
-                  </p>
-                  <Link
-                    href="/sources"
-                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
-                  >
-                    Register data source
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <label htmlFor="source-picker" className="text-xs font-medium text-[color:var(--text-secondary)]">
-                    Source
-                  </label>
-                  <select
-                    id="source-picker"
-                    value={selectedSourceId}
-                    onChange={(event) => setSelectedSourceId(event.target.value)}
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
-                  >
-                    {sources.map((source) => (
-                      <option key={source.source_id} value={source.source_id}>
-                        {source.display_name} · {source.kind}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-[color:var(--text-tertiary)]">
-                    Scope follows the source&apos;s saved config. For recurring cadence, manage schedules from Data Sources.
-                  </p>
-                  <Link href="/sources" className="inline-flex text-xs text-emerald-400 hover:text-emerald-300">
-                    Manage all data sources
-                  </Link>
-                </div>
-              )}
-            </Section>
-          )}
-        </div>
+            {scanMode === "scheduled" && (
+              <ScheduledSourcePanel
+                sources={sources}
+                sourcesLoading={sourcesLoading}
+                selectedSourceId={selectedSourceId}
+                onSelectSource={setSelectedSourceId}
+              />
+            )}
 
-        <div className="space-y-5">
-          <ScopeSummaryPanel chips={scopeChips} mode={scanMode} />
-
-          {scanMode === "adhoc" && target !== "repository" && (
-            <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
-                Advanced targets
-                <ChevronDown className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="space-y-5 border-t border-[color:var(--border-subtle)] px-5 py-4">
-                <div>
-                  <h3 className="mb-2 text-sm font-medium text-[color:var(--foreground)]">Terraform directories</h3>
-                  <ListInput
-                    placeholder="/path/to/infra"
-                    value={tfInput}
-                    onChange={setTfInput}
-                    onAdd={() => addToList("tf_dirs", tfInput, () => setTfInput(""))}
-                    items={form.tf_dirs ?? []}
-                    onRemove={(i) => removeFromList("tf_dirs", i)}
-                  />
-                </div>
-                <div>
-                  <h3 className="mb-2 text-sm font-medium text-[color:var(--foreground)]">GitHub Actions</h3>
-                  <input
-                    type="text"
-                    placeholder="/path/to/git/repo"
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
-                    value={form.gha_path ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, gha_path: e.target.value || undefined }))}
-                  />
-                </div>
-                <div>
-                  <h3 className="mb-2 text-sm font-medium text-[color:var(--foreground)]">Custom inventory</h3>
-                  <input
-                    type="text"
-                    placeholder="/path/to/agents.json"
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
-                    value={form.inventory ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, inventory: e.target.value || undefined }))}
-                  />
-                </div>
-              </div>
-            </details>
-          )}
-
-          {scanMode === "adhoc" && (
-            <Section title="Options">
-              <label className="flex cursor-pointer items-start gap-2">
+            {scanMode === "adhoc" && (
+              <label className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
                 <input
                   type="checkbox"
-                  className="mt-0.5 h-4 w-4 rounded border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-emerald-500"
+                  className="h-3.5 w-3.5 rounded border-[color:var(--border-subtle)] text-emerald-500"
                   checked={form.enrich ?? false}
                   onChange={(e) => setForm((f) => ({ ...f, enrich: e.target.checked }))}
                 />
-                <span className="text-sm text-[color:var(--foreground)]">
-                  Enrich with NVD CVSS, EPSS, and CISA KEV
-                  <span className="mt-0.5 block text-xs text-[color:var(--text-tertiary)]">Slower; requires internet</span>
-                </span>
+                Enrich with CVSS / EPSS / KEV (slower)
               </label>
-            </Section>
-          )}
+            )}
 
-          {error && (
-            <p className="rounded-lg border border-red-900 bg-red-950 px-4 py-3 text-sm text-red-400">{error}</p>
-          )}
+            {error ? (
+              <p className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-400">{error}</p>
+            ) : null}
+          </div>
 
-          {scanMode === "connected" ? (
-            <button
-              type="button"
-              onClick={handleCloudScan}
-              disabled={loading || !cloudScanReady}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Starting cloud scan...
-                </>
-              ) : (
-                <>
+          <aside className="flex flex-col border-t border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 lg:border-t-0 lg:border-l">
+            <ScopeSummaryPanel chips={scopeChips} mode={scanMode} />
+            <div className="mt-auto pt-4">
+              {scanMode === "connected" ? (
+                <button
+                  type="button"
+                  onClick={handleCloudScan}
+                  disabled={loading || !cloudScanReady}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Run cloud scan <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
-          ) : scanMode === "scheduled" ? (
-            <button
-              type="button"
-              onClick={handleSourceRun}
-              disabled={loading || !sourceRunReady}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Running source...
-                </>
+                </button>
+              ) : scanMode === "scheduled" ? (
+                <button
+                  type="button"
+                  onClick={handleSourceRun}
+                  disabled={loading || !sourceRunReady}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Run source <ArrowRight className="h-4 w-4" />
+                </button>
               ) : (
-                <>
-                  Run source now <ArrowRight className="h-4 w-4" />
-                </>
+                <button
+                  type="submit"
+                  disabled={loading || !repoScanReady}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {target === "repository" ? "Scan repo" : "Start scan"} <ArrowRight className="h-4 w-4" />
+                </button>
               )}
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={loading || !repoScanReady}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Starting scan...
-                </>
-              ) : (
-                <>
-                  {target === "repository" ? "Scan repository" : "Start ad-hoc scan"} <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
-          )}
-        </div>
-      </form>
+            </div>
+          </aside>
+        </form>
+      </div>
+
+      <nav aria-label="Related" className="mt-4 flex flex-wrap gap-3 text-xs text-[color:var(--text-tertiary)]">
+        <RelatedLink href="/connections">Cloud accounts</RelatedLink>
+        <RelatedLink href="/sources">Data sources</RelatedLink>
+        <RelatedLink href="/jobs">Scan jobs</RelatedLink>
+      </nav>
     </div>
   );
 }
 
 function ScopeSummaryPanel({ chips, mode }: { chips: ScanScopeChip[]; mode: ScanMode }) {
-  const title =
-    mode === "connected"
-      ? "Cloud scan scope"
-      : mode === "scheduled"
-        ? "Source scope"
-        : "Ad-hoc scan scope";
+  const title = mode === "connected" ? "Scope" : mode === "scheduled" ? "Scope" : "Scope";
 
   return (
-    <Section title={title}>
-      <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
-        Review what this run will touch before you start.
-      </p>
-      <dl className="space-y-2">
+    <div>
+      <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{title}</h2>
+      <div className="mt-2 flex flex-col gap-1.5">
         {chips.map((chip) => (
-          <div key={`${chip.label}-${chip.value}`} className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
-            <dt className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-              {chip.label}
-            </dt>
-            <dd className="mt-0.5 text-sm text-[color:var(--foreground)]">{chip.value}</dd>
+          <div key={`${chip.label}-${chip.value}`} className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-2">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">{chip.label}</p>
+            <p className="mt-0.5 text-xs text-[color:var(--foreground)]">{chip.value}</p>
           </div>
         ))}
-      </dl>
-    </Section>
+      </div>
+    </div>
+  );
+}
+
+function ConnectedAccountPanel({
+  connections,
+  connectionsLoading,
+  connectionsError,
+  selectedConnectionId,
+  onSelectConnection,
+  selectedConnection,
+}: {
+  connections: CloudConnectionRecord[];
+  connectionsLoading: boolean;
+  connectionsError: string;
+  selectedConnectionId: string;
+  onSelectConnection: (id: string) => void;
+  selectedConnection: CloudConnectionRecord | null;
+}) {
+  if (connectionsLoading) return <p className="text-sm text-[color:var(--text-secondary)]">Loading…</p>;
+  if (connectionsError) return <p className="text-sm text-red-400">{connectionsError}</p>;
+  if (connections.length === 0) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-[color:var(--text-secondary)]">No accounts connected.</p>
+        <Link href="/connections" className="inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300">
+          Connect account <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <select
+        id="connection-picker"
+        aria-label="Account"
+        value={selectedConnectionId}
+        onChange={(event) => onSelectConnection(event.target.value)}
+        className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
+      >
+        {connections.map((connection) => (
+          <option key={connection.id} value={connection.id}>
+            {providerDisplayName(connection.provider)} · {connection.display_name}
+          </option>
+        ))}
+      </select>
+      {selectedConnection && !isScannableConnection(selectedConnection) ? (
+        <p className="text-xs text-amber-300">Provider not scannable yet.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function ScheduledSourcePanel({
+  sources,
+  sourcesLoading,
+  selectedSourceId,
+  onSelectSource,
+}: {
+  sources: SourceRecord[];
+  sourcesLoading: boolean;
+  selectedSourceId: string;
+  onSelectSource: (id: string) => void;
+}) {
+  if (sourcesLoading) return <p className="text-sm text-[color:var(--text-secondary)]">Loading…</p>;
+  if (sources.length === 0) {
+    return (
+      <Link href="/sources" className="inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300">
+        Register data source <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
+    );
+  }
+  return (
+    <select
+      id="source-picker"
+      aria-label="Source"
+      value={selectedSourceId}
+      onChange={(event) => onSelectSource(event.target.value)}
+      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 text-sm focus:border-emerald-600 focus:outline-none"
+    >
+      {sources.map((source) => (
+        <option key={source.source_id} value={source.source_id}>
+          {source.display_name} · {source.kind}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function RepoSurfaceCatalog() {
+  return (
+    <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-xs text-[color:var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+        <span>
+          {REPO_SCAN_SURFACES.length} surfaces auto-detected · {repoScanLanguageSummary()}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-[color:var(--border-subtle)] px-3 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          {REPO_SCAN_SURFACES.map((surface) => (
+            <span
+              key={surface.id}
+              title={surface.detail}
+              className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] text-[color:var(--text-secondary)]"
+            >
+              {surface.label}
+            </span>
+          ))}
+        </div>
+        <p className="mt-2 text-[10px] text-[color:var(--text-tertiary)]">
+          Shallow read-only clone. SaaS connectors use{" "}
+          <Link href="/sources" className="text-emerald-400 hover:text-emerald-300">Data Sources</Link>, not git URLs.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+function ContainerTargetPanel({
+  imageInput,
+  setImageInput,
+  onAdd,
+  queuedImages,
+  onRemove,
+  showBulkImages,
+  setShowBulkImages,
+  bulkText,
+  setBulkText,
+  applyBulk,
+  parseBulkImages,
+  fileInputRef,
+  handleFileUpload,
+}: {
+  imageInput: string;
+  setImageInput: (value: string) => void;
+  onAdd: () => void;
+  queuedImages: string[];
+  onRemove: (index: number) => void;
+  showBulkImages: boolean;
+  setShowBulkImages: (value: boolean | ((current: boolean) => boolean)) => void;
+  bulkText: string;
+  setBulkText: (value: string) => void;
+  applyBulk: () => void;
+  parseBulkImages: (text: string) => string[];
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <ListInput
+        placeholder="nginx:1.25 or ghcr.io/org/app:v1"
+        value={imageInput}
+        onChange={setImageInput}
+        onAdd={onAdd}
+        items={[]}
+        onRemove={() => {}}
+      />
+      <button
+        type="button"
+        onClick={() => setShowBulkImages((current) => !current)}
+        className="text-xs text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]"
+      >
+        {showBulkImages ? "Hide bulk add" : "Bulk add images"}
+      </button>
+      {showBulkImages ? (
+        <textarea
+          placeholder={"# one image per line"}
+          value={bulkText}
+          onChange={(e) => setBulkText(e.target.value)}
+          rows={3}
+          className="w-full resize-y rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 font-mono text-xs"
+        />
+      ) : null}
+      {showBulkImages ? (
+        <div className="flex gap-2">
+          <button type="button" onClick={applyBulk} disabled={!bulkText.trim()} className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs text-white disabled:opacity-40">
+            Add {parseBulkImages(bulkText).length || 0}
+          </button>
+          <input ref={fileInputRef} type="file" accept=".txt,.csv,.list" onChange={handleFileUpload} className="hidden" />
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs">
+            Import file
+          </button>
+        </div>
+      ) : null}
+      {queuedImages.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {queuedImages.map((item, i) => (
+            <span key={i} className="flex items-center gap-1 rounded-md border border-[color:var(--border-subtle)] px-2 py-0.5 font-mono text-[10px]">
+              {item}
+              <button type="button" onClick={() => onRemove(i)} aria-label={`Remove ${item}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -786,15 +742,6 @@ function RelatedLink({ href, children }: { href: string; children: React.ReactNo
     <Link href={href} className="text-[color:var(--text-secondary)] transition-colors hover:text-emerald-400">
       {children}
     </Link>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
-      <h3 className="mb-3 text-sm font-semibold text-[color:var(--foreground)]">{title}</h3>
-      {children}
-    </div>
   );
 }
 

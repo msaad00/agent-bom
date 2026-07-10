@@ -26,6 +26,6 @@ describe("BrandLogo", () => {
 
   it("renders the canonical tagline when requested", () => {
     const { getByText } = render(<BrandLogo showTagline />);
-    expect(getByText("AI supply-chain & infrastructure security")).toBeInTheDocument();
+    expect(getByText("AI supply-chain security")).toBeInTheDocument();
   });
 });

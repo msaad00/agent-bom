@@ -57,3 +57,24 @@ def test_expand_project_scan_targets_auto_sast_when_semgrep_available(
 
     assert "sast" in targets.auto_enabled
     assert targets.code_paths == (str(tmp_path),)
+
+
+def test_expand_project_scan_targets_auto_prompts_in_subdir(tmp_path: Path) -> None:
+    prompts_dir = tmp_path / "prompts" / "support"
+    prompts_dir.mkdir(parents=True)
+    (prompts_dir / "system_prompt.txt").write_text("You are a helpful assistant.\n", encoding="utf-8")
+
+    targets = expand_project_scan_targets(str(tmp_path))
+
+    assert "prompts" in targets.auto_enabled
+    assert targets.scan_prompts is True
+
+
+def test_repo_static_surface_catalog_lists_api_surfaces() -> None:
+    from agent_bom.repo_auto_detect import repo_static_surface_catalog
+
+    catalog = repo_static_surface_catalog()
+    ids = {entry["id"] for entry in catalog}
+    assert "secrets" in ids
+    assert "jupyter" in ids
+    assert any(entry["api_repo_tree"] for entry in catalog)

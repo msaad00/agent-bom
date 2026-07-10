@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" role="img" aria-label="MITRE ATLAS">
+  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="currentColor" fill-opacity="0.06"/>
+  <path d="M8.5 16V8h2.1l2.4 5.1L15.4 8H17.5v8h-1.7v-4.8L13 16h-1.4l-2.8-4.8V16H8.5Z" fill="currentColor"/>
+</svg>

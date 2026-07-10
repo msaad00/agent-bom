@@ -59,15 +59,13 @@ describe("ScanForm", () => {
     render(<ScanForm />);
 
     expect(screen.getByRole("heading", { name: "New Scan" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Where am I scanning?" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Connected account/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ad-hoc target/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Data source/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Ad-hoc scan scope" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cloud account" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Ad-hoc" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Data source" })).toBeInTheDocument();
+    expect(screen.getByText("Scope")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Connected account/i }));
+    await user.click(screen.getByRole("tab", { name: "Cloud account" }));
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Cloud scan scope" })).toBeInTheDocument();
       expect(screen.getByText("Read-only inventory + CIS")).toBeInTheDocument();
     });
   });
@@ -93,11 +91,11 @@ describe("ScanForm", () => {
     });
 
     render(<ScanForm />);
-    await user.click(screen.getByRole("button", { name: /Ad-hoc target/i }));
-    expect(screen.getByRole("heading", { name: "Ad-hoc scan scope" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    expect(screen.getByText("Scope")).toBeInTheDocument();
     expect(screen.getByText(/Local MCP configs on control plane host/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Start ad-hoc scan/i }));
+    await user.click(screen.getByRole("button", { name: /Start scan/i }));
     expect(startScan).toHaveBeenCalled();
   });
 
@@ -159,19 +157,16 @@ describe("ScanForm", () => {
     });
 
     render(<ScanForm />);
-    await user.click(screen.getByRole("button", { name: /Ad-hoc target/i }));
-    await user.click(screen.getByRole("button", { name: /Public repo/i }));
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    await user.click(screen.getByRole("tab", { name: /Public repo/i }));
     await user.type(
-      screen.getByPlaceholderText("https://github.com/org/agent-repo"),
+      screen.getByPlaceholderText("https://github.com/org/repo"),
       "https://github.com/org/repo",
     );
-    expect(screen.getByText(/Shallow read-only git clone/i)).toBeInTheDocument();
-    expect(screen.getByText(/Auto-detected at scan time/i)).toBeInTheDocument();
+    expect(screen.getByText(/surfaces auto-detected/i)).toBeInTheDocument();
     expect(screen.getByText(/Secrets & credentials/i)).toBeInTheDocument();
-    expect(screen.getByText(/Weak cryptography/i)).toBeInTheDocument();
-    expect(screen.getByText(/Jupyter notebooks/i)).toBeInTheDocument();
     expect(screen.getByText(/not git URLs/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Scan repository/i }));
+    await user.click(screen.getByRole("button", { name: /Scan repo/i }));
     expect(startScan).toHaveBeenCalledWith({
       repo_url: "https://github.com/org/repo",
       enrich: false,
@@ -182,12 +177,10 @@ describe("ScanForm", () => {
     const user = userEvent.setup();
     render(<ScanForm />);
 
-    await user.click(screen.getByRole("button", { name: /Ad-hoc target/i }));
-    const k8sTarget = screen.getAllByRole("button", { name: /Kubernetes/i }).at(-1);
-    expect(k8sTarget).toBeDefined();
-    await user.click(k8sTarget!);
-    await user.click(screen.getByRole("checkbox", { name: /Scan running pods/i }));
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    const k8sTarget = screen.getByRole("tab", { name: /Kubernetes/i });
+    await user.click(k8sTarget);
+    await user.click(screen.getByRole("checkbox", { name: /Scan pods in current kube context/i }));
     expect(screen.getByLabelText("Namespace filter")).toBeInTheDocument();
-    expect(screen.getByText(/Leave blank to scan every namespace/i)).toBeInTheDocument();
   });
 });

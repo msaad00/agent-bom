@@ -1,4 +1,9 @@
-"""Extra discovery passes for shallow-cloned public repositories."""
+"""Extra discovery passes for shallow-cloned public repositories.
+
+Static surface inventory is owned by ``agent_bom.repo_auto_detect`` — see
+``REPO_STATIC_SURFACES`` and ``repo_static_surface_catalog()`` for the
+canonical list shared with CLI ``--project`` / ``--repo`` auto-detect.
+"""
 
 from __future__ import annotations
 
@@ -140,8 +145,8 @@ def scan_cloned_repo_tree(
 ) -> RepoTreeScanResult:
     """Run static discovery passes on a cloned repository root.
 
-    Mirrors high-signal repo passes from the CLI ``--repo`` path: skills,
-    IaC, lockfiles (uv.lock, requirements.txt, …), secrets, and weak crypto.
+    Surfaces mirror CLI ``--repo`` auto-detect where applicable. Canonical
+    inventory: ``agent_bom.repo_auto_detect.repo_static_surface_summary()``.
     """
     root = Path(cloned_path)
     result = RepoTreeScanResult()

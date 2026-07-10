@@ -1,13 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ArrowRight,
-  GitBranch,
-  Shield,
-  ShieldAlert,
-  Workflow,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import type { OverviewDomain, OverviewResponse } from "@/lib/api";
 import type { ServiceEntry, ServiceId } from "@/lib/api-types";
@@ -104,7 +98,9 @@ export function OverviewCockpit({
   const activeDomains = domainList.filter((domain) => domain.status !== "idle").length;
   const coverage = domainList.length > 0 ? Math.round((activeDomains / domainList.length) * 100) : null;
   const complianceScore =
-    compliance != null ? `${Math.round(compliance.overallScore)}%` : coverage != null ? `${coverage}%` : undefined;
+    summaryReady && scans != null && scans > 0 && compliance != null && compliance.overallScore > 0
+      ? `${Math.round(compliance.overallScore)}%`
+      : undefined;
 
   return (
     <div className="space-y-4">
@@ -145,7 +141,7 @@ export function OverviewCockpit({
           </div>
         </div>
 
-        <ComplianceSnapshotPanel compliance={compliance} />
+        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={Boolean(summaryReady && scans && scans > 0)} />
         <ActivatedServicesPanel services={services} activeCount={signals.activeServices} />
 
         {domainList.length > 0 ? (
@@ -158,6 +154,7 @@ export function OverviewCockpit({
             }
             count={domainList.length}
             scrollMaxHeight="14rem"
+            defaultOpen
             actions={
               <div className="flex flex-wrap justify-end gap-1.5 text-[10px]">
                 <SignalChip
@@ -170,73 +167,52 @@ export function OverviewCockpit({
               </div>
             }
           >
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               {domainList.map((domain) => (
-                <DomainCard key={domain.href} domain={domain} />
+                <DomainCard key={domain.href + domain.label} domain={domain} />
               ))}
             </div>
           </Collapsible>
         ) : null}
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-12">
-        <section className="min-h-0 space-y-3 lg:col-span-8">
-          <TopRisksPanel
-            topPath={topPath}
-            exposurePaths={exposurePaths}
-            critical={critical}
-            high={high}
-            credentials={credentials}
-            summaryReady={summaryReady}
-          />
-        </section>
-
-        <aside className="min-h-0 space-y-3 lg:col-span-4">
-          <Collapsible
-            title="Severity roll-up"
-            subtitle="Open issues by severity across CVEs, misconfigs, and secrets"
-            defaultOpen
-          >
-            <SeverityRollup
-              severity={severity}
-              summaryReady={summaryReady}
-              matrix={issueMatrix}
-            />
-          </Collapsible>
-
-          <Collapsible title="Next steps" defaultOpen scrollMaxHeight="18rem">
-            <div className="grid gap-2">
-              <QuickLink href="/compliance" icon={Shield} label="Compliance" detail="Framework coverage & trust center" />
-              <QuickLink href="/findings?severity=critical" icon={ShieldAlert} label="Critical findings" detail={`${critical} open`} />
-              <QuickLink href="/findings?lens=trust" icon={Shield} label="Findings triage" detail="Ops & GRC disposition" />
-              <QuickLink href="/security-graph" icon={GitBranch} label="Security graph" detail="Lineage & attack paths" />
-              <QuickLink href="/remediation" icon={ShieldAlert} label="Remediation" detail="Actionable fixes" />
-              <QuickLink href="/connections" icon={Workflow} label="Integrations" detail={signals.connected ? "Live connectors" : "Connect cloud & SIEM"} />
-            </div>
-          </Collapsible>
-        </aside>
-      </div>
+      <section className="min-h-0">
+        <TopRisksPanel
+          topPath={topPath}
+          exposurePaths={exposurePaths}
+          critical={critical}
+          high={high}
+          credentials={credentials}
+          summaryReady={summaryReady}
+          agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
+        />
+      </section>
     </div>
   );
 }
 
 function ComplianceSnapshotPanel({
   compliance,
+  hasScanEvidence = false,
   defaultOpen = true,
 }: {
   compliance: OverviewComplianceSnapshot | null | undefined;
+  hasScanEvidence?: boolean | undefined;
   defaultOpen?: boolean | undefined;
 }) {
   const frameworks = (compliance?.frameworks ?? []).slice(0, 8);
-  const failing = frameworks.filter((item) => item.fail > 0).length;
+  const evidenceReady = hasScanEvidence && compliance != null && compliance.overallScore > 0;
+  const failing = evidenceReady ? frameworks.filter((item) => item.fail > 0).length : 0;
   const statusTone =
-    compliance?.overallStatus === "pass"
-      ? "text-emerald-400"
-      : compliance?.overallStatus === "warning"
-        ? "text-amber-300"
-        : compliance?.overallStatus === "fail"
-          ? "text-red-400"
-          : "text-[color:var(--text-tertiary)]";
+    !evidenceReady
+      ? "text-[color:var(--text-tertiary)]"
+      : compliance?.overallStatus === "pass"
+        ? "text-emerald-400"
+        : compliance?.overallStatus === "warning"
+          ? "text-amber-300"
+          : compliance?.overallStatus === "fail"
+            ? "text-red-400"
+            : "text-[color:var(--text-tertiary)]";
 
   return (
     <Collapsible
@@ -245,16 +221,16 @@ function ComplianceSnapshotPanel({
       title="Compliance"
       defaultOpen={defaultOpen}
       subtitle={
-        compliance
+        evidenceReady
           ? `${Math.round(compliance.overallScore)}% overall · ${failing} framework${failing === 1 ? "" : "s"} need attention`
-          : "Framework coverage appears after the first scan"
+          : "Framework coverage appears after the first completed scan"
       }
-      count={frameworks.length > 0 ? frameworks.length : undefined}
+      count={evidenceReady && frameworks.length > 0 ? frameworks.length : undefined}
       scrollMaxHeight="16rem"
       data-testid="overview-compliance-snapshot"
       actions={
         <div className="flex items-center gap-3">
-          {compliance ? (
+          {evidenceReady ? (
             <span className={`text-sm font-semibold tabular-nums ${statusTone}`}>
               {Math.round(compliance.overallScore)}%
             </span>
@@ -265,7 +241,7 @@ function ComplianceSnapshotPanel({
         </div>
       }
     >
-      {frameworks.length > 0 ? (
+      {evidenceReady && frameworks.length > 0 ? (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {frameworks.map((framework) => {
             const tone =
@@ -303,7 +279,7 @@ function ComplianceSnapshotPanel({
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-5 text-center text-xs text-[color:var(--text-tertiary)]">
-          Run a scan to light up OWASP, NIST, CIS, and related framework coverage.
+          Run a scan to light up OWASP, NIST, CIS, and related framework coverage. Empty estates do not show pass tiles.
         </div>
       )}
     </Collapsible>
@@ -313,11 +289,9 @@ function ComplianceSnapshotPanel({
 function ActivatedServicesPanel({
   services,
   activeCount,
-  defaultOpen = true,
 }: {
   services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
   activeCount: number;
-  defaultOpen?: boolean | undefined;
 }) {
   const rows = (Object.entries(SERVICE_META) as [ServiceId, (typeof SERVICE_META)[ServiceId]][]).map(
     ([id, meta]) => {
@@ -325,50 +299,45 @@ function ActivatedServicesPanel({
       return { id, entry, meta };
     },
   );
+  const liveRows = rows.filter(({ entry }) => entry.state === "live" || entry.state === "connected");
+  const lockedCount = rows.length - liveRows.length;
 
   return (
-    <Collapsible
-      bare
-      className="mt-4 border-t border-[color:var(--border-subtle)]"
-      title="Activated services"
-      defaultOpen={defaultOpen}
-      subtitle={
-        activeCount > 0
-          ? `${activeCount} live or connected · tools, data, runtime, and governance surfaces`
-          : "Connect accounts, sync fleet, or enable runtime to activate surfaces"
-      }
-      count={rows.length}
-      scrollMaxHeight="14rem"
+    <div
+      className="mt-4 border-t border-[color:var(--border-subtle)] pt-4"
       data-testid="overview-activated-services"
-      actions={
-        <Link href="/connections" className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
-          Manage <ArrowRight className="h-3 w-3" />
-        </Link>
-      }
     >
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+            Live surfaces
+          </p>
+          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+            {activeCount > 0
+              ? `${activeCount} live · ${lockedCount} not connected`
+              : "Connect cloud, data, or runtime to activate surfaces"}
+          </p>
+        </div>
+        <Link href="/connections" className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
+          Connections <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
         {rows.map(({ id, entry, meta }) => {
           const live = entry.state === "live" || entry.state === "connected";
           return (
             <Link
               key={id}
               href={meta.unlockHref}
-              className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 transition ${
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition ${
                 live
-                  ? "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] hover:border-[color:var(--border-strong)]"
-                  : "border-dashed border-[color:var(--border-subtle)] bg-transparent text-[color:var(--text-tertiary)] hover:border-[color:var(--border-strong)]"
+                  ? "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+                  : "border-dashed border-[color:var(--border-subtle)] text-[color:var(--text-tertiary)] hover:border-[color:var(--border-strong)]"
               }`}
+              title={serviceStateLabel(entry.state)}
             >
-              <div className="min-w-0">
-                <p className={`truncate text-xs font-medium ${live ? "text-[color:var(--foreground)]" : ""}`}>
-                  {meta.label}
-                </p>
-                <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
-                  {live && entry.count > 0 ? `${entry.count} · ${serviceStateLabel(entry.state)}` : serviceStateLabel(entry.state)}
-                </p>
-              </div>
               <span
-                className={`h-2 w-2 shrink-0 rounded-full ${
+                className={`h-1.5 w-1.5 rounded-full ${
                   entry.state === "live"
                     ? "bg-emerald-400"
                     : entry.state === "connected"
@@ -377,11 +346,15 @@ function ActivatedServicesPanel({
                 }`}
                 aria-hidden="true"
               />
+              {meta.label}
+              {live && entry.count > 0 ? (
+                <span className="tabular-nums text-[color:var(--text-tertiary)]">{entry.count}</span>
+              ) : null}
             </Link>
           );
         })}
       </div>
-    </Collapsible>
+    </div>
   );
 }
 
@@ -392,6 +365,7 @@ function TopRisksPanel({
   high,
   credentials,
   summaryReady,
+  agentMeshHref = null,
 }: {
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
@@ -399,6 +373,7 @@ function TopRisksPanel({
   high: number;
   credentials: number | null;
   summaryReady: boolean;
+  agentMeshHref?: string | null;
 }) {
   const headline =
     summaryReady && critical > 0
@@ -419,9 +394,16 @@ function TopRisksPanel({
       defaultOpen
       scrollMaxHeight="28rem"
       actions={
-        <Link href="/security-graph" className="text-xs text-emerald-500 hover:text-emerald-400">
-          Security graph
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {agentMeshHref ? (
+            <Link href={agentMeshHref} className="text-xs text-emerald-500 hover:text-emerald-400">
+              Agent mesh
+            </Link>
+          ) : null}
+          <Link href="/security-graph" className="text-xs text-emerald-500 hover:text-emerald-400">
+            Security graph
+          </Link>
+        </div>
       }
     >
       <p className="text-base font-semibold text-[color:var(--foreground)]">{headline}</p>
@@ -763,105 +745,6 @@ function DomainCard({ domain }: { domain: OverviewDomain }) {
         <span className={`font-mono text-sm font-semibold ${tone.text}`}>{domain.metric}</span>
         <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
       </div>
-    </Link>
-  );
-}
-
-function SeverityRollup({
-  severity,
-  summaryReady,
-  matrix,
-}: {
-  severity: SeverityCounts;
-  summaryReady: boolean;
-  matrix: IssueSeverityMatrix | null | undefined;
-}) {
-  const resolved = matrix ?? emptyIssueSeverityMatrix();
-  const hasTyped = resolved.openTotal > 0;
-  const rows = SEVERITY_BANDS.map((key) => ({
-    key,
-    label: key.charAt(0).toUpperCase() + key.slice(1),
-    tone:
-      key === "critical"
-        ? "bg-red-500"
-        : key === "high"
-          ? "bg-orange-500"
-          : key === "medium"
-            ? "bg-yellow-500"
-            : "bg-sky-500",
-    href: findingsHref({ severity: key }),
-    count: hasTyped ? resolved.totals[key] : severity[key],
-  }));
-  const max = Math.max(...rows.map((row) => row.count), 1);
-  const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "identity"];
-
-  return (
-    <div className="space-y-2.5">
-      {rows.map((row) => {
-        const width = summaryReady ? Math.max(8, (row.count / max) * 100) : 0;
-        return (
-          <div key={row.key} className="space-y-1">
-            <Link href={row.href} className="block group">
-              <div className="mb-1 flex items-center justify-between text-xs">
-                <span className="text-[color:var(--text-secondary)] group-hover:text-[color:var(--foreground)]">
-                  {row.label}
-                </span>
-                <span className="font-mono text-[color:var(--text-tertiary)]">
-                  {summaryReady ? row.count : "—"}
-                </span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
-                <div className={`h-full rounded-full ${row.tone}`} style={{ width: `${width}%` }} />
-              </div>
-            </Link>
-            {hasTyped && summaryReady && row.count > 0 ? (
-              <div className="flex flex-wrap gap-1 pl-0.5">
-                {issueTypes.map((issue) => {
-                  const count = resolved[issue][row.key];
-                  if (count <= 0) return null;
-                  return (
-                    <Link
-                      key={issue}
-                      href={findingsHref({ severity: row.key, issue })}
-                      className="rounded border border-[color:var(--border-subtle)] px-1.5 py-0.5 text-[9px] text-[color:var(--text-tertiary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--text-secondary)]"
-                    >
-                      {ISSUE_TYPE_SHORT[issue]} {count}
-                    </Link>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function QuickLink({
-  href,
-  icon: Icon,
-  label,
-  detail,
-}: {
-  href: string;
-  icon: typeof Shield;
-  label: string;
-  detail: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 transition hover:border-[color:var(--border-strong)]"
-    >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <Icon className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)]" />
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-[color:var(--foreground)]">{label}</p>
-          <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{detail}</p>
-        </div>
-      </div>
-      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-tertiary)]" />
     </Link>
   );
 }

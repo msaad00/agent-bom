@@ -52,7 +52,7 @@ def _add_done_job(
     _get_store().put(job)
 
 
-_EXPECTED_DOMAINS = {"cloud", "runtime", "cost", "identity", "ops"}
+_EXPECTED_DOMAINS = {"cloud", "vuln", "code", "runtime", "cost", "identity", "ops"}
 
 
 def test_overview_empty_shape() -> None:
@@ -112,9 +112,13 @@ def test_overview_aggregates_findings() -> None:
     assert data["headline"]["scans"] == 1
 
     cloud = data["domains"]["cloud"]
-    assert cloud["metric"] == 2  # two unique CVEs
-    assert cloud["status"] == "critical"
-    assert cloud["detail"]["kev"] == 1
+    assert cloud["metric_label"] == "accounts connected"
+    assert cloud["status"] in {"ok", "idle"}
+
+    vuln = data["domains"]["vuln"]
+    assert vuln["metric"] == 2  # two unique CVEs
+    assert vuln["status"] == "critical"
+    assert vuln["detail"]["kev"] == 1
 
     ops = data["domains"]["ops"]
     assert ops["metric"] == 1  # one completed scan
@@ -172,7 +176,7 @@ def test_overview_reads_compacted_scan_summary() -> None:
     assert data["posture"]["score"] == 42.0
     assert data["headline"]["critical"] == 3
     assert data["headline"]["high"] == 12
-    assert data["domains"]["cloud"]["metric"] == 87
+    assert data["domains"]["vuln"]["metric"] == 87
 
 
 def test_overview_requires_auth(monkeypatch) -> None:

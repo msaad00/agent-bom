@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   api,
   ScanJob,
   ScanResult,
-  Agent,
   JobListItem,
   PostureResponse,
   OverviewResponse,
@@ -15,7 +13,6 @@ import {
   type PostureCountsResponse,
   type ComplianceResponse,
 } from "@/lib/api";
-import { TrustStackSignals } from "@/components/trust-stack";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
   OverviewCockpit,
@@ -31,14 +28,7 @@ import { useCaptureMode } from "@/lib/use-capture-mode";
 import { buildSecurityGraphHref } from "@/lib/attack-paths";
 import { complianceFrameworkSummaries } from "@/lib/compliance-frameworks";
 import {
-  aggregateCompoundIssues,
-  aggregateEpss,
-  aggregateEpssVsCvss,
-  aggregateEstate,
-  aggregatePackages,
   aggregateSeverity,
-  aggregateSources,
-  aggregateTrend,
   blastAgents,
   blastCredentials,
   blastTools,
@@ -46,7 +36,7 @@ import {
 import { buildIssueSeverityMatrix } from "@/lib/finding-issue-type";
 import {
   ShieldAlert, ArrowRight, Clock,
-  AlertTriangle, GitBranch, BarChart3, LayoutGrid,
+  AlertTriangle, GitBranch, Network,
 } from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -55,24 +45,12 @@ function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   return "network";
 }
 
-// Heavy, below-the-fold charts + tables. Loaded lazily (client-only) so recharts
-// and the long tables stay out of the home route's first-paint bundle.
-const DashboardAnalytics = dynamic(() => import("@/components/dashboard-analytics"), {
-  ssr: false,
-  loading: () => (
-    <div className="rounded-[28px] border border-zinc-800/90 bg-zinc-950/60 p-8 text-center text-sm text-zinc-500">
-      Loading analytics…
-    </div>
-  ),
-});
-
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [detailJobs, setDetailJobs] = useState<ScanJob[]>([]);
   const [agentCount, setAgentCount] = useState<number>(0);
-  const [agentList, setAgentList] = useState<Agent[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(true);
@@ -85,19 +63,9 @@ export default function Dashboard() {
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
-  // Overview defaults to Analytics (trends / %) — Connect/Coverage lives on /connections.
-  const [activeTab, setActiveTab] = useState<"command" | "analytics">("analytics");
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
   const seededEvidence = captureMode || Boolean(counts?.scan_sources?.some((source) => source.includes("demo")));
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get("tab");
-    if (tab === "analytics" || tab === "command") {
-      setActiveTab(tab);
-    }
-  }, []);
 
   // Fetch posture grade + cross-domain overview (folded into the header scorecard)
   useEffect(() => {
@@ -137,11 +105,9 @@ export default function Dashboard() {
         const agentsRes = await api.listAgents();
         if (cancelled) return;
         setAgentCount(agentsRes?.count ?? 0);
-        setAgentList(Array.isArray(agentsRes?.agents) ? agentsRes.agents : []);
       } catch {
         if (cancelled) return;
         setAgentCount(0);
-        setAgentList([]);
       } finally {
         if (!cancelled) setAgentsLoading(false);
       }
@@ -247,39 +213,9 @@ export default function Dashboard() {
       ),
     [allBlast],
   );
-  const topPackages = useMemo(() => aggregatePackages(effectiveJobs), [effectiveJobs]);
-  const sources = useMemo(() => aggregateSources(effectiveJobs), [effectiveJobs]);
-  const trendData = useMemo(() => aggregateTrend(effectiveJobs), [effectiveJobs]);
-  const epssData = useMemo(() => aggregateEpss(allBlast), [allBlast]);
-  const scatterData = useMemo(() => aggregateEpssVsCvss(allBlast), [allBlast]);
-  const compoundIssues = useMemo(() => aggregateCompoundIssues(allBlast), [allBlast]);
   const kevCount = useMemo(() => allBlast.filter((b) => (b.is_kev ?? b.cisa_kev) === true).length, [allBlast]);
   const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
   const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
-  const estateSummary = useMemo(() => aggregateEstate(agentList), [agentList]);
-
-  // Real signals feeding the AI trust stack — data sources connected (L1),
-  // governance/context surfaces populated (L2), tools scanned (L3), and
-  // supply-chain packages covered (L4). Counts come straight from scan output
-  // and discovered agents so the stack reflects evidence, not a fixed label.
-  const trustSignals = useMemo<TrustStackSignals>(() => {
-    const pkgs = new Set<string>();
-    for (const job of effectiveJobs) {
-      if (job.status !== "done" || !job.result) continue;
-      const result = job.result as ScanResult;
-      for (const agent of result.agents) {
-        for (const srv of agent.mcp_servers) {
-          for (const pkg of srv.packages) pkgs.add(`${pkg.name}@${pkg.version}`);
-        }
-      }
-    }
-    return {
-      1: { count: sources.length },
-      2: { count: estateSummary.servers },
-      3: { count: estateSummary.tools },
-      4: { count: pkgs.size },
-    };
-  }, [effectiveJobs, sources.length, estateSummary.servers, estateSummary.tools]);
 
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
@@ -385,9 +321,7 @@ export default function Dashboard() {
   const displayedCredentialExposure = detailsReady
     ? (credentialExposureCount > 0 ? credentialExposureCount : (seededEvidence ? (overview?.headline.credential_exposed ?? 0) : credentialExposureCount))
     : (overview?.headline.credential_exposed ?? 0);
-  const displayedReachableTools = detailsReady
-    ? (reachableToolCount > 0 ? reachableToolCount : (seededEvidence ? estateSummary.tools : reachableToolCount))
-    : estateSummary.tools;
+  const displayedReachableTools = detailsReady ? reachableToolCount : null;
   const displayedPackages = detailsReady
     ? (totalPackages > 0 ? totalPackages : (seededEvidence ? (summaryStats?.total_packages ?? 0) : totalPackages))
     : (summaryStats?.total_packages ?? 0);
@@ -411,7 +345,7 @@ export default function Dashboard() {
       <PageLaneHeader
         lane="command"
         title="Overview"
-        subtitle="Current posture, compliance, and whatever surfaces you’ve connected — cloud, runtime, inventory, and governance."
+        subtitle="Exec briefing: posture, open issues, compliance evidence, and live surfaces. Use Findings, Security graph, and Agent mesh for engineer drill-down."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-200">
             {deploymentModeLabel(counts?.deployment_mode)} · {countActiveServices(counts?.services)} services live
@@ -431,12 +365,21 @@ export default function Dashboard() {
             >
               Security graph <GitBranch className="h-4 w-4" />
             </Link>
-            <Link
-              href="/compliance"
-              className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
-            >
-              Compliance
-            </Link>
+            {(displayedAgentCount ?? 0) > 0 ? (
+              <Link
+                href="/agents/topology"
+                className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+              >
+                Agent mesh <Network className="h-4 w-4" />
+              </Link>
+            ) : (
+              <Link
+                href="/compliance"
+                className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+              >
+                Compliance
+              </Link>
+            )}
           </>
         }
       />
@@ -470,54 +413,33 @@ export default function Dashboard() {
         services={counts?.services ?? null}
       />
 
-      <div>
-        <div className="mb-4 inline-flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-1">
-          <TabButton icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
-          <TabButton icon={LayoutGrid} label="Operations" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
-        </div>
-        {activeTab === "command" ? (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <section className="lg:col-span-2">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-medium text-[color:var(--foreground)]">Recent scans</h2>
-                {effectiveRecentJobs.length > 8 && (
-                  <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
-                    View all <ArrowRight className="w-3 h-3" />
-                  </Link>
-                )}
-              </div>
-              {jobsLoading && !importedReport ? (
-                <div className="text-sm text-[color:var(--text-secondary)]">Loading…</div>
-              ) : effectiveRecentJobs.length === 0 ? (
-                <EmptyState />
-              ) : (
-                <div className="space-y-2">
-                  {effectiveRecentJobs.slice(0, 8).map((job) => (
-                    <JobRow key={job.job_id} job={job} />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section>
-              <h2 className="mb-3 text-sm font-medium text-[color:var(--foreground)]">Activity</h2>
-              <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
-            </section>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <section className="lg:col-span-2">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-[color:var(--foreground)]">Recent scans</h2>
+            {effectiveRecentJobs.length > 8 && (
+              <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
+                View all <ArrowRight className="w-3 h-3" />
+              </Link>
+            )}
           </div>
-        ) : (
-          <DashboardAnalytics
-            severity={severity}
-            sources={sources}
-            trendData={trendData}
-            epssData={epssData}
-            scatterData={scatterData}
-            compoundIssues={compoundIssues}
-            agentList={agentList}
-            trustSignals={trustSignals}
-            topPackages={topPackages}
-            allBlast={allBlast}
-          />
-        )}
+          {jobsLoading && !importedReport ? (
+            <div className="text-sm text-[color:var(--text-secondary)]">Loading…</div>
+          ) : effectiveRecentJobs.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="space-y-2">
+              {effectiveRecentJobs.slice(0, 8).map((job) => (
+                <JobRow key={job.job_id} job={job} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-[color:var(--foreground)]">Activity</h2>
+          <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
+        </section>
       </div>
     </div>
   );
@@ -534,34 +456,6 @@ function formatShortScanTime(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function TabButton({
-  icon: Icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ElementType;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-        active
-          ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-          : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
-      }`}
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </button>
-  );
 }
 
 function countActiveServices(services: PostureCountsResponse["services"]): number {

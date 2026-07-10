@@ -33,18 +33,16 @@ describe("OverviewCockpit", () => {
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
   };
 
-  it("renders a single exec overview without altitude lenses", () => {
+  it("renders a single exec overview without altitude lenses or next-steps farm", () => {
     render(<OverviewCockpit {...baseProps} />);
 
     expect(screen.getByText("Command center")).toBeInTheDocument();
     expect(screen.getByText("Top risks")).toBeInTheDocument();
-    expect(screen.getByText("Next steps")).toBeInTheDocument();
+    expect(screen.queryByText("Next steps")).not.toBeInTheDocument();
+    expect(screen.queryByText("Severity roll-up")).not.toBeInTheDocument();
     expect(screen.getByText("Risk posture")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "CISO" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Trust" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Engineer" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Priority exposure path")).not.toBeInTheDocument();
-    expect(screen.queryByText("Trust evidence")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Agent mesh/i })).toHaveAttribute("href", "/agents/topology");
   });
 
   it("surfaces risk themes and links into findings / compliance", () => {
@@ -62,7 +60,7 @@ describe("OverviewCockpit", () => {
     );
   });
 
-  it("shows compliance and activated services snapshots", () => {
+  it("shows compliance and compact live-surface chips when evidence exists", () => {
     render(
       <OverviewCockpit
         {...baseProps}
@@ -94,6 +92,7 @@ describe("OverviewCockpit", () => {
     expect(screen.getByTestId("overview-compliance-snapshot")).toBeInTheDocument();
     expect(screen.getByText("OWASP LLM Top 10")).toBeInTheDocument();
     expect(screen.getByTestId("overview-activated-services")).toBeInTheDocument();
+    expect(screen.getByText("Live surfaces")).toBeInTheDocument();
     expect(screen.getByText("Cloud accounts")).toBeInTheDocument();
     expect(screen.getByTestId("overview-severity-issue-strip")).toBeInTheDocument();
     expect(screen.getByText("Open issues")).toBeInTheDocument();
@@ -101,6 +100,23 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("KEV 1")).toBeInTheDocument();
     expect(screen.getByText("Secrets 8")).toBeInTheDocument();
     expect(screen.getByText("Compliance 72%")).toBeInTheDocument();
+  });
+
+  it("does not show green compliance pass tiles without scan evidence", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        scans={0}
+        compliance={{
+          overallScore: 0,
+          overallStatus: "pass",
+          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("CIS Controls v8")).not.toBeInTheDocument();
+    expect(screen.getByText(/Empty estates do not show pass tiles/i)).toBeInTheDocument();
   });
 
   it("lets operators collapse overview sections", async () => {

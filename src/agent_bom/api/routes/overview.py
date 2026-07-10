@@ -342,6 +342,37 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
     }
 
 
+def _cloud_account_count(request: Request) -> int:
+    """Connected cloud accounts for the Cloud posture domain tile."""
+    try:
+        from agent_bom.api.connection_store import get_connection_store
+
+        return len(get_connection_store().list_for_tenant(_tenant_id(request)))
+    except Exception:  # pragma: no cover - connection store optional
+        _logger.debug("cloud account snapshot failed", exc_info=True)
+        return 0
+
+
+def _repo_scan_count(jobs: list[Any]) -> int:
+    """Count completed jobs that targeted a remote repo URL or repo scan source."""
+    count = 0
+    for job in jobs:
+        if job.status != JobStatus.DONE:
+            continue
+        request = getattr(job, "request", None)
+        repo_url = getattr(request, "repo_url", None) if request is not None else None
+        if isinstance(repo_url, str) and repo_url.strip():
+            count += 1
+            continue
+        result = cast(dict[str, Any], getattr(job, "result", None) or {})
+        sources = result.get("scan_sources") or []
+        if isinstance(sources, list) and any(
+            isinstance(src, str) and ("repo" in src.lower() or "project" in src.lower()) for src in sources
+        ):
+            count += 1
+    return count
+
+
 @router.get("/overview", tags=["overview"])
 async def get_overview(request: Request) -> dict[str, Any]:
     """Cross-domain posture snapshot for the unified landing page.
@@ -360,10 +391,25 @@ async def get_overview(request: Request) -> dict[str, Any]:
 
     critical_high = scan["severity"]["critical"] + scan["severity"]["high"]
 
+    cloud_accounts = _cloud_account_count(request)
+    repo_scans = _repo_scan_count(jobs)
+
     domains = {
         "cloud": {
-            "label": "Cloud / CNAPP",
-            "href": "/findings",
+            "label": "Cloud posture",
+            "href": "/connections",
+            "graph_href": _cloud_graph_href(scan["severity"]),
+            "metric": cloud_accounts,
+            "metric_label": "accounts connected",
+            "status": "ok" if cloud_accounts > 0 else "idle",
+            "detail": {
+                "accounts": cloud_accounts,
+                "sources": scan["sources"],
+            },
+        },
+        "vuln": {
+            "label": "Vuln / SCA",
+            "href": "/findings?issue=vulnerability",
             "graph_href": _cloud_graph_href(scan["severity"]),
             "metric": scan["unique_cves"],
             "metric_label": "open CVEs",
@@ -372,8 +418,17 @@ async def get_overview(request: Request) -> dict[str, Any]:
                 "critical": scan["severity"]["critical"],
                 "high": scan["severity"]["high"],
                 "kev": scan["kev"],
-                "sources": scan["sources"],
+                "packages": scan["unique_packages"],
             },
+        },
+        "code": {
+            "label": "Code / repo",
+            "href": "/scan",
+            "graph_href": _graph_drill_href(layers="directory,source_file,config_file,package,framework,vulnerability"),
+            "metric": repo_scans,
+            "metric_label": "repo scans",
+            "status": "ok" if repo_scans > 0 else "idle",
+            "detail": {"repo_scans": repo_scans, "packages": scan["unique_packages"]},
         },
         "runtime": {
             "label": "Runtime",

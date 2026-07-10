@@ -74,9 +74,11 @@ describe("ExposurePathCommandCenter", () => {
       />,
     );
 
-    expect(screen.getByText("analyst-agent -> werkzeug@2.2.2 -> CVE-2026-0002")).toBeInTheDocument();
+    expect(
+      screen.getByText("Analyst Agent → Database service → werkzeug → CVE-2026-0002 → Execute Sql → DATABASE URL"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("What is exposed")).not.toBeInTheDocument();
-    expect(screen.getByText("Evidence")).toBeInTheDocument();
+    expect(screen.getByText("Evidence & relationships")).toBeInTheDocument();
     expect(screen.queryByText("Evidence drawer")).not.toBeVisible();
     expect(screen.getByText("Validate the lead finding")).toBeInTheDocument();
   });

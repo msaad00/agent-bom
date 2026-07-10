@@ -377,10 +377,11 @@ function deriveVisibleNodeIds(
       )
       .map((node) => node.id);
     if (seeds.length > 0) {
-      const agentDepth =
-        filters.vulnOnly || filters.severity
-          ? Math.max(filters.maxDepth, 3)
-          : Math.max(filters.maxDepth, 2);
+      // A common agent → server → package → finding chain is three
+      // edges long. Preserve both endpoints in the focused view so the graph
+      // never presents an apparently safe dependency path with its finding
+      // clipped just beyond the default window.
+      const agentDepth = Math.max(filters.maxDepth, 3);
       visible = intersectSets(
         visible,
         collectNeighborhood(seeds, undirected, agentDepth),

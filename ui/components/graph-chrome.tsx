@@ -125,18 +125,18 @@ export function GraphLegendDock({
 
   return (
     <details
-      className="group border-t border-zinc-800/70 pt-2 open:pt-3"
+      className="group border-t border-[var(--border-subtle)] pt-2 open:pt-3"
       {...(defaultOpen ? { open: true } : {})}
     >
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1.5 text-xs [&::-webkit-details-marker]:hidden">
-        <span className="shrink-0 font-medium uppercase tracking-[0.16em] text-zinc-500">
+        <span className="shrink-0 font-medium uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
           Legend
         </span>
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 group-open:hidden">
           {preview.map((item) => (
             <span
               key={`preview:${item.label}:${item.kind}`}
-              className="inline-flex max-w-[8rem] items-center gap-1 text-[10px] text-zinc-400"
+              className="inline-flex max-w-[8rem] items-center gap-1 text-[10px] text-[var(--text-secondary)]"
               title={item.label}
             >
               <LegendGlyph item={item} />
@@ -144,17 +144,17 @@ export function GraphLegendDock({
             </span>
           ))}
           {items.length > preview.length ? (
-            <span className="text-[10px] text-zinc-600">+{items.length - preview.length}</span>
+            <span className="text-[10px] text-[var(--text-tertiary)]">+{items.length - preview.length}</span>
           ) : null}
         </span>
-        <span className="ml-auto shrink-0 text-[10px] uppercase tracking-[0.14em] text-zinc-600 group-open:hidden">
+        <span className="ml-auto shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] group-open:hidden">
           expand
         </span>
-        <span className="ml-auto hidden shrink-0 text-[10px] uppercase tracking-[0.14em] text-zinc-600 group-open:inline">
+        <span className="ml-auto hidden shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] group-open:inline">
           collapse
         </span>
       </summary>
-      <div className="mt-2 max-h-[min(40vh,18rem)] overflow-y-auto rounded-lg border border-zinc-800/80 bg-zinc-950/50 p-3">
+      <div className="mt-2 max-h-[min(40vh,18rem)] overflow-y-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3">
         <GraphLegendContent items={items} />
       </div>
     </details>

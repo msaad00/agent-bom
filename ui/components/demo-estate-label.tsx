@@ -23,7 +23,7 @@ export function DemoEstateLabel() {
       }`}
       aria-hidden="true"
     >
-      Demo data — simulated estate
+      Demo data — sample environment
     </div>
   );
 }

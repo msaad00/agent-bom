@@ -98,7 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "AI Estate",
+    label: "AI inventory",
     icon: Bot,
     links: [
       { href: "/agents", label: "Agents", icon: Bot },
@@ -824,7 +824,7 @@ function SidebarFooter({
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-tertiary)] transition-transform group-open/footer:rotate-90" />
         </summary>
         <div className="mt-2 space-y-2">
-          <SessionStatus collapsed={false} loading={authLoading} session={session} embedded />
+          <SessionStatus collapsed={false} loading={authLoading} session={session} />
           <DemoNavSignIn />
           {feedbackLink}
         </div>
@@ -837,12 +837,10 @@ function SessionStatus({
   collapsed,
   loading,
   session,
-  embedded = false,
 }: {
   collapsed: boolean;
   loading: boolean;
   session: ReturnType<typeof useAuthState>["session"];
-  embedded?: boolean;
 }) {
   if (collapsed) {
     if (loading) {

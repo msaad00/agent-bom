@@ -12,7 +12,7 @@ export const PAGE_LANE_META: Record<
   { label: string; scope: string; accent: string }
 > = {
   command: { label: "Command", scope: "Posture & paths", accent: "#58a6ff" },
-  "ai-estate": { label: "AI Estate", scope: "Local · Your agents", accent: "#3fb950" },
+  "ai-estate": { label: "AI inventory", scope: "Local · Your agents", accent: "#3fb950" },
   "cloud-data": { label: "Cloud & Data", scope: "Cloud · Read-only", accent: "#a371f7" },
   runtime: { label: "Runtime", scope: "Live · Enforced", accent: "#f778ba" },
   governance: { label: "Governance", scope: "Policy & evidence", accent: "#3fb950" },

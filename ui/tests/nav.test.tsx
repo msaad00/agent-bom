@@ -64,9 +64,9 @@ describe('Nav', () => {
     expect(screen.getByText('Command')).toBeInTheDocument()
   })
 
-  it('renders the AI Estate nav group', () => {
+  it('renders the AI inventory nav group', () => {
     renderExpandedNav()
-    expect(screen.getByText('AI Estate')).toBeInTheDocument()
+    expect(screen.getByText('AI inventory')).toBeInTheDocument()
   })
 
   it('renders the Cloud & Data nav group', () => {
@@ -233,7 +233,7 @@ describe('Nav', () => {
 
   it('renders all 7 nav group labels', () => {
     renderExpandedNav()
-    const groups = ['Command', 'AI Estate', 'Cloud & Data', 'Runtime', 'Governance', 'Reference', 'Operations']
+    const groups = ['Command', 'AI inventory', 'Cloud & Data', 'Runtime', 'Governance', 'Reference', 'Operations']
     for (const group of groups) {
       expect(screen.getAllByText(group).length).toBeGreaterThan(0)
     }
@@ -258,7 +258,7 @@ describe('Nav', () => {
     renderExpandedNav()
     const expectedByGroup: Record<string, string[]> = {
       Command: ['/', '/findings', '/security-graph', '/remediation'],
-      'AI Estate': ['/agents', '/manifest', '/fleet'],
+      'AI inventory': ['/agents', '/manifest', '/fleet'],
       'Cloud & Data': ['/connections', '/sources', '/scan', '/identity', '/drift'],
       Runtime: ['/runtime', '/traces'],
       Governance: ['/compliance', '/governance', '/audit'],
@@ -318,10 +318,10 @@ describe('Nav', () => {
     renderExpandedNav()
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /ai estate/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /ai inventory/i })).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /ai estate/i }))
+    fireEvent.click(screen.getByRole('button', { name: /ai inventory/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/unused in local \(1\)/i)).toBeInTheDocument()
@@ -399,10 +399,10 @@ describe('Nav', () => {
     renderExpandedNav()
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /ai estate/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /ai inventory/i })).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /ai estate/i }))
+    fireEvent.click(screen.getByRole('button', { name: /ai inventory/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/unused in local/i)).toBeInTheDocument()

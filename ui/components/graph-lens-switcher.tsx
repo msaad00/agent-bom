@@ -103,7 +103,7 @@ export function GraphLensSwitcher({
               variant === "floating" ? "hidden sm:block" : ""
             }`}
           >
-            One graph, multiple lenses — switch how you read the same estate.
+            One graph, multiple lenses — switch how you read the same inventory.
           </p>
         </div>
       )}

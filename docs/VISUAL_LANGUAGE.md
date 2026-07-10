@@ -17,9 +17,9 @@ social cards, CLI splash.
 - **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
   dark `#34d399 → #06b6d4` / `#22d3ee`. Ink `#1f2937` (light) / `#e6edf3` (dark);
   muted `#6b7280` / `#8b949e`.
-- **Mark:** **BOM** wordmark-as-icon where the **O** is an agent face (eyes +
-  antenna). Reads as bill-of-materials + agent in one glyph — memorable at
-  favicon size, not a generic lettermark.
+- **Mark (locked):** **BOM** wordmark-as-icon where the **O** is an agent face
+  (eyes + antenna). Canonical product mark — do not replace with lettermarks or
+  clipboard variants. Reads as bill-of-materials + agent in one glyph.
 
 
 Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or

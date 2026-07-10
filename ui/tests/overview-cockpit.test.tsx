@@ -34,12 +34,30 @@ describe("OverviewCockpit", () => {
     onPersonaChange: vi.fn(),
   };
 
-  it("renders executive risk themes without attack-path chains", () => {
-    render(<OverviewCockpit {...baseProps} persona="executive" />);
+  it("renders CISO risk themes without attack-path chains", () => {
+    render(<OverviewCockpit {...baseProps} persona="ciso" />);
 
     expect(screen.getByText("Top risks")).toBeInTheDocument();
-    expect(screen.getAllByText(/no attack-path chains/i).length).toBeGreaterThan(0);
-    expect(screen.getByText("Governance actions")).toBeInTheDocument();
+    expect(screen.getByText(/drill into Trust for evidence/i)).toBeInTheDocument();
+    expect(screen.getByText("Leadership actions")).toBeInTheDocument();
+    expect(screen.queryByText("Priority exposure path")).not.toBeInTheDocument();
+  });
+
+  it("renders Trust evidence altitude for GRC", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        persona="trust"
+        compliance={{
+          overallScore: 88,
+          overallStatus: "pass",
+          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Trust evidence")).toBeInTheDocument();
+    expect(screen.getByText("Trust & GRC")).toBeInTheDocument();
     expect(screen.queryByText("Priority exposure path")).not.toBeInTheDocument();
   });
 
@@ -51,20 +69,23 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("CVE-2020-14343")).toBeInTheDocument();
   });
 
-  it("switches persona via lens toggle", async () => {
+  it("switches altitude via lens toggle and drill controls", async () => {
     const user = userEvent.setup();
     const onPersonaChange = vi.fn();
-    render(<OverviewCockpit {...baseProps} persona="executive" onPersonaChange={onPersonaChange} />);
+    render(<OverviewCockpit {...baseProps} persona="ciso" onPersonaChange={onPersonaChange} />);
 
     await user.click(screen.getByRole("button", { name: "Engineer" }));
     expect(onPersonaChange).toHaveBeenCalledWith("engineer");
+
+    await user.click(screen.getByRole("button", { name: "↓ Trust" }));
+    expect(onPersonaChange).toHaveBeenCalledWith("trust");
   });
 
   it("shows compliance and activated services snapshots", () => {
     render(
       <OverviewCockpit
         {...baseProps}
-        persona="executive"
+        persona="ciso"
         compliance={{
           overallScore: 72,
           overallStatus: "warning",
@@ -104,7 +125,7 @@ describe("OverviewCockpit", () => {
     render(
       <OverviewCockpit
         {...baseProps}
-        persona="executive"
+        persona="ciso"
         compliance={{
           overallScore: 90,
           overallStatus: "pass",

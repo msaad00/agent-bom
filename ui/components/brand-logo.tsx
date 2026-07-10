@@ -4,7 +4,7 @@ import { useThemeMode } from "@/lib/theme-mode";
 
 const TAGLINE = "BOM for humans & agents";
 /** Bump when mark/wordmark SVGs change so browsers drop stale caches. */
-const BRAND_ASSET_REV = "v6";
+const BRAND_ASSET_REV = "v7";
 
 type BrandLogoProps = {
   className?: string;

@@ -555,9 +555,9 @@ export default function Dashboard() {
           <TabButton icon={LayoutGrid} label="Operations" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
           <TabButton icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
         </div>
-        {activeTab === "analytics" && persona === "executive" ? (
+        {activeTab === "analytics" && persona !== "engineer" ? (
           <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
-            Technical charts and topology for engineering teams. Switch to the Engineer lens above for attack-path context on Overview.
+            Analytics is ops-depth. Switch altitude to Engineer above for attack-path context on Overview, or stay here for charts.
           </p>
         ) : null}
 

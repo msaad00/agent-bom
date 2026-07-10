@@ -118,7 +118,7 @@ def test_dormant_disabled_by_default(store, audit):
     store.put(ident)
     counts = deprovision_dormant_identities(store, now=T0, audit_log=audit)
     assert counts["disabled"] == 1
-    assert store.get(ident.identity_id).status == "active"
+    assert store.get(ident.identity_id, tenant_id="t1").status == "active"
     assert audit.list() == []
 
 
@@ -130,7 +130,7 @@ def test_dormant_revoked_when_opted_in(store, audit):
     counts = deprovision_dormant_identities(store, now=T0, dormant_days=90, audit_log=audit)
 
     assert counts["revoked"] == 1
-    refreshed = store.get(ident.identity_id)
+    refreshed = store.get(ident.identity_id, tenant_id="t1")
     assert refreshed.status == "revoked"
     assert refreshed.revoked_reason == "dormant_auto_revoke"
     assert audit.list()[0].action == "identity_dormant_auto_revoke"
@@ -140,7 +140,7 @@ def test_dormant_never_used_not_revoked(store, audit):
     ident = _issue(store)  # last_used_at == ""
     counts = deprovision_dormant_identities(store, now=T0, dormant_days=90, audit_log=audit)
     assert counts["revoked"] == 0
-    assert store.get(ident.identity_id).status == "active"
+    assert store.get(ident.identity_id, tenant_id="t1").status == "active"
 
 
 def test_dormant_recent_use_not_revoked(store, audit):
@@ -169,7 +169,7 @@ def test_rotation_due_flagged(store, audit):
     ident = _issue(store, issued_at=(T0 - timedelta(days=120)).isoformat())
     counts = flag_rotation_due_identities(store, now=T0, rotation_days=90, audit_log=audit)
     assert counts["flagged"] == 1
-    refreshed = store.get(ident.identity_id)
+    refreshed = store.get(ident.identity_id, tenant_id="t1")
     assert refreshed.rotation_due is True
     assert refreshed.rotation_due_at == T0.isoformat()
     # Secret was NOT rotated: token hash unchanged.
@@ -202,8 +202,8 @@ def test_quota_state_defaults_unenforced(store):
 
 def test_set_and_read_quota(store):
     ident = _issue(store)
-    set_identity_quota(store, ident.identity_id, max_requests_per_window=100, window_seconds=60)
-    qs = quota_state(store.get(ident.identity_id))
+    set_identity_quota(store, ident.identity_id, tenant_id="t1", max_requests_per_window=100, window_seconds=60)
+    qs = quota_state(store.get(ident.identity_id, tenant_id="t1"))
     assert qs["enforced"] is True
     assert qs["max_requests_per_window"] == 100
     assert qs["window_seconds"] == 60
@@ -369,7 +369,7 @@ def test_lifecycle_posture_reports_rotation_and_quota(store):
 
     aging = _issue(store, issued_at=(T0 - timedelta(days=200)).isoformat())
     flag_rotation_due_identities(store, now=T0, rotation_days=90)
-    set_identity_quota(store, aging.identity_id, max_requests_per_window=10, window_seconds=60)
+    set_identity_quota(store, aging.identity_id, tenant_id="t1", max_requests_per_window=10, window_seconds=60)
     set_agent_identity_store(store)
     try:
         posture = describe_nhi_lifecycle_posture(now=T0)

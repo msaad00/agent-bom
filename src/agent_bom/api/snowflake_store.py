@@ -338,13 +338,10 @@ class SnowflakeFleetStore:
                 ),
             )
 
-    def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None:
+    def get(self, agent_id: str, *, tenant_id: str) -> FleetAgent | None:
         with self._connect() as conn:
             cur = conn.cursor()
-            if tenant_id is None:
-                cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,))
-            else:
-                cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s", (agent_id, tenant_id))
+            cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s", (agent_id, tenant_id))
             row = cur.fetchone()
             if row is None:
                 return None
@@ -380,13 +377,10 @@ class SnowflakeFleetStore:
                 return None
             return FleetAgent.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
-    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, agent_id: str, *, tenant_id: str) -> bool:
         with self._connect() as conn:
             cur = conn.cursor()
-            if tenant_id is None:
-                cur.execute("DELETE FROM fleet_agents WHERE agent_id = %s", (agent_id,))
-            else:
-                cur.execute("DELETE FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s", (agent_id, tenant_id))
+            cur.execute("DELETE FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s", (agent_id, tenant_id))
             return (cur.rowcount or 0) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list[FleetAgent]:
@@ -439,9 +433,13 @@ class SnowflakeFleetStore:
             return [{"tenant_id": r[0], "agent_count": r[1]} for r in cur.fetchall()]
 
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
-        agent = self.get(agent_id)
-        if agent is None:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,))
+            row = cur.fetchone()
+        if row is None:
             return False
+        agent = FleetAgent.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
         agent.lifecycle_state = state
         agent.updated_at = datetime.now(timezone.utc).isoformat()
         self.put(agent)

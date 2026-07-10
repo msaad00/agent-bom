@@ -124,9 +124,9 @@ def print_scan_next_steps(con: Console, report: AIBOMReport, *, quiet: bool = Fa
     if getattr(report, "total_agents", 0):
         steps.append("agent-bom graph")
     if getattr(report, "total_vulnerabilities", 0) or getattr(report, "critical_vulns", None):
-        steps.append("agent-bom report -f html -o agent-bom-report.html")
+        steps.append("agent-bom scan . -f html -o agent-bom-report.html")
     else:
-        steps.append("agent-bom report -f html -o agent-bom-report.html")
+        steps.append("agent-bom scan . -f html -o agent-bom-report.html")
 
     cis_attrs = (
         "cis_benchmark_data",

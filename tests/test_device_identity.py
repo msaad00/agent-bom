@@ -122,7 +122,7 @@ def test_store_persists_fingerprint_column():
         store.put(FleetAgent(agent_id="a2", name="n2", agent_type="t"))
         assert _column_value(db, "a1") == fp
         assert _column_value(db, "a2") == ""
-        got = store.get("a1")
+        got = store.get("a1", tenant_id="default")
         assert got is not None and got.device_fingerprint == fp
 
 
@@ -170,5 +170,5 @@ def test_reopen_store_backfills_existing_db():
 
         reopened = SQLiteFleetStore(db)
         assert _column_value(db, "a1") == fp
-        got = reopened.get("a1")
+        got = reopened.get("a1", tenant_id="default")
         assert got is not None and got.device_fingerprint == fp

@@ -49,8 +49,8 @@ def _source_for_request(request: Request, source_id: str) -> SourceRecord:
 def _validate_credential_ref(request: Request, source: SourceRecord) -> None:
     if not source.credential_ref:
         return
-    credential = _get_credential_ref_store().get(source.credential_ref)
     tenant_id = _tenant_id(request)
+    credential = _get_credential_ref_store().get(source.credential_ref, tenant_id=tenant_id)
     if credential is None or credential.tenant_id != tenant_id:
         raise HTTPException(status_code=409, detail="Source credential_ref is not available in this tenant")
     if not credential.enabled or credential.status in (CredentialRefStatus.DISABLED, CredentialRefStatus.RETIRED):

@@ -287,7 +287,7 @@ def evaluate_conditional_access(
 class AgentIdentityStore(Protocol):
     def put(self, identity: AgentIdentity) -> None: ...
 
-    def get(self, identity_id: str) -> AgentIdentity | None: ...
+    def get(self, identity_id: str, *, tenant_id: str) -> AgentIdentity | None: ...
 
     def get_by_token_hash(self, token_hash: str) -> AgentIdentity | None: ...
 
@@ -350,9 +350,12 @@ class InMemoryAgentIdentityStore:
             self._by_id[identity.identity_id] = identity
             self._by_hash[identity.token_hash] = identity.identity_id
 
-    def get(self, identity_id: str) -> AgentIdentity | None:
+    def get(self, identity_id: str, *, tenant_id: str) -> AgentIdentity | None:
         with self._lock:
-            return self._by_id.get(identity_id)
+            identity = self._by_id.get(identity_id)
+            if identity is None or identity.tenant_id != tenant_id:
+                return None
+            return identity
 
     def get_by_token_hash(self, token_hash: str) -> AgentIdentity | None:
         with self._lock:
@@ -517,8 +520,11 @@ class SQLiteAgentIdentityStore:
         )
         self._conn.commit()
 
-    def get(self, identity_id: str) -> AgentIdentity | None:
-        row = self._conn.execute("SELECT data FROM agent_identities WHERE identity_id = ?", (identity_id,)).fetchone()
+    def get(self, identity_id: str, *, tenant_id: str) -> AgentIdentity | None:
+        row = self._conn.execute(
+            "SELECT data FROM agent_identities WHERE identity_id = ? AND tenant_id = ?",
+            (identity_id, tenant_id),
+        ).fetchone()
         return AgentIdentity(**json.loads(row[0])) if row else None
 
     def get_by_token_hash(self, token_hash: str) -> AgentIdentity | None:
@@ -708,12 +714,13 @@ def rotate_identity(
     store: AgentIdentityStore,
     identity_id: str,
     *,
+    tenant_id: str,
     overlap_seconds: int = 3600,
     ttl_seconds: int = 90 * 86400,
 ) -> tuple[AgentIdentity, str] | None:
     """Issue a replacement identity and keep the old one live for ``overlap_seconds``
     so in-flight callers are not cut off. Returns ``(new_identity, raw_token)``."""
-    old = store.get(identity_id)
+    old = store.get(identity_id, tenant_id=tenant_id)
     # Don't rotate a revoked identity, or one already mid-rotation (that would
     # orphan the first replacement and break the rotated_to chain).
     if old is None or old.status in ("revoked", "rotating"):
@@ -737,9 +744,9 @@ def rotate_identity(
     return new_identity, raw
 
 
-def revoke_identity(store: AgentIdentityStore, identity_id: str, *, reason: str = "") -> AgentIdentity | None:
+def revoke_identity(store: AgentIdentityStore, identity_id: str, *, tenant_id: str, reason: str = "") -> AgentIdentity | None:
     """Immediately revoke an identity; it can no longer authenticate."""
-    identity = store.get(identity_id)
+    identity = store.get(identity_id, tenant_id=tenant_id)
     if identity is None:
         return None
     identity.status = "revoked"
@@ -933,12 +940,13 @@ def set_identity_quota(
     store: AgentIdentityStore,
     identity_id: str,
     *,
+    tenant_id: str,
     max_requests_per_window: int = 0,
     max_cost_usd_per_window: float = 0.0,
     window_seconds: int = 0,
 ) -> AgentIdentity | None:
     """Record per-identity quota limits (data only; gateway enforces later)."""
-    identity = store.get(identity_id)
+    identity = store.get(identity_id, tenant_id=tenant_id)
     if identity is None:
         return None
     identity.max_requests_per_window = max(0, int(max_requests_per_window))

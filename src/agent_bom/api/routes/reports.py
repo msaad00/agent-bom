@@ -7,7 +7,7 @@ import secrets
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
 from agent_bom.api.models import JobStatus, ReportJob, ReportJobRequest
@@ -19,6 +19,11 @@ from agent_bom.config import API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT
 
 router = APIRouter()
 
+# Downloading a completed report is authorized by a job-scoped token. The token
+# is presented via this request header rather than the URL query string, so it
+# never lands in access logs, browser history, or the Referer header.
+DOWNLOAD_TOKEN_HEADER = "X-Agent-Bom-Download-Token"
+
 
 def _tenant_id(request: Request) -> str:
     return require_request_tenant_id(request)
@@ -26,13 +31,19 @@ def _tenant_id(request: Request) -> str:
 
 def _job_payload(job: ReportJob, *, request: Request) -> dict:
     payload = job.model_dump(mode="json")
+    payload.pop("download_token", None)
+    payload.pop("presigned_download_url", None)
     if job.status == JobStatus.DONE:
         if job.presigned_download_url:
             payload["download_url"] = job.presigned_download_url
         elif job.download_token:
-            payload["download_url"] = str(request.url_for("download_report_artifact", job_id=job.job_id)) + f"?token={job.download_token}"
-    payload.pop("download_token", None)
-    payload.pop("presigned_download_url", None)
+            # Return the download URL WITHOUT the token in the query string.
+            # The caller presents the token via the DOWNLOAD_TOKEN_HEADER header
+            # (preferred) or, for backward compatibility, the ?token= query
+            # param — but we never MINT a token-bearing URL here.
+            payload["download_url"] = str(request.url_for("download_report_artifact", job_id=job.job_id))
+            payload["download_token"] = job.download_token
+            payload["download_token_header"] = DOWNLOAD_TOKEN_HEADER
     return payload
 
 
@@ -92,16 +103,24 @@ async def get_report_job(request: Request, job_id: str) -> dict:
 async def download_report_artifact(
     request: Request,
     job_id: str,
-    token: Annotated[str, Query(min_length=8, max_length=256)],
+    token: Annotated[str | None, Query(min_length=8, max_length=256)] = None,
+    header_token: Annotated[str | None, Header(alias=DOWNLOAD_TOKEN_HEADER, min_length=8, max_length=256)] = None,
 ) -> FileResponse:
-    """Download a completed report artifact using the job-scoped token."""
+    """Download a completed report artifact using the job-scoped token.
+
+    The token is presented via the ``X-Agent-Bom-Download-Token`` header
+    (preferred, keeps it out of logs) or the legacy ``?token=`` query param.
+    """
     tenant_id = _tenant_id(request)
     job = get_report_job_store().get(job_id, tenant_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Report job not found")
     if job.status != JobStatus.DONE or not job.download_token:
         raise HTTPException(status_code=409, detail="Report artifact is not ready")
-    if not secrets.compare_digest(job.download_token, token):
+    presented_token = header_token or token
+    if not presented_token:
+        raise HTTPException(status_code=401, detail=f"Missing download token; provide the {DOWNLOAD_TOKEN_HEADER} header")
+    if not secrets.compare_digest(job.download_token, presented_token):
         raise HTTPException(status_code=403, detail="Invalid download token")
     path = resolve_report_artifact(job)
     if path is None:

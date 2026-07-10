@@ -201,3 +201,43 @@ def test_read_shaped_posts_stay_viewer_reachable() -> None:
         assert middleware._required_role("POST", path) == "viewer", path
     # The fallback itself still defends genuinely-unlisted mutating routes.
     assert middleware._required_role("POST", "/v1/auth/keys") == "admin"
+
+
+def test_head_inherits_get_route_role() -> None:
+    """A HEAD request must inherit the required role of the matching GET route.
+
+    Regression guard: keying the role lookup on the literal "HEAD" method would
+    miss every GET rule and fall through to the viewer default, letting an
+    anonymous HEAD reach an admin GET handler under ALLOW_UNAUTHENTICATED_API.
+    """
+    middleware = APIKeyMiddleware(app, api_key="")
+    for path in ("/v1/auth/policy", "/v1/auth/keys", "/v1/entitlements"):
+        assert middleware._required_role("GET", path) == "admin", path
+        assert middleware._required_role("HEAD", path) == "admin", path
+    # Scope lookup normalizes HEAD too.
+    assert middleware._required_scope("HEAD", "/v1/auth/keys") == middleware._required_scope("GET", "/v1/auth/keys")
+
+
+def test_anonymous_head_on_admin_route_is_gated(monkeypatch) -> None:
+    """With anonymous access enabled, an anonymous HEAD on an admin GET route
+    must be gated exactly like GET (403), not fall through to viewer access."""
+    from starlette.applications import Starlette
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+
+    # Pin the anonymous identity to viewer so the admin gate is observable
+    # (the test harness defaults NO_AUTH_ROLE to admin).
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "viewer")
+
+    async def dummy(_request):  # noqa: ANN001, ANN202
+        return PlainTextResponse("ok")
+
+    # /v1/auth/policy requires admin; expose it for both GET and HEAD.
+    test_app = Starlette(routes=[Route("/v1/auth/policy", dummy, methods=["GET", "HEAD"])])
+    test_app.add_middleware(APIKeyMiddleware, api_key="", allow_unauthenticated=True)
+    client = TestClient(test_app)
+
+    get_status = client.get("/v1/auth/policy").status_code
+    head_status = client.head("/v1/auth/policy").status_code
+    assert get_status == 403
+    assert head_status == get_status, "HEAD must be gated like GET, not fall through to viewer"

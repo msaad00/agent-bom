@@ -95,13 +95,15 @@ def _fake_clone(populate, returncode: int = 0, stderr: str = ""):
 
     def _run(cmd, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
         dest = Path(cmd[-1])
-        # Capture the argv so tests can assert flags / no-shell / no token leak.
+        # Capture the argv + env so tests can assert flags / no-shell / no token leak.
         _run.captured_cmd = cmd
+        _run.captured_env = kwargs.get("env")
         if returncode == 0 and populate is not None:
             populate(dest)
         return subprocess.CompletedProcess(cmd, returncode, stdout="", stderr=stderr)
 
     _run.captured_cmd = None
+    _run.captured_env = None
     return _run
 
 
@@ -233,9 +235,17 @@ def test_token_used_but_never_leaked(monkeypatch: pytest.MonkeyPatch) -> None:
         pass
 
     argv = runner.captured_cmd
-    # Token is injected (so private clones work) only via an ephemeral header.
+    env = runner.captured_env or {}
+    # The secret-bearing header value must NEVER land on argv (readable via
+    # `ps aux` / /proc/<pid>/cmdline). It is passed only via git config env.
     joined = " ".join(argv)
-    assert "Authorization: Bearer supersecrettoken123" in joined
+    assert "supersecrettoken123" not in joined
+    assert "extraheader" not in joined
+    # Token is injected (so private clones work) only via GIT_CONFIG_* env: the
+    # non-secret key on KEY_0, the secret Authorization value on VALUE_0.
+    assert env.get("GIT_CONFIG_COUNT") == "1"
+    assert env.get("GIT_CONFIG_KEY_0") == "http.https://github.com/.extraheader"
+    assert env.get("GIT_CONFIG_VALUE_0") == "Authorization: Bearer supersecrettoken123"
 
 
 def test_token_scrubbed_from_clone_error(monkeypatch: pytest.MonkeyPatch) -> None:

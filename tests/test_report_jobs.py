@@ -90,13 +90,24 @@ def test_report_job_streams_findings_to_gzip_artifact(monkeypatch, tmp_path: Pat
     assert "download_url" in body
 
     download_url = body["download_url"]
-    assert "/download?token=" in download_url
-    downloaded = client.get(download_url)
+    # The token must NOT be minted into the URL (leaks into logs / history).
+    assert "token=" not in download_url
+    assert "?" not in download_url
+    assert body["download_token_header"] == "X-Agent-Bom-Download-Token"
+    token = body["download_token"]
+    downloaded = client.get(download_url, headers={"X-Agent-Bom-Download-Token": token})
     assert downloaded.status_code == 200
     rows = [json.loads(line) for line in gzip.decompress(downloaded.content).decode().splitlines() if line.strip()]
     assert len(rows) == 4
     assert rows[0]["canonical_id"] == f"{tenant_id}:finding-0"
     assert rows[-1]["id"] == f"{tenant_id}:finding-3"
+
+    # Backward compatibility: the legacy ?token= query param still authorizes.
+    legacy = client.get(download_url, params={"token": token})
+    assert legacy.status_code == 200
+    # Missing token → 401; wrong token → 403.
+    assert client.get(download_url).status_code == 401
+    assert client.get(download_url, headers={"X-Agent-Bom-Download-Token": "wrongtoken12345"}).status_code == 403
 
 
 def test_report_job_is_tenant_scoped(tmp_path: Path) -> None:

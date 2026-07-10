@@ -417,6 +417,11 @@ _MAX_CACHED_TOOL_LOOPS = 8
 # shield:write scope, and audit reason are supplied.
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 _WRITE_ACTION = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
+# A tool that persists state as a side effect of a read-shaped call but is not
+# destructive and yields the same result on repeat (e.g. access_review, which
+# recomputes and upserts campaign status). It is a WRITE — never readOnlyHint —
+# but non-destructive and idempotent.
+_WRITE_IDEMPOTENT = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 
 
 def _check_mcp_sdk() -> None:
@@ -1093,6 +1098,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         mcp,
         read_only=_READ_ONLY,
         write_action=_WRITE_ACTION,
+        write_idempotent=_WRITE_IDEMPOTENT,
         execute_tool_async=_execute_tool_async,
         execute_tool_sync_async=_execute_tool_sync_async,
         safe_path=_safe_path,

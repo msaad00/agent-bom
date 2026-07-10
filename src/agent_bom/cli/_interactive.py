@@ -52,7 +52,7 @@ def _print_interactive_help(output: Callable[[str], None]) -> None:
     output("Run normal commands without the program name, for example:")
     output("  agents --demo --offline")
     output("  cloud aws --no-cis          # discovery without CIS wall")
-    output("  report -f html -o out.html  # generate shareable report")
+    output("  scan . -f html -o out.html  # generate shareable report")
     output("  doctor")
 
 

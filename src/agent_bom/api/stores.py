@@ -33,7 +33,7 @@ _store_lock = threading.Lock()
 _store: Any = None
 
 
-def _get_store():
+def _get_store() -> Any:
     """Get the active job store, creating InMemoryJobStore if not yet set."""
     global _store
     if _store is None:
@@ -139,7 +139,7 @@ _fleet_store: Any = None
 _idempotency_store: Any = None
 
 
-def _get_fleet_store():
+def _get_fleet_store() -> Any:
     """Get the active fleet store, creating InMemoryFleetStore if not set."""
     global _fleet_store
     if _fleet_store is None:
@@ -157,7 +157,7 @@ def set_fleet_store(store: Any) -> None:
     _fleet_store = store
 
 
-def _get_idempotency_store():
+def _get_idempotency_store() -> Any:
     """Get the active idempotency store for retry-safe write endpoints."""
     global _idempotency_store
     if _idempotency_store is None:
@@ -184,7 +184,7 @@ def set_idempotency_store(store: Any) -> None:
 _policy_store: Any = None
 
 
-def _get_policy_store():
+def _get_policy_store() -> Any:
     """Get the active policy store, creating InMemoryPolicyStore if not set."""
     global _policy_store
     if _policy_store is None:
@@ -245,7 +245,7 @@ def set_schedule_store(store: ScheduleStore) -> None:
 _firewall_decision_store: Any = None
 
 
-def _get_firewall_decision_store():
+def _get_firewall_decision_store() -> Any:
     """Get the active firewall decision tally (in-memory, per-process)."""
     global _firewall_decision_store
     if _firewall_decision_store is None:
@@ -257,7 +257,7 @@ def _get_firewall_decision_store():
     return _firewall_decision_store
 
 
-def set_firewall_decision_store(store) -> None:  # noqa: ANN001
+def set_firewall_decision_store(store: Any) -> None:
     """Swap the firewall decision tally for tests."""
     global _firewall_decision_store
     _firewall_decision_store = store
@@ -398,7 +398,7 @@ def set_credential_ref_store(store: CredentialRefStore) -> None:
     _credential_ref_store = store
 
 
-def _get_mcp_observation_store():
+def _get_mcp_observation_store() -> MCPObservationStore:
     """Get the active persisted MCP observation store."""
     global _mcp_observation_store
     if _mcp_observation_store is None:
@@ -448,7 +448,7 @@ def set_issue_mapping_store(store: IssueMappingStore | None) -> None:
 _exception_store: Any = None
 
 
-def _get_exception_store():
+def _get_exception_store() -> Any:
     """Get the active exception store, creating InMemoryExceptionStore if not set."""
     global _exception_store
     if _exception_store is None:
@@ -471,7 +471,7 @@ _trend_store: Any = None
 _last_scan_report: dict | None = None
 
 
-def _get_trend_store():
+def _get_trend_store() -> Any:
     """Get the active trend store, creating InMemoryTrendStore if not set."""
     global _trend_store
     if _trend_store is None:

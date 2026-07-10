@@ -8,12 +8,10 @@ not empty zeros on demo.agent-bom.com.
 
 from __future__ import annotations
 
+import hashlib
 import logging
-import os
-import uuid
 from typing import Any
 
-from agent_bom.api import connection_crypto
 from agent_bom.api.connection_store import (
     STATUS_ACTIVE,
     CloudConnectionRecord,
@@ -28,82 +26,58 @@ _logger = logging.getLogger(__name__)
 
 _ANCHOR = "2026-07-06T15:30:00+00:00"
 _DEMO_CONN_PREFIX = "demo-conn-"
+_DEMO_SOURCE_PREFIX = "demo-src-"
+_DEMO_COST_CALL_ID = "demo-cost-showcase-v1"
 
 
-def _tenant_has_demo_catalog(tenant_id: str) -> bool:
-    return any(
-        record.id.startswith(_DEMO_CONN_PREFIX)
-        for record in get_connection_store().list_for_tenant(tenant_id)
-    )
-
-
-def _ensure_demo_connections_key() -> None:
-    """Provision an ephemeral Fernet key for showcase connections when unset.
-
-    Demo estate is a read-only showcase; an operator-managed key is still
-    preferred in production, but the catalog must not fail closed on POC VMs
-    that only enable ``AGENT_BOM_DEMO_ESTATE``.
-    """
-    if connection_crypto.connections_key_configured():
-        return
-    from cryptography.fernet import Fernet
-
-    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = Fernet.generate_key().decode("ascii")
-    connection_crypto.reset_key_cache()
-    _logger.warning(
-        "demo estate: generated ephemeral %s for showcase cloud connections",
-        connection_crypto.CONNECTIONS_KEY_ENV,
-    )
-
-
-def _demo_secret() -> str:
-    _ensure_demo_connections_key()
-    return connection_crypto.encrypt_secret("demo-estate-readonly-external-id")
+def _tenant_scoped_id(base: str, tenant_id: str) -> str:
+    """Keep canonical showcase IDs while preventing cross-tenant PK collisions."""
+    if tenant_id == SHOWCASE_TENANT:
+        return base
+    suffix = hashlib.sha256(tenant_id.encode("utf-8")).hexdigest()[:12]
+    return f"{base}-{suffix}"
 
 
 def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str, Any]:
-    """Seed connections, sources, and a priced LLM row when the catalog is empty."""
-    if _tenant_has_demo_catalog(tenant_id):
-        return {"seeded": False, "reason": "catalog_present"}
-
-    secret = _demo_secret()
+    """Seed each showcase catalog surface, healing partial prior attempts."""
     conn_store = get_connection_store()
     connections = [
         CloudConnectionRecord(
-            id="demo-conn-aws",
+            id=_tenant_scoped_id("demo-conn-aws", tenant_id),
             tenant_id=tenant_id,
             provider="aws",
             display_name="AWS showcase (read-only)",
             role_ref="arn:aws:iam::123456789012:role/agent-bom-readonly",
-            external_id_encrypted=secret,
+            external_id_encrypted="",
             regions=["us-east-1", "us-west-2"],
             status=STATUS_ACTIVE,
             created_at=_ANCHOR,
             updated_at=_ANCHOR,
             last_scan_at=_ANCHOR,
             last_scan_id="showcase",
+            auth_params={"demo": True},
         ),
         CloudConnectionRecord(
-            id="demo-conn-gcp",
+            id=_tenant_scoped_id("demo-conn-gcp", tenant_id),
             tenant_id=tenant_id,
             provider="gcp",
             display_name="GCP showcase (read-only)",
             role_ref="agent-bom@showcase-demo.iam.gserviceaccount.com",
-            external_id_encrypted=secret,
+            external_id_encrypted="",
             status=STATUS_ACTIVE,
             created_at=_ANCHOR,
             updated_at=_ANCHOR,
             last_scan_at=_ANCHOR,
             last_scan_id="showcase",
-            auth_params={"project_id": "showcase-demo"},
+            auth_params={"project_id": "showcase-demo", "demo": True},
         ),
         CloudConnectionRecord(
-            id="demo-conn-azure",
+            id=_tenant_scoped_id("demo-conn-azure", tenant_id),
             tenant_id=tenant_id,
             provider="azure",
             display_name="Azure showcase (read-only)",
             role_ref="/subscriptions/00000000-0000-0000-0000-000000000001/providers/Microsoft.Authorization/roleAssignments/demo",
-            external_id_encrypted=secret,
+            external_id_encrypted="",
             status=STATUS_ACTIVE,
             created_at=_ANCHOR,
             updated_at=_ANCHOR,
@@ -112,11 +86,16 @@ def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[
             auth_params={
                 "tenant_id": "00000000-0000-0000-0000-0000000000aa",
                 "subscription_id": "00000000-0000-0000-0000-000000000001",
+                "demo": True,
             },
         ),
     ]
+    existing_connection_ids = {record.id for record in conn_store.list_for_tenant(tenant_id)}
+    connections_seeded = 0
     for record in connections:
-        conn_store.put(record)
+        if record.id not in existing_connection_ids:
+            conn_store.put(record)
+            connections_seeded += 1
 
     try:
         source_store = _get_source_store()
@@ -127,7 +106,7 @@ def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[
     if source_store is not None:
         for source in (
             SourceRecord(
-                source_id="demo-src-repo",
+                source_id=_tenant_scoped_id("demo-src-repo", tenant_id),
                 tenant_id=tenant_id,
                 display_name="Golden monorepo scan",
                 kind=SourceKind.SCAN_REPO,
@@ -142,7 +121,7 @@ def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[
                 updated_at=_ANCHOR,
             ),
             SourceRecord(
-                source_id="demo-src-mcp",
+                source_id=_tenant_scoped_id("demo-src-mcp", tenant_id),
                 tenant_id=tenant_id,
                 display_name="MCP config ingest",
                 kind=SourceKind.SCAN_MCP_CONFIG,
@@ -157,13 +136,22 @@ def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[
                 updated_at=_ANCHOR,
             ),
         ):
-            source_store.put(source)
-            sources_seeded += 1
+            existing_source_ids = {
+                record.source_id for record in source_store.list_all(tenant_id=tenant_id)
+            }
+            if source.source_id not in existing_source_ids:
+                source_store.put(source)
+                sources_seeded += 1
 
-    get_cost_store().record_cost(
-        LLMCostRecord(
+    cost_store = get_cost_store()
+    cost_seeded = 0
+    if not any(
+        record.call_id == _DEMO_COST_CALL_ID
+        for record in cost_store.list_records(tenant_id, limit=1000)
+    ):
+        cost_store.record_cost(LLMCostRecord(
             tenant_id=tenant_id,
-            call_id=f"demo-cost-{uuid.uuid4().hex[:8]}",
+            call_id=_DEMO_COST_CALL_ID,
             agent="cursor-demo-agent",
             session_id="demo-estate",
             provider="anthropic",
@@ -175,14 +163,16 @@ def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[
             observed_at=_ANCHOR,
             cost_center="ai-platform",
             allocation_tags={"env": "demo", "team": "security"},
-        )
-    )
+        ))
+        cost_seeded = 1
 
     summary = {
-        "seeded": True,
-        "connections": len(connections),
+        "seeded": bool(connections_seeded or sources_seeded or cost_seeded),
+        "connections": connections_seeded,
         "sources": sources_seeded,
-        "cost_samples": 1,
+        "cost_samples": cost_seeded,
     }
+    if not summary["seeded"]:
+        summary["reason"] = "catalog_present"
     _logger.info("demo estate catalog seeded tenant=%s %s", tenant_id, summary)
     return summary

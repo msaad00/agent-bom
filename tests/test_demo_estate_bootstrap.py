@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 from collections import Counter
 
 import pytest
+from fastapi import HTTPException
 from starlette.testclient import TestClient
 
 from agent_bom.demo_estate.showcase_graph import SHOWCASE_BASELINE_SCAN_ID
@@ -317,6 +319,14 @@ def test_demo_estate_catalog_seeds_connections_sources_and_spend(demo_estate_cli
     connections = get_connection_store().list_for_tenant(SHOWCASE_TENANT)
     assert len(connections) >= 3
     assert any(record.id.startswith("demo-conn-") for record in connections)
+    demo_connection = next(record for record in connections if record.id.startswith("demo-conn-"))
+    assert demo_connection.external_id_encrypted == ""
+    from agent_bom.api.routes.cloud_connections import _reject_showcase_connection
+
+    with pytest.raises(HTTPException) as exc_info:
+        _reject_showcase_connection(demo_connection)
+    assert exc_info.value.status_code == 409
+    assert "synthetic" in str(exc_info.value.detail).lower()
 
     sources = demo_estate_client.get("/v1/sources").json()
     source_rows = sources.get("sources") or []
@@ -337,6 +347,78 @@ def test_demo_estate_catalog_is_idempotent(demo_estate_client: TestClient) -> No
 
     again = seed_showcase_catalog_if_empty()
     assert again.get("seeded") is False and again.get("reason") == "catalog_present"
+
+
+def test_showcase_catalog_needs_no_ephemeral_key_and_is_tenant_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_bom.api.connection_crypto import CONNECTIONS_KEY_ENV
+    from agent_bom.api.connection_store import InMemoryConnectionStore
+    from agent_bom.api.cost_store import InMemoryCostStore
+    from agent_bom.api.source_store import InMemorySourceStore
+    from agent_bom.demo_estate import showcase_catalog
+
+    connection_store = InMemoryConnectionStore()
+    source_store = InMemorySourceStore()
+    cost_store = InMemoryCostStore()
+    monkeypatch.delenv(CONNECTIONS_KEY_ENV, raising=False)
+    monkeypatch.setattr(showcase_catalog, "get_connection_store", lambda: connection_store)
+    monkeypatch.setattr(showcase_catalog, "_get_source_store", lambda: source_store)
+    monkeypatch.setattr(showcase_catalog, "get_cost_store", lambda: cost_store)
+
+    first = showcase_catalog.seed_showcase_catalog_if_empty(tenant_id="tenant-a")
+    second = showcase_catalog.seed_showcase_catalog_if_empty(tenant_id="tenant-a")
+    other = showcase_catalog.seed_showcase_catalog_if_empty(tenant_id="tenant-b")
+
+    assert first == {"seeded": True, "connections": 3, "sources": 2, "cost_samples": 1}
+    assert second.get("seeded") is False and second.get("reason") == "catalog_present"
+    assert other.get("seeded") is True
+    assert CONNECTIONS_KEY_ENV not in os.environ
+    tenant_a_connections = connection_store.list_for_tenant("tenant-a")
+    tenant_b_connections = connection_store.list_for_tenant("tenant-b")
+    assert len(tenant_a_connections) == len(tenant_b_connections) == 3
+    assert {row.id for row in tenant_a_connections}.isdisjoint(
+        {row.id for row in tenant_b_connections}
+    )
+    assert all(not row.external_id_encrypted for row in tenant_a_connections)
+    assert len(source_store.list_all("tenant-a")) == 2
+    assert len(source_store.list_all("tenant-b")) == 2
+    assert len(cost_store.list_records("tenant-a")) == 1
+    assert len(cost_store.list_records("tenant-b")) == 1
+
+
+def test_showcase_catalog_retry_heals_partial_seed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.connection_store import InMemoryConnectionStore
+    from agent_bom.api.cost_store import InMemoryCostStore
+    from agent_bom.api.source_store import InMemorySourceStore
+    from agent_bom.demo_estate import showcase_catalog
+
+    connection_store = InMemoryConnectionStore()
+    source_store = InMemorySourceStore()
+    cost_store = InMemoryCostStore()
+    original_put = source_store.put
+    should_fail = True
+
+    def flaky_put(source) -> None:
+        nonlocal should_fail
+        if should_fail:
+            should_fail = False
+            raise RuntimeError("injected source failure")
+        original_put(source)
+
+    monkeypatch.setattr(showcase_catalog, "get_connection_store", lambda: connection_store)
+    monkeypatch.setattr(showcase_catalog, "_get_source_store", lambda: source_store)
+    monkeypatch.setattr(showcase_catalog, "get_cost_store", lambda: cost_store)
+    monkeypatch.setattr(source_store, "put", flaky_put)
+
+    with pytest.raises(RuntimeError, match="injected source failure"):
+        showcase_catalog.seed_showcase_catalog_if_empty(tenant_id="retry-tenant")
+
+    summary = showcase_catalog.seed_showcase_catalog_if_empty(tenant_id="retry-tenant")
+    assert summary == {"seeded": True, "connections": 0, "sources": 2, "cost_samples": 1}
+    assert len(connection_store.list_for_tenant("retry-tenant")) == 3
+    assert len(source_store.list_all("retry-tenant")) == 2
+    assert len(cost_store.list_records("retry-tenant")) == 1
 
 
 def test_demo_estate_bootstrap_is_idempotent(demo_estate_client: TestClient) -> None:

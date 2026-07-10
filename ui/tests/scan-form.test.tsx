@@ -167,7 +167,8 @@ describe("ScanForm", () => {
     );
     expect(screen.getByText(/Shallow read-only git clone/i)).toBeInTheDocument();
     expect(screen.getByText(/Auto-detected at scan time/i)).toBeInTheDocument();
-    expect(screen.getByText(/Agent frameworks/i)).toBeInTheDocument();
+    expect(screen.getByText(/Secrets & credentials/i)).toBeInTheDocument();
+    expect(screen.getByText(/Weak cryptography/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Scan repository/i }));
     expect(startScan).toHaveBeenCalledWith({
       repo_url: "https://github.com/org/repo",

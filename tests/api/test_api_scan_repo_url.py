@@ -49,9 +49,13 @@ def test_run_scan_sync_clones_repo_url_and_cleans_up(monkeypatch: pytest.MonkeyP
 
     tree_calls: list[str] = []
 
+    from agent_bom.api.repo_tree_scan import RepoTreeScanResult
+
     def fake_repo_tree(path: str, *, agents, warnings, update_progress=None):
         tree_calls.append(path)
-        return None, {"total": 1, "findings": [{"rule_id": "TF001", "severity": "high", "title": "test"}]}
+        return RepoTreeScanResult(
+            iac_findings_data={"total": 1, "findings": [{"rule_id": "TF001", "severity": "high", "title": "test"}]},
+        )
 
     monkeypatch.setattr("agent_bom.api.repo_tree_scan.scan_cloned_repo_tree", fake_repo_tree)
     monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda *_a, **_k: [])

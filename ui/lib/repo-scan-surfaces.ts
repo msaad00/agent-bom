@@ -46,8 +46,20 @@ export const REPO_SCAN_SURFACES: RepoScanSurface[] = [
   {
     id: "dependencies",
     label: "Dependencies & supply chain",
-    detail: "Lockfiles and manifests across ecosystems — OSV/CVE enrichment when enabled",
+    detail: "uv.lock, requirements.txt, poetry.lock, package-lock.json, and other manifests — pinned versions with OSV/CVE enrichment when enabled",
     languages: ["Python", "Node", "Go", "Ruby", "Rust", "…"],
+  },
+  {
+    id: "secrets",
+    label: "Secrets & credentials",
+    detail: "Hardcoded API keys, tokens, private keys, and connection strings in source and config files",
+    languages: ["Python", "TS/JS", "YAML", "JSON", "env"],
+  },
+  {
+    id: "weak-crypto",
+    label: "Weak cryptography",
+    detail: "MD5/SHA-1 hashes, DES/RC4 ciphers, ECB mode, and deprecated TLS protocol usage in application code",
+    languages: ["Python", "TS/JS", "Go", "Java", "…"],
   },
   {
     id: "ingestion",

@@ -617,6 +617,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         repo_url = (req.repo_url or "").strip()
         skill_audit_data: dict | None = None
         iac_findings_data: dict | None = None
+        repo_ai_inventory_data: dict | None = None
         if repo_url:
             from agent_bom.repo_scan import RepoScanError, clone_repository
 
@@ -633,12 +634,15 @@ def _run_scan_sync(job: ScanJob) -> None:
             pipeline.update_step("discovery", f"Repository cloned for static scan: {repo_url}")
             from agent_bom.api.repo_tree_scan import scan_cloned_repo_tree
 
-            skill_audit_data, iac_findings_data = scan_cloned_repo_tree(
+            repo_tree_result = scan_cloned_repo_tree(
                 cloned_path,
                 agents=agents,
                 warnings=warnings_all,
                 update_progress=lambda message: pipeline.update_step("discovery", message),
             )
+            skill_audit_data = repo_tree_result.skill_audit_data
+            iac_findings_data = repo_tree_result.iac_findings_data
+            repo_ai_inventory_data = repo_tree_result.ai_inventory_data
         path_fields = (
             ([req.inventory] if req.inventory else [])
             + req.tf_dirs
@@ -919,7 +923,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
 
         if not agents:
-            if skill_audit_data is not None or iac_findings_data is not None:
+            if skill_audit_data is not None or iac_findings_data is not None or repo_ai_inventory_data is not None:
                 pipeline.skip_step("extraction", "No agents to extract")
                 pipeline.skip_step("scanning", "No packages to scan")
                 pipeline.skip_step("enrichment", "Skipped")
@@ -933,6 +937,8 @@ def _run_scan_sync(job: ScanJob) -> None:
                     report.skill_audit_data = skill_audit_data
                 if iac_findings_data is not None:
                     report.iac_findings_data = iac_findings_data
+                if repo_ai_inventory_data is not None:
+                    report.ai_inventory_data = repo_ai_inventory_data
                 report_json = to_json(report)
                 report_json["warnings"] = warnings_all
                 report_json["status"] = "findings_only"
@@ -1121,6 +1127,8 @@ def _run_scan_sync(job: ScanJob) -> None:
             report.skill_audit_data = skill_audit_data
         if iac_findings_data is not None:
             report.iac_findings_data = iac_findings_data
+        if repo_ai_inventory_data is not None:
+            report.ai_inventory_data = repo_ai_inventory_data
         if req.vex:
             from agent_bom.vex import apply_vex, load_vex
             from agent_bom.vex import to_serializable as vex_to_serializable

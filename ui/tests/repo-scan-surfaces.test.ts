@@ -9,6 +9,8 @@ describe("repo-scan-surfaces", () => {
     expect(ids).toContain("terraform");
     expect(ids).toContain("iac");
     expect(ids).toContain("dependencies");
+    expect(ids).toContain("secrets");
+    expect(ids).toContain("weak-crypto");
   });
 
   it("summarizes language coverage for the scan form", () => {

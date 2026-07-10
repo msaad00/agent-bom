@@ -427,7 +427,8 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
                 <Section title="Public git repository">
                   <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
                     Paste an https git URL. We shallow-clone on the control plane, auto-detect OSS apps, agent code,
-                    ingestion pipelines, Terraform/cloud infra, MCP configs, and skill files — then visualize findings in the graph.
+                    uv.lock/requirements manifests, ingestion pipelines, Terraform/cloud infra, secrets, weak crypto,
+                    MCP configs, and skill files — then visualize findings in the graph.
                   </p>
                   <input
                     type="url"

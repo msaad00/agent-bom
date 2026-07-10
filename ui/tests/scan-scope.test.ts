@@ -68,6 +68,7 @@ describe("scan-scope", () => {
     );
     expect(chips.find((chip) => chip.label === "Repository")?.value).toBe("https://github.com/org/repo");
     expect(chips.find((chip) => chip.label === "Execution")?.value).toContain("Static parse only");
-    expect(chips.find((chip) => chip.label === "Auto-detect")?.value).toContain("Terraform");
+    expect(chips.find((chip) => chip.label === "Auto-detect")?.value).toContain("secrets");
+    expect(chips.find((chip) => chip.label === "Lockfiles")?.value).toContain("uv.lock");
   });
 });

@@ -10,7 +10,9 @@ describe("repo-scan-surfaces", () => {
     expect(ids).toContain("iac");
     expect(ids).toContain("dependencies");
     expect(ids).toContain("secrets");
-    expect(ids).toContain("weak-crypto");
+    expect(ids).toContain("jupyter");
+    expect(ids).toContain("sast");
+    expect(ids).toContain("connectors");
   });
 
   it("summarizes language coverage for the scan form", () => {

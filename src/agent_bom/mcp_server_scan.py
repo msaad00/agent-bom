@@ -121,6 +121,38 @@ async def run_scan_pipeline(
     if agents:
         scan_sources.append("agent_discovery")
 
+    if config_path:
+        try:
+            from agent_bom.api.repo_tree_scan import scan_cloned_repo_tree
+            from agent_bom.github_actions import scan_github_actions
+            from agent_bom.python_agents import scan_python_agents
+            from agent_bom.terraform import scan_terraform_dir
+
+            scan_cloned_repo_tree(config_path, agents=agents, warnings=warnings)
+            scan_sources.append("repo_tree")
+
+            py_agents, py_warnings = scan_python_agents(config_path)
+            agents.extend(py_agents)
+            warnings.extend(py_warnings)
+            if py_agents:
+                scan_sources.append("python_agents")
+
+            tf_agents, tf_warnings = scan_terraform_dir(config_path)
+            agents.extend(tf_agents)
+            warnings.extend(tf_warnings)
+            if tf_agents:
+                scan_sources.append("terraform")
+
+            gha_agents, gha_warnings = scan_github_actions(config_path)
+            agents.extend(gha_agents)
+            warnings.extend(gha_warnings)
+            if gha_agents:
+                scan_sources.append("github_actions")
+        except Exception as exc:
+            msg = f"Repo static scan failed for {config_path}: {sanitize_error(exc)}"
+            logger.warning(msg)
+            warnings.append(msg)
+
     if package:
         try:
             agents.append(_package_spec_agent(package))

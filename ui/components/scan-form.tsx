@@ -456,6 +456,11 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
                     </ul>
                   </div>
                   <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
+                    * SAST runs when Semgrep is installed on the control plane. SaaS connectors (Jira, Slack, ServiceNow) are scanned via{" "}
+                    <Link href="/sources" className="underline hover:text-[color:var(--foreground)]">Data Sources</Link>
+                    , not git URLs.
+                  </p>
+                  <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
                     Private repos: set <span className="font-mono">AGENT_BOM_REPO_SCAN_TOKEN</span> on the control plane host.
                   </p>
                 </Section>

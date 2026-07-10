@@ -169,6 +169,8 @@ describe("ScanForm", () => {
     expect(screen.getByText(/Auto-detected at scan time/i)).toBeInTheDocument();
     expect(screen.getByText(/Secrets & credentials/i)).toBeInTheDocument();
     expect(screen.getByText(/Weak cryptography/i)).toBeInTheDocument();
+    expect(screen.getByText(/Jupyter notebooks/i)).toBeInTheDocument();
+    expect(screen.getByText(/not git URLs/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Scan repository/i }));
     expect(startScan).toHaveBeenCalledWith({
       repo_url: "https://github.com/org/repo",

@@ -70,5 +70,6 @@ describe("scan-scope", () => {
     expect(chips.find((chip) => chip.label === "Execution")?.value).toContain("Static parse only");
     expect(chips.find((chip) => chip.label === "Auto-detect")?.value).toContain("secrets");
     expect(chips.find((chip) => chip.label === "Lockfiles")?.value).toContain("uv.lock");
+    expect(chips.find((chip) => chip.label === "Not in repo URL")?.value).toContain("SaaS connectors");
   });
 });

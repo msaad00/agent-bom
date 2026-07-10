@@ -43,6 +43,7 @@ class RepoTreeScanResult:
     skill_audit_data: dict[str, Any] | None = None
     iac_findings_data: dict[str, Any] | None = None
     ai_inventory_data: dict[str, Any] | None = None
+    sast_data: dict[str, Any] | None = None
 
 
 @dataclass
@@ -299,5 +300,56 @@ def scan_cloned_repo_tree(
 
     if ai_inventory:
         result.ai_inventory_data = ai_inventory
+
+    from agent_bom.jupyter import scan_jupyter_notebooks
+
+    if update_progress is not None:
+        update_progress("Scanning Jupyter notebooks (.ipynb) for AI libraries and credentials")
+    jupyter_agents, jupyter_warnings = scan_jupyter_notebooks(root)
+    if jupyter_agents:
+        agents.extend(jupyter_agents)
+        if update_progress is not None:
+            update_progress(f"Found {len(jupyter_agents)} notebook(s) with AI library usage")
+    warnings.extend(jupyter_warnings)
+
+    try:
+        from agent_bom.sast import SASTScanError, scan_code
+
+        if update_progress is not None:
+            update_progress("Running SAST (Semgrep) when available on control plane")
+        sast_packages, sast_result = scan_code(str(root))
+        if sast_result.total_findings > 0:
+            result.sast_data = sast_result.to_dict()
+            if sast_packages:
+                sast_provenance = {
+                    "source_type": "repo_sast",
+                    "observed_via": ["repo_sast"],
+                    "source": "sast",
+                    "collector": "semgrep",
+                    "confidence": "high",
+                }
+                for pkg in sast_packages:
+                    if getattr(pkg, "discovery_provenance", None) is None:
+                        pkg.discovery_provenance = sast_provenance
+                agents.append(
+                    Agent(
+                        name="repo-sast",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=str(root),
+                        mcp_servers=[
+                            MCPServer(
+                                name=f"sast:{root.name}",
+                                surface=ServerSurface.SAST,
+                                packages=sast_packages,
+                            )
+                        ],
+                        source="sast",
+                        discovery_provenance=sast_provenance,
+                    )
+                )
+    except SASTScanError:
+        pass  # Semgrep not installed — optional on control plane
+    except Exception:
+        pass  # SAST must not block repo scans
 
     return result

@@ -68,6 +68,31 @@ def test_scan_cloned_repo_tree_finds_secrets_and_weak_crypto(tmp_path: Path) -> 
     assert result.ai_inventory_data.get("weak_crypto", {}).get("total", 0) >= 1
 
 
+def test_scan_cloned_repo_tree_discovers_jupyter_notebooks(tmp_path: Path) -> None:
+    notebook = {
+        "cells": [
+            {
+                "cell_type": "code",
+                "metadata": {},
+                "source": ["import openai\n", "client = openai.OpenAI()\n"],
+                "outputs": [],
+                "execution_count": None,
+            }
+        ],
+        "metadata": {},
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    import json
+
+    (tmp_path / "analysis.ipynb").write_text(json.dumps(notebook), encoding="utf-8")
+
+    agents: list = []
+    result = scan_cloned_repo_tree(str(tmp_path), agents=agents, warnings=[])
+
+    assert any(agent.source == "jupyter" or "jupyter" in agent.name.lower() for agent in agents)
+
+
 def test_scan_weak_crypto_skips_test_files(tmp_path: Path) -> None:
     (tmp_path / "test_app.py").write_text("import hashlib\nhashlib.md5(b'x')\n", encoding="utf-8")
     (tmp_path / "service.py").write_text("import hashlib\nhashlib.md5(b'x')\n", encoding="utf-8")

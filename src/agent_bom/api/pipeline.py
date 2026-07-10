@@ -618,6 +618,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         skill_audit_data: dict | None = None
         iac_findings_data: dict | None = None
         repo_ai_inventory_data: dict | None = None
+        repo_sast_data: dict | None = None
         if repo_url:
             from agent_bom.repo_scan import RepoScanError, clone_repository
 
@@ -643,6 +644,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             skill_audit_data = repo_tree_result.skill_audit_data
             iac_findings_data = repo_tree_result.iac_findings_data
             repo_ai_inventory_data = repo_tree_result.ai_inventory_data
+            repo_sast_data = repo_tree_result.sast_data
         path_fields = (
             ([req.inventory] if req.inventory else [])
             + req.tf_dirs
@@ -705,11 +707,19 @@ def _run_scan_sync(job: ScanJob) -> None:
                 warnings_all.append(f"Auto DB refresh skipped: {sanitize_error(db_exc)}")
 
         # ── Discovery phase ──
-        pipeline.start_step("discovery", "Discovering local MCP configurations...")
-        local_agents = discover_all(
-            dynamic=req.dynamic_discovery,
-            dynamic_max_depth=req.dynamic_max_depth,
-        )
+        if repo_url:
+            pipeline.start_step("discovery", "Discovering MCP configs in cloned repository...")
+            local_agents = discover_all(
+                project_dir=cloned_path,
+                dynamic=req.dynamic_discovery,
+                dynamic_max_depth=req.dynamic_max_depth,
+            )
+        else:
+            pipeline.start_step("discovery", "Discovering local MCP configurations...")
+            local_agents = discover_all(
+                dynamic=req.dynamic_discovery,
+                dynamic_max_depth=req.dynamic_max_depth,
+            )
         agents.extend(local_agents)
 
         if req.inventory:
@@ -923,7 +933,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
 
         if not agents:
-            if skill_audit_data is not None or iac_findings_data is not None or repo_ai_inventory_data is not None:
+            if skill_audit_data is not None or iac_findings_data is not None or repo_ai_inventory_data is not None or repo_sast_data is not None:
                 pipeline.skip_step("extraction", "No agents to extract")
                 pipeline.skip_step("scanning", "No packages to scan")
                 pipeline.skip_step("enrichment", "Skipped")
@@ -939,6 +949,8 @@ def _run_scan_sync(job: ScanJob) -> None:
                     report.iac_findings_data = iac_findings_data
                 if repo_ai_inventory_data is not None:
                     report.ai_inventory_data = repo_ai_inventory_data
+                if repo_sast_data is not None:
+                    report.sast_data = repo_sast_data
                 report_json = to_json(report)
                 report_json["warnings"] = warnings_all
                 report_json["status"] = "findings_only"
@@ -1129,6 +1141,8 @@ def _run_scan_sync(job: ScanJob) -> None:
             report.iac_findings_data = iac_findings_data
         if repo_ai_inventory_data is not None:
             report.ai_inventory_data = repo_ai_inventory_data
+        if repo_sast_data is not None:
+            report.sast_data = repo_sast_data
         if req.vex:
             from agent_bom.vex import apply_vex, load_vex
             from agent_bom.vex import to_serializable as vex_to_serializable

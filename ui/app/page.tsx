@@ -382,6 +382,11 @@ export default function Dashboard() {
     ? (totalPackages > 0 ? totalPackages : (seededEvidence ? (summaryStats?.total_packages ?? 0) : totalPackages))
     : (summaryStats?.total_packages ?? 0);
 
+  const complianceSnapshot = useMemo(
+    () => buildComplianceSnapshot(compliance),
+    [compliance],
+  );
+
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} kind={apiErrorKind} detail={apiErrorDetail} />;
 
   const postureGrade = posture?.grade ?? overview?.posture.grade ?? "—";
@@ -390,10 +395,6 @@ export default function Dashboard() {
     summaryReady && effectiveRecentJobs[0]?.created_at
       ? formatShortScanTime(effectiveRecentJobs[0].created_at)
       : null;
-  const complianceSnapshot = useMemo(
-    () => buildComplianceSnapshot(compliance),
-    [compliance],
-  );
 
   return (
     <div className="space-y-6">

@@ -14,7 +14,6 @@ import {
   Loader2,
   Plus,
   Server,
-  Upload,
   X,
 } from "lucide-react";
 

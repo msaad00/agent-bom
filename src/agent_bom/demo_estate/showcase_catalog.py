@@ -166,7 +166,7 @@ def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[
         ))
         cost_seeded = 1
 
-    summary = {
+    summary: dict[str, Any] = {
         "seeded": bool(connections_seeded or sources_seeded or cost_seeded),
         "connections": connections_seeded,
         "sources": sources_seeded,

@@ -17,6 +17,15 @@ import { Collapsible } from "@/components/collapsible";
 import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
 import {
+  ISSUE_TYPE_SHORT,
+  SEVERITY_BANDS,
+  emptyIssueSeverityMatrix,
+  findingsHref,
+  type IssueSeverityMatrix,
+  type IssueType,
+  type SeverityBand,
+} from "@/lib/finding-issue-type";
+import {
   overviewPersonaLabel,
   type OverviewPersona,
 } from "@/lib/overview-persona";
@@ -59,6 +68,8 @@ export interface OverviewCockpitProps {
   mode: string;
   summaryReady: boolean;
   severity: SeverityCounts;
+  /** Severity × issue-type matrix (CVEs, misconfigs, secrets, identity). */
+  issueMatrix?: IssueSeverityMatrix | null | undefined;
   domains: OverviewResponse["domains"] | null;
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
@@ -89,6 +100,7 @@ export function OverviewCockpit({
   mode,
   summaryReady,
   severity,
+  issueMatrix = null,
   domains,
   topPath,
   exposurePaths,
@@ -130,7 +142,7 @@ export function OverviewCockpit({
           </div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+        <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
           <PostureHero
             grade={grade}
             score={score}
@@ -139,28 +151,20 @@ export function OverviewCockpit({
             critical={critical}
             high={high}
           />
-          <div className={`grid grid-cols-2 gap-3 ${isExecutive ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
-            <PriorityKpi label="Critical" value={summaryReady ? critical : null} href="/findings?severity=critical" tone="critical" />
-            <PriorityKpi label="High" value={summaryReady ? high : null} href="/findings?severity=high" tone="high" />
-            {isExecutive ? (
-              <PriorityKpi
-                label="Compliance"
-                value={null}
-                textValue={complianceScore}
-                href="/compliance"
-              />
-            ) : (
-              <PriorityKpi label="KEV" value={summaryReady ? kev : null} href="/findings?kev=1" />
-            )}
-            {!isExecutive ? (
-              <PriorityKpi label="Cred exposure" value={summaryReady ? credentials : null} href="/findings?q=credential" tone="warn" />
-            ) : (
-              <PriorityKpi label="KEV" value={summaryReady ? kev : null} href="/findings?kev=1" tone="warn" />
-            )}
-          </div>
+          <SeverityIssueStrip
+            summaryReady={summaryReady}
+            critical={critical}
+            high={high}
+            kev={kev}
+            credentials={credentials}
+            complianceScore={complianceScore}
+            isExecutive={isExecutive}
+            severity={severity}
+            matrix={issueMatrix}
+          />
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs lg:grid-cols-1">
             <MetaLine label="Agents" value={summaryReady && agents != null ? String(agents) : "—"} href="/agents" />
-            <MetaLine label="CVEs" value={summaryReady && cves != null ? String(cves) : "—"} href="/findings" />
+            <MetaLine label="CVEs" value={summaryReady && cves != null ? String(cves) : "—"} href={findingsHref({ issue: "vulnerability" })} />
             <MetaLine label="Scans" value={summaryReady && scans != null ? String(scans) : "—"} href="/jobs" />
             <MetaLine label="Last scan" value={latestScan ?? "—"} />
             <MetaLine label="Mode" value={mode} />
@@ -226,10 +230,18 @@ export function OverviewCockpit({
         <aside className="min-h-0 space-y-3 lg:col-span-4">
           <Collapsible
             title="Severity roll-up"
-            subtitle={isExecutive ? "Open findings by severity band" : "Finding backlog by severity"}
+            subtitle={
+              isExecutive
+                ? "Open issues by severity across CVEs, misconfigs, and secrets"
+                : "Finding backlog by severity and issue type"
+            }
             defaultOpen
           >
-            <SeverityRollup severity={severity} summaryReady={summaryReady} />
+            <SeverityRollup
+              severity={severity}
+              summaryReady={summaryReady}
+              matrix={issueMatrix}
+            />
           </Collapsible>
 
           <Collapsible
@@ -609,38 +621,199 @@ function PostureHero({
   );
 }
 
-function PriorityKpi({
-  label,
-  value,
-  textValue,
-  href,
-  tone,
+function SeverityIssueStrip({
+  summaryReady,
+  critical,
+  high,
+  kev,
+  credentials,
+  complianceScore,
+  isExecutive,
+  severity,
+  matrix,
 }: {
-  label: string;
-  value: number | null;
-  textValue?: string | undefined;
-  href?: string | undefined;
-  tone?: "critical" | "high" | "warn" | undefined;
+  summaryReady: boolean;
+  critical: number;
+  high: number;
+  kev: number | null;
+  credentials: number | null;
+  complianceScore?: string | undefined;
+  isExecutive: boolean;
+  severity: SeverityCounts;
+  matrix: IssueSeverityMatrix | null | undefined;
 }) {
-  const valueClass =
-    tone === "critical"
-      ? "text-red-500 dark:text-red-400"
-      : tone === "high"
-        ? "text-orange-500 dark:text-orange-400"
-        : tone === "warn"
-          ? "text-amber-500 dark:text-amber-400"
-          : "text-[color:var(--foreground)]";
+  const resolved = matrix ?? emptyIssueSeverityMatrix();
+  const hasTyped = resolved.openTotal > 0;
+  const bands: { key: SeverityBand; label: string; tone: string; value: number }[] = [
+    {
+      key: "critical",
+      label: "Critical",
+      tone: "text-red-500 dark:text-red-400",
+      value: summaryReady ? (hasTyped ? resolved.totals.critical : critical) : 0,
+    },
+    {
+      key: "high",
+      label: "High",
+      tone: "text-orange-500 dark:text-orange-400",
+      value: summaryReady ? (hasTyped ? resolved.totals.high : high) : 0,
+    },
+    {
+      key: "medium",
+      label: "Medium",
+      tone: "text-yellow-500 dark:text-yellow-300",
+      value: summaryReady ? (hasTyped ? resolved.totals.medium : severity.medium) : 0,
+    },
+    {
+      key: "low",
+      label: "Low",
+      tone: "text-sky-500 dark:text-sky-300",
+      value: summaryReady ? (hasTyped ? resolved.totals.low : severity.low) : 0,
+    },
+  ];
+  const stackedTotal = bands.reduce((sum, band) => sum + band.value, 0);
+  const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "identity"];
+  const issueTone: Record<IssueType, string> = {
+    vulnerability: "bg-violet-500",
+    misconfiguration: "bg-orange-500",
+    secret: "bg-rose-500",
+    identity: "bg-cyan-500",
+  };
 
-  const display = textValue ?? (value != null ? String(value) : "—");
+  return (
+    <div
+      className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3"
+      data-testid="overview-severity-issue-strip"
+    >
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+            Open issues
+          </p>
+          <p className="mt-0.5 text-[11px] text-[color:var(--text-secondary)]">
+            Severity across CVEs, misconfigs, secrets, and identity
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {summaryReady && kev != null ? (
+            <Link
+              href={findingsHref({ kev: true })}
+              className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200"
+            >
+              KEV {kev}
+            </Link>
+          ) : null}
+          {!isExecutive && summaryReady && credentials != null ? (
+            <Link
+              href={findingsHref({ issue: "secret" })}
+              className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200"
+            >
+              Secrets {credentials}
+            </Link>
+          ) : null}
+          {isExecutive && complianceScore ? (
+            <Link
+              href="/compliance"
+              className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200"
+            >
+              Compliance {complianceScore}
+            </Link>
+          ) : null}
+        </div>
+      </div>
 
-  const inner = (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5">
-      <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</p>
-      <p className={`mt-1 font-mono text-xl font-semibold ${valueClass}`}>{display}</p>
+      <div className="mb-3 flex h-2.5 overflow-hidden rounded-full bg-[color:var(--surface)]">
+        {summaryReady && stackedTotal > 0 ? (
+          bands.map((band) =>
+            band.value > 0 ? (
+              <div
+                key={band.key}
+                className={
+                  band.key === "critical"
+                    ? "bg-red-500"
+                    : band.key === "high"
+                      ? "bg-orange-500"
+                      : band.key === "medium"
+                        ? "bg-yellow-500"
+                        : "bg-sky-500"
+                }
+                style={{ width: `${(band.value / stackedTotal) * 100}%` }}
+                title={`${band.label}: ${band.value}`}
+              />
+            ) : null,
+          )
+        ) : (
+          <div className="w-full bg-emerald-500/35" />
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {bands.map((band) => (
+          <Link
+            key={band.key}
+            href={findingsHref({ severity: band.key })}
+            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-2 transition hover:border-[color:var(--border-strong)]"
+          >
+            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
+              {band.label}
+            </p>
+            <p className={`mt-1 font-mono text-xl font-semibold ${band.tone}`}>
+              {summaryReady ? band.value : "—"}
+            </p>
+            {hasTyped && summaryReady ? (
+              <div className="mt-2 space-y-1">
+                <div className="flex h-1.5 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
+                  {issueTypes.map((issue) => {
+                    const count = resolved[issue][band.key];
+                    if (count <= 0 || band.value <= 0) return null;
+                    return (
+                      <div
+                        key={issue}
+                        className={issueTone[issue]}
+                        style={{ width: `${(count / band.value) * 100}%` }}
+                        title={`${ISSUE_TYPE_SHORT[issue]}: ${count}`}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] text-[color:var(--text-tertiary)]">
+                  {issueTypes.map((issue) => {
+                    const count = resolved[issue][band.key];
+                    if (count <= 0) return null;
+                    return (
+                      <span key={issue}>
+                        {ISSUE_TYPE_SHORT[issue]} {count}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-[9px] text-[color:var(--text-tertiary)]">All issue types</p>
+            )}
+          </Link>
+        ))}
+      </div>
+
+      {hasTyped && summaryReady ? (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-[color:var(--border-subtle)] pt-2.5">
+          {issueTypes.map((issue) => {
+            const total = resolved.byType[issue];
+            if (total <= 0) return null;
+            return (
+              <Link
+                key={issue}
+                href={findingsHref({ issue })}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)]"
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${issueTone[issue]}`} aria-hidden="true" />
+                {ISSUE_TYPE_SHORT[issue]} {total}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
-
-  return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
 function MetaLine({ label, value, href }: { label: string; value: string; href?: string | undefined }) {
@@ -694,30 +867,71 @@ function DomainCard({ domain }: { domain: OverviewDomain }) {
   );
 }
 
-function SeverityRollup({ severity, summaryReady }: { severity: SeverityCounts; summaryReady: boolean }) {
-  const rows = [
-    { key: "critical", label: "Critical", tone: "bg-red-500", href: "/findings?severity=critical" },
-    { key: "high", label: "High", tone: "bg-orange-500", href: "/findings?severity=high" },
-    { key: "medium", label: "Medium", tone: "bg-yellow-500", href: "/findings?severity=medium" },
-    { key: "low", label: "Low", tone: "bg-blue-500", href: "/findings?severity=low" },
-  ] as const;
-  const max = Math.max(severity.critical, severity.high, severity.medium, severity.low, 1);
+function SeverityRollup({
+  severity,
+  summaryReady,
+  matrix,
+}: {
+  severity: SeverityCounts;
+  summaryReady: boolean;
+  matrix: IssueSeverityMatrix | null | undefined;
+}) {
+  const resolved = matrix ?? emptyIssueSeverityMatrix();
+  const hasTyped = resolved.openTotal > 0;
+  const rows = SEVERITY_BANDS.map((key) => ({
+    key,
+    label: key.charAt(0).toUpperCase() + key.slice(1),
+    tone:
+      key === "critical"
+        ? "bg-red-500"
+        : key === "high"
+          ? "bg-orange-500"
+          : key === "medium"
+            ? "bg-yellow-500"
+            : "bg-sky-500",
+    href: findingsHref({ severity: key }),
+    count: hasTyped ? resolved.totals[key] : severity[key],
+  }));
+  const max = Math.max(...rows.map((row) => row.count), 1);
+  const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "identity"];
 
   return (
     <div className="space-y-2.5">
       {rows.map((row) => {
-        const count = severity[row.key];
-        const width = summaryReady ? Math.max(8, (count / max) * 100) : 0;
+        const width = summaryReady ? Math.max(8, (row.count / max) * 100) : 0;
         return (
-          <Link key={row.key} href={row.href} className="block group">
-            <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="text-[color:var(--text-secondary)] group-hover:text-[color:var(--foreground)]">{row.label}</span>
-              <span className="font-mono text-[color:var(--text-tertiary)]">{summaryReady ? count : "—"}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
-              <div className={`h-full rounded-full ${row.tone}`} style={{ width: `${width}%` }} />
-            </div>
-          </Link>
+          <div key={row.key} className="space-y-1">
+            <Link href={row.href} className="block group">
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="text-[color:var(--text-secondary)] group-hover:text-[color:var(--foreground)]">
+                  {row.label}
+                </span>
+                <span className="font-mono text-[color:var(--text-tertiary)]">
+                  {summaryReady ? row.count : "—"}
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
+                <div className={`h-full rounded-full ${row.tone}`} style={{ width: `${width}%` }} />
+              </div>
+            </Link>
+            {hasTyped && summaryReady && row.count > 0 ? (
+              <div className="flex flex-wrap gap-1 pl-0.5">
+                {issueTypes.map((issue) => {
+                  const count = resolved[issue][row.key];
+                  if (count <= 0) return null;
+                  return (
+                    <Link
+                      key={issue}
+                      href={findingsHref({ severity: row.key, issue })}
+                      className="rounded border border-[color:var(--border-subtle)] px-1.5 py-0.5 text-[9px] text-[color:var(--text-tertiary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--text-secondary)]"
+                    >
+                      {ISSUE_TYPE_SHORT[issue]} {count}
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         );
       })}
     </div>

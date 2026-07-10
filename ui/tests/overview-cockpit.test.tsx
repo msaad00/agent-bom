@@ -78,6 +78,15 @@ describe("OverviewCockpit", () => {
           compliance: { state: "connected", count: 1 },
           fleet: { state: "locked", count: 0 },
         }}
+        issueMatrix={{
+          vulnerability: { critical: 1, high: 4, medium: 2, low: 0 },
+          misconfiguration: { critical: 0, high: 3, medium: 1, low: 0 },
+          secret: { critical: 1, high: 1, medium: 0, low: 0 },
+          identity: { critical: 0, high: 0, medium: 0, low: 0 },
+          totals: { critical: 2, high: 8, medium: 3, low: 0 },
+          byType: { vulnerability: 7, misconfiguration: 4, secret: 2, identity: 0 },
+          openTotal: 13,
+        }}
       />,
     );
 
@@ -85,6 +94,9 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("OWASP LLM Top 10")).toBeInTheDocument();
     expect(screen.getByTestId("overview-activated-services")).toBeInTheDocument();
     expect(screen.getByText("Cloud accounts")).toBeInTheDocument();
+    expect(screen.getByTestId("overview-severity-issue-strip")).toBeInTheDocument();
+    expect(screen.getByText("Open issues")).toBeInTheDocument();
+    expect(screen.getByText("Misconfig 4")).toBeInTheDocument();
   });
 
   it("lets operators collapse overview sections", async () => {

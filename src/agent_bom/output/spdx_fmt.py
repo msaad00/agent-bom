@@ -22,8 +22,8 @@ def to_spdx(report: AIBOMReport) -> dict:
     Follows the SPDX 3.0 AI BOM profile where applicable:
     - Each agent becomes an /AI element
     - Each package becomes a /Package element
-    - Vulnerabilities become /security/VulnAssessmentRelationship elements
-    - Dependency edges become DEPENDS_ON relationships
+    - Vulnerabilities become security_VulnAssessmentRelationship elements
+    - Dependency edges become dependsOn relationships
     """
     spdx_id_counter = [0]
 
@@ -61,15 +61,15 @@ def to_spdx(report: AIBOMReport) -> dict:
         agent_id = _next_id("SPDXRef-Agent")
 
         agent_element: dict[str, Any] = {
-            "type": "SOFTWARE_PACKAGE",
+            "type": "software_Package",
             "spdxId": agent_id,
             "name": agent.name,
-            "primaryPurpose": "APPLICATION",
+            "software_primaryPurpose": "application",
             "description": f"AI Agent ({agent.agent_type.value})",
             "annotation": [
                 {
                     "type": "Annotation",
-                    "annotationType": "OTHER",
+                    "annotationType": "other",
                     "subject": agent_id,
                     "statement": f"agent-bom:ai-agent-type={agent.agent_type.value}",
                 }
@@ -90,10 +90,10 @@ def to_spdx(report: AIBOMReport) -> dict:
                 if len(server.tools) > 10:
                     server_desc += f" (+{len(server.tools) - 10} more)"
             server_element: dict[str, Any] = {
-                "type": "SOFTWARE_PACKAGE",
+                "type": "software_Package",
                 "spdxId": server_id,
                 "name": server.name,
-                "primaryPurpose": "APPLICATION",
+                "software_primaryPurpose": "application",
                 "description": server_desc,
             }
             if server.mcp_version:
@@ -103,7 +103,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                 server_element["annotation"] = [
                     {
                         "type": "Annotation",
-                        "annotationType": "OTHER",
+                        "annotationType": "other",
                         "subject": server_id,
                         "statement": f"agent-bom:mcp-tool={tool.name}" + (f": {tool.description[:120]}" if tool.description else ""),
                     }
@@ -115,7 +115,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                 {
                     "type": "Relationship",
                     "spdxId": _next_id("SPDXRef-Rel"),
-                    "relationshipType": "CONTAINS",
+                    "relationshipType": "contains",
                     "from": agent_id,
                     "to": [server_id],
                 }
@@ -128,27 +128,39 @@ def to_spdx(report: AIBOMReport) -> dict:
                     pkg_ref_map[pkg_key] = pkg_id
 
                     pkg_element: dict[str, object] = {
-                        "type": "SOFTWARE_PACKAGE",
+                        "type": "software_Package",
                         "spdxId": pkg_id,
                         "name": pkg.name,
                         "versionInfo": pkg.version,
-                        "primaryPurpose": "LIBRARY",
+                        "software_primaryPurpose": "library",
                     }
                     version_provenance = package_version_provenance(pkg)
-                    pkg_element["annotation"] = [
+                    pkg_annotations: list[dict[str, object]] = [
                         {
                             "type": "Annotation",
-                            "annotationType": "OTHER",
+                            "annotationType": "other",
                             "subject": pkg_id,
                             "statement": f"agent-bom:version-provenance-source={version_provenance.get('version_source', 'unknown')}",
                         },
                         {
                             "type": "Annotation",
-                            "annotationType": "OTHER",
+                            "annotationType": "other",
                             "subject": pkg_id,
                             "statement": f"agent-bom:version-provenance-confidence={version_provenance.get('confidence', 'unknown')}",
                         },
                     ]
+                    if pkg.is_malicious:
+                        # Surface the malicious flag so a MAL- package is
+                        # distinguishable from an ordinary library in the SBOM.
+                        pkg_annotations.append(
+                            {
+                                "type": "Annotation",
+                                "annotationType": "other",
+                                "subject": pkg_id,
+                                "statement": f"agent-bom:malicious=true reason={pkg.malicious_reason or 'flagged malicious'}",
+                            }
+                        )
+                    pkg_element["annotation"] = pkg_annotations
                     verified_using = spdx3_verified_using(pkg.checksums)
                     if verified_using:
                         pkg_element["verifiedUsing"] = verified_using
@@ -173,7 +185,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                     {
                         "type": "Relationship",
                         "spdxId": _next_id("SPDXRef-Rel"),
-                        "relationshipType": "DEPENDS_ON",
+                        "relationshipType": "dependsOn",
                         "from": server_id,
                         "to": [pkg_id],
                     }
@@ -182,7 +194,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                 for vuln in pkg.vulnerabilities:
                     vuln_element_id = _next_id("SPDXRef-Vuln")
                     vuln_element: dict[str, object] = {
-                        "type": "security/Vulnerability",
+                        "type": "security_Vulnerability",
                         "spdxId": vuln_element_id,
                         "name": vuln.id,
                         "description": vuln.summary or "",
@@ -195,26 +207,33 @@ def to_spdx(report: AIBOMReport) -> dict:
                     )
                     if vuln_annotations:
                         vuln_element["annotation"] = vuln_annotations
-                    if vuln.cvss_score is not None:
-                        vuln_element["assessedElement"] = pkg_id
-                        vuln_element["score"] = {
-                            "method": "CVSS_3",
-                            "score": vuln.cvss_score,
-                            "severity": vuln.severity.value,
-                        }
                     elements.append(vuln_element)
 
+                    # CVSS is a security-profile assessment relationship in
+                    # SPDX 3.0, not an ad-hoc score object on the vulnerability.
+                    if vuln.cvss_score is not None:
+                        relationships.append(
+                            {
+                                "type": "security_CvssV3VulnAssessmentRelationship",
+                                "spdxId": _next_id("SPDXRef-Cvss"),
+                                "relationshipType": "hasAssessmentFor",
+                                "from": vuln_element_id,
+                                "to": [pkg_id],
+                                "security_score": vuln.cvss_score,
+                                "security_severity": str(vuln.severity.value).lower(),
+                            }
+                        )
+
                     assessment_id = _next_id("SPDXRef-VulnAssessment")
-                    assessment = {
-                        "type": "security/VulnAssessmentRelationship",
+                    assessment: dict[str, object] = {
+                        "type": "security_VexAffectedVulnAssessmentRelationship",
                         "spdxId": assessment_id,
-                        "relationshipType": "AFFECTS",
+                        "relationshipType": "affects",
                         "from": vuln_element_id,
                         "to": [pkg_id],
-                        "severity": vuln.severity.value,
                     }
                     if vuln.fixed_version:
-                        assessment["remediation"] = f"Upgrade to {vuln.fixed_version}"
+                        assessment["security_actionStatement"] = f"Upgrade to {vuln.fixed_version}"
                     if vuln.is_kev:
                         assessment["comment"] = "CISA KEV: actively exploited in the wild"
                     relationships.append(assessment)
@@ -264,7 +283,7 @@ def _vulnerability_annotations(vuln: Any, subject: str, *, compliance_tags: list
     return [
         {
             "type": "Annotation",
-            "annotationType": "OTHER",
+            "annotationType": "other",
             "subject": subject,
             "statement": statement,
         }

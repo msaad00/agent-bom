@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { OverviewCockpit } from "@/components/overview-cockpit";
 
@@ -31,61 +31,41 @@ describe("OverviewCockpit", () => {
     },
     exposurePaths: [],
     signals: { tools: 23, packages: 17, activeServices: 7, connected: true },
-    onPersonaChange: vi.fn(),
   };
 
-  it("renders CISO risk themes without attack-path chains", () => {
-    render(<OverviewCockpit {...baseProps} persona="ciso" />);
+  it("renders a single exec overview without altitude lenses", () => {
+    render(<OverviewCockpit {...baseProps} />);
 
+    expect(screen.getByText("Command center")).toBeInTheDocument();
     expect(screen.getByText("Top risks")).toBeInTheDocument();
-    expect(screen.getByText(/drill into Trust for evidence/i)).toBeInTheDocument();
-    expect(screen.getByText("Leadership actions")).toBeInTheDocument();
+    expect(screen.getByText("Next steps")).toBeInTheDocument();
+    expect(screen.getByText("Risk posture")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "CISO" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Trust" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Engineer" })).not.toBeInTheDocument();
     expect(screen.queryByText("Priority exposure path")).not.toBeInTheDocument();
+    expect(screen.queryByText("Trust evidence")).not.toBeInTheDocument();
   });
 
-  it("renders Trust evidence altitude for GRC", () => {
-    render(
-      <OverviewCockpit
-        {...baseProps}
-        persona="trust"
-        compliance={{
-          overallScore: 88,
-          overallStatus: "pass",
-          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
-        }}
-      />,
+  it("surfaces risk themes and links into findings / compliance", () => {
+    render(<OverviewCockpit {...baseProps} />);
+
+    expect(screen.getByText(/2 critical findings need attention/i)).toBeInTheDocument();
+    expect(screen.getByText(/Known exploit exposure: CVE-2020-14343/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Critical findings" })).toHaveAttribute(
+      "href",
+      "/findings?severity=critical",
     );
-
-    expect(screen.getByText("Trust evidence")).toBeInTheDocument();
-    expect(screen.getByText("Trust & GRC")).toBeInTheDocument();
-    expect(screen.queryByText("Priority exposure path")).not.toBeInTheDocument();
-  });
-
-  it("renders engineer attack-path panel", () => {
-    render(<OverviewCockpit {...baseProps} persona="engineer" />);
-
-    expect(screen.getByText("Priority exposure path")).toBeInTheDocument();
-    expect(screen.getByText("Investigate")).toBeInTheDocument();
-    expect(screen.getByText("CVE-2020-14343")).toBeInTheDocument();
-  });
-
-  it("switches altitude via lens toggle and drill controls", async () => {
-    const user = userEvent.setup();
-    const onPersonaChange = vi.fn();
-    render(<OverviewCockpit {...baseProps} persona="ciso" onPersonaChange={onPersonaChange} />);
-
-    await user.click(screen.getByRole("button", { name: "Engineer" }));
-    expect(onPersonaChange).toHaveBeenCalledWith("engineer");
-
-    await user.click(screen.getByRole("button", { name: "↓ Trust" }));
-    expect(onPersonaChange).toHaveBeenCalledWith("trust");
+    expect(screen.getByRole("link", { name: "Compliance evidence" })).toHaveAttribute(
+      "href",
+      "/compliance",
+    );
   });
 
   it("shows compliance and activated services snapshots", () => {
     render(
       <OverviewCockpit
         {...baseProps}
-        persona="ciso"
         compliance={{
           overallScore: 72,
           overallStatus: "warning",
@@ -118,6 +98,9 @@ describe("OverviewCockpit", () => {
     expect(screen.getByTestId("overview-severity-issue-strip")).toBeInTheDocument();
     expect(screen.getByText("Open issues")).toBeInTheDocument();
     expect(screen.getByText("Misconfig 4")).toBeInTheDocument();
+    expect(screen.getByText("KEV 1")).toBeInTheDocument();
+    expect(screen.getByText("Secrets 8")).toBeInTheDocument();
+    expect(screen.getByText("Compliance 72%")).toBeInTheDocument();
   });
 
   it("lets operators collapse overview sections", async () => {
@@ -125,7 +108,6 @@ describe("OverviewCockpit", () => {
     render(
       <OverviewCockpit
         {...baseProps}
-        persona="ciso"
         compliance={{
           overallScore: 90,
           overallStatus: "pass",

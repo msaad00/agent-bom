@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from agent_bom.output.brand_tokens import (
+    POSITIONING_SHORT,
     PRODUCT_NAME,
-    TAGLINE_SHORT,
     cli_banner_plain,
     cli_mark_lines,
     print_cli_startup_banner,
@@ -17,10 +17,11 @@ def test_cli_mark_contains_bom_letters() -> None:
     assert "o" in mark.lower()  # agent O
 
 
-def test_cli_banner_uses_locked_product_name_and_tagline() -> None:
+def test_cli_banner_uses_locked_product_name_and_positioning() -> None:
     banner = cli_banner_plain(version="0.0.0-test", force_ascii=True)
     assert PRODUCT_NAME in banner
-    assert TAGLINE_SHORT in banner
+    assert POSITIONING_SHORT in banner
+    assert "BOM for humans" not in banner
     assert "v0.0.0-test" in banner
 
 
@@ -34,7 +35,8 @@ def test_startup_banner_renders_mark_and_quick_start() -> None:
     print_cli_startup_banner(_Capture(), version="9.9.9")
     blob = "\n".join(lines)
     assert PRODUCT_NAME in blob
-    assert TAGLINE_SHORT in blob
+    assert POSITIONING_SHORT in blob
+    assert "BOM for humans" not in blob
     assert "9.9.9" in blob
     assert f"{PRODUCT_NAME} scan" in blob
     assert "Quick start" in blob

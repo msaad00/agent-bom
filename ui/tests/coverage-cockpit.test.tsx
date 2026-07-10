@@ -52,7 +52,7 @@ describe("CoverageCockpit", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Coverage" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Onboard & coverage" })).toBeInTheDocument();
     expect(screen.getByText(/Deployment is your control plane/i)).toBeInTheDocument();
     expect(screen.getByText("Deployment")).toBeInTheDocument();
     expect(screen.getByText("Cloud accounts")).toBeInTheDocument();

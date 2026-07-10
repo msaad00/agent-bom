@@ -1,5 +1,5 @@
 site_name: agent-bom
-site_description: BOM for humans & agents — security scanner for AI, MCP, and cloud infrastructure
+site_description: Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure
 site_url: https://msaad00.github.io/agent-bom
 repo_url: https://github.com/msaad00/agent-bom
 repo_name: msaad00/agent-bom

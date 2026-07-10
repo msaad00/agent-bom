@@ -10,7 +10,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 
 | Command | Description |
 |---------|-------------|
-| `connect` | Read-only onboard a cloud or data source (AWS, Azure, GCP, Snowflake); prints the exact read-only Terraform module and opt-in inventory env var, then reports detected credentials |
+| `connect` | Read-only onboard a cloud or data source (AWS, Azure, GCP, Snowflake); prints CLI, CloudShell, and Terraform grant options plus opt-in inventory env var, then reports detected credentials |
 | `up` | Run the platform locally — alias of `serve`; accepts the same flags and points at `deploy/docker-compose.fullstack.yml` for the full stack |
 
 ### Scanning

@@ -42,14 +42,19 @@ import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state
 import { Card, Section } from "@/components/card";
 import { PageLaneHeader } from "@/components/page-lane";
 import { Collapsible } from "@/components/collapsible";
+import { CoverageCockpit } from "@/components/coverage-cockpit";
 import { StatCard } from "@/components/stat-card";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { deploymentModeLabel } from "@/lib/deployment-context";
 import {
-  buildTerraformDeployScript,
+  buildGrantScript,
+  cloudGrantMethodHint,
+  cloudGrantMethodLabel,
   cloudProviderMeta,
+  CLOUD_GRANT_METHODS,
   copyTextToClipboard,
   generateConnectionExternalId,
+  type CloudGrantMethod,
 } from "@/lib/cloud-connect-wizard";
 import { serviceEntry } from "@/lib/service-registry";
 import { RUN_SCAN_ACTION } from "@/lib/empty-state-actions";
@@ -544,7 +549,7 @@ export default function ConnectionsPage() {
       <PageLaneHeader
         lane="cloud-data"
         title="Cloud accounts"
-        subtitle="Connect AWS, Azure, GCP, or Snowflake with read-only roles, then launch inventory, CIS, and AI-estate scans from your control plane. Secrets are encrypted at rest and never returned to the browser."
+        subtitle="Connect AWS, Azure, GCP, or Snowflake with read-only roles, then launch inventory, CIS, and connected-surface scans from your control plane. Secrets are encrypted at rest and never returned to the browser."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-200">
             {deploymentModeLabel(counts?.deployment_mode)} · brokered read-only
@@ -601,10 +606,17 @@ export default function ConnectionsPage() {
         registry={counts?.services}
       />
 
+      <CoverageCockpit
+        counts={counts}
+        scanCount={counts?.scan_count ?? null}
+        latestScanLabel={null}
+        connections={connections}
+      />
+
       {/* Connect & deploy — provider connector catalog */}
       <Section
         label="Connect a provider"
-        description="Pick a cloud. Each connector ships a Terraform module, CLI onboarding, and a guided wizard for role ARN, external ID, and encrypted secrets."
+        description="Pick a cloud. Grant read-only access with CLI, CloudShell, or Terraform — whichever your org allows — then finish the wizard with role ARN, external ID, and encrypted secrets."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {PROVIDER_OPTIONS.map((option) => (
@@ -760,6 +772,44 @@ function CopyTextButton({
   );
 }
 
+function GrantMethodPicker({
+  method,
+  onChange,
+  provider,
+}: {
+  method: CloudGrantMethod;
+  onChange: (method: CloudGrantMethod) => void;
+  provider: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <div
+        className="inline-flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5"
+        role="group"
+        aria-label="Grant method"
+      >
+        {CLOUD_GRANT_METHODS.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => onChange(item)}
+            className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
+              method === item
+                ? "bg-[color:var(--surface)] text-[color:var(--foreground)] shadow-sm"
+                : "text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]"
+            }`}
+          >
+            {cloudGrantMethodLabel(item)}
+          </button>
+        ))}
+      </div>
+      <p className="text-[10px] leading-4 text-[var(--text-tertiary)]">
+        {cloudGrantMethodHint(method, provider)}
+      </p>
+    </div>
+  );
+}
+
 function ConnectorCard({
   option,
   connectedCount,
@@ -771,8 +821,9 @@ function ConnectorCard({
   canManage: boolean;
   onConnect: () => void;
 }) {
+  const [grantMethod, setGrantMethod] = useState<CloudGrantMethod>("cli");
   const meta = cloudProviderMeta(option.value);
-  const deployScript = buildTerraformDeployScript(option.value);
+  const deployScript = buildGrantScript(option.value, grantMethod);
   const authSummary = [
     option.roleField.label,
     ...option.authFields.map((field) => field.label),
@@ -794,7 +845,7 @@ function ConnectorCard({
             </p>
             {meta ? (
               <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                Read-only · Terraform module
+                Read-only · CLI · CloudShell · Terraform
               </p>
             ) : null}
           </div>
@@ -833,7 +884,7 @@ function ConnectorCard({
       ) : null}
 
       <Collapsible
-        title="Setup steps & deploy script"
+        title="Setup steps & grant script"
         icon={Terminal}
         defaultOpen={false}
         className="bg-[color:var(--surface-elevated)]/40"
@@ -854,9 +905,10 @@ function ConnectorCard({
           </ul>
         ) : null}
         <div className="mt-3 space-y-2">
+          <GrantMethodPicker method={grantMethod} onChange={setGrantMethod} provider={option.value} />
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-              Terraform deploy
+              {cloudGrantMethodLabel(grantMethod)} grant
             </p>
             {deployScript ? (
               <CopyTextButton text={deployScript} label="Copy script" />
@@ -1277,6 +1329,7 @@ function AddConnectionWizard({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [generatedExternalId, setGeneratedExternalId] = useState("");
+  const [grantMethod, setGrantMethod] = useState<CloudGrantMethod>("cli");
 
   const provider = useMemo(
     () => providerOption(form.provider) ?? PROVIDER_OPTIONS[0]!,
@@ -1327,7 +1380,11 @@ function AddConnectionWizard({
   }
 
   const providerMeta = cloudProviderMeta(provider.value);
-  const deployScript = buildTerraformDeployScript(provider.value);
+  const deployScript = buildGrantScript(
+    provider.value,
+    grantMethod,
+    generatedExternalId || form.external_id || undefined,
+  );
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1499,9 +1556,14 @@ function AddConnectionWizard({
                     </ul>
                   ) : null}
                   <div className="mt-4 space-y-2">
+                    <GrantMethodPicker
+                      method={grantMethod}
+                      onChange={setGrantMethod}
+                      provider={provider.value}
+                    />
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                        Terraform deploy script
+                        {cloudGrantMethodLabel(grantMethod)} grant script
                       </p>
                       {deployScript ? (
                         <CopyTextButton text={deployScript} label="Copy script" />
@@ -1532,8 +1594,8 @@ function AddConnectionWizard({
                         </p>
                       ) : (
                         <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">
-                          Generate a high-entropy ExternalId before applying Terraform.
-                          It pre-fills the secret field on the next step.
+                          Generate a high-entropy ExternalId before applying the grant
+                          (CLI, CloudShell, or Terraform). It pre-fills the secret field on the next step.
                         </p>
                       )}
                     </div>

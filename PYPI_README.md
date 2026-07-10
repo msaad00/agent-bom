@@ -26,16 +26,16 @@ Scan local agent configs, MCP servers, instruction files, lockfiles, containers,
 Try the built-in demo first:
 
 ```bash
-agent-bom agents --demo --offline
+agent-bom scan --demo --offline
 ```
 
-The demo uses a curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
+The demo uses a curated sample so the output stays reproducible across releases. For real scans, run `agent-bom scan`, or add `-p .` to fold project manifests and lockfiles into the same result.
 
 If you want an inspectable sample before scanning your own repo:
 
 ```bash
 agent-bom samples first-run
-agent-bom agents --inventory agent-bom-first-run/inventory.json -p agent-bom-first-run --enrich
+agent-bom scan --inventory agent-bom-first-run/inventory.json -p agent-bom-first-run --enrich
 ```
 
 The bundled first-run stack includes agent inventory, MCP server definitions,
@@ -55,11 +55,11 @@ prompt file. See `docs/FIRST_RUN.md` in the repository for the guided flow.
 pip install agent-bom
 
 agent-bom quickstart --dry-run --offline          # Scan, sample-data, and API/UI next steps
-agent-bom agents -p .                            # Repo + MCP + package blast radius
+agent-bom scan -p .                            # Repo + MCP + package blast radius
 agent-bom samples first-run                      # Inspectable sample AI stack
 agent-bom check flask@2.2.0 --ecosystem pypi     # Pre-install package verdict
 agent-bom image nginx:latest                     # Container image scan
-agent-bom agents -p . --remediate remediation.md # Fix-first remediation plan
+agent-bom scan -p . --remediate remediation.md # Fix-first remediation plan
 pip install 'agent-bom[ui]'                      # once, if you want the dashboard
 agent-bom serve                                  # API + dashboard + graph explorer
 ```

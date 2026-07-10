@@ -176,6 +176,42 @@ helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
   -f values.agent-bom.yaml
 ```
 
+## Verify the rollout before exposing it
+
+Run these checks from an operator workstation after the Helm install. They
+exercise the same liveness, readiness, and authenticated API paths used by the
+Ingress and Kubernetes probes; a green Helm command alone does not prove that
+the control plane is ready to receive evidence.
+
+```bash
+kubectl -n agent-bom rollout status deployment/agent-bom-api --timeout=5m
+kubectl -n agent-bom rollout status deployment/agent-bom-ui --timeout=5m
+
+# Keep the API private while validating it.
+kubectl -n agent-bom port-forward svc/agent-bom-api 18080:8000 >/tmp/agent-bom-port-forward.log 2>&1 &
+PF_PID=$!
+trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
+curl --fail --silent http://127.0.0.1:18080/healthz
+curl --fail --silent http://127.0.0.1:18080/readyz
+curl --fail --silent -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  http://127.0.0.1:18080/v1/auth/me
+```
+
+`/healthz` is liveness only; `/readyz` must be healthy before routing traffic,
+and `/v1/status` confirms that the credential and tenant/auth configuration are
+usable. If readiness fails, keep the Ingress private, inspect
+`kubectl -n agent-bom logs deploy/agent-bom-api`, and fix the backing database
+or secret reference before retrying. Do not set an insecure-auth override just
+to make a probe pass.
+
+For a reversible release, record the current revision and use Helm rollback if
+the new deployment fails its rollout or readiness checks:
+
+```bash
+helm -n agent-bom history agent-bom
+helm -n agent-bom rollback agent-bom <known-good-revision> --wait --timeout 5m
+```
+
 ## Single-node SQLite pilot preset
 
 For a fast in-cluster pilot without external Postgres, use the shipped

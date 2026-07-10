@@ -2,18 +2,19 @@
 
 :root {
   color-scheme: dark;
-  --background: #0c0c10;
-  --foreground: #f0f0f2;
-  --surface: #141418;
-  --surface-elevated: #1c1c22;
-  --surface-muted: rgba(48, 48, 56, 0.5);
-  --border-subtle: rgba(72, 72, 82, 0.78);
-  --border-strong: rgba(96, 96, 108, 0.9);
-  --text-secondary: #b4b4bc;
-  --text-tertiary: #8b8b96;
-  --shadow-color: rgba(0, 0, 0, 0.28);
-  --scrollbar-thumb: #27272a;
-  --scrollbar-thumb-hover: #3f3f46;
+  /* Lifted charcoal — readable surfaces without pure black washout */
+  --background: #14161c;
+  --foreground: #f2f3f7;
+  --surface: #1c1f28;
+  --surface-elevated: #262a35;
+  --surface-muted: rgba(58, 62, 74, 0.55);
+  --border-subtle: rgba(90, 96, 112, 0.72);
+  --border-strong: rgba(120, 128, 148, 0.88);
+  --text-secondary: #c2c6d0;
+  --text-tertiary: #9499a8;
+  --shadow-color: rgba(0, 0, 0, 0.32);
+  --scrollbar-thumb: #3a3f4c;
+  --scrollbar-thumb-hover: #525866;
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 60px;
 
@@ -27,18 +28,19 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --background: #f7f8fc;
-  --foreground: #18181b;
+  /* Cool gray canvas — white cards sit clearly above the page */
+  --background: #e8ecf3;
+  --foreground: #15171c;
   --surface: #ffffff;
-  --surface-elevated: #f4f5f8;
-  --surface-muted: rgba(228, 228, 231, 0.72);
-  --border-subtle: rgba(212, 212, 216, 0.92);
-  --border-strong: rgba(161, 161, 170, 0.92);
-  --text-secondary: #52525b;
-  --text-tertiary: #71717a;
-  --shadow-color: rgba(15, 23, 42, 0.08);
-  --scrollbar-thumb: #c4c4ca;
-  --scrollbar-thumb-hover: #a1a1aa;
+  --surface-elevated: #f1f4f9;
+  --surface-muted: rgba(203, 210, 222, 0.55);
+  --border-subtle: rgba(148, 163, 184, 0.55);
+  --border-strong: rgba(100, 116, 139, 0.72);
+  --text-secondary: #3f4654;
+  --text-tertiary: #5b6472;
+  --shadow-color: rgba(15, 23, 42, 0.1);
+  --scrollbar-thumb: #a8b0bd;
+  --scrollbar-thumb-hover: #8790a0;
 }
 
 @theme inline {

@@ -33,7 +33,7 @@ Current detection positioning:
 OSS local scanner:
 
 ```bash
-agent-bom agents --demo --offline
+agent-bom scan --demo --offline
 ```
 
 Artifact: terminal findings and graph-ready inventory.
@@ -50,7 +50,7 @@ Artifact: production-shaped Kubernetes manifests for the customer boundary.
 Snowflake:
 
 ```bash
-agent-bom agents --snowflake --format json --output snowflake-inventory.json
+agent-bom scan --snowflake --format json --output snowflake-inventory.json
 ```
 
 Artifact: read-only Snowflake evidence visible to the configured role.

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="EU AI Act">
+  <rect width="32" height="32" rx="7" fill="#002395"/>
+  <!-- 12 stars on a circle (EU flag cue) -->
+  <g fill="#FFCC00" transform="translate(16 13.5)">
+    <circle cx="0" cy="-6.2" r="1.25"/>
+    <circle cx="3.1" cy="-5.35" r="1.25"/>
+    <circle cx="5.35" cy="-3.1" r="1.25"/>
+    <circle cx="6.2" cy="0" r="1.25"/>
+    <circle cx="5.35" cy="3.1" r="1.25"/>
+    <circle cx="3.1" cy="5.35" r="1.25"/>
+    <circle cx="0" cy="6.2" r="1.25"/>
+    <circle cx="-3.1" cy="5.35" r="1.25"/>
+    <circle cx="-5.35" cy="3.1" r="1.25"/>
+    <circle cx="-6.2" cy="0" r="1.25"/>
+    <circle cx="-5.35" cy="-3.1" r="1.25"/>
+    <circle cx="-3.1" cy="-5.35" r="1.25"/>
+  </g>
+  <text x="16" y="28" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="5" font-weight="700" fill="#FFFFFF" letter-spacing="0.06em">AI ACT</text>
+</svg>

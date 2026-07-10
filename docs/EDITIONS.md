@@ -36,7 +36,7 @@ Snowflake-native lane — no managed public SaaS in this repo yet.
 **OSS local scanner** — free, no account:
 
 ```bash
-agent-bom agents --demo --offline
+agent-bom scan --demo --offline
 ```
 
 **Self-hosted control plane** — one workstation pilot, free:
@@ -56,7 +56,7 @@ For production self-hosting (Helm / EKS Terraform), see the
 **Snowflake** — read-only evidence in the customer's account:
 
 ```bash
-agent-bom agents --snowflake --format json --output snowflake-inventory.json
+agent-bom scan --snowflake --format json --output snowflake-inventory.json
 ```
 
 ## How this maps to deployment

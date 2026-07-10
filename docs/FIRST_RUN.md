@@ -16,9 +16,9 @@ agent-bom scan -p .
 
 `agent-bom scan -p .` prints a rich console panel — posture grade, blast radius,
 and fix-first findings inline — with nothing to open. This is the recommended
-first command. When you need a file, add `-f html -o agent-bom-report.html` (or
-`-f json`, `-f sarif`); run `agent-bom db update` first for offline package/image
-scans.
+first command (`agents` is a supported alias of `scan`). When you need a file,
+add `-f html -o agent-bom-report.html` (or `-f json`, `-f sarif`); run
+`agent-bom db update` first for offline package/image scans.
 
 ## 1. Run the Release-Pinned Demo
 

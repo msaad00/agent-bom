@@ -85,7 +85,7 @@ The self-hosted operator surface. Same evidence, multi-tenant, audited.
 | Subsystem | Path | Responsibility |
 |---|---|---|
 | API | `api/` | FastAPI app. `routes/` (32 route modules; 283 REST operations + 2 WebSocket), `middleware.py` (4 layers), and `*_store.py`/`postgres_*.py` persistence (SQLite default, Postgres for clusters, optional Snowflake/ClickHouse). |
-| MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 69 tools, 6 resources, 6 prompts (mostly read-only; 3 Shield write actions fail closed). |
+| MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 70 tools, 6 resources, 8 prompts (mostly read-only; 3 Shield write actions fail closed). |
 | Runtime enforcement | `proxy*.py`, `gateway*.py`, `firewall*.py`, `shield.py`, `runtime/`, `enforcement.py` | MCP traffic proxy, secure-by-default gateway, inline firewall, Shield enforcement. **Spread by design** — see [Runtime enforcement spread](#runtime-enforcement-spread). |
 | Auth / tenancy | `rbac.py`, `permissions.py`, `entitlements.py`, `mcp_tenant.py`, `api/auth.py`, `api/oidc.py` | RBAC roles, tenant scoping, API keys, OIDC/SAML/SCIM. |
 | Fleet | `fleet/`, `fleet_scan.py` | Endpoint/collector inventory pushed into one control plane. |

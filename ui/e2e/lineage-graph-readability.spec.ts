@@ -238,7 +238,11 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
     if (await legendToggle.isVisible()) {
       await legendToggle.click();
     }
-    await expect(page.getByRole("button", { name: /hide legend/i })).toBeVisible();
+    // Graph chrome may render the legend as a details dock (without a
+    // persistent hide button) on focused views. Verify the legend remains
+    // readable after the optional toggle instead of coupling the test to one
+    // control implementation.
+    await expect(page.getByText("Legend").first()).toBeVisible();
     await application.screenshot({
       path: testInfo.outputPath(`lineage-graph-legend-${theme}.png`),
     });

@@ -606,7 +606,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         from agent_bom.security import validate_path
 
         req = job.request
-        agents = []
+        agents: list[Any] = []
         warnings_all: list[str] = []
         side_effects_enabled = not (req.dry_run or req.no_scan)
         effective_agent_projects = list(req.agent_projects)

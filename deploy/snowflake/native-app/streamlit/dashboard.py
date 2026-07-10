@@ -121,12 +121,12 @@ def _severity_color(sev: str) -> str:
 # ─── Page Config ──────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="agent-bom | AI Supply Chain Security",
+    page_title="agent-bom | AI agent bill of materials",
     page_icon="🛡️",
     layout="wide",
 )
 
-st.title("🛡️ agent-bom — AI Supply Chain Security")
+st.title("🛡️ agent-bom — AI agent bill of materials")
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -432,4 +432,4 @@ with tab_policies:
 # ─── Footer ──────────────────────────────────────────────────────────────────
 
 st.divider()
-st.caption("agent-bom | AI Supply Chain Security | github.com/msaad00/agent-bom")
+st.caption("agent-bom | AI agent bill of materials | github.com/msaad00/agent-bom")

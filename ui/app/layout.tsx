@@ -29,7 +29,7 @@ const mono = localFont({
 
 export const metadata: Metadata = {
   title: "agent-bom",
-  description: "AI supply chain security scanner — CVEs, config security, blast radius, compliance",
+  description: "AI agent bill of materials — CVEs, config security, blast radius, compliance",
   icons: { icon: "/favicon.ico" },
 };
 

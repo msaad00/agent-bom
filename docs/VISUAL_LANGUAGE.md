@@ -30,9 +30,12 @@ network refs, light + dark pairs):
 | `mark-{light,dark}.svg` | Icon-only mark — square avatars, favicons, tight spaces |
 | `wordmark-{light,dark}.svg` | Wordmark only — inline headers where the mark is redundant |
 
-`docs/images/logo-{light,dark}.svg` are kept as compatibility aliases of the lockup.
-The MkDocs site uses `site-docs/assets/brand/mark-mono.svg` (white, for the colored
-header bar) as `theme.logo` and `mark.svg` as the favicon.
+`docs/images/logo-{light,dark}.svg` are compatibility aliases of the lockup
+(prefer `docs/images/brand/logo-*` for new references).
+Copy `docs/images/brand/mark-*` and `wordmark-*` into `ui/public/brand/` when the
+mark changes; regenerate `ui/app/favicon.ico` and `site-docs/assets/brand/mark.svg`
+/ `mark-mono.svg` from the same source. The MkDocs site uses `mark-mono.svg`
+(white, for the colored header bar) as `theme.logo` and `mark.svg` as the favicon.
 
 
 

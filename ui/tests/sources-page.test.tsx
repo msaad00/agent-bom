@@ -235,7 +235,7 @@ describe("SourcesPage", () => {
 
     await waitFor(() => expect(screen.getByText("Nightly cloud posture")).toBeInTheDocument());
     expect(apiMock.listDiscoveryProviders).toHaveBeenCalled();
-    expect(screen.getByText("Discovery provider trust contracts")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Provider trust contracts"));
     expect(screen.getAllByText("aws").length).toBeGreaterThan(0);
     expect(screen.getByText("scope-zero")).toBeInTheDocument();
     expect(screen.getAllByText("snowflake").length).toBeGreaterThan(0);
@@ -305,7 +305,7 @@ describe("SourcesPage", () => {
 
     render(<SourcesPage />);
 
-    await waitFor(() => expect(screen.getByText("Persisted schedules")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Schedules" })).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText("Schedule source"), { target: { value: "src-1" } });
     fireEvent.change(screen.getByLabelText("Schedule name"), { target: { value: "Recurring AWS run" } });

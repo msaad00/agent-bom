@@ -24,6 +24,7 @@ import {
 import { useAuthState } from "@/components/auth-provider";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { KeyLifecyclePanel } from "@/components/key-lifecycle-panel";
+import { PageLaneHeader } from "@/components/page-lane";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -81,7 +82,14 @@ export default function AuditLogPage() {
       setTotal(log.total);
       setIntegrity(integ);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load audit log");
+      const message = e instanceof Error ? e.message : "Failed to load audit log";
+      if (/forbidden|analyst|viewer/i.test(message)) {
+        setError(
+          `Audit log requires analyst role or higher. You're signed in as ${roleLabel}. Sign in with a higher role to view entries.`
+        );
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -114,12 +122,12 @@ export default function AuditLogPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load();
-      if (!authSessionLoading) {
+      if (!authSessionLoading && canManageKeys) {
         void loadAdmin();
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [authSessionLoading, load, loadAdmin]);
+  }, [authSessionLoading, canManageKeys, load, loadAdmin]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -134,37 +142,36 @@ export default function AuditLogPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <FileText className="w-6 h-6 text-blue-400" />
-            Audit Log
-          </h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            HMAC-signed, tamper-evident log of all system actions
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            void load();
-            void loadAdmin();
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Refresh
-        </button>
-      </div>
-
-      <KeyLifecyclePanel
-        loading={adminLoading}
-        error={adminError}
-        policy={authPolicy}
-        keys={keys}
-        onRefresh={loadAdmin}
-        roleLabel={roleLabel}
+      <PageLaneHeader
+        lane="governance"
+        title="Audit Log"
+        subtitle="HMAC-signed, tamper-evident log of scan, policy, and fleet actions."
+        actions={
+          <button
+            onClick={() => {
+              void load();
+              if (canManageKeys) {
+                void loadAdmin();
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refresh
+          </button>
+        }
       />
+
+      {canManageKeys ? (
+        <KeyLifecyclePanel
+          loading={adminLoading}
+          error={adminError}
+          policy={authPolicy}
+          keys={keys}
+          onRefresh={loadAdmin}
+          roleLabel={roleLabel}
+        />
+      ) : null}
 
       {/* Integrity banner + stats */}
       {integrity && (

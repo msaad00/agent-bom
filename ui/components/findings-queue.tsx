@@ -8,6 +8,7 @@ import {
   findingStatusClass,
   findingStatusLabel,
   formatFindingTimestamp,
+  vulnRowKey,
 } from "@/lib/findings-view";
 
 function ReachabilityBadge({
@@ -152,12 +153,13 @@ export function FindingsQueueTable({
         </thead>
         <tbody className="divide-y divide-zinc-800 bg-zinc-950">
           {vulns?.map((v) => {
-            const isSelected = selectedId === v.id;
+            const rowKey = vulnRowKey(v);
+            const isSelected = selectedId === rowKey || selectedId === v.id;
             return (
               <tr
-                key={v.id}
+                key={rowKey}
                 className={`cursor-pointer transition-colors ${isSelected ? "bg-zinc-900/90 ring-1 ring-inset ring-emerald-900/60" : "hover:bg-zinc-900"}`}
-                onClick={() => onSelect(v.id)}
+                onClick={() => onSelect(rowKey)}
               >
                 <td className="px-4 py-3">
                   <div className="flex items-start gap-2">
@@ -165,7 +167,7 @@ export function FindingsQueueTable({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onSelect(v.id);
+                        onSelect(rowKey);
                       }}
                       className="mt-0.5 rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
                       aria-label={`Open details for ${v.id}`}
@@ -179,7 +181,7 @@ export function FindingsQueueTable({
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              onSelect(v.id);
+                              onSelect(rowKey);
                             }}
                             className="font-mono text-xs text-zinc-200 transition-colors hover:text-emerald-400"
                           >

@@ -1,57 +1,50 @@
 "use client";
 
-import { ArrowRight, Cloud, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 
 import { useDemoMode } from "@/hooks/use-demo-mode";
 import { getSignInUrl } from "@/lib/runtime-config";
 
-const CTA_LABEL = "Sign in / Get started";
+const CTA_LABEL = "Sign in";
 
 function ctaHref(): string {
   return getSignInUrl();
 }
 
-/**
- * Slim, theme-aware strip shown at the top of app surfaces (dashboard, connect,
- * everywhere the shell renders) when the platform is running in public-demo
- * mode. Explains the sample-data context and funnels the anonymous viewer to
- * the sign-in / get-started flow. Renders nothing outside demo mode.
- */
+/** @deprecated Page banner removed — demo is indicated by watermark + nav/sources CTA only. */
 export function DemoModeBanner() {
+  return null;
+}
+
+/** Compact nav-footer CTA for anonymous demo viewers. */
+export function DemoNavSignIn({ collapsed = false }: { collapsed?: boolean }) {
   const { isDemoMode } = useDemoMode();
 
   if (!isDemoMode) return null;
 
   return (
-    <div
-      data-testid="demo-mode-banner"
-      className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] px-4 py-3 shadow-sm shadow-black/5"
+    <a
+      href={ctaHref()}
+      data-testid="demo-nav-sign-in"
+      className={`flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-300 transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/15 ${
+        collapsed ? "justify-center px-2" : ""
+      }`}
+      title="Sign in to connect your cloud"
     >
-      <div className="flex items-center gap-3">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
-          <Sparkles className="h-4 w-4" aria-hidden="true" />
-        </span>
-        <p className="text-sm leading-5 text-[color:var(--text-secondary)]">
-          <span className="font-semibold text-[color:var(--foreground)]">You&rsquo;re exploring a live demo with sample data.</span>{" "}
-          Connect your own cloud to scan your real estate.
-        </p>
-      </div>
-      <a
-        href={ctaHref()}
-        className="inline-flex shrink-0 items-center gap-2 rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
-      >
-        {CTA_LABEL}
-        <ArrowRight className="h-4 w-4" aria-hidden="true" />
-      </a>
-    </div>
+      <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {!collapsed && (
+        <>
+          <span>Demo · Sign in</span>
+          <ArrowRight className="ml-auto h-3.5 w-3.5" aria-hidden="true" />
+        </>
+      )}
+    </a>
   );
 }
 
 /**
- * Card variant for the connect / sources surface. The anonymous demo viewer is
- * read-only and cannot register a real source, so instead of showing a
- * forbidden "Create source" action we present the sign-in funnel. Renders
- * nothing outside demo mode (the normal authenticated form stays in place).
+ * Slim connect funnel for read-only demo tenants. Replaces the full create-source
+ * form on /sources instead of stacking on top of a page banner + watermark.
  */
 export function DemoConnectCard() {
   const { isDemoMode } = useDemoMode();
@@ -61,25 +54,16 @@ export function DemoConnectCard() {
   return (
     <section
       data-testid="demo-connect-card"
-      className="rounded-lg border border-emerald-500/30 bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] p-5 shadow-sm shadow-black/5"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3"
     >
-      <div className="flex items-start gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
-          <Cloud className="h-5 w-5" aria-hidden="true" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-[color:var(--foreground)]">Connect your cloud</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-[color:var(--text-secondary)]">
-            This is a read-only demo estate with sample data, so connecting a real source is disabled here.
-            Sign in to the full product to register your own cloud accounts, registries, and warehouses.
-          </p>
-        </div>
-      </div>
+      <p className="text-sm text-[color:var(--text-secondary)]">
+        <span className="font-medium text-[color:var(--foreground)]">Read-only demo.</span> Sign in to register cloud accounts and data sources.
+      </p>
       <a
         href={ctaHref()}
-        className="mt-4 inline-flex items-center gap-2 rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+        className="inline-flex shrink-0 items-center gap-2 rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-black transition hover:bg-emerald-400"
       >
-        Connect your cloud — {CTA_LABEL}
+        {CTA_LABEL}
         <ArrowRight className="h-4 w-4" aria-hidden="true" />
       </a>
     </section>

@@ -66,7 +66,7 @@ const basePath: ExposurePath = {
 };
 
 describe("ExposurePathCommandCenter", () => {
-  it("renders the selected exposure path as a command-center investigation", () => {
+  it("renders a compact command center with collapsed evidence by default", () => {
     render(
       <ExposurePathCommandCenter
         path={basePath}
@@ -80,16 +80,8 @@ describe("ExposurePathCommandCenter", () => {
     expect(screen.getByText("Why it matters")).toBeInTheDocument();
     expect(screen.getByText("What proves it")).toBeInTheDocument();
     expect(screen.getByText("What fixes it")).toBeInTheDocument();
-    expect(screen.getByText("Selected path graph")).toBeInTheDocument();
-    expect(screen.getByText("Relationship proof")).toBeInTheDocument();
-    expect(screen.getByText("Evidence drawer")).toBeInTheDocument();
-    expect(screen.getAllByText("uses").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("vulnerable_to").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("DATABASE_URL").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("execute_sql").length).toBeGreaterThan(0);
-    expect(screen.getByText("CVSS 9.8")).toBeInTheDocument();
-    expect(screen.getByText("EPSS 0.834")).toBeInTheDocument();
-    expect(screen.getByText("KEV")).toBeInTheDocument();
+    expect(screen.getByText("Relationship proof & evidence drawer")).toBeInTheDocument();
+    expect(screen.queryByText("Evidence drawer")).not.toBeVisible();
     expect(screen.getByText("Validate the lead finding")).toBeInTheDocument();
   });
 });

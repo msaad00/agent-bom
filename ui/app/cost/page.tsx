@@ -42,6 +42,7 @@ import {
 } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { ChartTooltip } from "@/components/charts";
+import { PageLaneHeader } from "@/components/page-lane";
 
 function classifyApiErrorKind(err: unknown): ApiOfflineKind {
   if (err instanceof ApiAuthError) return "auth";
@@ -490,15 +491,11 @@ export default function CostPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <DollarSign className="h-6 w-6 text-emerald-400" />
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-100">Cost</h1>
-          <p className="text-sm text-zinc-500">
-            LLM spend, per-agent attribution, and budget enforcement posture.
-          </p>
-        </div>
-      </div>
+      <PageLaneHeader
+        lane="operations"
+        title="AI Spend"
+        subtitle="Model and token cost from proxy/gateway usage — not cloud infrastructure billing."
+      />
 
       <BudgetBanner budget={report.budget} />
 

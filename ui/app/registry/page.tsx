@@ -21,6 +21,7 @@ import {
   Tag,
 } from "lucide-react";
 import { api, type RegistryServer } from "@/lib/api";
+import { CatalogBanner, PageLaneHeader } from "@/components/page-lane";
 
 /* ------------------------------------------------------------------ */
 /*  Shared helpers                                                     */
@@ -70,6 +71,7 @@ function DetailSection({ title, icon: Icon, children, accent }: {
 /* ------------------------------------------------------------------ */
 
 type RiskFilter = "all" | "high" | "medium" | "low";
+type RegistryView = "table" | "cards";
 
 function RegistryDetail({ serverId }: { serverId: string }) {
   const router = useRouter();
@@ -289,6 +291,7 @@ function RegistryList() {
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<RegistryView>("table");
 
   useEffect(() => {
     api
@@ -346,18 +349,17 @@ function RegistryList() {
 
   return (
     <div className="py-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-semibold text-zinc-100">MCP Server Registry</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          {servers.length} known servers with risk levels, tools, and credential mapping
-        </p>
-      </div>
+      <PageLaneHeader
+        lane="reference"
+        title="MCP Catalog"
+        subtitle={`${servers.length.toLocaleString()} known servers · ${riskCounts.high} high · ${riskCounts.medium} medium risk`}
+        banner={<CatalogBanner />}
+      />
 
       {/* Search + Filters */}
       <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-md">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[240px] flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
               type="text"
@@ -385,98 +387,143 @@ function RegistryList() {
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Category filter */}
-        {categories.length > 0 && (
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className="text-[10px] text-zinc-600 uppercase tracking-wider mr-1">Category:</span>
+          {categories.length > 0 && (
+            <label className="flex items-center gap-2 text-xs text-zinc-500">
+              Category
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200"
+              >
+                <option value="all">All categories</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <div className="ml-auto flex items-center gap-1 rounded-md border border-zinc-800 p-0.5">
             <button
-              onClick={() => setCategoryFilter("all")}
-              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                categoryFilter === "all"
-                  ? "bg-zinc-700 text-zinc-100"
-                  : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`rounded px-2.5 py-1 text-[11px] font-medium ${
+                viewMode === "table" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500"
               }`}
             >
-              All
+              Table
             </button>
-            {categories?.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCategoryFilter(categoryFilter === cat ? "all" : cat)}
-                className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                  categoryFilter === cat
-                    ? "bg-zinc-700 text-zinc-100"
-                    : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`rounded px-2.5 py-1 text-[11px] font-medium ${
+                viewMode === "cards" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500"
+              }`}
+            >
+              Cards
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Server Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filtered?.map((server) => (
-          <div
-            key={server.id}
-            className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 hover:border-zinc-600 transition-colors cursor-pointer group"
-            onClick={() => router.push(`/registry?id=${server.id}`)}
-          >
-            {/* Top row */}
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2 min-w-0">
-                {server.verified ? (
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                ) : (
-                  <ShieldAlert className="w-4 h-4 text-zinc-500 shrink-0" />
-                )}
-                <span className="font-mono text-sm font-medium text-zinc-200 truncate">
-                  {server.name}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${riskColor(server.risk_level)}`}
+      {viewMode === "table" ? (
+        <div className="overflow-x-auto rounded-lg border border-zinc-800">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+              <tr>
+                <th className="px-4 py-3 font-medium">Server</th>
+                <th className="px-4 py-3 font-medium">Publisher</th>
+                <th className="px-4 py-3 font-medium">Risk</th>
+                <th className="px-4 py-3 font-medium">Tools</th>
+                <th className="px-4 py-3 font-medium">Creds</th>
+                <th className="px-4 py-3 font-medium">Category</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800">
+              {filtered.map((server) => (
+                <tr
+                  key={server.id}
+                  className="cursor-pointer hover:bg-zinc-900/70"
+                  onClick={() => router.push(`/registry?id=${server.id}`)}
                 >
-                  {server.risk_level}
-                </span>
-                <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                  <td className="px-4 py-3 font-medium text-zinc-200">{server.name}</td>
+                  <td className="px-4 py-3 text-zinc-500">{server.publisher ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${riskColor(server.risk_level)}`}>
+                      {server.risk_level}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-zinc-400">{server.tools?.length ?? 0}</td>
+                  <td className="px-4 py-3 text-zinc-400">{server.credential_env_vars?.length ?? 0}</td>
+                  <td className="px-4 py-3 text-zinc-500">{server.category ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filtered?.map((server) => (
+            <div
+              key={server.id}
+              className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 hover:border-zinc-600 transition-colors cursor-pointer group"
+              onClick={() => router.push(`/registry?id=${server.id}`)}
+            >
+              {/* Top row */}
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {server.verified ? (
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <ShieldAlert className="w-4 h-4 text-zinc-500 shrink-0" />
+                  )}
+                  <span className="font-mono text-sm font-medium text-zinc-200 truncate">
+                    {server.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${riskColor(server.risk_level)}`}
+                  >
+                    {server.risk_level}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                </div>
+              </div>
+
+              {/* Description */}
+              {server.description && (
+                <p className="text-xs text-zinc-500 mb-2 line-clamp-2">{server.description}</p>
+              )}
+
+              {/* Stats row */}
+              <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+                {server.packages && server.packages.length > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <Package className="w-2.5 h-2.5" /> {server.packages[0]!.ecosystem}
+                  </span>
+                )}
+                {server.tools && server.tools.length > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <Wrench className="w-2.5 h-2.5" /> {server.tools.length} tools
+                  </span>
+                )}
+                {server.credential_env_vars && server.credential_env_vars.length > 0 && (
+                  <span className="flex items-center gap-0.5 text-amber-500">
+                    <KeyRound className="w-2.5 h-2.5" /> {server.credential_env_vars.length} creds
+                  </span>
+                )}
+                {server.category && (
+                  <span className="truncate">{server.category}</span>
+                )}
               </div>
             </div>
-
-            {/* Description */}
-            {server.description && (
-              <p className="text-xs text-zinc-500 mb-2 line-clamp-2">{server.description}</p>
-            )}
-
-            {/* Stats row */}
-            <div className="flex items-center gap-3 text-[10px] text-zinc-500">
-              {server.packages && server.packages.length > 0 && (
-                <span className="flex items-center gap-0.5">
-                  <Package className="w-2.5 h-2.5" /> {server.packages[0]!.ecosystem}
-                </span>
-              )}
-              {server.tools && server.tools.length > 0 && (
-                <span className="flex items-center gap-0.5">
-                  <Wrench className="w-2.5 h-2.5" /> {server.tools.length} tools
-                </span>
-              )}
-              {server.credential_env_vars && server.credential_env_vars.length > 0 && (
-                <span className="flex items-center gap-0.5 text-amber-500">
-                  <KeyRound className="w-2.5 h-2.5" /> {server.credential_env_vars.length} creds
-                </span>
-              )}
-              {server.category && (
-                <span className="truncate">{server.category}</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {filtered.length === 0 && (
         <div className="text-center py-12 text-zinc-500 text-sm">

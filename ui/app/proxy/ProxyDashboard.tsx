@@ -528,9 +528,7 @@ export default function ProxyDashboard() {
                       </span>
                     </div>
                     <span className="text-[10px] text-zinc-600 shrink-0 ml-3">
-                      {alert.ts
-                        ? formatDate(new Date(alert.ts * 1000).toISOString())
-                        : ""}
+                      {alert.ts ? formatDate(alert.ts) : ""}
                     </span>
                   </div>
                 ))}

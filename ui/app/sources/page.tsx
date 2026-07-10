@@ -7,7 +7,6 @@ import {
   ArrowRight,
   CalendarClock,
   Cloud,
-  Database,
   FileCheck2,
   Plus,
   Radio,
@@ -30,6 +29,7 @@ import {
 } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
 import { DemoConnectCard } from "@/components/demo-mode-cta";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 
 type IngestMode = "Direct scan" | "Read-only connector" | "Pushed ingest" | "Runtime" | "Imported artifact";
 
@@ -250,6 +250,7 @@ function summarizeProviders(contracts: DiscoveryProvidersResponse | null) {
 
 export default function SourcesPage() {
   const { session, loading: authLoading, hasCapability } = useAuthState();
+  const { isDemoMode } = useDemoMode();
   const [connectorHealth, setConnectorHealth] = useState<ConnectorHealthResponse[]>([]);
   const [providerContracts, setProviderContracts] = useState<DiscoveryProvidersResponse | null>(null);
   const [schedules, setSchedules] = useState<ScanSchedule[]>([]);
@@ -513,38 +514,39 @@ export default function SourcesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] p-6 shadow-2xl shadow-black/10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-400">Hosted control plane</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">Sources and ingest control</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-              The UI should declare intent and review state. The API owns auth, orchestration, graph, persistence, audit, and policy. Workers,
-              connectors, proxy, and gateway paths do the privileged collection work.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => refreshControlPlane()}
-              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-            >
-              <RefreshCcw className="h-4 w-4" />
-              Refresh
-            </button>
+    <div className="space-y-5 max-w-5xl">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Data sources</h1>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            Register scan targets, review connector health, and manage schedules.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => refreshControlPlane()}
+            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            Refresh
+          </button>
+          {!isDemoMode && (
             <button
               onClick={handleFleetSync}
               disabled={syncingFleet || !canManageFleet}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Activity className="h-4 w-4" />
-              {syncingFleet ? "Syncing fleet…" : "Run fleet sync"}
+              {syncingFleet ? "Syncing…" : "Fleet sync"}
             </button>
-          </div>
+          )}
         </div>
+      </header>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {isDemoMode && <DemoConnectCard />}
+
+      <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             icon={ShieldCheck}
             label="Auth mode"
@@ -580,7 +582,7 @@ export default function SourcesPage() {
         {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
       </section>
 
-      {roleSummary ? (
+      {roleSummary && !isDemoMode ? (
         <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
           <div className="flex items-start gap-3">
             <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
@@ -600,71 +602,66 @@ export default function SourcesPage() {
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
-              <ShieldCheck className="h-5 w-5 text-emerald-400" />
-            </span>
-            <div>
-              <h2 className="text-base font-semibold text-[var(--foreground)]">Discovery provider trust contracts</h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-                These contracts come from the backend provider registry. They show which modes are direct pull, scope-zero push, or skill-mediated,
-                and which read permissions each provider declares before discovery data becomes canonical evidence.
-              </p>
-            </div>
-          </div>
+      <details className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+          Provider trust contracts
           {providerContracts ? (
-            <div className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-              v{providerContracts.contract_version} · {providerContracts.entrypoints_enabled ? "entry points on" : "entry points opt-in"}
+            <span className="ml-2 text-xs font-normal text-[var(--text-tertiary)]">
+              {providerSummary.total} providers · v{providerContracts.contract_version}
+            </span>
+          ) : null}
+        </summary>
+        <div className="space-y-4 border-t border-[color:var(--border-subtle)] p-4">
+          <p className="text-sm text-[var(--text-secondary)]">
+            Backend provider registry: scan modes, declared permissions, and read-only guarantees.
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <ContractStat label="Providers" value={loading ? "Loading…" : String(providerSummary.total)} />
+            <ContractStat label="Read-only" value={loading ? "Loading…" : `${providerSummary.readOnly}/${providerSummary.total}`} />
+            <ContractStat label="Scope-zero modes" value={loading ? "Loading…" : String(providerSummary.scopeZero)} />
+            <ContractStat label="Declared permissions" value={loading ? "Loading…" : String(providerSummary.permissionCount)} />
+          </div>
+
+          {providerContracts?.warnings?.length ? (
+            <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-200">
+              {providerContracts.warnings.slice(0, 2).join(" · ")}
             </div>
           ) : null}
-        </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-4">
-          <ContractStat label="Providers" value={loading ? "Loading…" : String(providerSummary.total)} />
-          <ContractStat label="Read-only" value={loading ? "Loading…" : `${providerSummary.readOnly}/${providerSummary.total}`} />
-          <ContractStat label="Scope-zero modes" value={loading ? "Loading…" : String(providerSummary.scopeZero)} />
-          <ContractStat label="Declared permissions" value={loading ? "Loading…" : String(providerSummary.permissionCount)} />
-        </div>
-
-        {providerContracts?.warnings?.length ? (
-          <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-200">
-            {providerContracts.warnings.slice(0, 2).join(" · ")}
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            {!providerContracts && !loading ? (
+              <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
+                Provider contracts are unavailable from the API.
+              </div>
+            ) : (
+              (providerContracts?.providers ?? []).slice(0, 12).map((provider) => (
+                <ProviderContractCard key={provider.name} provider={provider} />
+              ))
+            )}
           </div>
-        ) : null}
-
-        <div className="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-          {!providerContracts && !loading ? (
-            <div className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
-              Provider contracts are unavailable from the API.
-            </div>
-          ) : (
-            (providerContracts?.providers ?? []).slice(0, 12).map((provider) => (
-              <ProviderContractCard key={provider.name} provider={provider} />
-            ))
-          )}
         </div>
-      </section>
+      </details>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
-          <div className="flex items-start gap-3">
-            <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
-              <Database className="h-5 w-5 text-emerald-400" />
-            </span>
-            <div>
-              <h2 className="text-base font-semibold text-[var(--foreground)]">Source registry</h2>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                Each source is a persisted control-plane record with tenant scope, ownership, credential mode, last test, and last run state.
-              </p>
-            </div>
-          </div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+          <h2 className="text-base font-semibold text-[var(--foreground)]">Source registry</h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">Persisted sources with status, last run, and evidence links.</p>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-4 space-y-3">
             {sources.length === 0 && !loading ? (
-              <div className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
-                No registered sources yet. Create one here, then test it or run it from the control plane.
+              <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
+                {isDemoMode ? (
+                  <>
+                    No demo sources registered. Explore{" "}
+                    <Link href="/scan" className="text-emerald-400 hover:text-emerald-300">New Scan</Link>
+                    {" "}or{" "}
+                    <Link href="/jobs" className="text-emerald-400 hover:text-emerald-300">Scan Jobs</Link>
+                    {" "}with sample data.
+                  </>
+                ) : (
+                  "No registered sources yet. Create one to test and run from the control plane."
+                )}
               </div>
             ) : (
               sources.map((source) => {
@@ -784,25 +781,13 @@ export default function SourcesPage() {
           </div>
         </section>
 
-        <section className="space-y-6">
-          <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
-            <div className="flex items-start gap-3">
-              <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
-                <Plus className="h-5 w-5 text-emerald-400" />
-              </span>
-              <div>
-                <h2 className="text-base font-semibold text-[var(--foreground)]">Create source</h2>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                  Register the source here, then let backend jobs, connectors, proxy, or gateway paths do the collection work.
-                </p>
-              </div>
-            </div>
+        <div className="space-y-5">
+          {!isDemoMode && (
+          <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+            <h2 className="text-base font-semibold text-[var(--foreground)]">Create source</h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">Register a new scan target or connector-backed source.</p>
 
-            <div className="mt-5 empty:hidden">
-              <DemoConnectCard />
-            </div>
-
-            <form className="mt-5 space-y-4" onSubmit={handleCreateSource}>
+            <form className="mt-4 space-y-4" onSubmit={handleCreateSource}>
               <label className="block">
                 <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Display name</span>
                 <input
@@ -884,28 +869,19 @@ export default function SourcesPage() {
               </button>
             </form>
           </section>
+          )}
 
-          <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
-            <div className="flex items-start gap-3">
-              <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
-                <Cloud className="h-5 w-5 text-emerald-400" />
-              </span>
-              <div>
-                <h2 className="text-base font-semibold text-[var(--foreground)]">Connector health</h2>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                  Read-only integrations are backend-owned. The browser only reviews health and initiates control-plane actions.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3">
+          {!isDemoMode && (
+          <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+            <h2 className="text-base font-semibold text-[var(--foreground)]">Connector health</h2>
+            <div className="mt-4 space-y-3">
               {connectorHealth.length === 0 && !loading ? (
-                <div className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
+                <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
                   No connector health state loaded yet.
                 </div>
               ) : (
                 connectorHealth.map((connector) => (
-                  <div key={connector.connector} className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+                  <div key={connector.connector} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-semibold text-[var(--foreground)]">{connector.connector}</h3>
@@ -918,22 +894,15 @@ export default function SourcesPage() {
               )}
             </div>
           </section>
+          )}
 
-          <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
-            <div className="flex items-start gap-3">
-              <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
-                <CalendarClock className="h-5 w-5 text-emerald-400" />
-              </span>
-              <div>
-                <h2 className="text-base font-semibold text-[var(--foreground)]">Persisted schedules</h2>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                  Recurring collection belongs to the control plane. This page already reflects real schedule state from the backend.
-                </p>
-              </div>
-            </div>
+          {!isDemoMode && (
+          <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+            <h2 className="text-base font-semibold text-[var(--foreground)]">Schedules</h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">Recurring scans bound to registered sources.</p>
 
-            <div className="mt-5 space-y-3">
-              <form className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4" onSubmit={handleCreateSchedule}>
+            <div className="mt-4 space-y-3">
+              <form className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4" onSubmit={handleCreateSchedule}>
                 <div className="grid gap-4 md:grid-cols-3">
                   <label className="block">
                     <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Source</span>
@@ -1040,24 +1009,16 @@ export default function SourcesPage() {
               )}
             </div>
           </section>
-        </section>
+          )}
+        </div>
       </div>
 
-      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
-        <div className="flex items-start gap-3">
-          <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
-            <Activity className="h-5 w-5 text-emerald-400" />
-          </span>
-          <div>
-            <h2 className="text-base font-semibold text-[var(--foreground)]">Operating surfaces after ingest</h2>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">
-              Discovery and ingest are only the front door. Agent-bom also needs clear surfaces for runtime review, fleet operations, policy
-              enforcement, and graph analysis after the data lands.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 xl:grid-cols-2">
+      {!isDemoMode && (
+      <details className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+          Related operating surfaces
+        </summary>
+        <div className="grid gap-3 border-t border-[color:var(--border-subtle)] p-4 xl:grid-cols-2">
           {OPERATING_SURFACES.map((surface) => {
             const Icon = surface.icon;
             return (
@@ -1081,7 +1042,8 @@ export default function SourcesPage() {
             );
           })}
         </div>
-      </section>
+      </details>
+      )}
     </div>
   );
 }

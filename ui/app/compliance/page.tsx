@@ -68,37 +68,37 @@ function downloadBlobToFile(blob: Blob, filename: string) {
 
 function statusColor(status: string): string {
   switch (status) {
-    case "pass":    return "text-emerald-400";
-    case "warning": return "text-yellow-400";
-    case "fail":    return "text-red-400";
-    default:        return "text-zinc-400";
+    case "pass":    return "text-emerald-600 dark:text-emerald-400";
+    case "warning": return "text-yellow-600 dark:text-yellow-400";
+    case "fail":    return "text-red-600 dark:text-red-400";
+    default:        return "text-[color:var(--text-secondary)]";
   }
 }
 
 function statusBg(status: string): string {
   switch (status) {
-    case "pass":    return "bg-emerald-950 border-emerald-800";
-    case "warning": return "bg-yellow-950 border-yellow-800";
-    case "fail":    return "bg-red-950 border-red-800";
-    default:        return "bg-zinc-900 border-zinc-800";
+    case "pass":    return "bg-emerald-50 border-emerald-300 dark:bg-emerald-950 dark:border-emerald-800";
+    case "warning": return "bg-yellow-50 border-yellow-300 dark:bg-yellow-950 dark:border-yellow-800";
+    case "fail":    return "bg-red-50 border-red-300 dark:bg-red-950 dark:border-red-800";
+    default:        return "bg-[color:var(--surface)] border-[color:var(--border-subtle)]";
   }
 }
 
 function StatusIcon({ status, className }: { status: string; className?: string }) {
   switch (status) {
-    case "pass":    return <CheckCircle className={`${className ?? "w-4 h-4"} text-emerald-400`} />;
-    case "warning": return <AlertTriangle className={`${className ?? "w-4 h-4"} text-yellow-400`} />;
-    case "fail":    return <XCircle className={`${className ?? "w-4 h-4"} text-red-400`} />;
-    default:        return <Shield className={`${className ?? "w-4 h-4"} text-zinc-400`} />;
+    case "pass":    return <CheckCircle className={`${className ?? "w-4 h-4"} text-emerald-600 dark:text-emerald-400`} />;
+    case "warning": return <AlertTriangle className={`${className ?? "w-4 h-4"} text-yellow-600 dark:text-yellow-400`} />;
+    case "fail":    return <XCircle className={`${className ?? "w-4 h-4"} text-red-600 dark:text-red-400`} />;
+    default:        return <Shield className={`${className ?? "w-4 h-4"} text-[color:var(--text-secondary)]`} />;
   }
 }
 
 function PostureIcon({ status }: { status: string }) {
   switch (status) {
-    case "pass":    return <ShieldCheck className="w-10 h-10 text-emerald-400" />;
-    case "warning": return <ShieldAlert className="w-10 h-10 text-yellow-400" />;
-    case "fail":    return <ShieldX className="w-10 h-10 text-red-400" />;
-    default:        return <Shield className="w-10 h-10 text-zinc-400" />;
+    case "pass":    return <ShieldCheck className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />;
+    case "warning": return <ShieldAlert className="w-10 h-10 text-yellow-600 dark:text-yellow-400" />;
+    case "fail":    return <ShieldX className="w-10 h-10 text-red-600 dark:text-red-400" />;
+    default:        return <Shield className="w-10 h-10 text-[color:var(--text-secondary)]" />;
   }
 }
 
@@ -122,7 +122,7 @@ function ScoreRing({ score, status }: { score: number; status: string }) {
   return (
     <div className="relative w-32 h-32">
       <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-        <circle cx="60" cy="60" r={r} fill="none" stroke="#27272a" strokeWidth="8" />
+        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--border-strong)" strokeWidth="8" />
         <circle
           cx="60" cy="60" r={r} fill="none"
           stroke={color} strokeWidth="8"
@@ -132,8 +132,8 @@ function ScoreRing({ score, status }: { score: number; status: string }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold text-zinc-100">{Math.round(score)}%</span>
-        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Score</span>
+        <span className="text-2xl font-bold text-[color:var(--foreground)]">{Math.round(score)}%</span>
+        <span className="text-[10px] text-[color:var(--text-tertiary)] uppercase tracking-wider">Score</span>
       </div>
     </div>
   );
@@ -153,10 +153,10 @@ function FrameworkBar({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-zinc-300">{label}</span>
-        <span className="text-xs text-zinc-500">{p}/{total} pass</span>
+        <span className="text-sm font-medium text-[color:var(--text-secondary)]">{label}</span>
+        <span className="text-xs text-[color:var(--text-tertiary)]">{p}/{total} pass</span>
       </div>
-      <div className="h-2.5 rounded-full bg-zinc-800 overflow-hidden flex">
+      <div className="h-2.5 rounded-full bg-[color:var(--surface-muted)] overflow-hidden flex">
         {p > 0 && (
           <div className="bg-emerald-500 transition-all duration-700" style={{ width: `${pPct}%` }} />
         )}
@@ -167,7 +167,7 @@ function FrameworkBar({
           <div className="bg-red-500 transition-all duration-700" style={{ width: `${fPct}%` }} />
         )}
       </div>
-      <div className="flex gap-4 text-xs text-zinc-500">
+      <div className="flex gap-4 text-xs text-[color:var(--text-tertiary)]">
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-emerald-500" /> {p} pass
         </span>
@@ -204,22 +204,22 @@ function ControlCard({ control, catalog }: { control: ComplianceControl; catalog
           <StatusIcon status={control.status} className="w-5 h-5 mt-0.5 shrink-0" />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm font-semibold text-zinc-200">{control.code}</span>
+              <span className="font-mono text-sm font-semibold text-[color:var(--foreground)]">{control.code}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                 control.status === "pass"
-                  ? "bg-emerald-900/60 text-emerald-300"
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300"
                   : control.status === "warning"
-                  ? "bg-yellow-900/60 text-yellow-300"
-                  : "bg-red-900/60 text-red-300"
+                  ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/60 dark:text-yellow-300"
+                  : "bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300"
               }`}>
                 {control.status === "pass" ? "Pass" : control.status === "warning" ? "Needs Attention" : "Fail"}
               </span>
             </div>
-            <p className="text-sm text-zinc-400 mt-1 leading-snug">{name}</p>
+            <p className="text-sm text-[color:var(--text-secondary)] mt-1 leading-snug">{name}</p>
           </div>
         </div>
         {control.findings > 0 && (
-          <span className="text-xs font-mono px-2 py-1 rounded bg-zinc-800 text-zinc-300 shrink-0">
+          <span className="text-xs font-mono px-2 py-1 rounded bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] shrink-0">
             {control.findings} finding{control.findings !== 1 ? "s" : ""}
           </span>
         )}
@@ -227,7 +227,7 @@ function ControlCard({ control, catalog }: { control: ComplianceControl; catalog
 
       {/* Severity dots */}
       {hasSev && (
-        <div className="flex gap-3 mt-3 ml-8 text-xs text-zinc-500">
+        <div className="flex gap-3 mt-3 ml-8 text-xs text-[color:var(--text-tertiary)]">
           {sev.critical > 0 && (
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-red-500" /> {sev.critical} critical
@@ -256,7 +256,7 @@ function ControlCard({ control, catalog }: { control: ComplianceControl; catalog
         <div className="mt-3 ml-8">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="flex items-center gap-1 text-xs text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)] transition-colors"
           >
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
             Details
@@ -265,12 +265,12 @@ function ControlCard({ control, catalog }: { control: ComplianceControl; catalog
             <div className="mt-2 space-y-2">
               {control.affected_packages.length > 0 && (
                 <div>
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-1">
+                  <div className="flex items-center gap-1.5 text-xs text-[color:var(--text-tertiary)] mb-1">
                     <Package className="w-3 h-3" /> Affected Packages
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {control.affected_packages?.map((pkg) => (
-                      <span key={pkg} className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
+                      <span key={pkg} className="text-xs px-2 py-0.5 rounded bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] font-mono">
                         {pkg}
                       </span>
                     ))}
@@ -279,12 +279,12 @@ function ControlCard({ control, catalog }: { control: ComplianceControl; catalog
               )}
               {control.affected_agents.length > 0 && (
                 <div>
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-1">
+                  <div className="flex items-center gap-1.5 text-xs text-[color:var(--text-tertiary)] mb-1">
                     <Server className="w-3 h-3" /> Affected Agents
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {control.affected_agents?.map((agent) => (
-                      <span key={agent} className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
+                      <span key={agent} className="text-xs px-2 py-0.5 rounded bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]">
                         {agent}
                       </span>
                     ))}
@@ -343,7 +343,7 @@ function FrameworkSection({
   const warningCount = controls.filter((control) => control.status === "warning").length;
 
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40">
+    <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
       <button
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
@@ -351,25 +351,25 @@ function FrameworkSection({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h2 className={`text-lg font-semibold ${accentClass}`}>{title}</h2>
-            {subtitle ? <span className="text-xs text-zinc-500">{subtitle}</span> : null}
+            {subtitle ? <span className="text-xs text-[color:var(--text-tertiary)]">{subtitle}</span> : null}
           </div>
-          <div className="mt-2 flex flex-wrap gap-3 text-xs text-zinc-500">
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-[color:var(--text-tertiary)]">
             <span>{controls.length} controls</span>
             <span>{failCount} fail</span>
             <span>{warningCount} warning</span>
             {visibleControls.length !== controls.length ? <span>{visibleControls.length} shown</span> : null}
           </div>
         </div>
-        {open ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+        {open ? <ChevronDown className="h-4 w-4 text-[color:var(--text-tertiary)]" /> : <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)]" />}
       </button>
       {open ? (
-        <div className="border-t border-zinc-800 px-5 py-5">
+        <div className="border-t border-[color:var(--border-subtle)] px-5 py-5">
           {controls.length === 0 && emptyMessage ? (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 text-sm text-zinc-500">
+            <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
               {emptyMessage}
             </div>
           ) : visibleControls.length === 0 ? (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 text-sm text-zinc-500">
+            <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
               No controls match the current filters.
             </div>
           ) : (
@@ -488,7 +488,7 @@ function CompliancePageContent() {
       id: "owasp-llm",
       title: "OWASP LLM Top 10",
       subtitle: "2025 Edition",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.owasp_llm_top10,
       catalog: OWASP_LLM_TOP10,
     },
@@ -496,7 +496,7 @@ function CompliancePageContent() {
       id: "owasp-mcp",
       title: "OWASP MCP Top 10",
       subtitle: "MCP security risks",
-      accentClass: hasMcp ? "text-zinc-200" : "text-zinc-500",
+      accentClass: hasMcp ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]",
       controls: hasMcp ? data.owasp_mcp_top10 : [],
       catalog: OWASP_MCP_TOP10,
       emptyMessage: "MCP-specific controls appear after a scan with MCP server context.",
@@ -505,7 +505,7 @@ function CompliancePageContent() {
       id: "atlas",
       title: "MITRE ATLAS",
       subtitle: "Adversarial ML techniques",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.mitre_atlas,
       catalog: MITRE_ATLAS,
     },
@@ -513,7 +513,7 @@ function CompliancePageContent() {
       id: "nist-ai-rmf",
       title: "NIST AI RMF 1.0",
       subtitle: "Govern / Map / Measure / Manage",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.nist_ai_rmf,
       catalog: NIST_AI_RMF,
     },
@@ -521,7 +521,7 @@ function CompliancePageContent() {
       id: "owasp-agentic",
       title: "OWASP Agentic Top 10",
       subtitle: "2026 Edition",
-      accentClass: hasMcp ? "text-zinc-200" : "text-zinc-500",
+      accentClass: hasMcp ? "text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]",
       controls: hasMcp ? data.owasp_agentic_top10 : [],
       catalog: OWASP_AGENTIC_TOP10,
       emptyMessage: "Agentic controls appear after a scan with agent and MCP context.",
@@ -530,7 +530,7 @@ function CompliancePageContent() {
       id: "eu-ai-act",
       title: "EU AI Act",
       subtitle: "Regulation (EU) 2024/1689",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.eu_ai_act,
       catalog: EU_AI_ACT,
     },
@@ -538,7 +538,7 @@ function CompliancePageContent() {
       id: "nist-csf",
       title: "NIST CSF 2.0",
       subtitle: "Cybersecurity Framework",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.nist_csf,
       catalog: NIST_CSF,
     },
@@ -546,7 +546,7 @@ function CompliancePageContent() {
       id: "iso27001",
       title: "ISO/IEC 27001:2022",
       subtitle: "Annex A controls",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.iso_27001,
       catalog: ISO_27001,
     },
@@ -554,7 +554,7 @@ function CompliancePageContent() {
       id: "soc2",
       title: "SOC 2",
       subtitle: "Trust Services Criteria",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.soc2,
       catalog: SOC2_TSC,
     },
@@ -562,7 +562,7 @@ function CompliancePageContent() {
       id: "cis",
       title: "CIS Controls v8",
       subtitle: "Critical security controls",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.cis_controls,
       catalog: CIS_CONTROLS,
     },
@@ -570,7 +570,7 @@ function CompliancePageContent() {
       id: "cmmc",
       title: "CMMC 2.0",
       subtitle: "Level 2 practices",
-      accentClass: "text-zinc-200",
+      accentClass: "text-[color:var(--foreground)]",
       controls: data.cmmc,
       catalog: CMMC_PRACTICES,
     },
@@ -579,7 +579,7 @@ function CompliancePageContent() {
   return (
     <div className="space-y-8">
       {/* ── Posture Header ─────────────────────────────────────────────── */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+      <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-2xl p-6">
         <div className="flex items-center gap-6">
           <ScoreRing score={data.overall_score} status={data.overall_status} />
           <div className="flex-1 space-y-2">
@@ -589,12 +589,12 @@ function CompliancePageContent() {
                 <h1 className={`text-xl font-bold ${statusColor(data.overall_status)}`}>
                   {postureLabel(data.overall_status)}
                 </h1>
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-[color:var(--text-tertiary)]">
                   AI Supply Chain Compliance Posture
                 </p>
               </div>
             </div>
-            <div className="flex gap-6 text-xs text-zinc-500">
+            <div className="flex gap-6 text-xs text-[color:var(--text-tertiary)]">
               <span>
                 {data.scan_count} scan{data.scan_count !== 1 ? "s" : ""} analyzed
               </span>
@@ -608,7 +608,7 @@ function CompliancePageContent() {
               onClick={() => void handleExportPack()}
               disabled={exporting}
               title="Download a signed evidence pack covering every framework"
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-2 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-900/40 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
               data-testid="compliance-export-pack"
             >
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -623,28 +623,28 @@ function CompliancePageContent() {
         {/* Compliance Hub aggregate (#1044) — surfaces external ingest counts
             alongside the native posture so the page tells one unified story. */}
         {hubPosture && hubPosture.totals.combined > 0 ? (
-          <div className="mt-6 rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+          <div className="mt-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-1">
-                <div className="text-xs uppercase tracking-[0.24em] text-emerald-400">Compliance Hub</div>
-                <div className="text-sm text-zinc-200">
+                <div className="text-xs uppercase tracking-[0.24em] text-emerald-600 dark:text-emerald-400">Compliance Hub</div>
+                <div className="text-sm text-[color:var(--foreground)]">
                   {hubPosture.totals.combined.toLocaleString()} finding{hubPosture.totals.combined !== 1 ? "s" : ""} across all sources
                   {hubPosture.totals.hub > 0 ? (
                     <>
-                      {" "}<span className="text-emerald-400">({hubPosture.totals.hub.toLocaleString()} ingested external)</span>
+                      {" "}<span className="text-emerald-600 dark:text-emerald-400">({hubPosture.totals.hub.toLocaleString()} ingested external)</span>
                     </>
                   ) : null}
                 </div>
-                <div className="text-xs text-zinc-500">
+                <div className="text-xs text-[color:var(--text-tertiary)]">
                   Native: {hubPosture.totals.native.toLocaleString()} · Hub-ingested: {hubPosture.totals.hub.toLocaleString()}
                   {Object.keys(hubPosture.framework_counts.combined).length > 0 ? (
                     <> · Frameworks lit: {Object.keys(hubPosture.framework_counts.combined).length}</>
                   ) : null}
                 </div>
               </div>
-              <div className="text-xs text-zinc-500 lg:max-w-sm">
+              <div className="text-xs text-[color:var(--text-tertiary)] lg:max-w-sm">
                 Import SARIF / CycloneDX / CSV / JSON via{" "}
-                <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-300">POST /v1/compliance/ingest</code>{" "}
+                <code className="rounded bg-[color:var(--surface)] px-1.5 py-0.5 text-[color:var(--text-secondary)]">POST /v1/compliance/ingest</code>{" "}
                 — every external finding is auto-mapped to the same framework set as native scans.
               </div>
             </div>
@@ -653,47 +653,47 @@ function CompliancePageContent() {
 
         {/* Framework mini-cards */}
         {mitreCatalog ? (
-          <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="mt-6 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-[0.24em] text-cyan-400">MITRE ATT&CK catalog</div>
-                <div className="text-sm text-zinc-300">
+                <div className="text-sm text-[color:var(--text-secondary)]">
                   {mitreCatalog.attack_version || "unknown version"} · {mitreCatalog.technique_count} techniques · {mitreCatalog.cwe_mapping_count} CWE mappings
                 </div>
-                <div className="text-xs text-zinc-500">
+                <div className="text-xs text-[color:var(--text-tertiary)]">
                   Source: {mitreCatalog.source}
                   {mitreCatalog.updated_at ? ` · updated ${formatDate(mitreCatalog.updated_at)}` : ""}
                 </div>
               </div>
-              <div className="text-xs text-zinc-500 lg:max-w-sm">
+              <div className="text-xs text-[color:var(--text-tertiary)] lg:max-w-sm">
                 Bundled by default for deterministic scans. Refresh explicitly with{" "}
-                <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-300">agent-bom db update-frameworks</code>{" "}
+                <code className="rounded bg-[color:var(--surface)] px-1.5 py-0.5 text-[color:var(--text-secondary)]">agent-bom db update-frameworks</code>{" "}
                 when you want a newer upstream snapshot.
               </div>
             </div>
           </div>
         ) : null}
         {atlasCatalog ? (
-          <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="mt-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-[0.24em] text-fuchsia-400">MITRE ATLAS catalog</div>
-                <div className="text-sm text-zinc-300">
+                <div className="text-sm text-[color:var(--text-secondary)]">
                   {atlasCatalog.atlas_version || "unknown version"} ·{" "}
                   {typeof atlasCatalog.curated_count === "number"
                     ? `${atlasCatalog.curated_count} curated / ${atlasCatalog.technique_count} upstream`
                     : `${atlasCatalog.technique_count} techniques`}{" "}
                   · {atlasCatalog.tactic_count} tactics
                 </div>
-                <div className="text-xs text-zinc-500">
+                <div className="text-xs text-[color:var(--text-tertiary)]">
                   Source: {atlasCatalog.source}
                   {atlasCatalog.updated_at ? ` · updated ${formatDate(atlasCatalog.updated_at)}` : ""}
                 </div>
               </div>
-              <div className="text-xs text-zinc-500 lg:max-w-sm">
+              <div className="text-xs text-[color:var(--text-tertiary)] lg:max-w-sm">
                 Curated tag surface stays load-bearing for tagging precision; the bundled
                 upstream catalog powers coverage rollups. Refresh explicitly with{" "}
-                <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-300">
+                <code className="rounded bg-[color:var(--surface)] px-1.5 py-0.5 text-[color:var(--text-secondary)]">
                   agent-bom db update-frameworks --framework atlas
                 </code>
                 .
@@ -703,24 +703,24 @@ function CompliancePageContent() {
         ) : null}
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
-            <div className="text-xs text-zinc-500 mb-1">OWASP LLM Top 10</div>
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
+            <div className="text-xs text-[color:var(--text-tertiary)] mb-1">OWASP LLM Top 10</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.owasp_pass}</span>
-              <span className="text-sm text-zinc-500">/ 10 pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.owasp_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ 10 pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.owasp_fail > 0 && <span className="text-red-400">{s.owasp_fail} fail</span>}
               {s.owasp_warn > 0 && <span className="text-yellow-400">{s.owasp_warn} warn</span>}
             </div>
           </div>
-          <div className={`bg-zinc-950 rounded-xl p-4 border border-zinc-800 ${!hasMcp ? "opacity-40" : ""}`}>
+          <div className={`bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)] ${!hasMcp ? "opacity-40" : ""}`}>
             <div className="text-xs text-amber-500/80 mb-1">OWASP MCP Top 10</div>
             {hasMcp ? (
               <>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-zinc-100">{s.owasp_mcp_pass}</span>
-                  <span className="text-sm text-zinc-500">/ 10 pass</span>
+                  <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.owasp_mcp_pass}</span>
+                  <span className="text-sm text-[color:var(--text-tertiary)]">/ 10 pass</span>
                 </div>
                 <div className="flex gap-2 mt-2 text-xs">
                   {s.owasp_mcp_fail > 0 && <span className="text-red-400">{s.owasp_mcp_fail} fail</span>}
@@ -728,38 +728,38 @@ function CompliancePageContent() {
                 </div>
               </>
             ) : (
-              <div className="text-xs text-zinc-600 mt-1">No MCP servers detected</div>
+              <div className="text-xs text-[color:var(--text-tertiary)] mt-1">No MCP servers detected</div>
             )}
           </div>
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
-            <div className="text-xs text-zinc-500 mb-1">MITRE ATLAS</div>
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
+            <div className="text-xs text-[color:var(--text-tertiary)] mb-1">MITRE ATLAS</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.atlas_pass}</span>
-              <span className="text-sm text-zinc-500">/ {data.mitre_atlas.length} pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.atlas_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.mitre_atlas.length} pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.atlas_fail > 0 && <span className="text-red-400">{s.atlas_fail} fail</span>}
               {s.atlas_warn > 0 && <span className="text-yellow-400">{s.atlas_warn} warn</span>}
             </div>
           </div>
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
-            <div className="text-xs text-zinc-500 mb-1">NIST AI RMF</div>
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
+            <div className="text-xs text-[color:var(--text-tertiary)] mb-1">NIST AI RMF</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.nist_pass}</span>
-              <span className="text-sm text-zinc-500">/ {data.nist_ai_rmf.length} pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.nist_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.nist_ai_rmf.length} pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.nist_fail > 0 && <span className="text-red-400">{s.nist_fail} fail</span>}
               {s.nist_warn > 0 && <span className="text-yellow-400">{s.nist_warn} warn</span>}
             </div>
           </div>
-          <div className={`bg-zinc-950 rounded-xl p-4 border border-zinc-800 ${!hasMcp ? "opacity-40" : ""}`}>
+          <div className={`bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)] ${!hasMcp ? "opacity-40" : ""}`}>
             <div className="text-xs text-fuchsia-500/80 mb-1">OWASP Agentic Top 10</div>
             {hasMcp ? (
               <>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-zinc-100">{s.owasp_agentic_pass}</span>
-                  <span className="text-sm text-zinc-500">/ 10 pass</span>
+                  <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.owasp_agentic_pass}</span>
+                  <span className="text-sm text-[color:var(--text-tertiary)]">/ 10 pass</span>
                 </div>
                 <div className="flex gap-2 mt-2 text-xs">
                   {s.owasp_agentic_fail > 0 && <span className="text-red-400">{s.owasp_agentic_fail} fail</span>}
@@ -767,69 +767,69 @@ function CompliancePageContent() {
                 </div>
               </>
             ) : (
-              <div className="text-xs text-zinc-600 mt-1">No agents detected</div>
+              <div className="text-xs text-[color:var(--text-tertiary)] mt-1">No agents detected</div>
             )}
           </div>
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
             <div className="text-xs text-blue-500/80 mb-1">EU AI Act</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.eu_ai_act_pass}</span>
-              <span className="text-sm text-zinc-500">/ {data.eu_ai_act.length} pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.eu_ai_act_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.eu_ai_act.length} pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.eu_ai_act_fail > 0 && <span className="text-red-400">{s.eu_ai_act_fail} fail</span>}
               {s.eu_ai_act_warn > 0 && <span className="text-yellow-400">{s.eu_ai_act_warn} warn</span>}
             </div>
           </div>
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
             <div className="text-xs text-teal-500/80 mb-1">NIST CSF 2.0</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.nist_csf_pass}</span>
-              <span className="text-sm text-zinc-500">/ {data.nist_csf.length} pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.nist_csf_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.nist_csf.length} pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.nist_csf_fail > 0 && <span className="text-red-400">{s.nist_csf_fail} fail</span>}
               {s.nist_csf_warn > 0 && <span className="text-yellow-400">{s.nist_csf_warn} warn</span>}
             </div>
           </div>
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
             <div className="text-xs text-sky-500/80 mb-1">ISO 27001</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.iso_27001_pass}</span>
-              <span className="text-sm text-zinc-500">/ {data.iso_27001.length} pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.iso_27001_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.iso_27001.length} pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.iso_27001_fail > 0 && <span className="text-red-400">{s.iso_27001_fail} fail</span>}
               {s.iso_27001_warn > 0 && <span className="text-yellow-400">{s.iso_27001_warn} warn</span>}
             </div>
           </div>
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
             <div className="text-xs text-indigo-500/80 mb-1">SOC 2</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.soc2_pass}</span>
-              <span className="text-sm text-zinc-500">/ {data.soc2.length} pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.soc2_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.soc2.length} pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.soc2_fail > 0 && <span className="text-red-400">{s.soc2_fail} fail</span>}
               {s.soc2_warn > 0 && <span className="text-yellow-400">{s.soc2_warn} warn</span>}
             </div>
           </div>
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
             <div className="text-xs text-lime-500/80 mb-1">CIS Controls v8</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.cis_pass}</span>
-              <span className="text-sm text-zinc-500">/ {data.cis_controls.length} pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.cis_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.cis_controls.length} pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.cis_fail > 0 && <span className="text-red-400">{s.cis_fail} fail</span>}
               {s.cis_warn > 0 && <span className="text-yellow-400">{s.cis_warn} warn</span>}
             </div>
           </div>
-          <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
+          <div className="bg-[color:var(--surface-elevated)] rounded-xl p-4 border border-[color:var(--border-subtle)]">
             <div className="text-xs text-rose-500/80 mb-1">CMMC 2.0</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-zinc-100">{s.cmmc_pass}</span>
-              <span className="text-sm text-zinc-500">/ {data.cmmc.length} pass</span>
+              <span className="text-2xl font-bold text-[color:var(--foreground)]">{s.cmmc_pass}</span>
+              <span className="text-sm text-[color:var(--text-tertiary)]">/ {data.cmmc.length} pass</span>
             </div>
             <div className="flex gap-2 mt-2 text-xs">
               {s.cmmc_fail > 0 && <span className="text-red-400">{s.cmmc_fail} fail</span>}
@@ -846,7 +846,7 @@ function CompliancePageContent() {
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             viewMode === "detail"
               ? "bg-emerald-600 text-white"
-              : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700"
+              : "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] border border-[color:var(--border-strong)]"
           }`}
         >
           <List className="w-3.5 h-3.5" />
@@ -857,7 +857,7 @@ function CompliancePageContent() {
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             viewMode === "heatmap"
               ? "bg-emerald-600 text-white"
-              : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700"
+              : "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] border border-[color:var(--border-strong)]"
           }`}
         >
           <Grid3X3 className="w-3.5 h-3.5" />
@@ -868,7 +868,7 @@ function CompliancePageContent() {
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             viewMode === "matrix"
               ? "bg-emerald-600 text-white"
-              : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700"
+              : "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] border border-[color:var(--border-strong)]"
           }`}
         >
           <Scan className="w-3.5 h-3.5" />
@@ -887,8 +887,8 @@ function CompliancePageContent() {
       <>
 
       {/* ── Framework Coverage Bars ────────────────────────────────────── */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-5">
-        <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Framework Coverage</h2>
+      <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-2xl p-6 space-y-5">
+        <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-wider">Framework Coverage</h2>
         <FrameworkBar label="OWASP LLM Top 10" pass={s.owasp_pass} warn={s.owasp_warn} fail={s.owasp_fail} total={10} />
         <FrameworkBar label="MITRE ATLAS" pass={s.atlas_pass} warn={s.atlas_warn} fail={s.atlas_fail} total={data.mitre_atlas.length} />
         {hasMcp && <FrameworkBar label="OWASP MCP Top 10" pass={s.owasp_mcp_pass} warn={s.owasp_mcp_warn} fail={s.owasp_mcp_fail} total={10} />}
@@ -909,21 +909,21 @@ function CompliancePageContent() {
         <FrameworkBar label="CMMC 2.0" pass={s.cmmc_pass} warn={s.cmmc_warn} fail={s.cmmc_fail} total={data.cmmc.length} />
       </div>
 
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-200">Control explorer</h2>
-            <p className="mt-1 text-xs text-zinc-500">Filter once, then expand only the frameworks you need.</p>
+            <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Control explorer</h2>
+            <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Filter once, then expand only the frameworks you need.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative min-w-[240px]">
-              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
               <input
                 type="text"
                 value={controlQuery}
                 onChange={(e) => setControlQuery(e.target.value)}
                 placeholder="Search control, package, or agent"
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 py-2 pl-9 pr-3 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                className="w-full rounded-lg border border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:outline-none focus:border-[color:var(--border-strong)]"
               />
             </div>
             <div className="flex items-center gap-1">
@@ -933,8 +933,8 @@ function CompliancePageContent() {
                   onClick={() => setStatusFilter(value)}
                   className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                     statusFilter === value
-                      ? "bg-zinc-800 text-zinc-100"
-                      : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                      ? "bg-[color:var(--surface-muted)] text-[color:var(--foreground)]"
+                      : "text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
                   }`}
                 >
                   {value === "all" ? "All" : value === "pass" ? "Passing" : value === "warning" ? "Warnings" : "Failing"}

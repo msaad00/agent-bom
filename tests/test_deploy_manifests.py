@@ -169,7 +169,7 @@ def test_chart_packages_grafana_dashboard_asset():
     dashboard = HELM_DIR / "files" / "grafana-agent-bom.json"
     assert dashboard.exists()
     payload = yaml.safe_load(dashboard.read_text())
-    assert payload["title"] == "agent-bom — BOM for humans & agents"
+    assert payload["title"] == "agent-bom"
 
 
 def test_namespace_manifest():

@@ -146,7 +146,7 @@ def to_html(
     <div class="brand-icon">&#x1f6e1;&#xfe0f;</div>
     <div>
       <div class="brand-text">agent-bom</div>
-      <div class="brand-sub">BOM for humans & agents</div>
+      <div class="brand-sub">Open security scanner for AI infrastructure</div>
     </div>
   </div>
   <div class="sidebar-status">

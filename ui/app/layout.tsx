@@ -29,7 +29,7 @@ const mono = localFont({
 
 export const metadata: Metadata = {
   title: "agent-bom",
-  description: "BOM for humans & agents — CVEs, config security, blast radius, compliance",
+  description: "Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure",
   icons: { icon: "/favicon.ico" },
 };
 

@@ -16,6 +16,8 @@ type CoverageCockpitProps = {
   counts: PostureCountsResponse | null;
   scanCount: number | null;
   latestScanLabel: string | null;
+  /** When provided (e.g. Connections page), skip a second listCloudConnections fetch. */
+  connections?: CloudConnectionRecord[] | undefined;
 };
 
 function deploymentSignals(counts: PostureCountsResponse | null): string[] {
@@ -35,17 +37,26 @@ function formatWhen(value: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-export function CoverageCockpit({ counts, scanCount, latestScanLabel }: CoverageCockpitProps) {
-  const [connections, setConnections] = useState<CloudConnectionRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+export function CoverageCockpit({
+  counts,
+  scanCount,
+  latestScanLabel,
+  connections: connectionsProp,
+}: CoverageCockpitProps) {
+  const [fetchedConnections, setFetchedConnections] = useState<CloudConnectionRecord[]>([]);
+  const [loading, setLoading] = useState(connectionsProp === undefined);
 
   useEffect(() => {
+    if (connectionsProp !== undefined) {
+      setLoading(false);
+      return;
+    }
     let mounted = true;
     api
       .listCloudConnections()
       .then((response) => {
         if (!mounted) return;
-        setConnections(response.connections ?? []);
+        setFetchedConnections(response.connections ?? []);
         setLoading(false);
       })
       .catch(() => {
@@ -55,7 +66,9 @@ export function CoverageCockpit({ counts, scanCount, latestScanLabel }: Coverage
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [connectionsProp]);
+
+  const connections = connectionsProp ?? fetchedConnections;
 
   const deploymentMode = counts?.deployment_mode ?? "local";
   const deploymentLabel = deploymentModeLabel(deploymentMode);
@@ -84,17 +97,17 @@ export function CoverageCockpit({ counts, scanCount, latestScanLabel }: Coverage
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="coverage-cockpit-heading" className="text-sm font-semibold text-[color:var(--foreground)]">
-            Coverage
+            Onboard & coverage
           </h2>
           <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-            Deployment is your control plane. Accounts are onboarded cloud boundaries. Scans are the evidence runs that feed posture.
+            Deployment is your control plane. Accounts are onboarded cloud boundaries. Scans are the evidence runs that feed Overview posture.
           </p>
         </div>
         <Link
           href="/scan"
           className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-500"
         >
-          New Scan
+          Run scan
           <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>

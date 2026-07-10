@@ -286,4 +286,4 @@ def test_banner_is_string():
 
     assert isinstance(BANNER, str)
     assert "agent-bom" in BANNER
-    assert "BOM for humans & agents" in BANNER
+    assert "Open security scanner for AI infrastructure" in BANNER

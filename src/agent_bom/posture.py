@@ -1,23 +1,37 @@
-"""Posture scorecard engine — computes a letter grade + compliance % for an AI-BOM report.
+"""Posture scorecard engine — letter grade + score from a scan report snapshot.
 
-The scorecard aggregates multiple security dimensions into a single
-enterprise-friendly posture view:
+Default logic is informed by findings, enrichment, credentials, KEV/EPSS,
+framework coverage, and config quality on **that report** (latest completed
+scan, or the scan the operator is viewing). Metrics are not a static demo
+grade — they move with scan evidence.
 
-- Vulnerability severity distribution
-- Credential exposure footprint
-- Supply-chain quality (OpenSSF Scorecard)
-- Framework compliance coverage
-- Fleet trust score average
-- KEV / active exploitation presence
+Adopters are not forced onto the defaults. Override dimension weights and/or
+grade thresholds via ``AGENT_BOM_POSTURE_POLICY`` (inline JSON) or
+``AGENT_BOM_POSTURE_POLICY_FILE`` (path to JSON). Example::
 
-Output: letter grade (A–F), numeric score (0–100), and per-dimension breakdown.
+    {
+      "weights": {
+        "vulnerability_posture": 0.40,
+        "credential_hygiene": 0.25,
+        "supply_chain_quality": 0.10,
+        "compliance_coverage": 0.10,
+        "active_exploitation": 0.10,
+        "configuration_quality": 0.05
+      },
+      "grade_thresholds": {"A": 92, "B": 82, "C": 72, "D": 60}
+    }
+
+Missing keys keep the built-in defaults. Weights are renormalized to sum to 1.
 """
 
 from __future__ import annotations
 
+import json
+import os
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Mapping
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.graph.severity import severity_policy_rank
@@ -26,6 +40,131 @@ from agent_bom.vex import active_blast_radii
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
+
+# Default dimension weights — informed defaults, not a locked customer policy.
+DEFAULT_DIMENSION_WEIGHTS: dict[str, float] = {
+    "vulnerability_posture": 0.30,
+    "credential_hygiene": 0.20,
+    "supply_chain_quality": 0.15,
+    "compliance_coverage": 0.15,
+    "active_exploitation": 0.10,
+    "configuration_quality": 0.10,
+}
+
+# Minimum score (inclusive) for each letter grade.
+DEFAULT_GRADE_THRESHOLDS: dict[str, float] = {
+    "A": 90.0,
+    "B": 80.0,
+    "C": 70.0,
+    "D": 60.0,
+}
+
+
+@dataclass(frozen=True)
+class PosturePolicy:
+    """Resolved posture scoring policy (defaults + optional adopter overrides)."""
+
+    weights: Mapping[str, float]
+    grade_thresholds: Mapping[str, float]
+    source: str = "default"
+
+
+def _normalize_weights(weights: Mapping[str, float]) -> dict[str, float]:
+    merged = {key: float(DEFAULT_DIMENSION_WEIGHTS[key]) for key in DEFAULT_DIMENSION_WEIGHTS}
+    for key, value in weights.items():
+        if key in merged:
+            try:
+                merged[key] = max(0.0, float(value))
+            except (TypeError, ValueError):
+                continue
+    total = sum(merged.values())
+    if total <= 0:
+        return dict(DEFAULT_DIMENSION_WEIGHTS)
+    return {key: round(value / total, 6) for key, value in merged.items()}
+
+
+def _normalize_thresholds(thresholds: Mapping[str, float]) -> dict[str, float]:
+    merged = {key: float(DEFAULT_GRADE_THRESHOLDS[key]) for key in DEFAULT_GRADE_THRESHOLDS}
+    for key, value in thresholds.items():
+        letter = str(key).upper()
+        if letter in merged:
+            try:
+                merged[letter] = float(value)
+            except (TypeError, ValueError):
+                continue
+    # Keep A >= B >= C >= D so grade bands stay ordered.
+    ordered = sorted(
+        (("A", merged["A"]), ("B", merged["B"]), ("C", merged["C"]), ("D", merged["D"])),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    return {letter: score for letter, score in ordered}
+
+
+def load_posture_policy(
+    *,
+    weights: Mapping[str, float] | None = None,
+    grade_thresholds: Mapping[str, float] | None = None,
+) -> PosturePolicy:
+    """Resolve posture policy from explicit args, then env, then defaults."""
+
+    source = "default"
+    env_weights: dict[str, float] = {}
+    env_thresholds: dict[str, float] = {}
+
+    raw = os.environ.get("AGENT_BOM_POSTURE_POLICY", "").strip()
+    file_path = os.environ.get("AGENT_BOM_POSTURE_POLICY_FILE", "").strip()
+    payload: dict | None = None
+    if raw:
+        try:
+            loaded = json.loads(raw)
+            if isinstance(loaded, dict):
+                payload = loaded
+                source = "env:AGENT_BOM_POSTURE_POLICY"
+        except json.JSONDecodeError:
+            payload = None
+    elif file_path:
+        try:
+            loaded = json.loads(Path(file_path).read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                payload = loaded
+                source = f"file:{file_path}"
+        except (OSError, json.JSONDecodeError):
+            payload = None
+
+    if payload:
+        maybe_weights = payload.get("weights")
+        if isinstance(maybe_weights, dict):
+            env_weights = {str(k): float(v) for k, v in maybe_weights.items() if _is_number(v)}
+        maybe_thresholds = payload.get("grade_thresholds") or payload.get("thresholds")
+        if isinstance(maybe_thresholds, dict):
+            env_thresholds = {
+                str(k).upper(): float(v) for k, v in maybe_thresholds.items() if _is_number(v)
+            }
+
+    if weights is not None:
+        env_weights = {**env_weights, **{str(k): float(v) for k, v in weights.items()}}
+        source = "explicit" if source == "default" else f"{source}+explicit"
+    if grade_thresholds is not None:
+        env_thresholds = {
+            **env_thresholds,
+            **{str(k).upper(): float(v) for k, v in grade_thresholds.items()},
+        }
+        source = "explicit" if source == "default" else f"{source}+explicit"
+
+    return PosturePolicy(
+        weights=_normalize_weights(env_weights),
+        grade_thresholds=_normalize_thresholds(env_thresholds),
+        source=source,
+    )
+
+
+def _is_number(value: object) -> bool:
+    try:
+        float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 @dataclass
@@ -36,12 +175,14 @@ class PostureScorecard:
     score: float  # 0-100
     dimensions: dict[str, DimensionScore] = field(default_factory=dict)
     summary: str = ""
+    policy_source: str = "default"
 
     def to_dict(self) -> dict:
         return {
             "grade": self.grade,
             "score": self.score,
             "summary": self.summary,
+            "policy_source": self.policy_source,
             "dimensions": {k: v.to_dict() for k, v in self.dimensions.items()},
         }
 
@@ -65,23 +206,33 @@ class DimensionScore:
         }
 
 
-def _score_to_grade(score: float) -> str:
-    """Convert numeric score to letter grade."""
-    if score >= 90:
+def _score_to_grade(
+    score: float,
+    thresholds: Mapping[str, float] | None = None,
+) -> str:
+    """Convert numeric score to letter grade (adopter thresholds optional)."""
+    bands = thresholds or DEFAULT_GRADE_THRESHOLDS
+    if score >= float(bands.get("A", 90)):
         return "A"
-    if score >= 80:
+    if score >= float(bands.get("B", 80)):
         return "B"
-    if score >= 70:
+    if score >= float(bands.get("C", 70)):
         return "C"
-    if score >= 60:
+    if score >= float(bands.get("D", 60)):
         return "D"
     return "F"
 
 
-def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
-    """Compute posture scorecard from an AI-BOM report.
+def compute_posture_scorecard(
+    report: "AIBOMReport",
+    *,
+    policy: PosturePolicy | None = None,
+    weights: Mapping[str, float] | None = None,
+    grade_thresholds: Mapping[str, float] | None = None,
+) -> PostureScorecard:
+    """Compute posture scorecard from a scan report snapshot.
 
-    Dimensions and weights:
+    Dimensions (default weights — override via ``policy`` / env):
         vulnerability_posture  30%  — severity distribution + fix availability
         credential_hygiene     20%  — credential exposure footprint
         supply_chain_quality   15%  — OpenSSF Scorecard coverage
@@ -90,11 +241,14 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
         configuration_quality  10%  — registry verification + tool declaration
 
     Returns:
-        PostureScorecard with grade, score, and per-dimension breakdown.
+        PostureScorecard with grade, score, and per-dimension breakdown for
+        **this report** (current scan / selected snapshot), not a frozen demo.
     """
+    resolved = policy or load_posture_policy(weights=weights, grade_thresholds=grade_thresholds)
+    w = resolved.weights
     dimensions: dict[str, DimensionScore] = {}
 
-    # ── 1. Vulnerability Posture (30%) ──
+    # ── 1. Vulnerability Posture ──
     sev_counts: Counter[str] = Counter()
     fixable = 0
     total_vulns = 0
@@ -128,11 +282,11 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     dimensions["vulnerability_posture"] = DimensionScore(
         name="Vulnerability Posture",
         score=round(vuln_score, 1),
-        weight=0.30,
+        weight=float(w["vulnerability_posture"]),
         details=vuln_detail,
     )
 
-    # ── 2. Credential Hygiene (20%) ──
+    # ── 2. Credential Hygiene ──
     total_cred_servers = 0
     unique_creds: set[str] = set()
     for agent in report.agents:
@@ -154,11 +308,11 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     dimensions["credential_hygiene"] = DimensionScore(
         name="Credential Hygiene",
         score=round(cred_score, 1),
-        weight=0.20,
+        weight=float(w["credential_hygiene"]),
         details=cred_detail,
     )
 
-    # ── 3. Supply Chain Quality (15%) ──
+    # ── 3. Supply Chain Quality ──
     scorecard_scores: list[float] = []
     all_packages = []
     for agent in report.agents:
@@ -209,7 +363,7 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     dimensions["supply_chain_quality"] = DimensionScore(
         name="Supply Chain Quality",
         score=round(sc_score, 1),
-        weight=0.15,
+        weight=float(w["supply_chain_quality"]),
         details=sc_detail,
     )
 
@@ -245,7 +399,7 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     dimensions["compliance_coverage"] = DimensionScore(
         name="Compliance Coverage",
         score=round(comp_score, 1),
-        weight=0.15,
+        weight=float(w["compliance_coverage"]),
         details=comp_detail,
     )
 
@@ -283,7 +437,7 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     dimensions["active_exploitation"] = DimensionScore(
         name="Active Exploitation",
         score=round(exploit_score, 1),
-        weight=0.10,
+        weight=float(w["active_exploitation"]),
         details=exploit_detail,
     )
 
@@ -307,14 +461,14 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     dimensions["configuration_quality"] = DimensionScore(
         name="Configuration Quality",
         score=round(config_score, 1),
-        weight=0.10,
+        weight=float(w["configuration_quality"]),
         details=config_detail,
     )
 
     # ── Final score ──
     total_score = sum(d.score * d.weight for d in dimensions.values())
     total_score = round(min(100.0, max(0.0, total_score)), 1)
-    grade = _score_to_grade(total_score)
+    grade = _score_to_grade(total_score, resolved.grade_thresholds)
 
     # Build summary. Keep vulnerability cleanliness separate from
     # best-practice/configuration quality so clean scans do not read as
@@ -350,6 +504,7 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
         score=total_score,
         dimensions=dimensions,
         summary=summary,
+        policy_source=resolved.source,
     )
 
 

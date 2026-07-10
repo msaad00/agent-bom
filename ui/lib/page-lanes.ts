@@ -11,8 +11,8 @@ export const PAGE_LANE_META: Record<
   PageLane,
   { label: string; scope: string; accent: string }
 > = {
-  command: { label: "Posture", scope: "Exposure & paths", accent: "#58a6ff" },
-  "ai-estate": { label: "AI inventory", scope: "Tenant AI estate", accent: "#3fb950" },
+  command: { label: "Posture", scope: "Current · connected surfaces", accent: "#58a6ff" },
+  "ai-estate": { label: "AI inventory", scope: "Agents · fleet · manifests", accent: "#3fb950" },
   "cloud-data": { label: "Cloud & Data", scope: "Cloud · Read-only", accent: "#a371f7" },
   runtime: { label: "Runtime", scope: "Live · Enforced", accent: "#f778ba" },
   governance: { label: "Governance", scope: "Policy & evidence", accent: "#3fb950" },

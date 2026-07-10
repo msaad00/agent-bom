@@ -12,6 +12,24 @@ stores a password.
 
 ---
 
+## 1b. Grant methods (pick what your rights allow)
+
+The **same read-only grant** can be minted three ways. Choose based on who is
+allowed to change IAM / RBAC in your org — not based on what agent-bom prefers.
+
+| Method | When to use | Where |
+|--------|-------------|--------|
+| **CLI** | You already have `aws` / `az` / `gcloud` / `snow` on a laptop or bastion | `scripts/provision/README.md` + Connections wizard **CLI** tab |
+| **CloudShell** | No local Terraform; you can open the vendor browser shell | Same recipes, framed for AWS CloudShell / Azure Cloud Shell / Google Cloud Shell / Snowsight |
+| **Terraform** | Platform/SRE owns apply rights and wants reviewable state | `deploy/terraform/connect-*` + Connections wizard **Terraform** tab |
+
+`agent-bom connect <provider>` prints all three. The control-plane Connections
+wizard lets you copy the matching script. Secondary vendors (Databricks,
+CoreWeave, HF, W&B, …) stay under `scripts/provision/` until they join the
+brokered catalog.
+
+---
+
 ## 1. The approach (why it is safe to point at production)
 
 | Principle | What it means here |

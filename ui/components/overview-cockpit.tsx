@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Bot,
   GitBranch,
   Shield,
   ShieldAlert,
@@ -12,7 +11,6 @@ import {
 
 import type { OverviewDomain, OverviewResponse } from "@/lib/api";
 import type { ServiceEntry, ServiceId } from "@/lib/api-types";
-import { AttackPathCard } from "@/components/attack-path-card";
 import { Collapsible } from "@/components/collapsible";
 import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
@@ -25,14 +23,6 @@ import {
   type IssueType,
   type SeverityBand,
 } from "@/lib/finding-issue-type";
-import {
-  OVERVIEW_PERSONAS,
-  overviewPersonaDrillDown,
-  overviewPersonaHint,
-  overviewPersonaLabel,
-  overviewPersonaZoomOut,
-  type OverviewPersona,
-} from "@/lib/overview-persona";
 import { SERVICE_META, serviceStateLabel } from "@/lib/service-registry";
 
 export interface ExposurePathView {
@@ -85,8 +75,6 @@ export interface OverviewCockpitProps {
   };
   compliance?: OverviewComplianceSnapshot | null | undefined;
   services?: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
-  persona: OverviewPersona;
-  onPersonaChange: (persona: OverviewPersona) => void;
 }
 
 export function OverviewCockpit({
@@ -111,14 +99,7 @@ export function OverviewCockpit({
   signals,
   compliance = null,
   services = null,
-  persona,
-  onPersonaChange,
 }: OverviewCockpitProps) {
-  const isCiso = persona === "ciso";
-  const isTrust = persona === "trust";
-  const isEngineer = persona === "engineer";
-  const drillDown = overviewPersonaDrillDown(persona);
-  const zoomOut = overviewPersonaZoomOut(persona);
   const domainList = domains ? Object.values(domains) : [];
   const activeDomains = domainList.filter((domain) => domain.status !== "idle").length;
   const coverage = domainList.length > 0 ? Math.round((activeDomains / domainList.length) * 100) : null;
@@ -128,57 +109,13 @@ export function OverviewCockpit({
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 lg:p-5">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-              Command center
-            </p>
-            <p className="mt-1 max-w-xl text-xs text-[color:var(--text-secondary)]">
-              {overviewPersonaHint(persona)} Same estate — change altitude to go deeper or zoom out.
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1.5">
-            <div
-              className="flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5"
-              role="group"
-              aria-label="Overview altitude"
-            >
-              {OVERVIEW_PERSONAS.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => onPersonaChange(value)}
-                  className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
-                    persona === value
-                      ? "bg-[color:var(--surface)] text-[color:var(--foreground)] shadow-sm"
-                      : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
-                  }`}
-                >
-                  {overviewPersonaLabel(value)}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap justify-end gap-2 text-[10px]">
-              {zoomOut ? (
-                <button
-                  type="button"
-                  onClick={() => onPersonaChange(zoomOut)}
-                  className="text-[color:var(--text-tertiary)] hover:text-emerald-400"
-                >
-                  ↑ {overviewPersonaLabel(zoomOut)}
-                </button>
-              ) : null}
-              {drillDown ? (
-                <button
-                  type="button"
-                  onClick={() => onPersonaChange(drillDown)}
-                  className="text-[color:var(--text-tertiary)] hover:text-emerald-400"
-                >
-                  ↓ {overviewPersonaLabel(drillDown)}
-                </button>
-              ) : null}
-            </div>
-          </div>
+        <div className="mb-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+            Command center
+          </p>
+          <p className="mt-1 max-w-2xl text-xs text-[color:var(--text-secondary)]">
+            Posture, open issues, and compliance from the latest completed scan — plus live services you’ve activated. Use Findings, Compliance, and Security graph for deeper work.
+          </p>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
@@ -186,7 +123,6 @@ export function OverviewCockpit({
             grade={grade}
             score={score}
             summary={postureSummary}
-            persona={persona}
             critical={critical}
             high={high}
           />
@@ -197,8 +133,6 @@ export function OverviewCockpit({
             kev={kev}
             credentials={credentials}
             complianceScore={complianceScore}
-            showComplianceCallout={isCiso || isTrust}
-            showSecretsCallout={isEngineer}
             severity={severity}
             matrix={issueMatrix}
           />
@@ -211,12 +145,8 @@ export function OverviewCockpit({
           </div>
         </div>
 
-        <ComplianceSnapshotPanel compliance={compliance} defaultOpen={isTrust || isCiso} />
-        <ActivatedServicesPanel
-          services={services}
-          activeCount={signals.activeServices}
-          defaultOpen={isEngineer}
-        />
+        <ComplianceSnapshotPanel compliance={compliance} />
+        <ActivatedServicesPanel services={services} activeCount={signals.activeServices} />
 
         {domainList.length > 0 ? (
           <Collapsible
@@ -228,20 +158,13 @@ export function OverviewCockpit({
             }
             count={domainList.length}
             scrollMaxHeight="14rem"
-            defaultOpen={!isTrust}
             actions={
               <div className="flex flex-wrap justify-end gap-1.5 text-[10px]">
-                {isEngineer ? (
-                  <>
-                    <SignalChip label="Tools" value={summaryReady && signals.tools != null ? String(signals.tools) : "—"} />
-                    <SignalChip label="Packages" value={summaryReady && signals.packages != null ? String(signals.packages) : "—"} />
-                  </>
-                ) : (
-                  <SignalChip
-                    label="Cred exposure"
-                    value={summaryReady && credentials != null ? String(credentials) : "—"}
-                  />
-                )}
+                <SignalChip
+                  label="Cred exposure"
+                  value={summaryReady && credentials != null ? String(credentials) : "—"}
+                />
+                <SignalChip label="Tools" value={summaryReady && signals.tools != null ? String(signals.tools) : "—"} />
                 <SignalChip label="Services" value={summaryReady ? String(signals.activeServices) : "—"} />
                 <SignalChip label="Connect" value={signals.connected ? "Live" : "Setup"} highlight={signals.connected} />
               </div>
@@ -258,45 +181,20 @@ export function OverviewCockpit({
 
       <div className="grid gap-4 lg:grid-cols-12">
         <section className="min-h-0 space-y-3 lg:col-span-8">
-          {isCiso ? (
-            <CisoRiskPanel
-              topPath={topPath}
-              exposurePaths={exposurePaths}
-              critical={critical}
-              high={high}
-              credentials={credentials}
-              summaryReady={summaryReady}
-              onDrillDown={drillDown ? () => onPersonaChange(drillDown) : undefined}
-            />
-          ) : null}
-          {isTrust ? (
-            <TrustEvidencePanel
-              compliance={compliance}
-              critical={critical}
-              summaryReady={summaryReady}
-              onZoomOut={zoomOut ? () => onPersonaChange(zoomOut) : undefined}
-              onDrillDown={drillDown ? () => onPersonaChange(drillDown) : undefined}
-            />
-          ) : null}
-          {isEngineer ? (
-            <EngineerExposurePanel
-              topPath={topPath}
-              exposurePaths={exposurePaths}
-              onZoomOut={zoomOut ? () => onPersonaChange(zoomOut) : undefined}
-            />
-          ) : null}
+          <TopRisksPanel
+            topPath={topPath}
+            exposurePaths={exposurePaths}
+            critical={critical}
+            high={high}
+            credentials={credentials}
+            summaryReady={summaryReady}
+          />
         </section>
 
         <aside className="min-h-0 space-y-3 lg:col-span-4">
           <Collapsible
             title="Severity roll-up"
-            subtitle={
-              isTrust
-                ? "Issue severity for control evidence and attestations"
-                : isCiso
-                  ? "Open issues by severity across CVEs, misconfigs, and secrets"
-                  : "Finding backlog by severity and issue type"
-            }
+            subtitle="Open issues by severity across CVEs, misconfigs, and secrets"
             defaultOpen
           >
             <SeverityRollup
@@ -306,41 +204,14 @@ export function OverviewCockpit({
             />
           </Collapsible>
 
-          <Collapsible
-            title={isCiso ? "Leadership actions" : isTrust ? "Trust & GRC" : "Investigate"}
-            defaultOpen
-            scrollMaxHeight="18rem"
-          >
+          <Collapsible title="Next steps" defaultOpen scrollMaxHeight="18rem">
             <div className="grid gap-2">
-              {isCiso ? (
-                <>
-                  <QuickLink href="/compliance" icon={Shield} label="Compliance posture" detail="Framework coverage & trust center" />
-                  <QuickLink href="/findings?severity=critical" icon={ShieldAlert} label="Critical findings" detail={`${critical} open`} />
-                  <QuickLink href="/findings?lens=trust" icon={Shield} label="Findings triage" detail="Shared with GRC for disposition" />
-                  <QuickLink href="/governance" icon={Shield} label="Governance" detail="Policy and control evidence" />
-                  <QuickLink href="/audit" icon={Shield} label="Audit trail" detail="Signed operator events" />
-                  <QuickLink href="/connections" icon={Workflow} label="Integrations" detail={signals.connected ? "Live connectors" : "Connect cloud & SIEM"} />
-                </>
-              ) : null}
-              {isTrust ? (
-                <>
-                  <QuickLink href="/compliance" icon={Shield} label="Trust center" detail="Framework packs & control status" />
-                  <QuickLink href="/audit" icon={Shield} label="Audit evidence" detail="Signed operator events" />
-                  <QuickLink href="/governance" icon={Shield} label="Control mapping" detail="Policy and ownership" />
-                  <QuickLink href="/findings?lens=trust&severity=critical" icon={ShieldAlert} label="Open control gaps" detail={`${critical} critical`} />
-                  <QuickLink href="/findings?lens=trust" icon={Shield} label="Findings triage" detail="Disposition & OpenVEX for attestations" />
-                  <QuickLink href="/jobs" icon={Workflow} label="Evidence runs" detail="Scans that feed attestations" />
-                </>
-              ) : null}
-              {isEngineer ? (
-                <>
-                  <QuickLink href="/findings?severity=critical" icon={ShieldAlert} label="Critical findings" detail={`${critical} open`} />
-                  <QuickLink href="/security-graph" icon={GitBranch} label="Security graph" detail="Lineage & attack paths" />
-                  <QuickLink href="/mesh" icon={Workflow} label="Agent mesh" detail={`${agents ?? "—"} agents`} />
-                  <QuickLink href="/agents" icon={Bot} label="Fleet inventory" detail="Runtime & MCP evidence" />
-                  <QuickLink href="/remediation" icon={ShieldAlert} label="Remediation queue" detail="Actionable fixes" />
-                </>
-              ) : null}
+              <QuickLink href="/compliance" icon={Shield} label="Compliance" detail="Framework coverage & trust center" />
+              <QuickLink href="/findings?severity=critical" icon={ShieldAlert} label="Critical findings" detail={`${critical} open`} />
+              <QuickLink href="/findings?lens=trust" icon={Shield} label="Findings triage" detail="Ops & GRC disposition" />
+              <QuickLink href="/security-graph" icon={GitBranch} label="Security graph" detail="Lineage & attack paths" />
+              <QuickLink href="/remediation" icon={ShieldAlert} label="Remediation" detail="Actionable fixes" />
+              <QuickLink href="/connections" icon={Workflow} label="Integrations" detail={signals.connected ? "Live connectors" : "Connect cloud & SIEM"} />
             </div>
           </Collapsible>
         </aside>
@@ -514,77 +385,13 @@ function ActivatedServicesPanel({
   );
 }
 
-function EngineerExposurePanel({
-  topPath,
-  exposurePaths,
-  onZoomOut,
-}: {
-  topPath: ExposurePathView | null;
-  exposurePaths: ExposurePathView[];
-  onZoomOut?: (() => void) | undefined;
-}) {
-  return (
-    <Collapsible
-      title="Priority exposure path"
-      subtitle="Highest-scored blast-radius chain for engineering triage"
-      defaultOpen
-      scrollMaxHeight="28rem"
-      actions={
-        <div className="flex items-center gap-3">
-          {onZoomOut ? (
-            <button type="button" onClick={onZoomOut} className="text-xs text-[color:var(--text-tertiary)] hover:text-emerald-400">
-              ← Trust
-            </button>
-          ) : null}
-          <Link href="/security-graph" className="text-xs text-emerald-500 hover:text-emerald-400">
-            Open graph
-          </Link>
-        </div>
-      }
-    >
-      {topPath ? (
-        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
-          <AttackPathCard nodes={topPath.nodes} riskScore={topPath.riskScore} href={topPath.href} captureMode compact />
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">
-          No scored exposure path yet. Run a scan to populate attack-path evidence.
-        </div>
-      )}
-
-      {exposurePaths.length > 1 ? (
-        <div className="mt-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
-            Next paths
-          </p>
-          {exposurePaths.slice(1, 5).map((path) => (
-            <Link
-              key={path.key}
-              href={path.href}
-              className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 transition hover:border-[color:var(--border-strong)]"
-            >
-              <div className="min-w-0 truncate font-mono text-xs text-[color:var(--text-secondary)]">
-                {path.nodes.map((node) => node.label).join(" → ")}
-              </div>
-              <span className="shrink-0 font-mono text-[11px] text-[color:var(--text-tertiary)]">
-                {path.riskScore.toFixed(1)}
-              </span>
-            </Link>
-          ))}
-        </div>
-      ) : null}
-    </Collapsible>
-  );
-}
-
-function CisoRiskPanel({
+function TopRisksPanel({
   topPath,
   exposurePaths,
   critical,
   high,
   credentials,
   summaryReady,
-  onDrillDown,
 }: {
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
@@ -592,11 +399,10 @@ function CisoRiskPanel({
   high: number;
   credentials: number | null;
   summaryReady: boolean;
-  onDrillDown?: (() => void) | undefined;
 }) {
   const headline =
     summaryReady && critical > 0
-      ? `${critical} critical finding${critical === 1 ? "" : "s"} need leadership attention`
+      ? `${critical} critical finding${critical === 1 ? "" : "s"} need attention`
       : summaryReady && high > 0
         ? `${high} high-severity finding${high === 1 ? "" : "s"} in the latest scan`
         : "No prioritized risk themes yet";
@@ -609,15 +415,13 @@ function CisoRiskPanel({
   return (
     <Collapsible
       title="Top risks"
-      subtitle="Business-readable priorities — drill into Trust for evidence, Engineer for paths"
+      subtitle="Business-readable priorities — open Findings or Security graph for detail"
       defaultOpen
       scrollMaxHeight="28rem"
       actions={
-        onDrillDown ? (
-          <button type="button" onClick={onDrillDown} className="text-xs text-emerald-500 hover:text-emerald-400">
-            Trust →
-          </button>
-        ) : null
+        <Link href="/security-graph" className="text-xs text-emerald-500 hover:text-emerald-400">
+          Security graph
+        </Link>
       }
     >
       <p className="text-base font-semibold text-[color:var(--foreground)]">{headline}</p>
@@ -671,106 +475,16 @@ function CisoRiskPanel({
   );
 }
 
-function TrustEvidencePanel({
-  compliance,
-  critical,
-  summaryReady,
-  onZoomOut,
-  onDrillDown,
-}: {
-  compliance: OverviewComplianceSnapshot | null | undefined;
-  critical: number;
-  summaryReady: boolean;
-  onZoomOut?: (() => void) | undefined;
-  onDrillDown?: (() => void) | undefined;
-}) {
-  const frameworks = compliance?.frameworks ?? [];
-  const failing = frameworks.filter((item) => item.fail > 0);
-  const warning = frameworks.filter((item) => item.fail === 0 && item.warn > 0);
-
-  return (
-    <Collapsible
-      title="Trust evidence"
-      subtitle="GRC altitude — frameworks and control gaps that feed CISO reporting"
-      defaultOpen
-      scrollMaxHeight="28rem"
-      actions={
-        <div className="flex items-center gap-3">
-          {onZoomOut ? (
-            <button type="button" onClick={onZoomOut} className="text-xs text-[color:var(--text-tertiary)] hover:text-emerald-400">
-              ← CISO
-            </button>
-          ) : null}
-          {onDrillDown ? (
-            <button type="button" onClick={onDrillDown} className="text-xs text-emerald-500 hover:text-emerald-400">
-              Engineer →
-            </button>
-          ) : null}
-        </div>
-      }
-    >
-      <p className="text-base font-semibold text-[color:var(--foreground)]">
-        {compliance
-          ? `${Math.round(compliance.overallScore)}% framework coverage · ${failing.length} gap${failing.length === 1 ? "" : "s"}`
-          : "No framework evidence yet"}
-      </p>
-      <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
-        {summaryReady && critical > 0
-          ? `${critical} critical finding${critical === 1 ? "" : "s"} may block attestations until remediated.`
-          : "Same findings and scans as leadership and engineering — packaged for audit and trust reviews."}
-      </p>
-
-      {failing.length > 0 || warning.length > 0 ? (
-        <ul className="mt-3 space-y-2 text-sm text-[color:var(--text-secondary)]">
-          {failing.slice(0, 4).map((item) => (
-            <li key={item.id}>
-              <span className="font-medium text-red-300">{item.label}</span> — {item.fail} fail / {item.total} controls
-            </li>
-          ))}
-          {warning.slice(0, 3).map((item) => (
-            <li key={item.id}>
-              <span className="font-medium text-amber-200">{item.label}</span> — {item.warn} warn / {item.total} controls
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
-          {frameworks.length > 0
-            ? "Mapped frameworks are currently passing — export packs from the trust center."
-            : "Run a scan to light up OWASP, NIST, CIS, and related framework coverage."}
-        </p>
-      )}
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Link
-          href="/compliance"
-          className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-200"
-        >
-          Open trust center
-        </Link>
-        <Link
-          href="/audit"
-          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
-        >
-          Audit trail
-        </Link>
-      </div>
-    </Collapsible>
-  );
-}
-
 function PostureHero({
   grade,
   score,
   summary,
-  persona,
   critical,
   high,
 }: {
   grade: string;
   score?: number | undefined;
   summary?: string | undefined;
-  persona: OverviewPersona;
   critical: number;
   high: number;
 }) {
@@ -781,9 +495,6 @@ function PostureHero({
         ? "text-amber-500"
         : "text-red-500";
 
-  const altitudeLabel =
-    persona === "ciso" ? "Risk posture" : persona === "trust" ? "Trust posture" : "Operator posture";
-
   return (
     <div className="flex items-center gap-4">
       <div className={`flex h-16 w-16 items-center justify-center rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] ${tone}`}>
@@ -791,20 +502,21 @@ function PostureHero({
       </div>
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-          {altitudeLabel}
+          Risk posture
         </p>
         <p className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
           {typeof score === "number" ? `Score ${score}` : "Awaiting scan"}
         </p>
+        {typeof score === "number" && grade !== "N/A" && grade !== "—" ? (
+          <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
+            Latest completed scan
+          </p>
+        ) : null}
         <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">
           {summary ??
-            (persona === "ciso"
-              ? critical > 0
-                ? `${critical} critical and ${high} high findings across the AI supply chain.`
-                : "Single-pane roll-up across compliance, cloud, runtime, and identity domains."
-              : persona === "trust"
-                ? "Framework coverage and control evidence for GRC and audit reviews."
-                : "Blast-radius paths, MCP topology, and remediation evidence for engineering triage.")}
+            (critical > 0
+              ? `${critical} critical and ${high} high findings in the current scan snapshot.`
+              : "Roll-up from the latest completed scan across connected surfaces — cloud, runtime, identity, and inventory.")}
         </p>
       </div>
     </div>
@@ -818,8 +530,6 @@ function SeverityIssueStrip({
   kev,
   credentials,
   complianceScore,
-  showComplianceCallout,
-  showSecretsCallout,
   severity,
   matrix,
 }: {
@@ -829,8 +539,6 @@ function SeverityIssueStrip({
   kev: number | null;
   credentials: number | null;
   complianceScore?: string | undefined;
-  showComplianceCallout: boolean;
-  showSecretsCallout: boolean;
   severity: SeverityCounts;
   matrix: IssueSeverityMatrix | null | undefined;
 }) {
@@ -894,7 +602,7 @@ function SeverityIssueStrip({
               KEV {kev}
             </Link>
           ) : null}
-          {!showComplianceCallout && showSecretsCallout && summaryReady && credentials != null ? (
+          {summaryReady && credentials != null ? (
             <Link
               href={findingsHref({ issue: "secret" })}
               className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200"
@@ -902,7 +610,7 @@ function SeverityIssueStrip({
               Secrets {credentials}
             </Link>
           ) : null}
-          {showComplianceCallout && complianceScore ? (
+          {complianceScore ? (
             <Link
               href="/compliance"
               className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200"

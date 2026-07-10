@@ -107,11 +107,6 @@ export function GraphLensSwitcher({
           </p>
         </div>
       )}
-      {variant === "compact" && (
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-          Lens
-        </p>
-      )}
       <InsightLayerToggle layers={layers} onToggle={onToggle} />
     </div>
   );

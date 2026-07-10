@@ -232,7 +232,6 @@ export default function Dashboard() {
   const kevCount = useMemo(() => allBlast.filter((b) => (b.is_kev ?? b.cisa_kev) === true).length, [allBlast]);
   const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
   const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
-  const impactedAgentCount = useMemo(() => new Set(allBlast.flatMap(blastAgents)).size, [allBlast]);
   const estateSummary = useMemo(() => aggregateEstate(agentList), [agentList]);
 
   // Real signals feeding the AI trust stack — data sources connected (L1),
@@ -317,7 +316,6 @@ export default function Dashboard() {
   const displayedAgentCount = importedReport ? (importedReport.agents?.length ?? 0) : (agentsLoading ? null : effectiveAgentCount);
   const isLoading = jobsLoading && !importedReport;
   const summaryReady = !jobsLoading || Boolean(importedReport);
-  const agentsReady = !agentsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
   const criticalCount = detailsReady

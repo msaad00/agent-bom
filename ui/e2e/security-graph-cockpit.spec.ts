@@ -249,8 +249,8 @@ async function expectCockpitVisible(page: Page) {
   await expect(
     page.getByRole("heading", { name: /Claude Desktop.*form-data.*CVE-2025-7783/ }),
   ).toBeVisible();
-  // Evidence is progressive disclosure ("Evidence & relationships" summary), not a bare label.
-  await expect(page.getByText(/Evidence/)).toBeVisible();
+  // Progressive disclosure summary — avoid /Evidence/ which also matches "Evidence drawer".
+  await expect(page.getByText("Evidence & relationships")).toBeVisible();
   await expect(page.getByText("Risk", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Hops", { exact: true }).first()).toBeVisible();
 }

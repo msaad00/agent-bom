@@ -18,6 +18,7 @@ import {
 import { TrustStackSignals } from "@/components/trust-stack";
 import { ActivityFeed } from "@/components/activity-feed";
 import { AttackPathCard } from "@/components/attack-path-card";
+import { CoverageCockpit } from "@/components/coverage-cockpit";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -386,6 +387,12 @@ export default function Dashboard() {
         latestScan={jobsLoading ? null : latestScanShort}
         mode={deploymentModeLabel(counts?.deployment_mode)}
         summaryReady={summaryReady}
+      />
+
+      <CoverageCockpit
+        counts={counts}
+        scanCount={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
+        latestScanLabel={latestScanShort}
       />
 
       <section className="space-y-3">

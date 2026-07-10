@@ -86,4 +86,23 @@ describe("OverviewCockpit", () => {
     expect(screen.getByTestId("overview-activated-services")).toBeInTheDocument();
     expect(screen.getByText("Cloud accounts")).toBeInTheDocument();
   });
+
+  it("lets operators collapse overview sections", async () => {
+    const user = userEvent.setup();
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        persona="executive"
+        compliance={{
+          overallScore: 90,
+          overallStatus: "pass",
+          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("CIS Controls v8")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /Compliance/i }));
+    expect(screen.getByText("CIS Controls v8")).not.toBeVisible();
+  });
 });

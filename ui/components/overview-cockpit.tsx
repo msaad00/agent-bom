@@ -13,6 +13,7 @@ import {
 import type { OverviewDomain, OverviewResponse } from "@/lib/api";
 import type { ServiceEntry, ServiceId } from "@/lib/api-types";
 import { AttackPathCard } from "@/components/attack-path-card";
+import { Collapsible } from "@/components/collapsible";
 import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
 import {
@@ -170,17 +171,17 @@ export function OverviewCockpit({
         <ActivatedServicesPanel services={services} activeCount={signals.activeServices} />
 
         {domainList.length > 0 ? (
-          <div className="mt-5 border-t border-[color:var(--border-subtle)] pt-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-                  Domain coverage
-                </p>
-                <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                  {coverage != null ? `${coverage}% domains reporting signal` : "Cross-domain posture roll-up"}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-[10px]">
+          <Collapsible
+            bare
+            className="mt-4 border-t border-[color:var(--border-subtle)]"
+            title="Domain coverage"
+            subtitle={
+              coverage != null ? `${coverage}% domains reporting signal` : "Cross-domain posture roll-up"
+            }
+            count={domainList.length}
+            scrollMaxHeight="14rem"
+            actions={
+              <div className="flex flex-wrap justify-end gap-1.5 text-[10px]">
                 {!isExecutive ? (
                   <>
                     <SignalChip label="Tools" value={summaryReady && signals.tools != null ? String(signals.tools) : "—"} />
@@ -195,18 +196,19 @@ export function OverviewCockpit({
                 <SignalChip label="Services" value={summaryReady ? String(signals.activeServices) : "—"} />
                 <SignalChip label="Connect" value={signals.connected ? "Live" : "Setup"} highlight={signals.connected} />
               </div>
-            </div>
+            }
+          >
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
               {domainList.map((domain) => (
                 <DomainCard key={domain.href} domain={domain} />
               ))}
             </div>
-          </div>
+          </Collapsible>
         ) : null}
       </section>
 
       <div className="grid gap-4 lg:grid-cols-12">
-        <section className="space-y-3 lg:col-span-8">
+        <section className="min-h-0 space-y-3 lg:col-span-8">
           {isExecutive ? (
             <ExecutiveRiskPanel
               topPath={topPath}
@@ -221,20 +223,21 @@ export function OverviewCockpit({
           )}
         </section>
 
-        <aside className="space-y-4 lg:col-span-4">
-          <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Severity roll-up</h2>
-            <p className="mt-0.5 text-xs text-[color:var(--text-tertiary)]">
-              {isExecutive ? "Open findings by severity band" : "Finding backlog by severity"}
-            </p>
+        <aside className="min-h-0 space-y-3 lg:col-span-4">
+          <Collapsible
+            title="Severity roll-up"
+            subtitle={isExecutive ? "Open findings by severity band" : "Finding backlog by severity"}
+            defaultOpen
+          >
             <SeverityRollup severity={severity} summaryReady={summaryReady} />
-          </section>
+          </Collapsible>
 
-          <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <h2 className="text-sm font-semibold text-[color:var(--foreground)]">
-              {isExecutive ? "Governance actions" : "Investigate"}
-            </h2>
-            <div className="mt-3 grid gap-2">
+          <Collapsible
+            title={isExecutive ? "Governance actions" : "Investigate"}
+            defaultOpen
+            scrollMaxHeight="18rem"
+          >
+            <div className="grid gap-2">
               {isExecutive ? (
                 <>
                   <QuickLink href="/compliance" icon={Shield} label="Compliance posture" detail="Framework coverage & trust center" />
@@ -253,7 +256,7 @@ export function OverviewCockpit({
                 </>
               )}
             </div>
-          </section>
+          </Collapsible>
         </aside>
       </div>
     </div>
@@ -277,18 +280,19 @@ function ComplianceSnapshotPanel({
           : "text-[color:var(--text-tertiary)]";
 
   return (
-    <div className="mt-5 border-t border-[color:var(--border-subtle)] pt-4" data-testid="overview-compliance-snapshot">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-            Compliance
-          </p>
-          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-            {compliance
-              ? `${Math.round(compliance.overallScore)}% overall · ${failing} framework${failing === 1 ? "" : "s"} need attention`
-              : "Framework coverage appears after the first scan"}
-          </p>
-        </div>
+    <Collapsible
+      bare
+      className="mt-4 border-t border-[color:var(--border-subtle)]"
+      title="Compliance"
+      subtitle={
+        compliance
+          ? `${Math.round(compliance.overallScore)}% overall · ${failing} framework${failing === 1 ? "" : "s"} need attention`
+          : "Framework coverage appears after the first scan"
+      }
+      count={frameworks.length > 0 ? frameworks.length : undefined}
+      scrollMaxHeight="16rem"
+      data-testid="overview-compliance-snapshot"
+      actions={
         <div className="flex items-center gap-3">
           {compliance ? (
             <span className={`text-sm font-semibold tabular-nums ${statusTone}`}>
@@ -299,7 +303,8 @@ function ComplianceSnapshotPanel({
             Trust center <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
-      </div>
+      }
+    >
       {frameworks.length > 0 ? (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {frameworks.map((framework) => {
@@ -341,7 +346,7 @@ function ComplianceSnapshotPanel({
           Run a scan to light up OWASP, NIST, CIS, and related framework coverage.
         </div>
       )}
-    </div>
+    </Collapsible>
   );
 }
 
@@ -360,22 +365,24 @@ function ActivatedServicesPanel({
   );
 
   return (
-    <div className="mt-5 border-t border-[color:var(--border-subtle)] pt-4" data-testid="overview-activated-services">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-            Activated services
-          </p>
-          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-            {activeCount > 0
-              ? `${activeCount} live or connected · tools, data, runtime, and governance surfaces`
-              : "Connect accounts, sync fleet, or enable runtime to activate surfaces"}
-          </p>
-        </div>
+    <Collapsible
+      bare
+      className="mt-4 border-t border-[color:var(--border-subtle)]"
+      title="Activated services"
+      subtitle={
+        activeCount > 0
+          ? `${activeCount} live or connected · tools, data, runtime, and governance surfaces`
+          : "Connect accounts, sync fleet, or enable runtime to activate surfaces"
+      }
+      count={rows.length}
+      scrollMaxHeight="14rem"
+      data-testid="overview-activated-services"
+      actions={
         <Link href="/connections" className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
           Manage <ArrowRight className="h-3 w-3" />
         </Link>
-      </div>
+      }
+    >
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {rows.map(({ id, entry, meta }) => {
           const live = entry.state === "live" || entry.state === "connected";
@@ -411,7 +418,7 @@ function ActivatedServicesPanel({
           );
         })}
       </div>
-    </div>
+    </Collapsible>
   );
 }
 
@@ -423,18 +430,19 @@ function EngineerExposurePanel({
   exposurePaths: ExposurePathView[];
 }) {
   return (
-    <>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Priority exposure path</h2>
-          <p className="text-xs text-[color:var(--text-tertiary)]">Highest-scored blast-radius chain for engineering triage</p>
-        </div>
+    <Collapsible
+      title="Priority exposure path"
+      subtitle="Highest-scored blast-radius chain for engineering triage"
+      defaultOpen
+      scrollMaxHeight="28rem"
+      actions={
         <Link href="/security-graph" className="text-xs text-emerald-500 hover:text-emerald-400">
           Open graph
         </Link>
-      </div>
+      }
+    >
       {topPath ? (
-        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
           <AttackPathCard nodes={topPath.nodes} riskScore={topPath.riskScore} href={topPath.href} captureMode compact />
         </div>
       ) : (
@@ -444,29 +452,27 @@ function EngineerExposurePanel({
       )}
 
       {exposurePaths.length > 1 ? (
-        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
+        <div className="mt-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
             Next paths
           </p>
-          <div className="space-y-2">
-            {exposurePaths.slice(1, 5).map((path) => (
-              <Link
-                key={path.key}
-                href={path.href}
-                className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 transition hover:border-[color:var(--border-strong)]"
-              >
-                <div className="min-w-0 truncate font-mono text-xs text-[color:var(--text-secondary)]">
-                  {path.nodes.map((node) => node.label).join(" → ")}
-                </div>
-                <span className="shrink-0 font-mono text-[11px] text-[color:var(--text-tertiary)]">
-                  {path.riskScore.toFixed(1)}
-                </span>
-              </Link>
-            ))}
-          </div>
+          {exposurePaths.slice(1, 5).map((path) => (
+            <Link
+              key={path.key}
+              href={path.href}
+              className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 transition hover:border-[color:var(--border-strong)]"
+            >
+              <div className="min-w-0 truncate font-mono text-xs text-[color:var(--text-secondary)]">
+                {path.nodes.map((node) => node.label).join(" → ")}
+              </div>
+              <span className="shrink-0 font-mono text-[11px] text-[color:var(--text-tertiary)]">
+                {path.riskScore.toFixed(1)}
+              </span>
+            </Link>
+          ))}
         </div>
       ) : null}
-    </>
+    </Collapsible>
   );
 }
 
@@ -498,52 +504,49 @@ function ExecutiveRiskPanel({
   const hasCredentialPath = topPath?.nodes.some((node) => node.type === "credential");
 
   return (
-    <>
-      <div>
-        <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Top risks</h2>
-        <p className="text-xs text-[color:var(--text-tertiary)]">
-          Business-readable priorities — no attack-path chains on this lens
+    <Collapsible
+      title="Top risks"
+      subtitle="Business-readable priorities — no attack-path chains on this lens"
+      defaultOpen
+      scrollMaxHeight="28rem"
+    >
+      <p className="text-base font-semibold text-[color:var(--foreground)]">{headline}</p>
+      {topPath ? (
+        <ul className="mt-3 space-y-2 text-sm text-[color:var(--text-secondary)]">
+          {cveNode ? <li>Known exploit exposure: {cveNode.label}</li> : null}
+          {serverNode ? <li>MCP / runtime surface: {serverNode.label}</li> : null}
+          {agentNode ? <li>Production agent scope: {agentNode.label}</li> : null}
+          {hasCredentialPath ? <li>Credential-aware blast radius detected in evidence chain</li> : null}
+          {summaryReady && credentials != null && credentials > 0 ? (
+            <li>{credentials} finding{credentials === 1 ? "" : "s"} touch exposed credentials or secrets</li>
+          ) : null}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
+          Run a scan to populate compliance, findings, and domain coverage evidence.
         </p>
-      </div>
-      <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-        <p className="text-base font-semibold text-[color:var(--foreground)]">{headline}</p>
-        {topPath ? (
-          <ul className="mt-3 space-y-2 text-sm text-[color:var(--text-secondary)]">
-            {cveNode ? <li>Known exploit exposure: {cveNode.label}</li> : null}
-            {serverNode ? <li>MCP / runtime surface: {serverNode.label}</li> : null}
-            {agentNode ? <li>Production agent scope: {agentNode.label}</li> : null}
-            {hasCredentialPath ? <li>Credential-aware blast radius detected in evidence chain</li> : null}
-            {summaryReady && credentials != null && credentials > 0 ? (
-              <li>{credentials} finding{credentials === 1 ? "" : "s"} touch exposed credentials or secrets</li>
-            ) : null}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
-            Run a scan to populate compliance, findings, and domain coverage evidence.
-          </p>
-        )}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href="/compliance"
-            className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-200"
-          >
-            Compliance evidence
-          </Link>
-          <Link
-            href="/findings?severity=critical"
-            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
-          >
-            Critical findings
-          </Link>
-        </div>
+      )}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          href="/compliance"
+          className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-200"
+        >
+          Compliance evidence
+        </Link>
+        <Link
+          href="/findings?severity=critical"
+          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
+        >
+          Critical findings
+        </Link>
       </div>
 
       {exposurePaths.length > 1 ? (
-        <details className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3">
-          <summary className="cursor-pointer text-xs font-medium text-[color:var(--foreground)]">
+        <div className="mt-4 border-t border-[color:var(--border-subtle)] pt-3">
+          <p className="text-xs font-medium text-[color:var(--foreground)]">
             {exposurePaths.length - 1} additional risk theme{exposurePaths.length - 1 === 1 ? "" : "s"}
-          </summary>
-          <ul className="mt-3 space-y-2 text-xs text-[color:var(--text-secondary)]">
+          </p>
+          <ul className="mt-2 space-y-2 text-xs text-[color:var(--text-secondary)]">
             {exposurePaths.slice(1, 4).map((path) => (
               <li key={path.key}>
                 {path.nodes.find((node) => node.type === "cve")?.label ?? "Risk chain"} affecting{" "}
@@ -552,9 +555,9 @@ function ExecutiveRiskPanel({
               </li>
             ))}
           </ul>
-        </details>
+        </div>
       ) : null}
-    </>
+    </Collapsible>
   );
 }
 
@@ -701,7 +704,7 @@ function SeverityRollup({ severity, summaryReady }: { severity: SeverityCounts; 
   const max = Math.max(severity.critical, severity.high, severity.medium, severity.low, 1);
 
   return (
-    <div className="mt-4 space-y-2.5">
+    <div className="space-y-2.5">
       {rows.map((row) => {
         const count = severity[row.key];
         const width = summaryReady ? Math.max(8, (count / max) * 100) : 0;

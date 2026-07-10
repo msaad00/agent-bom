@@ -41,7 +41,7 @@ import {
   blastTools,
 } from "@/lib/dashboard-data";
 import {
-  ShieldAlert, ArrowRight, Clock,
+  ShieldAlert, ArrowRight, Clock, ChevronRight,
   AlertTriangle, GitBranch, BarChart3, LayoutGrid,
 } from "lucide-react";
 
@@ -467,19 +467,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      <DomainSignalsPanel
-        overview={overview}
-        counts={counts}
-        summaryReady={summaryReady}
-        scanCount={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
-        latestScanLabel={latestScanShort}
-        kev={summaryReady ? displayedKevCount : null}
-        credentials={summaryReady ? displayedCredentialExposure : null}
-        tools={summaryReady ? displayedReachableTools : null}
-        packages={summaryReady ? displayedPackages : null}
-      />
-
-      {(!isLoading) && allBlast.length > 0 && (
+      {allBlast.length > 0 && (
         <details className="group/attack rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 select-none">
             <div className="flex items-center gap-2">

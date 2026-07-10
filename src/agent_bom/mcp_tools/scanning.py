@@ -325,6 +325,21 @@ async def _scan_impl_inner(
             result["warnings"] = scan_warnings
         return _truncate_response(json.dumps(result, indent=2, default=str))
     except Exception as exc:
+        from agent_bom.scanners import IncompleteScanError
+
+        if isinstance(exc, IncompleteScanError):
+            return _truncate_response(
+                json.dumps(
+                    {
+                        "status": "incomplete_scan",
+                        "agents": [],
+                        "vulnerabilities": [],
+                        "blast_radius": [],
+                        "blast_radii": [],
+                        "warnings": [sanitize_error(exc)],
+                    }
+                )
+            )
         logger.exception("MCP tool error")
         raise ToolError(sanitize_error(exc)) from exc
 

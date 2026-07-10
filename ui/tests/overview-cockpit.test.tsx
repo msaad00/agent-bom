@@ -34,12 +34,30 @@ describe("OverviewCockpit", () => {
     onPersonaChange: vi.fn(),
   };
 
-  it("renders executive risk themes without attack-path chains", () => {
-    render(<OverviewCockpit {...baseProps} persona="executive" />);
+  it("renders CISO risk themes without attack-path chains", () => {
+    render(<OverviewCockpit {...baseProps} persona="ciso" />);
 
     expect(screen.getByText("Top risks")).toBeInTheDocument();
-    expect(screen.getAllByText(/no attack-path chains/i).length).toBeGreaterThan(0);
-    expect(screen.getByText("Governance actions")).toBeInTheDocument();
+    expect(screen.getByText(/drill into Trust for evidence/i)).toBeInTheDocument();
+    expect(screen.getByText("Leadership actions")).toBeInTheDocument();
+    expect(screen.queryByText("Priority exposure path")).not.toBeInTheDocument();
+  });
+
+  it("renders Trust evidence altitude for GRC", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        persona="trust"
+        compliance={{
+          overallScore: 88,
+          overallStatus: "pass",
+          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Trust evidence")).toBeInTheDocument();
+    expect(screen.getByText("Trust & GRC")).toBeInTheDocument();
     expect(screen.queryByText("Priority exposure path")).not.toBeInTheDocument();
   });
 
@@ -51,20 +69,23 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("CVE-2020-14343")).toBeInTheDocument();
   });
 
-  it("switches persona via lens toggle", async () => {
+  it("switches altitude via lens toggle and drill controls", async () => {
     const user = userEvent.setup();
     const onPersonaChange = vi.fn();
-    render(<OverviewCockpit {...baseProps} persona="executive" onPersonaChange={onPersonaChange} />);
+    render(<OverviewCockpit {...baseProps} persona="ciso" onPersonaChange={onPersonaChange} />);
 
     await user.click(screen.getByRole("button", { name: "Engineer" }));
     expect(onPersonaChange).toHaveBeenCalledWith("engineer");
+
+    await user.click(screen.getByRole("button", { name: "↓ Trust" }));
+    expect(onPersonaChange).toHaveBeenCalledWith("trust");
   });
 
   it("shows compliance and activated services snapshots", () => {
     render(
       <OverviewCockpit
         {...baseProps}
-        persona="executive"
+        persona="ciso"
         compliance={{
           overallScore: 72,
           overallStatus: "warning",
@@ -78,6 +99,15 @@ describe("OverviewCockpit", () => {
           compliance: { state: "connected", count: 1 },
           fleet: { state: "locked", count: 0 },
         }}
+        issueMatrix={{
+          vulnerability: { critical: 1, high: 4, medium: 2, low: 0 },
+          misconfiguration: { critical: 0, high: 3, medium: 1, low: 0 },
+          secret: { critical: 1, high: 1, medium: 0, low: 0 },
+          identity: { critical: 0, high: 0, medium: 0, low: 0 },
+          totals: { critical: 2, high: 8, medium: 3, low: 0 },
+          byType: { vulnerability: 7, misconfiguration: 4, secret: 2, identity: 0 },
+          openTotal: 13,
+        }}
       />,
     );
 
@@ -85,5 +115,27 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("OWASP LLM Top 10")).toBeInTheDocument();
     expect(screen.getByTestId("overview-activated-services")).toBeInTheDocument();
     expect(screen.getByText("Cloud accounts")).toBeInTheDocument();
+    expect(screen.getByTestId("overview-severity-issue-strip")).toBeInTheDocument();
+    expect(screen.getByText("Open issues")).toBeInTheDocument();
+    expect(screen.getByText("Misconfig 4")).toBeInTheDocument();
+  });
+
+  it("lets operators collapse overview sections", async () => {
+    const user = userEvent.setup();
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        persona="ciso"
+        compliance={{
+          overallScore: 90,
+          overallStatus: "pass",
+          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("CIS Controls v8")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /Compliance/i }));
+    expect(screen.getByText("CIS Controls v8")).not.toBeVisible();
   });
 });

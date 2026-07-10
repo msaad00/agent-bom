@@ -11,7 +11,7 @@ import {
 } from "@/lib/overview-persona";
 
 export function useOverviewPersona(session: AuthMeResponse | null) {
-  const [persona, setPersona] = useState<OverviewPersona>("executive");
+  const [persona, setPersona] = useState<OverviewPersona>("ciso");
   const [ready, setReady] = useState(false);
 
   useEffect(() => {

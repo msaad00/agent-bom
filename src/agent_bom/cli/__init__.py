@@ -41,27 +41,14 @@ from agent_bom.discovery import discover_all  # noqa: F401
 def _print_startup_banner() -> None:
     """Render the ``agent-bom`` no-args startup banner.
 
-    Mirrors the spirit of Claude Code / Snowflake Cortex CLI splash output:
-    a small product mark, the trust-chain tagline, three quick-start hints,
-    and a docs link. Compact (≤ 12 lines) so it never pushes prior output
-    off-screen on standard terminals.
+    Uses the locked product mark (BOM with agent O) plus wordmark/tagline so
+    CLI and dashboard share one brand. Compact (≤ 14 lines) for standard terminals.
     """
     from rich.console import Console
 
-    con = Console()
-    con.print()
-    con.print(f"    [bold cyan]⛨[/bold cyan]  [bold]agent-bom[/bold] [dim]·[/dim] [dim]v{__version__}[/dim]")
-    con.print()
-    con.print("    Open security scanner for AI infrastructure.")
-    con.print("    [dim]agent → MCP server → packages → CVEs → blast radius[/dim]")
-    con.print()
-    con.print("    [bold]Quick start[/bold]")
-    con.print("    [cyan]▶[/cyan] [bold]agent-bom scan[/bold]                 discover + scan local agents and MCP servers")
-    con.print("    [cyan]▶[/cyan] [bold]agent-bom samples first-run[/bold]   write an inspectable sample AI stack")
-    con.print("    [cyan]▶[/cyan] [bold]agent-bom -h[/bold]                  full command catalog (grouped)")
-    con.print()
-    con.print("    [dim]Docs:[/dim]  [link=https://github.com/msaad00/agent-bom]https://github.com/msaad00/agent-bom[/link]")
-    con.print()
+    from agent_bom.output.brand_tokens import print_cli_startup_banner
+
+    print_cli_startup_banner(Console(), version=__version__)
 
 
 @click.group(
@@ -84,11 +71,16 @@ def _print_startup_banner() -> None:
 @click.version_option(
     version=__version__,
     prog_name="agent-bom",
-    message=(f"agent-bom {__version__}\nPython {sys.version.split()[0]} · {sys.platform}\nDocs:  https://github.com/msaad00/agent-bom"),
+    message=(
+        f"agent-bom {__version__}\n"
+        "BOM for humans & agents\n"
+        f"Python {sys.version.split()[0]} · {sys.platform}\n"
+        "Docs:  https://github.com/msaad00/agent-bom"
+    ),
 )
 @click.pass_context
 def main(ctx: click.Context, profile: str | None, agent_mode: bool):
-    """agent-bom — Security scanner for AI infrastructure.
+    """agent-bom — BOM for humans & agents.
 
     \b
     Maps the full trust chain: agent → MCP server → packages → CVEs → blast radius.

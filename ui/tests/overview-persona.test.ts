@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { AuthMeResponse } from "@/lib/api";
-import { defaultOverviewPersona } from "@/lib/overview-persona";
+import {
+  defaultOverviewPersona,
+  overviewPersonaDrillDown,
+  overviewPersonaZoomOut,
+} from "@/lib/overview-persona";
 
 function session(role: string, uiRole = ""): AuthMeResponse {
   return {
@@ -34,14 +38,33 @@ function session(role: string, uiRole = ""): AuthMeResponse {
 }
 
 describe("defaultOverviewPersona", () => {
-  it("defaults analysts and admins to engineer lens", () => {
+  it("defaults analysts and admins to engineer altitude", () => {
     expect(defaultOverviewPersona(session("analyst"))).toBe("engineer");
     expect(defaultOverviewPersona(session("admin"))).toBe("engineer");
     expect(defaultOverviewPersona(session("viewer", "contributor"))).toBe("engineer");
   });
 
-  it("defaults viewers to executive lens", () => {
-    expect(defaultOverviewPersona(session("viewer"))).toBe("executive");
-    expect(defaultOverviewPersona(null)).toBe("executive");
+  it("defaults auditors to trust altitude", () => {
+    expect(defaultOverviewPersona(session("auditor"))).toBe("trust");
+    expect(defaultOverviewPersona(session("viewer", "compliance"))).toBe("trust");
+  });
+
+  it("defaults viewers to CISO altitude", () => {
+    expect(defaultOverviewPersona(session("viewer"))).toBe("ciso");
+    expect(defaultOverviewPersona(null)).toBe("ciso");
+  });
+});
+
+describe("overview altitude navigation", () => {
+  it("drills down CISO → Trust → Engineer", () => {
+    expect(overviewPersonaDrillDown("ciso")).toBe("trust");
+    expect(overviewPersonaDrillDown("trust")).toBe("engineer");
+    expect(overviewPersonaDrillDown("engineer")).toBeNull();
+  });
+
+  it("zooms out Engineer → Trust → CISO", () => {
+    expect(overviewPersonaZoomOut("engineer")).toBe("trust");
+    expect(overviewPersonaZoomOut("trust")).toBe("ciso");
+    expect(overviewPersonaZoomOut("ciso")).toBeNull();
   });
 });

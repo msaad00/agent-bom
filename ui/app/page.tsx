@@ -47,6 +47,7 @@ import {
   blastCredentials,
   blastTools,
 } from "@/lib/dashboard-data";
+import { buildIssueSeverityMatrix } from "@/lib/finding-issue-type";
 import {
   ShieldAlert, ArrowRight, Clock, ChevronRight,
   AlertTriangle, GitBranch, BarChart3, LayoutGrid,
@@ -237,6 +238,19 @@ export default function Dashboard() {
   );
 
   const severity = useMemo(() => aggregateSeverity(allBlast), [allBlast]);
+  const issueMatrix = useMemo(
+    () =>
+      buildIssueSeverityMatrix(
+        allBlast.map((blast) => ({
+          id: blast.vulnerability_id,
+          severity: blast.severity,
+          impact_category: blast.impact_category,
+          framework_tags: blast.framework_tags,
+          exposed_credentials: blast.exposed_credentials,
+        })),
+      ),
+    [allBlast],
+  );
   const topPackages = useMemo(() => aggregatePackages(effectiveJobs), [effectiveJobs]);
   const sources = useMemo(() => aggregateSources(effectiveJobs), [effectiveJobs]);
   const trendData = useMemo(() => aggregateTrend(effectiveJobs), [effectiveJobs]);
@@ -446,6 +460,7 @@ export default function Dashboard() {
         mode={deploymentModeLabel(counts?.deployment_mode)}
         summaryReady={summaryReady}
         severity={severity}
+        issueMatrix={issueMatrix}
         domains={overview?.domains ?? null}
         topPath={topExposurePath}
         exposurePaths={exposurePaths}
@@ -540,9 +555,9 @@ export default function Dashboard() {
           <TabButton icon={LayoutGrid} label="Operations" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
           <TabButton icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
         </div>
-        {activeTab === "analytics" && persona === "executive" ? (
+        {activeTab === "analytics" && persona !== "engineer" ? (
           <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
-            Technical charts and topology for engineering teams. Switch to the Engineer lens above for attack-path context on Overview.
+            Analytics is ops-depth. Switch altitude to Engineer above for attack-path context on Overview, or stay here for charts.
           </p>
         ) : null}
 

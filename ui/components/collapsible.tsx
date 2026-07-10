@@ -3,6 +3,7 @@
 import {
   useId,
   useState,
+  type CSSProperties,
   type ElementType,
   type ReactNode,
 } from "react";
@@ -13,6 +14,8 @@ import { ICON_SIZE } from "@/lib/icon-sizes";
 type CollapsibleProps = {
   /** Header label. */
   title: ReactNode;
+  /** Optional secondary line under the title. */
+  subtitle?: ReactNode | undefined;
   /** Optional count rendered as a pill next to the title. */
   count?: number | undefined;
   /** Optional leading icon (e.g. a Lucide component) for the header. */
@@ -21,6 +24,16 @@ type CollapsibleProps = {
   defaultOpen?: boolean | undefined;
   /** Optional trailing content rendered on the right of the header. */
   actions?: ReactNode;
+  /**
+   * Nested / in-card mode: no outer border or fill — use inside a parent
+   * surface (e.g. Overview command center).
+   */
+  bare?: boolean | undefined;
+  /**
+   * Cap body height and scroll inside the panel (e.g. `"16rem"`). Long lists
+   * stay in-window instead of stretching the page.
+   */
+  scrollMaxHeight?: string | undefined;
   /** Extra classes for the outer wrapper. */
   className?: string | undefined;
   /** Extra classes for the body panel. */
@@ -30,18 +43,18 @@ type CollapsibleProps = {
 };
 
 /**
- * Standard progressive-disclosure primitive. A header `<button>` toggles a
- * panel; the chevron rotates ChevronRight → ChevronDown and the button carries
- * `aria-expanded` + `aria-controls` wired to the panel `id`. This replaces the
- * hand-rolled collapse logic scattered across scan-result / nav / graph-chrome
- * and gives the many never-collapsible sections a one-line way to fold.
+ * Progressive-disclosure panel: header toggles body with `aria-expanded`.
+ * Supports nested (`bare`) placement and in-panel scrolling for dense consoles.
  */
 export function Collapsible({
   title,
+  subtitle,
   count,
   icon: Icon,
   defaultOpen = true,
   actions,
+  bare = false,
+  scrollMaxHeight,
   className,
   bodyClassName,
   children,
@@ -51,12 +64,20 @@ export function Collapsible({
   const panelId = useId();
   const Chevron = open ? ChevronDown : ChevronRight;
 
+  const scrollStyle: CSSProperties | undefined = scrollMaxHeight
+    ? { maxHeight: scrollMaxHeight, overflowY: "auto" }
+    : undefined;
+
   return (
     <div
-      className={`rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] ${className ?? ""}`}
+      className={
+        bare
+          ? `${className ?? ""}`
+          : `rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] ${className ?? ""}`
+      }
       data-testid={testId}
     >
-      <div className="flex items-center gap-2 px-4 py-3">
+      <div className={`flex items-center gap-2 ${bare ? "px-0 py-2.5" : "px-4 py-3"}`}>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -74,18 +95,38 @@ export function Collapsible({
               aria-hidden="true"
             />
           ) : null}
-          <span className="truncate text-sm font-semibold text-[color:var(--foreground)]">
-            {title}
-          </span>
-          {typeof count === "number" ? (
-            <span className="ml-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[11px] font-medium tabular-nums text-[color:var(--text-secondary)]">
-              {count}
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-2">
+              <span
+                className={`truncate font-semibold text-[color:var(--foreground)] ${
+                  bare
+                    ? "text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]"
+                    : "text-sm"
+                }`}
+              >
+                {title}
+              </span>
+              {typeof count === "number" ? (
+                <span className="shrink-0 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[11px] font-medium tabular-nums text-[color:var(--text-secondary)]">
+                  {count}
+                </span>
+              ) : null}
             </span>
-          ) : null}
+            {subtitle ? (
+              <span className="mt-0.5 block truncate text-xs font-normal normal-case tracking-normal text-[color:var(--text-secondary)]">
+                {subtitle}
+              </span>
+            ) : null}
+          </span>
         </button>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <div id={panelId} hidden={!open} className={`px-4 pb-4 ${bodyClassName ?? ""}`}>
+      <div
+        id={panelId}
+        hidden={!open}
+        className={`${bare ? "pb-1" : "px-4 pb-4"} ${bodyClassName ?? ""}`}
+        style={scrollStyle}
+      >
         {children}
       </div>
     </div>

@@ -276,7 +276,8 @@ describe('Nav', () => {
   it('renders the canonical agent-bom brand lockup in the top bar', () => {
     const { container } = render(<Nav />)
     const wordmark = container.querySelector('img[alt="agent-bom"]')
-    expect(wordmark).toHaveAttribute('src', '/brand/wordmark-dark.svg')
+    expect(wordmark).not.toBeNull()
+    expect(wordmark!.getAttribute('src')).toMatch(/^\/brand\/wordmark-dark\.svg\?/)
     expect(screen.getByText('BOM for humans & agents')).toBeInTheDocument()
   })
 
@@ -310,7 +311,7 @@ describe('Nav', () => {
       'AI inventory': ['/agents', '/manifest', '/fleet'],
       'Cloud & Data': ['/connections', '/sources', '/scan', '/identity', '/drift'],
       Runtime: ['/runtime', '/traces'],
-      Governance: ['/compliance', '/governance', '/audit'],
+      Governance: ['/compliance', '/findings?lens=trust', '/governance', '/audit'],
       Reference: ['/registry'],
       Operations: ['/cost', '/jobs', '/activity'],
     }

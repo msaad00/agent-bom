@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 _SCHEDULER_LEADER_LOCK_ID = 4_197_042_001
 
 
-def _uses_postgres_schedule_store(schedule_store) -> bool:
+def _uses_postgres_schedule_store(schedule_store: Any) -> bool:
     """Return whether schedules are backed by the clustered Postgres store."""
     return type(schedule_store).__name__ == "PostgresScheduleStore"
 
@@ -111,11 +113,11 @@ def parse_cron_next(cron_expr: str, after: datetime) -> datetime | None:
 
 
 async def scheduler_loop(
-    schedule_store,
-    run_scan_fn,
+    schedule_store: Any,
+    run_scan_fn: Callable[..., Any],
     interval_seconds: int = 60,
     max_backoff: int = 900,
-):
+) -> None:
     """Background loop that checks for due schedules and triggers scans.
 
     Uses exponential backoff on consecutive failures (up to *max_backoff*
@@ -136,7 +138,7 @@ async def scheduler_loop(
     uses_postgres_store = _uses_postgres_schedule_store(schedule_store)
     needs_leader_lock = bool(os.environ.get("AGENT_BOM_POSTGRES_URL")) and uses_postgres_store
 
-    def _try_acquire_postgres_leader_lock():
+    def _try_acquire_postgres_leader_lock() -> Any:
         if not needs_leader_lock:
             return None
         try:

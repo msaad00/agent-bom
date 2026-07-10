@@ -79,6 +79,24 @@ This page stays focused on the Helm-packaged control-plane shape itself:
 - what defaults are secure by design
 - how to install and operate the packaged API + UI control plane
 
+## Before the first production scan
+
+Refresh vulnerability intelligence inside the customer-controlled environment
+before running the first scheduled or offline scan:
+
+```bash
+agent-bom db update
+agent-bom db freshness --format json
+```
+
+The freshness result is evidence for the scan run, not a guarantee that every
+upstream advisory is available. Keep the refresh job inside the same network
+and change-control boundary as the control plane; for air-gapped clusters,
+import a reviewed database artifact and record its source timestamp. The
+already-shipped `scripts/pilot-verify.sh` then provides the non-destructive
+health, auth, scan, fleet, and signed-evidence smoke check for a deployed
+instance.
+
 For the runtime operator guides behind this flow, see:
 
 - [Visual Leak Detection](visual-leak-detection.md)

@@ -58,7 +58,10 @@ def _entry_points_for_group(group: str) -> Iterable[Any]:
     entry_points = metadata.entry_points()
     if hasattr(entry_points, "select"):
         return entry_points.select(group=group)
-    return entry_points.get(group, ())
+    legacy_get = getattr(entry_points, "get", None)
+    if callable(legacy_get):
+        return legacy_get(group, ())
+    return ()
 
 
 def _registration_payload(loaded: Any) -> Any:

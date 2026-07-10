@@ -7,7 +7,7 @@
 # For a single-workstation pilot, see docker-compose.pilot.yml.
 #
 # Usage (local dev):
-#   cp .env.example .env   # fill in POSTGRES_PASSWORD and AGENT_BOM_API_KEY
+#   cp .env.example .env   # fill in POSTGRES_PASSWORD, POSTGRES_APP_PASSWORD, and AGENT_BOM_API_KEY
 #   docker compose -f deploy/docker-compose.fullstack.yml up
 #
 # Then open:
@@ -32,8 +32,10 @@ services:
     restart: unless-stopped
     command: api --host 0.0.0.0 --port 8422
     environment:
+      # Runtime traffic uses the non-superuser app role so FORCE ROW LEVEL
+      # SECURITY cannot be bypassed. The bootstrap role remains schema-owned.
       AGENT_BOM_POSTGRES_URL: >-
-        postgresql://${POSTGRES_USER:-agent_bom}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agent_bom}
+        postgresql://agent_bom_app:${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-agent_bom}
       # Optional enrichment API keys
       NVD_API_KEY: ${NVD_API_KEY:-}
       # Optional cloud scanning
@@ -105,6 +107,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-agent_bom}
       POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     ports:
       # Only expose locally — remove in production

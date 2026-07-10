@@ -15,18 +15,13 @@ from rich.console import Console
 from agent_bom import __version__
 from agent_bom.graph.severity import SEVERITY_POLICY_ORDER
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
+from agent_bom.output.brand_tokens import cli_banner_plain
 from agent_bom.security import sanitize_env_vars, sanitize_sensitive_payload
 
 logger = logging.getLogger(__name__)
 
-BANNER = r"""
-   ___                    __     ____  ____  __  ___
-  / _ | ___ ____ ___  ___/ /_   / __ )/ __ \/  |/  /
- / __ |/ _ `/ -_) _ \/ __/_  / / __  / / / / /|_/ /
-/_/ |_/\_, /\__/_//_/\__/ /_/ /____/\____/_/  /_/
-      /___/
-  Security for the AI supply chain and infrastructure
-"""
+# Canonical CLI lockup — product name agent-bom, mark is BOM-with-agent-O.
+BANNER = cli_banner_plain(version=__version__)
 
 SEVERITY_ORDER = {label.lower(): rank for label, rank in SEVERITY_POLICY_ORDER.items()}
 PORT_RANGE = click.IntRange(1, 65535)

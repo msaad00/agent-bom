@@ -34,7 +34,9 @@ to “BOM” alone — BOM is the **logo**, not the installable/searchable name.
   muted `#6b7280` / `#8b949e`.
 - **Mark (locked):** **BOM** wordmark-as-icon where the **O** is an agent face
   (eyes + antenna). Canonical product mark — do not replace with lettermarks or
-  clipboard variants. Reads as bill-of-materials + agent in one glyph.
+  clipboard variants. Reads as bill-of-materials + agent in one glyph. Same mark
+  appears in the dashboard lockup and the CLI no-args splash
+  (`agent_bom.output.brand_tokens`).
 
 
 Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or

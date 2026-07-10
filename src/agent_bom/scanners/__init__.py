@@ -1378,7 +1378,9 @@ async def scan_agents(
         resolve_transitive=resolve_transitive,
     )
     if show_scan_banner:
-        console.print("\n[bold blue]🛡️  Scanning for vulnerabilities...[/bold blue]\n")
+        from agent_bom.output.brand_tokens import PRODUCT_NAME
+
+        console.print(f"\n[bold cyan]{PRODUCT_NAME}[/bold cyan]  [bold]Scanning for vulnerabilities…[/bold]\n")
 
     def _pkg_key(pkg: Package) -> str:
         return canonical_package_key(pkg.name, pkg.version, pkg.ecosystem, pkg.purl)

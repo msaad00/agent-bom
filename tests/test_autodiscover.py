@@ -175,7 +175,10 @@ def test_enrich_unknown_packages_global_timeout(monkeypatch):
     enriched = asyncio.run(enrich_unknown_packages(packages, global_timeout=0.01))
     elapsed = time.monotonic() - started
 
+    # Timeout correctness is proven by the behavioral asserts: if the 10ms
+    # global_timeout had NOT fired, the 0.1s autodiscover would have completed and
+    # enriched all 3 packages. The wall-clock check is only a generous hang-guard
+    # (not a latency SLA) so it can't flake under asyncio-cleanup load on slow CI.
     assert enriched == 0
-    # global_timeout is 10ms; allow bounded cleanup on slow CI runners (py3.14).
-    assert elapsed < 0.2
+    assert elapsed < 2.0
     assert all(pkg.auto_risk_level is None for pkg in packages)

@@ -46,6 +46,14 @@ def test_run_scan_sync_clones_repo_url_and_cleans_up(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr("agent_bom.terraform.scan_terraform_dir", lambda _path: ([], []))
     monkeypatch.setattr("agent_bom.github_actions.scan_github_actions", lambda _path: ([], []))
     monkeypatch.setattr("agent_bom.discovery.discover_all", lambda **_kwargs: [])
+
+    tree_calls: list[str] = []
+
+    def fake_repo_tree(path: str, *, agents, warnings, update_progress=None):
+        tree_calls.append(path)
+        return None, {"total": 1, "findings": [{"rule_id": "TF001", "severity": "high", "title": "test"}]}
+
+    monkeypatch.setattr("agent_bom.api.repo_tree_scan.scan_cloned_repo_tree", fake_repo_tree)
     monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda *_a, **_k: [])
 
     job = ScanJob(
@@ -58,5 +66,9 @@ def test_run_scan_sync_clones_repo_url_and_cleans_up(monkeypatch: pytest.MonkeyP
 
     assert clone_calls == ["https://github.com/org/repo"]
     assert py_calls == [str(cloned)]
+    assert tree_calls == [str(cloned)]
     assert cleanup_calls == ["https://github.com/org/repo"]
     assert job.status == JobStatus.DONE
+    assert job.result is not None
+    assert job.result.get("iac_findings", {}).get("total") == 1
+    assert job.result.get("status") == "findings_only"

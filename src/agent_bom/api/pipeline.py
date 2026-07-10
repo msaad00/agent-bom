@@ -615,6 +615,8 @@ def _run_scan_sync(job: ScanJob) -> None:
         extra_symbol_paths: list[str] = []
 
         repo_url = (req.repo_url or "").strip()
+        skill_audit_data: dict | None = None
+        iac_findings_data: dict | None = None
         if repo_url:
             from agent_bom.repo_scan import RepoScanError, clone_repository
 
@@ -629,8 +631,14 @@ def _run_scan_sync(job: ScanJob) -> None:
             effective_gha_path = effective_gha_path or cloned_path
             extra_symbol_paths.append(cloned_path)
             pipeline.update_step("discovery", f"Repository cloned for static scan: {repo_url}")
+            from agent_bom.api.repo_tree_scan import scan_cloned_repo_tree
 
-        # ── Path validation (prevent path traversal via API) ──
+            skill_audit_data, iac_findings_data = scan_cloned_repo_tree(
+                cloned_path,
+                agents=agents,
+                warnings=warnings_all,
+                update_progress=lambda message: pipeline.update_step("discovery", message),
+            )
         path_fields = (
             ([req.inventory] if req.inventory else [])
             + req.tf_dirs
@@ -911,6 +919,38 @@ def _run_scan_sync(job: ScanJob) -> None:
                 pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
 
         if not agents:
+            if skill_audit_data is not None or iac_findings_data is not None:
+                pipeline.skip_step("extraction", "No agents to extract")
+                pipeline.skip_step("scanning", "No packages to scan")
+                pipeline.skip_step("enrichment", "Skipped")
+                pipeline.skip_step("analysis", "Skipped")
+                pipeline.start_step("output", "Building report from repo static findings...")
+                from agent_bom.models import AIBOMReport
+                from agent_bom.output import to_json
+
+                report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=job.job_id)
+                if skill_audit_data is not None:
+                    report.skill_audit_data = skill_audit_data
+                if iac_findings_data is not None:
+                    report.iac_findings_data = iac_findings_data
+                report_json = to_json(report)
+                report_json["warnings"] = warnings_all
+                report_json["status"] = "findings_only"
+                with lock:
+                    job.result = report_json
+                    job.status = JobStatus.DONE
+                    job.completed_at = _now()
+                if side_effects_enabled:
+                    try:
+                        pipeline.update_step("output", "Persisting unified graph...")
+                        _persist_graph_snapshot(job, report_json, lock=lock)
+                    except Exception as graph_exc:  # noqa: BLE001
+                        _logger.warning("Unified graph persistence failed: %s", graph_exc)
+                        with lock:
+                            job.progress.append(f"Graph persistence skipped: {sanitize_error(graph_exc)}")
+                pipeline.complete_step("output", "Report ready")
+                return
+
             pipeline.skip_step("extraction", "No agents to extract")
             pipeline.skip_step("scanning", "No packages to scan")
             pipeline.skip_step("enrichment", "Skipped")
@@ -1077,6 +1117,10 @@ def _run_scan_sync(job: ScanJob) -> None:
         except Exception as mcp_auth_exc:  # noqa: BLE001
             _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_error(mcp_auth_exc))
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=report_findings, scan_id=job.job_id)
+        if skill_audit_data is not None:
+            report.skill_audit_data = skill_audit_data
+        if iac_findings_data is not None:
+            report.iac_findings_data = iac_findings_data
         if req.vex:
             from agent_bom.vex import apply_vex, load_vex
             from agent_bom.vex import to_serializable as vex_to_serializable

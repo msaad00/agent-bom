@@ -89,7 +89,8 @@ export function adhocScopeChips(
       { label: "Repository", value: form.repo_url.trim() },
       { label: "Clone", value: "Shallow read-only git clone on control plane" },
       { label: "Execution", value: "Static parse only — repo code never runs" },
-      { label: "Surfaces", value: "Agents · MCP · Terraform · GitHub Actions" },
+      { label: "Auto-detect", value: "Agents · MCP · Skills · Terraform · IaC · CI/CD · deps" },
+      { label: "Languages", value: "Python · TS/JS · YAML · HCL · Markdown · lockfiles" },
     );
     if (form.enrich) {
       chips.push({ label: "Enrichment", value: "NVD · EPSS · CISA KEV" });

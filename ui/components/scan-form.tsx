@@ -36,6 +36,7 @@ import {
   type ScanMode,
   type ScanScopeChip,
 } from "@/lib/scan-scope";
+import { REPO_SCAN_SURFACES, repoScanLanguageSummary } from "@/lib/repo-scan-surfaces";
 
 type ScanFormProps = {
   initialConnectionId?: string | undefined;
@@ -425,7 +426,8 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
               {target === "repository" && (
                 <Section title="Public git repository">
                   <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
-                    Paste an https git URL. The control plane shallow-clones the repo, scans it statically, then removes the temp checkout. Repo code is never executed.
+                    Paste an https git URL. We shallow-clone on the control plane, auto-detect OSS apps, agent code,
+                    ingestion pipelines, Terraform/cloud infra, MCP configs, and skill files — then visualize findings in the graph.
                   </p>
                   <input
                     type="url"
@@ -438,6 +440,20 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
                       setForm((current) => ({ ...current, repo_url: value.trim() || undefined }));
                     }}
                   />
+                  <div className="mt-4 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+                      Auto-detected at scan time · {repoScanLanguageSummary()}
+                    </p>
+                    <ul className="mt-2 space-y-2">
+                      {REPO_SCAN_SURFACES.map((surface) => (
+                        <li key={surface.id} className="text-xs text-[color:var(--text-secondary)]">
+                          <span className="font-medium text-[color:var(--foreground)]">{surface.label}</span>
+                          {" — "}
+                          {surface.detail}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                   <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
                     Private repos: set <span className="font-mono">AGENT_BOM_REPO_SCAN_TOKEN</span> on the control plane host.
                   </p>

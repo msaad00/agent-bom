@@ -59,9 +59,9 @@ describe('Nav', () => {
     vi.clearAllMocks()
   })
 
-  it('renders the Command nav group', () => {
+  it('renders the Posture nav group', () => {
     renderExpandedNav()
-    expect(screen.getByText('Command')).toBeInTheDocument()
+    expect(screen.getByText('Posture')).toBeInTheDocument()
   })
 
   it('renders the AI inventory nav group', () => {
@@ -113,19 +113,19 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/jobs')).toBe(true)
   })
 
-  it('contains link to Findings (/findings) under Command', () => {
+  it('contains link to Findings (/findings) under Posture', () => {
     renderExpandedNav()
     const links = screen.getAllByRole('link', { name: /findings/i })
     expect(links.some((l) => l.getAttribute('href') === '/findings')).toBe(true)
   })
 
-  it('contains Remediation link under Command', () => {
+  it('contains Remediation link under Posture', () => {
     renderExpandedNav()
     const links = screen.getAllByRole('link', { name: /remediation/i })
     expect(links.some((l) => l.getAttribute('href') === '/remediation')).toBe(true)
   })
 
-  it('contains Security Graph link under Command', () => {
+  it('contains Security Graph link under Posture', () => {
     renderExpandedNav()
     const links = screen.getAllByRole('link', { name: /security graph/i })
     expect(links.some((l) => l.getAttribute('href') === '/security-graph')).toBe(true)
@@ -143,7 +143,7 @@ describe('Nav', () => {
     fireEvent.click(screen.getByRole('button', { name: /open navigation menu/i }))
 
     const drawer = screen.getByLabelText('Mobile navigation')
-    expect(within(drawer).getByText('Command')).toBeInTheDocument()
+    expect(within(drawer).getByText('Posture')).toBeInTheDocument()
     expect(within(drawer).getByRole('link', { name: /findings/i })).toHaveAttribute(
       'href',
       '/findings'
@@ -170,7 +170,7 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/registry')).toBe(true)
   })
 
-  it('keeps graph lenses tucked under Command instead of primary sidebar links', () => {
+  it('keeps graph lenses tucked under Posture instead of primary sidebar links', () => {
     renderExpandedNav()
     expect(screen.getByText(/graph lenses/i)).toBeInTheDocument()
     const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
@@ -247,7 +247,7 @@ describe('Nav', () => {
 
   it('renders all 7 nav group labels', () => {
     renderExpandedNav()
-    const groups = ['Command', 'AI inventory', 'Cloud & Data', 'Runtime', 'Governance', 'Reference', 'Operations']
+    const groups = ['Posture', 'AI inventory', 'Cloud & Data', 'Runtime', 'Governance', 'Reference', 'Operations']
     for (const group of groups) {
       expect(screen.getAllByText(group).length).toBeGreaterThan(0)
     }
@@ -271,7 +271,7 @@ describe('Nav', () => {
   it('contains links for all primary pages across all groups', async () => {
     renderExpandedNav()
     const expectedByGroup: Record<string, string[]> = {
-      Command: ['/', '/findings', '/security-graph', '/remediation'],
+      Posture: ['/', '/findings', '/security-graph', '/remediation'],
       'AI inventory': ['/agents', '/manifest', '/fleet'],
       'Cloud & Data': ['/connections', '/sources', '/scan', '/identity', '/drift'],
       Runtime: ['/runtime', '/traces'],

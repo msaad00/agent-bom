@@ -12,7 +12,6 @@ import {
   Loader2,
   Plus,
   Server,
-  Upload,
   X,
 } from "lucide-react";
 
@@ -262,7 +261,7 @@ export function ScanForm() {
                       onClick={() => fileInputRef.current?.click()}
                       className="flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)]"
                     >
-                      <Upload className="h-3.5 w-3.5" />
+                      <Plus className="h-3.5 w-3.5" />
                       Import list file
                     </button>
                   </div>

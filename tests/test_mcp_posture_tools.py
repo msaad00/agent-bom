@@ -212,7 +212,7 @@ def test_access_review_get_existing_campaign(monkeypatch):
 
 @pytest.mark.parametrize(
     "tool_name",
-    ["cost_forecast", "cost_allocation", "credential_expiry", "nhi_discover", "cloud_inventory", "access_review"],
+    ["cost_forecast", "cost_allocation", "credential_expiry", "nhi_discover", "cloud_inventory"],
 )
 def test_new_tools_registered_read_only_strict(tool_name):
     from agent_bom.mcp_server import create_mcp_server
@@ -222,5 +222,21 @@ def test_new_tools_registered_read_only_strict(tool_name):
     assert tool is not None, f"{tool_name} not registered"
     params = tool.parameters or {}
     assert params.get("additionalProperties") is False, f"{tool_name} missing additionalProperties:false"
-    # All six are read-only posture queries.
+    # These five are genuinely read-only posture queries.
     assert tool.annotations is not None and tool.annotations.readOnlyHint is True
+
+
+def test_access_review_registered_as_idempotent_write():
+    """access_review recomputes and persists campaign status on read, so it must
+    be labeled a (non-destructive, idempotent) write, not readOnlyHint=True."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    tool = server._tool_manager._tools.get("access_review")
+    assert tool is not None, "access_review not registered"
+    params = tool.parameters or {}
+    assert params.get("additionalProperties") is False
+    assert tool.annotations is not None
+    assert tool.annotations.readOnlyHint is False
+    assert tool.annotations.destructiveHint is False
+    assert tool.annotations.idempotentHint is True

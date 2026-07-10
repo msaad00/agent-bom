@@ -19,8 +19,8 @@ class CredentialRefStore(Protocol):
     """Protocol for tenant-scoped credential reference persistence."""
 
     def put(self, credential: CredentialRefRecord) -> None: ...
-    def get(self, credential_ref_id: str) -> CredentialRefRecord | None: ...
-    def delete(self, credential_ref_id: str) -> bool: ...
+    def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None: ...
+    def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool: ...
     def list_all(self, tenant_id: str | None = None) -> list[CredentialRefRecord]: ...
 
 
@@ -33,11 +33,18 @@ class InMemoryCredentialRefStore:
     def put(self, credential: CredentialRefRecord) -> None:
         self._credentials[credential.credential_ref_id] = credential
 
-    def get(self, credential_ref_id: str) -> CredentialRefRecord | None:
-        return self._credentials.get(credential_ref_id)
+    def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None:
+        credential = self._credentials.get(credential_ref_id)
+        if credential is None or credential.tenant_id != tenant_id:
+            return None
+        return credential
 
-    def delete(self, credential_ref_id: str) -> bool:
-        return self._credentials.pop(credential_ref_id, None) is not None
+    def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool:
+        credential = self._credentials.get(credential_ref_id)
+        if credential is None or credential.tenant_id != tenant_id:
+            return False
+        del self._credentials[credential_ref_id]
+        return True
 
     def list_all(self, tenant_id: str | None = None) -> list[CredentialRefRecord]:
         credentials = list(self._credentials.values())
@@ -98,18 +105,21 @@ class SQLiteCredentialRefStore:
         )
         self._conn.commit()
 
-    def get(self, credential_ref_id: str) -> CredentialRefRecord | None:
+    def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None:
         row = self._conn.execute(
-            "SELECT data FROM credential_refs WHERE credential_ref_id = ?",
-            (credential_ref_id,),
+            "SELECT data FROM credential_refs WHERE credential_ref_id = ? AND tenant_id = ?",
+            (credential_ref_id, tenant_id),
         ).fetchone()
         if row is None:
             return None
         record: CredentialRefRecord = CredentialRefRecord.model_validate_json(row[0])
         return record
 
-    def delete(self, credential_ref_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM credential_refs WHERE credential_ref_id = ?", (credential_ref_id,))
+    def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool:
+        cursor = self._conn.execute(
+            "DELETE FROM credential_refs WHERE credential_ref_id = ? AND tenant_id = ?",
+            (credential_ref_id, tenant_id),
+        )
         self._conn.commit()
         return cursor.rowcount > 0
 

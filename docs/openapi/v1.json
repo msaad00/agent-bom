@@ -18775,7 +18775,7 @@
     },
     "/v1/reports/{job_id}/download": {
       "get": {
-        "description": "Download a completed report artifact using the job-scoped token.",
+        "description": "Download a completed report artifact using the job-scoped token.\n\nThe token is presented via the ``X-Agent-Bom-Download-Token`` header\n(preferred, keeps it out of logs) or the legacy ``?token=`` query param.",
         "operationId": "download_report_artifact_v1_reports__job_id__download_get",
         "parameters": [
           {
@@ -18790,12 +18790,37 @@
           {
             "in": "query",
             "name": "token",
-            "required": true,
+            "required": false,
             "schema": {
-              "maxLength": 256,
-              "minLength": 8,
-              "title": "Token",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Download-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Download-Token"
             }
           }
         ],

@@ -21,7 +21,7 @@ from agent_bom.api.webhook_store import (
     set_subscription_status,
 )
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_error
+from agent_bom.security import redact_secret_url, sanitize_error
 
 router = APIRouter(tags=["webhooks"])
 
@@ -75,7 +75,10 @@ async def create_webhook_subscription(request: Request, body: dict) -> dict[str,
         actor=_actor(request),
         resource=f"webhook/{subscription.subscription_id}",
         tenant_id=subscription.tenant_id,
-        url=subscription.url,
+        # A webhook URL can be the secret itself (Slack-style incoming webhooks
+        # embed the token in the path), so persist only a redacted fingerprint
+        # to the audit log rather than the cleartext destination.
+        url=redact_secret_url(subscription.url),
         event_types=subscription.event_types or ["*"],
     )
     return {

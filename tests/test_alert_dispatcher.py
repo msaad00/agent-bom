@@ -1,6 +1,7 @@
 """Tests for alert pipeline — dispatcher, channels, and scan alert generation."""
 
 import asyncio
+from urllib.parse import urlsplit
 
 from agent_bom.alerts.dispatcher import (
     AlertDispatcher,
@@ -108,6 +109,40 @@ def test_webhook_channel_init():
     ch = WebhookChannel("https://example.com/hook", headers={"X-Token": "abc"})
     assert ch.url == "https://example.com/hook"
     assert ch.headers["X-Token"] == "abc"
+
+
+def test_webhook_channel_failure_does_not_log_secret_url(caplog, monkeypatch):
+    """A Slack-style webhook URL is itself a secret; a delivery failure must not
+    emit the token-bearing path/query in cleartext to the logs."""
+    import agent_bom.http_client as http_client
+    import agent_bom.security as security
+
+    # Skip DNS/SSRF validation so the test needs no network; the redaction
+    # under test is independent of URL validation.
+    monkeypatch.setattr(security, "validate_url", lambda *a, **k: None)
+
+    def _boom(*a, **k):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(http_client, "create_client", _boom)
+
+    secret_url = "https://hooks.slack.example.com/services/T00000/B11111/SUPERSECRETTOKEN123"
+    ch = WebhookChannel(secret_url)
+    with caplog.at_level("ERROR"):
+        result = asyncio.run(ch.send({"message": "x"}))
+
+    assert result is False
+    log_text = caplog.text
+    assert "SUPERSECRETTOKEN123" not in log_text
+    assert "services/T00000" not in log_text
+    redacted_urls = [
+        record.args[0]
+        for record in caplog.records
+        if record.msg == "Webhook channel delivery failed for %s" and record.args
+    ]
+    assert redacted_urls
+    # Host is retained in the redacted URL so operators can still correlate.
+    assert urlsplit(redacted_urls[-1]).hostname == "hooks.slack.example.com"
 
 
 # ─── AlertDispatcher ─────────────────────────────────────────────────────────

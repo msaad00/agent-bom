@@ -129,6 +129,25 @@ def test_webhook_api_crud(client):
     assert client.get(f"/v1/webhooks/{sid}").status_code == 404
 
 
+def test_webhook_create_audit_log_omits_secret_url(client):
+    """A webhook URL can be the secret itself (Slack-style incoming webhooks put
+    the token in the path); the persisted audit entry must never contain the
+    cleartext secret. The route redacts the URL (defense in depth) and the
+    evidence-tier policy independently drops URL-valued fields."""
+    from agent_bom.api.audit_log import get_audit_log
+
+    secret_url = "https://hooks.example.com/services/T00000/B11111/SUPERSECRETTOKEN999"
+    created = client.post("/v1/webhooks", json={"url": secret_url, "event_types": ["drift.detected"]})
+    assert created.status_code == 201, created.text
+
+    entries = get_audit_log().list_entries(limit=50)
+    created_entries = [e for e in entries if e.action == "webhook.subscription_created"]
+    assert created_entries, "expected a webhook.subscription_created audit entry"
+    blob = " ".join(str(e.to_dict()) for e in created_entries)
+    assert "SUPERSECRETTOKEN999" not in blob
+    assert "services/T00000" not in blob
+
+
 def test_webhook_api_rejects_unknown_event_and_bad_url(client):
     assert client.post("/v1/webhooks", json={"url": "https://x.example.com/h", "event_types": ["nope.bad"]}).status_code == 400
     assert client.post("/v1/webhooks", json={"url": "http://169.254.169.254/latest"}).status_code == 400

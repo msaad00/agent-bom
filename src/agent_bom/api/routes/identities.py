@@ -71,7 +71,7 @@ def _ttl_seconds(body: dict, *, default: int = 3600, max_seconds: int = 24 * 360
 
 
 def _identity_for_tenant(request: Request, identity_id: str):
-    identity = get_agent_identity_store().get(identity_id)
+    identity = get_agent_identity_store().get(identity_id, tenant_id=_tenant(request))
     if identity is None or identity.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="Agent identity not found")
     return identity
@@ -152,10 +152,13 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="overlap_seconds/ttl_seconds must be integers") from exc
     store = get_agent_identity_store()
-    existing = store.get(identity_id)
-    if existing is None or existing.tenant_id != _tenant(request):
+    tenant_id = _tenant(request)
+    existing = store.get(identity_id, tenant_id=tenant_id)
+    if existing is None or existing.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Agent identity not found")
-    result = rotate_identity(store, identity_id, overlap_seconds=max(0, overlap_seconds), ttl_seconds=ttl_seconds)
+    result = rotate_identity(
+        store, identity_id, tenant_id=tenant_id, overlap_seconds=max(0, overlap_seconds), ttl_seconds=ttl_seconds
+    )
     if result is None:
         raise HTTPException(status_code=409, detail="Identity cannot be rotated (revoked)")
     new_identity, raw_token = result
@@ -191,11 +194,12 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
 async def revoke_agent_identity(request: Request, identity_id: str, body: dict | None = None) -> dict[str, object]:
     """Revoke an identity immediately; its token can no longer authenticate."""
     store = get_agent_identity_store()
-    existing = store.get(identity_id)
-    if existing is None or existing.tenant_id != _tenant(request):
+    tenant_id = _tenant(request)
+    existing = store.get(identity_id, tenant_id=tenant_id)
+    if existing is None or existing.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Agent identity not found")
     reason = str((body or {}).get("reason", "") or "")
-    revoked = revoke_identity(store, identity_id, reason=reason)
+    revoked = revoke_identity(store, identity_id, tenant_id=tenant_id, reason=reason)
     if revoked is None:
         raise HTTPException(status_code=404, detail="Agent identity not found")
     log_action(
@@ -810,7 +814,7 @@ async def export_access_review_evidence(request: Request, campaign_id: str) -> d
 @router.get("/identities/{identity_id}", dependencies=[_dep("read")])
 async def get_agent_identity(request: Request, identity_id: str) -> dict[str, object]:
     """Return one agent identity's lifecycle status (metadata only)."""
-    identity = get_agent_identity_store().get(identity_id)
+    identity = get_agent_identity_store().get(identity_id, tenant_id=_tenant(request))
     if identity is None or identity.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="Agent identity not found")
     return {"schema_version": "agent.identity.v1", "identity": identity.to_public_dict()}

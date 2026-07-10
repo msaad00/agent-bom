@@ -218,6 +218,29 @@ def test_sanitize_url_strips_credentials_query_and_fragment():
     assert sanitize_url("https://user:pass@example.com/path?token=secret#frag") == "https://example.com/path"
 
 
+def test_redact_secret_url_drops_path_and_query():
+    from agent_bom.security import redact_secret_url
+
+    secret = "https://hooks.slack.com/services/T000/B111/XXXXSECRETXXXX?x=1#frag"
+    out = redact_secret_url(secret)
+    # The secret path/query/fragment must be gone; host retained; fingerprint appended.
+    assert "XXXXSECRETXXXX" not in out
+    assert "services" not in out
+    assert "x=1" not in out
+    assert out.startswith("https://hooks.slack.com/")
+    assert "#" in out
+    # Stable fingerprint for correlation.
+    assert redact_secret_url(secret) == out
+
+
+def test_redact_secret_url_handles_empty_and_malformed():
+    from agent_bom.security import redact_secret_url
+
+    assert redact_secret_url("") == "<none>"
+    assert redact_secret_url(None) == "<none>"
+    assert redact_secret_url("not-a-url").startswith("<redacted-url>#")
+
+
 def test_sanitize_path_label_is_idempotent_for_existing_safe_labels():
     assert sanitize_path_label("<path:mcp.json>") == "<path:mcp.json>"
 

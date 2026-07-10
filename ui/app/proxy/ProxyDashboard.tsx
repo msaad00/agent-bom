@@ -38,6 +38,8 @@ import {
 } from "lucide-react";
 
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { ProxyAlertDrawer } from "@/components/proxy-alert-drawer";
+import { proxyAlertKey, proxyAlertSummary } from "@/lib/proxy-alerts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -76,6 +78,7 @@ export default function ProxyDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>("");
+  const [selectedAlert, setSelectedAlert] = useState<ProxyAlert | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const proxyUnavailable = counts ? !counts.has_proxy : false;
 
@@ -157,6 +160,15 @@ export default function ProxyDashboard() {
       ws?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedAlert) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedAlert(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedAlert]);
 
   // Derived data
   const totalCalls = live?.total_tool_calls ?? status?.total_tool_calls ?? 0;
@@ -505,38 +517,44 @@ export default function ProxyDashboard() {
             ) : (
               <div className="space-y-1 max-h-96 overflow-y-auto">
                 {filteredAlerts?.map((alert, i) => (
-                  <div
-                    key={`${alert.ts}-${i}`}
-                    className="flex items-center justify-between px-3 py-2 bg-zinc-800/50 border border-zinc-800 rounded-lg"
+                  <button
+                    key={proxyAlertKey(alert, i)}
+                    type="button"
+                    onClick={() => setSelectedAlert(alert)}
+                    className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-800"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
+                        className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${
                           SEVERITY_COLORS[alert.severity] ?? SEVERITY_COLORS.info
                         }`}
                       >
                         {alert.severity}
                       </span>
-                      <span className="text-xs text-zinc-400 font-mono shrink-0">
+                      <span className="shrink-0 font-mono text-xs text-zinc-400">
                         {alert.detector}
                       </span>
-                      <span className="text-xs text-zinc-300 font-mono shrink-0">
+                      <span className="shrink-0 font-mono text-xs text-zinc-300">
                         {alert.tool_name}
                       </span>
-                      <span className="text-xs text-zinc-500 truncate">
-                        {alert.message}
+                      <span className="truncate text-xs text-zinc-500">
+                        {proxyAlertSummary(alert)}
                       </span>
                     </div>
-                    <span className="text-[10px] text-zinc-600 shrink-0 ml-3">
+                    <span className="ml-3 shrink-0 text-[10px] text-zinc-600">
                       {alert.ts ? formatDate(alert.ts) : ""}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
           </div>
         </>
       )}
+
+      {selectedAlert ? (
+        <ProxyAlertDrawer alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
+      ) : null}
     </div>
   );
 }

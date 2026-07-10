@@ -2,7 +2,9 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { InsightLayerToggle } from "@/components/insight-layer-toggle";
+import { GraphLegendDock } from "@/components/graph-chrome";
 import { ASSET_DRIFT_GRAPH_SCOPE_PARAM } from "@/components/lineage-filter";
+import type { LegendItem } from "@/lib/graph-utils";
 
 // One security-graph surface, several lenses. Each lens is a deep route that keeps
 // working on its own (deep links + e2e), but the nav now exposes a single
@@ -60,10 +62,14 @@ const GRAPH_LENSES: GraphLens[] = [
 
 interface GraphLensSwitcherProps {
   variant?: "inline" | "floating" | "compact";
+  legendItems?: LegendItem[];
+  legendDefaultOpen?: boolean;
 }
 
 export function GraphLensSwitcher({
   variant = "inline",
+  legendItems,
+  legendDefaultOpen = false,
 }: GraphLensSwitcherProps) {
   const path = usePathname() ?? "/security-graph";
   const router = useRouter();
@@ -89,7 +95,7 @@ export function GraphLensSwitcher({
         variant === "floating"
           ? "pointer-events-auto flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-zinc-700/80 bg-zinc-950/85 px-3 py-2 shadow-2xl shadow-black/40 backdrop-blur"
           : variant === "compact"
-            ? "flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2"
+            ? "flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2"
             : "flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3"
       }
     >
@@ -108,6 +114,9 @@ export function GraphLensSwitcher({
         </div>
       )}
       <InsightLayerToggle layers={layers} onToggle={onToggle} />
+      {legendItems && legendItems.length > 0 ? (
+        <GraphLegendDock items={legendItems} defaultOpen={legendDefaultOpen} />
+      ) : null}
     </div>
   );
 

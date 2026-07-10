@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GraphEvidenceExportButton, GraphLegend } from "@/components/graph-chrome";
+import { GraphEvidenceExportButton, GraphLegend, GraphLegendDock } from "@/components/graph-chrome";
 import { api } from "@/lib/api";
 
 afterEach(() => {
@@ -65,6 +65,18 @@ describe("GraphLegend", () => {
 
     expect(screen.getByRole("button", { name: /show legend/i })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Orchestration")).not.toBeInTheDocument();
+  });
+
+  it("shows preview chips when the docked legend is collapsed", () => {
+    render(<GraphLegendDock items={[
+      { label: "AI Agent", color: "#10b981", layer: "orchestration", kind: "node", shape: "dot" },
+      { label: "MCP Server", color: "#3b82f6", layer: "mcp_server", kind: "node", shape: "square" },
+      { label: "Uses", color: "#10b981", kind: "edge", lineStyle: "solid" },
+    ]} />);
+
+    expect(screen.getByText("Legend")).toBeInTheDocument();
+    expect(screen.getAllByText("AI Agent").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Uses").length).toBeGreaterThan(0);
   });
 });
 

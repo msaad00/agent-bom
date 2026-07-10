@@ -1,5 +1,9 @@
 import { EntityType, type AttackPath, type UnifiedNode } from "./graph-schema";
 import {
+  formatExposureEntityDisplay,
+  formatExposureEntityTitle,
+} from "@/lib/entity-display";
+import {
   normalizeExposureSeverity,
   uniqueExposureValues,
   type ExposureEntityRef,
@@ -97,7 +101,11 @@ export function toAttackCardNodes(path: AttackPath, nodeById: Map<string, Unifie
     if (!type) continue;
     nodes.push({
       type,
-      label: node.label,
+      label: formatExposureEntityTitle(
+        node.label,
+        type === "cve" ? "finding" : type,
+        node.attributes ?? {},
+      ),
       severity: node.severity,
     });
   }
@@ -132,10 +140,13 @@ function exposureRoleForEntityType(entityType: string): ExposureEntityRole {
 }
 
 function exposureRefFromUnifiedNode(node: UnifiedNode): ExposureEntityRef {
+  const role = exposureRoleForEntityType(String(node.entity_type));
+  const display = formatExposureEntityDisplay(node.label, role, node.attributes ?? {});
   return {
     id: node.id,
-    label: node.label,
-    role: exposureRoleForEntityType(String(node.entity_type)),
+    label: display.title,
+    subtitle: display.subtitle,
+    role,
     severity: node.severity,
     riskScore: node.risk_score,
   };
@@ -154,6 +165,14 @@ function highestNodeSeverity(hops: ExposureEntityRef[], fallback: string): strin
     (highest, hop) => (exposureSeverityRank(hop.severity) > exposureSeverityRank(highest) ? String(hop.severity) : highest),
     fallback,
   );
+}
+
+function parsePackageHopLabel(label: string): { packageName: string; packageVersion?: string } {
+  const at = label.lastIndexOf("@");
+  if (at > 0) {
+    return { packageName: label.slice(0, at), packageVersion: label.slice(at + 1) };
+  }
+  return { packageName: label };
 }
 
 export function toExposurePathFromAttackPath(
@@ -204,8 +223,15 @@ export function toExposurePathFromAttackPath(
     reachableTools,
     exposedCredentials,
     dependencyContext: {
-      packageName: packages[0]?.label,
-      serverName: servers[0]?.label,
+      packageName: packages[0]
+        ? parsePackageHopLabel(nodeById.get(packages[0].id)?.label ?? packages[0].label).packageName
+        : undefined,
+      packageVersion: packages[0]
+        ? parsePackageHopLabel(nodeById.get(packages[0].id)?.label ?? packages[0].label).packageVersion
+        : undefined,
+      serverName: servers[0]
+        ? nodeById.get(servers[0].id)?.label ?? servers[0].label
+        : undefined,
     },
     evidence: {
       isKev: hops.some((hop) => String(hop.label).toLowerCase().includes("kev")),
@@ -280,11 +306,28 @@ function pathNodeLabels(path: AttackPath, nodeById: Map<string, UnifiedNode>) {
   return path.hops
     .map((hop) => nodeById.get(hop))
     .filter((node): node is UnifiedNode => Boolean(node))
-    .map((node) => ({
-      rawLabel: node.label,
-      label: normalizeLabel(node.label),
-      type: mapAttackPathNodeType(String(node.entity_type)),
-    }));
+    .map((node) => {
+      const type = mapAttackPathNodeType(String(node.entity_type));
+      const role: ExposureEntityRole =
+        type === "cve"
+          ? "finding"
+          : type === "credential"
+            ? "credential"
+            : type === "package"
+              ? "package"
+              : type === "server"
+                ? "server"
+                : type === "agent"
+                  ? "agent"
+                  : "unknown";
+      const display = formatExposureEntityDisplay(node.label, role, node.attributes ?? {});
+      return {
+        rawLabel: node.label,
+        label: normalizeLabel(node.label),
+        friendlyLabel: display.title,
+        type,
+      };
+    });
 }
 
 export function labelsForAttackPathType(
@@ -295,7 +338,7 @@ export function labelsForAttackPathType(
   const deduped = new Map<string, string>();
   for (const node of pathNodeLabels(path, nodeById)) {
     if (node.type !== type || deduped.has(node.label)) continue;
-    deduped.set(node.label, node.rawLabel);
+    deduped.set(node.label, node.friendlyLabel);
   }
   return Array.from(deduped.values());
 }

@@ -264,7 +264,7 @@ describe("attack path helpers", () => {
     expect(exposure.riskScore).toBe(9.4);
     expect(exposure.findings).toEqual(["CVE-2026-0002"]);
     expect(exposure.dependencyContext).toMatchObject({ packageName: "werkzeug", serverName: "database" });
-    expect(exposure.affectedAgents).toEqual(["analyst-agent"]);
+    expect(exposure.affectedAgents).toEqual(["Analyst Agent"]);
     expect(exposure.reachableTools).toEqual(["execute_sql"]);
     expect(exposure.exposedCredentials).toEqual(["DATABASE_URL"]);
     expect(exposure.provenance).toEqual({ source: "graph_attack_path", scanId: "scan-1" });

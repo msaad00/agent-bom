@@ -132,9 +132,9 @@ export function createFocusedGraphFilters(
 ): FilterState {
   return {
     layers: { ...FOCUSED_LAYER_DEFAULTS },
-    severity: "high",
+    severity: null,
     agentName,
-    vulnOnly: true,
+    vulnOnly: false,
     runtimeMode: "all",
     relationshipScope: "all",
     maxDepth: 2,
@@ -224,8 +224,8 @@ export function graphScopePresetForFilters(
   if (
     filters.maxDepth <= 2 &&
     filters.pageSize <= 50 &&
-    filters.vulnOnly &&
-    filters.severity === "high"
+    ((filters.vulnOnly && filters.severity === "high") ||
+      (!filters.vulnOnly && filters.severity === null))
   ) {
     return "relevant";
   }

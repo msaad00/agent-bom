@@ -17,9 +17,9 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
   if (err instanceof ApiForbiddenError) return "forbidden";
   return "network";
 }
+import { PageLaneHeader } from "@/components/page-lane";
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ExposurePathCommandCenter } from "@/components/exposure-path-command-center";
-import { ExposurePathStrip } from "@/components/exposure-path-strip";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
@@ -379,47 +379,52 @@ function SecurityGraphPageContent() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Security graph</h1>
-          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-            Ranked exposure paths from your latest graph snapshot.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <GraphEvidenceExportButton
-            scanId={selectedScanId || undefined}
-            filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
-          />
-          <Link
-            href={fullGraphHref}
-            className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-          >
-            Full graph
-            <GitBranch className="h-4 w-4" />
-          </Link>
-          <Link
-            href="/remediation"
-            className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-          >
-            Remediation
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </header>
+      <PageLaneHeader
+        lane="command"
+        title="Security graph"
+        subtitle="Ranked attack paths from persisted graph evidence — tuned for CISO review, AppSec triage, and GRC evidence export."
+        actions={
+          <>
+            <GraphEvidenceExportButton
+              scanId={selectedScanId || undefined}
+              filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
+            />
+            <Link
+              href={fullGraphHref}
+              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+            >
+              Full graph
+              <GitBranch className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/remediation"
+              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+            >
+              Remediation
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </>
+        }
+      />
 
       <GraphLensSwitcher variant="compact" />
 
-      {selectedExposurePath && (
-        <section className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-          <ExposurePathStrip path={selectedExposurePath} showTitle={false} />
-          <div className="p-4">
-            <ExposurePathCommandCenter
-              path={selectedExposurePath}
-              actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
-            />
-          </div>
-        </section>
+      {selectedExposurePath ? (
+        <ExposurePathCommandCenter
+          path={selectedExposurePath}
+          actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
+        />
+      ) : null}
+
+      {graphData && selectedAttackPath && (
+        <SecurityGraphInvestigation
+          graph={graphData as UnifiedGraphData}
+          attackPath={selectedAttackPath}
+          focusMode={investigationFocusMode}
+          onFocusModeChange={setInvestigationFocusMode}
+          fullGraphHref={fullGraphHref}
+          loading={loadingGraph}
+        />
       )}
 
       {graphData && selectedAttackPath && (

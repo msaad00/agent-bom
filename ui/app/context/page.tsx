@@ -22,7 +22,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { api, type JobListItem, type ScanJob } from "@/lib/api";
+import { api, type Agent, type JobListItem, type ScanJob } from "@/lib/api";
 import { useGraphLayout } from "@/lib/use-graph-layout";
 import {
   lineageNodeTypes,
@@ -35,7 +35,14 @@ import {
   type ContextGraphData,
   type LateralPath,
   type InteractionRisk,
+  topLateralPathForAgent,
 } from "@/lib/context-graph";
+import { ExposurePathStrip } from "@/components/exposure-path-strip";
+import { pathDisplayTitle, type ExposurePath } from "@/lib/exposure-path";
+import {
+  formatInventoryAgentLabel,
+  topologyAgentTypeLabel,
+} from "@/lib/agent-topology-graph";
 import {
   CONTROLS_CLASS,
   MINIMAP_BG,
@@ -48,7 +55,7 @@ import {
   readableGraphEdges,
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
-import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { FullscreenButton } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
@@ -58,19 +65,25 @@ import { useCaptureMode } from "@/lib/use-capture-mode";
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
 
-function ContextStats({ data }: { data: ContextGraphData }) {
+function ContextStats({ data, compact = false }: { data: ContextGraphData; compact?: boolean }) {
   const s = data.stats;
-  const items = [
-    { label: "Agents", value: s.agent_count, color: "text-emerald-400" },
-    { label: "Shared Servers", value: s.shared_server_count, color: "text-cyan-400" },
-    { label: "Shared Credentials", value: s.shared_credential_count, color: "text-amber-400" },
-    { label: "Lateral Paths", value: s.lateral_path_count, color: "text-orange-400" },
-    { label: "Highest Risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-zinc-400" },
-    { label: "Risk Patterns", value: s.interaction_risk_count, color: "text-purple-400" },
-  ];
+  const items = compact
+    ? [
+        { label: "Agents", value: s.agent_count, color: "text-emerald-400" },
+        { label: "Paths", value: s.lateral_path_count, color: "text-orange-400" },
+        { label: "Top risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-zinc-400" },
+      ]
+    : [
+        { label: "Agents", value: s.agent_count, color: "text-emerald-400" },
+        { label: "Shared Servers", value: s.shared_server_count, color: "text-cyan-400" },
+        { label: "Shared Credentials", value: s.shared_credential_count, color: "text-amber-400" },
+        { label: "Lateral Paths", value: s.lateral_path_count, color: "text-orange-400" },
+        { label: "Highest Risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-zinc-400" },
+        { label: "Risk Patterns", value: s.interaction_risk_count, color: "text-purple-400" },
+      ];
 
   return (
-    <div className="flex flex-wrap items-center gap-4 border-b border-zinc-800 px-4 py-2 text-xs">
+    <div className={`flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 text-xs ${compact ? "py-1.5" : "py-2"}`}>
       {items?.map((it) => (
         <div key={it.label} className="flex items-center gap-1.5">
           <span className="text-zinc-500">{it.label}</span>
@@ -83,39 +96,92 @@ function ContextStats({ data }: { data: ContextGraphData }) {
 
 // ─── Lateral Movement Panel ─────────────────────────────────────────────────
 
+function formatExposureList(values: string[], limit = 2): string {
+  if (values.length === 0) return "";
+  if (values.length <= limit) return values.join(", ");
+  return `${values.slice(0, limit).join(", ")} +${values.length - limit} more`;
+}
+
+function lateralPathToExposure(path: LateralPath, agentLabel: string): ExposurePath {
+  const hopLabels = path.hops.map((hop) => hop.split(":").slice(1).join(":") || hop);
+  return {
+    id: path.hops.join("->"),
+    label: path.summary,
+    riskScore: path.composite_risk,
+    severity: path.composite_risk >= 7 ? "high" : path.composite_risk >= 4 ? "medium" : "low",
+    source: { id: path.source, label: agentLabel, role: "agent" },
+    target: { id: path.target, label: hopLabels.at(-1) ?? path.target, role: "finding" },
+    hops: hopLabels.map((label, index) => ({
+      id: path.hops[index] ?? label,
+      label,
+      role: "unknown" as const,
+    })),
+    relationships: [],
+    nodeIds: path.hops,
+    edgeIds: path.edges,
+    findings: path.vuln_ids,
+    affectedAgents: [agentLabel],
+    affectedServers: [],
+    reachableTools: path.tool_exposure,
+    exposedCredentials: path.credential_exposure,
+  };
+}
+
+function agentScopeHeading(agentId: string | null, agents: Agent[]): string {
+  if (!agentId) return "Lateral paths";
+  const agent = agents.find((entry) => entry.name === agentId);
+  const label = agent
+    ? formatInventoryAgentLabel(agent.name)
+    : formatInventoryAgentLabel(agentId);
+  const typeLabel = agent ? topologyAgentTypeLabel(agent.agent_type) : null;
+  return typeLabel ? `Paths from ${label} · ${typeLabel}` : `Paths from ${label}`;
+}
+
 function LateralPanel({
   paths,
   risks,
   selectedAgent,
+  pathFocusActive,
+  agents,
 }: {
   paths: LateralPath[];
   risks: InteractionRisk[];
   selectedAgent: string | null;
+  pathFocusActive: boolean;
+  agents: Agent[];
 }) {
-  const [risksOpen, setRisksOpen] = useState(true);
+  const [risksOpen, setRisksOpen] = useState(false);
   const filtered = selectedAgent
     ? paths.filter((p) => p.source === `agent:${selectedAgent}`)
     : paths;
   const distinctPaths = Array.from(
     new Map(filtered.map((path) => [`${path.hops.join("->")}::${path.vuln_ids.join(",")}`, path])).values(),
-  );
-  const topPaths = distinctPaths.slice(0, 6);
+  ).sort((left, right) => right.composite_risk - left.composite_risk);
+  const topPaths = distinctPaths.slice(0, pathFocusActive ? 3 : 5);
 
   return (
-    <div className="w-72 shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-950">
-      {/* Lateral paths */}
+    <div className="w-80 shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-950">
       <div className="p-3 border-b border-zinc-800">
-        <h3 className="text-xs font-semibold text-zinc-300 mb-2">
-          Lateral Movement{selectedAgent ? ` from ${selectedAgent}` : ""}
+        <h3 className="text-xs font-semibold text-zinc-300 mb-1">
+          {agentScopeHeading(selectedAgent, agents)}
         </h3>
+        <p className="text-[10px] text-zinc-600">
+          {pathFocusActive
+            ? "Canvas shows the top lateral path only. Other agents appear when they share reachability — not because they are the same workload."
+            : "Ranked reachability chains from scan evidence."}
+        </p>
         {topPaths.length === 0 ? (
-          <p className="text-[10px] text-zinc-600">No lateral paths found</p>
+          <p className="mt-2 text-[10px] text-zinc-600">No lateral paths found</p>
         ) : (
-          <div className="space-y-2">
+          <div className="mt-2 space-y-2">
             {topPaths?.map((p, i) => (
               <div
                 key={i}
-                className="bg-zinc-900 border border-zinc-800 rounded-lg p-2"
+                className={`rounded-lg border p-2 ${
+                  i === 0 && pathFocusActive
+                    ? "border-orange-500/40 bg-orange-950/20"
+                    : "border-zinc-800 bg-zinc-900"
+                }`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] text-zinc-500">
@@ -130,25 +196,25 @@ function LateralPanel({
                         : "text-zinc-400"
                     }`}
                   >
-                    Risk {p.composite_risk}
+                    Risk {p.composite_risk.toFixed(1)}
                   </span>
                 </div>
-                <p className="break-words text-[10px] leading-relaxed text-zinc-300">
-                  {p.summary}
+                <p className="break-words text-[11px] leading-relaxed text-zinc-200">
+                  {pathDisplayTitle(lateralPathToExposure(p, selectedAgent ?? "agent"))}
                 </p>
                 {p.credential_exposure.length > 0 && (
                   <p className="mt-1 break-words text-[10px] text-amber-400">
-                    Creds: {p.credential_exposure.join(", ")}
+                    Creds: {formatExposureList(p.credential_exposure)}
                   </p>
                 )}
                 {p.tool_exposure.length > 0 && (
                   <p className="mt-1 break-words text-[10px] text-purple-400">
-                    Tools: {p.tool_exposure.join(", ")}
+                    Tools: {formatExposureList(p.tool_exposure)}
                   </p>
                 )}
                 {p.vuln_ids.length > 0 && (
                   <p className="mt-1 break-words text-[10px] text-red-400">
-                    Vulns: {p.vuln_ids.join(", ")}
+                    Findings: {formatExposureList(p.vuln_ids, 3)}
                   </p>
                 )}
               </div>
@@ -223,6 +289,7 @@ export default function ContextPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
@@ -302,18 +369,35 @@ export default function ContextPage() {
   }, [selectedJobId, selectedAgent]);
 
   // Build ReactFlow graph
-  const { rawNodes, rawEdges } = useMemo(() => {
-    if (!graphData) return { rawNodes: [] as Node[], rawEdges: [] as Edge[] };
-    const { nodes, edges } = buildContextFlowGraph(graphData, selectedAgent ?? undefined);
-    return { rawNodes: nodes, rawEdges: edges };
-  }, [graphData, selectedAgent]);
+  const { rawNodes, rawEdges, focusedPath } = useMemo(() => {
+    if (!graphData) {
+      return {
+        rawNodes: [] as Node[],
+        rawEdges: [] as Edge[],
+        focusedPath: null as LateralPath | null,
+      };
+    }
+    const { nodes, edges, focusedPath: path } = buildContextFlowGraph(
+      graphData,
+      selectedAgent ?? undefined,
+      { topPathOnly: pathFocusEnabled },
+    );
+    return { rawNodes: nodes, rawEdges: edges, focusedPath: path };
+  }, [graphData, selectedAgent, pathFocusEnabled]);
+
+  const topExposurePath = useMemo(() => {
+    if (!graphData || !selectedAgent) return null;
+    const path = focusedPath ?? topLateralPathForAgent(graphData.lateral_paths, selectedAgent);
+    if (!path) return null;
+    return lateralPathToExposure(path, selectedAgent);
+  }, [focusedPath, graphData, selectedAgent]);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
     dagreLr: {
-      nodeWidth: 200,
-      nodeHeight: 70,
-      rankSep: 140,
-      nodeSep: 25,
+      nodeWidth: 260,
+      nodeHeight: 96,
+      rankSep: 160,
+      nodeSep: 48,
     },
   });
 
@@ -329,6 +413,11 @@ export default function ContextPage() {
     [hoveredNodeId, layoutEdges]
   );
 
+  const pathFocusIds = useMemo(() => {
+    if (!pathFocusEnabled || !focusedPath || searchQuery || hoveredNodeId) return null;
+    return new Set(focusedPath.hops);
+  }, [focusedPath, hoveredNodeId, pathFocusEnabled, searchQuery]);
+
   const displayNodes = useMemo(() => {
     if (searchMatches && searchMatches.size > 0) {
       return layoutNodes?.map((n) => ({
@@ -337,30 +426,51 @@ export default function ContextPage() {
           ...n.data,
           dimmed: !searchMatches.has(n.id),
           highlighted: searchMatches.has(n.id),
+          renderBand: "detail" as const,
         },
       }));
     }
-    if (!connectedIds) return layoutNodes;
+    if (pathFocusIds) {
+      return layoutNodes
+        ?.filter((n) => pathFocusIds.has(n.id))
+        .map((n) => ({
+          ...n,
+          data: { ...n.data, dimmed: false, highlighted: true, renderBand: "detail" as const },
+        }));
+    }
+    if (!connectedIds) {
+      return layoutNodes?.map((n) => ({
+        ...n,
+        data: { ...n.data, renderBand: "detail" as const },
+      }));
+    }
     return layoutNodes?.map((n) => ({
       ...n,
       data: {
         ...n.data,
         dimmed: !connectedIds.has(n.id),
         highlighted: connectedIds.has(n.id),
+        renderBand: "detail" as const,
       },
     }));
-  }, [layoutNodes, connectedIds, searchMatches]);
+  }, [layoutNodes, connectedIds, searchMatches, pathFocusIds]);
 
   const displayEdges = useMemo(() => {
     const activeSet =
-      searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds;
-    return readableGraphEdges(layoutEdges, activeSet, {
-      baseOpacity: 0.32,
-      highSignalOpacity: 0.56,
+      searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds ?? pathFocusIds;
+    const scopedEdges =
+      pathFocusIds
+        ? layoutEdges.filter(
+            (edge) => pathFocusIds.has(edge.source) && pathFocusIds.has(edge.target),
+          )
+        : layoutEdges;
+    return readableGraphEdges(scopedEdges, activeSet, {
+      baseOpacity: pathFocusIds ? 0.72 : 0.32,
+      highSignalOpacity: pathFocusIds ? 0.95 : 0.56,
       inactiveOpacity: 0.06,
       captureMode,
     });
-  }, [layoutEdges, connectedIds, searchMatches, captureMode]);
+  }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode]);
 
   const legendItems = useMemo(() => {
     const extras =
@@ -459,24 +569,25 @@ export default function ContextPage() {
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
       {/* Header */}
-      <div className="flex flex-col gap-3 border-b border-zinc-800 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
-            <Waypoints className="w-5 h-5 text-orange-400" />
-            Context Map
-          </h1>
-          <p className="break-words text-xs text-zinc-500">
-            Static reachability map for one agent scope at a time; runtime evidence is shown only when scans provide it.
-          </p>
-        </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-2 border-b border-zinc-800 px-4 py-2.5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
+              <Waypoints className="w-4 h-4 text-orange-400" />
+              Context Map
+            </h1>
+            <p className="text-xs text-zinc-500">
+              Static reachability for one agent at a time. Path focus shows the highest-risk lateral chain.
+            </p>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
           {/* Agent selector */}
           <select
             value={selectedAgent ?? ""}
             onChange={(e) =>
               setSelectedAgent(e.target.value || null)
             }
-            className="min-w-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-orange-600"
+            className="min-w-0 max-w-[12rem] truncate rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 focus:outline-none focus:border-orange-600"
           >
             <option value="">All agents</option>
             {agentNames?.map((name) => (
@@ -490,7 +601,7 @@ export default function ContextPage() {
           <select
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
-            className="min-w-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
+            className="min-w-0 max-w-[14rem] truncate rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
             {jobs?.map((j) => (
               <option key={j.job_id} value={j.job_id}>
@@ -501,32 +612,39 @@ export default function ContextPage() {
           </select>
 
           {/* Search */}
-          <div className="relative w-full min-w-0 sm:max-w-xs">
+          <div className="relative w-full min-w-0 sm:max-w-[14rem]">
             <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search agent, server, tool, or CVE"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded pl-7 pr-2 py-1.5 text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-600"
+              placeholder="Search agent, server, tool, CVE"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded pl-7 pr-2 py-1 text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-600"
             />
           </div>
 
           <FullscreenButton />
-          <GraphLegend items={legendItems} />
+          </div>
         </div>
+        <GraphLensSwitcher variant="compact" legendItems={legendItems} />
       </div>
 
+      {topExposurePath && (
+        <ExposurePathStrip
+          path={topExposurePath}
+          active={pathFocusEnabled}
+          actionLabel="Focus path"
+          onAction={() => setPathFocusEnabled((current) => !current)}
+        />
+      )}
+
       {/* Stats */}
-      {graphData && <ContextStats data={graphData} />}
+      {graphData && <ContextStats data={graphData} compact />}
 
       {/* Main area: graph + sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {/* Graph */}
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="mb-2 shrink-0 px-1">
-            <GraphLensSwitcher variant="compact" />
-          </div>
           <div className="relative min-h-0 flex-1">
           {detailLoading && graphData && (
             <GraphRefreshOverlay label="Updating context graph" />
@@ -596,6 +714,8 @@ export default function ContextPage() {
             paths={graphData.lateral_paths}
             risks={graphData.interaction_risks}
             selectedAgent={selectedAgent}
+            pathFocusActive={pathFocusEnabled}
+            agents={activeJob?.result?.agents ?? []}
           />
         )}
       </div>

@@ -81,7 +81,7 @@ test("captures connections page and wizard", async ({ page }, testInfo) => {
 
   await page.goto("/connections");
   await page.waitForLoadState("networkidle");
-  await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cloud accounts" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Connected accounts" })).toBeVisible();
   await expect(page.getByText("Production account")).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("connections-page.png"), fullPage: true });

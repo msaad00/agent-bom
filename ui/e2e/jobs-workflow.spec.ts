@@ -135,12 +135,46 @@ test("jobs page links sources to completed evidence surfaces", async ({ page }) 
     });
   });
 
+  await page.route("**/v1/scan/job-prod-cloud", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        job_id: job.job_id,
+        status: "done",
+        created_at: job.created_at,
+        started_at: job.created_at,
+        completed_at: job.completed_at,
+        request: job.request,
+        progress: [
+          JSON.stringify({
+            type: "step",
+            step_id: "discovery",
+            status: "done",
+            message: "Discovered 2 agents",
+            started_at: "2026-05-28T10:12:00Z",
+            completed_at: "2026-05-28T10:12:10Z",
+            stats: { agents: 2 },
+          }),
+          JSON.stringify({
+            type: "step",
+            step_id: "output",
+            status: "done",
+            message: "Report generated",
+            started_at: "2026-05-28T10:13:50Z",
+            completed_at: "2026-05-28T10:14:00Z",
+          }),
+        ],
+        result: { summary: job.summary },
+      }),
+    });
+  });
+
   await page.goto("/jobs");
   await page.waitForLoadState("networkidle");
 
   await expect(page.getByRole("heading", { name: "Jobs" })).toBeVisible();
   await expect(page.getByTestId("source-job-evidence-workflow")).toContainText("Source → job → evidence");
-  await expect(page.getByTestId("source-job-evidence-workflow")).toContainText("Evidence-ready");
+  await expect(page.getByTestId("job-pipeline-job-prod-cloud")).toBeVisible();
   await expect(page.getByText("Prod cloud account")).toBeVisible();
   await expect(page.getByText("3 CVEs · 1 critical · 8 packages")).toBeVisible();
 

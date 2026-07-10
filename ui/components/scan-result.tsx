@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
 import { useScanStream } from "@/lib/use-scan-stream";
+import { mergePipelineSteps, parsePipelineStepsFromProgress } from "@/lib/scan-pipeline-progress";
 import { ScanPipeline } from "@/components/scan-pipeline";
 import { SeverityBadge } from "@/components/severity-badge";
 import { StatCard } from "@/components/stat-card";
@@ -76,6 +77,11 @@ export function ScanResultView({ id }: { id: string }) {
     onDone: handleStreamUpdate,
     onEvent: handleStreamUpdate,
   });
+
+  const replayedSteps = useMemo(
+    () => mergePipelineSteps(parsePipelineStepsFromProgress(job?.progress ?? []), pipelineSteps),
+    [job?.progress, pipelineSteps],
+  );
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -153,7 +159,7 @@ export function ScanResultView({ id }: { id: string }) {
       ) : null}
 
       {/* Scan Pipeline DAG */}
-      {(streaming || pipelineSteps.size > 0) && (
+      {(streaming || replayedSteps.size > 0) && (
         <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             {streaming ? (
@@ -165,8 +171,8 @@ export function ScanResultView({ id }: { id: string }) {
               {streaming ? "Scanning..." : "Complete"}
             </span>
           </div>
-          {pipelineSteps.size > 0 ? (
-            <ScanPipeline steps={pipelineSteps} />
+          {replayedSteps.size > 0 ? (
+            <ScanPipeline steps={replayedSteps} />
           ) : (
             <p className="text-xs font-mono text-[color:var(--text-tertiary)] animate-pulse">Waiting for scan to start...</p>
           )}

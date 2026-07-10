@@ -66,4 +66,21 @@ describe("GraphLensSwitcher", () => {
 
     expect(push).not.toHaveBeenCalled();
   });
+
+  it("renders a collapsible legend dock under the lens bar", () => {
+    render(
+      <GraphLensSwitcher
+        variant="compact"
+        legendItems={[
+          { label: "AI Agent", color: "#10b981", layer: "orchestration", kind: "node", shape: "dot" },
+          { label: "MCP Server", color: "#3b82f6", layer: "mcp_server", kind: "node", shape: "square" },
+          { label: "Uses", color: "#10b981", kind: "edge", lineStyle: "solid" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Legend")).toBeInTheDocument();
+    expect(screen.getAllByText("AI Agent").length).toBeGreaterThan(0);
+    expect(screen.getByText("expand")).toBeInTheDocument();
+  });
 });

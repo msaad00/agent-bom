@@ -35,20 +35,25 @@ function path(overrides: Partial<ExposurePath>): ExposurePath {
 
 describe("ExposurePath", () => {
   it("renders a security-first display title from shared path fields", () => {
-    expect(pathDisplayTitle(path({}))).toBe("analyst-agent -> werkzeug@2.2.2 -> CVE-2026-0001");
+    expect(pathDisplayTitle(path({}))).toBe("Analyst Agent → werkzeug → CVE-2026-0001");
   });
 
   it("does not duplicate package versions when the package label already includes one", () => {
     expect(
       pathDisplayTitle(
         path({
+          hops: [
+            { id: "agent-1", label: "analyst-agent", role: "agent" },
+            { id: "pkg-1", label: "form-data@4.0.0", role: "package" },
+            { id: "cve-1", label: "CVE-2026-0001", role: "finding" },
+          ],
           dependencyContext: {
             packageName: "form-data@4.0.0",
             serverName: "github",
           },
         }),
       ),
-    ).toBe("analyst-agent -> form-data@4.0.0 -> CVE-2026-0001");
+    ).toBe("Analyst Agent → form-data → CVE-2026-0001");
   });
 
   it("prefers fix versions for compact remediation labels", () => {

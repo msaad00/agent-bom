@@ -88,8 +88,6 @@ export function GraphLegend({
 
   if (items.length === 0) return null;
 
-  const nodeItems = items.filter((item) => item.kind !== "edge");
-  const edgeItems = items.filter((item) => item.kind === "edge");
   const visible = embedded || open;
 
   return (
@@ -107,14 +105,89 @@ export function GraphLegend({
       </button>
       {visible && (
         <div className={`${embedded ? "relative w-[min(30rem,calc(100vw-2rem))] shadow-none" : "absolute right-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] shadow-2xl shadow-[var(--shadow-color)]"} max-h-[60vh] overflow-y-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-[var(--foreground)] backdrop-blur-md`}>
-          {nodeItems.length > 0 && <LayeredLegendSections items={nodeItems} />}
-          {edgeItems.length > 0 && (
-            <LegendSection title="Relationships" items={edgeItems} />
-          )}
+          <GraphLegendContent items={items} />
         </div>
       )}
     </div>
   );
+}
+
+/** Collapsible legend docked under the graph lens bar — preview chips when collapsed. */
+export function GraphLegendDock({
+  items,
+  defaultOpen = false,
+}: {
+  items: LegendItem[];
+  defaultOpen?: boolean;
+}) {
+  if (items.length === 0) return null;
+  const preview = pickLegendPreview(items, 6);
+
+  return (
+    <details
+      className="group border-t border-[var(--border-subtle)] pt-2 open:pt-3"
+      {...(defaultOpen ? { open: true } : {})}
+    >
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1.5 text-xs [&::-webkit-details-marker]:hidden">
+        <span className="shrink-0 font-medium uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+          Legend
+        </span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 group-open:hidden">
+          {preview.map((item) => (
+            <span
+              key={`preview:${item.label}:${item.kind}`}
+              className="inline-flex max-w-[8rem] items-center gap-1 text-[10px] text-[var(--text-secondary)]"
+              title={item.label}
+            >
+              <LegendGlyph item={item} />
+              <span className="truncate">{item.label}</span>
+            </span>
+          ))}
+          {items.length > preview.length ? (
+            <span className="text-[10px] text-[var(--text-tertiary)]">+{items.length - preview.length}</span>
+          ) : null}
+        </span>
+        <span className="ml-auto shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] group-open:hidden">
+          expand
+        </span>
+        <span className="ml-auto hidden shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] group-open:inline">
+          collapse
+        </span>
+      </summary>
+      <div className="mt-2 max-h-[min(40vh,18rem)] overflow-y-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3">
+        <GraphLegendContent items={items} />
+      </div>
+    </details>
+  );
+}
+
+function GraphLegendContent({ items }: { items: LegendItem[] }) {
+  const nodeItems = items.filter((item) => item.kind !== "edge");
+  const edgeItems = items.filter((item) => item.kind === "edge");
+  return (
+    <>
+      {nodeItems.length > 0 && <LayeredLegendSections items={nodeItems} />}
+      {edgeItems.length > 0 && (
+        <LegendSection title="Relationships" items={edgeItems} />
+      )}
+    </>
+  );
+}
+
+function pickLegendPreview(items: LegendItem[], limit: number): LegendItem[] {
+  const nodes = items.filter((item) => item.kind !== "edge");
+  const edges = items.filter((item) => item.kind === "edge");
+  const picked: LegendItem[] = [];
+  const seenLayers = new Set<string>();
+  for (const item of nodes) {
+    const key = item.layer ?? item.label;
+    if (seenLayers.has(key)) continue;
+    seenLayers.add(key);
+    picked.push(item);
+    if (picked.length >= Math.max(1, limit - 1)) break;
+  }
+  if (edges[0]) picked.push(edges[0]);
+  return picked.slice(0, limit);
 }
 
 function LayeredLegendSections({ items }: { items: LegendItem[] }) {

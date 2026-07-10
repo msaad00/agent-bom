@@ -23,4 +23,9 @@ describe("BrandLogo", () => {
     expect(images).toHaveLength(1);
     expect(images[0]).toHaveAttribute("src", "/brand/mark-dark.svg");
   });
+
+  it("renders the canonical tagline when requested", () => {
+    const { getByText } = render(<BrandLogo showTagline />);
+    expect(getByText("AI supply-chain & infrastructure security")).toBeInTheDocument();
+  });
 });

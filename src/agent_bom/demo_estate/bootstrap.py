@@ -126,6 +126,14 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         _logger.warning("demo estate gateway feed seeding failed", exc_info=True)
         summary["gateway_feed_error"] = True
 
+    try:
+        from agent_bom.demo_estate.showcase_catalog import seed_showcase_catalog_if_empty
+
+        summary["catalog"] = seed_showcase_catalog_if_empty(tenant_id=tenant_id)
+    except Exception:
+        _logger.warning("demo estate catalog seeding failed", exc_info=True)
+        summary["catalog_error"] = True
+
     if _tenant_has_demo_jobs(store, tenant_id):
         summary["reason"] = "demo_jobs_present"
         return summary

@@ -53,9 +53,8 @@ describe('InsightLayerToggle', () => {
     const { container } = render(
       <InsightLayerToggle layers={defaultLayers} onToggle={vi.fn()} />
     )
-    // active layer (blast) should have purple styling
     const buttons = container.querySelectorAll('button')
-    expect(buttons[0]!.className).toContain('purple')
+    expect(buttons[0]!.className).toContain('bg-[color:var(--surface-elevated)]')
   })
 
   it('does not apply active styling to inactive layer buttons', () => {
@@ -63,9 +62,8 @@ describe('InsightLayerToggle', () => {
       <InsightLayerToggle layers={defaultLayers} onToggle={vi.fn()} />
     )
     const buttons = container.querySelectorAll('button')
-    // second and third buttons are inactive
-    expect(buttons[1]!.className).not.toContain('purple')
-    expect(buttons[2]!.className).not.toContain('purple')
+    expect(buttons[1]!.className).not.toContain('bg-[color:var(--surface-elevated)]')
+    expect(buttons[2]!.className).not.toContain('bg-[color:var(--surface-elevated)]')
   })
 
   it('highlights correct active option when second layer is active', () => {
@@ -78,14 +76,14 @@ describe('InsightLayerToggle', () => {
       <InsightLayerToggle layers={layers} onToggle={vi.fn()} />
     )
     const buttons = container.querySelectorAll('button')
-    expect(buttons[0]!.className).not.toContain('purple')
-    expect(buttons[1]!.className).toContain('purple')
-    expect(buttons[2]!.className).not.toContain('purple')
+    expect(buttons[0]!.className).not.toContain('bg-[color:var(--surface-elevated)]')
+    expect(buttons[1]!.className).toContain('bg-[color:var(--surface-elevated)]')
+    expect(buttons[2]!.className).not.toContain('bg-[color:var(--surface-elevated)]')
   })
 
-  it('renders "Insight Layers:" label', () => {
+  it('renders "Lens" label', () => {
     render(<InsightLayerToggle layers={defaultLayers} onToggle={vi.fn()} />)
-    expect(screen.getByText('Insight Layers:')).toBeInTheDocument()
+    expect(screen.getByText('Lens')).toBeInTheDocument()
   })
 
   it('renders correctly with all layers active', () => {
@@ -95,7 +93,7 @@ describe('InsightLayerToggle', () => {
     )
     const buttons = container.querySelectorAll('button')
     buttons.forEach((btn) => {
-      expect(btn.className).toContain('purple')
+      expect(btn.className).toContain('bg-[color:var(--surface-elevated)]')
     })
   })
 
@@ -106,7 +104,7 @@ describe('InsightLayerToggle', () => {
     )
     const buttons = container.querySelectorAll('button')
     buttons.forEach((btn) => {
-      expect(btn.className).not.toContain('purple')
+      expect(btn.className).not.toContain('bg-[color:var(--surface-elevated)]')
     })
   })
 

@@ -309,6 +309,36 @@ def test_demo_estate_graph_tags_runtime_evidence_tiers(demo_estate_client: TestC
     )
 
 
+def test_demo_estate_catalog_seeds_connections_sources_and_spend(demo_estate_client: TestClient) -> None:
+    """Connections, Sources, and AI Spend surfaces are populated on first demo boot."""
+    from agent_bom.api.connection_store import get_connection_store
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT
+
+    connections = get_connection_store().list_for_tenant(SHOWCASE_TENANT)
+    assert len(connections) >= 3
+    assert any(record.id.startswith("demo-conn-") for record in connections)
+
+    sources = demo_estate_client.get("/v1/sources").json()
+    source_rows = sources.get("sources") or []
+    assert len(source_rows) >= 2
+    assert any(row.get("source_id", "").startswith("demo-src-") for row in source_rows)
+
+    counts = demo_estate_client.get("/v1/posture/counts").json()
+    services = counts.get("services") or {}
+    assert services.get("cloud_accounts", {}).get("state") == "live"
+    assert services.get("cloud_accounts", {}).get("count", 0) >= 3
+    assert services.get("data_sources", {}).get("state") == "live"
+    assert services.get("data_sources", {}).get("count", 0) >= 2
+    assert services.get("ai_spend", {}).get("state") == "live"
+
+
+def test_demo_estate_catalog_is_idempotent(demo_estate_client: TestClient) -> None:
+    from agent_bom.demo_estate.showcase_catalog import seed_showcase_catalog_if_empty
+
+    again = seed_showcase_catalog_if_empty()
+    assert again.get("seeded") is False and again.get("reason") == "catalog_present"
+
+
 def test_demo_estate_bootstrap_is_idempotent(demo_estate_client: TestClient) -> None:
     first = demo_estate_client.get("/v1/jobs", headers={"X-Agent-Bom-Role": "admin"}).json()
     from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate

@@ -44,7 +44,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
+      <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
       </div>
     );
@@ -56,7 +56,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (error && isApiReachabilityFailure(error)) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
+      <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center px-4 py-10">
         <div className="w-full max-w-xl rounded-3xl border border-amber-900/50 bg-amber-950/20 p-8 text-center shadow-2xl shadow-black/20">
           <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Control plane unreachable</h1>
           <p className="mt-3 text-sm leading-6 text-zinc-400">
@@ -70,14 +70,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (needsAuth) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
+      <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
+    <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center px-4 py-10">
       <div className="max-w-xl rounded-2xl border border-red-900/50 bg-red-950/20 p-6 text-sm text-red-300">{error}</div>
     </div>
   );

@@ -158,17 +158,6 @@ const NAV_GROUPS: NavGroup[] = [
 
 const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
 
-/** Curated first-session proof path (#3618). Full nav stays in groups + ⌘K. */
-// Reuse the canonical nav labels so proof-path tiles don't give the same route
-// a second name (e.g. Findings vs "Queue"). Icons mirror each route's nav icon.
-const PROOF_PATH_LINKS: NavLink[] = [
-  { href: "/security-graph", label: "Security Graph", icon: Network },
-  { href: "/runtime", label: "Runtime", icon: Shield },
-  { href: "/compliance", label: "Compliance", icon: FileText },
-  { href: "/connections", label: "Cloud Accounts", icon: Cloud },
-  { href: "/remediation", label: "Remediation", icon: Wrench },
-];
-
 // ─── Risk counts for badges ─────────────────────────────────────────────────
 
 // ─── Sidebar Component ──────────────────────────────────────────────────────
@@ -176,7 +165,7 @@ const PROOF_PATH_LINKS: NavLink[] = [
 export function Nav() {
   const path = usePathname();
   const [captureMode, setCaptureMode] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(captureMode ? ALL_GROUP_LABELS : [activeGroupForPath(path)])
@@ -218,7 +207,7 @@ export function Nav() {
   useEffect(() => {
     const main = document.getElementById("main-content");
     if (main) {
-      main.style.paddingLeft = collapsed ? "60px" : "";
+      main.style.paddingLeft = collapsed ? "60px" : "240px";
     }
   }, [collapsed]);
 
@@ -427,35 +416,6 @@ export function Nav() {
           >
             <Search className="w-4 h-4" />
           </button>
-        </div>
-      )}
-
-      {/* Proof path — curated golden-workflow entry points */}
-      {!collapsed && (
-        <div className="px-3 pb-1">
-          <p className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
-            Proof path
-          </p>
-          <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
-            {PROOF_PATH_LINKS.map((link) => {
-              const Icon = link.icon;
-              const active = link.href === "/" ? path === "/" : Boolean(path?.startsWith(link.href));
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap transition-colors ${
-                    active
-                      ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                      : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span>{link.label}</span>
-                </Link>
-              );
-            })}
-          </div>
         </div>
       )}
 
@@ -752,9 +712,9 @@ export function Nav() {
   return (
     <>
       {/* Product chrome — Snowflake-style top bar with canonical agent-bom lockup */}
-      <header className="fixed inset-x-0 top-0 z-[60] flex h-14 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
+      <header className="fixed inset-x-0 top-0 z-[60] flex h-16 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
         <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
-          <BrandLogo className="transition-transform duration-200 group-hover:scale-[1.01]" />
+          <BrandLogo showTagline className="transition-transform duration-200 group-hover:scale-[1.01]" />
         </Link>
         {counts?.deployment_mode && (
           <span className="hidden rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] sm:inline-flex">
@@ -795,7 +755,7 @@ export function Nav() {
 
       {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:flex flex-col fixed left-0 top-14 bottom-0 z-40 bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] transition-[width] duration-200 ${
+        className={`hidden lg:flex flex-col fixed left-0 top-16 bottom-0 z-40 bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[240px]"
         }`}
       >
@@ -806,7 +766,7 @@ export function Nav() {
       {mobileOpen && (
         <>
           <div className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="lg:hidden fixed left-0 top-14 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
+          <aside className="lg:hidden fixed left-0 top-16 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
             {sidebarContent}
           </aside>
         </>

@@ -355,42 +355,42 @@ export default function Dashboard() {
         summaryReady={summaryReady}
       />
 
-      <section className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Exposure command center</h1>
-            <p className="mt-1 text-sm text-zinc-400">
+            <h1 className="text-xl font-semibold tracking-tight text-[color:var(--foreground)]">Dashboard</h1>
+            <p className="mt-0.5 text-sm text-[color:var(--text-secondary)]">
               {(displayedAgentCount ?? "—")} agents · {summaryReady ? displayedPackages : "—"} packages · {summaryReady ? displayedUniqueCVEs : "—"} CVEs
             </p>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
               <MetricChip label="KEV" value={String(summaryReady ? displayedKevCount : 0)} tone="red" />
               <MetricChip label="Credentials" value={String(summaryReady ? displayedCredentialExposure : 0)} tone="amber" />
               <MetricChip label="Tools" value={String(summaryReady ? displayedReachableTools : 0)} tone="sky" />
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/scan" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
+            <Link href="/scan" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500">
               Run scan <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href="/security-graph" className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500">
+            <Link href="/security-graph" className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]">
               Security graph <GitBranch className="h-4 w-4" />
             </Link>
           </div>
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
           {topExposurePath ? (
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">Top path</p>
-                <span className="rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 font-mono text-xs text-red-200">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-3">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-300">Top path</p>
+                <span className="rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 font-mono text-xs text-[color:var(--foreground)]">
                   {topExposurePath.riskScore.toFixed(1)}
                 </span>
               </div>
               <AttackPathCard nodes={topExposurePath.nodes} riskScore={topExposurePath.riskScore} href={topExposurePath.href} captureMode compact />
             </div>
           ) : (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+            <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3 text-sm text-[color:var(--text-secondary)]">
               No scored exposure path yet. Run a scan to populate attack-path evidence.
             </div>
           )}
@@ -404,12 +404,12 @@ export default function Dashboard() {
 
       {/* Top exposure paths — the fix-first shortlist, kept above the fold. */}
       {(!isLoading) && allBlast.length > 0 && (
-        <details className="group/attack rounded-2xl border border-zinc-800/90 bg-zinc-950/70 p-4">
+        <details className="group/attack rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 select-none">
             <div className="flex items-center gap-2">
-              <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/attack:rotate-90" />
-              <h2 className="text-sm font-semibold text-zinc-300">Exposure paths</h2>
-              <span className="rounded-full border border-zinc-800 bg-zinc-900/90 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
+              <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open/attack:rotate-90" />
+              <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Exposure paths</h2>
+              <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]">
                 {Math.min(allBlast.length, 5)}
               </span>
             </div>
@@ -446,10 +446,10 @@ export default function Dashboard() {
       )}
 
       {/* Exposure KPIs — coverage + backlog snapshot. */}
-      <details className="group/metrics rounded-2xl border border-zinc-800/90 bg-zinc-950/70 p-4">
+      <details className="group/metrics rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
         <summary className="flex cursor-pointer list-none items-center gap-2 select-none">
-          <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/metrics:rotate-90" />
-          <h2 className="text-sm font-semibold text-zinc-300">Exposure KPIs</h2>
+          <ChevronRight className="h-4 w-4 text-[color:var(--text-tertiary)] transition-transform group-open/metrics:rotate-90" />
+          <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Exposure KPIs</h2>
         </summary>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
@@ -464,7 +464,7 @@ export default function Dashboard() {
           (recharts + long tables) lives behind a tab so it never loads on first
           paint. */}
       <div>
-        <div className="mb-4 inline-flex rounded-2xl border border-zinc-800 bg-zinc-950/70 p-1">
+        <div className="mb-4 inline-flex rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-1">
           <TabButton icon={LayoutGrid} label="Overview" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
           <TabButton icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
         </div>
@@ -526,10 +526,10 @@ export default function Dashboard() {
 function MetricChip({ label, value, tone }: { label: string; value: string; tone: "red" | "amber" | "sky" }) {
   const toneClass =
     tone === "red"
-      ? "border-red-500/20 bg-red-500/10 text-red-100"
+      ? "border-red-500/20 bg-red-500/10 text-[color:var(--foreground)]"
       : tone === "amber"
-        ? "border-amber-500/20 bg-amber-500/10 text-amber-100"
-        : "border-sky-500/20 bg-sky-500/10 text-sky-100";
+        ? "border-amber-500/20 bg-amber-500/10 text-[color:var(--foreground)]"
+        : "border-sky-500/20 bg-sky-500/10 text-[color:var(--foreground)]";
   return (
     <span className={`rounded-lg border px-2.5 py-1 font-mono text-xs ${toneClass}`}>
       {label} {value}
@@ -539,9 +539,9 @@ function MetricChip({ label, value, tone }: { label: string; value: string; tone
 
 function QuickLink({ href, label, value }: { href: string; label: string; value: string }) {
   return (
-    <Link href={href} className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3 text-center transition hover:border-zinc-600">
-      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
-      <p className="mt-1 font-mono text-xl font-semibold text-zinc-100">{value}</p>
+    <Link href={href} className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 text-center transition hover:border-[color:var(--border-strong)]">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</p>
+      <p className="mt-0.5 font-mono text-lg font-semibold text-[color:var(--foreground)]">{value}</p>
     </Link>
   );
 }
@@ -562,10 +562,10 @@ function TabButton({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+      className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
         active
-          ? "bg-zinc-800 text-zinc-100"
-          : "text-zinc-500 hover:text-zinc-200"
+          ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+          : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -610,66 +610,58 @@ function ScorecardStrip({
   const score = posture?.score;
 
   return (
-    <section className="rounded-[28px] border border-zinc-800/80 bg-zinc-950/60 p-5">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {/* Posture grade + score */}
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-200/70">Posture grade</p>
-          <div className="mt-1 flex items-end gap-2">
-            <span className="font-mono text-3xl font-semibold text-emerald-100">{grade}</span>
+    <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Grade</p>
+          <div className="flex items-end gap-2">
+            <span className="font-mono text-xl font-semibold text-[color:var(--foreground)]">{grade}</span>
             {typeof score === "number" && (
-              <span className="mb-1 font-mono text-xs text-emerald-200/70">score {score}</span>
+              <span className="mb-0.5 font-mono text-[10px] text-[color:var(--text-tertiary)]">{score}</span>
             )}
           </div>
-          <p className="mt-1 text-xs text-emerald-100/60">overall risk grade</p>
         </div>
 
-        {/* Critical */}
-        <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Critical</p>
-          <p className="mt-1 font-mono text-3xl font-semibold text-red-100">{summaryReady ? critical : "—"}</p>
-          <p className="mt-1 text-xs text-red-100/60">open critical findings</p>
+        <Link href="/findings?severity=critical" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 transition-colors hover:border-red-400/40">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Critical</p>
+          <p className="font-mono text-xl font-semibold text-[color:var(--foreground)]">{summaryReady ? critical : "—"}</p>
         </Link>
 
-        {/* High */}
-        <Link href="/findings?severity=high" className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 transition-colors hover:border-orange-400/40">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-orange-200/70">High</p>
-          <p className="mt-1 font-mono text-3xl font-semibold text-orange-100">{summaryReady ? high : "—"}</p>
-          <p className="mt-1 text-xs text-orange-100/60">open high findings</p>
+        <Link href="/findings?severity=high" className="rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-2 transition-colors hover:border-orange-400/40">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">High</p>
+          <p className="font-mono text-xl font-semibold text-[color:var(--foreground)]">{summaryReady ? high : "—"}</p>
         </Link>
 
-        {/* Coverage */}
-        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Coverage</p>
-          <p className="mt-1 font-mono text-3xl font-semibold text-sky-100">{coverage != null ? `${coverage}%` : "—"}</p>
-          <p className="mt-1 text-xs text-sky-100/60">{activeDomains}/{domains.length || 5} domains active</p>
+        <div className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Coverage</p>
+          <p className="font-mono text-xl font-semibold text-[color:var(--foreground)]">{coverage != null ? `${coverage}%` : "—"}</p>
+          <p className="text-[10px] text-[color:var(--text-tertiary)]">{activeDomains}/{domains.length || 5} domains</p>
         </div>
 
-        {/* Connect status */}
-        <Link href="/connections" className="rounded-2xl border border-zinc-700/60 bg-zinc-900/60 p-4 transition-colors hover:border-zinc-500">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Connect status</p>
-          <div className="mt-1 flex items-center gap-2">
-            <span className={`h-2.5 w-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
-            <span className="text-lg font-semibold text-zinc-100">{connected ? "Connected" : "Not connected"}</span>
+        <Link href="/connections" className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 transition-colors hover:border-[color:var(--border-strong)]">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Connect</p>
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
+            <span className="text-sm font-semibold text-[color:var(--foreground)]">{connected ? "Live" : "Setup"}</span>
           </div>
-          <p className="mt-1 text-xs text-zinc-500">{deploymentModeLabel(counts?.deployment_mode)} mode</p>
+          <p className="text-[10px] text-[color:var(--text-tertiary)]">{deploymentModeLabel(counts?.deployment_mode)}</p>
         </Link>
       </div>
 
       {/* Cross-domain tiles folded in from the former /overview landing page. */}
       {domains.length > 0 && (
-        <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
           {domains.map((domain) => {
             const tone = statusTone(domain.status);
             return (
               <Link
                 key={domain.href}
                 href={domain.graph_href ?? domain.href}
-                className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5 transition-colors hover:border-zinc-600"
+                className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-2 transition-colors hover:border-[color:var(--border-strong)]"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-zinc-300">{domain.label}</p>
-                  <p className="truncate text-[10px] text-zinc-500">{domain.metric_label}</p>
+                  <p className="truncate text-xs font-medium text-[color:var(--foreground)]">{domain.label}</p>
+                  <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{domain.metric_label}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`font-mono text-sm font-semibold ${tone.text}`}>{domain.metric}</span>

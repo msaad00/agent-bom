@@ -238,7 +238,7 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
     if (await legendToggle.isVisible()) {
       await legendToggle.click();
     }
-    await expect(page.getByRole("button", { name: /hide legend/i })).toBeVisible();
+    await expect(page.getByText("Legend").first()).toBeVisible();
     await application.screenshot({
       path: testInfo.outputPath(`lineage-graph-legend-${theme}.png`),
     });

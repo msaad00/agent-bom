@@ -104,6 +104,7 @@ const NODE_TYPE_TO_RENDERER: Record<LineageNodeType, string> = {
   credential: "credentialNode",
   tool: "toolNode",
   model: "modelNode",
+  framework: "frameworkNode",
   dataset: "datasetNode",
   container: "containerNode",
   cloudResource: "cloudResourceNode",

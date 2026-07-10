@@ -303,6 +303,96 @@ def scan_cloned_repo_tree(
         ai_inventory["weak_crypto"] = weak_crypto_result.to_dict()
         warnings.append(f"{weak_crypto_result.total} weak-crypto pattern(s) found in repository source files")
 
+    # AI SDK / observability inventory (LangChain, LangGraph, Langfuse, …) —
+    # mirrors CLI --project/--repo auto-enable when a Python agent surface exists.
+    from agent_bom.repo_auto_detect import project_has_python_agent_surface
+
+    if project_has_python_agent_surface(root):
+        try:
+            from agent_bom.ai_components import scan_source
+            from agent_bom.models import Package
+
+            if update_progress is not None:
+                update_progress("Scanning for AI SDK / observability imports")
+            manifest_pkgs: set[str] = set()
+            for agent in agents:
+                for server in agent.mcp_servers:
+                    for pkg in server.packages:
+                        manifest_pkgs.add(pkg.name)
+            ai_report = scan_source(str(root), manifest_packages=manifest_pkgs)
+            ai_inventory.update(
+                {
+                    "total_components": ai_report.total,
+                    "shadow_ai_count": len(ai_report.shadow_ai),
+                    "deprecated_models_count": len(ai_report.deprecated_models),
+                    "api_keys_count": len(ai_report.api_keys),
+                    "unique_sdks": sorted(ai_report.unique_sdks),
+                    "unique_models": sorted(ai_report.unique_models),
+                    "files_scanned": ai_report.files_scanned,
+                    "framework_agents": list(ai_report.framework_agents),
+                    "components": [
+                        {
+                            "type": c.component_type.value,
+                            "name": "[REDACTED]" if c.component_type.value == "api_key" else c.name,
+                            "language": c.language,
+                            "file": c.file_path,
+                            "line": c.line_number,
+                            "severity": c.severity.value,
+                            "is_shadow": c.is_shadow,
+                            "package": c.package_name,
+                            "ecosystem": c.ecosystem,
+                            "description": c.description,
+                            "deprecated_replacement": c.deprecated_replacement,
+                        }
+                        for c in ai_report.components
+                    ],
+                }
+            )
+            ai_packages: list[Package] = []
+            seen_pkgs: set[str] = set()
+            for comp in ai_report.components:
+                if comp.package_name and comp.ecosystem:
+                    pkg_key = f"{comp.ecosystem}:{comp.package_name}"
+                    if pkg_key not in seen_pkgs:
+                        seen_pkgs.add(pkg_key)
+                        ai_packages.append(
+                            Package(name=comp.package_name, version="latest", ecosystem=comp.ecosystem)
+                        )
+            if ai_packages:
+                ai_provenance = {
+                    "source_type": "ai_inventory",
+                    "observed_via": ["ai_inventory"],
+                    "source": "ai-inventory",
+                    "collector": "ai_component_scanner",
+                    "confidence": "medium",
+                }
+                for pkg in ai_packages:
+                    if getattr(pkg, "discovery_provenance", None) is None:
+                        pkg.discovery_provenance = ai_provenance
+                agents.append(
+                    Agent(
+                        name="ai-inventory",
+                        agent_type=AgentType.CUSTOM,
+                        config_path=str(root),
+                        source="ai-inventory",
+                        discovery_provenance=ai_provenance,
+                        mcp_servers=[
+                            MCPServer(
+                                name="ai-inventory",
+                                surface=ServerSurface.AI_INVENTORY,
+                                packages=ai_packages,
+                            )
+                        ],
+                    )
+                )
+            if ai_report.total:
+                warnings.append(
+                    f"{ai_report.total} AI component(s) inventoried "
+                    f"({len(ai_report.unique_sdks)} SDK(s), {len(ai_report.framework_agents)} framework agent(s))"
+                )
+        except Exception:
+            pass  # AI inventory must not block repo scans
+
     if ai_inventory:
         result.ai_inventory_data = ai_inventory
 

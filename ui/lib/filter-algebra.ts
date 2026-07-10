@@ -77,6 +77,7 @@ const LAYER_TO_ENTITY: Record<LineageNodeType, EntityType | string> = {
   sharedServer: EntityType.SERVER,
   package: EntityType.PACKAGE,
   model: EntityType.MODEL,
+  framework: EntityType.FRAMEWORK,
   dataset: EntityType.DATASET,
   container: EntityType.CONTAINER,
   cloudResource: EntityType.CLOUD_RESOURCE,
@@ -117,6 +118,7 @@ const RELATIONSHIP_SCOPE_MAP: Record<
     RelationshipType.REACHES_TOOL,
     RelationshipType.SERVES_MODEL,
     RelationshipType.CONTAINS,
+    RelationshipType.USES_FRAMEWORK,
   ]),
   attack: new Set<string>([
     RelationshipType.AFFECTS,
@@ -636,6 +638,7 @@ const URL_LAYER_KEYS: LineageNodeType[] = [
   "sharedServer",
   "package",
   "model",
+  "framework",
   "dataset",
   "container",
   "cloudResource",

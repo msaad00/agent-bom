@@ -60,6 +60,7 @@ REPO_STATIC_SURFACES: tuple[RepoStaticSurface, ...] = (
     RepoStaticSurface("terraform", "Terraform & cloud AI infra", cli_auto_key="terraform", api_repo_tree=True),
     RepoStaticSurface("github_actions", "CI/CD pipelines", cli_auto_key="github_actions", api_repo_tree=True),
     RepoStaticSurface("python_agents", "Python agent frameworks", cli_auto_key="python_agents", api_repo_tree=True),
+    RepoStaticSurface("ai_inventory", "AI SDK / observability inventory", cli_auto_key="ai_inventory", api_repo_tree=True),
     RepoStaticSurface("skills", "Skills & instruction files", api_repo_tree=True),
     RepoStaticSurface("iac", "IaC & deployment configs", api_repo_tree=True),
     RepoStaticSurface("dependencies", "Lockfiles & manifests", api_repo_tree=True),
@@ -96,6 +97,7 @@ class ProjectScanTargets:
     tf_dirs: tuple[str, ...]
     gha_path: str | None
     agent_projects: tuple[str, ...]
+    ai_inventory_paths: tuple[str, ...] = ()
     auto_enabled: list[str] = field(default_factory=list)
 
 
@@ -180,6 +182,7 @@ def expand_project_scan_targets(
     tf_dirs: tuple[str, ...] = (),
     gha_path: str | None = None,
     agent_projects: tuple[str, ...] = (),
+    ai_inventory_paths: tuple[str, ...] = (),
 ) -> ProjectScanTargets:
     """Fill empty scan targets from project tree content."""
     root = Path(project).resolve()
@@ -190,6 +193,7 @@ def expand_project_scan_targets(
     out_tf = tf_dirs
     out_gha = gha_path
     out_agents = agent_projects
+    out_ai_inventory = ai_inventory_paths
 
     if not jupyter_dirs and project_has_notebooks(root):
         out_jupyter = (str(root),)
@@ -215,6 +219,12 @@ def expand_project_scan_targets(
         out_agents = (str(root),)
         auto.append("python_agents")
 
+    # Same surface as python agents: SDK/obs imports (LangChain, Langfuse, …)
+    # become first-class AI BOM framework nodes when inventory is enabled.
+    if not ai_inventory_paths and project_has_python_agent_surface(root):
+        out_ai_inventory = (str(root),)
+        auto.append("ai_inventory")
+
     return ProjectScanTargets(
         jupyter_dirs=out_jupyter,
         code_paths=out_code,
@@ -222,5 +232,6 @@ def expand_project_scan_targets(
         tf_dirs=out_tf,
         gha_path=out_gha,
         agent_projects=out_agents,
+        ai_inventory_paths=out_ai_inventory,
         auto_enabled=auto,
     )

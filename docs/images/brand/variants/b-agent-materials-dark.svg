@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="agent-bom mark — agent + materials">
+  <defs>
+    <linearGradient id="abm-b" x1="12" y1="10" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect x="5" y="5" width="54" height="54" rx="16" fill="#0c1210" stroke="url(#abm-b)" stroke-width="2"/>
+  <!-- agent / prompt block -->
+  <rect x="14" y="16" width="16" height="20" rx="4" fill="#111a17" stroke="url(#abm-b)" stroke-width="1.5"/>
+  <path d="M18 24h8M18 28h5" stroke="url(#abm-b)" stroke-width="1.75" stroke-linecap="round"/>
+  <rect x="18" y="31.5" width="1.75" height="5" rx="0.75" fill="url(#abm-b)"/>
+  <!-- materials list -->
+  <rect x="34" y="18" width="16" height="3.25" rx="1.5" fill="#34d399" fill-opacity="0.35"/>
+  <rect x="34" y="25" width="16" height="3.25" rx="1.5" fill="url(#abm-b)"/>
+  <rect x="34" y="32" width="11" height="3.25" rx="1.5" fill="#06b6d4" fill-opacity="0.35"/>
+  <!-- checksum bar -->
+  <rect x="14" y="44" width="36" height="4" rx="2" fill="url(#abm-b)" fill-opacity="0.35"/>
+</svg>

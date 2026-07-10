@@ -4,6 +4,7 @@ import { useState } from "react";
 import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
 
 import { useAuthState } from "@/components/auth-provider";
+import { BrandLogo } from "@/components/brand-logo";
 import { api } from "@/lib/api";
 import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { clearSessionApiKey } from "@/lib/auth";
@@ -89,8 +90,8 @@ export function LoginPanel({
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
         <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-950/80 p-8 shadow-2xl shadow-black/20">
           <div className="mb-6 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-900/60 bg-emerald-950/30">
-              <ShieldCheck className="h-6 w-6 text-emerald-400" />
+            <div className="mx-auto mb-4 flex justify-center">
+              <BrandLogo />
             </div>
             <h1 className="text-xl font-semibold tracking-tight text-zinc-100">{title}</h1>
             <p className="mt-1 text-sm text-zinc-400">Enter your API key to access the dashboard.</p>

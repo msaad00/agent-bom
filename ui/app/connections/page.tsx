@@ -354,7 +354,11 @@ function ProviderLogo({
     // disabled in this app (next.config images.unoptimized), so a plain img is
     // the lightest correct render.
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={`${providerLabel(provider)} logo`} className={className} />
+    <img
+      src={src}
+      alt={`${providerLabel(provider)} logo`}
+      className={`${className} object-contain`}
+    />
   );
 }
 

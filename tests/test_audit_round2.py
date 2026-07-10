@@ -32,6 +32,24 @@ def test_audit_details_redact_nested_secrets_and_urls():
     assert details["token"] == "***REDACTED***"
 
 
+def test_audit_password_is_redacted_before_hmac_signing():
+    """Sensitive fields never enter the authenticated, persisted audit payload."""
+    from agent_bom.api.audit_log import InMemoryAuditLog, get_audit_log, log_action, set_audit_log
+
+    original = get_audit_log()
+    audit = InMemoryAuditLog()
+    set_audit_log(audit)
+    try:
+        log_action("connection_test", password="database-password", tenant_id="tenant-alpha")
+        entry = audit.list_entries(tenant_id="tenant-alpha")[0]
+
+        assert "database-password" not in str(entry.details)
+        assert "password" not in entry.details
+        assert entry.verify()
+    finally:
+        set_audit_log(original)
+
+
 # ── Content-Length validation ────────────────────────────────────────────────
 
 

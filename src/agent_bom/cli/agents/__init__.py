@@ -918,6 +918,34 @@ def scan(
         or ollama_flag
     )
 
+    _explicit_target_scan = bool(
+        inventory or sbom_file or images or image_tars or filesystem_paths or k8s or external_scan_path
+    )
+    if project and not skill_only and not no_discover and not _explicit_target_scan:
+        from agent_bom.repo_auto_detect import expand_project_scan_targets
+
+        auto_targets = expand_project_scan_targets(
+            project,
+            jupyter_dirs=jupyter_dirs,
+            code_paths=code_paths,
+            scan_prompts=scan_prompts,
+            tf_dirs=tf_dirs,
+            gha_path=gha_path,
+            agent_projects=agent_projects,
+        )
+        if auto_targets.auto_enabled:
+            jupyter_dirs = auto_targets.jupyter_dirs
+            code_paths = auto_targets.code_paths
+            scan_prompts = auto_targets.scan_prompts
+            tf_dirs = auto_targets.tf_dirs
+            gha_path = auto_targets.gha_path
+            agent_projects = auto_targets.agent_projects
+            if not quiet:
+                con.print(
+                    "[dim]Auto-detected project scan surfaces: "
+                    f"{', '.join(auto_targets.auto_enabled)}[/dim]"
+                )
+
     # Step 1–1g4: Local discovery
     _step_t0 = _time.monotonic()
     run_local_discovery(

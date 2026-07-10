@@ -181,8 +181,8 @@ function JobsPageContent() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
-          <p className="text-zinc-400 text-sm mt-1">Scan job history</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Scan jobs</h1>
+          <p className="text-zinc-400 text-sm mt-1">Completed and in-flight evidence runs</p>
         </div>
         <div className="flex items-center gap-2">
           {jobs.length > 0 && (

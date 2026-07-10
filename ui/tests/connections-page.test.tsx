@@ -320,6 +320,26 @@ describe("ConnectionsPage", () => {
     );
   });
 
+  it("deep-links each connection into New Scan with a preselected account", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [CREATED_RECORD],
+      count: 1,
+    });
+
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Production account")).toBeInTheDocument(),
+    );
+
+    expect(screen.getByRole("link", { name: "New Scan" })).toHaveAttribute(
+      "href",
+      "/scan?connection=conn-1",
+    );
+  });
+
   it("tests a brokered credential without launching a scan", async () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",

@@ -32,11 +32,12 @@ import {
 } from "lucide-react";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
 import { ComplianceControlRow } from "@/components/compliance-control-row";
-import { ComplianceFrameworkStrip } from "@/components/compliance-framework-strip";
 import { postureLabel, statusColor } from "@/components/compliance-status";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
+import { FrameworkCoveragePanel, type FrameworkCoverageItem } from "@/components/framework-coverage-panel";
+import { FrameworkIcon } from "@/components/framework-icon";
 import {
   complianceFrameworkSummaries,
   controlMatchesQuery,
@@ -217,6 +218,23 @@ function CompliancePageContent() {
     [data, hasMcp],
   );
 
+  const frameworkCoverageItems = useMemo((): FrameworkCoverageItem[] => {
+    const categoryFor = (id: string): FrameworkCoverageItem["category"] => {
+      if (id === "cis" || id === "cmmc") return "cloud";
+      if (id === "eu-ai-act" || id === "nist-csf" || id === "iso27001" || id === "soc2") return "governance";
+      return "ai";
+    };
+    return frameworks.map((framework) => ({
+      id: framework.id,
+      label: framework.label,
+      pass: framework.pass,
+      warn: framework.warn,
+      fail: framework.fail,
+      total: framework.total,
+      category: categoryFor(framework.id),
+    }));
+  }, [frameworks]);
+
   const selectedSection = useMemo(
     () => detailSections.find((section) => section.id === selectedFrameworkId) ?? detailSections[0],
     [detailSections, selectedFrameworkId],
@@ -319,7 +337,7 @@ function CompliancePageContent() {
                 {postureLabel(data.overall_status)}
               </h1>
               <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-                AI supply chain compliance posture
+                AI supply-chain frameworks plus cloud CIS posture when accounts are connected — not a full CNAPP claim.
               </p>
               <div className="mt-2 flex flex-wrap gap-4 text-xs text-[color:var(--text-tertiary)]">
                 <span>
@@ -347,13 +365,13 @@ function CompliancePageContent() {
           <p className="mt-2 text-right text-xs text-red-400">{exportError}</p>
         ) : null}
 
-        <div className="mt-5">
-          <ComplianceFrameworkStrip
-            frameworks={frameworks}
-            selectedId={selectedFrameworkId}
-            onSelect={setSelectedFrameworkId}
-          />
-        </div>
+        <FrameworkCoveragePanel
+          items={frameworkCoverageItems}
+          onFocusFramework={(frameworkId) => {
+            setSelectedFrameworkId(frameworkId);
+            setViewMode("detail");
+          }}
+        />
 
         {(hubPosture && hubPosture.totals.combined > 0) || mitreCatalog || atlasCatalog ? (
           <details className="mt-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3">
@@ -445,9 +463,12 @@ function CompliancePageContent() {
       <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-[color:var(--foreground)]">
-              {selectedSection.title}
-            </h2>
+            <div className="flex items-center gap-2">
+              <FrameworkIcon frameworkId={selectedSection.id} size={24} />
+              <h2 className="text-base font-semibold text-[color:var(--foreground)]">
+                {selectedSection.title}
+              </h2>
+            </div>
             {selectedSection.subtitle ? (
               <p className="mt-0.5 text-xs text-[color:var(--text-tertiary)]">{selectedSection.subtitle}</p>
             ) : null}

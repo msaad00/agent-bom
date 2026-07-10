@@ -59,4 +59,31 @@ describe("OverviewCockpit", () => {
     await user.click(screen.getByRole("button", { name: "Engineer" }));
     expect(onPersonaChange).toHaveBeenCalledWith("engineer");
   });
+
+  it("shows compliance and activated services snapshots", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        persona="executive"
+        compliance={{
+          overallScore: 72,
+          overallStatus: "warning",
+          frameworks: [
+            { id: "owasp-llm", label: "OWASP LLM Top 10", pass: 8, warn: 1, fail: 1, total: 10 },
+            { id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 },
+          ],
+        }}
+        services={{
+          cloud_accounts: { state: "live", count: 2 },
+          compliance: { state: "connected", count: 1 },
+          fleet: { state: "locked", count: 0 },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("overview-compliance-snapshot")).toBeInTheDocument();
+    expect(screen.getByText("OWASP LLM Top 10")).toBeInTheDocument();
+    expect(screen.getByTestId("overview-activated-services")).toBeInTheDocument();
+    expect(screen.getByText("Cloud accounts")).toBeInTheDocument();
+  });
 });

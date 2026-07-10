@@ -46,10 +46,12 @@ before replacing any published product image.
 
 | Asset | Page | Required scope | Rationale |
 |---|---|---|---|
-| `dashboard-live.png` | `/?capture=1` (Risk overview) | All agents · top crop showing the gauge, posture sub-scores, score breakdown, and the start of the attack-path list | The published README should not use one tall stitched dashboard asset when two shorter frames tell the story more clearly |
-| `dashboard-paths-live.png` | `/?capture=1` (Risk overview) | All agents · mid-page crop showing the attack-path list, exposure KPI band, and the first backlog charts | Keeps the fix-first path list readable in GitHub while still proving the KPI / backlog context lives on the same page |
+| `dashboard-live.png` | `/?capture=1` (Overview) | Posture ring, findings breakdown, scan coverage, environment tabs | Wiz-style cockpit top frame |
+| `dashboard-paths-live.png` | `/?capture=1` (Overview) | Exposure path, feed/analytics tabs | Lower overview frame |
+| `cloud-accounts-live.png` | `/connections?capture=1` | Cloud accounts header, provider catalog, account stats | Onboarding surface |
+| `new-scan-live.png` | `/scan?capture=1` | New Scan modes — connected account, ad-hoc, public repo URL | Scan scope clarity |
 | `mesh-live.png` | `/mesh?capture=1` | Focused agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Public README, Docker Hub, and marketplace surfaces should show one readable graph proof, not duplicate dark/light theme captures |
-| `gateway-policies-live.png` | `/gateway?capture=1` | KPI rollup + live tool-call feed (calls, blocks, shadow AI, data filters) | Proves runtime gateway observability without a live proxy session during capture |
+| `gateway-policies-live.png` | `/runtime?tab=gateway&capture=1` | KPI rollup + live tool-call feed (calls, blocks, shadow AI, data filters) | Proves runtime gateway observability without a live proxy session during capture |
 | `security-graph-live.png` | `/security-graph?capture=1` | Capture the fix-first attack-path queue with snapshot pressure, graph evidence export, and remediation handoff | Shows the operator workflow before raw topology so the public image is readable and action oriented |
 | `lineage-graph-live.png` | `/graph?capture=1` | Capture an expanded but bounded topology view across environment, identity, MCP, package, credential, model, dataset, and finding nodes | Shows broader graph evidence without turning the README frame into whole-tenant edge spaghetti |
 | `context-map-live.png` | `/context?capture=1` | Capture one agent-scoped context map with reachable MCP servers and the lateral movement side panel | Shows a non-CVE topology view so README proof is not only package-to-finding blast radius |
@@ -65,9 +67,13 @@ the older single-column attack-path layout. The published media now ships
 as two dashboard frames rather than one stitched full-page export:
 
 1. `dashboard-live.png`
-   Header, top counters, F-grade gauge, security posture card, score breakdown, and the start of the attack-path list
+   Overview command center — posture ring, findings breakdown, scan coverage, environment tabs
 2. `dashboard-paths-live.png`
-   Top attack paths, exposure KPIs, severity/source charts, and the first compound-issue cards
+   Exposure path, recent scans feed, and analytics tab entry
+3. `cloud-accounts-live.png`
+   Cloud accounts onboarding with provider catalog
+4. `new-scan-live.png`
+   New Scan form with scope chips and public repo URL mode
 
 A capture set that misses either frame is incomplete. Re-shoot from the
 packaged UI and crop deliberately; do not publish another full-page stitched

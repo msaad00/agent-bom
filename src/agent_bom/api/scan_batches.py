@@ -15,7 +15,7 @@ BATCH_LIST_TARGET_FIELDS = (
     "connectors",
     "filesystem_paths",
 )
-BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom", "external_scan", "vex")
+BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom", "external_scan", "vex", "repo_url")
 
 # Parent-only metadata computed by the batch roll-up. These keys are never
 # copied up from child results so aggregation cannot clobber the parent's own

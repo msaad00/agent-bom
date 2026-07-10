@@ -26,6 +26,7 @@ export interface EnrichedVuln extends Vulnerability {
   effective_reach_score?: number | undefined;
   effective_reach_band?: string | undefined;
   framework_tags?: string[] | undefined;
+  finding_type?: string | undefined;
   phantom_tools?: string[] | undefined;
   runtime_evidence?: {
     state?: "static" | "observed" | "blocked" | "replay_only" | string;

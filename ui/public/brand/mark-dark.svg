@@ -1,18 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="agent-bom mark">
   <defs>
-    <linearGradient id="abm" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#60a5fa"/>
-      <stop offset="100%" stop-color="#a78bfa"/>
+    <linearGradient id="abm-chain" x1="12" y1="10" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
     </linearGradient>
   </defs>
-  <path d="M32 6 L54 14 V30 C54 43 44 53 32 58 C20 53 10 43 10 30 V14 Z"
-        fill="url(#abm)" fill-opacity="0.16" stroke="url(#abm)" stroke-width="2.5" stroke-linejoin="round"/>
-  <g stroke="url(#abm)" stroke-width="2" stroke-linecap="round">
-    <line x1="32" y1="23" x2="22" y2="39"/>
-    <line x1="32" y1="23" x2="42" y2="39"/>
-    <line x1="22" y1="39" x2="42" y2="39"/>
-  </g>
-  <circle cx="32" cy="23" r="4" fill="url(#abm)"/>
-  <circle cx="22" cy="39" r="3.4" fill="url(#abm)" fill-opacity="0.5" stroke="url(#abm)" stroke-width="1.5"/>
-  <circle cx="42" cy="39" r="3.4" fill="url(#abm)" fill-opacity="0.5" stroke="url(#abm)" stroke-width="1.5"/>
+  <rect x="5" y="5" width="54" height="54" rx="16" fill="#0c1210" stroke="url(#abm-chain)" stroke-width="2"/>
+  <path d="M32 14v8M32 22l-14 18M32 22l14 18" stroke="url(#abm-chain)" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="32" cy="14" r="5.5" fill="url(#abm-chain)"/>
+  <circle cx="18" cy="40" r="4.5" fill="#34d399" fill-opacity="0.85"/>
+  <circle cx="46" cy="40" r="4.5" fill="#06b6d4" fill-opacity="0.85"/>
+  <rect x="24" y="46" width="16" height="3" rx="1.5" fill="#34d399" fill-opacity="0.35"/>
+  <rect x="26" y="50" width="12" height="3" rx="1.5" fill="#06b6d4" fill-opacity="0.35"/>
 </svg>

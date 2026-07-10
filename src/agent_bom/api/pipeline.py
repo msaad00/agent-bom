@@ -542,7 +542,7 @@ def _optional_str(value: object) -> str:
 # ─── Scan Pipeline Runner ───────────────────────────────────────────────────
 
 
-def _project_paths_for_symbol_reach(req: Any) -> list[str]:
+def _project_paths_for_symbol_reach(req: Any, *, extra_paths: Iterable[str] | None = None) -> list[str]:
     """Collect scan-target paths that may contain Python source for symbol reach."""
     paths: list[str] = []
     seen: set[str] = set()
@@ -551,6 +551,7 @@ def _project_paths_for_symbol_reach(req: Any) -> list[str]:
         + list(getattr(req, "filesystem_paths", []) or [])
         + list(getattr(req, "jupyter_dirs", []) or [])
         + ([req.gha_path] if getattr(req, "gha_path", None) else [])
+        + list(extra_paths or [])
     ):
         if raw and raw not in seen:
             seen.add(raw)
@@ -588,11 +589,14 @@ def _ast_result_for_symbol_reach(paths: Iterable[str]) -> Any | None:
 
 def _run_scan_sync(job: ScanJob) -> None:
     """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
+    from contextlib import ExitStack
+
     lock = _job_lock(job.job_id)
     with lock:
         job.status = JobStatus.RUNNING
         job.started_at = _now()
     pipeline = ScanPipeline(job, lock)
+    repo_stack = ExitStack()
 
     try:
         from agent_bom.discovery import discover_all
@@ -602,11 +606,45 @@ def _run_scan_sync(job: ScanJob) -> None:
         from agent_bom.security import validate_path
 
         req = job.request
-        agents = []
+        agents: list[Any] = []
         warnings_all: list[str] = []
         side_effects_enabled = not (req.dry_run or req.no_scan)
+        effective_agent_projects = list(req.agent_projects)
+        effective_tf_dirs = list(req.tf_dirs)
+        effective_gha_path = req.gha_path
+        extra_symbol_paths: list[str] = []
 
-        # ── Path validation (prevent path traversal via API) ──
+        repo_url = (req.repo_url or "").strip()
+        skill_audit_data: dict | None = None
+        iac_findings_data: dict | None = None
+        repo_ai_inventory_data: dict | None = None
+        repo_sast_data: dict | None = None
+        if repo_url:
+            from agent_bom.repo_scan import RepoScanError, clone_repository
+
+            pipeline.start_step("discovery", f"Cloning repository: {repo_url}")
+            try:
+                cloned_dir = repo_stack.enter_context(clone_repository(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN"))
+            except RepoScanError as exc:
+                raise RuntimeError(sanitize_error(exc, generic=True)) from exc
+            cloned_path = str(cloned_dir)
+            effective_agent_projects = [cloned_path]
+            effective_tf_dirs = [cloned_path]
+            effective_gha_path = effective_gha_path or cloned_path
+            extra_symbol_paths.append(cloned_path)
+            pipeline.update_step("discovery", f"Repository cloned for static scan: {repo_url}")
+            from agent_bom.api.repo_tree_scan import scan_cloned_repo_tree
+
+            repo_tree_result = scan_cloned_repo_tree(
+                cloned_path,
+                agents=agents,
+                warnings=warnings_all,
+                update_progress=lambda message: pipeline.update_step("discovery", message),
+            )
+            skill_audit_data = repo_tree_result.skill_audit_data
+            iac_findings_data = repo_tree_result.iac_findings_data
+            repo_ai_inventory_data = repo_tree_result.ai_inventory_data
+            repo_sast_data = repo_tree_result.sast_data
         path_fields = (
             ([req.inventory] if req.inventory else [])
             + req.tf_dirs
@@ -616,8 +654,9 @@ def _run_scan_sync(job: ScanJob) -> None:
             + ([req.sbom] if req.sbom else [])
             + req.filesystem_paths
         )
-        for p in path_fields:
-            validate_path(p, must_exist=True)
+        if not repo_url:
+            for p in path_fields:
+                validate_path(p, must_exist=True)
 
         if req.dry_run:
             pipeline.start_step("discovery", "Dry run: validating scan request")
@@ -635,6 +674,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     "no_scan": req.no_scan,
                     "side_effects": "skipped",
                     "would_scan": {
+                        "repo_url": bool(repo_url),
                         "inventory": bool(req.inventory),
                         "images": list(req.images),
                         "kubernetes": req.k8s,
@@ -667,11 +707,19 @@ def _run_scan_sync(job: ScanJob) -> None:
                 warnings_all.append(f"Auto DB refresh skipped: {sanitize_error(db_exc)}")
 
         # ── Discovery phase ──
-        pipeline.start_step("discovery", "Discovering local MCP configurations...")
-        local_agents = discover_all(
-            dynamic=req.dynamic_discovery,
-            dynamic_max_depth=req.dynamic_max_depth,
-        )
+        if repo_url:
+            pipeline.start_step("discovery", "Discovering MCP configs in cloned repository...")
+            local_agents = discover_all(
+                project_dir=cloned_path,
+                dynamic=req.dynamic_discovery,
+                dynamic_max_depth=req.dynamic_max_depth,
+            )
+        else:
+            pipeline.start_step("discovery", "Discovering local MCP configurations...")
+            local_agents = discover_all(
+                dynamic=req.dynamic_discovery,
+                dynamic_max_depth=req.dynamic_max_depth,
+            )
         agents.extend(local_agents)
 
         if req.inventory:
@@ -745,7 +793,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 except Exception as img_exc:  # noqa: BLE001
                     warnings_all.append(f"Kubernetes image scan error for {img}: {sanitize_error(img_exc)}")
 
-        for tf_dir in req.tf_dirs:
+        for tf_dir in effective_tf_dirs:
             pipeline.update_step("discovery", f"Scanning Terraform: {tf_dir}")
             from agent_bom.terraform import scan_terraform_dir
 
@@ -753,15 +801,15 @@ def _run_scan_sync(job: ScanJob) -> None:
             agents.extend(tf_agents)
             warnings_all.extend(tf_warnings)
 
-        if req.gha_path:
-            pipeline.update_step("discovery", f"Scanning GitHub Actions: {req.gha_path}")
+        if effective_gha_path:
+            pipeline.update_step("discovery", f"Scanning GitHub Actions: {effective_gha_path}")
             from agent_bom.github_actions import scan_github_actions
 
-            gha_agents, gha_warnings = scan_github_actions(req.gha_path)
+            gha_agents, gha_warnings = scan_github_actions(effective_gha_path)
             agents.extend(gha_agents)
             warnings_all.extend(gha_warnings)
 
-        for ap in req.agent_projects:
+        for ap in effective_agent_projects:
             pipeline.update_step("discovery", f"Scanning Python agent project: {ap}")
             from agent_bom.python_agents import scan_python_agents
 
@@ -885,6 +933,47 @@ def _run_scan_sync(job: ScanJob) -> None:
                 pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
 
         if not agents:
+            if (
+                skill_audit_data is not None
+                or iac_findings_data is not None
+                or repo_ai_inventory_data is not None
+                or repo_sast_data is not None
+            ):
+                pipeline.skip_step("extraction", "No agents to extract")
+                pipeline.skip_step("scanning", "No packages to scan")
+                pipeline.skip_step("enrichment", "Skipped")
+                pipeline.skip_step("analysis", "Skipped")
+                pipeline.start_step("output", "Building report from repo static findings...")
+                from agent_bom.models import AIBOMReport
+                from agent_bom.output import to_json
+
+                report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=job.job_id)
+                if skill_audit_data is not None:
+                    report.skill_audit_data = skill_audit_data
+                if iac_findings_data is not None:
+                    report.iac_findings_data = iac_findings_data
+                if repo_ai_inventory_data is not None:
+                    report.ai_inventory_data = repo_ai_inventory_data
+                if repo_sast_data is not None:
+                    report.sast_data = repo_sast_data
+                report_json = to_json(report)
+                report_json["warnings"] = warnings_all
+                report_json["status"] = "findings_only"
+                with lock:
+                    job.result = report_json
+                    job.status = JobStatus.DONE
+                    job.completed_at = _now()
+                if side_effects_enabled:
+                    try:
+                        pipeline.update_step("output", "Persisting unified graph...")
+                        _persist_graph_snapshot(job, report_json, lock=lock)
+                    except Exception as graph_exc:  # noqa: BLE001
+                        _logger.warning("Unified graph persistence failed: %s", graph_exc)
+                        with lock:
+                            job.progress.append(f"Graph persistence skipped: {sanitize_error(graph_exc)}")
+                pipeline.complete_step("output", "Report ready")
+                return
+
             pipeline.skip_step("extraction", "No agents to extract")
             pipeline.skip_step("scanning", "No packages to scan")
             pipeline.skip_step("enrichment", "Skipped")
@@ -1022,7 +1111,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             if stamped:
                 with lock:
                     job.progress.append(f"Reachability: stamped {stamped} blast-radius row(s) with graph-walk evidence")
-            _ast_for_reach = _ast_result_for_symbol_reach(_project_paths_for_symbol_reach(req))
+            _ast_for_reach = _ast_result_for_symbol_reach(_project_paths_for_symbol_reach(req, extra_paths=extra_symbol_paths))
             if _ast_for_reach is not None:
                 sym_stamped = apply_symbol_reachability_to_blast_radii(blast_radii, _ast_for_reach)
                 if sym_stamped:
@@ -1051,6 +1140,14 @@ def _run_scan_sync(job: ScanJob) -> None:
         except Exception as mcp_auth_exc:  # noqa: BLE001
             _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_error(mcp_auth_exc))
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=report_findings, scan_id=job.job_id)
+        if skill_audit_data is not None:
+            report.skill_audit_data = skill_audit_data
+        if iac_findings_data is not None:
+            report.iac_findings_data = iac_findings_data
+        if repo_ai_inventory_data is not None:
+            report.ai_inventory_data = repo_ai_inventory_data
+        if repo_sast_data is not None:
+            report.sast_data = repo_sast_data
         if req.vex:
             from agent_bom.vex import apply_vex, load_vex
             from agent_bom.vex import to_serializable as vex_to_serializable
@@ -1184,6 +1281,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             with lock:
                 job.progress.append(f"Error: {sanitize_error(exc)}")
     finally:
+        repo_stack.close()
         with lock:
             job.completed_at = _now()
             terminal_status = job.status

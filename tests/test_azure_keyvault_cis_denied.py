@@ -22,10 +22,12 @@ class _Vault:
 
 
 class _KVMgmt:
-    class vaults:
+    class Vaults:
         @staticmethod
         def list():
             return [_Vault("v1"), _Vault("v2")]
+
+    vaults = Vaults
 
 
 class _DeniedKeyClient:
@@ -98,7 +100,7 @@ class _RbacVault:
 class _RbacKVMgmt:
     """Management client whose vaults are all RBAC-model."""
 
-    class vaults:
+    class Vaults:
         @staticmethod
         def list():
             return [_RbacVault("v1"), _RbacVault("v2")]
@@ -107,6 +109,8 @@ class _RbacKVMgmt:
         def get(resource_group, vault_name):
             props = type("P", (), {"enable_rbac_authorization": True})()
             return type("V", (), {"properties": props})()
+
+    vaults = Vaults
 
 
 def test_cis_8_4_all_rbac_vaults_denied_is_error_not_pass(monkeypatch):

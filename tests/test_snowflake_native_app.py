@@ -23,6 +23,7 @@ MANIFEST_PATH = NATIVE_APP_DIR / "manifest.yml"
 SETUP_SQL_PATH = NATIVE_APP_DIR / "scripts" / "setup.sql"
 DCM_DIR = NATIVE_APP_DIR / "dcm"
 SERVICE_SPECS_DIR = NATIVE_APP_DIR / "service-specs"
+CORE_SERVICE_SPEC_PATH = NATIVE_APP_DIR / "service-spec.yaml"
 RELEASE_WORKFLOW_PATH = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-snowflake.yml"
 PYPROJECT_PATH = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
@@ -49,6 +50,11 @@ def setup_sql() -> str:
 @pytest.fixture(scope="module")
 def service_specs() -> dict[str, dict]:
     return {path.name: yaml.safe_load(path.read_text(encoding="utf-8")) for path in SERVICE_SPECS_DIR.glob("*.yaml")}
+
+
+@pytest.fixture(scope="module")
+def core_service_spec() -> dict:
+    return yaml.safe_load(CORE_SERVICE_SPEC_PATH.read_text(encoding="utf-8"))
 
 
 # ─── Customer-approved references contract ──────────────────────────────────
@@ -189,9 +195,11 @@ def test_manifest_declares_phase4_services_default_off(manifest: dict):
     assert f"/db/schema/agent_bom_repo/agent-bom-mcp-runtime:{SNOWFLAKE_PACKAGE_IMAGE_TAG}" in images
 
 
-def test_native_app_container_images_are_release_pinned(manifest: dict, service_specs: dict[str, dict]):
+def test_native_app_container_images_are_release_pinned(
+    manifest: dict, service_specs: dict[str, dict], core_service_spec: dict
+):
     image_refs = list(manifest.get("artifacts", {}).get("container_services", {}).get("images", []))
-    for spec in service_specs.values():
+    for spec in (*service_specs.values(), core_service_spec):
         image_refs.extend(
             container["image"] for container in spec.get("spec", {}).get("containers", []) if isinstance(container.get("image"), str)
         )

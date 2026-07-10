@@ -44,7 +44,7 @@ output "auth_secret_name" {
 
 output "helm_values_hint" {
   description = "Copy/paste baseline wiring for the packaged Helm chart."
-  value = <<-EOT
+  value       = <<-EOT
 serviceAccount:
   annotations:
     eks.amazonaws.com/role-arn: ${aws_iam_role.scanner.arn}

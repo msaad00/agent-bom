@@ -27,18 +27,18 @@ services:
       api
       --host 0.0.0.0
       --port 8422
-      --persist /var/lib/agent-bom/jobs.db
+      --persist /home/abom/.agent-bom/jobs.db
       --cors-origins http://localhost:3000,http://127.0.0.1:3000
       --allow-insecure-no-auth
     environment:
-      AGENT_BOM_DB_PATH: /var/lib/agent-bom/vulns.db
+      AGENT_BOM_DB_PATH: /home/abom/.agent-bom/vulns.db
       AGENT_BOM_DEPLOYMENT_ENV: pilot-loopback
       AGENT_BOM_DEMO_ESTATE: ${AGENT_BOM_DEMO_ESTATE:-0}
       AGENT_BOM_SKIP_UPDATE_CHECK: "1"
     ports:
       - "127.0.0.1:8422:8422"
     volumes:
-      - agent-bom-pilot-data:/var/lib/agent-bom
+      - agent-bom-pilot-data:/home/abom/.agent-bom
     healthcheck:
       # /health is the documented public readiness endpoint; /healthz is an
       # alias kept for legacy callers. Keep parity with the rest of the

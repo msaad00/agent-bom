@@ -74,15 +74,18 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("docs/MCP_SECURITY_MODEL.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("site-docs/index.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("site-docs/features/policy.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
-    ("site-docs/deployment/overview.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(agentbom/agent-bom:)(?:v)?\d+\.\d+\.\d+"), r"\g<1>{v}"),
-    ("README.md", re.compile(r"(--version\s+)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("site-docs/deployment/control-plane-helm.md", re.compile(r"(--version\s+)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/k8s/sidecar-example.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/k8s/proxy-sidecar-pilot.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/k8s/cronjob.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     (
         "deploy/snowflake/native-app/manifest.yml",
+        re.compile(r"(:v)\d+_\d+_\d+"),
+        r"\g<1>{v_underscore}",
+    ),
+    (
+        "deploy/snowflake/native-app/service-spec.yaml",
         re.compile(r"(:v)\d+_\d+_\d+"),
         r"\g<1>{v_underscore}",
     ),
@@ -126,8 +129,6 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ),
     ("site-docs/reference/remediate-output.md", re.compile(r'("version":\s*")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     ("docs/RUNTIME_MONITORING.md", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
-    # cve-freshness.yml — SARIF fallback template version
-    (".github/workflows/cve-freshness.yml", re.compile(r'("version":")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     # mcp-change-scan.yml — pinned agent-bom install version
     (".github/workflows/mcp-change-scan.yml", re.compile(r"(agent-bom==)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     # docs/demo.tape — version header

@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
-import { BrandMark } from "@/components/brand-mark";
+import { BrandLogo } from "@/components/brand-logo";
 import { CommandPalette, type CommandPaletteAction } from "@/components/command-palette";
 import { DemoNavSignIn } from "@/components/demo-mode-cta";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -382,28 +382,19 @@ export function Nav() {
 
   const sidebarContent = (
     <>
-      {/* Logo */}
+      {/* Sidebar controls */}
       <div
         className={`border-b border-[color:var(--border-subtle)] ${
           collapsed
-            ? "flex h-20 flex-col items-center justify-center gap-2 px-2 py-2"
-            : "flex h-14 items-center justify-between px-4"
+            ? "flex h-11 items-center justify-center px-2"
+            : "flex h-11 items-center justify-between px-3"
         }`}
       >
-        <Link href="/" className="flex items-center gap-2.5 group min-w-0">
-          <BrandMark className="h-8 w-8 shrink-0 transition-transform duration-200 group-hover:scale-[1.03]" />
-          {!collapsed && (
-            <div className="min-w-0">
-              <span className="font-semibold text-sm text-[color:var(--foreground)] block truncate">agent-bom</span>
-              <span className="text-[10px] text-[color:var(--text-secondary)] font-mono block">AI Supply Chain</span>
-              {counts?.deployment_mode && (
-                <span className="mt-1 inline-flex rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-                  {deploymentModeLabel(counts.deployment_mode)} Mode
-                </span>
-              )}
-            </div>
-          )}
-        </Link>
+        {!collapsed && (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
+            Navigate
+          </span>
+        )}
         <button
           onClick={() => setCollapsed((value) => !value)}
           className="hidden rounded-md p-1.5 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)] lg:flex"
@@ -760,42 +751,62 @@ export function Nav() {
 
   return (
     <>
+      {/* Product chrome — Snowflake-style top bar with canonical agent-bom lockup */}
+      <header className="fixed inset-x-0 top-0 z-[60] flex h-14 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
+        <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
+          <BrandLogo className="transition-transform duration-200 group-hover:scale-[1.01]" />
+        </Link>
+        {counts?.deployment_mode && (
+          <span className="hidden rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] sm:inline-flex">
+            {deploymentModeLabel(counts.deployment_mode)}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="hidden items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] lg:flex"
+            title="Search pages (⌘K)"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span>Search</span>
+            <kbd className="ml-1 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]">
+              ⌘K
+            </kbd>
+          </button>
+          <ThemeToggle compact />
+          <ApiStatus collapsed={false} />
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="rounded-lg p-2 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)] lg:hidden"
+            aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+          >
+            {mobileOpen ? (
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </header>
+
       {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:flex flex-col fixed left-0 top-0 bottom-0 z-40 bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] transition-[width] duration-200 ${
+        className={`hidden lg:flex flex-col fixed left-0 top-14 bottom-0 z-40 bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[240px]"
         }`}
       >
         {sidebarContent}
       </aside>
 
-      {/* Mobile Top Bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-[color:var(--surface)] backdrop-blur-sm border-b border-[color:var(--border-subtle)] flex items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 group">
-          <BrandMark className="h-7 w-7" />
-          <span className="font-semibold text-sm text-[color:var(--foreground)]">agent-bom</span>
-        </Link>
-        <div className="flex items-center gap-2">
-          <ThemeToggle compact />
-          <ApiStatus collapsed={false} />
-          <button
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="p-2 rounded-lg text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-elevated)] transition-colors"
-          >
-            {mobileOpen ? (
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-            )}
-          </button>
-        </div>
-      </div>
-
       {/* Mobile Drawer Overlay */}
       {mobileOpen && (
         <>
           <div className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
+          <aside className="lg:hidden fixed left-0 top-14 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
             {sidebarContent}
           </aside>
         </>

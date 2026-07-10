@@ -3,20 +3,14 @@
 import { Moon, Sun } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
+import {
+  getThemeModeServerSnapshot,
+  readThemeMode,
+  subscribeThemeMode,
+  type ThemeMode,
+} from "@/lib/theme-mode";
+
 const THEME_STORAGE_KEY = "agent-bom-theme";
-
-type ThemeMode = "dark" | "light";
-
-function readTheme(): ThemeMode {
-  if (typeof window === "undefined") return "dark";
-  try {
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === "light" || stored === "dark") return stored;
-  } catch {
-    // Ignore storage failures and fall back to the current root theme.
-  }
-  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
-}
 
 function applyTheme(theme: ThemeMode) {
   const root = document.documentElement;
@@ -31,22 +25,15 @@ function applyTheme(theme: ThemeMode) {
 }
 
 function subscribe(onChange: () => void) {
-  if (typeof window === "undefined") return () => {};
-  const handleChange = () => onChange();
-  window.addEventListener("storage", handleChange);
-  window.addEventListener("agent-bom-theme-change", handleChange);
-  return () => {
-    window.removeEventListener("storage", handleChange);
-    window.removeEventListener("agent-bom-theme-change", handleChange);
-  };
+  return subscribeThemeMode(onChange);
 }
 
 function getServerSnapshot(): ThemeMode {
-  return "dark";
+  return getThemeModeServerSnapshot();
 }
 
 export function ThemeToggle({ compact = false, className = "" }: { compact?: boolean; className?: string }) {
-  const theme = useSyncExternalStore(subscribe, readTheme, getServerSnapshot);
+  const theme = useSyncExternalStore(subscribe, readThemeMode, getServerSnapshot);
 
   const nextTheme = theme === "dark" ? "light" : "dark";
   const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";

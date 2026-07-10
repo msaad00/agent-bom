@@ -212,9 +212,10 @@ describe('Nav', () => {
     expect(within(palette).getByRole('link', { name: /context lens/i })).toHaveAttribute('href', '/context')
   })
 
-  it('renders the agent-bom brand text', () => {
-    render(<Nav />)
-    expect(screen.getAllByText('agent-bom').length).toBeGreaterThan(0)
+  it('renders the canonical agent-bom brand lockup in the top bar', () => {
+    const { container } = render(<Nav />)
+    const wordmark = container.querySelector('img[alt="agent-bom"]')
+    expect(wordmark).toHaveAttribute('src', '/brand/wordmark-dark.svg')
   })
 
   it('renders all 7 nav group labels', () => {

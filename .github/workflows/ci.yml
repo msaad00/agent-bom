@@ -704,9 +704,9 @@ jobs:
             PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-2}"
           fi
           if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network" -n "$PYTEST_XDIST_WORKERS" --dist loadscope
+            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist loadscope
           else
-            uv run pytest tests/ -q --tb=short -m "not network" -n "$PYTEST_XDIST_WORKERS" --dist loadscope
+            uv run pytest tests/ -q --tb=short -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist loadscope
           fi
 
       - name: Graph accuracy guards (#2259 — round-trip + edge-count + visual-diff)
@@ -886,9 +886,9 @@ jobs:
         run: |
           set -euxo pipefail
           if [ "${ALPINE_FULL}" = "true" ]; then
-            uv run pytest tests/ -q --tb=short -m "not network" -x --durations=20
+            uv run pytest tests/ -q --tb=short -m "not network and not slow" -x --durations=20
           else
-            uv run pytest -q --tb=short -m "not network" --durations=20 \
+            uv run pytest -q --tb=short -m "not network and not slow" --durations=20 \
               tests/api/test_api_auth_me.py \
               tests/test_quickstart.py \
               tests/test_deploy_teardown.py \

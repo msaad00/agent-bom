@@ -148,6 +148,31 @@ describe("ScanForm", () => {
     expect(scanCloudConnection).toHaveBeenCalledWith("conn-aws-1");
   });
 
+  it("starts a public repository scan from a git URL", async () => {
+    const user = userEvent.setup();
+    const startScan = vi.spyOn(api, "startScan").mockResolvedValue({
+      job_id: "job-repo-1",
+      status: "pending",
+      created_at: "2026-01-01T00:00:00Z",
+      request: { repo_url: "https://github.com/org/repo" },
+      progress: [],
+    });
+
+    render(<ScanForm />);
+    await user.click(screen.getByRole("button", { name: /Ad-hoc target/i }));
+    await user.click(screen.getByRole("button", { name: /Public repo/i }));
+    await user.type(
+      screen.getByPlaceholderText("https://github.com/org/agent-repo"),
+      "https://github.com/org/repo",
+    );
+    expect(screen.getByText(/Shallow read-only git clone/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Scan repository/i }));
+    expect(startScan).toHaveBeenCalledWith({
+      repo_url: "https://github.com/org/repo",
+      enrich: false,
+    });
+  });
+
   it("explains kubernetes namespace scope in plain language", async () => {
     const user = userEvent.setup();
     render(<ScanForm />);

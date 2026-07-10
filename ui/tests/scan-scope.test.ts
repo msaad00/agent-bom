@@ -60,4 +60,13 @@ describe("scan-scope", () => {
     expect(chips.find((chip) => chip.label === "Kubernetes")?.value).toBe("Namespace prod");
     expect(chips.find((chip) => chip.label === "Enrichment")?.value).toContain("NVD");
   });
+
+  it("builds repository scope chips for public git URLs", () => {
+    const chips = adhocScopeChips(
+      { repo_url: "https://github.com/org/repo", enrich: true },
+      "repository",
+    );
+    expect(chips.find((chip) => chip.label === "Repository")?.value).toBe("https://github.com/org/repo");
+    expect(chips.find((chip) => chip.label === "Execution")?.value).toContain("Static parse only");
+  });
 });

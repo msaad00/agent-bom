@@ -359,6 +359,8 @@ def _scan_source_labels(job: ScanJob) -> list[str]:
         labels.append("sbom-import")
     if req.external_scan:
         labels.append("external_scan")
+    if req.repo_url and str(req.repo_url).strip():
+        labels.append(str(req.repo_url).strip())
     labels.extend(req.connectors)
     labels.extend(req.filesystem_paths)
     labels.extend(req.agent_projects)

@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Cloud,
   Container,
+  Link2,
   Loader2,
   Plus,
   Server,
@@ -72,6 +73,7 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tfInput, setTfInput] = useState("");
   const [apInput, setApInput] = useState("");
+  const [repoUrlInput, setRepoUrlInput] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -201,7 +203,22 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
     setLoading(true);
     setError("");
     try {
-      const job = await api.startScan(form);
+      const request: ScanRequest =
+        target === "repository"
+          ? {
+              repo_url: repoUrlInput.trim(),
+              enrich: form.enrich ?? false,
+            }
+          : {
+              ...form,
+              repo_url: undefined,
+            };
+      if (target === "repository" && !request.repo_url) {
+        setError("Enter a public repository URL (https://github.com/org/repo)");
+        setLoading(false);
+        return;
+      }
+      const job = await api.startScan(request);
       router.push(`/scan?id=${job.job_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start scan");
@@ -238,6 +255,7 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
   const queuedImages = form.images ?? [];
   const cloudScanReady = Boolean(selectedConnection && isScannableConnection(selectedConnection));
   const sourceRunReady = Boolean(selectedSource?.enabled);
+  const repoScanReady = target !== "repository" || Boolean(repoUrlInput.trim());
 
   return (
     <div className="max-w-5xl">
@@ -375,6 +393,7 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
               <div className="flex flex-wrap gap-2">
                 {(
                   [
+                    { id: "repository" as const, label: "Public repo", icon: Link2, hint: "GitHub/GitLab URL — shallow clone" },
                     { id: "workstation" as const, label: "Workstation", icon: Bot, hint: "Agent projects on this machine" },
                     { id: "containers" as const, label: "Containers", icon: Container, hint: "OCI images and registries" },
                     { id: "kubernetes" as const, label: "Kubernetes", icon: Server, hint: "Pods in current kube context" },
@@ -402,6 +421,28 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
                   );
                 })}
               </div>
+
+              {target === "repository" && (
+                <Section title="Public git repository">
+                  <p className="mb-3 text-xs text-[color:var(--text-tertiary)]">
+                    Paste an https git URL. The control plane shallow-clones the repo, scans it statically, then removes the temp checkout. Repo code is never executed.
+                  </p>
+                  <input
+                    type="url"
+                    placeholder="https://github.com/org/agent-repo"
+                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 font-mono text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
+                    value={repoUrlInput}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setRepoUrlInput(value);
+                      setForm((current) => ({ ...current, repo_url: value.trim() || undefined }));
+                    }}
+                  />
+                  <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
+                    Private repos: set <span className="font-mono">AGENT_BOM_REPO_SCAN_TOKEN</span> on the control plane host.
+                  </p>
+                </Section>
+              )}
 
               {target === "workstation" && (
                 <Section title="Python agent projects">
@@ -571,7 +612,7 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
         <div className="space-y-5">
           <ScopeSummaryPanel chips={scopeChips} mode={scanMode} />
 
-          {scanMode === "adhoc" && (
+          {scanMode === "adhoc" && target !== "repository" && (
             <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">
                 Advanced targets
@@ -671,7 +712,7 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
           ) : (
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !repoScanReady}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               {loading ? (
@@ -680,7 +721,7 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
                 </>
               ) : (
                 <>
-                  Start ad-hoc scan <ArrowRight className="h-4 w-4" />
+                  {target === "repository" ? "Scan repository" : "Start ad-hoc scan"} <ArrowRight className="h-4 w-4" />
                 </>
               )}
             </button>

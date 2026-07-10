@@ -18,6 +18,7 @@ export interface ScanRequest {
   k8s_namespace?: string | undefined;
   tf_dirs?: string[] | undefined;
   gha_path?: string | undefined;
+  repo_url?: string | undefined;
   agent_projects?: string[] | undefined;
   sbom?: string | undefined;
   enrich?: boolean | undefined;

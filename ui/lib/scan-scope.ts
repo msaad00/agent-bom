@@ -2,7 +2,7 @@ import type { CloudConnectionRecord, ScanRequest } from "@/lib/api";
 
 export type ScanMode = "connected" | "adhoc" | "scheduled";
 
-export type AdhocScanTarget = "workstation" | "containers" | "kubernetes";
+export type AdhocScanTarget = "workstation" | "containers" | "kubernetes" | "repository";
 
 export type ScanScopeChip = {
   label: string;
@@ -82,12 +82,25 @@ export function adhocScopeChips(
   form: ScanRequest,
   target: AdhocScanTarget,
 ): ScanScopeChip[] {
-  const chips: ScanScopeChip[] = [
-    {
-      label: "Baseline",
-      value: "Local MCP configs on control plane host",
-    },
-  ];
+  const chips: ScanScopeChip[] = [];
+
+  if (target === "repository" && form.repo_url?.trim()) {
+    chips.push(
+      { label: "Repository", value: form.repo_url.trim() },
+      { label: "Clone", value: "Shallow read-only git clone on control plane" },
+      { label: "Execution", value: "Static parse only — repo code never runs" },
+      { label: "Surfaces", value: "Agents · MCP · Terraform · GitHub Actions" },
+    );
+    if (form.enrich) {
+      chips.push({ label: "Enrichment", value: "NVD · EPSS · CISA KEV" });
+    }
+    return chips;
+  }
+
+  chips.push({
+    label: "Baseline",
+    value: "Local MCP configs on control plane host",
+  });
 
   const projects = form.agent_projects ?? [];
   const images = form.images ?? [];

@@ -130,6 +130,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Eye,
     links: [
       { href: "/compliance", label: "Compliance", icon: FileCheck },
+      { href: "/findings?lens=trust", label: "Findings triage", icon: Bug },
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
       { href: "/audit", label: "Audit Log", icon: FileText },
     ],
@@ -537,15 +538,16 @@ export function Nav() {
               {isExpanded && !isCollapsed && (
                 <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-[color:var(--border-subtle)] pl-2">
                   {group.visibleLinks.map(({ href, label, icon: Icon }) => {
+                    const hrefPath = href.split("?")[0] ?? href;
                     const active =
-                      href === "/"
+                      hrefPath === "/"
                         ? path === "/"
-                        : href === "/findings"
+                        : hrefPath === "/findings"
                         ? path.startsWith("/findings")
-                        : path.startsWith(href);
-                    const isFindings = href === "/findings";
-                    const showVulnBadge = isFindings && counts && counts.critical > 0;
-                    const needsSetup = !active && !showVulnBadge && navLinkNeedsSetup(href, counts);
+                        : path.startsWith(hrefPath);
+                    const isFindings = hrefPath === "/findings";
+                    const showVulnBadge = isFindings && href === "/findings" && counts && counts.critical > 0;
+                    const needsSetup = !active && !showVulnBadge && navLinkNeedsSetup(hrefPath, counts);
 
                     return (
                       <Link
@@ -557,7 +559,7 @@ export function Nav() {
                             : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                         }`}
                       >
-                        <Icon className={`w-3.5 h-3.5 shrink-0 ${navLinkIconClass(href, active)}`} />
+                        <Icon className={`w-3.5 h-3.5 shrink-0 ${navLinkIconClass(hrefPath, active)}`} />
                         <span className="truncate">{label}</span>
 
                         {/* Capable-but-unconnected hint */}
@@ -654,12 +656,13 @@ export function Nav() {
                     </div>
                     <div className="space-y-1">
                       {group.visibleLinks.map(({ href, label, icon: Icon }) => {
+                        const hrefPath = href.split("?")[0] ?? href;
                         const active =
-                          href === "/"
+                          hrefPath === "/"
                             ? path === "/"
-                            : href === "/findings"
+                            : hrefPath === "/findings"
                             ? path.startsWith("/findings")
-                            : path.startsWith(href);
+                            : path.startsWith(hrefPath);
                         return (
                           <Link
                             key={href}
@@ -672,7 +675,7 @@ export function Nav() {
                             onClick={() => setCollapsedFlyoutGroup(null)}
                           >
                             <Icon
-                              className={`mt-0.5 h-4 w-4 shrink-0 ${navLinkIconClass(href, active, "group/link")}`}
+                              className={`mt-0.5 h-4 w-4 shrink-0 ${navLinkIconClass(hrefPath, active, "group/link")}`}
                             />
                             <span className="min-w-0">
                               <span className="block text-sm font-medium">{label}</span>

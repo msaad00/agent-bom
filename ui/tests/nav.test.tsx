@@ -311,7 +311,7 @@ describe('Nav', () => {
       'AI inventory': ['/agents', '/manifest', '/fleet'],
       'Cloud & Data': ['/connections', '/sources', '/scan', '/identity', '/drift'],
       Runtime: ['/runtime', '/traces'],
-      Governance: ['/compliance', '/governance', '/audit'],
+      Governance: ['/compliance', '/findings?lens=trust', '/governance', '/audit'],
       Reference: ['/registry'],
       Operations: ['/cost', '/jobs', '/activity'],
     }

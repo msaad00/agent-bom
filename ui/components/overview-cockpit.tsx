@@ -316,6 +316,7 @@ export function OverviewCockpit({
                 <>
                   <QuickLink href="/compliance" icon={Shield} label="Compliance posture" detail="Framework coverage & trust center" />
                   <QuickLink href="/findings?severity=critical" icon={ShieldAlert} label="Critical findings" detail={`${critical} open`} />
+                  <QuickLink href="/findings?lens=trust" icon={Shield} label="Findings triage" detail="Shared with GRC for disposition" />
                   <QuickLink href="/governance" icon={Shield} label="Governance" detail="Policy and control evidence" />
                   <QuickLink href="/audit" icon={Shield} label="Audit trail" detail="Signed operator events" />
                   <QuickLink href="/connections" icon={Workflow} label="Integrations" detail={signals.connected ? "Live connectors" : "Connect cloud & SIEM"} />
@@ -326,7 +327,8 @@ export function OverviewCockpit({
                   <QuickLink href="/compliance" icon={Shield} label="Trust center" detail="Framework packs & control status" />
                   <QuickLink href="/audit" icon={Shield} label="Audit evidence" detail="Signed operator events" />
                   <QuickLink href="/governance" icon={Shield} label="Control mapping" detail="Policy and ownership" />
-                  <QuickLink href="/findings?severity=critical" icon={ShieldAlert} label="Open control gaps" detail={`${critical} critical`} />
+                  <QuickLink href="/findings?lens=trust&severity=critical" icon={ShieldAlert} label="Open control gaps" detail={`${critical} critical`} />
+                  <QuickLink href="/findings?lens=trust" icon={Shield} label="Findings triage" detail="Disposition & OpenVEX for attestations" />
                   <QuickLink href="/jobs" icon={Workflow} label="Evidence runs" detail="Scans that feed attestations" />
                 </>
               ) : null}

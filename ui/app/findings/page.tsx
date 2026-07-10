@@ -40,8 +40,16 @@ import {
   matchesIssueTypeFilter,
   type IssueTypeFilter,
 } from "@/lib/finding-issue-type";
+import {
+  findingsPageSubtitle,
+  findingsQueueDetail,
+  findingsQueueTitle,
+  findingsSearchPlaceholder,
+} from "@/lib/findings-lens";
+import { useFindingsLens } from "@/hooks/use-findings-lens";
 import { severityRank } from "@/lib/severity";
 import { Bug, Download, Layers, Loader2, Package, Server, ClipboardCheck } from "lucide-react";
+import { PageLaneHeader } from "@/components/page-lane";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -268,6 +276,8 @@ function FindingsPage() {
   const paramPage = searchParams.get("page");
   const paramScan = searchParams.get("scan") ?? searchParams.get("scan_id");
   const paramIssueType = searchParams.get("issue");
+  const paramLens = searchParams.get("lens");
+  const { lens, selectLens, lenses, label: lensLabel, hint: lensHint } = useFindingsLens(paramLens);
 
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
@@ -358,6 +368,7 @@ function FindingsPage() {
     const params = new URLSearchParams();
     if (filter !== "all") params.set("severity", filter);
     if (issueTypeFilter !== "all") params.set("issue", issueTypeFilter);
+    if (lens !== "ops") params.set("lens", lens);
     if (search.trim()) params.set("q", search.trim());
     if (scope !== "latest") params.set("scope", scope);
     if (groupBy !== "none") params.set("group", groupBy);
@@ -365,7 +376,7 @@ function FindingsPage() {
     if (paramScan) params.set("scan", paramScan);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [filter, issueTypeFilter, search, scope, groupBy, page, paramScan, pathname, router]);
+  }, [filter, issueTypeFilter, lens, search, scope, groupBy, page, paramScan, pathname, router]);
 
   const collectVulns = useCallback((fullJobs: ScanJob[]) => {
     const vulnMap = new Map<string, EnrichedVuln>();
@@ -492,7 +503,7 @@ function FindingsPage() {
       setTriageError("");
     } catch (e: unknown) {
       if (e instanceof ApiAuthError || e instanceof ApiForbiddenError) {
-        setTriageError("Sign in with an analyst or admin role to record triage decisions.");
+        setTriageError("Sign in with a write-capable role (analyst/admin) to load triage — used by engineering and GRC.");
       } else {
         setTriageError(e instanceof Error ? e.message : "Unable to load finding triage queue.");
       }
@@ -510,10 +521,10 @@ function FindingsPage() {
     setTriageError("");
     const decisionReason =
       decision === "not_affected"
-        ? "Reviewed from the findings UI: vulnerable code is not in the executable path for this deployment."
+        ? "Reviewed from Findings: vulnerable code is not in the executable path for this deployment."
         : decision === "affected"
-          ? "Reviewed from the findings UI: finding remains applicable to this deployment."
-          : "Queued from the findings UI for analyst investigation.";
+          ? "Reviewed from Findings: finding remains applicable to this deployment."
+          : "Queued from Findings for investigation (engineering or GRC disposition).";
     try {
       const existing = triageRows.find((row) => triageKey(row.vulnerability_id, row.package) === key);
       if (existing && decision !== "under_investigation") {
@@ -536,7 +547,7 @@ function FindingsPage() {
       }
     } catch (e: unknown) {
       if (e instanceof ApiAuthError || e instanceof ApiForbiddenError) {
-        setTriageError("Sign in with an analyst or admin role to record triage decisions.");
+        setTriageError("Sign in with a write-capable role (analyst/admin) to record triage — shared by engineering and GRC.");
       } else {
         setTriageError(e instanceof Error ? e.message : "Unable to record triage decision.");
       }
@@ -553,7 +564,7 @@ function FindingsPage() {
       downloadJson(exported, `finding-triage-openvex-${new Date().toISOString().slice(0, 10)}.json`);
     } catch (e: unknown) {
       if (e instanceof ApiAuthError || e instanceof ApiForbiddenError) {
-        setTriageError("Sign in with an analyst or admin role to export signed VEX evidence.");
+        setTriageError("Sign in with a write-capable role (analyst/admin) to export OpenVEX — used for trust attestations.");
       } else {
         setTriageError(e instanceof Error ? e.message : "Unable to export signed VEX evidence.");
       }
@@ -807,45 +818,74 @@ function FindingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Findings</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            {scope === "latest"
-              ? paramScan
-                ? `${useServerPaging ? findingsTotalLabel : vulns.length} findings from scan ${paramScan.slice(0, 8)}.`
-                : `${useServerPaging ? findingsTotalLabel : vulns.length} findings from the latest completed scan.`
-              : `${useServerPaging ? findingsTotalLabel : vulns.length} findings aggregated across all completed scans.`}{" "}
-            {useServerPaging && findingsTotalApproximate ? "Total is cached from the first page and may be a lower bound on deep pages. " : ""}
-            Filter by issue type (vulnerability, misconfiguration, secrets, identity) — industry labels, not a full CNAPP claim.
-          </p>
-        </div>
-        {vulns.length > 0 && (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              onClick={handleExportVex}
-              disabled={vexExporting || vexEligibleCount === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-900 bg-emerald-950/40 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70 disabled:cursor-not-allowed disabled:opacity-50"
-              title={
-                vexEligibleCount > 0
-                  ? "Export signed OpenVEX JSON for findings triaged as not_affected"
-                  : "Mark a finding not_affected with justification to enable OpenVEX export"
-              }
-            >
-              {vexExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
-              Export OpenVEX
-            </button>
-            <button
-              onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
-              title="Export filtered findings as JSON"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Export JSON
-            </button>
-          </div>
+      <PageLaneHeader
+        lane="command"
+        title="Findings"
+        subtitle={findingsPageSubtitle(
+          lens,
+          `${useServerPaging ? findingsTotalLabel : vulns.length} findings`,
+          scope === "latest"
+            ? paramScan
+              ? `from scan ${paramScan.slice(0, 8)}.`
+              : "from the latest completed scan."
+            : "aggregated across completed scans.",
         )}
-      </div>
+        scopeChip={
+          <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-medium text-cyan-200">
+            Shared · ops &amp; GRC
+          </span>
+        }
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5"
+              role="group"
+              aria-label="Findings altitude"
+            >
+              {lenses.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => selectLens(value)}
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
+                    lens === value
+                      ? "bg-[color:var(--surface)] text-[color:var(--foreground)] shadow-sm"
+                      : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
+                  }`}
+                >
+                  {lensLabel(value)}
+                </button>
+              ))}
+            </div>
+            {vulns.length > 0 ? (
+              <>
+                <button
+                  onClick={handleExportVex}
+                  disabled={vexExporting || vexEligibleCount === 0}
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-900 bg-emerald-950/40 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={
+                    vexEligibleCount > 0
+                      ? "Export signed OpenVEX JSON for findings triaged as not_affected"
+                      : "Mark a finding not_affected with justification to enable OpenVEX export"
+                  }
+                >
+                  {vexExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
+                  Export OpenVEX
+                </button>
+                <button
+                  onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+                  title="Export filtered findings as JSON"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export JSON
+                </button>
+              </>
+            ) : null}
+          </div>
+        }
+      />
+      <p className="text-xs text-[color:var(--text-tertiary)]">{lensHint}</p>
 
       {triageError && (
         <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
@@ -896,10 +936,8 @@ function FindingsPage() {
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-zinc-200">Findings queue</h2>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Triage one finding at a time. Evidence, reachability, fixes, and OpenVEX disposition live in the drawer.
-                </p>
+                <h2 className="text-sm font-semibold text-zinc-200">{findingsQueueTitle(lens)}</h2>
+                <p className="mt-1 text-xs text-zinc-500">{findingsQueueDetail(lens)}</p>
               </div>
               <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
                 <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{PAGE_SIZE} per page</span>
@@ -910,6 +948,21 @@ function FindingsPage() {
                 >
                   {vexEligibleCount} OpenVEX-ready
                 </span>
+                {lens === "trust" ? (
+                  <a
+                    href="/compliance"
+                    className="rounded-full border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-emerald-300 hover:bg-emerald-950/50"
+                  >
+                    Trust center
+                  </a>
+                ) : (
+                  <a
+                    href="/remediation"
+                    className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1 hover:border-zinc-700 hover:text-zinc-300"
+                  >
+                    Remediation
+                  </a>
+                )}
               </div>
             </div>
 
@@ -953,7 +1006,7 @@ function FindingsPage() {
               </div>
               <input
                 type="text"
-                placeholder="Search CVE, package, agent…"
+                placeholder={findingsSearchPlaceholder(lens)}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full sm:w-64 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
@@ -1085,6 +1138,7 @@ function FindingsPage() {
               triageBusy={triageBusyKey === triageKey(selectedVuln.id, selectedVuln.packages[0] ?? "*")}
               onTriageDecision={handleTriageDecision}
               onClose={() => setSelectedId(null)}
+              lens={lens}
             />
           )}
         </>

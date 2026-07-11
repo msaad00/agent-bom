@@ -86,7 +86,14 @@ def _summary(report_json: dict[str, Any]) -> dict[str, Any]:
     scorecard: dict[str, Any] = scorecard_raw if isinstance(scorecard_raw, dict) else {}
     inv_packages = inventory.get("packages")
     inv_servers = inventory.get("servers")
+    freshness_raw = report_json.get("vuln_data_freshness")
+    freshness: dict[str, Any] = freshness_raw if isinstance(freshness_raw, dict) else {}
+    from agent_bom import __version__
+
     return {
+        "tool_version": __version__,
+        "db_last_updated": freshness.get("last_updated"),
+        "db_age_days": freshness.get("age_days"),
         "agents": summary.get("total_agents", summary.get("agents", len(agents))),
         "servers": summary.get(
             "total_mcp_servers",

@@ -412,6 +412,10 @@ AGENT_BOM_VISUAL_LEAK_TIMEOUT_SECONDS
 AGENT_BOM_VULN_DB_MAX_AGE_HOURS  # runtime override for vuln-cache staleness threshold (hours, default 24); re-read at scan time so tests can monkeypatch; read in vuln_freshness.py
 AGENT_BOM_VULN_DB_OFFLINE  # airgap toggle that forces existing-cache-only freshness with no network refresh; mirrors --offline for non-CLI callers; read in vuln_freshness.py
 AGENT_BOM_VULN_DB_BUNDLE_DIR  # optional override for the air-gap KEV/EPSS sidecar feed directory; defaults to the parent of AGENT_BOM_DB_PATH; read in enrichment.py
+AGENT_BOM_DB_STALE_DAYS  # per-invocation vulnerability DB age gate threshold; re-read in vuln_freshness.py so CLI/tests can change policy without restarting
+AGENT_BOM_REQUIRE_FRESH_DB  # per-invocation opt-in for the stale vulnerability DB policy gate; mirrors --require-fresh-db
+AGENT_BOM_IN_CONTAINER  # runtime install-method detection override used only to print the correct container upgrade command
+AGENT_BOM_DOCKER_IMAGE  # runtime container image override used only to print the matching docker pull command
 
 # Coarse per-IP rate-limit ceiling override; resolved at call-time with bounds-checking in middleware.global_ip_rate_limit_rpm().
 AGENT_BOM_GLOBAL_IP_RATE_LIMIT_RPM

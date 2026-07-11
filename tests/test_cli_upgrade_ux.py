@@ -43,8 +43,10 @@ def test_detect_frozen_binary(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     method, command = _detect_install_method()
     assert method == "frozen"
-    assert "release binary" in command
-    assert "github.com" in command
+    assert command == (
+        "re-download the latest release binary from "
+        "https://github.com/msaad00/agent-bom/releases/latest"
+    )
 
 
 def test_detect_docker_via_env(monkeypatch):

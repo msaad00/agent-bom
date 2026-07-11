@@ -20,6 +20,7 @@
 <p align="center">Headless agent primitives and human cockpit surfaces over one shared evidence model.</p>
 
 <p align="center">
+  <a href="https://demo.agent-bom.com"><b>Live demo</b></a> (read-only sandbox) ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
   <a href="docs/FIRST_RUN.md">First Run</a> ·
   <a href="site-docs/deployment/overview.md">Self-host</a> ·

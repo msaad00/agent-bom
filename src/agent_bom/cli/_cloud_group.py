@@ -20,11 +20,24 @@ Usage::
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Optional
 
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+
+
+def _auto_update_db_default() -> bool:
+    """Cloud scans refresh the vuln DB to latest by default, matching ``agent-bom scan``.
+
+    Honors ``AGENT_BOM_AUTO_UPDATE_DB`` (set falsy to pin the DB for reproducible
+    CI). Offline runs skip the refresh downstream regardless of this value.
+    """
+    raw = os.environ.get("AGENT_BOM_AUTO_UPDATE_DB")
+    if raw is None:
+        return True
+    return raw.strip().lower() not in ("0", "false", "no", "off")
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from rich.console import Console
@@ -191,7 +204,7 @@ def _run_cloud_scan(
         aws_cis_benchmark=aws_on and cis,
         azure_cis_benchmark=azure_on and cis,
         gcp_cis_benchmark=gcp_on and cis,
-        auto_update_db=False,
+        auto_update_db=_auto_update_db_default(),
         output_format=output_format,
         output=output_path,
         quiet=quiet,

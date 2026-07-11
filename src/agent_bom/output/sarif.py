@@ -464,7 +464,8 @@ def _ensure_cve_sarif_rule(
     rule_props["user_interaction"] = finding.user_interaction
     rule_props["network_exploitable"] = bool(finding.network_exploitable)
     rule_props["exploit_likelihood"] = exploit_likelihood_value(finding)
-    tags = [*finding.cwe_ids, *exploitability_tags(parse_cvss_vector_signals(finding.cvss_vector))]
+    # Order-preserving de-dup keeps properties.tags byte-stable across runs.
+    tags = list(dict.fromkeys([*finding.cwe_ids, *exploitability_tags(parse_cvss_vector_signals(finding.cvss_vector))]))
     if tags:
         rule_props["tags"] = tags
     rules.append(
@@ -606,7 +607,14 @@ def to_sarif(
     results: list[dict[str, Any]] = []
     seen_rule_ids: set[str] = set()
 
-    for rank, finding in enumerate(cve_findings(report, blast_radii), 1):
+    # Stable-sort the CVE stream so exposure_path.rank never flips on score ties:
+    # primary key is descending unified risk, tie-broken by finding id. This keeps
+    # rank (and therefore SARIF/JSON bytes) deterministic across identical runs.
+    ordered_cve_findings = sorted(
+        cve_findings(report, blast_radii),
+        key=lambda finding: (-float(finding.risk_score or 0.0), finding.cve_id or finding.id or ""),
+    )
+    for rank, finding in enumerate(ordered_cve_findings, 1):
         rule_id = finding.cve_id or finding.id
         if not rule_id:
             continue

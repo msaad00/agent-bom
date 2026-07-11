@@ -277,11 +277,11 @@ def test_cyclonedx_formulation():
     report = _make_report()
     cdx = to_cyclonedx(report)
 
-    assert "metadata" in cdx
-    metadata = cdx["metadata"]
-    assert "formulation" in metadata, "CycloneDX metadata must include 'formulation'"
+    # CDX 1.6 defines formulation as a top-level BOM array, not a metadata field.
+    assert "formulation" in cdx, "CycloneDX must include top-level 'formulation'"
+    assert "formulation" not in cdx.get("metadata", {}), "formulation must not live under metadata"
 
-    formulation = metadata["formulation"]
+    formulation = cdx["formulation"]
     assert isinstance(formulation, list)
     assert len(formulation) >= 1
 
@@ -335,7 +335,7 @@ def test_cyclonedx_formulation_version_matches():
 
     report = _make_report()
     cdx = to_cyclonedx(report)
-    version_in_formulation = cdx["metadata"]["formulation"][0]["components"][0]["version"]
+    version_in_formulation = cdx["formulation"][0]["components"][0]["version"]
     assert version_in_formulation == __version__
 
 

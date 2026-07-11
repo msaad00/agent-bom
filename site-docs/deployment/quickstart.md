@@ -20,6 +20,25 @@ You run API + UI + Postgres in **your** cloud/VPC/K8s. Connected accounts get
 **read-only** roles only. Endpoints push fleet inventory. Scans and runtime
 audit flow into one graph — no mandatory vendor SaaS.
 
+## Ten-minute proof path
+
+```bash
+cp .env.example .env
+# Generate the mounted files in deploy/secrets/ as documented in
+# deploy/secrets/README.md before starting the production-shaped stack.
+scripts/deploy/install.sh platform-docker
+scripts/deploy/install.sh connect aws       # or azure | gcp | snowflake
+scripts/deploy/install.sh onboard \
+  --url http://localhost:8422 \
+  --api-key "$(cat deploy/secrets/api_key)"
+```
+
+Register the read-only identity printed by `connect` under **Connections**, run
+inventory, and verify a completed job plus non-empty resources/identities in
+**Security graph**. A zero finding count is valid; it must not be confused with
+missing inventory. Cloud keys stay in workload identity or mounted files inside
+the customer deployment, never in the browser.
+
 ## What feeds the control plane
 
 ```mermaid

@@ -5447,6 +5447,150 @@
         ]
       }
     },
+    "/v1/auth/oidc/callback": {
+      "get": {
+        "description": "Complete OIDC auth-code + PKCE login and mint a browser session cookie.",
+        "operationId": "oidc_browser_callback_v1_auth_oidc_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error_description",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Description"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oidc Browser Callback",
+        "tags": [
+          "enterprise"
+        ]
+      }
+    },
+    "/v1/auth/oidc/login": {
+      "get": {
+        "description": "Start OIDC authorization-code + PKCE login for the dashboard.",
+        "operationId": "oidc_browser_login_v1_auth_oidc_login_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oidc Browser Login",
+        "tags": [
+          "enterprise"
+        ]
+      }
+    },
     "/v1/auth/policy": {
       "get": {
         "description": "Report control-plane operator posture for auth, rate-limit and runtime safety controls.\n\nIntended for operator runbooks and posture dashboards. The payload is the\nprocess-wide control-plane configuration (rotation policy, header gates,\nsandbox defaults, identity provisioning posture) \u2014 it is not a tenant-scoped\nrecord. The only tenant-scoped fields are ``tenant_quota_runtime`` (the\neffective quotas for the calling tenant) and the resolved tenant id used to\nderive them; everything else describes the deployment as a whole.",

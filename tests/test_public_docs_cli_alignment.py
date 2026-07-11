@@ -40,6 +40,22 @@ def test_public_docs_do_not_teach_removed_cli_surfaces() -> None:
         assert command not in combined
 
 
+def test_connect_sources_do_not_teach_removed_cli_surfaces() -> None:
+    # The `connect <provider>` guidance prints a scan command; it must point at a
+    # real surface, not a removed/misleading one (e.g. `agent-bom cloud snowflake`,
+    # which the cloud group does not register — Snowflake uses `scan --snowflake`).
+    from agent_bom.cli._entry_points import _CONNECT_SOURCES
+
+    removed_or_misleading = [
+        "agent-bom generate-sbom",
+        "agent-bom cloud snowflake",
+        "agent-bom cis-benchmark",
+    ]
+    for source in _CONNECT_SOURCES.values():
+        for bad in removed_or_misleading:
+            assert bad not in source.scan_command, f"{source.name} teaches removed surface: {source.scan_command}"
+
+
 def test_documented_primary_commands_are_real_cli_surfaces() -> None:
     runner = CliRunner()
     commands = [

@@ -122,7 +122,7 @@ _CONNECT_SOURCES: dict[str, _ConnectSource] = {
         inventory_env="SNOWFLAKE_ACCOUNT",
         inventory_value="<your-account-locator>",
         cred_env_vars=("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PRIVATE_KEY_PATH"),
-        scan_command="agent-bom cloud snowflake",
+        scan_command="agent-bom scan --snowflake",
         role_summary="Read-only role (warehouse USAGE + governance views). No DML/DDL grants.",
     ),
 }

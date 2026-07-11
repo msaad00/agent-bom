@@ -293,6 +293,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     and training run metadata via ``quantitativeAnalysis``.
     """
     components = []
+    services: list[dict] = []
     vulnerabilities_cdx = []
     dependencies = []
 
@@ -356,16 +357,18 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 "description": f"MCP Server ({server.transport.value})",
                 "properties": server_props,
             }
-            # Add MCP tool capabilities as services (CycloneDX 1.6 services array)
-            if server.tools:
-                server_component["services"] = [
-                    {
-                        "name": tool.name,
-                        "description": tool.description or "",
-                    }
-                    for tool in server.tools
-                ]
             components.append(server_component)
+            # MCP tool capabilities belong in the top-level CycloneDX 1.6
+            # ``services`` array — ``services`` is not a valid property of a
+            # component, so nesting it here fails strict 1.6 validation.
+            for tool in server.tools:
+                service_entry: dict = {
+                    "bom-ref": _sanitize_bom_ref(f"service-{server_ref}-{tool.name}"),
+                    "name": tool.name,
+                }
+                if tool.description:
+                    service_entry["description"] = tool.description
+                services.append(service_entry)
             agent_deps.append(server_ref)
 
             for pkg in server.packages:
@@ -541,21 +544,26 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 {"name": "agent-bom:total-vulnerabilities", "value": str(report.total_vulnerabilities)},
                 {"name": "agent-bom:ml-models", "value": str(len(report.model_provenance) + len(report.model_files))},
             ],
-            "formulation": [
-                {
-                    "components": [
-                        {
-                            "type": "application",
-                            "name": "agent-bom",
-                            "version": __version__,
-                        }
-                    ]
-                }
-            ],
         },
         "components": components,
         "dependencies": dependencies,
+        # CDX 1.6 defines `formulation` as a top-level BOM array, not a metadata
+        # field — placing it under metadata fails strict 1.6 schema validation.
+        "formulation": [
+            {
+                "components": [
+                    {
+                        "type": "application",
+                        "name": "agent-bom",
+                        "version": __version__,
+                    }
+                ]
+            }
+        ],
     }
+
+    if services:
+        cdx["services"] = services
 
     if vulnerabilities_cdx:
         cdx["vulnerabilities"] = vulnerabilities_cdx

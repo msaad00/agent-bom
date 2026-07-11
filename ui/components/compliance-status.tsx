@@ -5,6 +5,14 @@ import {
   XCircle,
 } from "lucide-react";
 
+// Statuses with no vulnerability-derived evidence to score. The backend emits
+// "no_data" (aggregate /v1/compliance) and "not_evaluated" (per-framework
+// narratives) for scans that mapped no findings — these must read as neutral
+// "Not evaluated", never green "Compliant" or red "Non-compliant".
+export function isNotEvaluated(status: string): boolean {
+  return status === "not_evaluated" || status === "no_data";
+}
+
 export function StatusIcon({ status, className }: { status: string; className?: string }) {
   switch (status) {
     case "pass":
@@ -47,6 +55,9 @@ export function postureLabel(status: string): string {
       return "Needs attention";
     case "fail":
       return "Non-compliant";
+    case "not_evaluated":
+    case "no_data":
+      return "Not evaluated";
     default:
       return "No data";
   }

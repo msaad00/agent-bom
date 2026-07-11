@@ -82,9 +82,7 @@ def test_get_pool_password_via_kwargs_not_dsn(monkeypatch, tmp_path):
 
 def test_resolve_postgres_url_strips_embedded_password(monkeypatch):
     """A password embedded directly in the URL is moved to the secret resolver."""
-    monkeypatch.setenv(
-        "AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app:inline-pw@postgres:5432/agent_bom"
-    )
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app:inline-pw@postgres:5432/agent_bom")
     monkeypatch.delenv("AGENT_BOM_POSTGRES_PASSWORD_FILE", raising=False)
     monkeypatch.delenv("AGENT_BOM_POSTGRES_AUTH_MODE", raising=False)
 
@@ -244,9 +242,7 @@ def test_resolve_postgres_secret_iam_mode(monkeypatch):
     capture: dict = {}
     _install_fake_boto3(monkeypatch, token="iam-token", capture=capture)
 
-    monkeypatch.setenv(
-        "AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app@db.example.com:5432/agent_bom"
-    )
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app@db.example.com:5432/agent_bom")
     monkeypatch.setenv("AGENT_BOM_POSTGRES_AUTH_MODE", "iam")
     monkeypatch.setenv("AGENT_BOM_POSTGRES_IAM_REGION", "eu-west-1")
     monkeypatch.delenv("AGENT_BOM_POSTGRES_IAM_PROVIDER", raising=False)
@@ -257,6 +253,45 @@ def test_resolve_postgres_secret_iam_mode(monkeypatch):
     assert capture["DBHostname"] == "db.example.com"
     assert capture["Region"] == "eu-west-1"
     assert "iam-token" not in postgres_common.resolve_postgres_url()
+
+
+def test_iam_pool_resolves_fresh_token_for_each_connection(monkeypatch):
+    """Pool replacement connections must not reuse an expired RDS IAM token."""
+    postgres_common.reset_pool()
+    tokens = iter(["token-1", "token-2"])
+    captured: dict[str, object] = {}
+
+    class FakeConnection:
+        calls: list[tuple[str, dict[str, object]]] = []
+
+        @classmethod
+        def connect(cls, conninfo="", **kwargs):
+            cls.calls.append((conninfo, kwargs))
+            return object()
+
+    class FakePool:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def connection(self):
+            return _RoleConnection()
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app@db.example:5432/agent_bom")
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_AUTH_MODE", "iam")
+    monkeypatch.setattr(postgres_common, "resolve_postgres_secret", lambda: next(tokens))
+    monkeypatch.setitem(sys.modules, "psycopg", types.SimpleNamespace(Connection=FakeConnection))
+    monkeypatch.setitem(sys.modules, "psycopg_pool", types.SimpleNamespace(ConnectionPool=FakePool))
+
+    try:
+        postgres_common._get_pool()
+        connection_class = captured["connection_class"]
+        connection_class.connect("postgresql://agent_bom_app@db.example:5432/agent_bom")
+        connection_class.connect("postgresql://agent_bom_app@db.example:5432/agent_bom")
+    finally:
+        postgres_common.reset_pool()
+
+    assert [call[1]["password"] for call in FakeConnection.calls] == ["token-1", "token-2"]
+    assert "password" not in captured["kwargs"]
 
 
 def test_password_mode_is_default(monkeypatch):

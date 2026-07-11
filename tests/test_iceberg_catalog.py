@@ -165,8 +165,8 @@ def test_round_trip_against_fake_catalog() -> None:
     assert fake.namespaces == [("lake",)]
     assert "lake.cves" in fake.tables
     table = fake.tables["lake.cves"]
-    # schema handed to Iceberg must match the shared 27-col Parquet schema
-    assert len(table.schema) == 27
+    # schema handed to Iceberg must match the shared 28-col Parquet schema
+    assert len(table.schema) == 28
     assert table.schema.names[0] == "cve_id"
     assert len(table.appended) == 1
     assert table.appended[0].num_rows == 1

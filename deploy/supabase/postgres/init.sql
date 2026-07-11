@@ -1175,6 +1175,18 @@ BEGIN
 END
 $$;
 
+-- Clear the app-password GUC now that the role has been created. The init
+-- wrapper stores it via ALTER DATABASE ... SET, which persists the cleartext
+-- password in pg_db_role_setting where any connected role can read it
+-- (readonly→readwrite escalation). RESET drops it so current_setting() returns
+-- empty for every later session. current_database() targets whatever DB the
+-- wrapper set the GUC on (both run against POSTGRES_DB).
+DO $$
+BEGIN
+    EXECUTE format('ALTER DATABASE %I RESET init.app_password', current_database());
+END
+$$;
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- READ-ONLY ROLE: For dashboards, BI tools, and audit queries
 -- ══════════════════════════════════════════════════════════════════════════════

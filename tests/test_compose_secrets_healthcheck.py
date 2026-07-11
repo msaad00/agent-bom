@@ -252,6 +252,24 @@ def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     ]
 
 
+def test_postgres_init_resets_app_password_guc_after_reading_it() -> None:
+    """The init wrapper stores the app password via ALTER DATABASE ... SET
+    init.app_password, which persists in cleartext in pg_db_role_setting.
+    init.sql must RESET it after creating the role so no later session (e.g. a
+    readonly role) can read the password back via current_setting()."""
+    init_sql = (COMPOSE_DIR / "supabase" / "postgres" / "init.sql").read_text(encoding="utf-8")
+
+    read_idx = init_sql.find("current_setting('init.app_password'")
+    assert read_idx != -1, "init.sql must read the app password via current_setting('init.app_password', ...)"
+
+    reset_idx = init_sql.find("RESET init.app_password")
+    assert reset_idx != -1, (
+        "init.sql must RESET init.app_password so the cleartext app password does "
+        "not persist in pg_db_role_setting (readable by any connected role)."
+    )
+    assert reset_idx > read_idx, "the RESET of init.app_password must come after the read that uses it."
+
+
 def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:
     active_docs = [
         ROOT / "docs" / "DEPLOYMENT.md",

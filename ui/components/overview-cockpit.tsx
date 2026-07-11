@@ -10,7 +10,6 @@ import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
 import {
   ISSUE_TYPE_SHORT,
-  SEVERITY_BANDS,
   emptyIssueSeverityMatrix,
   findingsHref,
   type IssueSeverityMatrix,

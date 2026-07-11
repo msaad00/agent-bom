@@ -205,13 +205,24 @@ def _list_connect_sources() -> None:
 )
 @click.pass_context
 def connect_group(ctx: click.Context) -> None:
-    """Read-only onboard a cloud or data source.
+    """Read-only onboard a cloud or data source — describe, or establish + verify.
 
     \b
-    Prints the exact read-only setup for a source (CLI, CloudShell, or
-    Terraform grant + opt-in inventory env var), then reports whether local
-    credentials are already detectable. agent-bom never mutates the target
-    and does no network I/O until you opt in.
+    With no connection flags, `connect <source>` prints the exact read-only
+    setup (CLI, CloudShell, or Terraform grant + opt-in inventory env var) and
+    reports whether local credentials are detectable — no network I/O.
+
+    \b
+    Given connection params (e.g. aws --role-arn/--external-id/--region) it goes
+    further and actually establishes + verifies a read-only connection using the
+    SAME broker and schema as the API:
+      * locally (default): broker a short-lived read-only credential and run a
+        trivial read-only probe (e.g. AWS sts:GetCallerIdentity) to prove it;
+      * with --server/--api-key: register the connection with a running control
+        plane (POST /v1/cloud/connections) and run its /test — the identical
+        connection the UI/API create.
+    The secret (--external-id / client secret / key) is write-only: never
+    printed, never logged.
 
     \b
     Sources:
@@ -227,24 +238,320 @@ def connect_group(ctx: click.Context) -> None:
         _list_connect_sources()
 
 
-def _make_connect_subcommand(source: _ConnectSource) -> click.Command:
-    @click.command(
-        source.name,
-        help=(
-            f"Read-only onboarding for {source.title}.\n\n"
-            f"Prints CLI, CloudShell, and Terraform grant options "
-            f"({source.terraform_module} / {source.provision_path}), the "
-            f"opt-in inventory env var ({source.inventory_env}), and the scan command, "
-            f"then reports whether local credentials are detectable. Read-only — nothing "
-            f"is created or modified in your account."
-        ),
+# ── Establish + verify: shared schema (CloudConnectionCreate) + shared broker ──
+#
+# Each provider exposes provider-appropriate flags that map onto the *canonical*
+# ``CloudConnectionCreate`` fields (role_ref / external_id / regions / auth_params)
+# so the CLI never invents a divergent connection shape. ``secret`` fields carry
+# the single write-only secret and are never echoed.
+
+
+@dataclass(frozen=True)
+class _ConnectField:
+    """One provider flag and how it maps onto the canonical connection schema.
+
+    ``kind`` selects the canonical target: ``role_ref`` and ``secret`` set the
+    two required columns, ``secret_file`` reads the secret from a file path,
+    ``regions`` is a repeatable list, and ``auth_param`` writes into the
+    non-secret ``auth_params`` blob under ``auth_key``.
+    """
+
+    flag: str
+    param: str
+    kind: str
+    help: str
+    auth_key: str = ""
+
+
+_CONNECT_FIELDS: dict[str, tuple[_ConnectField, ...]] = {
+    "aws": (
+        _ConnectField("--role-arn", "role_arn", "role_ref", "IAM role ARN to assume, read-only (the connection role_ref)."),
+        _ConnectField("--external-id", "external_id", "secret", "STS ExternalId — write-only secret; never printed or logged."),
+        _ConnectField("--region", "regions", "regions", "Region to scan (repeatable)."),
+    ),
+    "azure": (
+        _ConnectField("--client-id", "client_id", "role_ref", "App/service-principal client id (the connection role_ref)."),
+        _ConnectField("--client-secret", "client_secret", "secret", "Client secret — write-only; never printed or logged."),
+        _ConnectField("--tenant-id", "tenant_id", "auth_param", "Azure AD tenant id.", auth_key="tenant_id"),
+        _ConnectField("--subscription-id", "subscription_id", "auth_param", "Azure subscription id.", auth_key="subscription_id"),
+    ),
+    "gcp": (
+        _ConnectField("--service-account", "service_account", "role_ref", "Service-account email (the connection role_ref)."),
+        _ConnectField("--key-file", "key_file", "secret_file", "Path to the service-account key JSON — write-only; never printed."),
+        _ConnectField("--project", "project", "auth_param", "GCP project id.", auth_key="project_id"),
+    ),
+    "snowflake": (
+        _ConnectField("--account", "account", "role_ref", "Snowflake account or account/user (the connection role_ref)."),
+        _ConnectField("--private-key-file", "private_key_file", "secret_file", "Path to the PEM private key — write-only; never printed."),
+        _ConnectField("--user", "user", "auth_param", "Snowflake user.", auth_key="user"),
+        _ConnectField("--role", "role", "auth_param", "Snowflake role.", auth_key="role"),
+        _ConnectField("--warehouse", "warehouse", "auth_param", "Snowflake warehouse.", auth_key="warehouse"),
+    ),
+}
+
+
+def _connect_options(source: _ConnectSource) -> list[click.Option]:
+    """Build the Click options for one provider's establish + verify flags."""
+    options: list[click.Option] = []
+    for field in _CONNECT_FIELDS[source.name]:
+        decls = [field.flag, field.param]
+        if field.kind == "regions":
+            options.append(click.Option(decls, multiple=True, help=field.help))
+        elif field.kind == "secret_file":
+            options.append(click.Option(decls, type=click.Path(exists=True, dir_okay=False), help=field.help))
+        else:
+            options.append(click.Option(decls, help=field.help))
+    options.extend(
+        [
+            click.Option(["--display-name"], help="Human label for the connection (defaults to the provider name)."),
+            click.Option(["--server"], help="Control-plane base URL to register the connection with (uses the API)."),
+            click.Option(["--api-key"], help="API key for --server registration."),
+            click.Option(["--tenant"], help="Control-plane tenant id for --server registration."),
+            click.Option(
+                ["--scan", "do_scan"],
+                is_flag=True,
+                help="After establishing, trigger a scan (server /scan, else local scan guidance).",
+            ),
+        ]
     )
-    def _cmd() -> None:
+    return options
+
+
+def _resolve_connect_inputs(source: _ConnectSource, kwargs: dict[str, object]) -> tuple[str, str, list[str], dict[str, str], bool]:
+    """Map raw Click kwargs onto canonical (role_ref, external_id, regions, auth_params).
+
+    Returns the four canonical pieces plus ``supplied`` — whether any connection
+    param was given at all (if not, the caller keeps the informational default).
+    ``secret_file`` fields are read from disk here; the secret content is never
+    returned to the caller as anything but the ``external_id`` value.
+    """
+    role_ref = ""
+    external_id = ""
+    regions: list[str] = []
+    auth_params: dict[str, str] = {}
+    supplied = False
+    for field in _CONNECT_FIELDS[source.name]:
+        value = kwargs.get(field.param)
+        if field.kind == "regions":
+            if value:
+                regions = [str(item) for item in value]  # type: ignore[union-attr]
+                supplied = True
+            continue
+        if not value:
+            continue
+        supplied = True
+        if field.kind == "role_ref":
+            role_ref = str(value)
+        elif field.kind == "secret":
+            external_id = str(value)
+        elif field.kind == "secret_file":
+            from pathlib import Path
+
+            external_id = Path(str(value)).read_text(encoding="utf-8")
+        elif field.kind == "auth_param":
+            auth_params[field.auth_key] = str(value)
+    return role_ref, external_id, regions, auth_params, supplied
+
+
+def _readonly_probe(provider: str, brokered: object, regions: list[str]) -> str:
+    """Run a trivial, bounded, read-only call against a brokered credential.
+
+    Proves the read-only credential actually works. Returns a short, non-secret
+    description of what the probe saw (e.g. the AWS account id) — never the
+    connection secret.
+    """
+    if provider == "aws":
+        identity = brokered.client("sts").get_caller_identity()  # type: ignore[attr-defined]
+        account = str(identity.get("Account") or "").strip()
+        return f"AWS account {account}" if account else "AWS caller identity confirmed"
+    if provider == "azure":
+        # Bounded token acquisition against ARM — read-only, no resource calls.
+        brokered.get_token("https://management.azure.com/.default")  # type: ignore[attr-defined]
+        return "Azure Reader credential acquired a management token"
+    if provider == "gcp":
+        import google.auth.transport.requests as _ga_requests
+
+        brokered.refresh(_ga_requests.Request())  # type: ignore[attr-defined]
+        return "GCP read-only service-account credential refreshed"
+    if provider == "snowflake":
+        try:
+            cursor = brokered.cursor()  # type: ignore[attr-defined]
+            cursor.execute("SELECT CURRENT_VERSION()")
+            cursor.fetchone()
+        finally:
+            try:
+                brokered.close()  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001 - close best-effort
+                pass
+        return "Snowflake read-only key-pair connection opened"
+    return "credential brokered"
+
+
+def _local_verify(
+    con: object,
+    source: _ConnectSource,
+    *,
+    role_ref: str,
+    external_id: str,
+    regions: list[str],
+    auth_params: dict[str, str],
+    display_name: str,
+    do_scan: bool,
+) -> None:
+    """Broker a read-only credential in-process and prove it with a bounded probe.
+
+    Standalone — needs no control plane. Degrades gracefully with an install hint
+    when the provider SDK extra is missing. The secret is never printed.
+    """
+    from rich.markup import escape
+
+    from agent_bom.cloud.base import CloudDiscoveryError
+    from agent_bom.cloud.connection_broker import ConnectionBrokerError, broker_session
+    from agent_bom.cloud.connection_request import ephemeral_connection_record
+
+    con.print(f"[dim]Verifying a read-only {source.title} connection locally (no server)...[/dim]")  # type: ignore[attr-defined]
+    try:
+        with ephemeral_connection_record(
+            provider=source.name,
+            display_name=display_name,
+            role_ref=role_ref,
+            external_id=external_id,
+            regions=regions,
+            auth_params=auth_params,
+        ) as record:
+            brokered = broker_session(record, session_name="agent-bom-cli-verify")
+            detail = _readonly_probe(source.name, brokered, regions)
+    except CloudDiscoveryError as exc:
+        # Missing SDK extra — the broker's own install hint is already actionable.
+        # Escape so the ``[extra]`` in the hint is not swallowed as rich markup.
+        con.print(f"[yellow]Cannot verify locally:[/yellow] {escape(str(exc))}")  # type: ignore[attr-defined]
+        return
+    except (ConnectionBrokerError, Exception) as exc:  # noqa: BLE001 - broker/provider failure
+        from agent_bom.security import sanitize_error
+
+        con.print(f"[red]Verification failed:[/red] {escape(sanitize_error(exc, generic=True))}")  # type: ignore[attr-defined]
+        return
+
+    con.print(f"[green]Verified[/green] read-only credentials — {escape(detail)}.")  # type: ignore[attr-defined]
+    if do_scan:
+        con.print(f"[dim]Next, run the read-only scan:[/dim] [cyan]{source.scan_command}[/cyan]")  # type: ignore[attr-defined]
+
+
+def _register_via_server(
+    con: object,
+    source: _ConnectSource,
+    *,
+    role_ref: str,
+    external_id: str,
+    regions: list[str],
+    auth_params: dict[str, str],
+    display_name: str,
+    server: str,
+    api_key: str,
+    tenant: str,
+    do_scan: bool,
+) -> None:
+    """Register the connection with a control plane, then run its /test (and /scan).
+
+    Uses the API client + the SAME ``CloudConnectionCreate`` schema, so this is
+    the identical connection the UI/API create. The secret is sent for at-rest
+    encryption server-side and is never printed by the CLI.
+    """
+    from agent_bom.client import AgentBomApiError, AgentBomClient
+
+    client = AgentBomClient(base_url=server, api_key=api_key, tenant_id=tenant or None)
+    try:
+        created = client.create_cloud_connection(
+            provider=source.name,
+            display_name=display_name,
+            role_ref=role_ref,
+            external_id=external_id,
+            regions=regions,
+            auth_params=auth_params,
+        )
+        connection_id = str(created.get("id") or "")
+        con.print(f"[green]Registered[/green] {source.title} connection [bold]{connection_id}[/bold] on {server}.")  # type: ignore[attr-defined]
+        test = client.test_cloud_connection(connection_id)
+        con.print(f"[green]Test:[/green] read-only broker check -> {test.get('status', 'ok')}.")  # type: ignore[attr-defined]
+        if do_scan:
+            scan = client.scan_cloud_connection(connection_id)
+            con.print(f"[green]Scan:[/green] launched (scan_id {scan.get('scan_id', '?')}).")  # type: ignore[attr-defined]
+    except AgentBomApiError as exc:
+        con.print(f"[red]Control plane rejected the request ({exc.status_code}).[/red] See server logs for detail.")  # type: ignore[attr-defined]
+    finally:
+        client.close()
+
+
+def _make_connect_subcommand(source: _ConnectSource) -> click.Command:
+    def _cmd(**kwargs: object) -> None:
         from rich.console import Console
 
-        _render_connect_guidance(Console(), source)
+        con = Console()
+        role_ref, external_id, regions, auth_params, supplied = _resolve_connect_inputs(source, kwargs)
+        if not supplied:
+            # Back-compat: no connection flags -> unchanged informational output.
+            _render_connect_guidance(con, source)
+            return
 
-    return _cmd
+        display_name = str(kwargs.get("display_name") or "").strip() or f"{source.title} (read-only)"
+        server = str(kwargs.get("server") or "").strip()
+        api_key = str(kwargs.get("api_key") or "").strip()
+        tenant = str(kwargs.get("tenant") or "").strip()
+        do_scan = bool(kwargs.get("do_scan"))
+
+        if not role_ref or not external_id:
+            secret_flag = next(f.flag for f in _CONNECT_FIELDS[source.name] if f.kind in ("secret", "secret_file"))
+            role_flag = next(f.flag for f in _CONNECT_FIELDS[source.name] if f.kind == "role_ref")
+            con.print(f"[red]To establish a connection, provide both {role_flag} and {secret_flag}.[/red]")
+            raise click.exceptions.Exit(2)
+
+        if server or api_key:
+            if not server or not api_key:
+                con.print("[red]--server and --api-key are both required to register with a control plane.[/red]")
+                raise click.exceptions.Exit(2)
+            _register_via_server(
+                con,
+                source,
+                role_ref=role_ref,
+                external_id=external_id,
+                regions=regions,
+                auth_params=auth_params,
+                display_name=display_name,
+                server=server,
+                api_key=api_key,
+                tenant=tenant,
+                do_scan=do_scan,
+            )
+        else:
+            _local_verify(
+                con,
+                source,
+                role_ref=role_ref,
+                external_id=external_id,
+                regions=regions,
+                auth_params=auth_params,
+                display_name=display_name,
+                do_scan=do_scan,
+            )
+
+    command = click.Command(
+        source.name,
+        callback=_cmd,
+        params=_connect_options(source),
+        help=(
+            f"Read-only onboarding for {source.title}.\n\n"
+            f"With no connection flags: prints CLI, CloudShell, and Terraform grant "
+            f"options ({source.terraform_module} / {source.provision_path}), the opt-in "
+            f"inventory env var ({source.inventory_env}), and the scan command, then reports "
+            f"whether local credentials are detectable.\n\n"
+            f"With connection flags (e.g. {_CONNECT_FIELDS[source.name][0].flag} + the write-only "
+            f"secret): establishes + verifies a read-only connection using the same broker and "
+            f"CloudConnectionCreate schema as the API — locally by default, or against a control "
+            f"plane with --server/--api-key. Read-only; nothing is created or modified in your account."
+        ),
+        context_settings={"help_option_names": ["-h", "--help"]},
+    )
+    return command
 
 
 for _source in _CONNECT_SOURCES.values():

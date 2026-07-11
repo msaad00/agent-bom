@@ -93,6 +93,12 @@ export interface ScanResult {
   gcp_cis_benchmark?: unknown | undefined;
   snowflake_cis_benchmark?: unknown | undefined;
   databricks_cis_benchmark?: unknown | undefined;
+  /** Static repo extras (API clone / CLI project path). */
+  ai_inventory?: Record<string, unknown> | undefined;
+  project_inventory?: Record<string, unknown> | undefined;
+  skill_audit?: Record<string, unknown> | undefined;
+  iac_findings?: unknown | undefined;
+  sast?: Record<string, unknown> | undefined;
 }
 
 export interface GraphPagination {

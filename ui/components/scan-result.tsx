@@ -6,6 +6,7 @@ import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadiu
 import { useScanStream } from "@/lib/use-scan-stream";
 import { mergePipelineSteps, parsePipelineStepsFromProgress } from "@/lib/scan-pipeline-progress";
 import { ScanPipeline } from "@/components/scan-pipeline";
+import { RepoScanOverviewPanel } from "@/components/repo-scan-overview-panel";
 import { SeverityBadge } from "@/components/severity-badge";
 import { StatCard } from "@/components/stat-card";
 import {
@@ -102,6 +103,10 @@ export function ScanResultView({ id }: { id: string }) {
   const summary = result?.summary;
   const blastRadius = result?.blast_radius ?? [];
   const cloudEvidence = result ? summarizeCloudEvidence(result) : null;
+  const repoUrl =
+    typeof job?.request?.repo_url === "string" && job.request.repo_url.trim()
+      ? job.request.repo_url.trim()
+      : null;
 
   async function handleExport(format: GraphExportFormat = "json") {
     setExporting(true);
@@ -209,6 +214,8 @@ export function ScanResultView({ id }: { id: string }) {
           <MiniStat label="Critical" value={summary.critical_findings} accent="red" />
         </div>
       )}
+
+      {repoUrl && result ? <RepoScanOverviewPanel scanId={id} repoUrl={repoUrl} result={result} /> : null}
 
       {cloudEvidence ? <CloudEvidencePanel evidence={cloudEvidence} /> : null}
 

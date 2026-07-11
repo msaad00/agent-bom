@@ -587,6 +587,15 @@ def _ast_result_for_symbol_reach(paths: Iterable[str]) -> Any | None:
     return merged
 
 
+def _promote_repo_dependency_inventory(report: Any, ai_inventory: dict[str, Any]) -> None:
+    """Lift nested API dependency inventory to top-level for graph overlay parity with CLI."""
+    if getattr(report, "project_inventory_data", None):
+        return
+    nested = ai_inventory.get("dependency_inventory")
+    if isinstance(nested, dict) and nested:
+        report.project_inventory_data = nested
+
+
 def _run_scan_sync(job: ScanJob) -> None:
     """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
     from contextlib import ExitStack
@@ -954,6 +963,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     report.iac_findings_data = iac_findings_data
                 if repo_ai_inventory_data is not None:
                     report.ai_inventory_data = repo_ai_inventory_data
+                    _promote_repo_dependency_inventory(report, repo_ai_inventory_data)
                 if repo_sast_data is not None:
                     report.sast_data = repo_sast_data
                 report_json = to_json(report)
@@ -1146,6 +1156,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             report.iac_findings_data = iac_findings_data
         if repo_ai_inventory_data is not None:
             report.ai_inventory_data = repo_ai_inventory_data
+            _promote_repo_dependency_inventory(report, repo_ai_inventory_data)
         if repo_sast_data is not None:
             report.sast_data = repo_sast_data
         if req.vex:

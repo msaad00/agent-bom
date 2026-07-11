@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
 import { ComplianceControlRow } from "@/components/compliance-control-row";
-import { postureLabel, statusColor } from "@/components/compliance-status";
+import { isNotEvaluated, postureLabel, statusColor } from "@/components/compliance-status";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
@@ -67,8 +67,17 @@ function downloadBlobToFile(blob: Blob, filename: string) {
 function ScoreRing({ score, status }: { score: number; status: string }) {
   const r = 54;
   const circ = 2 * Math.PI * r;
-  const offset = circ - (score / 100) * circ;
-  const color = status === "pass" ? "#34d399" : status === "warning" ? "#facc15" : "#f87171";
+  // A no-evidence scan has nothing to score. Render a neutral, empty ring with
+  // a "Not evaluated" label rather than a red 0% that reads as "failing".
+  const notEvaluated = isNotEvaluated(status);
+  const offset = notEvaluated ? circ : circ - (score / 100) * circ;
+  const color = notEvaluated
+    ? "var(--text-tertiary)"
+    : status === "pass"
+      ? "#34d399"
+      : status === "warning"
+        ? "#facc15"
+        : "#f87171";
 
   return (
     <div className="relative w-32 h-32">
@@ -83,8 +92,19 @@ function ScoreRing({ score, status }: { score: number; status: string }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold text-[color:var(--foreground)]">{Math.round(score)}%</span>
-        <span className="text-[10px] text-[color:var(--text-tertiary)] uppercase tracking-wider">Score</span>
+        {notEvaluated ? (
+          <>
+            <span className="text-lg font-bold text-[color:var(--text-secondary)]">—</span>
+            <span className="px-1 text-center text-[9px] leading-tight text-[color:var(--text-tertiary)] uppercase tracking-wider">
+              Not evaluated
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-2xl font-bold text-[color:var(--foreground)]">{Math.round(score)}%</span>
+            <span className="text-[10px] text-[color:var(--text-tertiary)] uppercase tracking-wider">Score</span>
+          </>
+        )}
       </div>
     </div>
   );

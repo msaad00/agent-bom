@@ -974,7 +974,13 @@ async def get_compliance_summary(request: Request) -> dict:
         "summary",
     }
     response = {key: full.get(key) for key in summary_keys if key in full}
-    framework_summary: dict[str, dict[str, int]] = {}
+
+    # With zero completed scans nothing was evaluated: every control trivially
+    # lacks findings, so the per-control "pass" statuses and the *_pass counts
+    # from get_compliance would read as all-pass / fully compliant. That is the
+    # same false assurance /v1/compliance guards against with overall_status=
+    # "no_data" — so mirror it here and report not_evaluated instead of pass.
+    no_data = int(full.get("scan_count") or 0) == 0
 
     def _control_status_counts(value: list[object]) -> tuple[int, int, int, int] | None:
         controls = [item for item in value if isinstance(item, dict) and isinstance(item.get("status"), str)]
@@ -985,19 +991,36 @@ async def get_compliance_summary(request: Request) -> dict:
         fail_count = sum(1 for item in controls if item.get("status") == "fail")
         return len(controls), pass_count, warn_count, fail_count
 
+    framework_summary: dict[str, dict[str, int]] = {}
     for key, value in full.items():
         if isinstance(value, list):
             counts = _control_status_counts(value)
             if counts is None:
                 continue
             controls, pass_count, warn_count, fail_count = counts
+            if no_data:
+                pass_count = warn_count = fail_count = 0
             framework_summary[key] = {
                 "controls": controls,
                 "pass": pass_count,
                 "warning": warn_count,
                 "fail": fail_count,
+                "not_evaluated": controls - pass_count - warn_count - fail_count,
             }
     response["frameworks"] = framework_summary
+
+    if no_data:
+        raw_summary = full.get("summary")
+        if isinstance(raw_summary, dict):
+            adjusted: dict[str, Any] = {}
+            for count_key, count_value in raw_summary.items():
+                if count_key.endswith("_pass"):
+                    adjusted[count_key] = 0
+                    adjusted[f"{count_key[:-len('_pass')]}_not_evaluated"] = count_value
+                else:
+                    adjusted[count_key] = count_value
+            response["summary"] = adjusted
+
     return response
 
 

@@ -353,6 +353,56 @@ def test_compliance_summary_counts():
     _clear_jobs()
 
 
+def test_compliance_summary_no_scans_reports_not_evaluated():
+    """With no completed scans /v1/compliance/summary must not report all-pass.
+
+    The *_pass counts and per-framework pass counts equalled the control
+    catalogue size even though nothing was evaluated — false full-compliance.
+    Mirror /v1/compliance's no_data contract: report 0 pass / not_evaluated.
+    """
+    _clear_jobs()
+    client = TestClient(app)
+    data = client.get("/v1/compliance/summary", headers=_AUTH_HEADERS).json()
+
+    assert data["scan_count"] == 0
+    assert data["overall_status"] == "no_data"
+    assert data["overall_score"] == 0.0
+
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        assert data["summary"][f"{metadata.summary_prefix}_pass"] == 0
+        assert data["summary"][f"{metadata.summary_prefix}_not_evaluated"] == metadata.control_count
+
+    for fw in data["frameworks"].values():
+        assert fw["pass"] == 0
+        assert fw["warning"] == 0
+        assert fw["fail"] == 0
+        assert fw["not_evaluated"] == fw["controls"]
+    _clear_jobs()
+
+
+def test_compliance_summary_with_scan_counts_evaluated_controls():
+    """With a real finding the summary still reports honest pass/fail counts."""
+    _clear_jobs()
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2025-2222",
+                "severity": "high",
+                "package": "express",
+                "affected_agents": ["claude-desktop"],
+                "owasp_tags": ["LLM05"],
+            },
+        ]
+    )
+    client = TestClient(app)
+    data = client.get("/v1/compliance/summary", headers=_AUTH_HEADERS).json()
+    assert data["scan_count"] == 1
+    assert data["summary"]["owasp_fail"] == 1
+    assert data["summary"]["owasp_pass"] == 9
+    assert "owasp_not_evaluated" not in data["summary"]
+    _clear_jobs()
+
+
 def test_posture_has_proxy_flips_on_proxy_alert_ingest():
     """audit P1-B: ingesting proxy alerts via /v1/proxy/audit must flip
     the ``has_proxy`` posture flag on /v1/posture/counts.

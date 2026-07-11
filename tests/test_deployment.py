@@ -110,8 +110,8 @@ def test_dockerfile_sse_does_not_opt_into_insecure_public_mode():
     assert "AGENT_BOM_MCP_BEARER_TOKEN" in content
 
 
-def test_clickhouse_grafana_compose_has_no_default_admin_password():
-    """Analytics compose must not publish admin/admin or bind public ports."""
+def test_clickhouse_grafana_compose_reads_admin_password_from_secret_file():
+    """Analytics compose must use a mounted password file and local ports."""
     import yaml
 
     path = ROOT / "deploy" / "supabase" / "clickhouse" / "docker-compose.yml"
@@ -121,8 +121,10 @@ def test_clickhouse_grafana_compose_has_no_default_admin_password():
 
     assert grafana["environment"]["GF_SECURITY_ADMIN_USER"] != "admin"
     assert "GRAFANA_ADMIN_USER:?" in grafana["environment"]["GF_SECURITY_ADMIN_USER"]
-    assert grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"] != "admin"
-    assert "GRAFANA_ADMIN_PASSWORD:?" in grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"]
+    assert "GF_SECURITY_ADMIN_PASSWORD" not in grafana["environment"]
+    assert grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD__FILE"] == "/run/secrets/grafana_admin_password"
+    assert "grafana_admin_password" in grafana["secrets"]
+    assert "GRAFANA_ADMIN_PASSWORD_FILE" in data["secrets"]["grafana_admin_password"]["file"]
     assert grafana["ports"] == ["127.0.0.1:3001:3000"]
     assert clickhouse["ports"] == ["127.0.0.1:8123:8123", "127.0.0.1:9000:9000"]
 

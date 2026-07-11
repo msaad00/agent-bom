@@ -122,8 +122,10 @@ def _trusted_proxy_secret_is_strong(secret: str) -> bool:
 
 def get_trusted_proxy_auth_status() -> dict[str, object]:
     """Return trusted-proxy auth posture without exposing secret material."""
+    from agent_bom.api.secret_source import resolve_secret
+
     enabled = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
-    secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
+    secret = resolve_secret("AGENT_BOM_TRUST_PROXY_AUTH_SECRET")
     issuer = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "").strip()
     if not enabled:
         return {
@@ -970,7 +972,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # unless an operator's configured posture explicitly enables it.
         self._allow_unauthenticated = bool(allow_unauthenticated)
         self._trusted_proxy_auth = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
-        self._trusted_proxy_secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
+        from agent_bom.api.secret_source import resolve_secret
+
+        self._trusted_proxy_secret = resolve_secret("AGENT_BOM_TRUST_PROXY_AUTH_SECRET")
         self._trusted_proxy_issuer = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "").strip()
         # OIDC config loaded lazily from env on first request
         self._oidc_config: OIDCConfig | None = None
@@ -1703,7 +1707,9 @@ def get_rate_limit_runtime_status() -> dict[str, object]:
 
 
 def _rate_limit_fingerprint_key() -> bytes:
-    key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or "").strip()
+    from agent_bom.api.secret_source import resolve_secret
+
+    key = resolve_secret("AGENT_BOM_RATE_LIMIT_KEY")
     return key.encode() if key else _RATE_LIMIT_FINGERPRINT_FALLBACK
 
 
@@ -1733,13 +1739,14 @@ def get_rate_limit_key_status(now: "datetime | None" = None) -> dict:
     from datetime import datetime as _dt
     from datetime import timezone as _tz
 
+    from agent_bom.api.secret_source import resolve_secret
     from agent_bom.config import (
         RATE_LIMIT_KEY_LAST_ROTATED,
         RATE_LIMIT_KEY_MAX_AGE_DAYS,
         RATE_LIMIT_KEY_ROTATION_DAYS,
     )
 
-    raw_key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or "").strip()
+    raw_key = resolve_secret("AGENT_BOM_RATE_LIMIT_KEY")
     fallback_source = None
 
     if not raw_key:

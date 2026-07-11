@@ -79,7 +79,9 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
     """
     if _is_loopback_host(host):
         return
-    has_api_key = bool(api_key or os.environ.get("AGENT_BOM_API_KEYS", "").strip())
+    from agent_bom.api.secret_source import secret_is_configured
+
+    has_api_key = bool(api_key or secret_is_configured("AGENT_BOM_API_KEYS") or secret_is_configured("AGENT_BOM_API_KEY"))
     has_oidc = _oidc_enabled()
     has_scim = _scim_bearer_enabled()
     if has_api_key or has_oidc or has_scim:
@@ -229,7 +231,9 @@ def _auth_summary(
     mcp_remote: bool = False,
 ) -> str:
     """Return a user-facing summary for the active auth mode."""
-    if api_key or os.environ.get("AGENT_BOM_API_KEYS", "").strip():
+    from agent_bom.api.secret_source import secret_is_configured
+
+    if api_key or secret_is_configured("AGENT_BOM_API_KEYS") or secret_is_configured("AGENT_BOM_API_KEY"):
         return "API key required (Bearer / X-API-Key)"
     if bearer_token:
         return "Bearer token required"
@@ -281,7 +285,9 @@ def _should_auto_generate_dev_key(*, host: str, api_key: str | None, allow_insec
         return False
     if api_key or allow_insecure_no_auth:
         return False
-    if os.environ.get("AGENT_BOM_API_KEYS", "").strip():
+    from agent_bom.api.secret_source import secret_is_configured
+
+    if secret_is_configured("AGENT_BOM_API_KEYS") or secret_is_configured("AGENT_BOM_API_KEY"):
         return False
     if _oidc_enabled() or _scim_bearer_enabled():
         return False
@@ -307,7 +313,9 @@ def _api_auth_summary(
     versa). ``allow_unauthenticated`` is the resolved flag-OR-env value.
     ``dev_api_key`` is the auto-generated loopback key, if one was minted.
     """
-    if api_key or os.environ.get("AGENT_BOM_API_KEYS", "").strip():
+    from agent_bom.api.secret_source import secret_is_configured
+
+    if api_key or secret_is_configured("AGENT_BOM_API_KEYS") or secret_is_configured("AGENT_BOM_API_KEY"):
         return "API key required (Bearer / X-API-Key)"
     if dev_api_key:
         return "auto dev API key (loopback only); the local UI uses it automatically"

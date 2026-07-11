@@ -103,6 +103,55 @@ def is_tenant_rls_bypassed() -> bool:
     return _bypass_tenant_rls.get()
 
 
+def resolve_postgres_url() -> str:
+    """Build the Postgres DSN without requiring a password in process env.
+
+    Prefer ``AGENT_BOM_POSTGRES_PASSWORD_FILE`` (Docker secret / mounted file)
+    over an embedded password in ``AGENT_BOM_POSTGRES_URL``. Compose stacks
+    must use the DML-only ``agent_bom_app`` role — never the bootstrap admin
+    role created by the official Postgres image.
+    """
+    from pathlib import Path
+    from urllib.parse import quote, urlparse, urlunparse
+
+    url = os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip()
+    if not url:
+        raise ValueError("AGENT_BOM_POSTGRES_URL env var is required for PostgreSQL storage.")
+
+    parsed = urlparse(url)
+    username = (parsed.username or "").strip()
+    forbidden = {"postgres", "root", "admin", "superuser", "administrator"}
+    if username.lower() in forbidden:
+        raise ValueError(
+            f"AGENT_BOM_POSTGRES_URL must not use privileged role {username!r}. "
+            "Connect as the NOSUPERUSER NOBYPASSRLS app role (agent_bom_app)."
+        )
+
+    password_file = os.environ.get("AGENT_BOM_POSTGRES_PASSWORD_FILE", "").strip()
+    if password_file:
+        path = Path(password_file)
+        if not path.is_file():
+            raise ValueError(f"AGENT_BOM_POSTGRES_PASSWORD_FILE not found: {password_file}")
+        password = path.read_text(encoding="utf-8").strip("\r\n")
+        if not password:
+            raise ValueError(f"AGENT_BOM_POSTGRES_PASSWORD_FILE is empty: {password_file}")
+        if not username:
+            raise ValueError(
+                "AGENT_BOM_POSTGRES_URL must include a username when using "
+                "AGENT_BOM_POSTGRES_PASSWORD_FILE (expected agent_bom_app)."
+            )
+        if not parsed.hostname:
+            raise ValueError("AGENT_BOM_POSTGRES_URL must include a hostname.")
+        auth = f"{quote(username, safe='')}:{quote(password, safe='')}"
+        host = parsed.hostname
+        netloc = f"{auth}@{host}" + (f":{parsed.port}" if parsed.port else "")
+        return urlunparse(
+            (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+        )
+
+    return url
+
+
 def _get_pool() -> ConnectionPool:
     """Lazy-create a connection pool (singleton)."""
     global _pool
@@ -112,9 +161,7 @@ def _get_pool() -> ConnectionPool:
         except ImportError as exc:
             raise ImportError("PostgreSQL support requires psycopg. Install with: pip install 'agent-bom[postgres]'") from exc
 
-        url = os.environ.get("AGENT_BOM_POSTGRES_URL", "")
-        if not url:
-            raise ValueError("AGENT_BOM_POSTGRES_URL env var is required for PostgreSQL storage.")
+        url = resolve_postgres_url()
         min_size = max(1, POSTGRES_POOL_MIN_SIZE)
         max_size = max(min_size, POSTGRES_POOL_MAX_SIZE)
         kwargs: dict[str, object] = {}

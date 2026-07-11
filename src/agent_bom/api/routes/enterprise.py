@@ -465,7 +465,9 @@ async def create_browser_session(request: Request, response: Response, body: Bro
     if not raw_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    static_key = os.environ.get("AGENT_BOM_API_KEY", "")
+    from agent_bom.api.secret_source import resolve_secret
+
+    static_key = resolve_secret("AGENT_BOM_API_KEY")
     if static_key and secrets.compare_digest(raw_key, static_key):
         from agent_bom.api.middleware import static_api_key_allowed, static_api_key_rejection_message
 

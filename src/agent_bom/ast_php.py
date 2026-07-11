@@ -24,6 +24,7 @@ from agent_bom.ast_models import (
     _PhpMethodAnalysis,
     _PhpToolRegistration,
 )
+from agent_bom.ast_signal_utils import _line_number_from_index
 from agent_bom.ast_source_mask import mask_line_comments_and_strings
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_composer_package
 
@@ -61,10 +62,6 @@ _PHP_FRAMEWORK_HINTS: dict[str, str] = {
     "modelcontextprotocol": "MCP",
     "mcp": "MCP",
 }
-
-
-def _line_number_from_index(source: str, index: int) -> int:
-    return source[:index].count("\n") + 1
 
 
 def load_composer_package_map(project: Path) -> dict[str, str]:

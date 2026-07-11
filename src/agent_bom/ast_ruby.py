@@ -24,6 +24,7 @@ from agent_bom.ast_models import (
     _RubyMethodAnalysis,
     _RubyToolRegistration,
 )
+from agent_bom.ast_signal_utils import _balanced_segment, _line_number_from_index
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_ruby_gem
 
 if TYPE_CHECKING:
@@ -67,39 +68,6 @@ _RUBY_FRAMEWORK_HINTS: dict[str, str] = {
     "modelcontextprotocol": "MCP",
     "mcp": "MCP",
 }
-
-
-def _line_number_from_index(source: str, index: int) -> int:
-    return source[:index].count("\n") + 1
-
-
-def _balanced_segment(source: str, open_index: int, *, open_char: str, close_char: str) -> tuple[str, int] | None:
-    if open_index < 0 or open_index >= len(source) or source[open_index] != open_char:
-        return None
-    depth = 0
-    in_quote = ""
-    escaped = False
-    for index in range(open_index, len(source)):
-        char = source[index]
-        if in_quote:
-            if char == "\\" and not escaped:
-                escaped = True
-                continue
-            if char == in_quote and not escaped:
-                in_quote = ""
-            escaped = False
-            continue
-        if char in {'"', "'"}:
-            in_quote = char
-            escaped = False
-            continue
-        if char == open_char:
-            depth += 1
-        elif char == close_char:
-            depth -= 1
-            if depth == 0:
-                return source[open_index : index + 1], index + 1
-    return None
 
 
 def _ruby_constant_for_gem(gem_name: str) -> str:

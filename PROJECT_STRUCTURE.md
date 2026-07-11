@@ -4,7 +4,7 @@ A repo-map for `agent-bom`: where things live, which trees are canonical, and
 how the `src/agent_bom/` package is organized into subsystems. Start here when
 you ask **"where does X live?"**
 
-`agent-bom` is a single pure-Python package (~221K LoC) that exposes one shared
+`agent-bom` is a single pure-Python package (~289K LoC) that exposes one shared
 evidence model through many surfaces: CLI/CI, REST API, MCP server, dashboard,
 and runtime proxy/gateway. The package is intentionally broad — this map groups
 its modules so the breadth reads as a system, not a flat sprawl.
@@ -28,7 +28,7 @@ For the layered architecture and data-flow diagrams, see
 | `sdks/` | Client SDKs: `python`, `go`, `typescript`, `typescript-client`, `shared`. | Yes — typed control-plane clients (not scanner SDKs). |
 | `deploy/` | Helm chart, docker-compose pilot, EKS reference, deployment manifests. | Yes. |
 | `contracts/` | Cross-surface contract fixtures. | Yes. |
-| `docs/openapi/v1.json` | Committed OpenAPI spec — the canonical REST contract (239 paths / 283 operations). | **Yes** — SDK + client contract checks read this. |
+| `docs/openapi/v1.json` | Committed OpenAPI spec — the canonical REST contract (251 paths / 295 operations). | **Yes** — SDK + client contract checks read this. |
 | `scripts/` | Release, deploy, and consistency tooling (e.g. `check_release_consistency.py`). | Yes. |
 | `integrations/` | External tool integrations and examples. | Yes. |
 | `examples/`, `config/`, `security/`, `fuzz/` | Samples, config, security policy, fuzz harnesses. | Support material. |
@@ -39,7 +39,7 @@ For the layered architecture and data-flow diagrams, see
 
 ## `src/agent_bom/` subsystems
 
-The package has ~192 top-level modules plus 22 subpackages. Grouped by the role
+The package has ~223 top-level modules plus 25 subpackages. Grouped by the role
 each plays in the **collect → normalize → serve → enforce** pipeline:
 
 ### 1. Scan layer — collect evidence
@@ -84,7 +84,7 @@ The self-hosted operator surface. Same evidence, multi-tenant, audited.
 
 | Subsystem | Path | Responsibility |
 |---|---|---|
-| API | `api/` | FastAPI app. `routes/` (32 route modules; 283 REST operations + 2 WebSocket), `middleware.py` (4 layers), and `*_store.py`/`postgres_*.py` persistence (SQLite default, Postgres for clusters, optional Snowflake/ClickHouse). |
+| API | `api/` | FastAPI app. `routes/` (34 route modules; 295 REST operations + 2 WebSocket), `middleware.py` (4 layers), and `*_store.py`/`postgres_*.py` persistence (SQLite default, Postgres for clusters, optional Snowflake/ClickHouse). |
 | MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 70 tools, 6 resources, 8 prompts (mostly read-only; 3 Shield write actions fail closed). |
 | Runtime enforcement | `proxy*.py`, `gateway*.py`, `firewall*.py`, `shield.py`, `runtime/`, `enforcement.py` | MCP traffic proxy, secure-by-default gateway, inline firewall, Shield enforcement. **Spread by design** — see [Runtime enforcement spread](#runtime-enforcement-spread). |
 | Auth / tenancy | `rbac.py`, `permissions.py`, `entitlements.py`, `mcp_tenant.py`, `api/auth.py`, `api/oidc.py` | RBAC roles, tenant scoping, API keys, OIDC/SAML/SCIM. |
@@ -104,7 +104,7 @@ The self-hosted operator surface. Same evidence, multi-tenant, audited.
 
 | Subsystem | Path | Responsibility |
 |---|---|---|
-| CLI | `cli/` | Click entry point. 48 top-level commands (plus an inline `upgrade`) across 7 help categories. See [`docs/CLI_MAP.md`](docs/CLI_MAP.md). |
+| CLI | `cli/` | Click entry point. 60 top-level commands across 7 help categories. See [`docs/CLI_MAP.md`](docs/CLI_MAP.md). |
 
 ---
 

@@ -9,6 +9,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **SAML SSO counts as a configured auth path**: a SAML-only deployment is no longer refused by the CLI non-loopback boot gate and is now reported as `auth_configured` (with a `saml_sso` mode) on `/health` and the auth policy surface. Anonymous requests still fail closed; SAML browser login mints a short-lived session API key as before (#3803).
+
 ## [0.94.2] - 2026-07-09
 
 Accuracy, security-hardening, and cloud-graph release on top of 0.94.1.

@@ -129,7 +129,8 @@ def run_local_discovery(
     elif inventory:
         ctx.agents = _build_agents_from_inventory(preloaded_inventory_data or {"agents": []}, inventory)
         con.print(f"\n  [green]✓[/green] {len(ctx.agents)} agent(s) from {inventory_label or inventory}")
-    elif no_discover:
+    elif no_discover and not config_dir:
+        # --config-dir is an explicit artifact; it survives --no-discover.
         ctx.agents = []
     elif config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
@@ -623,7 +624,10 @@ def run_local_discovery(
         }
 
     # Step 1d4: Project package scan
-    if not skill_only and not no_discover and project and not images and not code_paths and not sbom_file:
+    # An explicitly-passed --project/-p (or --repo, which resolves into `project`)
+    # is an explicit input artifact, so it is scanned even under --no-discover —
+    # only ambient/cwd discovery is suppressed, never the target the user named.
+    if not skill_only and project and not images and not code_paths and not sbom_file:
         from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
         from agent_bom.parsers import scan_project_directory, summarize_project_inventory
 

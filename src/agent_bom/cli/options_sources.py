@@ -81,8 +81,9 @@ def input_options(fn):
                 is_flag=True,
                 default=False,
                 help=(
-                    "Use only explicit input artifacts such as --inventory, --sbom, --external-scan, --image, "
-                    "or --filesystem; do not merge ambient project, cwd, skill, model, dataset, or secret discovery."
+                    "Use only explicit input artifacts such as --project/-p, --repo, --config-dir, --inventory, "
+                    "--sbom, --external-scan, --image, or --filesystem; do not merge ambient cwd, skill, model, "
+                    "dataset, or secret discovery. Errors out if no explicit artifact is given."
                 ),
             ),
             click.option(

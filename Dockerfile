@@ -26,7 +26,12 @@ COPY pyproject.toml README.md PYPI_README.md LICENSE ./
 COPY src/ ./src/
 COPY deploy/supabase/postgres/ ./deploy/supabase/postgres/
 
-RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake,postgres]"
+# Extras baked into the published control-plane image. Cloud SDKs (aws/azure/gcp)
+# ship by default so self-hosted BYOC (connect an AWS/Azure/GCP account read-only,
+# incl. IRSA/workload-identity) works out of the box (#3832). Override at build
+# time for a lean image, e.g. --build-arg AGENT_BOM_EXTRAS=api,snowflake,postgres.
+ARG AGENT_BOM_EXTRAS=api,snowflake,postgres,aws,azure,gcp
+RUN pip install --no-cache-dir --prefix=/install ".[${AGENT_BOM_EXTRAS}]"
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.14.6-alpine3.23@sha256:02da11a8d221ca167aa07de20b3cd7104c1f01227f4b02b1fa13cf6517280a81

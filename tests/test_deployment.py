@@ -589,9 +589,15 @@ def test_dockerfiles_support_proxy_and_ca_contract():
 
 
 def test_primary_api_image_includes_snowflake_extra_for_snowflake_backend():
-    """The default API image must contain Snowflake and Postgres extras for Helm profiles."""
+    """The default API image must bake in Snowflake, Postgres, and cloud BYOC extras.
+
+    The extras are driven by the ``AGENT_BOM_EXTRAS`` build-arg whose default must
+    include the cloud SDKs so self-hosted AWS/Azure/GCP BYOC works out of the box
+    (#3832); the install line must consume that arg.
+    """
     content = (ROOT / "Dockerfile").read_text()
-    assert 'pip install --no-cache-dir --prefix=/install ".[api,snowflake,postgres]"' in content
+    assert "ARG AGENT_BOM_EXTRAS=api,snowflake,postgres,aws,azure,gcp" in content
+    assert 'pip install --no-cache-dir --prefix=/install ".[${AGENT_BOM_EXTRAS}]"' in content
 
 
 def test_runtime_dockerfile_builds_from_repo_source():

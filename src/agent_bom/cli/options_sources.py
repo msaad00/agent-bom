@@ -402,6 +402,16 @@ def enrichment_options(fn):
                 help="Auto-refresh local vuln DB when older than the daily freshness target. --no-auto-update-db to disable.",
             ),
             click.option(
+                "--require-fresh-db",
+                "require_fresh_db",
+                is_flag=True,
+                envvar="AGENT_BOM_REQUIRE_FRESH_DB",
+                help=(
+                    "Opt-in gate: exit non-zero (code 3) when the local vuln DB is older than "
+                    "AGENT_BOM_DB_STALE_DAYS (default 14). Off by default — the scan only warns."
+                ),
+            ),
+            click.option(
                 "--db-source",
                 "db_sources",
                 type=str,

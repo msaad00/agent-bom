@@ -27,6 +27,11 @@ from pathlib import Path
 DEFAULT_MAX_AGE_HOURS = 24
 # Clear-danger threshold: results past this almost certainly miss recent CVEs.
 STALE_DANGER_HOURS = 7 * 24
+# Day-based staleness threshold for the *non-enforcing* DB-freshness signal.
+# Deliberately coarser (and separate) from the hour-based auto-refresh target:
+# this drives the loud "your DB is stale" warning and the opt-in CI gate, not
+# the silent daily refresh.
+DEFAULT_DB_STALE_DAYS = 14
 
 # Human-facing labels for the structured-feed sources the local cache is built
 # from. Kept in primary-then-enrichment order so the rendered line reads well.
@@ -322,3 +327,50 @@ def should_refresh(
 def freshness_note(freshness: VulnDataFreshness) -> dict:
     """Compact freshness note for embedding in JSON report metadata."""
     return freshness.to_dict()
+
+
+def db_stale_days_threshold() -> int:
+    """Day-based staleness threshold for the non-enforcing DB-freshness signal.
+
+    Reads ``AGENT_BOM_DB_STALE_DAYS``. Invalid or non-positive values fall back
+    to :data:`DEFAULT_DB_STALE_DAYS` so a typo can never silence the warning.
+    """
+    raw = os.environ.get("AGENT_BOM_DB_STALE_DAYS")
+    if not raw:
+        return DEFAULT_DB_STALE_DAYS
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_DB_STALE_DAYS
+    return value if value > 0 else DEFAULT_DB_STALE_DAYS
+
+
+def require_fresh_db_env() -> bool:
+    """True when ``AGENT_BOM_REQUIRE_FRESH_DB`` opts into the stale-DB gate."""
+    raw = os.environ.get("AGENT_BOM_REQUIRE_FRESH_DB", "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def db_staleness(
+    freshness: VulnDataFreshness,
+    *,
+    threshold_days: int | None = None,
+) -> tuple[bool, int | None]:
+    """Evaluate day-based DB staleness for the non-enforcing freshness signal.
+
+    Returns ``(is_stale, age_days)``. Independent of the finer hour-based
+    auto-refresh decision in :func:`should_refresh`.
+
+    A missing / undated local cache is treated as stale **only** when there is
+    no live fallback (offline or a cache with no parseable timestamp) — in plain
+    ``live`` mode the network still backs the scan, so there is no local data to
+    be stale about. Because it keys off local age (never a network probe), the
+    warning fires the same whether or not ``--offline`` is set.
+    """
+    threshold = threshold_days if threshold_days is not None else db_stale_days_threshold()
+    age = freshness.age_days
+    if age is None:
+        if freshness.mode == "live":
+            return False, None
+        return True, None
+    return age >= threshold, age

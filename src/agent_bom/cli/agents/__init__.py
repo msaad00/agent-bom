@@ -421,6 +421,7 @@ def scan(
     smithery_token: Optional[str],
     mcp_registry_flag: bool,
     auto_update_db: bool,
+    require_fresh_db: bool,
     db_sources: Optional[str],
     snyk_flag: bool,
     snyk_token: Optional[str],
@@ -858,6 +859,34 @@ def scan(
                 con.print(f"[dim]{_line}[/dim]")
         except Exception:
             pass  # Never block a scan due to a freshness render failure
+
+    # Day-based DB-freshness signal (non-enforcing by default). Separate from the
+    # hour-based auto-refresh above: fires a loud, actionable warning once the
+    # local vuln DB crosses AGENT_BOM_DB_STALE_DAYS (default 14). It measures
+    # *local data* staleness, so it fires even under --offline. The opt-in gate
+    # (--require-fresh-db / AGENT_BOM_REQUIRE_FRESH_DB) turns a stale DB into a
+    # policy-gate failure (exit 3); by default the scan only warns and continues.
+    if not no_scan and _vuln_freshness is not None:
+        try:
+            from agent_bom.vuln_freshness import db_stale_days_threshold, db_staleness, require_fresh_db_env
+
+            _db_stale, _db_age = db_staleness(_vuln_freshness)
+        except Exception:
+            _db_stale, _db_age = False, None
+        if _db_stale:
+            _stale_days = db_stale_days_threshold()
+            _age_txt = f"{_db_age}d old" if _db_age is not None else "missing / undated"
+            if not quiet:
+                con.print(
+                    f"[bold yellow]⚠ Vulnerability DB is stale[/bold yellow] "
+                    f"({_age_txt}; threshold {_stale_days}d) — run `agent-bom db update`. "
+                    f"Recent CVEs may be missed."
+                )
+            if require_fresh_db or require_fresh_db_env():
+                con.print(
+                    "[red]--require-fresh-db is set and the local vuln DB is stale — failing (exit 3).[/red]"
+                )
+                sys.exit(3)
 
     # ── IaC-only fast path ───────────────────────────────────────────────────
     # When invoked via `agent-bom iac <paths>` (iac_paths set + no_scan=True),

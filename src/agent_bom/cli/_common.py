@@ -252,6 +252,61 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
 _update_check_result: str | None = None
 _update_check_done = threading.Event()
 
+# Upgrade guidance depends on *how* agent-bom was installed. Only a pip install
+# can be driven with `pip install --upgrade`; every other method must be
+# upgraded through its own tool (running pip against a frozen binary, pipx venv,
+# uv tool, or Homebrew Cellar is a no-op at best and corrupts the install at
+# worst). The releases page is the upgrade path for standalone frozen binaries.
+_RELEASES_URL = "https://github.com/msaad00/agent-bom/releases/latest"
+# Published container image; override with AGENT_BOM_DOCKER_IMAGE.
+_DEFAULT_DOCKER_IMAGE = "agentbom/agent-bom"
+
+
+def _detect_install_method() -> tuple[str, str]:
+    """Infer how this agent-bom was installed and the matching upgrade command.
+
+    Returns ``(method, upgrade_command)`` where ``method`` is one of
+    ``frozen`` / ``docker`` / ``pipx`` / ``uv`` / ``brew`` / ``pip``. Callers
+    must only *execute* the command when ``method == "pip"`` — for every other
+    method the string is what the operator should run themselves.
+    """
+    import os
+    import sys
+
+    truthy = {"1", "true", "yes", "on"}
+
+    # Frozen / standalone binary (PyInstaller / cx_Freeze .pkg/.msi). There is no
+    # pip in this interpreter, so the only upgrade path is a fresh download.
+    if getattr(sys, "frozen", False):
+        return "frozen", f"re-download the latest release binary from {_RELEASES_URL}"
+
+    # Docker / OCI container.
+    if os.path.exists("/.dockerenv") or os.environ.get("AGENT_BOM_IN_CONTAINER", "").strip().lower() in truthy:
+        image = os.environ.get("AGENT_BOM_DOCKER_IMAGE") or _DEFAULT_DOCKER_IMAGE
+        return "docker", f"docker pull {image}:latest"
+
+    # Path-based detection for isolated-tool installers. sys.prefix (the active
+    # environment root) is the most reliable signal; the module path and launcher
+    # path are cross-checked for repacked layouts. Normalize to forward slashes so
+    # the substring checks are OS-agnostic and easy to exercise in tests.
+    parts: list[str] = [str(getattr(sys, "prefix", "") or "")]
+    try:
+        parts.append(str(Path(__file__).resolve()))
+    except OSError:
+        pass
+    argv = getattr(sys, "argv", None)
+    if argv:
+        parts.append(str(argv[0] or ""))
+    haystack = "/".join(parts).replace("\\", "/").lower()
+
+    if "/pipx/venvs/" in haystack:
+        return "pipx", "pipx upgrade agent-bom"
+    if "/uv/tools/" in haystack:
+        return "uv", "uv tool upgrade agent-bom"
+    if "/cellar/" in haystack or "/homebrew/" in haystack or "/linuxbrew/" in haystack:
+        return "brew", "brew upgrade agent-bom"
+    return "pip", "pip install --upgrade agent-bom"
+
 
 def _update_check_cache_file() -> Path:
     """Path for the once-a-day update-check stamp.
@@ -315,9 +370,10 @@ def _check_for_update_bg() -> None:
             return tuple(int(x) for x in v.split(".") if x.isdigit())
 
         if _vt(latest) > _vt(__version__):
+            _, upgrade_command = _detect_install_method()
             msg = (
                 f"[yellow]Update available:[/yellow] agent-bom {__version__} → [bold]{latest}[/bold]\n"
-                f"  Run: [cyan]pip install --upgrade agent-bom[/cyan]"
+                f"  Run: [cyan]{upgrade_command}[/cyan]"
             )
         else:
             msg = ""

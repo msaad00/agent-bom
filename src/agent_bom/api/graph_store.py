@@ -12,6 +12,7 @@ import base64
 import json
 import re
 import sqlite3
+import threading
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -81,6 +82,14 @@ USING fts5(
     search_text
 )
 """
+
+# Schema init + legacy-tenant backfill are DML that take the WAL write lock. The
+# read path used to run them on every ``_open_ro_conn`` call, so a single read
+# could stall behind the write lock for seconds under load. Run them once per
+# process per database path instead; the write path still re-applies them on
+# every ``_open_rw_conn`` so newly created databases stay current.
+_SCHEMA_INIT_LOCK = threading.Lock()
+_SCHEMA_INITIALIZED_PATHS: set[str] = set()
 
 
 def _escape_like_query(query: str) -> str:
@@ -322,22 +331,37 @@ class SQLiteGraphStore:
         conn.commit()
         return conn
 
+    def _ensure_schema_initialized(self) -> None:
+        """Apply schema init + legacy-tenant backfill once per process.
+
+        This is the DML that ``_open_ro_conn`` previously ran on every read,
+        taking the WAL write lock each time. Running it once (through a
+        read-write connection identical to ``_open_rw_conn``) leaves the read
+        path free of the write lock while keeping the on-disk schema current.
+        """
+        key = str(self._db_path)
+        if key in _SCHEMA_INITIALIZED_PATHS:
+            return
+        with _SCHEMA_INIT_LOCK:
+            if key in _SCHEMA_INITIALIZED_PATHS:
+                return
+            conn = self._open_rw_conn()
+            try:
+                _SCHEMA_INITIALIZED_PATHS.add(key)
+            finally:
+                conn.close()
+
     def _open_ro_conn(self) -> sqlite3.Connection | None:
         if not self._exists():
             return None
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        sqlite_graph_store._init_db(conn, backfill_legacy_tenants=False)
+        self._ensure_schema_initialized()
         try:
-            conn.execute(_CREATE_PRESET_TABLE_SQLITE)
-            conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
-            sqlite_graph_store._backfill_empty_tenant_ids(conn)
-            sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
-            conn.commit()
-        except sqlite3.OperationalError as exc:
-            if "locked" not in str(exc).lower():
-                raise
-            conn.rollback()
+            conn = sqlite3.connect(f"{self._db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=10)
+        except sqlite3.OperationalError:
+            # Fall back to a normal connection if the platform/filesystem cannot
+            # honor the read-only URI (e.g. missing WAL sidecar write access).
+            conn = sqlite3.connect(str(self._db_path), timeout=10)
+        conn.row_factory = sqlite3.Row
         return conn
 
     @staticmethod

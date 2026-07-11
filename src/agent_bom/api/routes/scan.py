@@ -33,6 +33,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated, Any
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -1468,6 +1469,38 @@ async def list_findings(
     approximate_total: bool = False,
 ) -> dict:
     """List vulnerability findings aggregated from completed scan results.
+
+    The heavy work — dedup/sort of in-memory scan findings plus synchronous
+    store reads — runs in a worker thread so a single deep read cannot block
+    the event loop and freeze unrelated requests (e.g. ``/health``) under load.
+    ``anyio.to_thread.run_sync`` propagates the current context, and the tenant
+    scope is read from ``request.state`` and passed explicitly to the store, so
+    behavior is identical to running inline.
+    """
+    return await anyio.to_thread.run_sync(
+        _list_findings_impl,
+        request,
+        severity,
+        scan_id,
+        sort,
+        limit,
+        offset,
+        cursor,
+        approximate_total,
+    )
+
+
+def _list_findings_impl(
+    request: Request,
+    severity: str | None,
+    scan_id: str | None,
+    sort: str,
+    limit: int,
+    offset: int,
+    cursor: str | None,
+    approximate_total: bool,
+) -> dict:
+    """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
     Default sort is ``effective_reach`` — the composite triage signal that
     combines CVSS / EPSS / KEV with reachable-tool capability, credential

@@ -36,7 +36,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
-from agent_bom.audit_integrity import compute_audit_record_mac
+from agent_bom.audit_integrity import compute_audit_record_mac, verify_audit_record_mac
 
 # Lifecycle action verbs recorded in the chain. Kept small and explicit so the
 # governance posture can group on them without parsing free text.
@@ -259,8 +259,9 @@ def _verify_rows(rows: list[GovernanceAuditRecord]) -> dict[str, Any]:
     tampered = 0
     prev = ""
     for record in rows:
-        expected = compute_audit_record_mac(record.payload_for_mac(), record.prev_hash)
-        if record.prev_hash == prev and record.record_hash == expected:
+        # Signed with the primary key; verify against any key in the rotation list.
+        mac_ok = verify_audit_record_mac(record.payload_for_mac(), record.prev_hash, record.record_hash)
+        if record.prev_hash == prev and mac_ok:
             verified += 1
         else:
             tampered += 1

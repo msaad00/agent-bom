@@ -25,6 +25,8 @@ from agent_bom.config import (
 )
 
 if TYPE_CHECKING:
+    from urllib.parse import ParseResult
+
     # psycopg ships no type stubs and is an optional dependency, so these
     # resolve to Any under mypy. The runtime fallbacks below let the store
     # modules import the aliases without requiring psycopg to be installed.
@@ -103,16 +105,14 @@ def is_tenant_rls_bypassed() -> bool:
     return _bypass_tenant_rls.get()
 
 
-def resolve_postgres_url() -> str:
-    """Build the Postgres DSN without requiring a password in process env.
+def _parse_and_validate_postgres_url() -> tuple[ParseResult, str]:
+    """Parse ``AGENT_BOM_POSTGRES_URL`` and reject privileged role names.
 
-    Prefer ``AGENT_BOM_POSTGRES_PASSWORD_FILE`` (Docker secret / mounted file)
-    over an embedded password in ``AGENT_BOM_POSTGRES_URL``. Compose stacks
-    must use the DML-only ``agent_bom_app`` role — never the bootstrap admin
-    role created by the official Postgres image.
+    Compose stacks must use the DML-only ``agent_bom_app`` role — never the
+    bootstrap admin role created by the official Postgres image. Returns the
+    parsed URL and the validated username.
     """
-    from pathlib import Path
-    from urllib.parse import quote, urlparse, urlunparse
+    from urllib.parse import urlparse
 
     url = os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip()
     if not url:
@@ -126,6 +126,67 @@ def resolve_postgres_url() -> str:
             f"AGENT_BOM_POSTGRES_URL must not use privileged role {username!r}. "
             "Connect as the NOSUPERUSER NOBYPASSRLS app role (agent_bom_app)."
         )
+    return parsed, username
+
+
+def resolve_postgres_url() -> str:
+    """Build the Postgres conninfo URL with **no password** embedded.
+
+    The secret — a static password or a short-lived auth token — is resolved
+    separately by :func:`resolve_postgres_secret` and handed to the pool via
+    connection kwargs, so it never lives inside the DSN string (which can leak
+    into logs, ``pg_stat_activity``, or crash dumps). Compose stacks must use
+    the DML-only ``agent_bom_app`` role — never the bootstrap admin role.
+    """
+    from urllib.parse import quote, urlunparse
+
+    parsed, username = _parse_and_validate_postgres_url()
+    host = parsed.hostname
+    if not host:
+        # No network authority to rebuild (e.g. a socket-style DSN); return the
+        # DSN unchanged. Any secret still travels via resolve_postgres_secret.
+        return urlunparse(parsed)
+
+    netloc = host + (f":{parsed.port}" if parsed.port else "")
+    if username:
+        netloc = f"{quote(username, safe='')}@{netloc}"
+    return urlunparse(
+        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+    )
+
+
+def resolve_postgres_secret() -> str | None:
+    """Resolve the Postgres password or short-lived auth token, kept out of the DSN.
+
+    Resolution order:
+
+    * ``AGENT_BOM_POSTGRES_AUTH_MODE=iam`` — true no-passwords mode: fetch a
+      short-lived token from the configured provider (default AWS RDS IAM)
+      instead of any stored password.
+    * default (``password``) — prefer ``AGENT_BOM_POSTGRES_PASSWORD_FILE``
+      (Docker secret / mounted file), else any password embedded in
+      ``AGENT_BOM_POSTGRES_URL``; ``None`` when neither is present.
+
+    The returned value is passed to the pool via ``kwargs={"password": ...}``.
+    """
+    from pathlib import Path
+
+    from agent_bom.api.postgres_auth import (
+        AUTH_MODE_IAM,
+        postgres_auth_mode,
+        resolve_postgres_auth_token_provider,
+    )
+
+    parsed, username = _parse_and_validate_postgres_url()
+
+    if postgres_auth_mode() == AUTH_MODE_IAM:
+        host = parsed.hostname
+        if not host:
+            raise ValueError("AGENT_BOM_POSTGRES_URL must include a hostname for IAM auth mode.")
+        if not username:
+            raise ValueError("AGENT_BOM_POSTGRES_URL must include a username for IAM auth mode.")
+        provider = resolve_postgres_auth_token_provider()
+        return provider.get_auth_token(host=host, port=parsed.port or 5432, username=username)
 
     password_file = os.environ.get("AGENT_BOM_POSTGRES_PASSWORD_FILE", "").strip()
     if password_file:
@@ -142,14 +203,9 @@ def resolve_postgres_url() -> str:
             )
         if not parsed.hostname:
             raise ValueError("AGENT_BOM_POSTGRES_URL must include a hostname.")
-        auth = f"{quote(username, safe='')}:{quote(password, safe='')}"
-        host = parsed.hostname
-        netloc = f"{auth}@{host}" + (f":{parsed.port}" if parsed.port else "")
-        return urlunparse(
-            (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
-        )
+        return password
 
-    return url
+    return parsed.password or None
 
 
 def _get_pool() -> ConnectionPool:
@@ -162,13 +218,18 @@ def _get_pool() -> ConnectionPool:
             raise ImportError("PostgreSQL support requires psycopg. Install with: pip install 'agent-bom[postgres]'") from exc
 
         url = resolve_postgres_url()
+        password = resolve_postgres_secret()
         min_size = max(1, POSTGRES_POOL_MIN_SIZE)
         max_size = max(min_size, POSTGRES_POOL_MAX_SIZE)
         kwargs: dict[str, object] = {}
         if POSTGRES_CONNECT_TIMEOUT_SECONDS > 0:
             kwargs["connect_timeout"] = POSTGRES_CONNECT_TIMEOUT_SECONDS
+        if password is not None:
+            # Keep the secret out of the conninfo/DSN; psycopg forwards these
+            # per-connection kwargs to libpq for every new connection.
+            kwargs["password"] = password
         _pool = psycopg_pool.ConnectionPool(
-            url,
+            conninfo=url,
             min_size=min_size,
             max_size=max_size,
             kwargs=kwargs,

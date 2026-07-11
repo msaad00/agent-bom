@@ -41,6 +41,20 @@ updates:
       - "dependencies"
       - "python"
     open-pull-requests-limit: 10
+    groups:
+      # Keep the BYOC cloud + AI provider SDKs current together, so new provider
+      # APIs land and deprecations are picked up without a swarm of individual
+      # PRs. boto3/botocore are data-driven (new AWS APIs arrive via bumps).
+      cloud-and-ai-sdks:
+        patterns:
+          - "boto3"
+          - "botocore"
+          - "azure-*"
+          - "google-*"
+          - "snowflake-*"
+          - "huggingface*"
+          - "litellm"
+          - "ollama"
 
   - package-ecosystem: "npm"
     directory: "/ui"

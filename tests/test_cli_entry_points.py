@@ -214,7 +214,7 @@ class TestAgentCloud:
         assert r.exit_code == 0
         assert "--project" in r.output
 
-    def test_cloud_provider_wrappers_disable_auto_db_refresh(self, monkeypatch):
+    def test_cloud_provider_wrappers_enable_auto_db_refresh(self, monkeypatch):
         from agent_bom.cli.cloud import cloud
 
         seen = []
@@ -228,7 +228,7 @@ class TestAgentCloud:
             r = CliRunner().invoke(cloud, [command])
             assert r.exit_code == 0
 
-        assert [item["auto_update_db"] for item in seen] == [False, False, False]
+        assert [item["auto_update_db"] for item in seen] == [True, True, True]
 
     def test_snowflake_help(self):
         from agent_bom.cli.cloud import cloud

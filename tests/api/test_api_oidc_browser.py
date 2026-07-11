@@ -52,11 +52,13 @@ def test_pkce_s256_round_trip() -> None:
     verifier = pkce_verifier()
     challenge = pkce_challenge_s256(verifier)
     assert len(challenge) >= 43
-    sealed = seal_pkce_cookie(code_verifier=verifier, nonce="n1", return_to="/jobs?tab=open")
+    sealed = seal_pkce_cookie(code_verifier=verifier, nonce="n1")
     opened_v, opened_n, return_to = open_pkce_cookie(sealed)
     assert opened_v == verifier
     assert opened_n == "n1"
-    assert return_to == "/jobs?tab=open"
+    # return_to is no longer carried in the sealed cookie (CodeQL hardening);
+    # open_pkce_cookie defaults it to "/".
+    assert return_to == "/"
 
 
 def test_oidc_browser_login_requires_client_config(monkeypatch: pytest.MonkeyPatch) -> None:

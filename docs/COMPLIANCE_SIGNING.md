@@ -41,9 +41,9 @@ controlPlane:
       - name: evidence-signing
         mountPath: /run/secrets/agent-bom
         readOnly: true
-  env:
-    - name: AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE
-      value: /run/secrets/agent-bom/private.pem
+    env:
+      - name: AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE
+        value: /run/secrets/agent-bom/private.pem
 ```
 
 The server logs at startup:

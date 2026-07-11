@@ -231,3 +231,89 @@ def test_check_identity_required_jwt_without_verification_policy_blocks():
     assert agent_id == ANONYMOUS
     assert block is not None
     assert "signature verification required" in block
+
+
+# ─── F2: aud/iss binding in JWT verification ──────────────────────────────────
+
+
+def _signing_key():
+    from agent_bom.api.oauth_as import OAuthSigningKey
+
+    return OAuthSigningKey()
+
+
+def _signed_identity_jwt(key, *, sub="agent-x", aud="service-b", iss="https://issuer-b"):
+    now = int(time.time())
+    return key.sign({"sub": sub, "aud": aud, "iss": iss, "iat": now, "exp": now + 3600})
+
+
+def test_verify_jwt_wrong_audience_rejected_when_pinned():
+    key = _signing_key()
+    token = _signed_identity_jwt(key, aud="service-b")
+    with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
+        verified, err = _verify_jwt_signature(
+            token, "https://idp/jwks", expected_audience="service-a", expected_issuer="https://issuer-b"
+        )
+    assert not verified
+    assert err and "claim mismatch" in err
+
+
+def test_verify_jwt_wrong_issuer_rejected_when_pinned():
+    key = _signing_key()
+    token = _signed_identity_jwt(key, iss="https://issuer-b")
+    with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
+        verified, err = _verify_jwt_signature(
+            token, "https://idp/jwks", expected_audience="service-b", expected_issuer="https://issuer-a"
+        )
+    assert not verified
+    assert err and "claim mismatch" in err
+
+
+def test_verify_jwt_matching_aud_iss_accepted():
+    key = _signing_key()
+    token = _signed_identity_jwt(key)
+    with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
+        verified, err = _verify_jwt_signature(
+            token, "https://idp/jwks", expected_audience="service-b", expected_issuer="https://issuer-b"
+        )
+    assert verified
+    assert err is None
+
+
+def test_resolve_agent_id_rejects_audience_confusion():
+    key = _signing_key()
+    token = _signed_identity_jwt(key, sub="agent-x", aud="service-b", iss="https://issuer-b")
+    policy = {
+        "jwks_uri": "https://idp/jwks",
+        "expected_audience": "service-a",
+        "expected_issuer": "https://issuer-b",
+    }
+    with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
+        agent_id, err = resolve_agent_id(token, policy)
+    assert agent_id == ANONYMOUS
+    assert err and "signature invalid" in err
+
+
+def test_resolve_agent_id_accepts_matching_aud_iss():
+    key = _signing_key()
+    token = _signed_identity_jwt(key, sub="agent-x", aud="service-b", iss="https://issuer-b")
+    policy = {
+        "jwks_uri": "https://idp/jwks",
+        "expected_audience": "service-b",
+        "expected_issuer": "https://issuer-b",
+    }
+    with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
+        agent_id, err = resolve_agent_id(token, policy)
+    assert err is None
+    assert agent_id == "agent-x"
+
+
+def test_resolve_agent_id_backcompat_no_expected_aud_iss():
+    # Without pinned aud/iss the token still validates on signature alone.
+    key = _signing_key()
+    token = _signed_identity_jwt(key, sub="agent-x", aud="anything", iss="https://whatever")
+    policy = {"jwks_uri": "https://idp/jwks"}
+    with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
+        agent_id, err = resolve_agent_id(token, policy)
+    assert err is None
+    assert agent_id == "agent-x"

@@ -401,3 +401,53 @@ def test_signing_key_file_takes_precedence_over_inline_env(
     file_kid = OAuthSigningKey(private_pem=file_pem).kid
     resolved_kid = OAuthSigningKey().kid
     assert resolved_kid == file_kid
+
+
+# ── F1: issuer must not be Host-header-influenced when unconfigured ────────────
+
+
+def test_issuer_derivation_disabled_fails_closed_and_ignores_host() -> None:
+    # A server that does not allow host-derived issuers (non-loopback listener
+    # without an explicit issuer) must refuse to derive `iss` from the client
+    # base URL rather than TOFU-cache an attacker-controlled Host.
+    server = OAuthAuthorizationServer(issuer=None, allow_host_derived_issuer=False)
+    try:
+        server.resolve_issuer("https://evil.example")
+        raise AssertionError("expected OAuthError when issuer derivation is disabled")
+    except OAuthError as exc:
+        assert exc.status == 500
+        assert exc.error == "server_error"
+    # A second attempt with a different Host is likewise refused — nothing was
+    # cached from the first (spoofed) request.
+    try:
+        server.resolve_issuer("https://also-evil.example")
+        raise AssertionError("expected OAuthError on repeat")
+    except OAuthError:
+        pass
+
+
+def test_metadata_endpoint_fails_closed_when_issuer_unconfigured_non_loopback() -> None:
+    server = OAuthAuthorizationServer(issuer=None, allow_host_derived_issuer=False)
+    app = FastAPI()
+    app.include_router(build_oauth_as_router(server))
+    client = TestClient(app)
+    resp = client.get(
+        "/.well-known/oauth-authorization-server",
+        headers={"Host": "evil.example"},
+    )
+    assert resp.status_code == 500
+    assert resp.json()["error"] == "server_error"
+
+
+def test_explicit_issuer_is_never_overridden_by_host() -> None:
+    server = OAuthAuthorizationServer(issuer="https://gw.example", allow_host_derived_issuer=False)
+    assert server.resolve_issuer("https://evil.example") == "https://gw.example"
+    assert server.metadata("https://evil.example")["issuer"] == "https://gw.example"
+
+
+def test_loopback_dev_still_derives_issuer_from_request() -> None:
+    # Back-compat: loopback dev keeps deriving (and TOFU-caching) the issuer.
+    server = OAuthAuthorizationServer(issuer=None, allow_host_derived_issuer=True)
+    assert server.resolve_issuer("http://127.0.0.1:8080") == "http://127.0.0.1:8080"
+    # First observed value is stable even if a later request presents another host.
+    assert server.resolve_issuer("http://other.host") == "http://127.0.0.1:8080"

@@ -110,3 +110,48 @@ def test_scim_revoke_removes_free_form_named_key_with_subject_binding(monkeypatc
         assert bound.is_revoked()
     finally:
         set_key_store(KeyStore())
+
+
+def test_scim_revoke_removes_free_form_key_by_owner(monkeypatch) -> None:
+    # A CI token minted via POST /v1/auth/keys with an arbitrary name and no
+    # scim_subject_id must still be revoked when its owner is deprovisioned.
+    store = KeyStore()
+    set_key_store(store)
+    monkeypatch.setattr("agent_bom.api.auth.get_key_store", lambda: store)
+    try:
+        ci_key = create_api_key_record(
+            "abom_test_owner_key_1234567890123",
+            name="jenkins-nightly",  # name does not identify the user
+            role=Role.ANALYST,
+            tenant_id="default",
+            owner="alice",  # bound to the departing user by owner only
+        )
+        store.add(ci_key)
+        assert ci_key.scim_subject_id is None
+        user = SimpleNamespace(user_id="user-xyz", user_name="alice", external_id=None)
+        revoked = revoke_credentials_for_scim_user("default", user)
+        assert revoked == 1
+        assert ci_key.is_revoked()
+    finally:
+        set_key_store(KeyStore())
+
+
+def test_scim_revoke_leaves_unrelated_owner_key(monkeypatch) -> None:
+    store = KeyStore()
+    set_key_store(store)
+    monkeypatch.setattr("agent_bom.api.auth.get_key_store", lambda: store)
+    try:
+        other = create_api_key_record(
+            "abom_test_other_key_1234567890123",
+            name="jenkins-nightly",
+            role=Role.ANALYST,
+            tenant_id="default",
+            owner="bob",
+        )
+        store.add(other)
+        user = SimpleNamespace(user_id="user-xyz", user_name="alice", external_id=None)
+        revoked = revoke_credentials_for_scim_user("default", user)
+        assert revoked == 0
+        assert not other.is_revoked()
+    finally:
+        set_key_store(KeyStore())

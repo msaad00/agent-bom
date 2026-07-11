@@ -1487,6 +1487,7 @@ export interface ApiKeyRecord {
   revoked_at: string | null;
   rotation_overlap_until: string | null;
   replacement_key_id: string | null;
+  owner?: string | null | undefined;
   state: ApiKeyLifecycleState;
   overlap_seconds_remaining: number | null;
 }
@@ -1500,6 +1501,7 @@ export interface CreateApiKeyRequest {
   role: string;
   expires_at?: string | null | undefined;
   scopes?: string[] | undefined;
+  owner?: string | null | undefined;
 }
 
 export interface CreateApiKeyResponse extends ApiKeyRecord {

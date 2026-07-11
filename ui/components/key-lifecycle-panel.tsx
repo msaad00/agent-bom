@@ -205,6 +205,7 @@ export function KeyLifecyclePanel({
     name: "",
     role: "viewer",
     expiresAt: "",
+    owner: "",
   });
   const [rotateForm, setRotateForm] = useState({
     name: "",
@@ -261,6 +262,7 @@ export function KeyLifecyclePanel({
         name: createForm.name.trim(),
         role: createForm.role,
         expires_at: toIsoOrNull(createForm.expiresAt),
+        owner: createForm.owner.trim() || undefined,
       };
       const created = await api.createKey(body);
       setIssuedSecret({
@@ -269,7 +271,7 @@ export function KeyLifecyclePanel({
         detail: created.message,
       });
       setCreateOpen(false);
-      setCreateForm({ name: "", role: "viewer", expiresAt: "" });
+      setCreateForm({ name: "", role: "viewer", expiresAt: "", owner: "" });
       await onRefresh();
     } catch (nextError) {
       setFormError(nextError instanceof Error ? nextError.message : "Failed to create API key");
@@ -459,6 +461,18 @@ export function KeyLifecyclePanel({
               onChange={(event) => setCreateForm((current) => ({ ...current, expiresAt: event.target.value }))}
               className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500"
             />
+          </label>
+          <label className="space-y-2 text-sm text-zinc-300 md:col-span-3">
+            <span>Owner (optional)</span>
+            <input
+              value={createForm.owner}
+              onChange={(event) => setCreateForm((current) => ({ ...current, owner: event.target.value }))}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500"
+              placeholder="user@example.com or SCIM user id"
+            />
+            <span className="block text-xs text-zinc-500">
+              Bind this key to a user so it is revoked when that user is deprovisioned.
+            </span>
           </label>
           <div className="md:col-span-3 flex items-center justify-between gap-3">
             <p className="text-xs text-zinc-500">
@@ -920,6 +934,7 @@ export function KeyLifecyclePanel({
                           <div className="text-xs text-zinc-500">
                             {key.key_prefix} · {sessionKey ? "session key" : "service key"}
                           </div>
+                          {key.owner ? <div className="text-xs text-zinc-500">owner: {key.owner}</div> : null}
                         </td>
                         <td className="py-3 text-zinc-300">{key.role}</td>
                         <td className="py-3">

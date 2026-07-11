@@ -502,8 +502,21 @@ def serve_cmd(
     if enable_oauth_as:
         from agent_bom.api.oauth_as import OAuthAuthorizationServer
 
-        oauth_as = OAuthAuthorizationServer(issuer=oauth_as_issuer)
-        click.echo(f"OAuth 2.1 AS enabled (issuer={oauth_as_issuer or '<derived from request>'})")
+        host_is_loopback = _is_loopback_host(host)
+        if not oauth_as_issuer and not host_is_loopback:
+            # Deriving the issuer from the client Host header on a non-loopback
+            # listener lets the first caller poison token `iss` and RFC 8414
+            # metadata (Host-header TOFU). Require an explicit issuer instead.
+            raise click.ClickException(
+                f"OAuth 2.1 AS on non-loopback host {host!r} requires an explicit issuer. "
+                "Set --oauth-as-issuer / AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER to the public base URL "
+                "(e.g. https://gateway.example.com). Deriving it from the request Host header is unsafe."
+            )
+        oauth_as = OAuthAuthorizationServer(
+            issuer=oauth_as_issuer,
+            allow_host_derived_issuer=host_is_loopback,
+        )
+        click.echo(f"OAuth 2.1 AS enabled (issuer={oauth_as_issuer or '<derived from loopback request>'})")
 
     oidc_discovery_shim = None
     try:

@@ -552,6 +552,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
             scopes=req.scopes,
             tenant_id=tenant_id,
             scim_subject_id=resolve_scim_subject_binding(request, req.scim_subject_id),
+            owner=req.owner,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
@@ -576,6 +577,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
         "tenant_id": api_key.tenant_id,
         "created_at": api_key.created_at,
         "expires_at": api_key.expires_at,
+        "owner": api_key.owner,
         "message": "Store the raw_key securely — it will not be shown again.",
     }
 
@@ -617,6 +619,7 @@ async def rotate_key(
             scopes=list(current_key.scopes),
             tenant_id=current_key.tenant_id,
             scim_subject_id=current_key.scim_subject_id,
+            owner=current_key.owner,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc

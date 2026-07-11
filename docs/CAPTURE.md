@@ -57,7 +57,7 @@ before replacing any published product image.
 | `context-map-live.png` | `/context?capture=1` | Capture one agent-scoped context map with reachable MCP servers and the lateral movement side panel | Shows a non-CVE topology view so README proof is not only package-to-finding blast radius |
 | `fleet-state-live.png` | `/fleet?capture=1` | Seed fleet sync, set one agent owner/environment, approve it, then expand that row before capture | Shows environment and lifecycle state as control-plane evidence instead of implying the local scan alone owns review state |
 | `identity-audit-live.png` | `/audit?capture=1` | Use a stable `AGENT_BOM_AUDIT_HMAC_KEY`, issue/rotate/revoke one agent identity, filter resource to `identity`, and capture HMAC counters plus lifecycle rows | Shows IAM lifecycle evidence and tamper-evident audit posture from the real identity API |
-| `dependency-map-live.png` | `/insights?capture=1` | Capture the supply chain dependency map with scan pipeline counts and package risk distribution | Proves package risk visualization from the same pushed scan payload |
+| `dependency-map-live.png` | `/findings?capture=1` | Capture findings queue with seeded package and CVE evidence | Proves package/CVE posture from the same seeded demo estate |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
 ### Dashboard layout (current)

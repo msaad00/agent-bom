@@ -73,7 +73,7 @@ agent-bom api --demo-estate --allow-insecure-no-auth
 ```
 
 Artifact: terminal findings, dashboard queue/graph/runtime surfaces, exportable
-reports. Demo estates are watermarked **Demo data — simulated estate** in the UI.
+reports. Demo estates are watermarked **Demo data — sample environment** in the UI.
 
 ## Verification hooks
 

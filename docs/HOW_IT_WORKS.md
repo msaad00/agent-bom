@@ -29,29 +29,28 @@ analysis is available; the CVE/CWE/CPE identifiers ride along on the
 reachability verdict. See [`VULNERABILITY_MATCHING.md`](VULNERABILITY_MATCHING.md)
 for the mechanics.
 
-## The five-stage flow
+## The three product lanes
 
-Read it in one direction: read-only **intake**, then **scan**, then normalize
-into one **evidence** model, then serve and enforce over it from a self-hosted
-**control** plane, then emit **artifacts** in the formats each consumer already
-trusts.
+Read it as the shipped commands and the sidebar graph lenses: **scan**
+(`agents` / CI / Docker), normalize into one **graph** (`Finding` +
+`ContextGraph` with blast radius), then **serve** (`agent-bom serve`) as one
+pane of glass. Sidebar **Findings** is the triage queue inside serve — not a
+lane name. Vuln matching runs in scan and lands on the graph.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/how-it-works-dark.svg">
-  <img alt="agent-bom five-stage flow: intake, scan, evidence, control, artifacts" src="images/how-it-works-light.svg">
+  <img alt="agent-bom three lanes: scan, graph, serve" src="images/how-it-works-light.svg">
 </picture>
 
-| Stage | What happens | Key output |
+| Lane | What happens | Key output |
 |---|---|---|
-| **1. Intake** | Read-only collection from repos, CI, lockfiles, SBOMs, container images, IaC, MCP configs, cloud accounts, and runtime events. No writes, no secret values read. | raw evidence sources |
-| **2. Scan** | The six-step engine — discover, extract, scan, enrich, analyze, report — runs parsers and advisory scanners, enriches with NVD CVSS / EPSS / KEV / GHSA, and **analyzes symbol-level CVE reachability** against the call graph. | matched, enriched, reachability-scored findings |
-| **3. Evidence** | Everything normalizes into one `Finding` model and one `ContextGraph`, so triage never forks per source. Reachable CVEs are fused into the agent/MCP graph to produce the blast radius above. | unified `Finding` + `ContextGraph` |
-| **4. Control** | The same evidence is served and enforced through a self-hosted control plane: REST API, dashboard, MCP server, gateway/proxy, fleet — all behind auth, RBAC, tenant scope, and signed audit. | tenant-scoped, audited access + runtime decisions |
-| **5. Artifacts** | Decisions leave in the format each consumer trusts: SARIF, CycloneDX, SPDX, OCSF, HTML, PDF, JSON, CSV, webhooks — for humans (CLI, UI) and agents (MCP tools, API) alike. | gates, reports, compliance evidence, runtime blocks |
+| **1. Scan** | Read-only intake from repos, CI, images, IaC, MCP configs, and cloud accounts, then the six-step engine (discover → extract → scan → enrich → analyze → report). Enrichment joins OSV / GHSA / NVD / KEV / EPSS and scores symbol-level CVE reachability. | matched, enriched, reachability-scored evidence |
+| **2. Graph** | Evidence normalizes into one `Finding` model and one `ContextGraph` (blast radius: agent → MCP → package → CVE) shared by CLI, CI, API, UI, and MCP tools — the same story as Lineage / Agent Mesh / Context in the sidebar. | one evidence graph |
+| **3. Serve** | `agent-bom serve` is the self-hosted one pane of glass: dashboard, Findings queue, REST API, MCP server, fleet, audit — plus report formats and optional runtime gateway / proxy. | reviewed posture + exports + optional allow/warn/block |
 
-Stage 2's "analyze" step is where symbol-level reachability is computed; stage 3
-is where it becomes a blast radius. That pairing is the differentiator — the
-rest of the flow is table stakes done cleanly.
+Stage 1's "analyze" step is where symbol-level reachability is computed; stage 2
+is where it becomes blast radius on the agent/MCP graph. That pairing is the
+differentiator — the rest of the flow is table stakes done cleanly.
 
 ## Where to go next
 
@@ -60,4 +59,3 @@ rest of the flow is table stakes done cleanly.
 - Positioning and shipped-vs-not: [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md)
 - Lanes and cost posture: [`EDITIONS.md`](EDITIONS.md)
 - What to deploy first: [deployment overview](../site-docs/deployment/overview.md)
-</content>

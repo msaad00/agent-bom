@@ -15,13 +15,25 @@ def test_how_it_works_includes_pipeline_steps() -> None:
     svg = how_it_works("dark")
     for step in ("Discover", "Extract", "Scan", "Enrich", "Analyze", "Report"):
         assert step in svg
+    assert "Scan -&gt; Graph -&gt; Serve" in svg
+    assert "Scan -&gt; Sync -&gt; Enforce" not in svg
+    assert "Build -&gt; Serve -&gt; Orchestrate" not in svg
     assert "PIPELINE" not in svg
+    assert "GRAPH" in svg
+    assert "SERVE" in svg
+    assert "Finding" in svg
+    assert "CDX" in svg
+    assert "Gateway" in svg
+    assert "FINDINGS" not in svg
+    assert "DELIVER" not in svg
+    assert "ENFORCE" not in svg
+    assert "one pane of glass" in svg
+    # Official cloud icon marks (dashboard assets) + readable labels on light chips.
     assert 'fill="#FF9900"' in svg or 'fill="#f90"' in svg
     assert 'fill="#035bda"' in svg or 'fill="#0078D4"' in svg
-    # Official Snowflake horizontal wordmark (icon + path-set wordmark), not a caption label.
-    assert "M9.734" in svg
-    assert re.search(r"<text[^>]*>\s*Snowflake\s*</text>", svg) is None
     assert 'fill="#29B5E8"' in svg or 'fill="#29b5e8"' in svg
+    assert re.search(r"<text[^>]*>\s*AWS\s*</text>", svg)
+    assert re.search(r"<text[^>]*>\s*Snowflake\s*</text>", svg)
 
 
 def test_architecture_includes_core_surfaces() -> None:

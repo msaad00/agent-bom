@@ -9,7 +9,7 @@ tagline under the nav lockup — the wordmark is enough.
 | Layer | Canonical form | Where |
 |---|---|---|
 | **Product name** | `agent-bom` | CLI, packages, URLs, docs titles, UI wordmark `alt`, metadata |
-| **Mark (logo)** | **BOM** with agent face in the **O** | Favicon, nav icon, avatars, social icon-only |
+| **Mark (logo)** | **BOM** with agent HUD in the **O** | Favicon, nav icon, avatars, social icon-only |
 | **Wordmark** | `agent·bom` | Nav lockup beside the mark |
 | **Spoken nickname** | “BOM” | Optional in conversation / tight chrome — never as the sole product name in docs, CLI, or packages |
 
@@ -35,11 +35,11 @@ tagline under the nav lockup — the wordmark is enough.
 - **Accent (product UI / lockup):** emerald → cyan. Light `#059669 → #0891b2`;
   dark `#34d399 → #06b6d4` / `#22d3ee`. Ink `#1f2937` (light) / `#e6edf3` (dark);
   muted `#6b7280` / `#8b949e`.
-- **Mark (locked):** **BOM** wordmark-as-icon where the **O** is an agent face
-  (eyes + antenna). Canonical product mark — do not replace with lettermarks or
-  clipboard variants. Reads as bill-of-materials + agent in one glyph. Same mark
-  appears in the dashboard lockup and the CLI no-args splash
-  (`agent_bom.output.brand_tokens`).
+- **Mark (locked):** **BOM** wordmark-as-icon where the **O** is an agent HUD
+  (visor slots + status bar + antenna — not an emoji smile). Canonical product
+  mark — do not replace with lettermarks or clipboard variants. Reads as
+  bill-of-materials + agent in one glyph. Same mark appears in the dashboard
+  lockup and the CLI no-args splash (`agent_bom.output.brand_tokens`).
 
 
 Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or

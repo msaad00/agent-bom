@@ -1,6 +1,6 @@
 """Shared product brand tokens for terminal + lane labels.
 
-Product name is always ``agent-bom``. The mark is BOM-with-agent-O (logo only).
+Product name is always ``agent-bom``. The mark is BOM with an agent HUD in the O.
 See ``docs/VISUAL_LANGUAGE.md``.
 """
 
@@ -14,15 +14,15 @@ POSITIONING_SHORT = "Open security scanner for AI infrastructure"
 TAGLINE_CHAIN = "agent → MCP server → packages → CVEs → blast radius"
 DOCS_URL = "https://github.com/msaad00/agent-bom"
 
-# Terminal mark: BOM with agent face in the O (antenna + eyes).
+# Terminal mark: BOM with agent HUD in the O (visor + antenna cue).
 _MARK_UNICODE = (
     "  ┌───────────┐",
-    "  │ B  ◉  M  │",
+    "  │ B [=o=] M │",
     "  └───────────┘",
 )
 _MARK_ASCII = (
     "  +-----------+",
-    "  | B  .o.  M |",
+    "  | B [=o=] M |",
     "  +-----------+",
 )
 

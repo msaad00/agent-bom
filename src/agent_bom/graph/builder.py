@@ -523,7 +523,7 @@ def build_unified_graph_from_report(
     # ── Model provenance ─────────────────────────────────────────────
     for model_dict in report_json.get("model_provenance", []):
         model_name = model_dict.get("model_name", model_dict.get("name", "unknown"))
-        model_id = f"model:{model_name}"
+        model_id = _model_node_id(model_name)
         graph.add_node(
             UnifiedNode(
                 id=model_id,
@@ -5863,18 +5863,20 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
         label = str(ref or "").strip()
         if not label:
             return None
-        mid = stable_node_id(EntityType.MODEL.value, label.lower())
-        if not graph.has_node(mid):
-            graph.add_node(
-                UnifiedNode(
-                    id=mid,
-                    entity_type=EntityType.MODEL,
-                    label=label,
-                    attributes={"model_ref": label, "source": "framework-agent"},
-                    dimensions=NodeDimensions(surface="model"),
-                    data_sources=[data_source, "source-ast"],
-                )
+        mid = _model_node_id(label)
+        # add_node is create-or-merge: unconditionally add so a model discovered
+        # by multiple sources (provenance + framework ref) unions its attributes
+        # onto one node rather than being skipped when already present.
+        graph.add_node(
+            UnifiedNode(
+                id=mid,
+                entity_type=EntityType.MODEL,
+                label=label,
+                attributes={"model_ref": label, "source": "framework-agent"},
+                dimensions=NodeDimensions(surface="model"),
+                data_sources=[data_source, "source-ast"],
             )
+        )
         return mid
 
     for item in framework_agents:
@@ -5995,22 +5997,25 @@ def _add_ai_stack_frameworks(graph: UnifiedGraph, ai_inventory: Any, data_source
     if not isinstance(components, list):
         return
 
+    observability_fids: list[str] = []
+
     def _ensure_model(ref: str, *, source: str = "ai-inventory") -> str | None:
         label = str(ref or "").strip()
         if not label or label.upper() == "[REDACTED]":
             return None
-        mid = stable_node_id(EntityType.MODEL.value, label.lower())
-        if not graph.has_node(mid):
-            graph.add_node(
-                UnifiedNode(
-                    id=mid,
-                    entity_type=EntityType.MODEL,
-                    label=label,
-                    attributes={"model_ref": label, "source": source},
-                    dimensions=NodeDimensions(surface="model"),
-                    data_sources=[data_source, "ai-inventory"],
-                )
+        mid = _model_node_id(label)
+        # add_node is create-or-merge: unconditionally add so a model discovered
+        # by multiple sources unions its attributes onto one node.
+        graph.add_node(
+            UnifiedNode(
+                id=mid,
+                entity_type=EntityType.MODEL,
+                label=label,
+                attributes={"model_ref": label, "source": source},
+                dimensions=NodeDimensions(surface="model"),
+                data_sources=[data_source, "ai-inventory"],
             )
+        )
         return mid
 
     for comp in components:
@@ -6029,6 +6034,8 @@ def _add_ai_stack_frameworks(graph: UnifiedGraph, ai_inventory: Any, data_source
             continue
         kind = "observability" if ctype == "observability" else "orchestration"
         fid = stable_node_id(EntityType.FRAMEWORK.value, name.lower())
+        if kind == "observability" and fid not in observability_fids:
+            observability_fids.append(fid)
         if not graph.has_node(fid):
             graph.add_node(
                 UnifiedNode(
@@ -6088,6 +6095,22 @@ def _add_ai_stack_frameworks(graph: UnifiedGraph, ai_inventory: Any, data_source
     for model_name in ai_inventory.get("unique_models") or []:
         _ensure_model(str(model_name))
 
+    # Observability frameworks (Langfuse/LangSmith/OpenLLMetry-class) instrument
+    # the agents detected in the same scan surface. Emit framework→agent
+    # ``observes`` edges so the advertised relationship is actually produced.
+    if observability_fids:
+        agent_ids = [n.id for n in graph.nodes_by_type(EntityType.AGENT)]
+        for fid in observability_fids:
+            for agent_id in agent_ids:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=fid,
+                        target=agent_id,
+                        relationship=RelationshipType.OBSERVES,
+                        evidence={"source": "ai-inventory"},
+                    )
+                )
+
 
 def _clean_graph_part(value: Any) -> str:
     return str(value or "").strip()
@@ -6134,13 +6157,79 @@ def _flatten_compliance_tags(raw: Any) -> list[str]:
     return [str(raw)]
 
 
+# Provider prefixes stripped when fingerprinting a model reference so that
+# ``openai:gpt-4o``, ``openai/gpt-4o`` and ``gpt-4o`` collapse to one node.
+_MODEL_PROVIDER_PREFIXES = frozenset(
+    {
+        "openai",
+        "azure",
+        "azure_openai",
+        "anthropic",
+        "google",
+        "gemini",
+        "vertex",
+        "vertex_ai",
+        "vertexai",
+        "bedrock",
+        "aws",
+        "cohere",
+        "mistral",
+        "mistralai",
+        "meta",
+        "llama",
+        "huggingface",
+        "hf",
+        "ollama",
+        "together",
+        "groq",
+        "fireworks",
+        "replicate",
+        "xai",
+        "deepseek",
+        "perplexity",
+        "watsonx",
+        "databricks",
+    }
+)
+
+
+def _normalize_model_ref(ref: str) -> str:
+    """Fold a model reference to a canonical fingerprint.
+
+    Lower-cases and strips leading provider-prefix segments
+    (``openai:gpt-4o``, ``openai/gpt-4o``, ``azure/openai/gpt-4o``) so refs
+    naming the same model from different producers collapse to one identity.
+    """
+    label = str(ref or "").strip().lower()
+    if not label:
+        return ""
+    parts = [p for p in label.replace("://", "/").replace(":", "/").split("/") if p]
+    if not parts:
+        return label
+    while len(parts) > 1 and parts[0] in _MODEL_PROVIDER_PREFIXES:
+        parts.pop(0)
+    return "/".join(parts)
+
+
+def _model_node_id(ref: str) -> str:
+    """Canonical graph node id for a model, shared by every model producer.
+
+    Model provenance, framework ``model_refs``, ``unique_models`` and
+    serving-config URI resolution all route through here so a given model
+    yields exactly ONE node regardless of which source discovered it — the
+    node the ``serves_model`` edges point at also carries the provenance
+    hash/verified attributes.
+    """
+    return f"model:{_normalize_model_ref(ref)}"
+
+
 def _resolve_model_id(graph: UnifiedGraph, model_uri: str) -> str:
     """Best-effort link from a serving config model URI to a known model node."""
     if not model_uri:
         return ""
     candidates = [part for part in model_uri.replace("://", "/").replace(":", "/").split("/") if part]
     for candidate in reversed(candidates):
-        model_id = f"model:{candidate}"
+        model_id = _model_node_id(candidate)
         if graph.has_node(model_id):
             return model_id
     return ""

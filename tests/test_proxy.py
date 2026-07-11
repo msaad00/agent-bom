@@ -524,12 +524,31 @@ def test_gateway_policy_cache_round_trip_requires_valid_signature_when_enabled(t
 
     signature_path = _gateway_policy_cache_signature_path(cache_path)
     assert signature_path.exists()
-
     loaded_policies, loaded_etag = _load_cached_gateway_policies(cache_path, max_age_seconds=60)
     assert loaded_etag == "etag-signed"
     assert loaded_policies is not None
     assert loaded_policies[0].policy_id == "p1"
 
+
+def test_gateway_policy_cache_signing_key_resolves_from_file_first(tmp_path: Path, monkeypatch):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    key_file = tmp_path / "proxy-policy-signing.pem"
+    key_file.write_bytes(
+        Ed25519PrivateKey.generate().private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    monkeypatch.setenv("AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM", "invalid-inline-value")
+    monkeypatch.setenv("AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM_FILE", str(key_file))
+    _reset_gateway_policy_cache_signer_for_tests()
+
+    from agent_bom.proxy import _load_gateway_policy_cache_signer
+
+    assert _load_gateway_policy_cache_signer() is not None
 
 def test_gateway_policy_cache_rejects_signature_mismatch(tmp_path: Path, monkeypatch):
     cache_path = tmp_path / "gateway-policies.json"

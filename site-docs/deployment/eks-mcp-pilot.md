@@ -190,8 +190,9 @@ kubectl -n agent-bom create secret generic agent-bom-control-plane \
   --from-literal=AGENT_BOM_POSTGRES_URL="$AGENT_BOM_POSTGRES_URL" \
   --from-literal=AGENT_BOM_API_KEY="$API_KEY" \
   --from-literal=AGENT_BOM_AUDIT_HMAC_KEY="$AUDIT_HMAC_KEY" \
-  --from-literal=AGENT_BOM_REQUIRE_AUDIT_HMAC="1" \
-  --from-file=AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM=/tmp/evidence-priv.pem
+  --from-literal=AGENT_BOM_REQUIRE_AUDIT_HMAC="1"
+kubectl -n agent-bom create secret generic agent-bom-evidence-signing \
+  --from-file=private.pem=/tmp/evidence-priv.pem
 rm /tmp/evidence-priv.pem
 
 # 3. Helm install with the focused pilot values

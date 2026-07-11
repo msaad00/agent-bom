@@ -428,3 +428,9 @@ AGENT_BOM_POSTURE_POLICY_FILE
 # File-only Postgres credential consumed by postgres_common.py. The value is a
 # mounted secret path, not a scalar application setting for config.py.
 AGENT_BOM_POSTGRES_PASSWORD_FILE
+
+# Opt-in runtime Postgres IAM authentication selection. These are resolved at
+# connection time so short-lived tokens can be refreshed without static config.
+AGENT_BOM_POSTGRES_AUTH_MODE
+AGENT_BOM_POSTGRES_IAM_PROVIDER
+AGENT_BOM_POSTGRES_IAM_REGION

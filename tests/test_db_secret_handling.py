@@ -56,8 +56,6 @@ def _fake_pool_factory(captured):
 
 def test_get_pool_password_via_kwargs_not_dsn(monkeypatch, tmp_path):
     """The secret rides in pool kwargs; the conninfo string carries no password."""
-    import psycopg_pool
-
     postgres_common.reset_pool()
     secret = tmp_path / "postgres_app_password"
     secret.write_text("s3cret-value", encoding="utf-8")
@@ -66,7 +64,11 @@ def test_get_pool_password_via_kwargs_not_dsn(monkeypatch, tmp_path):
     monkeypatch.delenv("AGENT_BOM_POSTGRES_AUTH_MODE", raising=False)
 
     captured: dict = {}
-    monkeypatch.setattr(psycopg_pool, "ConnectionPool", _fake_pool_factory(captured))
+    monkeypatch.setitem(
+        sys.modules,
+        "psycopg_pool",
+        types.SimpleNamespace(ConnectionPool=_fake_pool_factory(captured)),
+    )
     try:
         postgres_common._get_pool()
     finally:

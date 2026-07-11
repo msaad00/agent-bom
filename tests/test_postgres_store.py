@@ -1057,8 +1057,8 @@ def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
     captured: dict[str, object] = {}
 
     class CapturePool:
-        def __init__(self, url, min_size, max_size, kwargs=None):
-            captured["url"] = url
+        def __init__(self, conninfo, min_size, max_size, kwargs=None):
+            captured["url"] = conninfo
             captured["min_size"] = min_size
             captured["max_size"] = max_size
             captured["kwargs"] = kwargs or {}

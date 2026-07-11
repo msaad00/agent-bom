@@ -16,6 +16,7 @@ from agent_bom.api.saml import (
     describe_saml_posture,
     saml_attributes_to_role,
     saml_attributes_to_tenant,
+    saml_enabled_from_env,
 )
 from agent_bom.api.shared_auth_state import reset_auth_state_for_tests
 
@@ -84,6 +85,34 @@ def test_saml_config_disabled_when_env_missing():
     with patch.dict(os.environ, {}, clear=True):
         cfg = SAMLConfig.from_env()
         assert cfg.enabled is False
+
+
+def test_saml_enabled_from_env_tracks_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`saml_enabled_from_env` mirrors `SAMLConfig.enabled` (#3803 boot gate helper).
+
+    It is a pure-env check (no `[saml]` runtime import) so the CLI boot gate and
+    auth-runtime introspection can recognise a SAML-only deployment.
+    """
+    for name in (
+        "AGENT_BOM_SAML_IDP_ENTITY_ID",
+        "AGENT_BOM_SAML_IDP_SSO_URL",
+        "AGENT_BOM_SAML_IDP_X509_CERT",
+        "AGENT_BOM_SAML_SP_ENTITY_ID",
+        "AGENT_BOM_SAML_SP_ACS_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    assert saml_enabled_from_env() is False
+
+    # A partial config (IdP only, no SP) is still not "enabled".
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_ENTITY_ID", "https://idp.example.com/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_SSO_URL", "https://idp.example.com/sso")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_X509_CERT", "-----BEGIN CERTIFICATE-----test-----END CERTIFICATE-----")
+    assert saml_enabled_from_env() is False
+
+    # Full IdP + SP config flips it on.
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://agent-bom.example.com/saml/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://agent-bom.example.com/v1/auth/saml/login")
+    assert saml_enabled_from_env() is True
 
 
 def test_saml_attribute_mapping_uses_existing_role_and_tenant_contract():

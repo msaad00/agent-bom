@@ -746,13 +746,21 @@ def configure_api(
     runtime_key_store_configured = _seed_runtime_api_key(api_key)
 
     from agent_bom.api.oidc import oidc_enabled_from_env
+    from agent_bom.api.saml import saml_enabled_from_env
     from agent_bom.api.scim import scim_enabled_from_env
 
     oidc_enabled = oidc_enabled_from_env()
     scim_enabled = scim_enabled_from_env()
+    saml_enabled = saml_enabled_from_env()
     trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
     auth_configured = bool(
-        api_key or env_key_store_configured or runtime_key_store_configured or oidc_enabled or trusted_proxy_enabled or scim_enabled
+        api_key
+        or env_key_store_configured
+        or runtime_key_store_configured
+        or oidc_enabled
+        or trusted_proxy_enabled
+        or scim_enabled
+        or saml_enabled
     )
     # Honor AGENT_BOM_ALLOW_UNAUTHENTICATED_API on every (re)configure, not just
     # when the caller omits the argument. CLI wrappers (`serve` / `api`) pass the
@@ -768,6 +776,7 @@ def configure_api(
         oidc_enabled=oidc_enabled,
         trusted_proxy_enabled=trusted_proxy_enabled,
         scim_enabled=scim_enabled,
+        saml_enabled=saml_enabled,
         unauthenticated_allowed=allow_unauthenticated,
     )
 

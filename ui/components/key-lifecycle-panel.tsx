@@ -82,6 +82,8 @@ function formatModeLabel(value: string): string {
     oidc: "OIDC",
     api: "API",
     ui: "UI",
+    saml: "SAML",
+    sso: "SSO",
   };
   return value
     .split("_")
@@ -96,6 +98,7 @@ function modeTone(value: string): string {
     case "trusted_proxy":
       return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
     case "oidc_bearer":
+    case "saml_sso":
       return "border-sky-900/60 bg-sky-950/30 text-sky-300";
     case "session_api_key":
     case "api_key":

@@ -88,6 +88,44 @@ def test_direct_asgi_import_fails_closed_without_auth_config(monkeypatch):
         configure_api(api_key=None)
 
 
+def test_saml_only_config_counts_as_auth_configured(monkeypatch):
+    """SAML-only config makes the control plane auth-configured and fail-closed (#3803).
+
+    Before the fix `configure_api` ignored SAML, so a SAML-only deployment reported
+    `auth_configured=False` and `saml_sso` was absent from `configured_auth_modes` —
+    even though anonymous requests still (correctly) fail closed. Assert the runtime
+    now advertises SAML and that protected routes reject anonymous callers.
+    """
+    for name in (
+        "AGENT_BOM_API_KEY",
+        "AGENT_BOM_API_KEYS",
+        "AGENT_BOM_OIDC_ISSUER",
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+        "AGENT_BOM_TRUST_PROXY_AUTH",
+        "AGENT_BOM_SCIM_BEARER_TOKEN",
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_ENTITY_ID", "https://idp.example.com/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_SSO_URL", "https://idp.example.com/sso")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_X509_CERT", "-----BEGIN CERTIFICATE-----test-----END CERTIFICATE-----")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://agent-bom.example.com/saml/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://agent-bom.example.com/v1/auth/saml/login")
+    configure_api(api_key=None)
+    try:
+        client = TestClient(app)
+        health = client.get("/health").json()
+        assert health["auth_required"] is True
+        assert health["auth_configured"] is True
+        assert "saml_sso" in health["configured_auth_modes"]
+        assert health["unauthenticated_allowed"] is False
+        # Anonymous callers still fail closed — SAML mints the session key first.
+        assert client.get("/v1/auth/policy").status_code == 401
+    finally:
+        monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+        configure_api(api_key=None)
+
+
 def test_explicit_unauthenticated_dev_opt_out(monkeypatch):
     """Local development can still opt into the legacy unauthenticated mode explicitly."""
     monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")

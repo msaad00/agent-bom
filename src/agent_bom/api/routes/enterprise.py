@@ -38,6 +38,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
@@ -1031,10 +1032,17 @@ def _consume_oidc_login_state(state: str | None) -> None:
 
 
 def _safe_post_login_path(raw: str | None) -> str:
-    path = (raw or "/").strip() or "/"
-    if not path.startswith("/") or path.startswith("//") or "://" in path:
+    normalized = (raw or "/").strip().replace("\\", "/") or "/"
+    parsed = urlsplit(normalized)
+    if parsed.scheme or parsed.netloc:
         return "/"
-    return path
+    local_path = parsed.path or "/"
+    if not local_path.startswith("/") or local_path.startswith("//"):
+        return "/"
+    suffix = f"?{parsed.query}" if parsed.query else ""
+    if parsed.fragment:
+        suffix += f"#{parsed.fragment}"
+    return f"{local_path}{suffix}"
 
 
 @router.get("/auth/oidc/login", tags=["enterprise"])
@@ -1067,26 +1075,19 @@ async def oidc_browser_login(request: Request, return_to: str | None = None) -> 
     challenge = pkce_challenge_s256(verifier)
     try:
         authorize_url = build_authorize_url(cfg, state=state, nonce=nonce, code_challenge=challenge)
-        sealed = seal_pkce_cookie(code_verifier=verifier, nonce=nonce)
+        sealed = seal_pkce_cookie(
+            code_verifier=verifier,
+            nonce=nonce,
+            return_to=_safe_post_login_path(return_to),
+        )
     except OIDCError as exc:
         raise HTTPException(status_code=503, detail=sanitize_error(exc)) from exc
 
-    # Preserve return_to inside state cookie namespace via query on callback is not needed —
-    # stash as a second cookie value segment is overkill; use SameSite Lax cookie for return_to.
     response = RedirectResponse(url=authorize_url, status_code=302)
     secure = _session_cookie_secure(request)
     response.set_cookie(
         OIDC_PKCE_COOKIE_NAME,
         sealed,
-        max_age=300,
-        httponly=True,
-        secure=secure,
-        samesite="lax",
-        path="/",
-    )
-    response.set_cookie(
-        "agent_bom_oidc_return",
-        _safe_post_login_path(return_to),
         max_age=300,
         httponly=True,
         secure=secure,
@@ -1131,7 +1132,7 @@ async def oidc_browser_callback(
 
     try:
         cfg = OIDCBrowserConfig.from_env()
-        code_verifier, nonce = open_pkce_cookie(sealed)
+        code_verifier, nonce, return_to = open_pkce_cookie(sealed)
         token_payload = exchange_code_for_tokens(cfg, code=code, code_verifier=code_verifier)
         id_token = str(token_payload.get("id_token") or "").strip()
         if not id_token:
@@ -1152,7 +1153,7 @@ async def oidc_browser_callback(
     except ValueError:
         role_value = Role.VIEWER.value
 
-    return_to = _safe_post_login_path(request.cookies.get("agent_bom_oidc_return"))
+    return_to = _safe_post_login_path(return_to)
     response = RedirectResponse(url=return_to, status_code=302)
     _set_browser_session_cookie(
         response,
@@ -1165,7 +1166,6 @@ async def oidc_browser_callback(
     )
     secure = _session_cookie_secure(request)
     response.delete_cookie(OIDC_PKCE_COOKIE_NAME, httponly=True, secure=secure, samesite="lax", path="/")
-    response.delete_cookie("agent_bom_oidc_return", httponly=True, secure=secure, samesite="lax", path="/")
     log_action(
         "auth.oidc_browser_login",
         actor=subject,

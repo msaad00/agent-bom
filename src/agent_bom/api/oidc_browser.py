@@ -116,12 +116,15 @@ def _pkce_signing_key() -> bytes:
     )
 
 
-def seal_pkce_cookie(*, code_verifier: str, nonce: str, max_age_seconds: int | None = None) -> str:
+def seal_pkce_cookie(
+    *, code_verifier: str, nonce: str, return_to: str = "/", max_age_seconds: int | None = None
+) -> str:
     ttl = max_age_seconds if max_age_seconds is not None else _login_ttl_seconds()
     payload = {
         "v": 1,
         "code_verifier": code_verifier,
         "nonce": nonce,
+        "return_to": return_to,
         "exp": int(time.time()) + ttl,
     }
     body = _b64url(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
@@ -129,7 +132,7 @@ def seal_pkce_cookie(*, code_verifier: str, nonce: str, max_age_seconds: int | N
     return f"{body}.{sig}"
 
 
-def open_pkce_cookie(value: str) -> tuple[str, str]:
+def open_pkce_cookie(value: str) -> tuple[str, str, str]:
     try:
         body, sig = value.split(".", 1)
     except ValueError as exc:
@@ -145,9 +148,10 @@ def open_pkce_cookie(value: str) -> tuple[str, str]:
         raise OIDCError("OIDC PKCE cookie expired")
     verifier = str(payload.get("code_verifier") or "")
     nonce = str(payload.get("nonce") or "")
+    return_to = str(payload.get("return_to") or "/")
     if not verifier or not nonce:
         raise OIDCError("OIDC PKCE cookie missing verifier/nonce")
-    return verifier, nonce
+    return verifier, nonce, return_to
 
 
 def build_authorize_url(

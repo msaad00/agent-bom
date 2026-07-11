@@ -52,10 +52,11 @@ def test_pkce_s256_round_trip() -> None:
     verifier = pkce_verifier()
     challenge = pkce_challenge_s256(verifier)
     assert len(challenge) >= 43
-    sealed = seal_pkce_cookie(code_verifier=verifier, nonce="n1")
-    opened_v, opened_n = open_pkce_cookie(sealed)
+    sealed = seal_pkce_cookie(code_verifier=verifier, nonce="n1", return_to="/jobs?tab=open")
+    opened_v, opened_n, return_to = open_pkce_cookie(sealed)
     assert opened_v == verifier
     assert opened_n == "n1"
+    assert return_to == "/jobs?tab=open"
 
 
 def test_oidc_browser_login_requires_client_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -95,7 +96,20 @@ def test_oidc_browser_login_redirects_with_pkce(monkeypatch: pytest.MonkeyPatch)
     assert "response_type=code" in location
     cookies = response.headers.getlist("set-cookie")
     assert any("agent_bom_oidc_pkce=" in c for c in cookies)
-    assert any(c.startswith("agent_bom_oidc_return=") or "agent_bom_oidc_return=" in c for c in cookies)
+    assert not any("agent_bom_oidc_return=" in c for c in cookies)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("/jobs?tab=open#recent", "/jobs?tab=open#recent"),
+        ("https://evil.example/", "/"),
+        ("//evil.example/", "/"),
+        ("\\\\evil.example\\share", "/"),
+    ],
+)
+def test_safe_post_login_path_rejects_remote_targets(raw: str, expected: str) -> None:
+    assert enterprise._safe_post_login_path(raw) == expected
 
 
 def test_oidc_callback_rejects_bad_state(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -251,13 +251,22 @@ function AgentsList() {
             Discovered agent configurations and attached MCP servers
           </p>
         </div>
-        <Link
-          href="/mesh"
-          className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors"
-        >
-          <Network className="w-4 h-4" />
-          Mesh View
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/agents/topology"
+            className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors"
+          >
+            <Network className="w-4 h-4" />
+            Agent mesh
+          </Link>
+          <Link
+            href="/mesh"
+            className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors"
+          >
+            <GitBranch className="w-4 h-4" />
+            Mesh View
+          </Link>
+        </div>
       </div>
 
       {!loading && agents.length > 0 && (

@@ -198,7 +198,7 @@ Summary:
 
 ```text
 MCP security tools       70 tools · 6 resources · 8 workflow prompts
-REST API                 283 ops · OpenAPI docs/openapi/v1.json
+REST API                 295 ops · OpenAPI docs/openapi/v1.json
 Runtime proxy / gateway  stdio policy · HTTP/SSE relay · KPI rollup
 Full manifest            docs/AGENT_CAPABILITY.md
 ```

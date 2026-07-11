@@ -1054,6 +1054,96 @@ class TestModelProvenance:
         assert len(models) == 1
         assert models[0].label == "gpt-4"
 
+    def test_provenance_and_framework_model_ref_resolve_to_one_node(self):
+        # A provenance model and a framework model_ref naming the same model
+        # must collapse to ONE node carrying both the provenance attributes
+        # and the serves_model edge (no double-counting).
+        report = _minimal_report()
+        report["model_provenance"] = [
+            {
+                "model_name": "gpt-4o",
+                "framework": "openai",
+                "source": "api",
+                "hash": "sha256:abc",
+                "verified": True,
+            },
+        ]
+        report["ai_inventory"] = {
+            "framework_agents": [
+                {
+                    "stable_id": "framework-agent:chain",
+                    "name": "chain",
+                    "framework": "LangChain",
+                    "file_path": "app.py",
+                    "line_number": 1,
+                    "confidence": "high",
+                    "capabilities": [],
+                    "model_refs": ["gpt-4o"],
+                    "credential_refs": [],
+                    "dynamic_edges": False,
+                    "topology_edges": [],
+                }
+            ],
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        models = g.nodes_by_type(EntityType.MODEL)
+        assert len(models) == 1
+        node = models[0]
+        # Provenance attributes are merged onto the same node.
+        assert node.attributes.get("verified") is True
+        assert node.attributes.get("hash") == "sha256:abc"
+        # Framework model_ref attribute lands on the same node.
+        assert node.attributes.get("model_ref") == "gpt-4o"
+        # serves_model edges point at that single node.
+        serves = [
+            e
+            for e in g.edges
+            if e.relationship == RelationshipType.SERVES_MODEL and e.target == node.id
+        ]
+        assert serves
+        assert serves[0].source == "framework-agent:chain"
+
+    def test_provenance_normalizes_provider_prefix(self):
+        # Provider-prefixed refs collapse onto the same node id.
+        report = _minimal_report()
+        report["model_provenance"] = [
+            {"model_name": "gpt-4o", "source": "api", "verified": True},
+        ]
+        report["ai_inventory"] = {"unique_models": ["openai/gpt-4o"]}
+        g = build_unified_graph_from_report(report)
+        assert len(g.nodes_by_type(EntityType.MODEL)) == 1
+
+    def test_observability_framework_observes_detected_agents(self):
+        # An observability framework import co-occurring with detected agents
+        # emits framework -> agent observes edges (advertised relationship is
+        # actually produced).
+        report = _minimal_report()
+        report["ai_inventory"] = {
+            "components": [
+                {
+                    "type": "observability",
+                    "name": "Langfuse",
+                    "package": "langfuse",
+                    "ecosystem": "pypi",
+                    "language": "python",
+                    "file": "app.py",
+                    "line": 1,
+                    "is_shadow": False,
+                },
+            ],
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        observes = [e for e in g.edges if e.relationship == RelationshipType.OBSERVES]
+        assert observes
+        for edge in observes:
+            assert g.nodes[edge.source].entity_type == EntityType.FRAMEWORK
+            assert g.nodes[edge.source].attributes.get("framework_kind") == "observability"
+            assert g.nodes[edge.target].entity_type == EntityType.AGENT
+
     def test_dataset_and_container_nodes_created(self):
         report = _minimal_report()
         report["model_provenance"] = [

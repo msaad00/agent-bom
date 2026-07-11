@@ -298,7 +298,27 @@ scripts/deploy/install.sh connect gcp
 scripts/deploy/install.sh connect snowflake
 ```
 
-Each module prints outputs (role ARN, external ID, etc.). Register them:
+The wrapper calls `agent-bom connect <provider>`. With no flags it prints the
+exact read-only grant to paste into your cloud shell; add the connection flags
+and it establishes **and verifies** the credential in-process, and with
+`--server/--api-key` it registers the identical connection the UI/API create
+(`POST /v1/cloud/connections` → test). Append `--scan` to launch inventory the
+moment it verifies.
+
+| Provider | Read-only grant | Establish + verify | Scan |
+|----------|-----------------|--------------------|------|
+| **AWS** | IAM `SecurityAudit` (+ `ViewOnlyAccess`) — List/Describe/Get only | `agent-bom connect aws --role-arn <arn> --external-id <id> --region <r>` | `agent-bom scan --aws` |
+| **Azure** | Service principal with built-in `Reader` role | `agent-bom connect azure --client-id <id> --client-secret <s> --tenant-id <t> --subscription-id <sub>` | `agent-bom scan --azure` |
+| **GCP** | Service account with `roles/viewer` (+ `roles/iam.securityReviewer`) | `agent-bom connect gcp --service-account <email> --key-file <json> --project <id>` | `agent-bom scan --gcp` |
+| **Snowflake** | Read-only role — warehouse `USAGE` + governance views, no DML/DDL | `agent-bom connect snowflake --account <acct> --user <u> --private-key-file <pem> --role <role> --warehouse <wh>` | `agent-bom scan --snowflake` |
+
+Grants come from the read-only `connect-*` Terraform modules under
+[`deploy/terraform/`](../deploy/terraform/) (`connect-aws`, `connect-azure`,
+`connect-gcp`, `connect-snowflake`) or the paste-ready recipes under
+[`scripts/provision/`](../scripts/provision/). Secrets (`--external-id`, client
+secret, key files) are write-only — never printed or logged.
+
+Register the printed role/principal:
 
 - **API:** `POST /v1/cloud/connections` → test → scan
 - **Helm:** `scanner.cloud.<provider>.inventory=true` in values

@@ -120,8 +120,34 @@ def _resolve_jwks_uri(policy: dict) -> str | None:
     return None
 
 
-def _verify_jwt_signature(token: str, jwks_uri: str) -> tuple[bool, str | None]:
+def _resolve_expected_aud_iss(policy: dict) -> tuple[str | None, str | None]:
+    """Return the ``(expected_audience, expected_issuer)`` the policy pins.
+
+    Audience accepts ``expected_audience``/``audience``; issuer accepts
+    ``expected_issuer``/``oidc_issuer``. Any value is enforced during JWT decode
+    so a validly-signed token minted for a different aud/iss is rejected. Absent
+    values leave the corresponding claim unenforced (back-compatible).
+    """
+    aud = policy.get("expected_audience") or policy.get("audience")
+    iss = policy.get("expected_issuer") or policy.get("oidc_issuer")
+    aud_str = str(aud).strip() if isinstance(aud, str) and aud.strip() else None
+    iss_str = str(iss).strip() if isinstance(iss, str) and iss.strip() else None
+    return aud_str, iss_str
+
+
+def _verify_jwt_signature(
+    token: str,
+    jwks_uri: str,
+    *,
+    expected_audience: str | None = None,
+    expected_issuer: str | None = None,
+) -> tuple[bool, str | None]:
     """Cryptographically verify a JWT signature using a JWKS endpoint.
+
+    When ``expected_audience`` / ``expected_issuer`` are provided the ``aud`` /
+    ``iss`` claims are pinned during decode, so a validly-signed token minted for
+    a different audience or issuer is rejected (audience-confusion defense). When
+    they are ``None`` the corresponding claim is not enforced (back-compatible).
 
     Returns (verified, error_message).  On library-unavailable or network
     failure, returns (False, reason) so the caller can decide whether to
@@ -165,14 +191,27 @@ def _verify_jwt_signature(token: str, jwks_uri: str) -> tuple[bool, str | None]:
                 public_key = ECAlgorithm.from_jwk(json.dumps(jwk))  # type: ignore[assignment]
             else:
                 continue
-            # Verify signature only; expiry is checked separately
+            # Verify signature (expiry is checked separately by the caller).
+            # aud/iss are pinned when the policy provides expected values so a
+            # token minted for a different audience/issuer is rejected.
+            decode_kwargs: dict[str, Any] = {
+                "algorithms": [alg],
+                "options": {"verify_exp": False, "verify_aud": expected_audience is not None},
+            }
+            if expected_audience is not None:
+                decode_kwargs["audience"] = expected_audience
+            if expected_issuer is not None:
+                decode_kwargs["issuer"] = expected_issuer
             pyjwt.decode(
                 token,
                 public_key,  # type: ignore[arg-type]
-                algorithms=[alg],
-                options={"verify_exp": False, "verify_aud": False},
+                **decode_kwargs,
             )
             return True, None
+        except (pyjwt.InvalidAudienceError, pyjwt.InvalidIssuerError) as claim_err:
+            # Signature is valid but the token targets a different aud/iss —
+            # fail closed immediately; other keys cannot change the claim.
+            return False, f"JWT claim mismatch: {claim_err}"
         except (ValueError, KeyError, TypeError, pyjwt.PyJWTError):
             continue
 
@@ -272,7 +311,13 @@ def resolve_agent_id(token: str, policy: dict) -> tuple[str, str | None]:
         # enforced mode, a JWT without verification policy is not an identity.
         jwks_uri = _resolve_jwks_uri(policy)
         if jwks_uri:
-            verified, sig_err = _verify_jwt_signature(token, jwks_uri)
+            expected_audience, expected_issuer = _resolve_expected_aud_iss(policy)
+            verified, sig_err = _verify_jwt_signature(
+                token,
+                jwks_uri,
+                expected_audience=expected_audience,
+                expected_issuer=expected_issuer,
+            )
             if not verified:
                 return ANONYMOUS, f"JWT signature invalid: {sig_err}"
         elif policy.get("require_agent_identity"):

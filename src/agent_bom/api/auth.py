@@ -36,6 +36,10 @@ class ApiKey:
     rotation_overlap_until: str | None = None
     replacement_key_id: str | None = None
     scim_subject_id: str | None = None
+    # Stable identifier of the user this key was issued on behalf of (SCIM
+    # user_id / user_name / external_id). Lets deprovisioning revoke free-form
+    # CI keys whose ``name`` doesn't match the departing user.
+    owner: str | None = None
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -126,6 +130,7 @@ class ApiKey:
             "rotation_overlap_until": self.rotation_overlap_until,
             "replacement_key_id": self.replacement_key_id,
             "scim_subject_id": self.scim_subject_id,
+            "owner": self.owner,
             "state": self.lifecycle_state(now=current),
             "overlap_seconds_remaining": overlap_remaining_seconds,
         }
@@ -352,6 +357,7 @@ def create_api_key(
     scopes: list[str] | None = None,
     tenant_id: str = "default",
     scim_subject_id: str | None = None,
+    owner: str | None = None,
 ) -> tuple[str, ApiKey]:
     """Generate a new API key.
 
@@ -367,6 +373,7 @@ def create_api_key(
         scopes=scopes,
         tenant_id=tenant_id,
         scim_subject_id=scim_subject_id,
+        owner=owner,
     )
 
 
@@ -378,11 +385,13 @@ def create_api_key_record(
     scopes: list[str] | None = None,
     tenant_id: str = "default",
     scim_subject_id: str | None = None,
+    owner: str | None = None,
 ) -> ApiKey:
     """Create a stored API key record for an operator-supplied raw key."""
     salt = os.urandom(16)
     key_hash = _derive_key(raw_key, salt)
     normalized_expiry = normalize_api_key_expiry(expires_at)
+    owner_normalized = owner.strip() if isinstance(owner, str) and owner.strip() else None
     return ApiKey(
         key_id=secrets.token_hex(8),
         key_hash=key_hash,
@@ -394,6 +403,7 @@ def create_api_key_record(
         scopes=scopes or [],
         tenant_id=tenant_id,
         scim_subject_id=scim_subject_id,
+        owner=owner_normalized,
     )
 
 

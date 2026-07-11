@@ -17,6 +17,18 @@
       "title": "Name",
       "type": "string"
     },
+    "owner": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
+    },
     "role": {
       "default": "viewer",
       "title": "Role",

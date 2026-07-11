@@ -81,10 +81,17 @@ class PostgresKeyStore:
                     ) THEN
                         ALTER TABLE api_keys ADD COLUMN scim_subject_id TEXT;
                     END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'api_keys' AND column_name = 'owner'
+                    ) THEN
+                        ALTER TABLE api_keys ADD COLUMN owner TEXT;
+                    END IF;
                 END
                 $$;
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_scim_subject ON api_keys(team_id, scim_subject_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(team_id, owner)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_team ON api_keys(team_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(team_id, revoked)")
@@ -109,6 +116,7 @@ class PostgresKeyStore:
             rotation_overlap_until=row[11],
             replacement_key_id=row[12],
             scim_subject_id=row[13] if len(row) > 13 else None,
+            owner=row[14] if len(row) > 14 else None,
         )
 
     def add(self, key: ApiKey) -> None:
@@ -118,9 +126,9 @@ class PostgresKeyStore:
                    (
                      key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
                      created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                     scim_subject_id, revoked
+                     scim_subject_id, owner, revoked
                    )
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
                    ON CONFLICT (key_id) DO UPDATE SET
                      key_hash = EXCLUDED.key_hash,
                      key_salt = EXCLUDED.key_salt,
@@ -135,6 +143,7 @@ class PostgresKeyStore:
                      rotation_overlap_until = EXCLUDED.rotation_overlap_until,
                      replacement_key_id = EXCLUDED.replacement_key_id,
                      scim_subject_id = EXCLUDED.scim_subject_id,
+                     owner = EXCLUDED.owner,
                      revoked = FALSE""",
                 (
                     key.key_id,
@@ -151,6 +160,7 @@ class PostgresKeyStore:
                     key.rotation_overlap_until,
                     key.replacement_key_id,
                     key.scim_subject_id,
+                    key.owner,
                 ),
             )
             conn.commit()
@@ -186,7 +196,7 @@ class PostgresKeyStore:
                 """SELECT
                        key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
                        created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                       scim_subject_id
+                       scim_subject_id, owner
                    FROM api_keys
                    WHERE key_id = %s""",
                 (key_id,),
@@ -198,7 +208,7 @@ class PostgresKeyStore:
             SELECT
                 key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
                 created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                scim_subject_id
+                scim_subject_id, owner
             FROM api_keys
             WHERE TRUE
         """
@@ -219,7 +229,7 @@ class PostgresKeyStore:
                     """SELECT
                            key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
                            created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                           scim_subject_id
+                           scim_subject_id, owner
                        FROM api_keys
                        WHERE key_prefix = %s""",
                     (prefix,),

@@ -262,8 +262,14 @@ class OAuthAuthorizationServer:
         token_ttl_seconds: int = _DEFAULT_TOKEN_TTL,
         code_ttl_seconds: int = _DEFAULT_CODE_TTL,
         supported_scopes: list[str] | None = None,
+        allow_host_derived_issuer: bool = True,
     ) -> None:
         self._configured_issuer = issuer.rstrip("/") if issuer else None
+        # When False, the issuer is never derived (TOFU-cached) from the
+        # client-controlled request base URL. A non-loopback listener without an
+        # explicit issuer would otherwise let the first caller poison token
+        # ``iss`` and RFC 8414 metadata via a spoofed ``Host`` header.
+        self._allow_host_derived_issuer = bool(allow_host_derived_issuer)
         self._observed_issuer: str | None = None
         self.signing_key = signing_key or OAuthSigningKey()
         self.token_ttl_seconds = max(60, min(int(token_ttl_seconds), _MAX_TOKEN_TTL))
@@ -278,6 +284,15 @@ class OAuthAuthorizationServer:
     def resolve_issuer(self, request_base_url: str | None = None) -> str:
         if self._configured_issuer:
             return self._configured_issuer
+        if not self._allow_host_derived_issuer:
+            # Fail closed: refuse to derive the issuer from a client-controlled
+            # base URL on a listener that has not opted into host derivation.
+            raise OAuthError(
+                "server_error",
+                "OAuth AS issuer is not configured; set AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER "
+                "(--oauth-as-issuer) to the public base URL",
+                status=500,
+            )
         if self._observed_issuer:
             return self._observed_issuer
         base = (request_base_url or "").rstrip("/")
@@ -696,7 +711,10 @@ def build_oauth_as_router(server: OAuthAuthorizationServer):
 
     @router.get("/.well-known/oauth-authorization-server")
     async def authorization_server_metadata(request: Request) -> JSONResponse:
-        return JSONResponse(server.metadata(_request_base_url(request)))
+        try:
+            return JSONResponse(server.metadata(_request_base_url(request)))
+        except OAuthError as exc:
+            return JSONResponse(exc.to_dict(), status_code=exc.status)
 
     @router.get("/oauth/jwks.json")
     async def jwks(_request: Request) -> JSONResponse:

@@ -462,6 +462,11 @@ components:
         name:
           title: Name
           type: string
+        owner:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner
         role:
           default: viewer
           title: Role

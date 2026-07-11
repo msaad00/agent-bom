@@ -402,6 +402,12 @@ def scim_error_body(*, status_code: int, detail: str) -> dict[str, Any]:
 def _scim_key_matches_user(key: Any, *, subjects: set[str], subjects_lower: set[str], subject_ids: set[str]) -> bool:
     if key.scim_subject_id and key.scim_subject_id in subject_ids:
         return True
+    # Free-form CI keys created via POST /v1/auth/keys carry no scim_subject_id
+    # but record the user they were issued for as ``owner`` — match on it so a
+    # departing user's tokens are revoked even when the key name is arbitrary.
+    owner = getattr(key, "owner", None)
+    if owner and (owner in subject_ids or owner in subjects or owner.lower() in subjects_lower):
+        return True
     if key.name in subjects or key.name.lower() in subjects_lower:
         return True
     return False

@@ -1099,7 +1099,6 @@ async def oidc_browser_login(request: Request, return_to: str | None = None) -> 
         sealed = seal_pkce_cookie(
             code_verifier=verifier,
             nonce=nonce,
-            return_to=_safe_post_login_path(return_to),
         )
     except OIDCError as exc:
         raise HTTPException(status_code=503, detail=sanitize_error(exc)) from exc

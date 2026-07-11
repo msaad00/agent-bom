@@ -114,6 +114,40 @@ def test_list_page_severity_filter_pushed_down(seeded_store) -> None:
     assert all(r["severity"] == "critical" for r in rows)
 
 
+@pytest.mark.parametrize("kind", ["memory", "sqlite"])
+def test_list_page_severity_filter_info_low_parity(kind, tmp_path) -> None:
+    """``severity=low`` must return ONLY low (not info), and ``severity=info``
+    only info, identically on every backend.
+
+    ``severity_policy_rank`` collapses info==low==1, so a rank-based filter
+    conflated the two on the SQL backends while the in-memory backend
+    string-matched — different results per backend (P1). The filter now matches
+    the materialised severity STRING, so all backends agree.
+    """
+    store = _make_store(kind, tmp_path)
+    tenant = "tenant-parity"
+    store.add(
+        tenant,
+        [
+            {"id": "sev-low", "source": "s", "origin": "bulk_ingest", "severity": "low"},
+            {"id": "sev-info", "source": "s", "origin": "bulk_ingest", "severity": "info"},
+            {"id": "sev-unknown", "source": "s", "origin": "bulk_ingest", "severity": "unknown"},
+        ],
+    )
+
+    low_rows, low_total = store.list_page(tenant, limit=100, offset=0, severity="low")
+    assert low_total == 1
+    assert [r["id"] for r in low_rows] == ["sev-low"]
+
+    info_rows, info_total = store.list_page(tenant, limit=100, offset=0, severity="info")
+    assert info_total == 1
+    assert [r["id"] for r in info_rows] == ["sev-info"]
+
+    unknown_rows, unknown_total = store.list_page(tenant, limit=100, offset=0, severity="unknown")
+    assert unknown_total == 1
+    assert [r["id"] for r in unknown_rows] == ["sev-unknown"]
+
+
 def test_list_page_scan_id_filter_pushed_down(seeded_store) -> None:
     store, tenant = seeded_store
     rows, total = store.list_page(tenant, limit=1000, offset=0, scan_id="scan-a")

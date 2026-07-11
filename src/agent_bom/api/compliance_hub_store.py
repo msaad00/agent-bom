@@ -1053,10 +1053,13 @@ class SQLiteComplianceHubStore:
         if "severity_rank" not in cols:
             self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN severity_rank INTEGER NOT NULL DEFAULT 0")
             self._conn.execute(
+                # Mirror severity_policy_rank() so backfilled ranks match new
+                # writes: info==low==1, none==0, everything unknown==-1 (#3192).
                 "UPDATE compliance_hub_findings SET severity_rank = CASE "
                 "LOWER(COALESCE(json_extract(payload, '$.severity'), '')) "
                 "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
-                "ELSE 0 END WHERE severity_rank = 0"
+                "WHEN 'info' THEN 1 WHEN 'informational' THEN 1 WHEN 'none' THEN 0 "
+                "ELSE -1 END WHERE severity_rank = 0"
             )
         if "cvss_score" not in cols:
             self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN cvss_score REAL NOT NULL DEFAULT 0")
@@ -1285,8 +1288,11 @@ class SQLiteComplianceHubStore:
             where.append("origin = ?")
             params.append(origin)
         if severity is not None:
-            where.append("severity_rank = ?")
-            params.append(severity_policy_rank(severity))
+            # Filter on the materialised severity STRING (exact match, lowercased)
+            # so every backend agrees. ``severity_rank`` collapses info==low and
+            # is kept for ORDER BY only (#3192).
+            where.append("LOWER(severity) = ?")
+            params.append(severity.lower())
         if scan_id is not None:
             where.append("CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?")
             params.append(scan_id)
@@ -1440,8 +1446,10 @@ class SQLiteComplianceHubStore:
             where.append("origin = ?")
             params.append(origin)
         if severity is not None:
-            where.append("severity_rank = ?")
-            params.append(severity_policy_rank(severity))
+            # Match the materialised severity STRING (exact, lowercased) so all
+            # backends agree; ``severity_rank`` stays ORDER-BY-only (#3192).
+            where.append("LOWER(severity) = ?")
+            params.append(severity.lower())
         if scan_id is not None:
             where.append("(CAST(json_extract(payload, '$.batch_id') AS TEXT) = ? OR CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?)")
             params.extend([scan_id, scan_id])

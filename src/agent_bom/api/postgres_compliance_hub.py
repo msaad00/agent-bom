@@ -252,9 +252,12 @@ class PostgresComplianceHubStore:
             conn.execute("UPDATE compliance_hub_findings SET severity = COALESCE(payload->>'severity', '') WHERE severity = ''")
             conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS severity_rank INTEGER NOT NULL DEFAULT 0")
             conn.execute(
+                # Mirror severity_policy_rank() so backfilled ranks match new
+                # writes: info==low==1, none==0, everything unknown==-1 (#3192).
                 "UPDATE compliance_hub_findings SET severity_rank = CASE LOWER(COALESCE(payload->>'severity', '')) "
                 "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
-                "ELSE 0 END WHERE severity_rank = 0"
+                "WHEN 'info' THEN 1 WHEN 'informational' THEN 1 WHEN 'none' THEN 0 "
+                "ELSE -1 END WHERE severity_rank = 0"
             )
             conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0")
             conn.execute(
@@ -457,10 +460,11 @@ class PostgresComplianceHubStore:
             where.append("origin = %s")
             params.append(origin)
         if severity is not None:
-            from agent_bom.graph.severity import severity_policy_rank
-
-            where.append("severity_rank = %s")
-            params.append(severity_policy_rank(severity))
+            # Filter on the materialised severity STRING (exact, lowercased) so
+            # every backend agrees; ``severity_rank`` collapses info==low and is
+            # kept for ORDER BY only (#3192).
+            where.append("LOWER(severity) = %s")
+            params.append(severity.lower())
         if scan_id is not None:
             where.append("payload->>'scan_id' = %s")
             params.append(scan_id)
@@ -732,7 +736,6 @@ class PostgresComplianceHubStore:
         cursor: str | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
-        from agent_bom.graph.severity import severity_policy_rank
 
         normalized_sort = sort if sort in ("effective_reach", "cvss", "severity", "ordinal") else "effective_reach"
         where = ["tenant_id = %s"]
@@ -744,8 +747,10 @@ class PostgresComplianceHubStore:
             where.append("origin = %s")
             params.append(origin)
         if severity is not None:
-            where.append("severity_rank = %s")
-            params.append(severity_policy_rank(severity))
+            # Match the materialised severity STRING (exact, lowercased) so all
+            # backends agree; ``severity_rank`` stays ORDER-BY-only (#3192).
+            where.append("LOWER(severity) = %s")
+            params.append(severity.lower())
         if scan_id is not None:
             where.append("(payload->>'batch_id' = %s OR payload->>'scan_id' = %s)")
             params.extend([scan_id, scan_id])

@@ -223,6 +223,52 @@ Run this checklist before inviting anyone:
 
 If any item fails, treat the POC as not ready for external users.
 
+### Demo redeploy
+
+Redeploying by hand (SSH in, `git pull`, `docker compose up`, rerun preflight +
+smoke) is easy to forget after a release. The `.github/workflows/demo-redeploy.yml`
+workflow automates it without any stored SSH keys or long-lived AWS credentials:
+
+- **Triggers:** every published GitHub release, plus manual `workflow_dispatch`
+  with an optional `reset_demo` boolean.
+- **Transport:** AWS SSM Run Command (`AWS-RunShellScript`) against the demo
+  instance — no inbound SSH. AWS auth is short-lived OIDC role assumption via
+  `aws-actions/configure-aws-credentials`.
+- **Remote steps on the VM:** `git pull --ff-only` → `docker compose -f
+  deploy/docker-compose.platform.yml -f deploy/docker-compose.hosted-poc.yml up
+  -d --build` → `scripts/deploy/hosted_poc_preflight.py --write-postgres-secret`
+  (fail-closed) → `scripts/deploy/hosted_poc_smoke.sh`. The job fails if the
+  preflight or smoke fails, so a bad redeploy never gets promoted silently. When
+  dispatched with `reset_demo=true` it also runs `scripts/deploy/demo-reset.sh`.
+- **No plaintext secrets in CI.** All secret material stays on the VM as the
+  existing `deploy/secrets/` file mounts. The remote script sources an optional
+  on-VM env file `deploy/secrets/redeploy.env` (chmod `0400`, owned by the deploy
+  user) for the non-secret URL wiring the preflight needs and the admin key the
+  smoke/reset need:
+
+  ```bash
+  # /opt/agent-bom/deploy/secrets/redeploy.env  (0400, not committed)
+  NEXT_PUBLIC_API_URL="https://demo.agent-bom.com"
+  CORS_ORIGINS="https://demo.agent-bom.com,http://ui:3000"
+  AGENT_BOM_SMOKE_URL="https://demo.agent-bom.com"
+  AGENT_BOM_SMOKE_API_KEY="<raw admin key>"
+  # AGENT_BOM_DEMO_TENANT="default"   # only needed if reset targets a non-default tenant
+  ```
+
+The workflow is **inert until configured** — if `DEMO_INSTANCE_ID` is unset it
+logs the required settings and exits successfully instead of failing. To enable
+it, set these repo Actions **variables** and **secret**:
+
+| Setting | Kind | Purpose |
+|---|---|---|
+| `DEMO_INSTANCE_ID` | var | EC2 instance id of the demo VM (`i-...`). Gate: unset ⇒ workflow no-ops. |
+| `AWS_REGION` | var | Region of the demo VM. Defaults to `us-east-1` if unset. |
+| `DEMO_DEPLOY_DIR` | var | Repo checkout dir on the VM. Defaults to `/opt/agent-bom`. |
+| `DEMO_DEPLOY_ROLE_ARN` | secret | IAM role ARN the workflow assumes via OIDC. Its trust policy must allow this repo's GitHub OIDC subject, and its permissions must allow `ssm:SendCommand` / `ssm:GetCommandInvocation` on the instance. |
+
+The instance also needs the SSM agent running and an instance profile granting
+`AmazonSSMManagedInstanceCore` so Run Command can reach it.
+
 ## Snowflake Native App lane
 
 Use Snowflake when the buyer wants agent-bom to run inside their Snowflake

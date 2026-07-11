@@ -225,6 +225,56 @@ scripts/deploy/install.sh snowflake-native
 
 Same pattern as CSPM onboarding: **deploy → connect accounts → inventory → scan**.
 
+### Fastest shareable BYOC proof
+
+This path proves the published image can collect from a customer-owned account
+without copying long-lived cloud credentials into agent-bom. Start with one
+provider, then repeat the same contract for the others.
+
+```bash
+# 1. Run the control plane in your infrastructure.
+cp .env.example .env
+# Generate the mounted secrets once; never put their values in .env.
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/api_key
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/audit_hmac_key
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/browser_session_signing_key
+printf %s "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" > deploy/secrets/connections_key
+chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
+  deploy/secrets/api_key deploy/secrets/audit_hmac_key \
+  deploy/secrets/browser_session_signing_key deploy/secrets/connections_key
+scripts/deploy/install.sh platform-docker
+
+# 2. In the account being scanned, create the provider's read-only identity.
+scripts/deploy/install.sh connect aws       # or azure | gcp | snowflake
+
+# 3. Register the printed role/principal output in Dashboard → Connections,
+#    test the connection, then choose Run inventory.
+
+# 4. Verify the control plane, authentication, and evidence path.
+scripts/deploy/install.sh onboard \
+  --url http://localhost:8422 \
+  --api-key "$(cat deploy/secrets/api_key)"
+```
+
+The expected artifact is not merely a successful credential test: Connections
+shows the source as live, the inventory job completes under Jobs, and its
+resources and identities appear in Security graph. Findings remain empty when
+the connected estate has no supported issue; an empty finding count must not be
+presented as an empty inventory.
+
+| Provider | Customer-owned credential boundary | First inventory evidence |
+|----------|------------------------------------|--------------------------|
+| AWS | STS role with external ID or workload identity | accounts, IAM, compute, storage, network |
+| Azure | `DefaultAzureCredential` / workload identity with Reader grants | subscriptions, identities, resources, network |
+| GCP | ADC or impersonated service account with viewer/security-review grants | projects, IAM, compute, storage, network |
+| Snowflake | key-pair role with read-only metadata grants | roles, users, grants, databases, schemas, objects |
+
+Do not paste cloud keys into the browser. Workers resolve workload identity or
+mounted credential files inside the customer deployment. Baseline connect
+modules are read-only; deeper content inspection is a separate explicit grant.
+
 ```
   ┌─────────────┐     read-only      ┌──────────────────┐
   │ Control     │◀──── connect ──────│ AWS / Azure /    │

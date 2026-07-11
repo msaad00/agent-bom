@@ -492,6 +492,47 @@ class AgentBomClient:
 
         return self._request("GET", "/v1/intel/sources")
 
+    def create_cloud_connection(
+        self,
+        *,
+        provider: str,
+        display_name: str,
+        role_ref: str,
+        external_id: str,
+        regions: Sequence[str] | None = None,
+        auth_params: Mapping[str, str] | None = None,
+        scan_interval_minutes: int | None = None,
+    ) -> JsonObject:
+        """Register a read-only cloud connection with the control plane.
+
+        Builds the body via the shared request-builder so the fields match the
+        API's ``CloudConnectionCreate`` schema exactly. ``external_id`` is the
+        single write-only secret — it is sent so the server can encrypt it at
+        rest and is never returned in the response (and must never be logged).
+        """
+        from agent_bom.cloud.connection_request import build_connection_create_body
+
+        body = build_connection_create_body(
+            provider=provider,
+            display_name=display_name,
+            role_ref=role_ref,
+            external_id=external_id,
+            regions=regions,
+            auth_params=auth_params,
+            scan_interval_minutes=scan_interval_minutes,
+        )
+        return self._request("POST", "/v1/cloud/connections", json=body)
+
+    def test_cloud_connection(self, connection_id: str) -> JsonObject:
+        """Validate a connection's brokered read-only credential (no scan)."""
+
+        return self._request("POST", f"/v1/cloud/connections/{_quote_path(connection_id)}/test")
+
+    def scan_cloud_connection(self, connection_id: str) -> JsonObject:
+        """Launch a read-only scan for a stored connection via the broker."""
+
+        return self._request("POST", f"/v1/cloud/connections/{_quote_path(connection_id)}/scan")
+
     def _request(
         self,
         method: str,

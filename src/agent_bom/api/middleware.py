@@ -533,10 +533,7 @@ class PostgresRateLimitStore:
                     hit_at DOUBLE PRECISION NOT NULL
                 )
             """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_api_rate_limit_hits_bucket_hit_at "
-                "ON api_rate_limit_hits (bucket_key, hit_at)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_rate_limit_hits_bucket_hit_at ON api_rate_limit_hits (bucket_key, hit_at)")
 
     def hit(self, key: str, now: float) -> tuple[int, int]:
         """Record a request and return (hit_count, reset_epoch)."""
@@ -697,6 +694,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/redoc",
             "/openapi.json",
             "/v1/auth/session",
+            "/v1/auth/oidc/login",
+            "/v1/auth/oidc/callback",
             "/v1/auth/saml/metadata",
             "/v1/auth/saml/relay-state",
             "/v1/auth/saml/login",
@@ -712,6 +711,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/status",
             "/version",
             "/v1/auth/session",
+            "/v1/auth/oidc/login",
+            "/v1/auth/oidc/callback",
             "/v1/auth/saml/metadata",
             "/v1/auth/saml/relay-state",
             "/v1/auth/saml/login",

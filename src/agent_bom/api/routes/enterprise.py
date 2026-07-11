@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.models import (
@@ -58,7 +58,7 @@ from agent_bom.api.models import (
 )
 from agent_bom.api.stores import _get_exception_store, _get_issue_mapping_store, _get_store, _get_trend_store
 from agent_bom.api.tenancy import require_request_tenant_id
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -995,6 +995,185 @@ async def delete_key(request: Request, key_id: str) -> None:
     store.remove(key_id)
 
     log_action("auth.key_revoked", actor=actor, resource=f"key/{key_id}", tenant_id=tenant_id)
+
+
+def _oidc_login_nonce(state: str) -> str:
+    return f"oidc-login:{_relay_state_digest(state)}"
+
+
+def _new_oidc_login_state() -> str:
+    from agent_bom.api.shared_auth_state import get_auth_state
+
+    backend = get_auth_state()
+    ttl = int(os.environ.get("AGENT_BOM_OIDC_LOGIN_STATE_TTL_SECONDS") or "300")
+    try:
+        ttl = max(60, min(ttl, 900))
+    except (TypeError, ValueError):
+        ttl = 300
+    now = int(time.time())
+    expires_at = now + ttl
+    for _ in range(3):
+        state = secrets.token_urlsafe(32)
+        if backend.register_one_time_nonce(_oidc_login_nonce(state), expires_at, now=now):
+            return state
+    raise HTTPException(status_code=503, detail="OIDC login state issuance unavailable")
+
+
+def _consume_oidc_login_state(state: str | None) -> None:
+    if not state:
+        raise HTTPException(status_code=401, detail="OIDC state required")
+    from agent_bom.api.shared_auth_state import get_auth_state
+
+    backend = get_auth_state()
+    now = int(time.time())
+    if not backend.redeem_one_time_nonce(_oidc_login_nonce(state), now=now):
+        raise HTTPException(status_code=401, detail="Invalid or expired OIDC state")
+
+
+def _safe_post_login_path(raw: str | None) -> str:
+    path = (raw or "/").strip() or "/"
+    if not path.startswith("/") or path.startswith("//") or "://" in path:
+        return "/"
+    return path
+
+
+@router.get("/auth/oidc/login", tags=["enterprise"])
+async def oidc_browser_login(request: Request, return_to: str | None = None) -> RedirectResponse:
+    """Start OIDC authorization-code + PKCE login for the dashboard."""
+    from agent_bom.api.oidc import OIDCError
+    from agent_bom.api.oidc_browser import (
+        OIDC_PKCE_COOKIE_NAME,
+        OIDCBrowserConfig,
+        build_authorize_url,
+        pkce_challenge_s256,
+        pkce_verifier,
+        seal_pkce_cookie,
+    )
+
+    _check_auth_session_rate_limit(request)
+    try:
+        cfg = OIDCBrowserConfig.from_env()
+    except OIDCError as exc:
+        raise HTTPException(status_code=503, detail=sanitize_error(exc)) from exc
+    if not cfg.enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="OIDC browser SSO requires AGENT_BOM_OIDC_ISSUER, AGENT_BOM_OIDC_CLIENT_ID, and AGENT_BOM_OIDC_REDIRECT_URI",
+        )
+
+    state = _new_oidc_login_state()
+    nonce = secrets.token_urlsafe(32)
+    verifier = pkce_verifier()
+    challenge = pkce_challenge_s256(verifier)
+    try:
+        authorize_url = build_authorize_url(cfg, state=state, nonce=nonce, code_challenge=challenge)
+        sealed = seal_pkce_cookie(code_verifier=verifier, nonce=nonce)
+    except OIDCError as exc:
+        raise HTTPException(status_code=503, detail=sanitize_error(exc)) from exc
+
+    # Preserve return_to inside state cookie namespace via query on callback is not needed —
+    # stash as a second cookie value segment is overkill; use SameSite Lax cookie for return_to.
+    response = RedirectResponse(url=authorize_url, status_code=302)
+    secure = _session_cookie_secure(request)
+    response.set_cookie(
+        OIDC_PKCE_COOKIE_NAME,
+        sealed,
+        max_age=300,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        "agent_bom_oidc_return",
+        _safe_post_login_path(return_to),
+        max_age=300,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.get("/auth/oidc/callback", tags=["enterprise"])
+async def oidc_browser_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+) -> RedirectResponse:
+    """Complete OIDC auth-code + PKCE login and mint a browser session cookie."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.auth import Role, resolve_scim_user_role
+    from agent_bom.api.oidc import OIDCError, claims_have_role_signal, claims_to_role
+    from agent_bom.api.oidc_browser import (
+        OIDC_PKCE_COOKIE_NAME,
+        OIDCBrowserConfig,
+        exchange_code_for_tokens,
+        open_pkce_cookie,
+        subject_from_claims,
+        verify_browser_id_token,
+    )
+
+    _check_auth_session_rate_limit(request)
+    if error:
+        detail = sanitize_text(error_description or error)
+        raise HTTPException(status_code=401, detail=f"OIDC login failed: {detail}")
+    if not code:
+        raise HTTPException(status_code=401, detail="OIDC authorization code required")
+
+    _consume_oidc_login_state(state)
+    sealed = request.cookies.get(OIDC_PKCE_COOKIE_NAME, "")
+    if not sealed:
+        raise HTTPException(status_code=401, detail="OIDC PKCE cookie missing")
+
+    try:
+        cfg = OIDCBrowserConfig.from_env()
+        code_verifier, nonce = open_pkce_cookie(sealed)
+        token_payload = exchange_code_for_tokens(cfg, code=code, code_verifier=code_verifier)
+        id_token = str(token_payload.get("id_token") or "").strip()
+        if not id_token:
+            raise OIDCError("OIDC token response missing id_token")
+        claims = verify_browser_id_token(cfg, id_token, nonce=nonce)
+        if cfg.oidc.require_role_claim and not claims_have_role_signal(claims, cfg.oidc.role_claim):
+            raise OIDCError(f"JWT missing required role claim '{cfg.oidc.role_claim}'")
+        role = claims_to_role(claims, cfg.oidc.role_claim)
+        tenant_id = cfg.oidc.resolve_tenant(claims)
+        subject = subject_from_claims(claims)
+    except OIDCError as exc:
+        raise HTTPException(status_code=401, detail=sanitize_error(exc)) from exc
+
+    scim_resolution = resolve_scim_user_role(tenant_id, subject)
+    effective_role = scim_resolution.role.value if scim_resolution.role is not None else role
+    try:
+        role_value = Role(effective_role).value
+    except ValueError:
+        role_value = Role.VIEWER.value
+
+    return_to = _safe_post_login_path(request.cookies.get("agent_bom_oidc_return"))
+    response = RedirectResponse(url=return_to, status_code=302)
+    _set_browser_session_cookie(
+        response,
+        request,
+        subject=subject,
+        role=role_value,
+        tenant_id=tenant_id,
+        auth_method="oidc_browser",
+        scopes=["oidc-browser-session"],
+    )
+    secure = _session_cookie_secure(request)
+    response.delete_cookie(OIDC_PKCE_COOKIE_NAME, httponly=True, secure=secure, samesite="lax", path="/")
+    response.delete_cookie("agent_bom_oidc_return", httponly=True, secure=secure, samesite="lax", path="/")
+    log_action(
+        "auth.oidc_browser_login",
+        actor=subject,
+        resource="auth/oidc",
+        tenant_id=tenant_id,
+        details={"role": role_value, "auth_method": "oidc_browser"},
+    )
+    return response
 
 
 @router.get("/auth/saml/metadata", tags=["enterprise"])

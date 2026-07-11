@@ -1,0 +1,177 @@
+name: Demo redeploy
+
+# Redeploys the public hosted demo VM after a release (or on manual dispatch).
+#
+# The demo is a single manual AWS VM whose runbook lives in docs/HOSTED_POC.md.
+# All control-plane / Postgres secrets already live on the VM as 0400 file
+# mounts (deploy/secrets/), so this workflow NEVER handles plaintext secrets —
+# it only orchestrates `docker compose` on the VM over AWS SSM Run Command.
+#
+# Auth is short-lived OIDC role assumption (no stored SSH keys, no long-lived
+# AWS access keys). The workflow stays inert until the owner sets the repo
+# vars/secrets documented in docs/HOSTED_POC.md → "Demo redeploy".
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      reset_demo:
+        description: "Reset the demo tenant state after the redeploy"
+        type: boolean
+        default: false
+
+permissions: {}  # all permissions denied by default; the job declares only what it needs
+
+concurrency:
+  # Never let two redeploys race on the same VM.
+  group: demo-redeploy
+  cancel-in-progress: false
+
+jobs:
+  redeploy:
+    name: Redeploy hosted demo via SSM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Protected environment: this repo is public, so gate every run behind a
+    # required-reviewer approval on the `demo` environment. Even a maintainer's
+    # release/workflow_dispatch pauses for owner approval before any AWS call,
+    # and the AWS trust policy is scoped to this environment's OIDC subject
+    # (repo:<owner>/<repo>:environment:demo) so forks/PRs can never assume it.
+    environment: demo
+    permissions:
+      id-token: write  # OIDC token to assume the deploy role
+      contents: read
+    steps:
+      - name: Guard — require DEMO_INSTANCE_ID
+        id: guard
+        env:
+          DEMO_INSTANCE_ID: ${{ vars.DEMO_INSTANCE_ID }}
+        run: |
+          if [ -z "${DEMO_INSTANCE_ID}" ]; then
+            {
+              echo "### Demo redeploy skipped"
+              echo ""
+              echo "\`DEMO_INSTANCE_ID\` is not set, so the hosted-demo redeploy is inert."
+              echo ""
+              echo "To enable it, configure these repo settings:"
+              echo "- **vars.DEMO_INSTANCE_ID** — EC2 instance id of the demo VM (\`i-...\`)"
+              echo "- **vars.AWS_REGION** — region of the demo VM (defaults to \`us-east-1\`)"
+              echo "- **vars.DEMO_DEPLOY_DIR** — repo checkout dir on the VM (defaults to \`/opt/agent-bom\`)"
+              echo "- **secrets.DEMO_DEPLOY_ROLE_ARN** — IAM role ARN the workflow assumes via OIDC"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::DEMO_INSTANCE_ID unset — hosted demo redeploy is inert. See job summary for the vars/secrets to configure."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.guard.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@b47578312673ae6fa5b5096b330d9fbac3d116df # v4.2.1
+        with:
+          role-to-assume: ${{ secrets.DEMO_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Redeploy over SSM Run Command
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          DEMO_INSTANCE_ID: ${{ vars.DEMO_INSTANCE_ID }}
+          DEMO_DEPLOY_DIR: ${{ vars.DEMO_DEPLOY_DIR || '/opt/agent-bom' }}
+          RESET_DEMO: ${{ inputs.reset_demo || 'false' }}
+          RELEASE_REF: ${{ github.event.release.tag_name || github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Build the remote script with a quoted heredoc so the runner does
+          # NOT expand any of the VM-side shell variables, then splice in only
+          # the two runner-provided values via sed.
+          cat > remote.sh <<'REMOTE'
+          set -euo pipefail
+          DEPLOY_DIR="__DEPLOY_DIR__"
+          RESET_DEMO="__RESET_DEMO__"
+          cd "$DEPLOY_DIR"
+
+          # Optional on-VM env file carries the non-secret URL wiring the
+          # preflight requires (NEXT_PUBLIC_API_URL, CORS_ORIGINS) plus the
+          # smoke/reset admin key. It lives on the VM only — the workflow never
+          # sees or transports any secret material.
+          if [ -f deploy/secrets/redeploy.env ]; then
+            set -a
+            . deploy/secrets/redeploy.env
+            set +a
+          fi
+
+          echo "== git pull =="
+          git pull --ff-only
+
+          echo "== docker compose up =="
+          docker compose \
+            -f deploy/docker-compose.platform.yml \
+            -f deploy/docker-compose.hosted-poc.yml \
+            up -d --build
+
+          echo "== preflight (fail-closed) =="
+          python3 scripts/deploy/hosted_poc_preflight.py --write-postgres-secret
+
+          echo "== smoke =="
+          scripts/deploy/hosted_poc_smoke.sh
+
+          if [ "$RESET_DEMO" = "true" ]; then
+            echo "== demo reset =="
+            scripts/deploy/demo-reset.sh \
+              "${AGENT_BOM_SMOKE_URL:?redeploy.env must set AGENT_BOM_SMOKE_URL to reset}" \
+              "${AGENT_BOM_SMOKE_API_KEY:?redeploy.env must set AGENT_BOM_SMOKE_API_KEY to reset}" \
+              "${AGENT_BOM_DEMO_TENANT:-default}"
+          fi
+
+          echo "== redeploy complete =="
+          REMOTE
+
+          sed -i "s#__DEPLOY_DIR__#${DEMO_DEPLOY_DIR}#g" remote.sh
+          sed -i "s#__RESET_DEMO__#${RESET_DEMO}#g" remote.sh
+
+          # SSM `commands` is a JSON array; pass the whole script as one element.
+          jq -n --rawfile script remote.sh '{commands: [$script]}' > params.json
+
+          echo "Sending redeploy command to ${DEMO_INSTANCE_ID} (ref ${RELEASE_REF}) ..."
+          command_id=$(aws ssm send-command \
+            --instance-ids "${DEMO_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "hosted demo redeploy ${RELEASE_REF}" \
+            --parameters file://params.json \
+            --query "Command.CommandId" \
+            --output text)
+          echo "SSM CommandId: ${command_id}"
+
+          status="Pending"
+          # Poll up to ~20 min (well under the 30 min job timeout) so a long
+          # `--build` finishes but a wedged VM cannot hang the runner forever.
+          for _ in $(seq 1 80); do
+            sleep 15
+            status=$(aws ssm get-command-invocation \
+              --command-id "${command_id}" \
+              --instance-id "${DEMO_INSTANCE_ID}" \
+              --query "Status" --output text 2>/dev/null || echo "Pending")
+            echo "SSM status: ${status}"
+            case "${status}" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+          done
+
+          echo "----- remote stdout -----"
+          aws ssm get-command-invocation \
+            --command-id "${command_id}" \
+            --instance-id "${DEMO_INSTANCE_ID}" \
+            --query "StandardOutputContent" --output text || true
+          echo "----- remote stderr -----"
+          aws ssm get-command-invocation \
+            --command-id "${command_id}" \
+            --instance-id "${DEMO_INSTANCE_ID}" \
+            --query "StandardErrorContent" --output text >&2 || true
+
+          if [ "${status}" != "Success" ]; then
+            echo "::error::Hosted demo redeploy failed on the VM (SSM status: ${status}). Preflight/smoke or compose did not pass — the demo was NOT promoted."
+            exit 1
+          fi
+          echo "Hosted demo redeploy succeeded."

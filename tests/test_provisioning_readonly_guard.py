@@ -44,6 +44,15 @@ def test_current_tree_passes() -> None:
     assert "PASS:" in proc.stdout
 
 
+def test_demo_deploy_is_explicitly_operational_and_instance_scoped() -> None:
+    """Demo redeploy may mutate only its own VM, never a connected estate."""
+    assert "demo-deploy-oidc" in GUARD.OPERATIONAL_MODULES
+    content = (ROOT / "deploy" / "terraform" / "demo-deploy-oidc" / "main.tf").read_text()
+    assert 'actions = ["ssm:SendCommand"]' in content
+    assert "local.demo_instance_arn" in content
+    assert '"ssm:*"' not in content
+
+
 # ---------------------------------------------------------------------------
 # Rule 1 — read-only connect modules.
 # ---------------------------------------------------------------------------

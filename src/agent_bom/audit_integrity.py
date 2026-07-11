@@ -24,11 +24,26 @@ def _env_truthy(name: str) -> bool:
     return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def audit_chain_key() -> bytes:
-    """Return the operator audit-chain key.
+def _split_hmac_keys(configured: str) -> list[bytes]:
+    """Split a configured ``AGENT_BOM_AUDIT_HMAC_KEY`` value into individual keys.
 
-    Development runs may use a per-process ephemeral key, but production can
-    opt into fail-closed startup with AGENT_BOM_REQUIRE_AUDIT_HMAC=1.
+    Supports a comma-separated list for zero-downtime key rotation; surrounding
+    whitespace and empty entries are ignored.
+    """
+    return [chunk.strip().encode("utf-8") for chunk in configured.split(",") if chunk.strip()]
+
+
+def audit_chain_keys() -> list[bytes]:
+    """Return the operator audit-chain keys, primary (signing) key first.
+
+    ``AGENT_BOM_AUDIT_HMAC_KEY`` may carry a **comma-separated list** to support
+    zero-downtime key rotation, mirroring the MultiFernet pattern in
+    ``agent_bom.api.connection_crypto``: records are SIGNED with the first
+    (primary) key and VERIFIED against any key in the list. A single key stays
+    fully backward compatible.
+
+    Development runs may use a per-process ephemeral key, but production can opt
+    into fail-closed startup with AGENT_BOM_REQUIRE_AUDIT_HMAC=1.
     """
     global _AUDIT_CHAIN_EPHEMERAL_KEY
 
@@ -36,7 +51,9 @@ def audit_chain_key() -> bytes:
 
     configured = resolve_secret("AGENT_BOM_AUDIT_HMAC_KEY")
     if configured:
-        return configured.encode("utf-8")
+        keys = _split_hmac_keys(configured)
+        if keys:
+            return keys
     if _env_truthy("AGENT_BOM_REQUIRE_AUDIT_HMAC"):
         raise RuntimeError(
             "AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled but AGENT_BOM_AUDIT_HMAC_KEY "
@@ -48,7 +65,16 @@ def audit_chain_key() -> bytes:
             "AGENT_BOM_AUDIT_HMAC_KEY not set — audit-chain CMAC uses an ephemeral key "
             "(signatures will not survive process restart; set env var for production)"
         )
-    return _AUDIT_CHAIN_EPHEMERAL_KEY
+    return [_AUDIT_CHAIN_EPHEMERAL_KEY]
+
+
+def audit_chain_key() -> bytes:
+    """Return the primary (signing) operator audit-chain key.
+
+    Signing always uses the first key; use :func:`audit_chain_keys` to verify
+    against every key in a rotation list.
+    """
+    return audit_chain_keys()[0]
 
 
 def _normalize_cmac_key(raw: bytes) -> bytes:
@@ -124,6 +150,29 @@ def compute_audit_record_hash(
     return None
 
 
+def verify_audit_record_mac(
+    payload: dict[str, Any],
+    prev_hash: str,
+    expected_hash: str,
+    *,
+    keys: list[bytes] | None = None,
+) -> bool:
+    """Return whether ``expected_hash`` matches the CMAC under **any** chain key.
+
+    Records are signed with the primary key but must verify across a rotation
+    list, so this tries every candidate key (default :func:`audit_chain_keys`)
+    and reports a match if one succeeds. Uses a constant-time comparison.
+    """
+    if not expected_hash:
+        return False
+    candidate_keys = keys if keys is not None else audit_chain_keys()
+    for key in candidate_keys:
+        computed = compute_audit_record_mac_with_key(payload, prev_hash, key)
+        if hmac.compare_digest(computed, expected_hash):
+            return True
+    return False
+
+
 def verify_audit_jsonl_chain(log_path: Path, *, max_lines: int = 50_000) -> dict[str, Any]:
     """Verify a runtime JSONL audit chain with per-record algorithm dispatch."""
     verified = 0
@@ -143,7 +192,7 @@ def verify_audit_jsonl_chain(log_path: Path, *, max_lines: int = 50_000) -> dict
             "error": "audit_log_unreadable",
         }
 
-    chain_key = resolve_verifier_chain_key(log_path)
+    chain_keys = resolve_verifier_chain_keys(log_path)
 
     processed = 0
     for raw_line in lines:
@@ -168,9 +217,16 @@ def verify_audit_jsonl_chain(log_path: Path, *, max_lines: int = 50_000) -> dict
         algorithm = str(entry.get("record_hash_algorithm", "")).strip().lower().replace("_", "-")
         algorithms_seen.add(algorithm or "aes-cmac-128")
         payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "record_hash"}}
-        expected_hash = compute_audit_record_hash(payload, actual_prev, algorithm, key=chain_key)
+        # Verify against any key in the rotation list (signed with the primary).
+        mac_matches = False
+        if actual_hash:
+            for key in chain_keys:
+                expected_hash = compute_audit_record_hash(payload, actual_prev, algorithm, key=key)
+                if expected_hash and hmac.compare_digest(actual_hash, expected_hash):
+                    mac_matches = True
+                    break
 
-        if expected_hash and actual_prev == previous_hash and actual_hash and hmac.compare_digest(actual_hash, expected_hash):
+        if mac_matches and actual_prev == previous_hash:
             verified += 1
         else:
             tampered += 1
@@ -223,11 +279,12 @@ def load_sidecar_chain_key(log_path: str | os.PathLike[str]) -> bytes | None:
         return None
 
 
-def resolve_verifier_chain_key(log_path: str | os.PathLike[str]) -> bytes:
-    """Return the chain key to use when verifying ``log_path``.
+def resolve_verifier_chain_keys(log_path: str | os.PathLike[str]) -> list[bytes]:
+    """Return the candidate chain keys to try when verifying ``log_path``.
 
-    Order of precedence:
-    1. ``AGENT_BOM_AUDIT_HMAC_KEY`` env var (operator-configured key)
+    Records verify against **any** returned key (rotation), normalized for
+    AES-CMAC. Order of precedence:
+    1. ``AGENT_BOM_AUDIT_HMAC_KEY`` env var (operator-configured key list)
     2. Sidecar ``<log>.chain-key`` written by the proxy at log creation
     3. The current process's ephemeral fallback (only useful in-process)
     """
@@ -235,8 +292,19 @@ def resolve_verifier_chain_key(log_path: str | os.PathLike[str]) -> bytes:
 
     configured = resolve_secret("AGENT_BOM_AUDIT_HMAC_KEY")
     if configured:
-        return _normalize_cmac_key(configured.encode("utf-8"))
+        keys = [_normalize_cmac_key(key) for key in _split_hmac_keys(configured)]
+        if keys:
+            return keys
     sidecar_key = load_sidecar_chain_key(log_path)
     if sidecar_key is not None:
-        return _normalize_cmac_key(sidecar_key)
-    return _audit_chain_cmac_key()
+        return [_normalize_cmac_key(sidecar_key)]
+    return [_audit_chain_cmac_key()]
+
+
+def resolve_verifier_chain_key(log_path: str | os.PathLike[str]) -> bytes:
+    """Return the primary chain key to use when verifying ``log_path``.
+
+    Retained for callers that need a single key; :func:`resolve_verifier_chain_keys`
+    returns the full rotation list.
+    """
+    return resolve_verifier_chain_keys(log_path)[0]

@@ -918,6 +918,51 @@ def scan(
         or ollama_flag
     )
 
+    # ── --no-discover zero-artifact guard ────────────────────────────────────
+    # --no-discover suppresses ambient discovery, so it MUST be paired with at
+    # least one explicit input artifact. Without one there is nothing to scan;
+    # exiting 0 "clean" here is a CI false-negative (a vulnerable target looks
+    # green). Hard-fail as a usage error (exit 2) instead. `project` here already
+    # absorbs --repo, the positional PATH, --self-scan, and --demo.
+    if no_discover:
+        _has_explicit_artifact = bool(
+            project
+            or config_dir
+            or inventory
+            or sbom_file
+            or external_scan_path
+            or images
+            or image_tars
+            or filesystem_paths
+            or os_packages
+            or k8s
+            or k8s_mcp
+            or code_paths
+            or ai_inventory_paths
+            or tf_dirs
+            or gha_path
+            or agent_projects
+            or jupyter_dirs
+            or iac_paths
+            or model_dirs
+            or dataset_dirs
+            or training_dirs
+            or hf_models
+            or scan_pii
+            or vector_db_scan
+            or gpu_scan_flag
+            or scan_prompts
+            or browser_extensions
+            or any_cloud
+        )
+        if not _has_explicit_artifact:
+            raise click.UsageError(
+                "--no-discover requires at least one explicit input artifact to scan "
+                "(e.g. --project/-p, --repo, --config-dir, --inventory, --sbom, "
+                "--external-scan, --image, --image-tar, or --filesystem). None were "
+                "provided, so there is nothing to scan."
+            )
+
     _explicit_target_scan = bool(
         inventory or sbom_file or images or image_tars or filesystem_paths or k8s or external_scan_path
     )

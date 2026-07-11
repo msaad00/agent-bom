@@ -589,7 +589,7 @@ def test_scan_bad_inventory_json_exits_two(tmp_path):
     assert "Expecting property name" in result.output
 
 
-def test_scan_inventory_no_discover_does_not_merge_project_or_skill_state(tmp_path):
+def test_scan_no_discover_scans_explicit_project_but_not_ambient_skills(tmp_path):
     inventory = tmp_path / "inventory.json"
     inventory.write_text(
         json.dumps(
@@ -644,8 +644,11 @@ def test_scan_inventory_no_discover_does_not_merge_project_or_skill_state(tmp_pa
     assert result.exit_code == 0, result.output
     report = json.loads(out.read_text(encoding="utf-8"))
     agent_names = [agent["name"] for agent in report["agents"]]
-    assert agent_names == ["declared-agent"]
-    assert "Scanning project directory" not in result.output
+    # An explicitly-passed --project/-p is an explicit input artifact: it is
+    # scanned even under --no-discover (alongside the declared inventory).
+    assert agent_names == ["declared-agent", "project:repo"]
+    assert "Scanning project directory" in result.output
+    # Ambient skill auto-discovery inside the project is still suppressed.
     assert "Scanning 1 skill file" not in result.output
 
 
@@ -795,6 +798,48 @@ def test_scan_inventory_only_round_trips_scan_report_snapshot_without_accretion(
     assert "collector" not in server["security_intelligence"][0]
     evidence = server["packages"][0]["discovery_provenance"]["version_provenance"]["evidence"]
     assert evidence == [{"package_path": "<path:mcp.json>"}]
+
+
+def test_scan_no_discover_scans_explicit_project_packages(tmp_path):
+    # Regression: `scan -p DIR --no-discover` used to drop the explicit project
+    # as if it were ambient discovery, scanning nothing and exiting 0 clean —
+    # a CI false-negative on a vulnerable repo. The explicit project must be
+    # scanned so its packages reach the report.
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "requirements.txt").write_text("requests==2.19.1\n", encoding="utf-8")
+    out = tmp_path / "report.json"
+
+    result = _run(
+        [
+            "scan",
+            "--project",
+            str(project),
+            "--no-discover",
+            "--no-scan",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(out.read_text(encoding="utf-8"))
+    packages = {(pkg["name"], pkg.get("ecosystem")) for pkg in report["packages"]}
+    assert ("requests", "pypi") in packages
+    assert [agent["name"] for agent in report["agents"]] == ["project:repo"]
+
+
+def test_scan_no_discover_without_artifact_exits_usage_error(tmp_path, monkeypatch):
+    # --no-discover with no explicit input artifact has nothing to scan. Exiting
+    # 0 "clean" is a false-negative; it must hard-fail as a usage error (exit 2).
+    monkeypatch.chdir(tmp_path)
+
+    result = _run(["scan", "--no-discover", "--no-scan"])
+
+    assert result.exit_code == 2, result.output
+    assert "--no-discover requires at least one explicit input artifact" in result.output
 
 
 def test_scan_bad_ignore_file_yaml_exits_one(tmp_path):

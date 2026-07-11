@@ -119,6 +119,24 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/Empty estates do not show pass tiles/i)).toBeInTheDocument();
   });
 
+  it("shows evaluated compliance when every control fails and the score is zero", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        compliance={{
+          overallScore: 0,
+          overallStatus: "fail",
+          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 0, warn: 0, fail: 10, total: 10 }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Compliance 0%")).toBeInTheDocument();
+    expect(screen.getByText("CIS Controls v8")).toBeInTheDocument();
+    expect(screen.getByText(/0% overall · 1 framework need attention/i)).toBeInTheDocument();
+    expect(screen.queryByText(/coverage appears after the first completed scan/i)).not.toBeInTheDocument();
+  });
+
   it("lets operators collapse overview sections", async () => {
     const user = userEvent.setup();
     render(

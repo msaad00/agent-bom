@@ -304,7 +304,10 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     "--oauth-as-issuer",
     envvar="AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER",
     default=None,
-    help="Public issuer base URL for the OAuth AS (defaults to the request URL when unset).",
+    help=(
+        "Public issuer base URL for the OAuth AS. Required for non-loopback listeners; "
+        "loopback development may derive it from the request URL."
+    ),
 )
 @click.option(
     "--a2a-mutual-auth-enforcement",

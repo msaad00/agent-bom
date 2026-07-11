@@ -293,6 +293,7 @@ def test_build_catalog_uses_bundled_by_default(tmp_path, monkeypatch):
     bundled_file = tmp_path / "bundled.json"
     bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
     monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.setattr("agent_bom.mitre_fetch._DEFAULT_SYNC_PATH", tmp_path / "missing-synced.json")
     monkeypatch.delenv("AGENT_BOM_MITRE_CATALOG_PATH", raising=False)
     monkeypatch.delenv("AGENT_BOM_MITRE_CATALOG_MODE", raising=False)
 
@@ -377,6 +378,7 @@ def test_get_catalog_metadata_exposes_counts(tmp_path, monkeypatch):
     bundled_file = tmp_path / "bundled.json"
     bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
     monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.setattr("agent_bom.mitre_fetch._DEFAULT_SYNC_PATH", tmp_path / "missing-synced.json")
     monkeypatch.delenv("AGENT_BOM_MITRE_CATALOG_PATH", raising=False)
 
     metadata = get_catalog_metadata()

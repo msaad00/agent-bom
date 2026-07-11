@@ -241,6 +241,9 @@ printf %s "$(openssl rand -hex 32)" > deploy/secrets/api_key
 printf %s "$(openssl rand -hex 32)" > deploy/secrets/audit_hmac_key
 printf %s "$(openssl rand -hex 32)" > deploy/secrets/browser_session_signing_key
 printf %s "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" > deploy/secrets/connections_key
+chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
+  deploy/secrets/api_key deploy/secrets/audit_hmac_key \
+  deploy/secrets/browser_session_signing_key deploy/secrets/connections_key
 scripts/deploy/install.sh platform-docker
 
 # 2. In the account being scanned, create the provider's read-only identity.

@@ -290,9 +290,9 @@ _CONNECT_FIELDS: dict[str, tuple[_ConnectField, ...]] = {
 }
 
 
-def _connect_options(source: _ConnectSource) -> list[click.Option]:
+def _connect_options(source: _ConnectSource) -> list[click.Parameter]:
     """Build the Click options for one provider's establish + verify flags."""
-    options: list[click.Option] = []
+    options: list[click.Parameter] = []
     for field in _CONNECT_FIELDS[source.name]:
         decls = [field.flag, field.param]
         if field.kind == "regions":
@@ -333,8 +333,8 @@ def _resolve_connect_inputs(source: _ConnectSource, kwargs: dict[str, object]) -
     for field in _CONNECT_FIELDS[source.name]:
         value = kwargs.get(field.param)
         if field.kind == "regions":
-            if value:
-                regions = [str(item) for item in value]  # type: ignore[union-attr]
+            if isinstance(value, (tuple, list)) and value:
+                regions = [str(item) for item in value]
                 supplied = True
             continue
         if not value:

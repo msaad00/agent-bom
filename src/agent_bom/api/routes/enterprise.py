@@ -1045,6 +1045,27 @@ def _safe_post_login_path(raw: str | None) -> str:
     return f"{local_path}{suffix}"
 
 
+def _allowed_post_login_path(raw: str | None) -> str:
+    safe_path = _safe_post_login_path(raw)
+    parsed = urlsplit(safe_path)
+    base_path = parsed.path or "/"
+    allowed_paths = {
+        "/",
+        "/dashboard",
+        "/findings",
+        "/exceptions",
+        "/baselines",
+        "/trends",
+        "/settings",
+    }
+    if base_path not in allowed_paths:
+        return "/"
+    suffix = f"?{parsed.query}" if parsed.query else ""
+    if parsed.fragment:
+        suffix += f"#{parsed.fragment}"
+    return f"{base_path}{suffix}"
+
+
 @router.get("/auth/oidc/login", tags=["enterprise"])
 async def oidc_browser_login(request: Request, return_to: str | None = None) -> RedirectResponse:
     """Start OIDC authorization-code + PKCE login for the dashboard."""
@@ -1153,7 +1174,7 @@ async def oidc_browser_callback(
     except ValueError:
         role_value = Role.VIEWER.value
 
-    return_to = _safe_post_login_path(return_to)
+    return_to = _allowed_post_login_path(return_to)
     response = RedirectResponse(url=return_to, status_code=302)
     _set_browser_session_cookie(
         response,

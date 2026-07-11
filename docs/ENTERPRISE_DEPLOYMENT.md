@@ -184,7 +184,23 @@ Fleet trust scoring is advisory and evidence-backed. The score combines registry
 
 **Operator env-var reference:** the full `AGENT_BOM_*` knob inventory is auto-generated from `src/agent_bom/config.py` to [`docs/operations/ENV_VARS.md`](operations/ENV_VARS.md). CI gates new env vars: any new `AGENT_BOM_*` reference under `src/agent_bom/` must be declared in `config.py` (preferred) or explicitly listed in `scripts/env_var_allowlist.txt` with a one-line reason, or the build fails.
 
-**Authentication:** localhost binds are allowed for local development. Non-loopback binds fail closed unless you set `AGENT_BOM_API_KEY`, configure `AGENT_BOM_OIDC_ISSUER`, configure `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON`, or explicitly pass `--allow-insecure-no-auth`. Rate limiting and CORS controls are built in.
+**Authentication:** localhost binds are allowed for local development. Non-loopback binds fail closed unless at least one auth path is configured — `AGENT_BOM_API_KEY` / `AGENT_BOM_API_KEYS`, OIDC (`AGENT_BOM_OIDC_ISSUER` or `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON`), SCIM (`AGENT_BOM_SCIM_BEARER_TOKEN`), or SAML SSO (`AGENT_BOM_SAML_IDP_ENTITY_ID` + `AGENT_BOM_SAML_SP_ENTITY_ID` and the related IdP/SP settings) — or you explicitly pass `--allow-insecure-no-auth`. Rate limiting and CORS controls are built in.
+
+#### Supported authentication paths (single matrix)
+
+`agent-bom` has one RBAC/tenant model; every path below resolves into it. mTLS is a **transport** posture (see [proxy-to-control-plane mTLS](#proxy-to-control-plane-mtls-posture)), not a user identity, and LDAP directory bind is not supported.
+
+| Path | Configure with | Surface | Counts toward the boot-gate / `auth_configured`? |
+| --- | --- | --- | --- |
+| API key (M2M) | `AGENT_BOM_API_KEY` / `AGENT_BOM_API_KEYS` | CLI · API · MCP | Yes |
+| OIDC JWT (bearer) | `AGENT_BOM_OIDC_ISSUER` or `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON` | API · UI | Yes |
+| SAML SSO (browser) | `AGENT_BOM_SAML_IDP_*` + `AGENT_BOM_SAML_SP_*` | UI (mints a short-lived session API key) | Yes |
+| SCIM bearer (provisioning) | `AGENT_BOM_SCIM_BEARER_TOKEN` | `/scim/v2/*` only | Yes |
+| Trusted reverse proxy | `AGENT_BOM_TRUST_PROXY_AUTH=1` | UI · API | Yes (upstream proxy is the authority) |
+| Browser session cookie | Minted server-side after OIDC/SAML/proxy login | UI | Derived — not a standalone configured path |
+| mTLS (client cert) | `AGENT_BOM_TLS_REQUIRE_CLIENT_CERT=1` | Transport | No — transport posture, not RBAC identity |
+
+A SAML-only deployment is a valid, fail-closed posture: browser users authenticate against the IdP and receive a short-lived session API key, while anonymous requests are still rejected (401) by the API-key middleware, which stays installed whenever any auth path is configured.
 
 **Tracing:** every API response includes `X-Request-ID`, `X-Trace-ID`, `X-Span-ID`, and W3C `traceparent`. If your ingress or collector already sends `traceparent`, `tracestate`, or bounded W3C `baggage`, `agent-bom` preserves the upstream trace context and continues the chain. `GET /health` also reports the current tracing contract (`w3c_trace_context`, `w3c_tracestate`, `w3c_baggage`) plus OTLP export state so operators can confirm whether tracing is merely available or actively exported. Set `AGENT_BOM_OTEL_TRACES_ENDPOINT` to export API request spans over OTLP/HTTP, and use `AGENT_BOM_OTEL_TRACES_HEADERS` for collector auth headers when needed.
 

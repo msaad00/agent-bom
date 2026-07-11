@@ -64,18 +64,33 @@ def _scim_bearer_enabled() -> bool:
     return scim_enabled_from_env()
 
 
+def _saml_enabled() -> bool:
+    """True when SAML SSO is configured via environment.
+
+    Imported lazily so command-line tooling that doesn't touch SAML doesn't
+    pay the import cost.
+    """
+    from agent_bom.api.saml import saml_enabled_from_env
+
+    return saml_enabled_from_env()
+
+
 def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_insecure_no_auth: bool) -> None:
     """Refuse unauthenticated non-loopback binds unless explicitly overridden.
 
-    Recognises four auth paths:
+    Recognises five auth paths:
     - explicit API key (--api-key / AGENT_BOM_API_KEY)
     - OIDC (AGENT_BOM_OIDC_ISSUER + tenant providers)
     - SCIM bearer (AGENT_BOM_SCIM_BEARER_TOKEN) -- the SCIM middleware
       authenticates every endpoint when this is configured
+    - SAML SSO (AGENT_BOM_SAML_IDP_* + AGENT_BOM_SAML_SP_*) -- browser users
+      authenticate against the IdP and receive a short-lived session API key;
+      anonymous requests still fail closed via the API-key middleware, which
+      stays installed whenever any auth path is configured
     - --allow-insecure-no-auth (explicit override; emits a loud warning when
       another auth method is also configured so operators understand that
       their `--allow-insecure-no-auth` does NOT actually disable the SCIM /
-      OIDC / API-key middleware path that's still in effect)
+      SAML / OIDC / API-key middleware path that's still in effect)
     """
     if _is_loopback_host(host):
         return
@@ -84,7 +99,8 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
     has_api_key = bool(api_key or secret_is_configured("AGENT_BOM_API_KEYS") or secret_is_configured("AGENT_BOM_API_KEY"))
     has_oidc = _oidc_enabled()
     has_scim = _scim_bearer_enabled()
-    if has_api_key or has_oidc or has_scim:
+    has_saml = _saml_enabled()
+    if has_api_key or has_oidc or has_scim or has_saml:
         if allow_insecure_no_auth:
             active: list[str] = []
             if has_api_key:
@@ -93,6 +109,8 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
                 active.append("OIDC")
             if has_scim:
                 active.append("SCIM-bearer")
+            if has_saml:
+                active.append("SAML")
             click.secho(
                 f"warning: --allow-insecure-no-auth was passed but {', '.join(active)} authentication is "
                 "still configured -- requests will continue to be authenticated. "
@@ -106,7 +124,8 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
     raise click.ClickException(
         f"Refusing to expose `{command}` on non-loopback host {host!r} without authentication. "
         "Set --api-key / AGENT_BOM_API_KEY, configure AGENT_BOM_API_KEYS, configure AGENT_BOM_OIDC_ISSUER / "
-        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, set AGENT_BOM_SCIM_BEARER_TOKEN, "
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, set AGENT_BOM_SCIM_BEARER_TOKEN, configure SAML SSO "
+        "(AGENT_BOM_SAML_IDP_ENTITY_ID / AGENT_BOM_SAML_SP_ENTITY_ID + related), "
         "or pass --allow-insecure-no-auth to override."
     )
 
@@ -289,7 +308,7 @@ def _should_auto_generate_dev_key(*, host: str, api_key: str | None, allow_insec
 
     if secret_is_configured("AGENT_BOM_API_KEYS") or secret_is_configured("AGENT_BOM_API_KEY"):
         return False
-    if _oidc_enabled() or _scim_bearer_enabled():
+    if _oidc_enabled() or _scim_bearer_enabled() or _saml_enabled():
         return False
     if _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API"):
         return False
@@ -323,6 +342,8 @@ def _api_auth_summary(
         return "OIDC bearer token required"
     if _scim_bearer_enabled():
         return "SCIM bearer token required"
+    if _saml_enabled():
+        return "SAML SSO (IdP session mints a short-lived session API key)"
     if _env_truthy("AGENT_BOM_TRUST_PROXY_AUTH"):
         return "Reverse-proxy auth (trusted proxy headers)"
     if allow_unauthenticated:

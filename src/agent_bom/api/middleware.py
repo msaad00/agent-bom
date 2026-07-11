@@ -415,6 +415,7 @@ def configure_auth_runtime(
     oidc_enabled: bool,
     trusted_proxy_enabled: bool,
     scim_enabled: bool = False,
+    saml_enabled: bool = False,
     unauthenticated_allowed: bool = False,
 ) -> None:
     """Track the active auth modes for operator/UI introspection surfaces."""
@@ -427,6 +428,8 @@ def configure_auth_runtime(
         configured_modes.append("api_key")
     if scim_enabled:
         configured_modes.append("scim_provisioning")
+    if saml_enabled:
+        configured_modes.append("saml_sso")
 
     auth_configured = bool(configured_modes)
     # An explicit unauthenticated opt-in means anonymous callers are served as
@@ -445,7 +448,10 @@ def configure_auth_runtime(
         recommended_ui_mode = "reverse_proxy_oidc"
     elif oidc_enabled:
         recommended_ui_mode = "oidc_bearer"
-    elif api_key_configured:
+    elif saml_enabled or api_key_configured:
+        # SAML SSO completes at the IdP and mints a short-lived session API key,
+        # so the dashboard uses the same session-key login surface as a static
+        # API key rather than the "configure auth" wall.
         recommended_ui_mode = "session_api_key"
 
     _AUTH_RUNTIME_STATUS.clear()

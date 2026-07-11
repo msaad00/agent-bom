@@ -51,6 +51,23 @@ def saml_runtime_available() -> bool:
     return True
 
 
+def saml_enabled_from_env() -> bool:
+    """Return True when SAML SSO is configured via environment variables.
+
+    Mirrors ``oidc_enabled_from_env`` / ``scim_enabled_from_env``: a pure
+    environment check so the CLI boot gate and auth-runtime introspection can
+    recognise a SAML-only deployment without importing the optional ``[saml]``
+    runtime. "Configured" means the IdP + SP settings required to verify an
+    assertion are all present (see :pyattr:`SAMLConfig.enabled`).
+
+    Runtime availability of the ``python3-saml`` extra is a separate operational
+    concern surfaced by :func:`describe_saml_posture`; a configured-but-missing
+    extra still leaves the control plane fail-closed because the API-key
+    middleware stays installed whenever any auth path is configured.
+    """
+    return SAMLConfig.from_env().enabled
+
+
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
 

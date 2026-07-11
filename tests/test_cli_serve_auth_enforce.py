@@ -1,7 +1,7 @@
-"""CLI auth-enforcement tests for `agent-bom serve` (#2196 audit fix).
+"""CLI auth-enforcement tests for `agent-bom serve` (#2196, #3803 audit fixes).
 
 Verify `_enforce_auth_defaults` recognises every accepted auth path
-(API key, OIDC, SCIM bearer) and emits a loud warning when
+(API key, OIDC, SCIM bearer, SAML SSO) and emits a loud warning when
 `--allow-insecure-no-auth` is passed alongside a configured auth method
 instead of silently doing nothing.
 """
@@ -42,18 +42,54 @@ def test_enforce_auth_defaults_scim_token_satisfies_check(monkeypatch: pytest.Mo
     _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=False)
 
 
-def test_enforce_auth_defaults_no_auth_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Non-loopback bind with no auth path AND no override raises ClickException."""
+def _set_saml_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configure the minimum SAML IdP + SP env for `SAMLConfig.enabled` to be True."""
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_ENTITY_ID", "https://idp.example.com/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_SSO_URL", "https://idp.example.com/sso")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_X509_CERT", "-----BEGIN CERTIFICATE-----test-----END CERTIFICATE-----")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://agent-bom.example.com/saml/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://agent-bom.example.com/v1/auth/saml/login")
+
+
+def test_enforce_auth_defaults_saml_satisfies_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SAML SSO config alone is recognised as a valid auth path on non-loopback.
+
+    Regression for #3803: SAML-only deployments (browser SSO minting short-lived
+    session API keys) previously hit the misleading "set api_key / OIDC / SCIM or
+    use --allow-insecure-no-auth" refusal even though the API-key middleware still
+    authenticates every request when SAML is configured.
+    """
     monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
     monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+    _set_saml_env(monkeypatch)
+    _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=False)
+
+
+def test_enforce_auth_defaults_partial_saml_still_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An incomplete SAML config (missing SP settings) does NOT count as auth.
+
+    Only a fully-formed IdP + SP config satisfies `SAMLConfig.enabled`; a stray
+    IdP entity id alone must stay fail-closed on a non-loopback bind.
+    """
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
+    monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SAML_SP_ENTITY_ID", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SAML_SP_ACS_URL", raising=False)
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_ENTITY_ID", "https://idp.example.com/metadata")
+    with pytest.raises(click.ClickException, match="Refusing to expose"):
+        _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=False)
+
+
+def test_enforce_auth_defaults_no_auth_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-loopback bind with no auth path AND no override raises ClickException."""
+    _clear_auth_env(monkeypatch)
     with pytest.raises(click.ClickException, match="Refusing to expose"):
         _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=False)
 
 
 def test_enforce_auth_defaults_explicit_override_passes(monkeypatch: pytest.MonkeyPatch) -> None:
     """--allow-insecure-no-auth allows non-loopback bind even without auth."""
-    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
-    monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+    _clear_auth_env(monkeypatch)
     _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=True)
 
 
@@ -86,6 +122,20 @@ def test_enforce_auth_defaults_warns_on_api_key_conflict(
     assert "API-key" in captured.err
 
 
+def test_enforce_auth_defaults_warns_on_saml_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """SAML + --allow-insecure-no-auth warns and names SAML in the active set."""
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
+    monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+    _set_saml_env(monkeypatch)
+    _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=True)
+    captured = capsys.readouterr()
+    assert "warning" in captured.err.lower()
+    assert "SAML" in captured.err
+
+
 def _clear_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "AGENT_BOM_API_KEY",
@@ -94,6 +144,11 @@ def _clear_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
         "AGENT_BOM_TRUST_PROXY_AUTH",
         "AGENT_BOM_SCIM_BEARER_TOKEN",
+        "AGENT_BOM_SAML_IDP_ENTITY_ID",
+        "AGENT_BOM_SAML_IDP_SSO_URL",
+        "AGENT_BOM_SAML_IDP_X509_CERT",
+        "AGENT_BOM_SAML_SP_ENTITY_ID",
+        "AGENT_BOM_SAML_SP_ACS_URL",
         "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
         "AGENT_BOM_NO_AUTO_DEV_KEY",
     ):
@@ -202,6 +257,24 @@ def test_should_auto_generate_dev_key_explicit_auth_wins(monkeypatch: pytest.Mon
     _clear_auth_env(monkeypatch)
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     assert _should_auto_generate_dev_key(host="127.0.0.1", api_key=None, allow_insecure_no_auth=False) is False
+
+    _clear_auth_env(monkeypatch)
+    _set_saml_env(monkeypatch)
+    assert _should_auto_generate_dev_key(host="127.0.0.1", api_key=None, allow_insecure_no_auth=False) is False
+
+
+def test_api_auth_summary_reports_saml(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With only SAML configured, the banner names SAML rather than fail-closed."""
+    _clear_auth_env(monkeypatch)
+    _set_saml_env(monkeypatch)
+    summary = _api_auth_summary(
+        host="0.0.0.0",
+        api_key=None,
+        oidc_enabled=False,
+        allow_unauthenticated=False,
+    )
+    assert "SAML" in summary
+    assert "fail closed" not in summary.lower()
 
 
 def test_generate_dev_api_key_is_prefixed_and_unique() -> None:

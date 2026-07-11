@@ -79,6 +79,13 @@ _PROXY_TRACER = get_tracer("agent_bom.proxy")
 _PROXY_POLICY_CACHE_SIGNING_ENV_VAR = "AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM"
 
 
+def _proxy_policy_cache_signing_pem() -> str:
+    """Resolve the cache-signing PEM file-first without retaining it in process env."""
+    from agent_bom.api.secret_source import resolve_secret
+
+    return resolve_secret(_PROXY_POLICY_CACHE_SIGNING_ENV_VAR).strip()
+
+
 async def _read_bounded_line(reader: asyncio.StreamReader, *, max_bytes: int = _MAX_MESSAGE_BYTES) -> bytes | None:
     """Read one newline-delimited message without accepting an oversized line."""
     try:
@@ -513,7 +520,7 @@ def _load_gateway_policy_cache_signer() -> _GatewayPolicyCacheSigner | None:
     global _gateway_policy_cache_signer, _gateway_policy_cache_signer_error
     if _gateway_policy_cache_signer is not None:
         return _gateway_policy_cache_signer
-    pem = os.environ.get(_PROXY_POLICY_CACHE_SIGNING_ENV_VAR, "").strip()
+    pem = _proxy_policy_cache_signing_pem()
     if not pem:
         return None
     if _gateway_policy_cache_signer_error is not None:
@@ -570,7 +577,7 @@ def _load_cached_gateway_policies(
         return None, None
 
     signer = _load_gateway_policy_cache_signer()
-    if os.environ.get(_PROXY_POLICY_CACHE_SIGNING_ENV_VAR, "").strip():
+    if _proxy_policy_cache_signing_pem():
         if signer is None:
             logger.warning("Ignoring gateway policy cache %s because cache signing is misconfigured", cache_path)
             return None, None

@@ -23,21 +23,27 @@ openssl genpkey -algorithm ed25519 -out agent-bom-evidence-key.pem
 openssl pkey -in agent-bom-evidence-key.pem -pubout -out agent-bom-evidence-pub.pem
 ```
 
-Deploy the server with the **private** key mounted as
-`AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM` (PEM string, PKCS#8). The value
-resolves file-first: set `AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE` to
-a mounted secret path (Docker/Compose secrets) and the file wins over the inline
-env var — preferred for compose/local so the PEM never lands in `.env` or process
-env. On a Helm install (Secret→env is fine):
+Deploy the server with the **private** key as a mounted file and set
+`AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE` to that path. File-first
+resolution keeps the PEM out of `.env`, Pod environment, and process listings.
+The inline `..._PEM` variable remains compatibility-only.
+
+On Helm, mount the Secret instead of projecting its contents into an environment variable:
 
 ```yaml
 controlPlane:
+  api:
+    extraVolumes:
+      - name: evidence-signing
+        secret:
+          secretName: agent-bom-evidence-signing
+    extraVolumeMounts:
+      - name: evidence-signing
+        mountPath: /run/secrets/agent-bom
+        readOnly: true
   env:
-    - name: AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM
-      valueFrom:
-        secretKeyRef:
-          name: agent-bom-evidence-signing
-          key: private.pem
+    - name: AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE
+      value: /run/secrets/agent-bom/private.pem
 ```
 
 The server logs at startup:
@@ -103,7 +109,7 @@ full response body. Tampering with any byte invalidates the signature.
 ## Key rotation
 
 1. Generate a new key pair.
-2. Update `AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM` on the server and redeploy.
+2. Replace the mounted private-key file and redeploy.
 3. Auditors re-fetch `/v1/compliance/verification-key` and pin the new `key_id`.
 4. Bundles signed with the old key remain verifiable against the old public key — retain it offline for the evidence retention window your framework requires.
 

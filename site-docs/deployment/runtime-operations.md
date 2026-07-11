@@ -18,7 +18,7 @@ same self-hosted `agent-bom` deployment.
 
 ## Proxy policy-cache signing key rotation
 
-When `AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM` is set, each proxy
+When `AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM_FILE` points to a mounted key, each proxy
 persists its cached gateway policy bundle together with an Ed25519 signature and
 fails closed if the signature is missing, tampered, or produced by a different
 key.
@@ -47,15 +47,15 @@ openssl genpkey -algorithm ed25519 -out /tmp/proxy-policy-cache-ed25519.pem
 openssl pkey -in /tmp/proxy-policy-cache-ed25519.pem -pubout -out /tmp/proxy-policy-cache-ed25519.pub
 ```
 
-Update the secret or environment source that backs
-`AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM`.
+Update the mounted secret file referenced by
+`AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM_FILE`.
 
 For Kubernetes, that usually means updating the Secret referenced by the proxy
 or sidecar deployment:
 
 ```bash
 kubectl -n agent-bom create secret generic agent-bom-proxy-policy-signing \
-  --from-file=AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM=/tmp/proxy-policy-cache-ed25519.pem \
+  --from-file=private.pem=/tmp/proxy-policy-cache-ed25519.pem \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -96,7 +96,7 @@ Default cache paths:
 
 ### Rotation checklist
 
-- rotate the secret value that backs `AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM`
+- rotate the mounted file referenced by `AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM_FILE`
 - perform rolling restarts while the control plane is reachable
 - confirm proxies can still pull policy and start cleanly
 - archive the public key if your change process requires evidence of the new key

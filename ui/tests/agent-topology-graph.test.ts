@@ -73,6 +73,15 @@ describe("agent-topology-graph", () => {
     expect(serverNodes[0]?.data?.agentCount).toBe(2);
   });
 
+  it("keeps inventory edges readable (not near-invisible)", () => {
+    const graph = buildTopologyGraph([
+      agent("cursor", [{ name: "filesystem", packages: [] }]),
+    ]);
+    const inventory = graph.edges[0];
+    expect(inventory?.style?.opacity).toBeGreaterThanOrEqual(0.65);
+    expect(Number(inventory?.style?.strokeWidth ?? 0)).toBeGreaterThanOrEqual(1.4);
+  });
+
   it("summarizes unique services and shared blast radius", () => {
     const summary = topologySummary([
       agent("cursor", [{ name: "github", packages: [], env: { TOKEN: "x" } }]),

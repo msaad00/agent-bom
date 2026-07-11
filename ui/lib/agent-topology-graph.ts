@@ -250,9 +250,10 @@ export function buildTopologyGraph(agents: Agent[]): { nodes: Node[]; edges: Edg
         type: "smoothstep",
         animated: vulns > 0 || hasCredential,
         style: {
-          stroke: vulns > 0 ? "#f87171" : hasCredential ? "#d97706" : "#64748b",
-          strokeWidth: vulns > 0 || hasCredential ? 2 : 1.2,
-          opacity: vulns > 0 || hasCredential ? 0.85 : 0.35,
+          // Inventory edges stay visible on light + dark canvases (was ~0.35 / slate).
+          stroke: vulns > 0 ? "#f87171" : hasCredential ? "#d97706" : "#94a3b8",
+          strokeWidth: vulns > 0 || hasCredential ? 2.2 : 1.5,
+          opacity: vulns > 0 || hasCredential ? 0.9 : 0.7,
         },
       });
     }

@@ -18,7 +18,12 @@ from agent_bom.ast_models import (
     _GoFunctionAnalysis,
     _GoToolRegistration,
 )
-from agent_bom.ast_signal_utils import _GUARDRAIL_CALL_PATTERNS, check_prompt_risks, classify_prompt_type
+from agent_bom.ast_signal_utils import (
+    _GUARDRAIL_CALL_PATTERNS,
+    _line_number_from_index,
+    check_prompt_risks,
+    classify_prompt_type,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -225,6 +230,9 @@ def _is_go_dangerous_call_name(call_name: str) -> bool:
 
 
 def _balanced_segment(source: str, open_index: int, *, open_char: str, close_char: str) -> tuple[str, int] | None:
+    # Go-specific override of the shared ast_signal_utils._balanced_segment: Go
+    # has backtick raw string literals (`...`) in which backslashes are literal,
+    # so they need distinct quote handling to avoid miscounting brace/paren depth.
     if open_index < 0 or open_index >= len(source) or source[open_index] != open_char:
         return None
     depth = 0
@@ -251,10 +259,6 @@ def _balanced_segment(source: str, open_index: int, *, open_char: str, close_cha
             if depth == 0:
                 return source[open_index : index + 1], index + 1
     return None
-
-
-def _line_number_from_index(source: str, index: int) -> int:
-    return source[:index].count("\n") + 1
 
 
 def _go_import_aliases(source: str) -> tuple[dict[str, str], set[str], dict[str, str]]:

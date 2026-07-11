@@ -93,7 +93,7 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [actionFilter, resourceFilter, page]);
+  }, [actionFilter, resourceFilter, page, roleLabel]);
 
   const loadAdmin = useCallback(async () => {
     if (authSessionLoading) {

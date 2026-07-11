@@ -11,7 +11,7 @@ from __future__ import annotations
 import inspect
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
@@ -150,9 +150,7 @@ def resolve_postgres_url() -> str:
     netloc = host + (f":{parsed.port}" if parsed.port else "")
     if username:
         netloc = f"{quote(username, safe='')}@{netloc}"
-    return urlunparse(
-        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
-    )
+    return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
 
 
 def resolve_postgres_secret() -> str | None:
@@ -198,8 +196,7 @@ def resolve_postgres_secret() -> str | None:
             raise ValueError(f"AGENT_BOM_POSTGRES_PASSWORD_FILE is empty: {password_file}")
         if not username:
             raise ValueError(
-                "AGENT_BOM_POSTGRES_URL must include a username when using "
-                "AGENT_BOM_POSTGRES_PASSWORD_FILE (expected agent_bom_app)."
+                "AGENT_BOM_POSTGRES_URL must include a username when using AGENT_BOM_POSTGRES_PASSWORD_FILE (expected agent_bom_app)."
             )
         if not parsed.hostname:
             raise ValueError("AGENT_BOM_POSTGRES_URL must include a hostname.")
@@ -217,8 +214,11 @@ def _get_pool() -> ConnectionPool:
         except ImportError as exc:
             raise ImportError("PostgreSQL support requires psycopg. Install with: pip install 'agent-bom[postgres]'") from exc
 
+        from agent_bom.api.postgres_auth import AUTH_MODE_IAM, postgres_auth_mode
+
         url = resolve_postgres_url()
-        password = resolve_postgres_secret()
+        auth_mode = postgres_auth_mode()
+        password = resolve_postgres_secret() if auth_mode != AUTH_MODE_IAM else None
         min_size = max(1, POSTGRES_POOL_MIN_SIZE)
         max_size = max(min_size, POSTGRES_POOL_MAX_SIZE)
         kwargs: dict[str, object] = {}
@@ -228,12 +228,42 @@ def _get_pool() -> ConnectionPool:
             # Keep the secret out of the conninfo/DSN; psycopg forwards these
             # per-connection kwargs to libpq for every new connection.
             kwargs["password"] = password
-        _pool = psycopg_pool.ConnectionPool(
-            conninfo=url,
-            min_size=min_size,
-            max_size=max_size,
-            kwargs=kwargs,
-        )
+        if auth_mode == AUTH_MODE_IAM:
+            import psycopg
+
+            base_connect: Callable[..., object] = getattr(
+                psycopg.Connection.connect, "__func__", psycopg.Connection.connect
+            )
+
+            def connect_with_iam_token(
+                cls: type[object], conninfo: str = "", **connect_kwargs: object
+            ) -> object:
+                """Resolve a fresh short-lived IAM token for every connection."""
+                connect_kwargs["password"] = resolve_postgres_secret()
+                return base_connect(cls, conninfo, **connect_kwargs)
+
+            # Construct the optional psycopg subclass dynamically so importing
+            # this module remains dependency-free in non-Postgres installs.
+            iam_auth_connection_class = type(
+                "IamAuthConnection",
+                (psycopg.Connection,),
+                {"connect": classmethod(connect_with_iam_token)},
+            )
+
+            _pool = psycopg_pool.ConnectionPool(
+                conninfo=url,
+                min_size=min_size,
+                max_size=max_size,
+                kwargs=kwargs,
+                connection_class=iam_auth_connection_class,
+            )
+        else:
+            _pool = psycopg_pool.ConnectionPool(
+                conninfo=url,
+                min_size=min_size,
+                max_size=max_size,
+                kwargs=kwargs,
+            )
     _guard_rls_capable_role(_pool)
     return _pool
 
@@ -254,9 +284,7 @@ def _guard_rls_capable_role(pool: ConnectionPool) -> None:
         return
     try:
         with pool.connection() as conn:
-            cursor = conn.execute(
-                "SELECT rolsuper, rolbypassrls, rolname FROM pg_roles WHERE rolname = current_user"
-            )
+            cursor = conn.execute("SELECT rolsuper, rolbypassrls, rolname FROM pg_roles WHERE rolname = current_user")
             row = cursor.fetchone() if cursor is not None else None
     except Exception:
         # Best-effort probe: a transient connect error or a store mock without a
@@ -273,9 +301,7 @@ def _guard_rls_capable_role(pool: ConnectionPool) -> None:
     if not (rolsuper or rolbypassrls):
         return
 
-    attrs = " and ".join(
-        label for label, present in (("SUPERUSER", rolsuper), ("BYPASSRLS", rolbypassrls)) if present
-    )
+    attrs = " and ".join(label for label, present in (("SUPERUSER", rolsuper), ("BYPASSRLS", rolbypassrls)) if present)
     message = (
         f"Postgres role {role_name!r} has {attrs}, which bypasses FORCE ROW LEVEL SECURITY "
         "and silently disables agent-bom tenant isolation — cross-tenant reads/writes would "

@@ -40,6 +40,10 @@ export type OverviewComplianceSnapshot = {
   frameworks: OverviewComplianceFramework[];
 };
 
+function hasEvaluatedCompliance(compliance: OverviewComplianceSnapshot | null | undefined): boolean {
+  return Boolean(compliance?.frameworks.some((framework) => framework.total > 0));
+}
+
 export interface OverviewCockpitProps {
   grade: string;
   score?: number | undefined;
@@ -97,7 +101,7 @@ export function OverviewCockpit({
   const activeDomains = domainList.filter((domain) => domain.status !== "idle").length;
   const coverage = domainList.length > 0 ? Math.round((activeDomains / domainList.length) * 100) : null;
   const complianceScore =
-    summaryReady && scans != null && scans > 0 && compliance != null && compliance.overallScore > 0
+    summaryReady && scans != null && scans > 0 && compliance != null && hasEvaluatedCompliance(compliance)
       ? `${Math.round(compliance.overallScore)}%`
       : undefined;
 
@@ -200,7 +204,7 @@ function ComplianceSnapshotPanel({
   defaultOpen?: boolean | undefined;
 }) {
   const frameworks = (compliance?.frameworks ?? []).slice(0, 8);
-  const evidenceReady = hasScanEvidence && compliance != null && compliance.overallScore > 0;
+  const evidenceReady = hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance);
   const failing = evidenceReady ? frameworks.filter((item) => item.fail > 0).length : 0;
   const statusTone =
     !evidenceReady

@@ -156,7 +156,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
       clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, []);
+  }, [onActivity]);
 
   const filtered = actionFilter ? events.filter((e) => e.action_type === actionFilter) : events;
 

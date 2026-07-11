@@ -19,6 +19,7 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
+  <a href="https://demo.agent-bom.com/">Live demo</a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
   <a href="docs/FIRST_RUN.md">First Run</a> ·
   <a href="site-docs/deployment/overview.md">Self-host</a> ·
@@ -60,6 +61,16 @@ Coverage depth and honest boundaries:
 
 <details>
 <summary><b>Product screenshots</b> — packaged dashboard on seeded demo data</summary>
+
+<p align="center">
+  <a href="https://demo.agent-bom.com/"><strong>Live demo</strong></a>
+  — public seeded hosted POC at
+  <a href="https://demo.agent-bom.com/">demo.agent-bom.com</a>
+  (not managed SaaS; self-host remains the production path). The hosted image
+  tracks releases and may lag <code>main</code> until redeployed — for the
+  newest UI/CLI proof use the screenshots below or
+  <code>agent-bom agents --demo --offline</code>.
+</p>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview command center with posture grade, findings breakdown, and scan coverage" width="900" />
@@ -286,8 +297,9 @@ needed.
 ## Deploy in Your Boundary
 
 OSS CLI, self-hosted API/UI, gated hosted POC, or optional Snowflake-native
-lane — no managed public SaaS in this repo yet. One compose file starts a local
-control plane:
+lane — no managed public SaaS in this repo yet. Try the public seeded demo at
+[demo.agent-bom.com](https://demo.agent-bom.com/) (redeployed with releases),
+or start a local control plane with one compose file:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml

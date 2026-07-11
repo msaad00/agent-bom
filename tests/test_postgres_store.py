@@ -985,8 +985,8 @@ def test_reset_pool():
     # Should not raise
 
 
-def test_resolve_postgres_url_injects_password_file(monkeypatch, tmp_path):
-    from agent_bom.api.postgres_common import resolve_postgres_url
+def test_resolve_postgres_url_keeps_password_file_out_of_dsn(monkeypatch, tmp_path):
+    from agent_bom.api.postgres_common import resolve_postgres_secret, resolve_postgres_url
 
     secret = tmp_path / "postgres_app_password"
     secret.write_text("s3cret-value", encoding="utf-8")
@@ -994,7 +994,10 @@ def test_resolve_postgres_url_injects_password_file(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_POSTGRES_PASSWORD_FILE", str(secret))
 
     url = resolve_postgres_url()
-    assert url.startswith("postgresql://agent_bom_app:s3cret-value@postgres:5432/agent_bom")
+    assert url == "postgresql://agent_bom_app@postgres:5432/agent_bom"
+    assert "s3cret-value" not in url
+    # The password is resolved separately for the pool kwargs, never the DSN.
+    assert resolve_postgres_secret() == "s3cret-value"
 
 
 def test_resolve_postgres_url_rejects_privileged_role_names(monkeypatch):

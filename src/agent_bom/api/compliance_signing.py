@@ -181,7 +181,9 @@ def _load_ed25519_signer() -> _Ed25519Signer | None:
     global _signer_cache, _signer_init_error
     if _signer_cache is not None:
         return _signer_cache
-    pem = os.environ.get(_ED25519_ENV_VAR)
+    from agent_bom.api.secret_source import resolve_secret
+
+    pem = resolve_secret(_ED25519_ENV_VAR)
     if not pem:
         return None
     if _signer_init_error is not None:

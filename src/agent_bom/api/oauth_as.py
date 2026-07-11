@@ -118,10 +118,11 @@ def _scope_str(scopes: set[str]) -> str:
 class OAuthSigningKey:
     """RSA signing key for access tokens, with a JWKS view for validation.
 
-    Loads a PEM private key from ``AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM`` when set
-    (so issued tokens survive a restart and are shared across replicas); else
-    generates an ephemeral RSA-2048 key and warns that tokens are invalidated on
-    restart. The ``kid`` is the RFC 7638 JWK thumbprint so it is stable for a
+    Loads a PEM private key from ``AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM`` (or the
+    file-first ``AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM_FILE`` mounted-secret variant)
+    when set (so issued tokens survive a restart and are shared across replicas);
+    else generates an ephemeral RSA-2048 key and warns that tokens are invalidated
+    on restart. The ``kid`` is the RFC 7638 JWK thumbprint so it is stable for a
     given key.
     """
 
@@ -129,7 +130,9 @@ class OAuthSigningKey:
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
 
-        pem = private_pem if private_pem is not None else os.environ.get("AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM", "").strip()
+        from agent_bom.api.secret_source import resolve_secret
+
+        pem = private_pem if private_pem is not None else resolve_secret("AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM").strip()
         if pem:
             self._private_key = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
             self._ephemeral = False

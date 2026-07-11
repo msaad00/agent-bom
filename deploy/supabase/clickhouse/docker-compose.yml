@@ -2,9 +2,12 @@
 #
 # Usage:
 #   cd deploy/supabase/clickhouse
+#   # Provide the Grafana admin password as a mounted file (never inline env):
+#   printf '%s' "$(openssl rand -hex 24)" > ./secrets/grafana_admin_password
+#   chmod 0400 ./secrets/grafana_admin_password
 #   docker compose up -d
 #   # ClickHouse: http://localhost:8123
-#   # Grafana:    http://localhost:3001 (set GRAFANA_ADMIN_USER and GRAFANA_ADMIN_PASSWORD first)
+#   # Grafana:    http://localhost:3001 (set GRAFANA_ADMIN_USER; password comes from the secret file)
 #
 # Then run scans with analytics enabled:
 #   agent-bom agents --clickhouse-url http://localhost:8123
@@ -40,12 +43,20 @@ services:
     environment:
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?set GRAFANA_ADMIN_USER before starting this analytics stack}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD before starting this analytics stack}
+      # Password is read from a mounted secret file (Grafana's __FILE convention),
+      # never from an interpolated env value.
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/agent-bom.json
+    secrets:
+      - grafana_admin_password
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana-provisioning:/etc/grafana/provisioning:ro
       - ./grafana-dashboard.json:/var/lib/grafana/dashboards/agent-bom.json:ro
+
+secrets:
+  grafana_admin_password:
+    file: ${GRAFANA_ADMIN_PASSWORD_FILE:-./secrets/grafana_admin_password}
 
 volumes:
   clickhouse-data:

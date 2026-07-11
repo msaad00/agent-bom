@@ -24,8 +24,11 @@ openssl pkey -in agent-bom-evidence-key.pem -pubout -out agent-bom-evidence-pub.
 ```
 
 Deploy the server with the **private** key mounted as
-`AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM` (PEM string, PKCS#8). On a
-Helm install:
+`AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM` (PEM string, PKCS#8). The value
+resolves file-first: set `AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE` to
+a mounted secret path (Docker/Compose secrets) and the file wins over the inline
+env var — preferred for compose/local so the PEM never lands in `.env` or process
+env. On a Helm install (Secret→env is fine):
 
 ```yaml
 controlPlane:

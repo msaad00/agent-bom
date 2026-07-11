@@ -82,6 +82,7 @@ def _seed_tagged_scan(tenant_id: str = "tenant-alpha") -> InMemoryJobStore:
 @pytest.fixture
 def clean_signer_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM", raising=False)
+    monkeypatch.delenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE", raising=False)
     monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED", raising=False)
     monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_ROTATION_DAYS", raising=False)
     monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_MAX_AGE_DAYS", raising=False)
@@ -121,6 +122,45 @@ def test_ed25519_activated_when_env_set(monkeypatch: pytest.MonkeyPatch, clean_s
     # Raw Ed25519 signature is 64 bytes = 128 hex chars
     assert len(sig.signature_hex) == 128
     public_key.verify(bytes.fromhex(sig.signature_hex), payload)  # raises on bad sig
+
+
+def test_ed25519_activated_from_mounted_file(
+    monkeypatch: pytest.MonkeyPatch, clean_signer_env: None, tmp_path
+) -> None:
+    # File-first: `*_FILE` points at a mounted secret; the inline var stays unset.
+    pem, public_key = _generate_ed25519_pem()
+    pem_file = tmp_path / "compliance_ed25519.pem"
+    pem_file.write_text(pem)
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE", str(pem_file))
+    reset_signer_cache_for_tests()
+
+    algorithm, key_id, reported_pem = describe_current_signer()
+    assert algorithm == "Ed25519"
+    assert key_id is not None and len(key_id) == 16
+    assert reported_pem is not None and "PUBLIC KEY" in reported_pem
+
+    payload = b'{"hello":"file"}'
+    sig = sign_compliance_bundle(payload)
+    assert sig.algorithm == "Ed25519"
+    public_key.verify(bytes.fromhex(sig.signature_hex), payload)
+
+
+def test_file_variant_takes_precedence_over_inline_env(
+    monkeypatch: pytest.MonkeyPatch, clean_signer_env: None, tmp_path
+) -> None:
+    # When both are set, the mounted file wins (resolve_secret is file-first).
+    file_pem, file_public_key = _generate_ed25519_pem()
+    inline_pem, _ = _generate_ed25519_pem()
+    pem_file = tmp_path / "compliance_ed25519.pem"
+    pem_file.write_text(file_pem)
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM", inline_pem)
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE", str(pem_file))
+    reset_signer_cache_for_tests()
+
+    payload = b'{"hello":"precedence"}'
+    sig = sign_compliance_bundle(payload)
+    # Signature verifies under the FILE key, not the inline one.
+    file_public_key.verify(bytes.fromhex(sig.signature_hex), payload)
 
 
 def test_bundle_roundtrip_verifies_with_verification_key_endpoint(monkeypatch: pytest.MonkeyPatch, clean_signer_env: None) -> None:

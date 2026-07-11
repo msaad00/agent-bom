@@ -28,6 +28,7 @@ from typing import Any, Protocol
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from agent_bom.api.secret_source import resolve_secret
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.security import sanitize_path_label, sanitize_sensitive_payload
 
@@ -178,8 +179,9 @@ def _describe_rotation_posture(
 # HMAC key for audit log tamper detection.  When unset, an ephemeral
 # per-process key is generated — signatures verify within the same process
 # but provide no cross-restart integrity.  Production deployments MUST set
-# AGENT_BOM_AUDIT_HMAC_KEY for meaningful tamper detection.
-_HMAC_ENV_KEY = (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
+# AGENT_BOM_AUDIT_HMAC_KEY (or AGENT_BOM_AUDIT_HMAC_KEY_FILE) for meaningful
+# tamper detection.
+_HMAC_ENV_KEY = resolve_secret("AGENT_BOM_AUDIT_HMAC_KEY")
 if _HMAC_ENV_KEY:
     _HMAC_KEY = _HMAC_ENV_KEY.encode()
 else:

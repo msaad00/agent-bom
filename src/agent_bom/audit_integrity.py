@@ -32,11 +32,16 @@ def audit_chain_key() -> bytes:
     """
     global _AUDIT_CHAIN_EPHEMERAL_KEY
 
-    configured = (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
+    from agent_bom.api.secret_source import resolve_secret
+
+    configured = resolve_secret("AGENT_BOM_AUDIT_HMAC_KEY")
     if configured:
         return configured.encode("utf-8")
     if _env_truthy("AGENT_BOM_REQUIRE_AUDIT_HMAC"):
-        raise RuntimeError("AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled but AGENT_BOM_AUDIT_HMAC_KEY is not set")
+        raise RuntimeError(
+            "AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled but AGENT_BOM_AUDIT_HMAC_KEY "
+            "(or AGENT_BOM_AUDIT_HMAC_KEY_FILE) is not set"
+        )
     if _AUDIT_CHAIN_EPHEMERAL_KEY is None:
         _AUDIT_CHAIN_EPHEMERAL_KEY = secrets.token_bytes(32)
         _logger.warning(
@@ -226,7 +231,9 @@ def resolve_verifier_chain_key(log_path: str | os.PathLike[str]) -> bytes:
     2. Sidecar ``<log>.chain-key`` written by the proxy at log creation
     3. The current process's ephemeral fallback (only useful in-process)
     """
-    configured = (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
+    from agent_bom.api.secret_source import resolve_secret
+
+    configured = resolve_secret("AGENT_BOM_AUDIT_HMAC_KEY")
     if configured:
         return _normalize_cmac_key(configured.encode("utf-8"))
     sidecar_key = load_sidecar_chain_key(log_path)

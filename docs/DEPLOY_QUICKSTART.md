@@ -147,7 +147,8 @@ AGENT_BOM_DEMO_ESTATE=1 scripts/deploy/install.sh pilot
 ### Docker on a VM (team pilot)
 
 ```bash
-cp .env.example .env    # set POSTGRES_PASSWORD
+cp .env.example .env
+# Postgres secrets: write files under deploy/secrets/ (never .env) — see .env.example
 scripts/deploy/install.sh docker
 ```
 

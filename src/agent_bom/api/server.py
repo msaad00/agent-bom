@@ -627,10 +627,12 @@ def _parse_cors_origins_from_env(default: list[str]) -> tuple[list[str], bool]:
 
 
 def _seed_api_key_store_from_env() -> bool:
-    """Seed RBAC keys from AGENT_BOM_API_KEYS for direct ASGI imports."""
+    """Seed RBAC keys from AGENT_BOM_API_KEYS (env or ``*_FILE``) for direct ASGI imports."""
     global _env_api_keys_seeded
 
-    configured = os.environ.get("AGENT_BOM_API_KEYS", "").strip()
+    from agent_bom.api.secret_source import resolve_secret
+
+    configured = resolve_secret("AGENT_BOM_API_KEYS")
     if not configured:
         return False
     if _env_api_keys_seeded:
@@ -805,7 +807,9 @@ def configure_api(
 
 def configure_api_from_env() -> None:
     """Configure API hardening for direct ASGI imports such as raw uvicorn."""
-    api_key = os.environ.get("AGENT_BOM_API_KEY") or None
+    from agent_bom.api.secret_source import resolve_secret
+
+    api_key = resolve_secret("AGENT_BOM_API_KEY") or None
     origins, allow_all = _parse_cors_origins_from_env(_default_origins)
     configure_api(
         cors_origins=origins,

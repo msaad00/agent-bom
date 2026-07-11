@@ -58,7 +58,9 @@ def _b64decode(value: str) -> bytes:
 
 
 def _signing_key() -> bytes:
-    configured = (os.environ.get("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY") or "").strip()
+    from agent_bom.api.secret_source import resolve_secret
+
+    configured = resolve_secret("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY")
     if configured:
         return hashlib.pbkdf2_hmac(
             "sha256",

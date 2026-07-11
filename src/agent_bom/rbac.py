@@ -279,13 +279,15 @@ def configure_api_keys(key_map: dict[str, str]) -> None:
 
 
 def load_api_keys_from_env() -> None:
-    """Load API keys from AGENT_BOM_API_KEYS env var.
+    """Load API keys from AGENT_BOM_API_KEYS env var or ``*_FILE``.
 
     Format: ``key1:role1,key2:role2`` where each role is one of
     admin/analyst/viewer. Bad rows raise immediately so misconfiguration
     surfaces at boot, not at first request.
     """
-    raw = os.environ.get("AGENT_BOM_API_KEYS", "")
+    from agent_bom.api.secret_source import resolve_secret
+
+    raw = resolve_secret("AGENT_BOM_API_KEYS")
     if not raw:
         return
     key_map = {}
@@ -459,13 +461,14 @@ def require_authenticated_permission(action: str) -> Callable:
             return _authorize(role, action)
 
         auth_runtime = get_auth_runtime_status()
+        from agent_bom.api.secret_source import secret_is_configured
+
         env_auth_configured = any(
-            os.environ.get(name, "").strip()
-            for name in (
-                "AGENT_BOM_API_KEY",
-                "AGENT_BOM_OIDC_ISSUER",
-                "AGENT_BOM_TRUST_PROXY_AUTH",
-                "AGENT_BOM_SCIM_BEARER_TOKEN",
+            (
+                secret_is_configured("AGENT_BOM_API_KEY"),
+                os.environ.get("AGENT_BOM_OIDC_ISSUER", "").strip(),
+                os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip(),
+                secret_is_configured("AGENT_BOM_SCIM_BEARER_TOKEN"),
             )
         )
         proxy_identity_headers_present = bool(x_role or x_tenant_id or x_proxy_secret)
@@ -487,7 +490,9 @@ def require_authenticated_permission(action: str) -> Callable:
             "yes",
             "on",
         }
-        proxy_secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
+        from agent_bom.api.secret_source import resolve_secret
+
+        proxy_secret = resolve_secret("AGENT_BOM_TRUST_PROXY_AUTH_SECRET")
         if x_role and trusted_proxy_enabled and proxy_secret and hmac.compare_digest(x_proxy_secret or "", proxy_secret):
             try:
                 role = Role(x_role.lower())

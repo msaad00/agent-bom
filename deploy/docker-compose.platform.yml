@@ -17,27 +17,21 @@ version: "3.8"
 #   - Postgres on internal 'backend' network only — not reachable from host or internet
 #   - API bridges backend + frontend networks
 #   - UI on frontend only — cannot reach Postgres directly
-#   - App connects as agent_bom_app (DML only, no DDL) when POSTGRES_APP_PASSWORD is set
-#   - Postgres credentials sourced from Docker secrets (file-mounted at
-#     /run/secrets/...), not raw env. Operators provide:
+#   - App connects as agent_bom_app (DML only, no DDL) — never bootstrap/admin/superuser
+#   - Control-plane + Postgres credentials sourced from Docker secrets (file-mounted at
+#     /run/secrets/...), never raw env / .env secret values. Operators provide:
 #         deploy/secrets/postgres_password
-#         deploy/secrets/postgres_app_password   (optional, for DML-only role)
-#     A non-secret placeholder lives at deploy/secrets/postgres_password.example
-#     for documentation only. The compose file defaults to the real
-#     deploy/secrets/postgres_password path so shared stacks fail closed when
-#     the operator has not mounted a secret. The api service still consumes
-#     POSTGRES_APP_PASSWORD via env to construct AGENT_BOM_POSTGRES_URL
-#     (URL-form requirement);
-#     wrapper-based file-only injection is tracked as a #1962 follow-up.
+#         deploy/secrets/postgres_app_password
+#         deploy/secrets/api_key
+#         deploy/secrets/audit_hmac_key
+#         deploy/secrets/browser_session_signing_key
+#         deploy/secrets/connections_key
+#     Placeholders live at deploy/secrets/*.example for documentation only.
 #
 # Usage:
-#   cp .env.example .env                     # set POSTGRES_APP_PASSWORD only
-#   echo -n "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
-#   chmod 0400 deploy/secrets/postgres_password
-#   export AGENT_BOM_API_KEY="$(openssl rand -hex 32)"  # or set OIDC env below
-#   export AGENT_BOM_AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
-#   export AGENT_BOM_BROWSER_SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
-#   export AGENT_BOM_CONNECTIONS_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+#   cp .env.example .env                     # non-secret URL / OIDC issuer only
+#   python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose
+#   # or write files manually — see deploy/secrets/README.md
 #   docker compose -f deploy/docker-compose.platform.yml up --build
 
 services:
@@ -46,15 +40,14 @@ services:
     container_name: agent-bom-platform-db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-agent_bom}
+      # Bootstrap role for image init only — API never connects as this user.
       POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
-      # The postgres image natively reads POSTGRES_PASSWORD_FILE from a
-      # mounted secret, keeping the password off the docker inspect surface
-      # and out of `docker compose config` output.
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     secrets:
       - postgres_password
+      - postgres_app_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./supabase/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
@@ -88,21 +81,27 @@ services:
     ports:
       - "${AGENT_BOM_API_BIND_HOST:-127.0.0.1}:${API_PORT:-8422}:8422"
     environment:
-      # Use app user (DML only) when available, fall back to admin for dev
-      - AGENT_BOM_POSTGRES_URL=postgresql://${POSTGRES_APP_USER:-${POSTGRES_USER:-agent_bom}}:${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD:?err}}@postgres:5432/${POSTGRES_DB:-agent_bom}
-      - AGENT_BOM_API_KEY=${AGENT_BOM_API_KEY:-}
+      - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password
+      - AGENT_BOM_API_KEY_FILE=/run/secrets/api_key
       - AGENT_BOM_OIDC_ISSUER=${AGENT_BOM_OIDC_ISSUER:-}
       - AGENT_BOM_OIDC_AUDIENCE=${AGENT_BOM_OIDC_AUDIENCE:-}
-      - AGENT_BOM_AUDIT_HMAC_KEY=${AGENT_BOM_AUDIT_HMAC_KEY:-}
+      - AGENT_BOM_AUDIT_HMAC_KEY_FILE=/run/secrets/audit_hmac_key
       - AGENT_BOM_REQUIRE_AUDIT_HMAC=${AGENT_BOM_REQUIRE_AUDIT_HMAC:-1}
-      - AGENT_BOM_CONNECTIONS_KEY=${AGENT_BOM_CONNECTIONS_KEY:-}
-      - AGENT_BOM_BROWSER_SESSION_SIGNING_KEY=${AGENT_BOM_BROWSER_SESSION_SIGNING_KEY:-}
+      - AGENT_BOM_CONNECTIONS_KEY_FILE=/run/secrets/connections_key
+      - AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_FILE=/run/secrets/browser_session_signing_key
       - AGENT_BOM_SESSION_COOKIE_SECURE=${AGENT_BOM_SESSION_COOKIE_SECURE:-1}
       - AGENT_BOM_DISABLE_DOCS=1
       - AGENT_BOM_SKIP_UPDATE_CHECK=1
       - AGENT_BOM_API_LOCAL_PATH_SCANS=disabled
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://ui:3000}
       - NVD_API_KEY=${NVD_API_KEY:-}
+    secrets:
+      - postgres_app_password
+      - api_key
+      - audit_hmac_key
+      - browser_session_signing_key
+      - connections_key
     volumes:
       - agent-bom-state:/home/abom/.agent-bom
     depends_on:
@@ -149,10 +148,18 @@ volumes:
   agent-bom-state:
 
 secrets:
-  # Mount-provisioned credentials. Populate the files before `docker compose up`.
-  # See the header comment for permissions guidance (chmod 0400).
   postgres_password:
     file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}
+  postgres_app_password:
+    file: ${POSTGRES_APP_PASSWORD_FILE:-./secrets/postgres_app_password}
+  api_key:
+    file: ${API_KEY_FILE:-./secrets/api_key}
+  audit_hmac_key:
+    file: ${AUDIT_HMAC_KEY_FILE:-./secrets/audit_hmac_key}
+  browser_session_signing_key:
+    file: ${BROWSER_SESSION_SIGNING_KEY_FILE:-./secrets/browser_session_signing_key}
+  connections_key:
+    file: ${CONNECTIONS_KEY_FILE:-./secrets/connections_key}
 
 networks:
   backend:

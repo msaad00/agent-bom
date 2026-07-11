@@ -33,6 +33,12 @@ jobs:
     name: Redeploy hosted demo via SSM
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Protected environment: this repo is public, so gate every run behind a
+    # required-reviewer approval on the `demo` environment. Even a maintainer's
+    # release/workflow_dispatch pauses for owner approval before any AWS call,
+    # and the AWS trust policy is scoped to this environment's OIDC subject
+    # (repo:<owner>/<repo>:environment:demo) so forks/PRs can never assume it.
+    environment: demo
     permissions:
       id-token: write  # OIDC token to assume the deploy role
       contents: read

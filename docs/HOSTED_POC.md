@@ -269,6 +269,26 @@ it, set these repo Actions **variables** and **secret**:
 The instance also needs the SSM agent running and an instance profile granting
 `AmazonSSMManagedInstanceCore` so Run Command can reach it.
 
+#### Public-repo hardening (required)
+
+This repo is public, so fork/PR contributors must never be able to trigger the
+deploy or assume the AWS role. Two independent defenses:
+
+- **Protected environment.** The deploy job declares `environment: demo`. Create
+  a repo Actions **Environment** named `demo` with **yourself as a required
+  reviewer**, and optionally restrict its deployment branches/tags to the default
+  branch and `v*.*.*` tags. Then every `release` / `workflow_dispatch` run
+  **pauses for your approval** before any AWS call. The workflow has **no**
+  `pull_request` / `pull_request_target` trigger — it is release +
+  `workflow_dispatch` only, so PRs cannot start it at all.
+- **Scoped OIDC trust.** Provision the deploy role with the
+  `deploy/terraform/demo-deploy-oidc` module. Its trust policy pins the GitHub
+  OIDC `sub` to **exactly** `repo:<owner>/<repo>:environment:demo` (StringEquals,
+  no wildcard) and grants only `ssm:SendCommand` to the demo instance +
+  `ssm:GetCommandInvocation`. Fork/PR runs present a different `sub` and STS
+  rejects them. `terraform output -raw role_arn` gives the value for
+  `DEMO_DEPLOY_ROLE_ARN`.
+
 ## Snowflake Native App lane
 
 Use Snowflake when the buyer wants agent-bom to run inside their Snowflake

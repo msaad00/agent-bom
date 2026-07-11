@@ -11,10 +11,10 @@ from __future__ import annotations
 import inspect
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from agent_bom.config import (
     ALLOW_SUPERUSER_DB,
@@ -231,22 +231,31 @@ def _get_pool() -> ConnectionPool:
         if auth_mode == AUTH_MODE_IAM:
             import psycopg
 
-            class IamAuthConnection(psycopg.Connection):
-                """Resolve a fresh short-lived IAM token for every connection."""
+            base_connect: Callable[..., object] = getattr(
+                psycopg.Connection.connect, "__func__", psycopg.Connection.connect
+            )
 
-                @classmethod
-                def connect(  # type: ignore[override]
-                    cls, conninfo: str = "", **connect_kwargs: object
-                ) -> object:
-                    connect_kwargs["password"] = resolve_postgres_secret()
-                    return super().connect(conninfo, **connect_kwargs)  # type: ignore[arg-type]
+            def connect_with_iam_token(
+                cls: type[object], conninfo: str = "", **connect_kwargs: object
+            ) -> object:
+                """Resolve a fresh short-lived IAM token for every connection."""
+                connect_kwargs["password"] = resolve_postgres_secret()
+                return base_connect(cls, conninfo, **connect_kwargs)
+
+            # Construct the optional psycopg subclass dynamically so importing
+            # this module remains dependency-free in non-Postgres installs.
+            iam_auth_connection_class = type(
+                "IamAuthConnection",
+                (psycopg.Connection,),
+                {"connect": classmethod(connect_with_iam_token)},
+            )
 
             _pool = psycopg_pool.ConnectionPool(
                 conninfo=url,
                 min_size=min_size,
                 max_size=max_size,
                 kwargs=kwargs,
-                connection_class=IamAuthConnection,
+                connection_class=iam_auth_connection_class,
             )
         else:
             _pool = psycopg_pool.ConnectionPool(
@@ -255,9 +264,8 @@ def _get_pool() -> ConnectionPool:
                 max_size=max_size,
                 kwargs=kwargs,
             )
-    pool = cast(ConnectionPool, _pool)
-    _guard_rls_capable_role(pool)
-    return pool
+    _guard_rls_capable_role(_pool)
+    return _pool
 
 
 def _guard_rls_capable_role(pool: ConnectionPool) -> None:

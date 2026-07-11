@@ -104,8 +104,8 @@ class FrameworkNarrative:
 
     framework: str  # display name, e.g. "OWASP Top 10 for LLM"
     slug: str  # e.g. "owasp-llm"
-    status: str  # "passing" | "at_risk" | "failing"
-    score: int  # 0-100
+    status: str  # "passing" | "at_risk" | "failing" | "not_evaluated"
+    score: int  # 0-100, over evaluated controls only (0 when nothing evaluated)
     narrative: str  # 2-3 sentences
     failing_controls: list[ControlNarrative] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
@@ -219,6 +219,7 @@ def _control_remediation_steps(
 def _framework_overall_narrative(
     display_name: str,
     total_controls: int,
+    evaluated_count: int,
     pass_count: int,
     fail_count: int,
     warn_count: int,
@@ -226,18 +227,29 @@ def _framework_overall_narrative(
     score: int,
 ) -> str:
     """2-3 sentence framework-level posture narrative."""
+    if evaluated_count == 0:
+        return (
+            f"No {display_name} controls could be evaluated in this scan: "
+            f"0 of {total_controls} controls have vulnerability-derived evidence. "
+            "This is a coverage gap, not a pass — controls without mapped findings are "
+            f"reported as not-evaluated. Run scans that map findings to {display_name} "
+            "before relying on this posture."
+        )
+
+    plural = "s" if evaluated_count != 1 else ""
     if fail_count == 0 and warn_count == 0:
         return (
-            f"The organisation is fully compliant with {display_name}: "
-            f"all {total_controls} assessed controls are passing. "
-            "No immediate action is required; continue monitoring with regular scans."
+            f"All {evaluated_count} evaluated {display_name} control{plural} are passing "
+            f"({evaluated_count} of {total_controls} controls evaluated; score {score}/100 "
+            "over evaluated controls). Controls with no mapped findings are reported as "
+            "not-evaluated rather than compliant; continue scanning to broaden coverage."
         )
 
     if fail_count == 0:
         return (
             f"{display_name} posture is at risk with {warn_count} control"
             f"{'s' if warn_count > 1 else ''} in warning state "
-            f"(overall score {score}/100). "
+            f"(score {score}/100 over {evaluated_count} evaluated control{plural}). "
             "Medium and low severity findings require remediation within the next maintenance cycle "
             "to prevent status degradation."
         )
@@ -249,7 +261,7 @@ def _framework_overall_narrative(
     return (
         f"{display_name} compliance is failing: {fail_count} control"
         f"{'s' if fail_count > 1 else ''} have critical or high severity findings "
-        f"(overall score {score}/100). "
+        f"(score {score}/100 over {evaluated_count} evaluated control{plural}). "
         f"Failing controls include {ctrl_str}. "
         "Immediate remediation is required — unaddressed critical findings may constitute "
         "a regulatory breach under this framework."
@@ -322,6 +334,7 @@ def _build_framework_narrative(
                 entry["affected_agents"].add(agent)
 
     total_controls = len(control_data)
+    evaluated_count = 0
     pass_count = 0
     warn_count = 0
     fail_count = 0
@@ -329,7 +342,13 @@ def _build_framework_narrative(
     critical_failing_ids: list[str] = []
 
     for code, data in sorted(control_data.items()):
-        status = _control_status(data["severity_breakdown"]) if data["findings"] > 0 else "pass"
+        # A control is only "evaluated" when at least one finding maps to it.
+        # Controls with zero mapped findings carry no vulnerability-derived
+        # evidence, so they are not-evaluated — never counted as a silent pass.
+        if data["findings"] == 0:
+            continue
+        evaluated_count += 1
+        status = _control_status(data["severity_breakdown"])
         pkgs = sorted(data["affected_pkgs"])
         agents = sorted(data["affected_agents"])
 
@@ -354,16 +373,23 @@ def _build_framework_narrative(
                 )
             )
 
-    score = round((pass_count / total_controls) * 100) if total_controls > 0 else 100
+    # Score over EVALUATED controls only. With nothing evaluated there is no
+    # evidence, so the score is 0 (not 100) and the status is not_evaluated —
+    # an empty scan must never read as "fully compliant".
+    score = round((pass_count / evaluated_count) * 100) if evaluated_count > 0 else 0
 
-    if fail_count > 0:
+    if evaluated_count == 0:
+        fw_status = "not_evaluated"
+    elif fail_count > 0:
         fw_status = "failing"
     elif warn_count > 0:
         fw_status = "at_risk"
     else:
         fw_status = "passing"
 
-    narrative = _framework_overall_narrative(display_name, total_controls, pass_count, fail_count, warn_count, critical_failing_ids, score)
+    narrative = _framework_overall_narrative(
+        display_name, total_controls, evaluated_count, pass_count, fail_count, warn_count, critical_failing_ids, score
+    )
     recommendations = _framework_recommendations(display_name, fail_count, warn_count, failing_controls)
 
     return FrameworkNarrative(
@@ -560,6 +586,7 @@ def _build_executive_summary(
     """3-5 sentence executive summary for compliance stakeholders."""
     failing_fws = [fn for fn in framework_narratives if fn.status == "failing"]
     at_risk_fws = [fn for fn in framework_narratives if fn.status == "at_risk"]
+    evaluated_fws = [fn for fn in framework_narratives if fn.status in ("passing", "at_risk", "failing")]
     # Lead: what was scanned
     sentences: list[str] = [
         f"This AI-BOM compliance report covers {total_agents} AI agent"
@@ -588,11 +615,16 @@ def _build_executive_summary(
     elif at_risk_fws:
         fw_names = ", ".join(fn.framework for fn in at_risk_fws[:3])
         sentences.append(
-            f"All frameworks passed without critical failures; however {len(at_risk_fws)} "
+            f"All evaluated frameworks passed without critical failures; however {len(at_risk_fws)} "
             f"{'are' if len(at_risk_fws) > 1 else 'is'} at risk: {fw_names}."
         )
+    elif evaluated_fws:
+        sentences.append(f"All {len(evaluated_fws)} evaluated compliance frameworks are passing with no critical findings.")
     else:
-        sentences.append(f"All {total_fws} assessed compliance frameworks are passing with no critical findings.")
+        sentences.append(
+            f"None of the {total_fws} frameworks could be evaluated — no findings mapped to their "
+            "controls, so compliance posture is unknown rather than compliant."
+        )
 
     # Closing action
     if failing_fws or at_risk_fws:

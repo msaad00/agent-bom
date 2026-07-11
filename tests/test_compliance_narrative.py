@@ -132,13 +132,18 @@ def test_unknown_framework_raises_value_error():
 # ─── Framework narrative content ──────────────────────────────────────────────
 
 
-def test_passing_framework_status_when_no_vulns():
+def test_not_evaluated_framework_status_when_no_vulns():
+    """A scan with zero findings has no evidence — it must not read as fully compliant."""
     report = _make_report(blast_radii=[])
     result = generate_compliance_narrative(report, framework="owasp-llm")
     fw = result.framework_narratives[0]
-    assert fw.status == "passing"
-    assert fw.score == 100
+    assert fw.status == "not_evaluated"
+    assert fw.score != 100
+    assert fw.score == 0
     assert fw.failing_controls == []
+    lower = fw.narrative.lower()
+    assert "fully compliant" not in lower
+    assert "not-evaluated" in lower or "not evaluated" in lower or "could be evaluated" in lower
 
 
 def test_failing_framework_status_for_critical_vuln():
@@ -163,6 +168,22 @@ def test_at_risk_framework_status_for_medium_vuln():
     result = generate_compliance_narrative(report, framework="owasp-llm")
     fw = result.framework_narratives[0]
     assert fw.status == "at_risk"
+
+
+def test_score_is_over_evaluated_controls_only():
+    """Score denominator is the evaluated controls, not the whole catalogue.
+
+    Two of ten OWASP controls are evaluated: one passes (finding with no
+    severity) and one warns. Score must be 50 (1 pass / 2 evaluated), not 10
+    (1 pass / 10 catalogue controls).
+    """
+    passing = _make_blast_radius(vuln=_make_vuln(severity=Severity.UNKNOWN), owasp_tags=["LLM05"])
+    warning = _make_blast_radius(vuln=_make_vuln(severity=Severity.MEDIUM), owasp_tags=["LLM01"])
+    report = _make_report(blast_radii=[passing, warning])
+    result = generate_compliance_narrative(report, framework="owasp-llm")
+    fw = result.framework_narratives[0]
+    assert fw.status == "at_risk"
+    assert fw.score == 50
 
 
 def test_framework_score_is_integer_0_to_100():
@@ -403,8 +424,8 @@ def test_multi_framework_tags_affect_multiple_frameworks():
     assert status_by_slug["owasp-mcp"] != "passing"
     assert status_by_slug["nist"] != "passing"
     assert status_by_slug["cmmc"] != "passing"
-    # Untagged framework should be passing
-    assert status_by_slug["soc2"] == "passing"
+    # Untagged framework has no mapped findings → not-evaluated, never a silent pass
+    assert status_by_slug["soc2"] == "not_evaluated"
 
 
 def test_all_framework_slugs_covered():
@@ -440,6 +461,6 @@ def test_same_control_id_does_not_bleed_between_frameworks():
     status_by_slug = {fn.slug: fn.status for fn in result.framework_narratives}
 
     assert status_by_slug["nist-800-53"] == "failing"
-    assert status_by_slug["fedramp"] == "passing"
+    assert status_by_slug["fedramp"] == "not_evaluated"
     assert result.remediation_impact
     assert result.remediation_impact[0].frameworks_impacted == ["NIST 800-53"]

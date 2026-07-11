@@ -98,6 +98,7 @@ nav:
       - Deploy Quickstart: deployment/quickstart.md
       - Product Boundaries: deployment/product-boundaries.md
       - Paved Paths:
+          - Self-Hosted BYOC Quickstart: deployment/self-hosted-byoc-quickstart.md
           - One-machine Docker Pilot: deployment/docker.md
           - Vanilla EKS Quickstart: deployment/eks-vanilla-quickstart.md
           - Your Own AWS / EKS: deployment/own-infra-eks.md

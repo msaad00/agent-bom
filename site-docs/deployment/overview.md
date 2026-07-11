@@ -76,6 +76,7 @@ when your platform team needs that specific detail.
 
 | You are trying to... | Start with | Stop there unless... |
 |---|---|---|
+| self-host and connect your own cloud read-only | [Self-Hosted BYOC Quickstart](self-hosted-byoc-quickstart.md) | you need a cluster, SSO, or fleet sync |
 | run a local pilot | [Docker](docker.md) | you need EKS, SSO, or fleet sync |
 | deploy in vanilla EKS | [Vanilla EKS Quickstart](eks-vanilla-quickstart.md) | you need service mesh, ESO, or cert-manager |
 | deploy in hardened AWS / EKS | [Your Own AWS / EKS](own-infra-eks.md) | you need a lower-level Helm or Terraform reference |

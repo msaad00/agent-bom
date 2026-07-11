@@ -115,6 +115,7 @@ print()
 
 SURFACES = [
     "README.md",
+    "PYPI_README.md",
     "DOCKER_HUB_README.md",
     "docs/ARCHITECTURE.md",
     "pyproject.toml",

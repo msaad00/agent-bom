@@ -12,6 +12,7 @@ import base64
 import hashlib
 import secrets
 
+import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
@@ -342,3 +343,61 @@ def test_validate_token_rejects_foreign_token() -> None:
     # A token signed by server_a does not validate against server_b's key.
     assert server_b.validate_token(tokens["access_token"]) is None
     assert server_a.validate_token(tokens["access_token"]) is not None
+
+
+# ── Signing-key source (env / mounted-file resolution) ────────────────────────
+
+_OAUTH_PEM_ENV = "AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM"
+
+
+def _rsa_private_pem() -> str:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("ascii")
+
+
+def test_signing_key_ephemeral_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(_OAUTH_PEM_ENV, raising=False)
+    monkeypatch.delenv(f"{_OAUTH_PEM_ENV}_FILE", raising=False)
+    key = OAuthSigningKey()
+    assert key.ephemeral is True
+
+
+def test_signing_key_loads_from_inline_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(f"{_OAUTH_PEM_ENV}_FILE", raising=False)
+    pem = _rsa_private_pem()
+    monkeypatch.setenv(_OAUTH_PEM_ENV, pem)
+    key = OAuthSigningKey()
+    assert key.ephemeral is False
+
+
+def test_signing_key_loads_from_mounted_file(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    # File-first: `*_FILE` points at a mounted secret; the inline var stays unset.
+    monkeypatch.delenv(_OAUTH_PEM_ENV, raising=False)
+    pem = _rsa_private_pem()
+    pem_file = tmp_path / "oauth_as.pem"
+    pem_file.write_text(pem)
+    monkeypatch.setenv(f"{_OAUTH_PEM_ENV}_FILE", str(pem_file))
+    key = OAuthSigningKey()
+    assert key.ephemeral is False
+
+
+def test_signing_key_file_takes_precedence_over_inline_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    file_pem = _rsa_private_pem()
+    inline_pem = _rsa_private_pem()
+    pem_file = tmp_path / "oauth_as.pem"
+    pem_file.write_text(file_pem)
+    monkeypatch.setenv(_OAUTH_PEM_ENV, inline_pem)
+    monkeypatch.setenv(f"{_OAUTH_PEM_ENV}_FILE", str(pem_file))
+    # The mounted file wins: the loaded key matches the FILE kid, not the inline one.
+    file_kid = OAuthSigningKey(private_pem=file_pem).kid
+    resolved_kid = OAuthSigningKey().kid
+    assert resolved_kid == file_kid

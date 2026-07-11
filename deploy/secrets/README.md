@@ -36,7 +36,14 @@ Compose defaults to the real `deploy/secrets/*` paths so a shared stack fails
 closed if a real secret file is missing.
 
 The API reads `AGENT_BOM_*_FILE` mounts (file wins over plain env). Helm may
-still inject via Secret→env; compose/local is file-only.
+still inject via Secret→env; compose/local is file-only. This file-first
+resolution also covers the signing PEMs, so a mounted file works everywhere the
+inline env var did:
+
+- `AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM_FILE` — RSA PEM for the OAuth AS token
+  signing key (unset → ephemeral per-restart key).
+- `AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE` — Ed25519 PEM for
+  compliance-bundle signing (unset → HMAC-SHA256 fallback).
 
 The API never connects as the Postgres bootstrap/admin/superuser role — only
 `agent_bom_app`.

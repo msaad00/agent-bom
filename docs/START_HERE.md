@@ -102,7 +102,7 @@ scan a repo by URL.
 
 ```bash
 pip install 'agent-bom[mcp-server]'
-agent-bom mcp server                      # stdio MCP server: 70 tools, 6 resources, 8 prompts
+agent-bom mcp server                      # stdio MCP server: 73 tools, 6 resources, 8 prompts
 ```
 
 - MCP server setup + client guides: [`MCP_SERVER.md`](MCP_SERVER.md),

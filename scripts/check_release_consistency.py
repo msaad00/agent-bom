@@ -449,7 +449,7 @@ def main() -> int:
     tools = len(tool_names)
     resources = len(resource_uris)
     prompts = len(prompt_names)
-    if (tools, resources, prompts) != (70, 6, 8):
+    if (tools, resources, prompts) != (73, 6, 8):
         _fail(f"MCP server card count changed unexpectedly: tools={tools}, resources={resources}, prompts={prompts}")
     docker_mcp_tool_names = [str(tool["name"]) for tool in json.loads(DOCKER_MCP_TOOLS.read_text())]
     if docker_mcp_tool_names != tool_names:

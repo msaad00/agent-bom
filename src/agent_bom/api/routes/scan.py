@@ -212,6 +212,40 @@ def _api_scan_path_or_400(user_path: str) -> str:
         raise HTTPException(status_code=400, detail="Invalid scan path") from exc
 
 
+# Local-path fields on a ScanRequest that must be confined to the API scan jail
+# before the job is queued. Non-path targets (images, connectors, repo_url, k8s)
+# are intentionally excluded.
+_SCAN_LOCAL_PATH_SINGLE_FIELDS = ("inventory", "gha_path", "sbom", "external_scan", "vex")
+_SCAN_LOCAL_PATH_LIST_FIELDS = ("tf_dirs", "agent_projects", "jupyter_dirs", "filesystem_paths")
+
+
+def _sanitize_scan_request_paths(body: ScanRequest) -> ScanRequest:
+    """Confine every local-path field on a scan request to the API scan jail.
+
+    The primary ``POST /v1/scan`` flow historically ran only
+    :func:`agent_bom.security.validate_path` on these fields, which rejects
+    ``..`` traversal but accepts absolute paths and does not confine them to a
+    configured root — letting an authenticated caller read arbitrary host files
+    (e.g. ``{"inventory": "/etc/hosts"}``). Route each populated field through the
+    same :func:`_api_scan_path_or_400` helper and ``_api_local_scans_enabled``
+    gate the dedicated scan endpoints use, so the default posture rejects
+    local-path scans consistently on the primary endpoint too. ``external_scan``
+    and ``vex`` are included here even though they were opened unvalidated.
+    """
+    updates: dict[str, Any] = {}
+    for field in _SCAN_LOCAL_PATH_SINGLE_FIELDS:
+        value = getattr(body, field)
+        if value:
+            updates[field] = _api_scan_path_or_400(value)
+    for field in _SCAN_LOCAL_PATH_LIST_FIELDS:
+        values = getattr(body, field)
+        if values:
+            updates[field] = [_api_scan_path_or_400(entry) for entry in values]
+    if not updates:
+        return body
+    return body.model_copy(update=updates)
+
+
 def _dataclass_to_dict(obj: object) -> object:
     """Convert a dataclass to dict, handling nested dataclasses."""
     import dataclasses
@@ -922,6 +956,9 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     the key with a different body is a 409 conflict.
     """
     tenant_id = _tenant_id(request)
+    # Confine local-path targets to the API scan jail before any queueing or
+    # idempotency work — the same gate/helper the dedicated scan endpoints use.
+    body = _sanitize_scan_request_paths(body)
     idem_key = _request_header(request, "Idempotency-Key")
     idem_source = _request_header(request, "X-Agent-Bom-Source-Id") or "scan"
     request_hash = idempotency_request_fingerprint(body)

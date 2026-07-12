@@ -41,6 +41,21 @@ type ScanFormProps = {
   initialConnectionId?: string | undefined;
 };
 
+/** Client-side guard: accept only well-formed ``http(s)://<host>`` repo URLs
+ * before enabling submit. Server-side validation remains authoritative. */
+function isHttpRepoUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  return Boolean(parsed.hostname) && parsed.hostname.includes(".");
+}
+
 export function ScanForm({ initialConnectionId }: ScanFormProps) {
   const router = useRouter();
   const { counts } = useDeploymentContext();
@@ -198,10 +213,13 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
             }
           : {
               ...form,
+              agent_projects: (form.agent_projects ?? []).map((p) => p.trim()).filter(Boolean),
+              tf_dirs: (form.tf_dirs ?? []).map((p) => p.trim()).filter(Boolean),
+              gha_path: form.gha_path?.trim() || undefined,
               repo_url: undefined,
             };
-      if (target === "repository" && !request.repo_url) {
-        setError("Enter a public repository URL (https://github.com/org/repo)");
+      if (target === "repository" && !isHttpRepoUrl(repoUrlInput)) {
+        setError("Enter a valid public repository URL (https://github.com/org/repo)");
         setLoading(false);
         return;
       }
@@ -242,7 +260,9 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
   const queuedImages = form.images ?? [];
   const cloudScanReady = Boolean(selectedConnection && isScannableConnection(selectedConnection));
   const sourceRunReady = Boolean(selectedSource?.enabled);
-  const repoScanReady = target !== "repository" || Boolean(repoUrlInput.trim());
+  const repoUrlValid = isHttpRepoUrl(repoUrlInput);
+  const repoUrlInvalid = target === "repository" && repoUrlInput.trim().length > 0 && !repoUrlValid;
+  const repoScanReady = target !== "repository" || repoUrlValid;
 
   return (
     <div className="max-w-4xl" data-testid="scan-form">
@@ -354,7 +374,12 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
                       type="url"
                       aria-label="Public repository URL"
                       placeholder="https://github.com/org/repo"
-                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 font-mono text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
+                      aria-invalid={repoUrlInvalid}
+                      className={`w-full rounded-xl border bg-[color:var(--surface-muted)] px-4 py-3 font-mono text-sm text-[color:var(--foreground)] focus:outline-none ${
+                        repoUrlInvalid
+                          ? "border-red-600/70 focus:border-red-500"
+                          : "border-[color:var(--border-subtle)] focus:border-emerald-600"
+                      }`}
                       value={repoUrlInput}
                       onChange={(event) => {
                         const value = event.target.value;
@@ -362,6 +387,9 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
                         setForm((current) => ({ ...current, repo_url: value.trim() || undefined }));
                       }}
                     />
+                    {repoUrlInvalid ? (
+                      <p className="text-xs text-red-400">Enter a full http(s):// URL, e.g. https://github.com/org/repo</p>
+                    ) : null}
                     <RepoSurfaceCatalog />
                   </div>
                 )}

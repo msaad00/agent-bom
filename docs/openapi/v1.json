@@ -2895,6 +2895,14 @@
           },
           "format": {
             "default": "json",
+            "enum": [
+              "json",
+              "cyclonedx",
+              "sarif",
+              "spdx",
+              "html",
+              "text"
+            ],
             "title": "Format",
             "type": "string"
           },
@@ -2957,6 +2965,12 @@
           "min_severity": {
             "anyOf": [
               {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ],
                 "type": "string"
               },
               {

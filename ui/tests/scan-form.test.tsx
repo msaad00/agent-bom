@@ -173,6 +173,20 @@ describe("ScanForm", () => {
     });
   });
 
+  it("blocks submit and flags an invalid public repository URL", async () => {
+    const user = userEvent.setup();
+
+    render(<ScanForm />);
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    await user.click(screen.getByRole("tab", { name: /Public repo/i }));
+
+    const input = screen.getByPlaceholderText("https://github.com/org/repo");
+    await user.type(input, "github.com/org/repo");
+
+    expect(screen.getByText(/Enter a full http\(s\):\/\/ URL/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Scan repo/i })).toBeDisabled();
+  });
+
   it("explains kubernetes namespace scope in plain language", async () => {
     const user = userEvent.setup();
     render(<ScanForm />);

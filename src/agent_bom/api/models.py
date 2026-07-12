@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
 
@@ -139,7 +139,7 @@ class ScanRequest(BaseModel):
     filesystem_paths: list[ScanPathEntry] = Field(default_factory=list)
     """Filesystem directories or tar archives to scan via Syft."""
 
-    format: str = "json"
+    format: Literal["json", "cyclonedx", "sarif", "spdx", "html", "text"] = "json"
     """Output format: json | cyclonedx | sarif | spdx | html | text."""
 
     dynamic_discovery: bool = False
@@ -160,8 +160,18 @@ class ScanRequest(BaseModel):
     exclude_servers: list[ScanGlobPattern] = Field(default_factory=list)
     """Exclude MCP servers matching these name patterns."""
 
-    min_severity: str | None = None
+    min_severity: Literal["low", "medium", "high", "critical"] | None = None
     """Minimum severity to include in results (low/medium/high/critical)."""
+
+    @field_validator("format", "min_severity", mode="before")
+    @classmethod
+    def _normalize_enum_case(cls, value: Any) -> Any:
+        """Accept case/whitespace variants (e.g. ``HIGH``/``JSON``) before the
+        Literal constraint validates, so tightening the field does not reject
+        inputs the pipeline previously lower-cased at read time."""
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
     @model_validator(mode="after")
     def _enforce_batch_target_cap(self) -> "ScanRequest":

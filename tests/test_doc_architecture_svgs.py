@@ -42,7 +42,7 @@ def test_architecture_includes_core_surfaces() -> None:
     svg = architecture("light")
     assert "Unified Finding" in svg
     assert "UnifiedGraph" in svg
-    assert "70 tools" in svg
+    assert "73 tools" in svg
     assert "283 ops" in svg
     assert "Agents &amp; MCP" in svg
 

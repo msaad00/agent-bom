@@ -180,7 +180,7 @@ should not store provider secret values.
 ### GitHub Actions — GPU image gate
 
 ```yaml
-- uses: msaad00/agent-bom@v0.94.2
+- uses: msaad00/agent-bom@v0.95.0
   with:
     scan-type: image
     image: nvcr.io/nvidia/cuda:12.4.1-devel-ubuntu22.04

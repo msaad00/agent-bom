@@ -404,12 +404,12 @@ def test_create_scan_returns_202():
 
 
 def test_create_scan_with_options():
-    """POST /v1/scan with inventory/enrich fields returns a proper job."""
+    """POST /v1/scan passes through non-path options (enrich, format)."""
     client, _ = _fresh_client()
     resp = client.post(
         "/v1/scan",
         json={
-            "inventory": "/tmp/agents.json",
+            "images": ["redis:7"],
             "enrich": True,
             "format": "cyclonedx",
         },
@@ -417,10 +417,78 @@ def test_create_scan_with_options():
     assert resp.status_code == 202
     body = resp.json()
     assert body["triggered_by"] == "api"
-    assert body["request"]["inventory"] == "<path:agents.json>"
-    assert "/tmp" not in body["request"]["inventory"]
+    assert body["request"]["images"] == ["redis:7"]
     assert body["request"]["enrich"] is True
     assert body["request"]["format"] == "cyclonedx"
+
+
+# ---------------------------------------------------------------------------
+# 5b. Scan path jail — primary POST /v1/scan is confined to the same jail
+#     the dedicated scan endpoints use (gate disabled by default).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"inventory": "/etc/hosts"},
+        {"filesystem_paths": ["/etc"]},
+        {"agent_projects": ["../../etc"]},
+        {"sbom": "/tmp/sbom.json"},
+        {"external_scan": "/etc/hosts"},
+        {"vex": "/etc/hosts"},
+        {"tf_dirs": ["/var"]},
+        {"gha_path": "/etc"},
+        {"jupyter_dirs": ["../secret"]},
+    ],
+)
+def test_create_scan_rejects_local_paths_by_default(monkeypatch, payload):
+    """Absolute and traversal local paths are rejected with 400 while the
+    local-path scan gate is disabled (default posture)."""
+    monkeypatch.delenv("AGENT_BOM_API_LOCAL_PATH_SCANS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_ENABLE_LOCAL_PATH_SCANS", raising=False)
+    client, _ = _fresh_client()
+    resp = client.post("/v1/scan", json=payload)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid scan path"
+
+
+def test_create_scan_non_path_targets_allowed_by_default(monkeypatch):
+    """Image / connector / k8s / repo scans do not require the path gate."""
+    monkeypatch.delenv("AGENT_BOM_API_LOCAL_PATH_SCANS", raising=False)
+    client, _ = _fresh_client()
+    for payload in ({"images": ["redis:7"]}, {"k8s": True}, {}, {"repo_url": "https://github.com/org/repo"}):
+        resp = client.post("/v1/scan", json=payload)
+        assert resp.status_code == 202, payload
+
+
+def test_create_scan_allows_valid_path_when_gate_enabled(monkeypatch, tmp_path):
+    """With the gate enabled and a scan root configured, a relative path under
+    the root resolves and the scan is accepted."""
+    root = tmp_path
+    (root / "proj").mkdir()
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(root))
+    monkeypatch.setenv("AGENT_BOM_API_SCAN_ALLOW_FOREIGN_OWNER", "1")
+    client, _ = _fresh_client()
+    resp = client.post("/v1/scan", json={"agent_projects": ["proj"], "offline": True, "no_scan": True})
+    assert resp.status_code == 202
+
+    # Absolute paths outside the root are still rejected even with the gate on.
+    resp = client.post("/v1/scan", json={"agent_projects": ["/etc"]})
+    assert resp.status_code == 400
+
+
+def test_create_scan_rejects_invalid_enum_fields():
+    """format / min_severity are enum-constrained and reject junk with 422."""
+    client, _ = _fresh_client()
+    assert client.post("/v1/scan", json={"format": "exe"}).status_code == 422
+    assert client.post("/v1/scan", json={"min_severity": "spicy"}).status_code == 422
+    # Case-insensitive variants are normalized, not rejected.
+    resp = client.post("/v1/scan", json={"images": ["x:1"], "format": "SARIF", "min_severity": "High"})
+    assert resp.status_code == 202
+    assert resp.json()["request"]["format"] == "sarif"
+    assert resp.json()["request"]["min_severity"] == "high"
 
 
 def test_create_scan_rejects_unknown_fields():

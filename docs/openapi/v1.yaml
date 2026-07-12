@@ -1915,6 +1915,13 @@ components:
           type: array
         format:
           default: json
+          enum:
+          - json
+          - cyclonedx
+          - sarif
+          - spdx
+          - html
+          - text
           title: Format
           type: string
         gha_path:
@@ -1952,7 +1959,12 @@ components:
           title: K8S Namespace
         min_severity:
           anyOf:
-          - type: string
+          - enum:
+            - low
+            - medium
+            - high
+            - critical
+            type: string
           - type: 'null'
           title: Min Severity
         no_scan:

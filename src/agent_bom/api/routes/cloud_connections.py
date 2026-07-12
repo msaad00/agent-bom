@@ -553,13 +553,61 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     }
 
 
-def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
-    """Broker a Snowflake read-only connection and run discovery + CIS.
+def _snowflake_estate_summary(report: Any, agent_count: int) -> dict[str, Any]:
+    """Non-secret count roll-up of the swept Snowflake estate for the scan envelope.
 
-    Opens one brokered key-pair connection and threads it into both
-    ``snowflake.discover`` and Snowflake CIS ``run_benchmark`` so a single
-    read-only session backs the whole scan; the broker's connection is closed
-    here once both have run. Read-only.
+    Mirrors the AWS/Azure/GCP ``_summarize_inventory_payload`` shape: object
+    metadata counts only (warehouses, databases, schemas, roles, users,
+    accounts) — never object contents or secrets.
+    """
+    services = getattr(report, "snowflake_services_data", None) or {}
+    object_graph = getattr(report, "snowflake_object_graph_data", None) or {}
+    organization = services.get("organization") or {}
+
+    # Roles / users land as graph nodes from the roles/users lists AND from the
+    # grants + role_memberships that reference them, so count the distinct union
+    # the same way the graph builder materializes the nodes.
+    def _name(item: Any) -> str:
+        return str(item.get("name") if isinstance(item, dict) else item or "").strip()
+
+    roles: set[str] = {_name(r) for r in (object_graph.get("roles") or [])}
+    users: set[str] = {_name(u) for u in (object_graph.get("users") or [])}
+    for grant in object_graph.get("grants") or []:
+        if isinstance(grant, dict) and grant.get("role"):
+            roles.add(str(grant["role"]).strip())
+    for membership in object_graph.get("role_memberships") or []:
+        if not isinstance(membership, dict):
+            continue
+        if membership.get("role"):
+            roles.add(str(membership["role"]).strip())
+        if membership.get("user"):
+            users.add(str(membership["user"]).strip())
+    roles.discard("")
+    users.discard("")
+
+    return {
+        "provider": "snowflake",
+        "status": "ok",
+        "agent_count": agent_count,
+        "warehouse_count": len(services.get("warehouses") or []),
+        "database_count": len(services.get("databases") or []),
+        "schema_count": len(services.get("schemas") or []),
+        "role_count": len(roles),
+        "user_count": len(users),
+        "account_count": len(organization.get("accounts") or []),
+    }
+
+
+def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+    """Broker a Snowflake read-only connection and run discovery + estate sweep + CIS.
+
+    Opens one brokered key-pair connection and threads it into ``snowflake.discover``
+    (agents), ``enrich_report_with_snowflake_estate`` (accounts / warehouses /
+    databases / roles / users → typed graph nodes, parity with the AWS/Azure/GCP
+    connection scans), and Snowflake CIS ``run_benchmark`` so a single read-only
+    session backs the whole scan; the broker's connection is closed here once all
+    have run. The estate sweep is best-effort: a failure still returns agent
+    discovery + CIS. Read-only.
     """
     import uuid as _uuid
 
@@ -568,22 +616,39 @@ def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str
     from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_snowflake_cis
     from agent_bom.models import AIBOMReport
 
+    # The account rides on the stored connection (role_ref = "account" or
+    # "account/user"), not process env — pass it so the estate discoveries, which
+    # gate on a resolvable account, run against this connection's account.
+    account = (record.role_ref or "").partition("/")[0].strip() or None
+
     conn = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
     try:
         agents, _warnings = snowflake_discovery.discover(conn=conn)
         cis_report = run_snowflake_cis(conn=conn)
+        report = AIBOMReport(agents=agents, blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+        _mark_connection_report_sources(report, "snowflake")
+        # Sweep the estate into the report's snowflake_*_data blocks so the graph
+        # builder materializes accounts/warehouses/databases/roles/users the same
+        # way AWS/Azure/GCP inventory is materialized. Best-effort — never fails
+        # the scan; a raise here leaves agent discovery + CIS intact.
+        try:
+            snowflake_discovery.enrich_report_with_snowflake_estate(report, conn=conn, account=account)
+        except Exception:  # noqa: BLE001 - estate sweep is best-effort; never mask the scan result
+            _logger.warning(
+                "Snowflake estate sweep failed for connection %s; returning agent discovery + CIS only",
+                record.id,
+                exc_info=True,
+            )
     finally:
-        # The broker connection is this function's to close (discover / CIS do
-        # not close an injected connection).
+        # The broker connection is this function's to close (discover / CIS /
+        # estate discoveries do not close an injected connection).
         try:
             conn.close()
         except Exception:  # noqa: BLE001 - close best-effort; never mask the scan result
             _logger.debug("Snowflake broker connection close failed for connection %s", record.id)
     cis_dict = cis_report.to_dict()
 
-    inventory_summary = {"provider": "snowflake", "status": "ok", "agent_count": len(agents)}
-    report = AIBOMReport(agents=agents, blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
-    _mark_connection_report_sources(report, "snowflake")
+    inventory_summary = _snowflake_estate_summary(report, len(agents))
     report.cloud_inventory_data = inventory_summary
     report.snowflake_cis_benchmark_data = cis_dict
     scan_id = _persist_connection_report(record, tenant_id, report)
@@ -598,7 +663,7 @@ def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str
         "cis_benchmark": _cis_summary(cis_dict),
         "audit_metadata": _scan_audit_metadata(
             "Scan ran against a read-only Snowflake key-pair connection brokered from the stored connection. "
-            "Discovery + CIS are read-only; no object is mutated and no secret value is returned."
+            "Discovery, estate sweep, and CIS are read-only; no object is mutated and no secret value is returned."
         ),
     }
 

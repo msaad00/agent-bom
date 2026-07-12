@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronLeft, X } from "lucide-react";
 
-export type DrawerSize = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl";
+export type DrawerSize = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl";
 
 const SIZE_CLASS: Record<DrawerSize, string> = {
   sm: "max-w-sm",
@@ -12,6 +12,8 @@ const SIZE_CLASS: Record<DrawerSize, string> = {
   xl: "max-w-xl",
   "2xl": "max-w-2xl",
   "3xl": "max-w-3xl",
+  "4xl": "max-w-4xl",
+  "5xl": "max-w-5xl",
 };
 
 export interface DrawerProps {

@@ -1,18 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="agent-bom mark">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="agent-bom mark — BOM with detailed agent in the O">
   <defs>
     <linearGradient id="abm" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#059669"/>
       <stop offset="100%" stop-color="#0891b2"/>
     </linearGradient>
   </defs>
-  <!-- Canonical locked mark: BOM with agent HUD in the O (not emoji smile) -->
   <rect x="3.5" y="3.5" width="57" height="57" rx="15" fill="#f8fafc" stroke="url(#abm)" stroke-width="2"/>
-  <path fill="url(#abm)" d="M8 17.5h7.2c3.55 0 5.7 1.85 5.7 4.55 0 1.85-1 3.2-2.65 3.85 1.95.75 3.2 2.25 3.2 4.55 0 2.95-2.35 4.8-6.25 4.8H8V17.5zm3.55 3v4.55h2.7c1.65 0 2.6-.8 2.6-2.25s-1.05-2.3-2.85-2.3h-2.45zm0 7.35v4.85h3.05c1.8 0 2.9-.9 2.9-2.45s-1.05-2.4-2.95-2.4H11.55z"/>
-  <circle cx="32" cy="31" r="11" fill="none" stroke="url(#abm)" stroke-width="2.6"/>
-  <rect x="24.1" y="27.5" width="5.4" height="3.4" rx="1" fill="#059669"/>
-  <rect x="34.5" y="27.5" width="5.4" height="3.4" rx="1" fill="#0891b2"/>
-  <path d="M27.2 35.6h9.6" fill="none" stroke="url(#abm)" stroke-width="1.9" stroke-linecap="round"/>
-  <path d="M32 20V15.4" stroke="url(#abm)" stroke-width="2.3" stroke-linecap="round"/>
-  <circle cx="32" cy="13.7" r="1.75" fill="url(#abm)"/>
-  <path fill="url(#abm)" d="M44.8 17.5h3.55l3.7 11.4 3.7-11.4H59.3v19.2h-3.2V28.4L52.5 36.7h-2.85l-3.4-8.3v8.3h-3.2V17.5h1.75z"/>
+  <!-- B -->
+  <path fill="url(#abm)" d="M7.5 16.5h7.4c3.7 0 5.9 1.9 5.9 4.7 0 1.9-1.05 3.25-2.75 3.95 2 .8 3.3 2.35 3.3 4.7 0 3.05-2.45 4.95-6.45 4.95H7.5V16.5zm3.65 3.1v4.7h2.8c1.7 0 2.7-.85 2.7-2.35s-1.1-2.35-2.95-2.35H11.15zm0 7.55v5h3.15c1.85 0 3-.95 3-2.55s-1.1-2.45-3.05-2.45H11.15z"/>
+  <!-- Detailed agent as the O -->
+  <circle cx="32" cy="30.2" r="12.2" fill="none" stroke="url(#abm)" stroke-width="2.2"/>
+  <path fill="#ecfdf5" stroke="url(#abm)" stroke-width="1.15"
+        d="M22.8 30.2c0-5.1 4.1-9.2 9.2-9.2s9.2 4.1 9.2 9.2c0 2.55-1.05 4.85-2.7 6.5l-1.4 1.35c-.7.65-1.7 1.05-2.75 1.05h-4.7c-1.05 0-2.05-.4-2.75-1.05l-1.4-1.35a9.15 9.15 0 0 1-2.7-6.5z"/>
+  <rect x="24.2" y="26.2" width="15.6" height="5.2" rx="2.2" fill="#f8fafc" stroke="url(#abm)" stroke-width="1"/>
+  <rect x="25.4" y="27.1" width="5.2" height="3.4" rx="1" fill="#059669"/>
+  <rect x="33.4" y="27.1" width="5.2" height="3.4" rx="1" fill="#0891b2"/>
+  <circle cx="27.2" cy="28.8" r="0.7" fill="#ffffff"/>
+  <circle cx="35.2" cy="28.8" r="0.7" fill="#ffffff"/>
+  <path d="M26.2 35.4h11.6" fill="none" stroke="url(#abm)" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M28.2 37.6h7.6" fill="none" stroke="#0891b2" stroke-width="1.2" stroke-linecap="round" opacity="0.7"/>
+  <path d="M21.4 29.2h1.8M40.8 29.2h1.8" stroke="url(#abm)" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M32 18.8V13.8" stroke="url(#abm)" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="32" cy="12.2" r="2.1" fill="url(#abm)"/>
+  <circle cx="32" cy="12.2" r="0.85" fill="#f8fafc"/>
+  <!-- M -->
+  <path fill="url(#abm)" d="M44.5 16.5h3.7l3.75 11.7 3.75-11.7H59.5v19.6h-3.3V27.8l-3.65 8.5h-2.95l-3.5-8.5v8.5h-3.3V16.5h1.7z"/>
+  <rect x="10" y="48.5" width="12" height="2.4" rx="1.2" fill="#059669" fill-opacity="0.4"/>
+  <rect x="26" y="48.5" width="12" height="2.4" rx="1.2" fill="url(#abm)"/>
+  <rect x="42" y="48.5" width="12" height="2.4" rx="1.2" fill="#0891b2" fill-opacity="0.4"/>
 </svg>

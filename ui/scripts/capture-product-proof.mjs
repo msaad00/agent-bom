@@ -1554,8 +1554,8 @@ async function writeScreenshotManifest() {
     },
     {
       path: "dependency-map-live.png",
-      page: "/?tab=analytics",
-      scope: "Dashboard analytics tab with package risk charts, compound issues, and agent topology",
+      page: "/findings?capture=1",
+      scope: "Findings queue with seeded package and CVE evidence from the demo estate",
     },
     {
       path: "remediation-live.png",
@@ -1567,7 +1567,7 @@ async function writeScreenshotManifest() {
     release_version: RELEASE_VERSION,
     captured_at: new Date().toISOString(),
     capture_note:
-      "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — simulated estate label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
+      "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
     screenshots,
   };
   await fs.writeFile(SCREENSHOT_MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -1629,7 +1629,7 @@ async function main() {
       "/context?capture=1",
       "context-map-live.png",
       async (contextPage) => {
-        await contextPage.getByText("Lateral Movement").first().waitFor({ state: "visible", timeout: 30_000 });
+        await contextPage.getByText(/Lateral paths|Paths from|No lateral paths/i).first().waitFor({ state: "visible", timeout: 30_000 });
         const agentScope = contextPage.locator("select").first();
         if ((await agentScope.count()) > 0) {
           await agentScope.selectOption("");
@@ -1659,10 +1659,14 @@ async function main() {
       await auditPage.getByPlaceholder("Filter by resource…").fill("identity");
       await auditPage.waitForTimeout(350);
     });
-    await capture(page, "/?tab=analytics", "dependency-map-live.png", async (analyticsPage) => {
-      await analyticsPage.getByRole("button", { name: "Analytics" }).waitFor({ state: "visible", timeout: 10_000 });
-      await analyticsPage.waitForTimeout(500);
-      await scrollTo(analyticsPage, 620);
+    await capture(page, "/findings?capture=1", "dependency-map-live.png", async (findingsPage) => {
+      await findingsPage.getByRole("heading", { name: /Findings|Issues|Vulnerabilit/i }).first().waitFor({
+        state: "visible",
+        timeout: 10_000,
+      }).catch(async () => {
+        await findingsPage.getByText(/CVE|critical|high|package/i).first().waitFor({ state: "visible", timeout: 8_000 });
+      });
+      await scrollTo(findingsPage, 200);
     });
     await capture(page, "/remediation?capture=1", "remediation-live.png");
     await writeScreenshotManifest();

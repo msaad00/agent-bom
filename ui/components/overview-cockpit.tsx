@@ -516,29 +516,33 @@ function SeverityIssueStrip({
 }) {
   const resolved = matrix ?? emptyIssueSeverityMatrix();
   const hasTyped = resolved.openTotal > 0;
-  const bands: { key: SeverityBand; label: string; tone: string; value: number }[] = [
+  const bands: { key: SeverityBand; label: string; tone: string; tint: string; value: number }[] = [
     {
       key: "critical",
       label: "Critical",
-      tone: "text-red-500 dark:text-red-400",
+      tone: "text-red-600 dark:text-red-400",
+      tint: "border-red-500/40 bg-red-500/[0.08] hover:border-red-500/60",
       value: summaryReady ? (hasTyped ? resolved.totals.critical : critical) : 0,
     },
     {
       key: "high",
       label: "High",
-      tone: "text-orange-500 dark:text-orange-400",
+      tone: "text-orange-600 dark:text-orange-400",
+      tint: "border-orange-500/40 bg-orange-500/[0.08] hover:border-orange-500/60",
       value: summaryReady ? (hasTyped ? resolved.totals.high : high) : 0,
     },
     {
       key: "medium",
       label: "Medium",
-      tone: "text-yellow-500 dark:text-yellow-300",
+      tone: "text-yellow-600 dark:text-yellow-300",
+      tint: "border-yellow-500/40 bg-yellow-500/[0.07] hover:border-yellow-500/60",
       value: summaryReady ? (hasTyped ? resolved.totals.medium : severity.medium) : 0,
     },
     {
       key: "low",
       label: "Low",
-      tone: "text-sky-500 dark:text-sky-300",
+      tone: "text-sky-600 dark:text-sky-300",
+      tint: "border-sky-500/40 bg-sky-500/[0.08] hover:border-sky-500/60",
       value: summaryReady ? (hasTyped ? resolved.totals.low : severity.low) : 0,
     },
   ];
@@ -623,9 +627,9 @@ function SeverityIssueStrip({
           <Link
             key={band.key}
             href={findingsHref({ severity: band.key })}
-            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-2 transition hover:border-[color:var(--border-strong)]"
+            className={`rounded-lg border px-2.5 py-2 transition ${band.tint}`}
           >
-            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-secondary)]">
               {band.label}
             </p>
             <p className={`mt-1 font-mono text-xl font-semibold ${band.tone}`}>

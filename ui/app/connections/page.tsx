@@ -677,7 +677,7 @@ export default function ConnectionsPage() {
             />
           ) : (
             <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)]">
-              <table className="w-full min-w-[880px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[11px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
                     <th className="px-4 py-3 font-medium">Account</th>
@@ -1005,10 +1005,13 @@ function FragmentRow({
     <>
       <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 align-top">
         <td className="px-4 py-3">
-          <p className="font-medium text-[var(--foreground)]">
+          <p className="max-w-[220px] truncate font-medium text-[var(--foreground)]" title={connection.display_name}>
             {connection.display_name}
           </p>
-          <p className="mt-0.5 break-all font-mono text-[11px] text-[var(--text-tertiary)]">
+          <p
+            className="mt-0.5 max-w-[220px] truncate font-mono text-[11px] text-[var(--text-tertiary)]"
+            title={connection.role_ref}
+          >
             {connection.role_ref}
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -1033,15 +1036,15 @@ function FragmentRow({
           </div>
         </td>
         <td className="px-4 py-3">
-          <span className="inline-flex items-center gap-2 text-[var(--text-secondary)]">
-            <ProviderLogo provider={connection.provider} className="h-4 w-4" />
+          <span className="inline-flex items-center gap-2 whitespace-nowrap text-[var(--text-secondary)]">
+            <ProviderLogo provider={connection.provider} className="h-4 w-4 shrink-0" />
             {providerLabel(connection.provider)}
           </span>
         </td>
         <td className="px-4 py-3">
           <StatusPill status={connection.status} />
         </td>
-        <td className="px-4 py-3 text-[var(--text-secondary)]">
+        <td className="whitespace-nowrap px-4 py-3 text-[var(--text-secondary)]">
           {formatWhen(connection.last_scan_at)}
         </td>
         <td className="px-4 py-3">

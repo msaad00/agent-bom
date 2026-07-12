@@ -62,6 +62,22 @@ const BASE_PROPS = {
         status: "idle" as const,
         detail: {},
       },
+      vuln: {
+        label: "Vuln / SCA",
+        href: "/findings?issue=vulnerability",
+        metric: 0,
+        metric_label: "open CVEs",
+        status: "idle" as const,
+        detail: {},
+      },
+      code: {
+        label: "Code / repo",
+        href: "/scan",
+        metric: 0,
+        metric_label: "repo scans",
+        status: "idle" as const,
+        detail: {},
+      },
       runtime: {
         label: "Runtime",
         href: "/runtime",

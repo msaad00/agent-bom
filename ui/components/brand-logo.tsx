@@ -3,7 +3,7 @@
 import { useThemeMode } from "@/lib/theme-mode";
 
 /** Bump when mark/wordmark SVGs change so browsers drop stale caches. */
-const BRAND_ASSET_REV = "v9";
+const BRAND_ASSET_REV = "v10";
 
 /**
  * Product name is always `agent-bom`. The mark is BOM with an agent HUD in the O

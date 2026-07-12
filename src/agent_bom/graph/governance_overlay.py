@@ -119,6 +119,13 @@ def apply_governance_overlay(
                     "expires_at": identity.expires_at,
                     "allowed_tools": list(identity.allowed_tools),
                     "scope_bound": bool(identity.allowed_tools),
+                    # Surface the accountability + usage fields the NHI governance
+                    # evaluator reads so ownership/dormancy verdicts reflect the
+                    # real identity record instead of defaulting every identity to
+                    # orphaned + never-observed.
+                    "owner": getattr(identity, "owner", "") or "",
+                    "owner_type": getattr(identity, "owner_type", "") or "",
+                    "last_used_at": getattr(identity, "last_used_at", "") or "",
                 },
             )
         )

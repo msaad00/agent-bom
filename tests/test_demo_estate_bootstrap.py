@@ -429,3 +429,110 @@ def test_demo_estate_bootstrap_is_idempotent(demo_estate_client: TestClient) -> 
     assert second.get("reason") == "demo_jobs_present"
     again = demo_estate_client.get("/v1/jobs", headers={"X-Agent-Bom-Role": "admin"}).json()
     assert again.get("total") == first.get("total")
+
+
+def test_demo_estate_exposure_paths_materialized(demo_estate_client: TestClient) -> None:
+    """The materialized exposure-path queue (read by /v1/graph/exposure-paths) is
+    non-empty and headlines the seeded hero chains."""
+    payload = demo_estate_client.get(
+        "/v1/graph/exposure-paths", headers=ADMIN, params={"limit": 10}
+    ).json()
+    assert payload.get("count", 0) >= 3, payload
+    assert payload.get("total", 0) >= 3, payload
+
+    findings = {f for p in payload.get("paths", []) for f in (p.get("findings") or [])}
+    creds = {c for p in payload.get("paths", []) for c in (p.get("exposedCredentials") or [])}
+    tools = {t for p in payload.get("paths", []) for t in (p.get("reachableTools") or [])}
+    # The PyYAML RCE → run_shell → AWS-secret hero chain materializes.
+    assert "CVE-2020-14343" in findings, findings
+    assert "AWS_SECRET_ACCESS_KEY" in creds, creds
+    assert "run_shell" in tools, tools
+
+
+def test_demo_estate_nhi_governance_tells_a_story(demo_estate_client: TestClient) -> None:
+    """NHI governance evaluates the seeded identities and surfaces at least one
+    over-granted, one dormant/orphaned, and one clearly high/critical identity."""
+    posture = demo_estate_client.get("/v1/graph/nhi/governance", headers=ADMIN).json()
+    assert posture.get("evaluated", 0) >= 5, posture
+    counts = posture.get("counts") or {}
+    assert counts.get("over_granted", 0) >= 1, counts
+    assert counts.get("dormant", 0) >= 1, counts
+    assert counts.get("orphaned", 0) >= 1, counts
+    bands = counts.get("by_risk_band") or {}
+    assert (bands.get("critical", 0) + bands.get("high", 0)) >= 1, bands
+
+    # A dormant + orphaned admin identity is the headline risk.
+    worst = (posture.get("identities") or [])[0]
+    assert worst.get("is_dormant") and worst.get("is_orphaned"), worst
+    assert worst.get("risk_band") in {"high", "critical"}, worst
+
+
+def test_demo_estate_overview_identity_tile_populated(demo_estate_client: TestClient) -> None:
+    """The Overview NHI/Identity tile reads the live identity store, which the
+    demo seed populates, so it is no longer 0/idle."""
+    overview = demo_estate_client.get("/v1/overview").json()
+    identity = overview["domains"]["identity"]
+    assert identity["metric"] >= 5, identity
+    assert identity["detail"]["managed_identities"] >= 5, identity
+    assert identity["status"] != "idle", identity
+
+
+def test_demo_estate_agents_fall_back_to_demo_inventory(
+    demo_estate_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a hosted server local discovery is empty; the demo estate falls back to
+    the curated inventory so /v1/agents + /v1/agents/mesh are non-empty and
+    correlated with the graph agents."""
+    import agent_bom.discovery as discovery_mod
+
+    monkeypatch.setattr(discovery_mod, "discover_all", lambda: [])
+    from agent_bom.api.routes.discovery import _clear_agents_response_cache_for_tests
+
+    _clear_agents_response_cache_for_tests()
+
+    agents = demo_estate_client.get("/v1/agents", headers=ADMIN).json()
+    names = {a.get("name") for a in agents.get("agents", [])}
+    assert agents.get("count", 0) >= 5, agents
+    assert {"cursor", "langchain-service", "support-copilot"} <= names, names
+
+    mesh = demo_estate_client.get("/v1/agents/mesh", headers=ADMIN).json()
+    assert len(mesh.get("nodes") or []) >= 5, mesh
+
+
+def test_demo_estate_agents_no_fallback_without_demo_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Env unset ⇒ live discovery only; the demo inventory is never injected."""
+    monkeypatch.delenv("AGENT_BOM_DEMO_ESTATE", raising=False)
+    import agent_bom.discovery as discovery_mod
+    from agent_bom.api.routes.discovery import _discover_agents_with_demo_fallback
+
+    monkeypatch.setattr(discovery_mod, "discover_all", lambda: [])
+    assert _discover_agents_with_demo_fallback() == []
+
+
+def test_demo_estate_scan_findings_restored_after_restart(
+    demo_estate_client: TestClient,
+) -> None:
+    """A restart resets the in-memory job store; demo mode must re-seed the scan
+    so posture + findings are restored (the graph snapshot already persists)."""
+    from agent_bom.api import stores as api_stores
+    from agent_bom.demo_estate.bootstrap import (
+        _tenant_has_demo_jobs,
+        maybe_bootstrap_demo_estate,
+    )
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT
+
+    before = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 3}).json()
+    assert before.get("total", 0) > 0
+
+    # Simulate a process restart: the in-memory job store is recreated empty
+    # while the persisted graph snapshot survives.
+    api_stores._store = None
+    assert not _tenant_has_demo_jobs(api_stores._get_store(), SHOWCASE_TENANT)
+
+    summary = maybe_bootstrap_demo_estate()
+    assert summary.get("seeded") is True, summary
+
+    after = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 3}).json()
+    assert after.get("total", 0) == before.get("total", 0), (before.get("total"), after.get("total"))

@@ -108,7 +108,11 @@ export function SecurityGraphInvestigation({
     });
   }, [activeGraph]);
 
-  const layout = useGraphLayout("dagre-lr", flow.nodes, flow.edges);
+  const layout = useGraphLayout("dagre-lr", flow.nodes, flow.edges, {
+    // Wider rank/node separation keeps the AGENT → SERVER → PACKAGE → FINDING
+    // chain legible: node boxes never touch and edges have room to read.
+    dagreLr: { rankSep: 128, nodeSep: 48 },
+  });
   const displayEdges = useMemo(() => readableGraphEdges(layout.edges), [layout.edges]);
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(layout.nodes, displayEdges),

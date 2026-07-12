@@ -85,8 +85,6 @@ export function OverviewCockpit({
   agents,
   cves,
   scans,
-  latestScan,
-  mode,
   summaryReady,
   severity,
   issueMatrix = null,
@@ -105,6 +103,16 @@ export function OverviewCockpit({
       ? `${Math.round(compliance.overallScore)}%`
       : undefined;
 
+  // Connected estate — real/zero surfaces that exist independent of any scan, so
+  // the exec read is never just "Awaiting scan".
+  const cloudAccounts = services?.cloud_accounts?.count ?? 0;
+  const liveServices = signals.activeServices;
+  const estateBits: string[] = [];
+  if (agents != null && agents > 0) estateBits.push(`${agents} agent${agents === 1 ? "" : "s"}`);
+  if (cloudAccounts > 0) estateBits.push(`${cloudAccounts} cloud account${cloudAccounts === 1 ? "" : "s"}`);
+  if (liveServices > 0) estateBits.push(`${liveServices} live service${liveServices === 1 ? "" : "s"}`);
+  const connectedSummary = estateBits.length > 0 ? `${estateBits.join(" · ")} connected` : null;
+
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 lg:p-5">
@@ -112,8 +120,8 @@ export function OverviewCockpit({
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
             Command center
           </p>
-          <p className="mt-1 max-w-2xl text-xs text-[color:var(--text-secondary)]">
-            Posture, open issues, and compliance from the latest completed scan — plus live services you’ve activated. Use Findings, Compliance, and Security graph for deeper work.
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            Posture, open issues, compliance, and the connected estate — one exec read.
           </p>
         </div>
 
@@ -124,6 +132,7 @@ export function OverviewCockpit({
             summary={postureSummary}
             critical={critical}
             high={high}
+            connectedSummary={connectedSummary}
           />
           <SeverityIssueStrip
             summaryReady={summaryReady}
@@ -135,12 +144,17 @@ export function OverviewCockpit({
             severity={severity}
             matrix={issueMatrix}
           />
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs lg:grid-cols-1">
-            <MetaLine label="Agents" value={summaryReady && agents != null ? String(agents) : "—"} href="/agents" />
-            <MetaLine label="CVEs" value={summaryReady && cves != null ? String(cves) : "—"} href={findingsHref({ issue: "vulnerability" })} />
-            <MetaLine label="Scans" value={summaryReady && scans != null ? String(scans) : "—"} href="/jobs" />
-            <MetaLine label="Last scan" value={latestScan ?? "—"} />
-            <MetaLine label="Mode" value={mode} />
+          <div className="min-w-[9rem]">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+              Connected estate
+            </p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs lg:grid-cols-1">
+              <MetaLine label="Agents" value={agents != null ? String(agents) : "—"} href="/agents" />
+              <MetaLine label="Cloud accts" value={String(cloudAccounts)} href="/connections" />
+              <MetaLine label="Live services" value={String(liveServices)} href="/connections" />
+              <MetaLine label="CVEs" value={summaryReady && cves != null ? String(cves) : "—"} href={findingsHref({ issue: "vulnerability" })} />
+              <MetaLine label="Scans" value={summaryReady && scans != null ? String(scans) : "—"} href="/jobs" />
+            </div>
           </div>
         </div>
 
@@ -393,7 +407,7 @@ function TopRisksPanel({
   return (
     <Collapsible
       title="Top risks"
-      subtitle="Business-readable priorities — open Findings or Security graph for detail"
+      subtitle="Highest-risk exposure paths"
       defaultOpen
       scrollMaxHeight="28rem"
       actions={
@@ -466,12 +480,14 @@ function PostureHero({
   summary,
   critical,
   high,
+  connectedSummary,
 }: {
   grade: string;
   score?: number | undefined;
   summary?: string | undefined;
   critical: number;
   high: number;
+  connectedSummary?: string | null | undefined;
 }) {
   const tone =
     grade === "A" || grade === "B"
@@ -498,10 +514,12 @@ function PostureHero({
           </p>
         ) : null}
         <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">
-          {summary ??
-            (critical > 0
-              ? `${critical} critical and ${high} high findings in the current scan snapshot.`
-              : "Roll-up from the latest completed scan across connected surfaces — cloud, runtime, identity, and inventory.")}
+          {typeof score === "number"
+            ? summary ??
+              (critical > 0
+                ? `${critical} critical · ${high} high in the current snapshot.`
+                : "Rolled up across connected surfaces.")
+            : connectedSummary ?? "Connect a surface or run a scan to grade posture."}
         </p>
       </div>
     </div>
@@ -575,7 +593,7 @@ function SeverityIssueStrip({
             Open issues
           </p>
           <p className="mt-0.5 text-[11px] text-[color:var(--text-secondary)]">
-            Severity across CVEs, misconfigs, secrets, and identity
+            By severity · CVE, misconfig, secret, identity
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

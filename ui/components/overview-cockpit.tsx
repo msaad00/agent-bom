@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronRight } from "lucide-react";
 
 import type { OverviewResponse } from "@/lib/api";
 import type { ServiceEntry, ServiceId } from "@/lib/api-types";
@@ -111,8 +111,11 @@ export function OverviewCockpit({
           </p>
         </div>
 
-        {/* 1 — Posture headline + open issues by severity */}
-        <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
+        {/* 1 — Posture headline + open issues by severity.
+            Posture track is capped (minmax) so a long summary can't grow it
+            unbounded and squeeze the open-issues severity tiles into an
+            unreadable sliver. */}
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
           <PostureHero
             grade={grade}
             score={score}
@@ -182,23 +185,15 @@ function CrossLaneCoverage({
     href: domain.graph_href ?? domain.href,
   }));
 
-  // Fold in connected surfaces that no domain lane already represents (e.g. data
-  // sources) so the estate reads in ONE grid — never a duplicate pill strip.
+  // Data sources / connections are operational plumbing, not an exec risk lane —
+  // keep them OFF the cross-lane grid and demote to a small count next to the
+  // Connections link so the exec pane stays focused on posture + risk.
   const dataSources = services?.data_sources;
-  if (
+  const dataSourceCount =
     dataSources &&
-    (dataSources.state === "live" || dataSources.state === "connected") &&
-    dataSources.count > 0
-  ) {
-    tiles.push({
-      key: "data_sources",
-      label: "Data sources",
-      metric: dataSources.count,
-      metricLabel: "connected",
-      status: "ok",
-      href: "/sources",
-    });
-  }
+    (dataSources.state === "live" || dataSources.state === "connected")
+      ? dataSources.count
+      : 0;
 
   if (tiles.length === 0) return null;
   const reporting = tiles.filter((tile) => tile.status !== "idle").length;
@@ -221,6 +216,9 @@ function CrossLaneCoverage({
           href="/connections"
           className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400"
         >
+          {dataSourceCount > 0 ? (
+            <span className="text-[color:var(--text-tertiary)]">{dataSourceCount} connected · </span>
+          ) : null}
           Connections <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
@@ -369,15 +367,28 @@ function TopRisksPanel({
         ? `${high} high-severity finding${high === 1 ? "" : "s"} in the latest scan`
         : "No prioritized risk themes yet";
 
-  const cveNode = topPath?.nodes.find((node) => node.type === "cve");
-  const agentNode = topPath?.nodes.find((node) => node.type === "agent");
-  const serverNode = topPath?.nodes.find((node) => node.type === "server");
-  const hasCredentialPath = topPath?.nodes.some((node) => node.type === "credential");
+  // Rank the correlated exposure paths by composite risk so the exec view leads
+  // with the worst chain. Each row shows the whole path in one glance:
+  // CVE → package → MCP/runtime → agent → credential. Fall back to the single
+  // top path when the full list hasn't been computed yet.
+  const allPaths = exposurePaths.length > 0 ? exposurePaths : topPath ? [topPath] : [];
+  const ranked = [...allPaths].sort((a, b) => b.riskScore - a.riskScore);
+  const MAX_ROWS = 5;
+  const shown = ranked.slice(0, MAX_ROWS);
+  const moreCount = ranked.length - shown.length;
+  const metaBits = [
+    summaryReady && critical > 0 ? `${critical} critical` : null,
+    summaryReady && high > 0 ? `${high} high` : null,
+    summaryReady && credentials != null && credentials > 0
+      ? `${credentials} touch secrets`
+      : null,
+  ].filter(Boolean);
 
   return (
     <Collapsible
       title="Top risks"
-      subtitle="Highest-risk exposure paths"
+      subtitle="Highest-risk exposure paths — correlated CVE → package → agent → credential"
+      count={ranked.length || undefined}
       defaultOpen
       scrollMaxHeight="28rem"
       actions={
@@ -393,54 +404,126 @@ function TopRisksPanel({
         </div>
       }
     >
-      <p className="text-base font-semibold text-[color:var(--foreground)]">{headline}</p>
-      {topPath ? (
-        <ul className="mt-3 space-y-2 text-sm text-[color:var(--text-secondary)]">
-          {cveNode ? <li>Known exploit exposure: {cveNode.label}</li> : null}
-          {serverNode ? <li>MCP / runtime surface: {serverNode.label}</li> : null}
-          {agentNode ? <li>Production agent scope: {agentNode.label}</li> : null}
-          {hasCredentialPath ? <li>Credential-aware blast radius detected in evidence chain</li> : null}
-          {summaryReady && credentials != null && credentials > 0 ? (
-            <li>{credentials} finding{credentials === 1 ? "" : "s"} touch exposed credentials or secrets</li>
-          ) : null}
-        </ul>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="text-sm font-semibold text-[color:var(--foreground)]">{headline}</p>
+        {metaBits.length > 0 ? (
+          <p className="text-[11px] text-[color:var(--text-tertiary)]">{metaBits.join(" · ")}</p>
+        ) : null}
+      </div>
+
+      {shown.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {shown.map((path, index) => (
+            <RiskChainRow key={path.key} path={path} rank={index + 1} />
+          ))}
+        </div>
       ) : (
         <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
-          Run a scan to populate compliance, findings, and domain coverage evidence.
+          Run a scan to correlate CVEs, packages, agents, and credentials into ranked exposure paths.
         </p>
       )}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Link
-          href="/compliance"
-          className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-200"
-        >
-          Compliance evidence
-        </Link>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {moreCount > 0 ? (
+          <Link
+            href="/security-graph"
+            className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+          >
+            +{moreCount} more risk path{moreCount === 1 ? "" : "s"} <ArrowRight className="h-3 w-3" />
+          </Link>
+        ) : null}
         <Link
           href="/findings?severity=critical"
           className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
         >
           Critical findings
         </Link>
+        <Link
+          href="/compliance"
+          className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-200"
+        >
+          Compliance evidence
+        </Link>
       </div>
-
-      {exposurePaths.length > 1 ? (
-        <div className="mt-4 border-t border-[color:var(--border-subtle)] pt-3">
-          <p className="text-xs font-medium text-[color:var(--foreground)]">
-            {exposurePaths.length - 1} additional risk theme{exposurePaths.length - 1 === 1 ? "" : "s"}
-          </p>
-          <ul className="mt-2 space-y-2 text-xs text-[color:var(--text-secondary)]">
-            {exposurePaths.slice(1, 4).map((path) => (
-              <li key={path.key}>
-                {path.nodes.find((node) => node.type === "cve")?.label ?? "Risk chain"} affecting{" "}
-                {path.nodes.find((node) => node.type === "agent")?.label ?? "agent runtime"} · score{" "}
-                {path.riskScore.toFixed(1)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
     </Collapsible>
+  );
+}
+
+const RISK_NODE_META: Record<
+  ExposurePathView["nodes"][number]["type"],
+  { dot: string }
+> = {
+  cve: { dot: "bg-red-500" },
+  package: { dot: "bg-violet-500" },
+  server: { dot: "bg-sky-500" },
+  agent: { dot: "bg-emerald-500" },
+  credential: { dot: "bg-amber-500" },
+};
+const RISK_NODE_ORDER: ExposurePathView["nodes"][number]["type"][] = [
+  "cve",
+  "package",
+  "server",
+  "agent",
+  "credential",
+];
+
+function riskScoreTone(score: number): string {
+  if (score >= 9) return "border-red-500/45 bg-red-500/10 text-red-300";
+  if (score >= 7) return "border-orange-500/45 bg-orange-500/10 text-orange-300";
+  if (score >= 4) return "border-yellow-500/45 bg-yellow-500/10 text-yellow-200";
+  return "border-sky-500/45 bg-sky-500/10 text-sky-300";
+}
+
+function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) {
+  // Order the chain into the readable attack narrative regardless of the raw
+  // node order: CVE → package → MCP/runtime → agent → credential.
+  const ordered = RISK_NODE_ORDER.flatMap((type) =>
+    path.nodes.filter((node) => node.type === type),
+  );
+  const hasCredential = path.nodes.some((node) => node.type === "credential");
+
+  return (
+    <Link
+      href={path.href}
+      className="group flex items-center gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 transition hover:border-[color:var(--border-strong)]"
+    >
+      <span className="w-4 shrink-0 text-center font-mono text-xs text-[color:var(--text-tertiary)]">
+        {rank}
+      </span>
+      <span
+        className={`shrink-0 rounded-md border px-2 py-1 font-mono text-xs font-semibold ${riskScoreTone(path.riskScore)}`}
+        title={`Composite risk ${path.riskScore.toFixed(1)}`}
+      >
+        {path.riskScore.toFixed(1)}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-y-1">
+        {ordered.map((node, index) => (
+          <span key={`${node.type}-${index}`} className="inline-flex items-center">
+            {index > 0 ? (
+              <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-[color:var(--text-tertiary)]" />
+            ) : null}
+            <span className="inline-flex items-center gap-1 rounded-md bg-[color:var(--surface)] px-1.5 py-0.5 text-[11px]">
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${RISK_NODE_META[node.type].dot}`}
+                aria-hidden="true"
+              />
+              <span
+                className="max-w-[18ch] truncate text-[color:var(--text-secondary)]"
+                title={node.label}
+              >
+                {node.label}
+              </span>
+            </span>
+          </span>
+        ))}
+      </div>
+      {hasCredential ? (
+        <span className="hidden shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200 sm:inline">
+          credential
+        </span>
+      ) : null}
+      <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition group-hover:text-[color:var(--foreground)]" />
+    </Link>
   );
 }
 
@@ -459,18 +542,22 @@ function PostureHero({
   high: number;
   latestScan: string | null;
 }) {
-  const tone =
-    grade === "A" || grade === "B"
-      ? "text-emerald-500"
+  const ungraded = grade === "N/A" || grade === "—";
+  const badgeTone = ungraded
+    ? "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]"
+    : grade === "A" || grade === "B"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
       : grade === "C" || grade === "D"
-        ? "text-amber-500"
-        : "text-red-500";
-  const graded = typeof score === "number" && grade !== "N/A" && grade !== "—";
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+        : "border-red-500/40 bg-red-500/10 text-red-400";
+  const graded = typeof score === "number" && !ungraded;
 
   return (
     <div className="flex items-center gap-4">
-      <div className={`flex h-16 w-16 items-center justify-center rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] ${tone}`}>
-        <span className="text-2xl font-bold">{grade}</span>
+      <div
+        className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border ${badgeTone}`}
+      >
+        <span className="text-3xl font-bold leading-none">{grade}</span>
       </div>
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
@@ -480,7 +567,7 @@ function PostureHero({
           {graded ? `Score ${score}` : "Awaiting scan"}
         </p>
         <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
-          {latestScan ? `Last scan · ${latestScan}` : "No completed scans"}
+          {latestScan ? `Last scan · ${latestScan}` : graded ? "Scan complete" : "No completed scans"}
         </p>
         <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">
           {graded
@@ -516,29 +603,33 @@ function SeverityIssueStrip({
 }) {
   const resolved = matrix ?? emptyIssueSeverityMatrix();
   const hasTyped = resolved.openTotal > 0;
-  const bands: { key: SeverityBand; label: string; tone: string; value: number }[] = [
+  const bands: { key: SeverityBand; label: string; tone: string; tint: string; value: number }[] = [
     {
       key: "critical",
       label: "Critical",
-      tone: "text-red-500 dark:text-red-400",
+      tone: "text-red-600 dark:text-red-400",
+      tint: "border-red-500/40 bg-red-500/[0.08] hover:border-red-500/60",
       value: summaryReady ? (hasTyped ? resolved.totals.critical : critical) : 0,
     },
     {
       key: "high",
       label: "High",
-      tone: "text-orange-500 dark:text-orange-400",
+      tone: "text-orange-600 dark:text-orange-400",
+      tint: "border-orange-500/40 bg-orange-500/[0.08] hover:border-orange-500/60",
       value: summaryReady ? (hasTyped ? resolved.totals.high : high) : 0,
     },
     {
       key: "medium",
       label: "Medium",
-      tone: "text-yellow-500 dark:text-yellow-300",
+      tone: "text-yellow-600 dark:text-yellow-300",
+      tint: "border-yellow-500/40 bg-yellow-500/[0.07] hover:border-yellow-500/60",
       value: summaryReady ? (hasTyped ? resolved.totals.medium : severity.medium) : 0,
     },
     {
       key: "low",
       label: "Low",
-      tone: "text-sky-500 dark:text-sky-300",
+      tone: "text-sky-600 dark:text-sky-300",
+      tint: "border-sky-500/40 bg-sky-500/[0.08] hover:border-sky-500/60",
       value: summaryReady ? (hasTyped ? resolved.totals.low : severity.low) : 0,
     },
   ];
@@ -623,9 +714,9 @@ function SeverityIssueStrip({
           <Link
             key={band.key}
             href={findingsHref({ severity: band.key })}
-            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-2 transition hover:border-[color:var(--border-strong)]"
+            className={`rounded-lg border px-2.5 py-2 transition ${band.tint}`}
           >
-            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-secondary)]">
               {band.label}
             </p>
             <p className={`mt-1 font-mono text-xl font-semibold ${band.tone}`}>

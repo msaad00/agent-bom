@@ -134,9 +134,11 @@ describe("FindingsPage", () => {
     const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-1234" });
     expect(within(drawer).getByText("Evidence drawer")).toBeInTheDocument();
     expect(within(drawer).getByText("Agent reaches vulnerable MCP package.")).toBeInTheDocument();
-    expect(within(drawer).getByText("GITHUB_TOKEN")).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Exposure path" }));
+    expect(within(drawer).getAllByText("GITHUB_TOKEN")).toHaveLength(2);
 
-    fireEvent.click(within(drawer).getByRole("button", { name: "Close finding drawer" }));
+    const closeButtons = within(drawer).getAllByRole("button", { name: "Close" });
+    fireEvent.click(closeButtons.at(-1)!);
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Finding details for CVE-2026-1234" })).not.toBeInTheDocument();

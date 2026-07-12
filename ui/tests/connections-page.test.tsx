@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ConnectionsPage from "@/app/connections/page";
@@ -298,23 +298,27 @@ describe("ConnectionsPage", () => {
     await waitFor(() =>
       expect(apiMock.scanCloudConnection).toHaveBeenCalledWith("conn-1"),
     );
+    fireEvent.click(screen.getByRole("button", { name: "Production account" }));
+    const drawer = await screen.findByRole("dialog", {
+      name: "Production account",
+    });
     await waitFor(() =>
-      expect(screen.getByText("Read-only scan complete")).toBeInTheDocument(),
+      expect(within(drawer).getByText("Read-only scan complete")).toBeInTheDocument(),
     );
 
-    expect(screen.getByText("42")).toBeInTheDocument(); // resources
-    expect(screen.getByText("7")).toBeInTheDocument(); // identities
-    expect(screen.getByText("30/40")).toBeInTheDocument(); // CIS passed
-    expect(screen.getByText("75%")).toBeInTheDocument(); // pass rate
-    expect(screen.getByRole("link", { name: "Scan result" })).toHaveAttribute(
+    expect(within(drawer).getByText("42")).toBeInTheDocument(); // resources
+    expect(within(drawer).getByText("7")).toBeInTheDocument(); // identities
+    expect(within(drawer).getByText("30/40")).toBeInTheDocument(); // CIS passed
+    expect(within(drawer).getByText("75%")).toBeInTheDocument(); // pass rate
+    expect(within(drawer).getByRole("link", { name: "Scan result" })).toHaveAttribute(
       "href",
       "/scan?id=abcdef12-3456-7890-abcd-ef1234567890",
     );
-    expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
+    expect(within(drawer).getByRole("link", { name: "Findings" })).toHaveAttribute(
       "href",
       "/findings?scan=abcdef12-3456-7890-abcd-ef1234567890",
     );
-    expect(screen.getByRole("link", { name: "Graph" })).toHaveAttribute(
+    expect(within(drawer).getByRole("link", { name: "Graph" })).toHaveAttribute(
       "href",
       "/graph?scan_id=abcdef12-3456-7890-abcd-ef1234567890",
     );
@@ -378,8 +382,12 @@ describe("ConnectionsPage", () => {
         screen.getByText("Production account read-only credential verified."),
       ).toBeInTheDocument(),
     );
+    fireEvent.click(screen.getByRole("button", { name: "Production account" }));
+    const drawer = await screen.findByRole("dialog", {
+      name: "Production account",
+    });
     expect(
-      screen.getByText(/No inventory, CIS, findings, or resource writes ran/),
+      within(drawer).getByText(/No inventory, CIS, findings, or resource writes ran/),
     ).toBeInTheDocument();
   });
 
@@ -404,20 +412,24 @@ describe("ConnectionsPage", () => {
       expect(screen.getByText("Production account")).toBeInTheDocument(),
     );
 
-    expect(screen.getByText("Last scan handoff")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Scan result" })).toHaveAttribute(
+    fireEvent.click(screen.getByRole("button", { name: "Production account" }));
+    const drawer = await screen.findByRole("dialog", {
+      name: "Production account",
+    });
+    expect(within(drawer).getByText("Last scan handoff")).toBeInTheDocument();
+    expect(within(drawer).getByRole("link", { name: "Scan result" })).toHaveAttribute(
       "href",
       "/scan?id=persisted-scan-123",
     );
-    expect(screen.getByRole("link", { name: "Jobs" })).toHaveAttribute(
+    expect(within(drawer).getByRole("link", { name: "Jobs" })).toHaveAttribute(
       "href",
       "/jobs?q=persisted-scan-123",
     );
-    expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
+    expect(within(drawer).getByRole("link", { name: "Findings" })).toHaveAttribute(
       "href",
       "/findings?scan=persisted-scan-123",
     );
-    expect(screen.getByRole("link", { name: "Graph" })).toHaveAttribute(
+    expect(within(drawer).getByRole("link", { name: "Graph" })).toHaveAttribute(
       "href",
       "/graph?scan_id=persisted-scan-123",
     );

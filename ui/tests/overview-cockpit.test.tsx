@@ -85,7 +85,7 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/5 of 7 lanes reporting/i)).toBeInTheDocument();
   });
 
-  it("folds a connected data source into the coverage grid as one extra tile", () => {
+  it("keeps connected data sources out of leadership lanes and links to connections", () => {
     render(
       <OverviewCockpit
         {...baseProps}
@@ -94,15 +94,17 @@ describe("OverviewCockpit", () => {
       />,
     );
 
-    expect(screen.getByText("Data sources")).toBeInTheDocument();
-    expect(screen.getByText(/6 of 8 lanes reporting/i)).toBeInTheDocument();
+    expect(screen.queryByText("Data sources")).not.toBeInTheDocument();
+    expect(screen.getByText(/5 of 7 lanes reporting/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 connected/i)).toBeInTheDocument();
   });
 
   it("surfaces risk themes and links into findings / compliance", () => {
     render(<OverviewCockpit {...baseProps} />);
 
     expect(screen.getByText(/2 critical findings need attention/i)).toBeInTheDocument();
-    expect(screen.getByText(/Known exploit exposure: CVE-2020-14343/i)).toBeInTheDocument();
+    expect(screen.getByText("CVE-2020-14343")).toBeInTheDocument();
+    expect(screen.getByText("cursor")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Critical findings" })).toHaveAttribute(
       "href",
       "/findings?severity=critical",

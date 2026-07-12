@@ -5,8 +5,10 @@ export const CONNECT_CLOUD_ACTION: PageStateAction = {
   href: "/connections",
 };
 
+// Canonical scan entry point: "New Scan" opens the /scan configurator.
+// (Use "Run scan" only for actions that execute immediately on a scoped target.)
 export const RUN_SCAN_ACTION: PageStateAction = {
-  label: "Run scan",
+  label: "New Scan",
   href: "/scan",
 };
 

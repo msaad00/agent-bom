@@ -10,6 +10,7 @@ import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { clearSessionApiKey } from "@/lib/auth";
 
 const AUTH_FAILURE_MESSAGE = "That API key wasn't accepted — check it and try again.";
+const OIDC_BROWSER_LOGIN_PATH = "/v1/auth/oidc/login";
 
 function isAuthFailure(message: string): boolean {
   const normalized = message.toLowerCase();
@@ -79,7 +80,11 @@ export function LoginPanel({
 
   if (!error || isAuthFailure(error)) {
     const configuredModes = session?.configured_modes ?? [];
-    const ssoConfigured = configuredModes.includes("trusted_proxy") || configuredModes.includes("oidc_bearer");
+    const browserOidcConfigured = configuredModes.includes("oidc_browser");
+    const trustedProxyConfigured = configuredModes.includes("trusted_proxy");
+    const oidcBearerConfigured = configuredModes.includes("oidc_bearer");
+    const proxyOrBearerHint = !browserOidcConfigured && (trustedProxyConfigured || oidcBearerConfigured);
+    const showApiKeyDivider = browserOidcConfigured || proxyOrBearerHint;
     const authError = error && isAuthFailure(error) ? AUTH_FAILURE_MESSAGE : null;
     const shownError = formError ?? authError;
 
@@ -91,13 +96,37 @@ export function LoginPanel({
               <BrandLogo />
             </div>
             <h1 className="text-xl font-semibold tracking-tight text-zinc-100">{title}</h1>
-            <p className="mt-1 text-sm text-zinc-400">Enter your API key to access the dashboard.</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              {browserOidcConfigured
+                ? "Sign in with SSO, or use an API key as a fallback."
+                : "Enter your API key to access the dashboard."}
+            </p>
           </div>
 
-          {ssoConfigured ? (
+          {browserOidcConfigured ? (
+            <div className="mb-6">
+              <a
+                href={OIDC_BROWSER_LOGIN_PATH}
+                className="flex w-full items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400"
+              >
+                Sign in with SSO
+              </a>
+              {showApiKeyDivider ? (
+                <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-600">
+                  <span className="h-px flex-1 bg-zinc-800" />
+                  or use an API key
+                  <span className="h-px flex-1 bg-zinc-800" />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {proxyOrBearerHint ? (
             <div className="mb-6">
               <p className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-center text-sm text-zinc-400">
-                Single sign-on is handled by your identity provider or reverse proxy.
+                {trustedProxyConfigured
+                  ? "Single sign-on is handled by your reverse proxy. Continue there, or use an API key below."
+                  : "Single sign-on is handled by your identity provider or reverse proxy."}
               </p>
               <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-600">
                 <span className="h-px flex-1 bg-zinc-800" />
@@ -148,7 +177,7 @@ export function LoginPanel({
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-9 pr-3 font-mono text-sm text-zinc-100 outline-none ring-0 placeholder:text-zinc-600 focus:border-emerald-500"
                 placeholder="Paste your API key"
                 autoComplete="off"
-                autoFocus
+                autoFocus={!browserOidcConfigured}
               />
             </div>
             <p className="mt-2 text-xs leading-5 text-zinc-500">
@@ -161,7 +190,11 @@ export function LoginPanel({
             <button
               type="submit"
               disabled={!apiKey.trim()}
-              className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+              className={
+                browserOidcConfigured
+                  ? "mt-5 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600"
+                  : "mt-5 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+              }
             >
               Sign in
             </button>
@@ -193,9 +226,9 @@ export function LoginPanel({
             </div>
           </form>
 
-          {!ssoConfigured ? (
+          {!browserOidcConfigured && !proxyOrBearerHint ? (
             <p className="mt-6 border-t border-zinc-900 pt-4 text-center text-xs text-zinc-600">
-              Setting up single sign-on? Configure a reverse proxy or OIDC issuer in your deployment.
+              Setting up single sign-on? Configure browser OIDC, a reverse proxy, or an OIDC issuer in your deployment.
             </p>
           ) : null}
         </div>

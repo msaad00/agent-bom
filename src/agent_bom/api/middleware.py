@@ -416,12 +416,15 @@ def configure_auth_runtime(
     trusted_proxy_enabled: bool,
     scim_enabled: bool = False,
     saml_enabled: bool = False,
+    oidc_browser_enabled: bool = False,
     unauthenticated_allowed: bool = False,
 ) -> None:
     """Track the active auth modes for operator/UI introspection surfaces."""
     configured_modes: list[str] = []
     if trusted_proxy_enabled:
         configured_modes.append("trusted_proxy")
+    if oidc_browser_enabled:
+        configured_modes.append("oidc_browser")
     if oidc_enabled:
         configured_modes.append("oidc_bearer")
     if api_key_configured:
@@ -445,7 +448,10 @@ def configure_auth_runtime(
     if unauthenticated_allowed and not auth_configured:
         recommended_ui_mode = "no_auth"
     elif trusted_proxy_enabled:
+        # Reverse-proxy SSO remains preferred when present.
         recommended_ui_mode = "reverse_proxy_oidc"
+    elif oidc_browser_enabled:
+        recommended_ui_mode = "oidc_browser"
     elif oidc_enabled:
         recommended_ui_mode = "oidc_bearer"
     elif saml_enabled or api_key_configured:

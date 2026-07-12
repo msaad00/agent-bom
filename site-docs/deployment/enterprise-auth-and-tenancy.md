@@ -47,9 +47,13 @@ support data, see
 - **SAML is intentionally narrow.**
   It is an assertion-verification path that returns a short-lived API key. It is
   not a full browser session framework with logout/session federation depth.
-- **OIDC is strongest on the control-plane API today.**
-  Per-user OAuth2 auth-code / PKCE for laptop-to-gateway flows is still a later
-  runtime surface.
+- **Dashboard OIDC auth-code / PKCE is available; gateway laptop PKCE is later.**
+  The control-plane dashboard can complete first-party OIDC login via
+  `/v1/auth/oidc/login` (PKCE S256) when `AGENT_BOM_OIDC_CLIENT_ID` and
+  `AGENT_BOM_OIDC_REDIRECT_URI` are set alongside the issuer. Per-user OAuth2
+  auth-code / PKCE for laptop-to-gateway MCP flows remains a later runtime
+  surface. Reverse-proxy SSO is still preferred when present. mTLS is transport
+  posture only — not user identity.
 - **Good enterprise posture still depends on good IdP mapping.**
   Claim naming, tenant binding, and deployment configuration matter almost as
   much as the code paths.
@@ -64,9 +68,11 @@ support data, see
 | Mode | Best for | Tenant source | Role source | Notes |
 |---|---|---|---|---|
 | API key | machine-to-machine, automation, internal service accounts | key metadata | key metadata | hashed at rest; role hierarchy enforced in middleware |
-| OIDC | browser/API users behind corporate IdP | JWT tenant claim or tenant-bound issuer | JWT role claim / groups | issuer + audience verified; tenant defaults fail closed by default |
+| OIDC bearer JWT | API callers with corporate IdP tokens | JWT tenant claim or tenant-bound issuer | JWT role claim / groups | issuer + audience verified; tenant defaults fail closed by default |
+| OIDC browser SSO | Dashboard users without a reverse-proxy identity bridge | same OIDC tenant claim contract | same OIDC role claim / groups | auth-code + PKCE; mints httpOnly session cookie; auth runtime mode `oidc_browser` |
 | SAML | enterprises that need SAML IdP compatibility | SAML attribute | SAML attribute | assertion is verified, then converted into a short-lived API key |
-| Trusted proxy | same-origin ingress or auth gateway in front of API | `X-Agent-Bom-Tenant-ID` | `X-Agent-Bom-Role` | only when `AGENT_BOM_TRUST_PROXY_AUTH=1` |
+| Trusted proxy | same-origin ingress or auth gateway in front of API | `X-Agent-Bom-Tenant-ID` | `X-Agent-Bom-Role` | only when `AGENT_BOM_TRUST_PROXY_AUTH=1`; preferred when present |
+| mTLS | proxy/gateway → API transport | n/a | n/a | not an identity path |
 
 ## RBAC model
 
@@ -311,8 +317,9 @@ The practical rule is:
 
 So a seamless self-hosted browser experience looks like this:
 
-1. the user authenticates through trusted proxy OIDC, direct OIDC bearer, or a
-   narrower fallback such as a short-lived or session-only API key
+1. the user authenticates through trusted proxy OIDC, first-party dashboard OIDC
+   (auth-code + PKCE), direct OIDC bearer, or a narrower fallback such as a
+   short-lived or session-only API key
 2. the API resolves subject, role, tenant, and request trace context
 3. the UI adapts to that state
 4. the API still enforces every request server-side

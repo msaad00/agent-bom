@@ -414,3 +414,31 @@ use provider-scoped snapshot permissions plus an in-account collector.
 
 > Pointing agent-bom at a new cloud is a managed read-only role plus a few lines
 > of env. That is the whole integration surface — by design.
+
+---
+
+## 9. Cloud SDK freshness (a non-blocking coverage signal)
+
+agent-bom reads each estate through the provider's own SDK (boto3, the Azure
+management SDKs, the Google Cloud SDKs, the Snowflake connector). An SDK that
+lags the version the connectors are built against can quietly miss provider
+services or APIs added in newer releases — a gap that *looks* like coverage. So
+the freshness of the SDK layer is surfaced, never left silent.
+
+- **What it checks.** Each installed provider SDK is compared against a
+  bundled *recommended floor* (the minimum pinned in the `pyproject.toml`
+  extras). This is an **offline, deterministic** comparison — it never queries
+  PyPI or a provider for the newest release, so it stays reproducible and
+  air-gap safe.
+- **Non-blocking by design.** This is a *signal*, never a gate: it never
+  changes an exit code or fails a scan. An SDK below its floor produces a
+  warning; a provider SDK you have not installed is only informational (a user
+  who scans only AWS is never nagged about an absent Azure SDK).
+- **Where it shows up.**
+  - `agent-bom doctor` renders a **Cloud SDK freshness** section: each anchor
+    SDK with its installed version, the recommended floor, and an upgrade hint.
+  - `--agent-mode` scan metadata carries a `cloud_sdk_freshness` block
+    (`status`, `stale_count`, and the flat list of warning messages) under
+    `summary`, alongside the vuln-DB freshness fields.
+- **How to refresh.** Upgrade the matching extra, e.g.
+  `pip install -U 'agent-bom[aws]'` (or `[azure]` / `[gcp]` / `[snowflake]`).

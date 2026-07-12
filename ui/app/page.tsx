@@ -353,11 +353,13 @@ export default function Dashboard() {
         }
         actions={
           <>
+            {/* Exec pane leads with drill-downs, not an operational scan action
+                (New Scan lives in the nav + empty states for engineers). */}
             <Link
-              href="/scan"
+              href="/compliance"
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
             >
-              Run scan <ArrowRight className="h-4 w-4" />
+              Compliance <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/security-graph"
@@ -374,10 +376,10 @@ export default function Dashboard() {
               </Link>
             ) : (
               <Link
-                href="/compliance"
+                href="/findings"
                 className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
               >
-                Compliance
+                Findings
               </Link>
             )}
           </>
@@ -556,7 +558,7 @@ function EmptyState() {
         href="/scan"
         className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
       >
-        Run your first scan
+        New Scan
         <ArrowRight className="w-3.5 h-3.5" />
       </Link>
     </div>

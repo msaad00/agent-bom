@@ -223,15 +223,21 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
             strokeLinecap="round"
             markerEnd="url(#exposure-arrow)"
             opacity="0.88"
-          >
-            <title>{edge.label}</title>
-          </path>
+          />
         ))}
 
         {layout.relationshipLabels.map((label) => (
           <g key={label.id} transform={`translate(${label.x} ${label.y})`}>
-            <rect x="-48" y="-10" width="96" height="20" rx="10" fill="#0f172a" stroke="#334155" />
-            <text x="0" y="4" textAnchor="middle" fill="#cbd5e1" fontSize="10" fontFamily="var(--font-mono), monospace">
+            <rect
+              x={-label.width / 2}
+              y="-11"
+              width={label.width}
+              height="22"
+              rx="11"
+              fill="#0f172a"
+              stroke="#334155"
+            />
+            <text x="0" y="4" textAnchor="middle" fill="#cbd5e1" fontSize="11" fontFamily="var(--font-mono), monospace">
               {label.text}
             </text>
           </g>
@@ -277,22 +283,30 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 }
 
 function buildPathGraphLayout(path: ExposurePath) {
-  const width = 980;
-  const nodeWidth = 196;
-  const nodeHeight = 78;
+  // Geometry note: nodes are spaced with a generous horizontal gap so the
+  // relationship pill sits centred in the clear channel between two node boxes
+  // — never overlapping a node or getting clipped at the container edge. The
+  // SVG scales to its container via viewBox, so a wider board just renders a
+  // little smaller; it never crowds the labels.
+  const nodeWidth = 188;
+  const nodeHeight = 76;
+  const marginX = 28;
+  const marginY = 30;
+  const columnGap = 132;
+  const rowGap = 116;
   const columns = Math.min(4, Math.max(1, path.hops.length));
   const rows = Math.max(1, Math.ceil(path.hops.length / columns));
-  const xGap = columns > 1 ? (width - nodeWidth - 48) / (columns - 1) : 0;
-  const yGap = 108;
-  const height = 40 + rows * nodeHeight + (rows - 1) * (yGap - nodeHeight) + 24;
+  const pitchX = nodeWidth + columnGap;
+  const width = marginX * 2 + columns * nodeWidth + (columns - 1) * columnGap;
+  const height = marginY * 2 + rows * nodeHeight + (rows - 1) * (rowGap - nodeHeight);
   const nodes = path.hops.map((hop, index) => {
     const row = Math.floor(index / columns);
     const col = index % columns;
     const visualCol = row % 2 === 0 ? col : columns - 1 - col;
     return {
       ...hop,
-      x: 24 + visualCol * xGap,
-      y: 28 + row * yGap,
+      x: marginX + visualCol * pitchX,
+      y: marginY + row * rowGap,
     };
   });
   const edges = nodes.slice(0, -1).map((source, index) => {
@@ -312,16 +326,18 @@ function buildPathGraphLayout(path: ExposurePath) {
       id: `${source.id}->${target.id}`,
       path: pathD,
       stroke: style.stroke,
-      label: relationship,
-      labelX: sameRow ? (startX + endX) / 2 : (source.x + target.x + nodeWidth) / 2,
-      labelY: sameRow ? startY - 14 : (source.y + target.y + nodeHeight) / 2,
+      label: truncateGraphText(relationship, 16),
+      // Centre the pill on the edge line, mid-channel between the two nodes.
+      labelX: sameRow ? (startX + endX) / 2 : source.x + nodeWidth / 2,
+      labelY: sameRow ? startY : (source.y + nodeHeight + target.y) / 2,
     };
   });
   const relationshipLabels = edges.map((edge) => ({
     id: `${edge.id}:label`,
-    text: truncateGraphText(edge.label, 12),
+    text: edge.label,
     x: edge.labelX,
     y: edge.labelY,
+    width: Math.max(50, Math.round(edge.label.length * 6.6 + 22)),
   }));
 
   return { width, height, nodeWidth, nodeHeight, nodes, edges, relationshipLabels };

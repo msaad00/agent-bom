@@ -427,17 +427,6 @@ function SecurityGraphPageContent() {
         />
       )}
 
-      {graphData && selectedAttackPath && (
-        <SecurityGraphInvestigation
-          graph={graphData as UnifiedGraphData}
-          attackPath={selectedAttackPath}
-          focusMode={investigationFocusMode}
-          onFocusModeChange={setInvestigationFocusMode}
-          fullGraphHref={fullGraphHref}
-          loading={loadingGraph}
-        />
-      )}
-
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">

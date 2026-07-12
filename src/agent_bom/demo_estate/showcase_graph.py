@@ -145,13 +145,13 @@ def demo_identity_records(tenant_id: str = SHOWCASE_TENANT) -> tuple[list[AgentI
     approved_at = (now - timedelta(hours=2)).isoformat()
     grant_expiry = (now + timedelta(hours=1)).isoformat()
     for slug, tool_name in _DEMO_JIT_GRANTS:
-        identity_id = by_slug.get(slug)
-        if not identity_id:
+        grant_identity_id = by_slug.get(slug)
+        if not grant_identity_id:
             continue
         grants.append(
             AgentJITGrant(
                 grant_id=f"demo-jit-{slug}-{tool_name}",
-                identity_id=identity_id,
+                identity_id=grant_identity_id,
                 agent_id=next(str(s["agent_label"]) for s in _DEMO_IDENTITIES if s["slug"] == slug),
                 tenant_id=tenant_id,
                 tool_name=tool_name,

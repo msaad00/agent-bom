@@ -33,10 +33,10 @@ Enterprise auth, cloud-connect, and interop release: browser OIDC SSO, actionabl
 - **`connect snowflake`** points at the real `scan --snowflake` command (#3846).
 - **AI-BOM**: canonical model-node identity (no more double-counted models) and real `observes` edges (#3829).
 - Capability counts reconciled across README/PyPI/docs and enforced in CI (#3827).
-- SAML SSO counts as a configured auth path (#3803).
+- SAML SSO counts as a configured auth path (#3831).
 
 ### Security
-- **`POST /v1/scan` local-path jail**: the primary scan endpoint now routes every local-path field (including the previously-unvalidated `external_scan`/`vex`) through the same path-confinement helper + default-off gate the secondary `/scan/*` endpoints use, closing an authenticated arbitrary host-file read; `format`/`min_severity` are enum-constrained and the scan form validates repo URLs client-side (#3864).
+- **`POST /v1/scan` local-path jail**: the primary scan endpoint now routes every local-path field (including the previously-unvalidated `external_scan`/`vex`) through the same path-confinement helper + default-off gate the secondary `/scan/*` endpoints use, closing an authenticated arbitrary host-file read; `format`/`min_severity` are enum-constrained and the scan form validates repo URLs client-side (#3864). **Upgrade note:** local filesystem-path scan targets on `POST /v1/scan` are now rejected with `400` by default — set `AGENT_BOM_API_LOCAL_PATH_SCANS=enabled` to allow them (this matches the behavior the secondary `/scan/*` endpoints already enforced).
 - **OAuth-AS issuer fails closed** on non-loopback listeners; agent-identity JWT now binds `aud`/`iss`; deprovisioning revokes API keys by owner (#3822).
 - **Signing keys file-first**: OAuth-AS RSA, compliance Ed25519, and proxy signing PEMs resolve from mounted files rather than inline env; `.env.example` leads with IRSA / workload identity (#3820, #3840).
 - **Postgres app-password no longer persists in cleartext** (init GUC is reset) and is kept out of the DSN; audit-HMAC and connection keys support rotation (#3817, #3821).

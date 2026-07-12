@@ -16,7 +16,7 @@ From an internet-connected build host:
 
 ```bash
 scripts/release/build-airgap-image-bundle.sh \
-  --version 0.94.2 \
+  --version 0.95.0 \
   --platform linux/amd64 \
   --output-dir dist/airgap
 ```
@@ -37,8 +37,8 @@ machine.
 ## Import On The Disconnected Host
 
 ```bash
-tar -xzf agent-bom-airgap-0.94.2-linux_amd64.tar.gz
-cd agent-bom-airgap-0.94.2-linux_amd64
+tar -xzf agent-bom-airgap-0.95.0-linux_amd64.tar.gz
+cd agent-bom-airgap-0.95.0-linux_amd64
 ./load-images.sh
 ```
 
@@ -47,7 +47,7 @@ The loader verifies archive checksums before running `docker load`.
 ## Push To An Internal Registry
 
 ```bash
-VERSION=0.94.2
+VERSION=0.95.0
 REGISTRY=registry.internal.example.com/security
 
 docker tag "agentbom/agent-bom:${VERSION}" "${REGISTRY}/agent-bom:${VERSION}"
@@ -62,13 +62,13 @@ Then point Helm at the internal registry:
 ```yaml
 image:
   repository: registry.internal.example.com/security/agent-bom
-  tag: "0.94.2"
+  tag: "0.95.0"
 
 controlPlane:
   ui:
     image:
       repository: registry.internal.example.com/security/agent-bom-ui
-      tag: "0.94.2"
+      tag: "0.95.0"
 ```
 
 ## GitHub Actions Bundle Job

@@ -45,7 +45,7 @@ remediation remain advisory/manual in this command.
 
 ```json
 {
-  "version": "0.94.2",
+  "version": "0.95.0",
   "generated_at": "2026-04-21T12:00:00+00:00",
   "remediation_plan": [],
   "summary": {

@@ -9,8 +9,35 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-07-11
+
+Enterprise auth, cloud-connect, and interop release: browser OIDC SSO, actionable cloud connections, compliance honesty, refreshed dashboard/branding, and a large security-hardening batch on top of 0.94.2.
+
+### Added
+- **Browser OIDC SSO foundation**: `/v1/auth/oidc/login` + `/callback` with authorization-code + PKCE (S256), one-time server-side `state`, an HMAC-sealed PKCE cookie, and ID-token verification through the hardened verifier (#3849).
+- **Post-scan repo overview**: repo scans surface stats, surface-coverage chips, and a graph deep-link; the API scan path now promotes dependency inventory to `project_inventory` for graph-overlay parity with the CLI (#3848).
+- **`connect` establishes and verifies a read-only cloud connection**: `agent-bom connect aws|azure|gcp|snowflake` can broker-test credentials locally or register them with a control plane via the same `CloudConnectionCreate` schema the API/UI use (#3842).
+- **Interop schema-conformance gate**: generated SARIF 2.1.0 / CycloneDX 1.6 / SPDX 2.3 are validated against official schemas with byte-determinism checks in CI (#3826).
+- **Install-aware upgrade guidance + vuln-DB freshness signals**: `agent-bom upgrade` detects pip/pipx/uv/brew/Docker/binary installs; scans auto-refresh the DB by default (offline-safe) and warn on staleness, with an opt-in `--require-fresh-db` gate (#3838, #3844).
+- **Postgres IAM auth mode + audit-HMAC key rotation** (#3821).
+
 ### Fixed
-- **SAML SSO counts as a configured auth path**: a SAML-only deployment is no longer refused by the CLI non-loopback boot gate and is now reported as `auth_configured` (with a `saml_sso` mode) on `/health` and the auth policy surface. Anonymous requests still fail closed; SAML browser login mints a short-lived session API key as before (#3803).
+- **Compliance never scores unevaluated controls as pass**: no more "fully compliant / 100" or all-pass framework summaries when nothing was scanned — zero-evidence controls report `not_evaluated` across API, CLI, and UI (#3819).
+- **Read path off the event loop**: `list_findings` and graph reads no longer block the async loop under load (#3823).
+- **Severity-filter parity** across in-memory and SQL backends — `info` is no longer conflated with `low` (#3824).
+- **`scan --no-discover` honors an explicit `--project`** and hard-errors on zero input artifacts instead of exiting 0 clean (#3825).
+- **`connect snowflake`** points at the real `scan --snowflake` command (#3846).
+- **AI-BOM**: canonical model-node identity (no more double-counted models) and real `observes` edges (#3829).
+- Capability counts reconciled across README/PyPI/docs and enforced in CI (#3827).
+- SAML SSO counts as a configured auth path (#3803).
+
+### Security
+- **OAuth-AS issuer fails closed** on non-loopback listeners; agent-identity JWT now binds `aud`/`iss`; deprovisioning revokes API keys by owner (#3822).
+- **Signing keys file-first**: OAuth-AS RSA, compliance Ed25519, and proxy signing PEMs resolve from mounted files rather than inline env; `.env.example` leads with IRSA / workload identity (#3820, #3840).
+- **Postgres app-password no longer persists in cleartext** (init GUC is reset) and is kept out of the DSN; audit-HMAC and connection keys support rotation (#3817, #3821).
+
+### Changed
+- Refreshed dashboard branding (agent-HUD mark) and README media (#3850, #3813); deduplicated AST scanner primitives; removed an orphaned shim and duplicate scripts (#3828, #3830).
 
 ## [0.94.2] - 2026-07-09
 
@@ -2254,7 +2281,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.94.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.95.0...HEAD
+[0.95.0]: https://github.com/msaad00/agent-bom/compare/v0.94.2...v0.95.0
 [0.94.2]: https://github.com/msaad00/agent-bom/compare/v0.94.1...v0.94.2
 [0.94.1]: https://github.com/msaad00/agent-bom/compare/v0.94.0...v0.94.1
 [0.94.0]: https://github.com/msaad00/agent-bom/compare/v0.93.5...v0.94.0

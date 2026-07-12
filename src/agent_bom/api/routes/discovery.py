@@ -472,12 +472,14 @@ async def list_discovery_providers() -> dict:
     return provider_contracts()
 
 
-@router.get("/agents/mesh", tags=["discovery"])
+@router.get("/agents/mesh", tags=["discovery"], deprecated=True)
 async def get_agent_mesh(request: Request) -> dict:
     """Get a ReactFlow-compatible mesh topology of all discovered agents.
 
     Shows agents, their MCP servers, tools, and vulnerability overlay
     as an interactive graph.
+
+    Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
     """
     try:
         from agent_bom.output.agent_mesh import build_agent_mesh

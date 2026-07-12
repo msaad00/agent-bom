@@ -114,7 +114,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
   const cves = server.known_cves || [];
 
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6">
+    <div className="py-6 space-y-6">
       {/* Back button */}
       <button
         onClick={() => router.push("/registry")}

@@ -519,7 +519,7 @@ export default function SourcesPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Data sources</h1>

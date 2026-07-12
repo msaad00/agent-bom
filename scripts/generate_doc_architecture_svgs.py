@@ -402,15 +402,27 @@ def _vendor_logo_inner(vendor: str, *, uid: str) -> str:
     return _namespace_svg_ids(inner.strip(), uid=uid)
 
 
-def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict, *, theme: str) -> tuple[str, int]:
-    """2x2 provider grid: official icon mark + short label on a light chip."""
+def _cloud_logos(
+    x: int,
+    y: int,
+    lane_inner_w: int,
+    t: dict,
+    *,
+    theme: str,
+    card_h: int = 44,
+    icon_box: int = 30,
+) -> tuple[str, int]:
+    """2x2 connector grid: large official icon mark + label on a bright chip.
+
+    Logos are the "Connect" step, so tiles are sized to read as first-class
+    connectors — big marks, tight padding, minimal dead white space.
+    """
     del theme  # icons use native brand colors on a light chip for both themes
     cols = 2
-    gap_x = 6
-    gap_y = 6
+    gap_x = 8
+    gap_y = 8
     card_w = (lane_inner_w - gap_x) // cols
-    card_h = 32
-    icon_box = 20
+    pad = 6
     out: list[str] = []
     for i, (vendor, label, _accent) in enumerate(CLOUD_VENDOR_LOGOS):
         col, row = i % cols, i // cols
@@ -418,25 +430,26 @@ def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict, *, theme: str) -> t
         by = y + row * (card_h + gap_y)
         raw = (VENDOR_LOGO_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
         vb_w, vb_h = _vendor_viewbox(raw)
+        # Fill the icon box tightly — only a 2px optical inset — so marks read big.
         scale = min((icon_box - 2) / vb_h, (icon_box - 2) / vb_w)
         render_w = vb_w * scale
         render_h = vb_h * scale
-        icon_x = bx + 8 + (icon_box - render_w) / 2
+        icon_x = bx + pad + (icon_box - render_w) / 2
         icon_y = by + (card_h - render_h) / 2
         inner = _vendor_logo_inner(vendor, uid=f"cl-{vendor}")
-        label_x = bx + 8 + icon_box + 6
+        label_x = bx + pad + icon_box + 8
         out.append(
-            f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="8" fill="#ffffff" stroke="#d4d4d8"/>'
-            f'<rect x="{bx + 8}" y="{by + (card_h - icon_box) / 2}" width="{icon_box}" height="{icon_box}" '
-            f'rx="5" fill="#f8fafc" stroke="#e4e4e7"/>'
+            f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="9" fill="#ffffff" stroke="#d4d4d8"/>'
+            f'<rect x="{bx + pad}" y="{by + (card_h - icon_box) / 2}" width="{icon_box}" height="{icon_box}" '
+            f'rx="7" fill="#f8fafc" stroke="#e4e4e7"/>'
             f'<g transform="translate({icon_x},{icon_y}) scale({scale})">{inner}</g>'
             f'<text x="{label_x}" y="{by + card_h / 2 + 4}" font-family="Inter,system-ui,sans-serif" '
-            f'font-size="10" font-weight="700" fill="#18181b">{_esc(label)}</text>'
+            f'font-size="11.5" font-weight="700" fill="#18181b">{_esc(label)}</text>'
         )
     return "".join(out), gap_y + 2 * card_h
 
 
-def _advisory_chips(x: int, y: int, lane_inner_w: int, accent: str, t: dict) -> str:
+def _advisory_chips(x: int, y: int, lane_inner_w: int, accent: str, t: dict, *, chip_w: int = 48) -> str:
     """Compact advisory-source row — monospace labels with source-tint dots."""
     advisories = (
         ("OSV", "#34d399"),
@@ -445,7 +458,7 @@ def _advisory_chips(x: int, y: int, lane_inner_w: int, accent: str, t: dict) -> 
         ("KEV", "#f87171"),
         ("EPSS", "#fbbf24"),
     )
-    chip_w, chip_gap = 48, 4
+    chip_gap = 4
     row_w = len(advisories) * chip_w + (len(advisories) - 1) * chip_gap
     start = x + max(0, (lane_inner_w - row_w) // 2)
     parts: list[str] = []
@@ -454,43 +467,56 @@ def _advisory_chips(x: int, y: int, lane_inner_w: int, accent: str, t: dict) -> 
         parts.append(
             f'<rect x="{ax}" y="{y}" width="{chip_w}" height="20" rx="6" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
             f'<circle cx="{ax + 9}" cy="{y + 10}" r="3" fill="{color}"/>'
-            f'<text x="{ax + 28}" y="{y + 14}" text-anchor="middle" font-family="ui-monospace,monospace" '
+            f'<text x="{ax + (chip_w + 9) / 2}" y="{y + 14}" text-anchor="middle" font-family="ui-monospace,monospace" '
             f'font-size="7.5" font-weight="800" fill="{accent}">{_esc(name)}</text>'
         )
     return "".join(parts)
 
 
+def _lane_sublabel(x: int | float, y: int | float, label: str, t: dict) -> str:
+    """Small uppercase section caption inside a lane."""
+    return _text(
+        x,
+        y,
+        label,
+        **{
+            "font-family": "Inter,system-ui,sans-serif",
+            "font-size": "7.5",
+            "font-weight": "700",
+            "letter-spacing": "0.08em",
+            "fill": t["lane_muted"],
+        },
+    )
+
+
 def how_it_works(theme_name: str) -> str:
     t = THEMES[theme_name]
-    w, h = 960, 560
-    lane_gap = 18
-    lane_w = 290
-    lane_x = [28, 28 + lane_w + lane_gap, 28 + 2 * (lane_w + lane_gap)]
+    w, h = 1160, 560
+    margin_x = 26
+    lane_gap = 16
+    lane_w = 265
+    lane_x = [margin_x + i * (lane_w + lane_gap) for i in range(4)]
+    inner_pad = 8
+
+    # Product front door: onboard read-only (Connect) is the FIRST action,
+    # then Scan, Graph, Serve — mapped to the app's stages / sidebar nav.
     steps = [
-        ("search", "Discover"),
-        ("package", "Extract"),
-        ("bug", "Scan"),
-        ("zap", "Enrich"),
-        ("graph", "Analyze"),
-        ("file", "Report"),
+        ("search", "Discover", "assets & deps"),
+        ("package", "Extract", "SBOM + models"),
+        ("bug", "Scan", "OSV · malware"),
+        ("zap", "Enrich", "NVD · EPSS · KEV"),
+        ("graph", "Analyze", "blast radius"),
+        ("file", "Report", "export + gate"),
     ]
-    intake = [
+    sources = [
         ("repo", "Repo"),
         ("ci", "CI"),
         ("mcp", "MCP"),
-        ("cloud", "Cloud"),
         ("image", "Image"),
         ("iac", "IaC"),
         ("sbom", "SBOM"),
         ("model", "Model"),
-    ]
-    control = [
-        ("api", "REST API"),
-        ("ui", "Dashboard"),
-        ("mcp", "MCP srv"),
-        ("fleet", "Fleet"),
-        ("audit", "Audit"),
-        ("db", "Graph"),
+        ("cloud", "Cloud"),
     ]
     # Deliver lane: report formats first (findings out), optional runtime second.
     runtime = [
@@ -507,15 +533,16 @@ def how_it_works(theme_name: str) -> str:
         ("OCSF", "#fb7185"),
     ]
 
-    lane_top = 102
-    lane_h = 348
-    flow_y = 88
+    lane_top = 100
+    lane_h = 352
+    flow_y = 86
 
     parts = _svg_open(
         w,
         h,
         "How agent-bom works",
-        "Scan and enrich into one ContextGraph, then review blast radius in one pane of glass via agent-bom serve.",
+        "Connect a cloud or source read-only, scan and enrich into one ContextGraph, "
+        "then review blast radius in one pane of glass via agent-bom serve.",
     )
     parts += [
         "<defs>",
@@ -541,21 +568,22 @@ def how_it_works(theme_name: str) -> str:
             },
         ),
         _text(
-            28,
+            margin_x,
             40,
-            "Scan -> Graph -> Serve",
+            "Connect -> Scan -> Graph -> Serve",
             **{"font-family": "Inter,system-ui,sans-serif", "font-size": "20", "font-weight": "800", "fill": t["title"]},
         ),
         _text(
-            28,
+            margin_x,
             60,
-            "agents / CI  ->  ContextGraph + blast radius  ->  agent-bom serve",
+            "onboard read-only  ->  scan + enrich  ->  ContextGraph + blast radius  ->  agent-bom serve",
             **{"font-family": "ui-monospace,SFMono-Regular,Menlo,monospace", "font-size": "10", "font-weight": "500", "fill": t["subtitle"]},
         ),
     ]
 
     lane_meta = [
-        ("SCAN", "intake", "cli · ci · docker"),
+        ("CONNECT", "sources", "read-only"),
+        ("SCAN", "scan", "cli · ci · docker"),
         ("GRAPH", "core", "blast radius"),
         ("SERVE", "control", "one pane of glass"),
     ]
@@ -566,64 +594,44 @@ def how_it_works(theme_name: str) -> str:
         )
         parts.append(_lane_header(x, lane_top, lane_w, label, key, tag, t))
 
-    build_x = lane_x[0] + 8
-    build_inner = lane_w - 16
-    card_w, card_h, card_gap = 66, 34, 4
-    for i, (icon, label) in enumerate(intake):
-        col, row = i % 4, i // 4
-        tx = build_x + col * (card_w + card_gap)
-        ty = lane_top + 44 + row * (card_h + card_gap)
+    # ---- Lane 0: CONNECT — cloud/platform onboarding is the first action ----
+    conn_x = lane_x[0] + inner_pad
+    conn_inner = lane_w - inner_pad * 2
+    parts.append(_lane_sublabel(conn_x, lane_top + 50, "CLOUD & DATA PLATFORMS", t))
+    cloud_y = lane_top + 58
+    cloud_svg, cloud_h = _cloud_logos(conn_x, cloud_y, conn_inner, t, theme=theme_name)
+    parts.append(cloud_svg)
+
+    src_label_y = cloud_y + cloud_h + 14
+    parts.append(_lane_sublabel(conn_x, src_label_y, "CODE · AGENTS · ARTIFACTS", t))
+    src_top = src_label_y + 8
+    src_cols = 2
+    src_gap = 6
+    src_card_w = (conn_inner - src_gap) // src_cols
+    src_card_h = 26
+    for i, (icon, label) in enumerate(sources):
+        col, row = i % src_cols, i // src_cols
+        tx = conn_x + col * (src_card_w + src_gap)
+        ty = src_top + row * (src_card_h + src_gap)
         parts.append(
-            f'<rect x="{tx}" y="{ty}" width="{card_w}" height="{card_h}" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
+            f'<rect x="{tx}" y="{ty}" width="{src_card_w}" height="{src_card_h}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
         )
-        parts.append(_icon_box(tx + 5, ty + 6, ICONS[icon], t, size=20))
+        parts.append(_icon_box(tx + 5, ty + 4, ICONS[icon], t, size=18))
         parts.append(
             _text(
                 tx + 30,
-                ty + 22,
+                ty + 17,
                 label,
                 **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9", "font-weight": "700", "fill": t["text"]},
             )
         )
-
-    scan_accent = LANE_COLORS["scan"][1]
-    scan_base_y = lane_top + 130
-    step_col_w = build_inner // 2
-    for i, (icon, label) in enumerate(steps):
-        col, row = i % 2, i // 2
-        sx = build_x + col * step_col_w + 6
-        sy = scan_base_y + row * 32
-        parts.append(
-            f'<circle cx="{sx + 8}" cy="{sy + 10}" r="8" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.2"/>'
-        )
-        parts.append(
-            f'<text x="{sx + 8}" y="{sy + 13}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
-            f'font-size="7" font-weight="800" fill="{scan_accent}">{i + 1}</text>'
-        )
-        parts.append(_icon_box(sx + 20, sy, ICONS[icon], t, size=20))
-        parts.append(
-            _text(
-                sx + 44,
-                sy + 14,
-                label,
-                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9", "font-weight": "700", "fill": t["text"]},
-            )
-        )
-
-    # Advisories sit above cloud providers so both stay readable at README scale.
-    adv_y = lane_top + 220
-    parts.append(_advisory_chips(build_x, adv_y, build_inner, scan_accent, t))
-
-    cloud_y = lane_top + 244
-    cloud_svg, _cloud_h = _cloud_logos(build_x, cloud_y, build_inner, t, theme=theme_name)
-    parts.append(cloud_svg)
     parts.append(
-        f'<rect x="{build_x}" y="{lane_top + lane_h - 34}" width="{build_inner}" height="22" rx="7" '
+        f'<rect x="{conn_x}" y="{lane_top + lane_h - 32}" width="{conn_inner}" height="22" rx="7" '
         f'fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
         + _text(
-            build_x + build_inner // 2,
-            lane_top + lane_h - 18,
-            "read-only \u00b7 no secret values",
+            conn_x + conn_inner // 2,
+            lane_top + lane_h - 16,
+            "read-only · no secret values",
             **{
                 "text-anchor": "middle",
                 "font-family": "Inter,system-ui,sans-serif",
@@ -634,18 +642,78 @@ def how_it_works(theme_name: str) -> str:
         )
     )
 
-    # FINDINGS lane — evidence model only (vuln work stays in SCAN).
-    findings_x = lane_x[1]
-    findings_inner = lane_w - 16
-    cx = findings_x + findings_inner // 2 + 8
-    cy = lane_top + 150
-    parts.append(f'<circle cx="{cx}" cy="{cy}" r="64" fill="url(#core-glow)"/>')
+    # ---- Lane 1: SCAN — the numbered local engine pipeline ----
+    scan_x = lane_x[1] + inner_pad
+    scan_inner = lane_w - inner_pad * 2
+    scan_accent = LANE_COLORS["scan"][1]
+    parts.append(_lane_sublabel(scan_x, lane_top + 50, "SCAN ENGINE", t))
+    step_top = lane_top + 58
+    step_h = 34
+    # faint rail connecting the numbered steps
+    rail_x = scan_x + 11
+    parts.append(
+        f'<line x1="{rail_x}" y1="{step_top + 14}" x2="{rail_x}" y2="{step_top + (len(steps) - 1) * step_h + 14}" '
+        f'stroke="{scan_accent}" stroke-width="1.4" opacity="0.35"/>'
+    )
+    for i, (icon, label, desc) in enumerate(steps):
+        sy = step_top + i * step_h
+        parts.append(
+            f'<circle cx="{rail_x}" cy="{sy + 14}" r="8.5" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.3"/>'
+        )
+        parts.append(
+            f'<text x="{rail_x}" y="{sy + 17}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
+            f'font-size="7.5" font-weight="800" fill="{scan_accent}">{i + 1}</text>'
+        )
+        parts.append(_icon_box(rail_x + 16, sy + 4, ICONS[icon], t, size=20))
+        parts.append(
+            _text(
+                rail_x + 42,
+                sy + 13,
+                label,
+                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9.5", "font-weight": "700", "fill": t["text"]},
+            )
+        )
+        parts.append(
+            _text(
+                rail_x + 42,
+                sy + 24,
+                desc,
+                **{"font-family": "ui-monospace,monospace", "font-size": "7", "font-weight": "500", "fill": t["text_muted"]},
+            )
+        )
+
+    adv_label_y = step_top + len(steps) * step_h + 4
+    parts.append(_lane_sublabel(scan_x, adv_label_y, "ADVISORY + THREAT INTEL", t))
+    parts.append(_advisory_chips(scan_x, adv_label_y + 8, scan_inner, scan_accent, t, chip_w=45))
+    parts.append(
+        f'<rect x="{scan_x}" y="{lane_top + lane_h - 32}" width="{scan_inner}" height="22" rx="7" '
+        f'fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
+        + _text(
+            scan_x + scan_inner // 2,
+            lane_top + lane_h - 16,
+            "local scan · no target writes",
+            **{
+                "text-anchor": "middle",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "7.5",
+                "font-weight": "700",
+                "fill": t["chip"],
+            },
+        )
+    )
+
+    # ---- Lane 2: GRAPH — one evidence model / ContextGraph ----
+    findings_x = lane_x[2]
+    findings_inner = lane_w - inner_pad * 2
+    cx = findings_x + lane_w // 2
+    cy = lane_top + 140
+    parts.append(f'<circle cx="{cx}" cy="{cy}" r="62" fill="url(#core-glow)"/>')
     hub_nodes = [
-        (cx, cy - 54, 64, "Finding", "finding", True),
-        (cx - 56, cy + 4, 52, "Asset", "asset", False),
-        (cx + 56, cy + 4, 52, "Agent", "agent", False),
-        (cx - 34, cy + 56, 48, "Tool", "tool", False),
-        (cx + 34, cy + 56, 48, "Cred", "cred", False),
+        (cx, cy - 52, 62, "Finding", "finding", True),
+        (cx - 54, cy + 4, 50, "Asset", "asset", False),
+        (cx + 54, cy + 4, 50, "Agent", "agent", False),
+        (cx - 33, cy + 54, 46, "Tool", "tool", False),
+        (cx + 33, cy + 54, 46, "Cred", "cred", False),
     ]
     for nx, ny, _size, _label, _icon, center in hub_nodes:
         if not center:
@@ -658,43 +726,43 @@ def how_it_works(theme_name: str) -> str:
     widths = [86, 90, 52]
     chip_gap = 4
     row_w = sum(widths) + 2 * chip_gap
+    chips_y = lane_top + 232
     for i, chip in enumerate(["blast radius", "ContextGraph", "tenant"]):
         mx = findings_x + (lane_w - row_w) // 2 + sum(widths[:i]) + i * chip_gap
-        my = lane_top + 268
         cw = widths[i]
         parts.append(
-            f'<rect x="{mx}" y="{my}" width="{cw}" height="20" rx="6" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
-            f'<text x="{mx + cw / 2}" y="{my + 14}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" '
+            f'<rect x="{mx}" y="{chips_y}" width="{cw}" height="20" rx="6" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
+            f'<text x="{mx + cw / 2}" y="{chips_y + 14}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" '
             f'font-weight="700" fill="{t["chip"]}">{_esc(chip)}</text>'
         )
 
-    for i, line in enumerate(
-        (
-            "one evidence model",
-            "agent -> MCP -> package -> CVE",
-            "CLI, CI, API, UI, MCP share it",
-        )
-    ):
+    graph_lines = (
+        "one evidence model",
+        "agent -> MCP -> package -> CVE",
+        "CLI · CI · API · UI · MCP share it",
+    )
+    for i, line in enumerate(graph_lines):
         parts.append(
             _text(
                 findings_x + lane_w // 2,
-                lane_top + 310 + i * 16,
+                lane_top + 264 + i * 16,
                 line,
                 **{
                     "text-anchor": "middle",
                     "font-family": "Inter,system-ui,sans-serif",
-                    "font-size": "9" if i == 1 else "8.5",
-                    "font-weight": "700" if i == 1 else "600",
+                    "font-size": "9.5" if i == 1 else "8.5",
+                    "font-weight": "800" if i == 1 else "600",
                     "fill": t["text"] if i == 1 else t["text_muted"],
                 },
             )
         )
 
     parts.append(
-        f'<rect x="{findings_x + 10}" y="{lane_top + lane_h - 34}" width="{findings_inner}" height="22" rx="7" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
+        f'<rect x="{findings_x + inner_pad}" y="{lane_top + lane_h - 32}" width="{findings_inner}" height="22" rx="7" '
+        f'fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
         + _text(
-            findings_x + 10 + findings_inner // 2,
-            lane_top + lane_h - 18,
+            findings_x + inner_pad + findings_inner // 2,
+            lane_top + lane_h - 16,
             "ContextGraph · same model everywhere",
             **{
                 "text-anchor": "middle",
@@ -706,24 +774,11 @@ def how_it_works(theme_name: str) -> str:
         )
     )
 
-    # SERVE lane — one pane of glass (`agent-bom serve`).
-    out_x = lane_x[2] + 10
+    # ---- Lane 3: SERVE — one pane of glass (`agent-bom serve`) ----
+    out_x = lane_x[3] + 10
     out_card_w = lane_w - 20
 
-    parts.append(
-        _text(
-            out_x + 2,
-            lane_top + 50,
-            "control plane",
-            **{
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7.5",
-                "font-weight": "700",
-                "letter-spacing": "0.08em",
-                "fill": t["lane_muted"],
-            },
-        )
-    )
+    parts.append(_lane_sublabel(out_x + 2, lane_top + 50, "CONTROL PLANE", t))
     glass = [
         ("ui", "Dashboard"),
         ("api", "REST API"),
@@ -750,20 +805,7 @@ def how_it_works(theme_name: str) -> str:
             )
         )
 
-    parts.append(
-        _text(
-            out_x + 2,
-            lane_top + 156,
-            "report formats",
-            **{
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7.5",
-                "font-weight": "700",
-                "letter-spacing": "0.08em",
-                "fill": t["lane_muted"],
-            },
-        )
-    )
+    parts.append(_lane_sublabel(out_x + 2, lane_top + 156, "REPORT FORMATS", t))
     for i, (label, color) in enumerate(exports):
         col, row = i % 3, i // 3
         ew = (out_card_w - 8) // 3
@@ -776,20 +818,7 @@ def how_it_works(theme_name: str) -> str:
             f'font-size="7.5" font-weight="800" fill="{t["text"]}">{_esc(label)}</text>'
         )
 
-    parts.append(
-        _text(
-            out_x + 2,
-            lane_top + 244,
-            "optional runtime",
-            **{
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7.5",
-                "font-weight": "700",
-                "letter-spacing": "0.08em",
-                "fill": t["lane_muted"],
-            },
-        )
-    )
+    parts.append(_lane_sublabel(out_x + 2, lane_top + 244, "OPTIONAL RUNTIME", t))
     for i, (icon, label, color) in enumerate(runtime):
         rw = (out_card_w - 8) // 3
         rx = out_x + i * (rw + 4)
@@ -808,10 +837,10 @@ def how_it_works(theme_name: str) -> str:
         )
 
     parts.append(
-        f'<rect x="{out_x}" y="{lane_top + lane_h - 34}" width="{out_card_w}" height="22" rx="7" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
+        f'<rect x="{out_x}" y="{lane_top + lane_h - 32}" width="{out_card_w}" height="22" rx="7" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
         + _text(
             out_x + out_card_w // 2,
-            lane_top + lane_h - 18,
+            lane_top + lane_h - 16,
             "agent-bom serve · one pane of glass",
             **{
                 "text-anchor": "middle",
@@ -823,20 +852,21 @@ def how_it_works(theme_name: str) -> str:
         )
     )
 
-    for i in range(2):
+    flow_labels = ["scan", "graph", "serve"]
+    for i in range(3):
         gutter_mid = (lane_x[i] + lane_w + lane_x[i + 1]) // 2
         parts.append(
             _lane_flow(
                 gutter_mid - 14,
                 gutter_mid + 14,
                 flow_y,
-                ["graph", "serve"][i],
+                flow_labels[i],
                 t,
-                accent=(i == 1),
+                accent=(i >= 1),
             )
         )
 
-    parts.append(_trust_footer(w, h, t, "read-only \u00b7 secret redaction \u00b7 signed evidence \u00b7 same model everywhere"))
+    parts.append(_trust_footer(w, h, t, "read-only · secret redaction · signed evidence · same model everywhere"))
     parts.append("</svg>")
     return "\n".join(parts)
 
@@ -1213,15 +1243,21 @@ def _persona_lane_card(
 ) -> list[str]:
     accent = PERSONA_ACCENTS[accent_key][0 if theme == "dark" else 1]
     tint_opacity = "0.10" if theme == "dark" else "0.07"
+    chip_tint_op = "0.12" if theme == "dark" else "0.09"
     parts: list[str] = []
 
+    # Per-persona identity: accent top cap over a neutral card. The accent card
+    # sits behind and the body is nudged down so only a colored top edge shows.
+    cap = 4
+    parts.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" fill="{accent}"/>')
     parts.append(
-        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" fill="{t["card"]}" stroke="{t["card_stroke"]}" stroke-width="1.4"/>'
+        f'<rect x="{x}" y="{y + cap}" width="{w}" height="{h - cap}" rx="12" '
+        f'fill="{t["card"]}" stroke="{t["card_stroke"]}" stroke-width="1.4"/>'
     )
 
     # SaaS-style avatar chip: tinted app-icon square, filled person silhouette,
     # solid accent badge with a reverse-contrast role glyph.
-    chip_x, chip_y, chip_size = x + 14, y + 12, 40
+    chip_x, chip_y, chip_size = x + 14, y + 14, 40
     chip_tint = "0.16" if theme == "dark" else "0.10"
     glyph_stroke = "#0f0f13" if theme == "dark" else "#ffffff"
     scale = 32 / 24
@@ -1240,17 +1276,35 @@ def _persona_lane_card(
             x + 62,
             y + 40,
             persona_title,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "17", "font-weight": "800", "fill": t["text"]},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "15.5", "font-weight": "800", "fill": t["text"]},
         )
     )
-    parts.append(
-        _text(
-            x + 16,
-            y + 74,
-            persona_sub,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "11.5", "font-weight": "600", "fill": t["text_muted"]},
+
+    # Capabilities as accent-tinted tags (better structure than a comma run).
+    tags = [seg.strip() for seg in persona_sub.split("·")]
+    tag_x = x + 14
+    tag_y = y + 64
+    for tag in tags:
+        tag_w = int(len(tag) * 4.9) + 16
+        parts.append(
+            f'<rect x="{tag_x}" y="{tag_y}" width="{tag_w}" height="18" rx="6" '
+            f'fill="{accent}" fill-opacity="{chip_tint_op}" stroke="{accent}" stroke-opacity="0.4"/>'
         )
-    )
+        parts.append(
+            _text(
+                tag_x + tag_w / 2,
+                tag_y + 13,
+                tag,
+                **{
+                    "text-anchor": "middle",
+                    "font-family": "Inter,system-ui,sans-serif",
+                    "font-size": "8.5",
+                    "font-weight": "700",
+                    "fill": accent,
+                },
+            )
+        )
+        tag_x += tag_w + 6
 
     divider_y = y + 92
     parts.append(
@@ -1273,20 +1327,24 @@ def _persona_lane_card(
         f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" '
         f'fill="none" stroke="{accent}" opacity="0.4"/>'
     )
+    # Accent marker keys the headline value to the persona hue.
+    parts.append(
+        f'<rect x="{x + 20}" y="{value_y + 16}" width="3" height="14" rx="1.5" fill="{accent}"/>'
+    )
     parts.append(
         _text(
-            x + 24,
+            x + 30,
             value_y + 24,
             value_title,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "14", "font-weight": "800", "fill": t["text"]},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "13.5", "font-weight": "800", "fill": t["text"]},
         )
     )
     parts.append(
         _text(
-            x + 24,
+            x + 30,
             value_y + 44,
             value_sub,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10.5", "font-weight": "600", "fill": t["text_muted"]},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "600", "fill": t["text_muted"]},
         )
     )
     return parts

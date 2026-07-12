@@ -17170,6 +17170,330 @@
         ]
       }
     },
+    "/v1/inventory/assets": {
+      "get": {
+        "description": "Paginated, filterable asset rows across every source in the unified graph.\n\n``type`` and ``search`` and ``min_severity`` are pushed into the graph store\n(``page_nodes`` / ``search_nodes``); ``environment`` / ``provider`` /\n``source`` are matched in-route with a keyset refill loop so a filtered page\nis never silently truncated.",
+        "operationId": "list_inventory_assets_v1_inventory_assets_get",
+        "parameters": [
+          {
+            "description": "Comma-separated asset entity types (e.g. agent,cloud_resource)",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated asset entity types (e.g. agent,cloud_resource)",
+              "title": "Type"
+            }
+          },
+          {
+            "description": "Free-text search over asset name / label / attributes",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Free-text search over asset name / label / attributes",
+              "title": "Search"
+            }
+          },
+          {
+            "description": "Filter by environment facet (e.g. production)",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by environment facet (e.g. production)",
+              "title": "Environment"
+            }
+          },
+          {
+            "description": "Filter by provider facet (e.g. aws, snowflake)",
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by provider facet (e.g. aws, snowflake)",
+              "title": "Provider"
+            }
+          },
+          {
+            "description": "Filter by data source / provenance facet",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by data source / provenance facet",
+              "title": "Source"
+            }
+          },
+          {
+            "description": "Minimum severity floor (critical/high/medium/low)",
+            "in": "query",
+            "name": "min_severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum severity floor (critical/high/medium/low)",
+              "title": "Min Severity"
+            }
+          },
+          {
+            "description": "Scan snapshot ID; latest if omitted",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan snapshot ID; latest if omitted",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "description": "Opaque keyset cursor from a previous page's next_cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque keyset cursor from a previous page's next_cursor",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "Pagination offset (non-cursor paging only)",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Pagination offset (non-cursor paging only)",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Max rows to return",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Inventory Assets V1 Inventory Assets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Inventory Assets",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/v1/inventory/assets/{asset_id}": {
+      "get": {
+        "description": "One asset's full attributes plus its relationships (neighbors / edges).\n\nReuses the graph store's ``node_context`` so the UI drawer can render config,\nrelationships, and blast-radius impact, and link out to findings.",
+        "operationId": "get_inventory_asset_v1_inventory_assets__asset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scan snapshot ID; latest if omitted",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan snapshot ID; latest if omitted",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Inventory Asset V1 Inventory Assets  Asset Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Inventory Asset",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/v1/inventory/summary": {
+      "get": {
+        "description": "Asset counts for the tenant's current graph snapshot, by type and group.\n\nBacked by the graph store's ``snapshot_stats`` (its ``node_types`` bucket).\nFindings are excluded \u2014 this counts assets across AI, cloud, Snowflake, and\nidentity uniformly because they already coexist as typed nodes in the one\nsnapshot.",
+        "operationId": "inventory_summary_v1_inventory_summary_get",
+        "parameters": [
+          {
+            "description": "Scan snapshot ID; latest if omitted",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan snapshot ID; latest if omitted",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Inventory Summary V1 Inventory Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inventory Summary",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
     "/v1/jobs": {
       "get": {
         "description": "List all scan jobs (for the UI job history panel).\n\nSupports pagination via ``limit`` (default 50, max 1000) and ``offset``.",

@@ -9,11 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.95.0] - 2026-07-11
+## [0.95.0] - 2026-07-12
 
 Enterprise auth, cloud-connect, and interop release: browser OIDC SSO, actionable cloud connections, compliance honesty, refreshed dashboard/branding, and a large security-hardening batch on top of 0.94.2.
 
 ### Added
+- **Unified asset inventory (humans + agents)**: new read-only `/v1/inventory/summary`, `/v1/inventory/assets`, and `/v1/inventory/assets/{id}` serve ONE faceted inventory across AI, cloud, identity, secret, and code assets from the shared graph store — counts-by-type → filterable/paginated rows (type/search/severity/environment/provider/source) → asset detail with edges + blast-radius impact. Callable headlessly by agents via API (and MCP), the same evidence the dashboard renders. Brokered **Snowflake** connection scans now sweep accounts/warehouses/databases/roles/users into the graph like AWS/Azure/GCP (#3869).
 - **Browser OIDC SSO foundation**: `/v1/auth/oidc/login` + `/callback` with authorization-code + PKCE (S256), one-time server-side `state`, an HMAC-sealed PKCE cookie, and ID-token verification through the hardened verifier (#3849).
 - **Post-scan repo overview**: repo scans surface stats, surface-coverage chips, and a graph deep-link; the API scan path now promotes dependency inventory to `project_inventory` for graph-overlay parity with the CLI (#3848).
 - **`connect` establishes and verifies a read-only cloud connection**: `agent-bom connect aws|azure|gcp|snowflake` can broker-test credentials locally or register them with a control plane via the same `CloudConnectionCreate` schema the API/UI use (#3842).
@@ -26,12 +27,16 @@ Enterprise auth, cloud-connect, and interop release: browser OIDC SSO, actionabl
 - **Read path off the event loop**: `list_findings` and graph reads no longer block the async loop under load (#3823).
 - **Severity-filter parity** across in-memory and SQL backends — `info` is no longer conflated with `low` (#3824).
 - **`scan --no-discover` honors an explicit `--project`** and hard-errors on zero input artifacts instead of exiting 0 clean (#3825).
+- **Leadership-first Overview**: unbroke the command-center layout (open-issues severity tiles no longer squeezed into an unreadable sliver), grade badge, and tile contrast; rebuilt Top Risks into ranked, correlated risk-chains (CVE → package → MCP/runtime → agent → credential); findings drill-down is now a wider tabbed drawer (Overview / Exposure path / Evidence / Triage) with a visual exposure path; findings lenses renamed to industry terms (Engineering / Compliance); connected-accounts table decluttered into an on-demand detail drawer (#3863).
+- **Scan entry points consolidated** to one vocabulary — `New Scan` opens the configurator, `Run scan` executes on a scoped target — aligned to the Connect → Scan → Assess workflow, removing duplicate CTAs (#3865).
+- **Reliable, fully-correlated demo estate**: the seeded demo now populates agents, exposure paths, and non-human identities and restores findings/posture deterministically after restart; a general governance-overlay fix stops managed identities from defaulting to orphaned/never-observed by propagating `owner`/`last_used` (#3866).
 - **`connect snowflake`** points at the real `scan --snowflake` command (#3846).
 - **AI-BOM**: canonical model-node identity (no more double-counted models) and real `observes` edges (#3829).
 - Capability counts reconciled across README/PyPI/docs and enforced in CI (#3827).
-- SAML SSO counts as a configured auth path (#3803).
+- SAML SSO counts as a configured auth path (#3831).
 
 ### Security
+- **`POST /v1/scan` local-path jail**: the primary scan endpoint now routes every local-path field (including the previously-unvalidated `external_scan`/`vex`) through the same path-confinement helper + default-off gate the secondary `/scan/*` endpoints use, closing an authenticated arbitrary host-file read; `format`/`min_severity` are enum-constrained and the scan form validates repo URLs client-side (#3864). **Upgrade note:** local filesystem-path scan targets on `POST /v1/scan` are now rejected with `400` by default — set `AGENT_BOM_API_LOCAL_PATH_SCANS=enabled` to allow them (this matches the behavior the secondary `/scan/*` endpoints already enforced).
 - **OAuth-AS issuer fails closed** on non-loopback listeners; agent-identity JWT now binds `aud`/`iss`; deprovisioning revokes API keys by owner (#3822).
 - **Signing keys file-first**: OAuth-AS RSA, compliance Ed25519, and proxy signing PEMs resolve from mounted files rather than inline env; `.env.example` leads with IRSA / workload identity (#3820, #3840).
 - **Postgres app-password no longer persists in cleartext** (init GUC is reset) and is kept out of the DSN; audit-HMAC and connection keys support rotation (#3817, #3821).

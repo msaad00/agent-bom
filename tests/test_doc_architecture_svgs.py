@@ -15,10 +15,12 @@ def test_how_it_works_includes_pipeline_steps() -> None:
     svg = how_it_works("dark")
     for step in ("Discover", "Extract", "Scan", "Enrich", "Analyze", "Report"):
         assert step in svg
-    assert "Scan -&gt; Graph -&gt; Serve" in svg
+    assert "Connect -&gt; Scan -&gt; Graph -&gt; Serve" in svg
     assert "Scan -&gt; Sync -&gt; Enforce" not in svg
     assert "Build -&gt; Serve -&gt; Orchestrate" not in svg
     assert "PIPELINE" not in svg
+    # Connect is a first-class beat (read-only onboarding), not a footnote.
+    assert "CONNECT" in svg
     assert "GRAPH" in svg
     assert "SERVE" in svg
     assert "Finding" in svg

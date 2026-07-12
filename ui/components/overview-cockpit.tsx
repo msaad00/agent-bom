@@ -185,23 +185,15 @@ function CrossLaneCoverage({
     href: domain.graph_href ?? domain.href,
   }));
 
-  // Fold in connected surfaces that no domain lane already represents (e.g. data
-  // sources) so the estate reads in ONE grid — never a duplicate pill strip.
+  // Data sources / connections are operational plumbing, not an exec risk lane —
+  // keep them OFF the cross-lane grid and demote to a small count next to the
+  // Connections link so the exec pane stays focused on posture + risk.
   const dataSources = services?.data_sources;
-  if (
+  const dataSourceCount =
     dataSources &&
-    (dataSources.state === "live" || dataSources.state === "connected") &&
-    dataSources.count > 0
-  ) {
-    tiles.push({
-      key: "data_sources",
-      label: "Data sources",
-      metric: dataSources.count,
-      metricLabel: "connected",
-      status: "ok",
-      href: "/sources",
-    });
-  }
+    (dataSources.state === "live" || dataSources.state === "connected")
+      ? dataSources.count
+      : 0;
 
   if (tiles.length === 0) return null;
   const reporting = tiles.filter((tile) => tile.status !== "idle").length;
@@ -224,6 +216,9 @@ function CrossLaneCoverage({
           href="/connections"
           className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400"
         >
+          {dataSourceCount > 0 ? (
+            <span className="text-[color:var(--text-tertiary)]">{dataSourceCount} connected · </span>
+          ) : null}
           Connections <ArrowRight className="h-3 w-3" />
         </Link>
       </div>

@@ -547,18 +547,22 @@ function PostureHero({
   high: number;
   latestScan: string | null;
 }) {
-  const tone =
-    grade === "A" || grade === "B"
-      ? "text-emerald-500"
+  const ungraded = grade === "N/A" || grade === "—";
+  const badgeTone = ungraded
+    ? "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]"
+    : grade === "A" || grade === "B"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
       : grade === "C" || grade === "D"
-        ? "text-amber-500"
-        : "text-red-500";
-  const graded = typeof score === "number" && grade !== "N/A" && grade !== "—";
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+        : "border-red-500/40 bg-red-500/10 text-red-400";
+  const graded = typeof score === "number" && !ungraded;
 
   return (
     <div className="flex items-center gap-4">
-      <div className={`flex h-16 w-16 items-center justify-center rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] ${tone}`}>
-        <span className="text-2xl font-bold">{grade}</span>
+      <div
+        className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border ${badgeTone}`}
+      >
+        <span className="text-3xl font-bold leading-none">{grade}</span>
       </div>
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">

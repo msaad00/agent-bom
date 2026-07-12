@@ -1452,6 +1452,107 @@ def test_scan_snowflake_brokers_runs_persists_and_marks_active(monkeypatch: pyte
     assert fetched["status"] == "active"
 
 
+def test_scan_snowflake_sweeps_estate_into_graph(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Parity with AWS/Azure/GCP: a brokered Snowflake scan sweeps the estate
+    (accounts / warehouses / databases / roles / users) into the unified graph
+    via the same builder path, using the brokered read-only connection."""
+    from agent_bom.cloud import connection_broker, snowflake_cis_benchmark
+    from agent_bom.cloud import snowflake as snowflake_discovery
+
+    conn = _FakeSnowflakeConn()
+    monkeypatch.setattr(connection_broker, "broker_session", lambda record, **k: conn)
+    monkeypatch.setattr(snowflake_discovery, "discover", lambda conn=None, **k: ([], []))
+    monkeypatch.setattr(snowflake_cis_benchmark, "run_benchmark", lambda conn=None, **k: _FakeProviderCIS())
+
+    lent: dict[str, Any] = {}
+
+    def _services(account: Any = None, **k: Any) -> dict[str, Any]:
+        # The estate discovery must run against the lent brokered connection.
+        lent["services_conn"] = snowflake_discovery._active_borrowed_connection()
+        return {
+            "status": "ok",
+            "account": "acct1",
+            "warehouses": [{"name": "WH_ETL", "size": "X-SMALL", "state": "STARTED", "auto_suspend": None}],
+            "databases": [{"name": "DB", "owner": "SYSADMIN", "retention_time": 1}],
+            "schemas": [{"name": "PUBLIC", "database_name": "DB", "fqn": "DB.PUBLIC", "owner": "SYSADMIN"}],
+        }
+
+    def _object_graph(account: Any = None, **k: Any) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "account": "acct1",
+            "objects": [{"fqn": "DB.PUBLIC.ORDERS", "object_type": "table"}],
+            "dependencies": [],
+            "grants": [{"role": "SYSADMIN", "privilege": "OWNERSHIP", "object_fqn": "DB.PUBLIC.ORDERS", "object_type": "table"}],
+            "role_memberships": [{"user": "SVC_PIPE", "role": "SYSADMIN"}],
+        }
+
+    monkeypatch.setattr(snowflake_discovery, "discover_snowflake_services", _services)
+    monkeypatch.setattr(snowflake_discovery, "discover_object_dependencies", _object_graph)
+
+    cid = _seed_connection("tenant-alpha", provider="snowflake")
+    client = TestClient(_app())
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert conn.closed is True
+
+    # The estate discovery ran against the lent brokered connection (not env).
+    assert lent["services_conn"] is not None
+    # The scan summary now reports estate object counts, not just an agent count.
+    inv = body["inventory"]
+    assert inv["warehouse_count"] == 1
+    assert inv["database_count"] == 1
+    assert inv["role_count"] >= 1
+    assert inv["user_count"] >= 1
+
+    # The swept estate landed as typed graph nodes in the tenant's snapshot —
+    # the same builder path AWS/Azure/GCP connection scans use.
+    from agent_bom.api.stores import _get_graph_store
+
+    stats = _get_graph_store().snapshot_stats(tenant_id="tenant-alpha", scan_id=body["scan_id"])
+    node_types = stats["node_types"]
+    assert node_types.get("account", 0) >= 1
+    assert node_types.get("cloud_resource", 0) >= 1  # warehouse
+    assert node_types.get("data_store", 0) >= 1  # database / schema
+    assert node_types.get("role", 0) >= 1
+    assert node_types.get("user", 0) >= 1
+
+    # And they are reachable through the unified inventory serving layer
+    # (page_nodes over the same snapshot), scoped to the scan's tenant.
+    _eff, _created, role_nodes, _total, _cursor = _get_graph_store().page_nodes(
+        tenant_id="tenant-alpha",
+        scan_id=body["scan_id"],
+        entity_types={"role"},
+    )
+    assert any(n.entity_type.value == "role" for n in role_nodes)
+
+
+def test_scan_snowflake_estate_sweep_failure_falls_back_to_discovery_and_cis(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If the estate sweep raises, the scan still returns agent discovery + CIS."""
+    from agent_bom.cloud import connection_broker, snowflake_cis_benchmark
+    from agent_bom.cloud import snowflake as snowflake_discovery
+
+    conn = _FakeSnowflakeConn()
+    monkeypatch.setattr(connection_broker, "broker_session", lambda record, **k: conn)
+    monkeypatch.setattr(snowflake_discovery, "discover", lambda conn=None, **k: ([], []))
+    monkeypatch.setattr(snowflake_cis_benchmark, "run_benchmark", lambda conn=None, **k: _FakeProviderCIS())
+
+    def _boom(report: Any, **k: Any) -> None:
+        raise RuntimeError("estate sweep exploded")
+
+    monkeypatch.setattr(snowflake_discovery, "enrich_report_with_snowflake_estate", _boom)
+
+    cid = _seed_connection("tenant-alpha", provider="snowflake")
+    client = TestClient(_app())
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert conn.closed is True
+    assert body["cis_benchmark"]["total"] == 2
+    assert body["inventory"]["agent_count"] == 0
+
+
 def test_scan_sdk_missing_returns_clean_error_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     """A provider whose SDK extra is not installed surfaces a clean error, no secret."""
     from agent_bom.cloud import connection_broker

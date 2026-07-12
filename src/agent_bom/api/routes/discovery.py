@@ -46,6 +46,33 @@ def _tenant_id(request: Request) -> str:
     return require_request_tenant_id(request)
 
 
+def _discover_agents_with_demo_fallback() -> list[Any]:
+    """Live local-disk discovery, with a demo-estate fallback.
+
+    On a hosted/anonymous demo server there are no local agent configs to
+    discover, so ``discover_all()`` returns nothing and the Agents page + the
+    Overview NHI/agents tile read empty. When (and only when) demo-estate mode is
+    enabled AND live discovery found nothing, fall back to the curated demo
+    inventory so the correlated demo story renders. Real deployments — env unset
+    — always get live discovery only; the fallback is never injected there.
+    """
+    from agent_bom.discovery import discover_all
+
+    agents = discover_all()
+    if agents:
+        return agents
+
+    from agent_bom.demo_estate.bootstrap import demo_estate_enabled
+
+    if not demo_estate_enabled():
+        return agents
+
+    from agent_bom.cli._common import _build_agents_from_inventory
+    from agent_bom.demo import DEMO_INVENTORY
+
+    return _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
+
+
 def _merge_strings(*values: list[str]) -> list[str]:
     merged: list[str] = []
     seen: set[str] = set()
@@ -374,10 +401,9 @@ def _persist_agent_observations(
 
 
 def _build_agents_response(tenant_id: str) -> dict[str, Any]:
-    from agent_bom.discovery import discover_all
     from agent_bom.parsers import extract_packages
 
-    agents = discover_all()
+    agents = _discover_agents_with_demo_fallback()
     for agent in agents:
         for server in agent.mcp_servers:
             if not server.packages:
@@ -454,11 +480,10 @@ async def get_agent_mesh(request: Request) -> dict:
     as an interactive graph.
     """
     try:
-        from agent_bom.discovery import discover_all
         from agent_bom.output.agent_mesh import build_agent_mesh
         from agent_bom.parsers import extract_packages
 
-        agents = discover_all()
+        agents = _discover_agents_with_demo_fallback()
         for agent in agents:
             for server in agent.mcp_servers:
                 if not server.packages:

@@ -143,3 +143,68 @@ def test_oidc_browser_config_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT", "1")
     cfg = OIDCBrowserConfig.from_env()
     assert cfg.enabled is True
+
+
+def test_auth_runtime_exposes_oidc_browser_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.middleware import configure_auth_runtime, get_auth_runtime_status
+
+    configure_auth_runtime(
+        api_key_configured=True,
+        oidc_enabled=True,
+        oidc_browser_enabled=True,
+        trusted_proxy_enabled=False,
+    )
+    status = get_auth_runtime_status()
+    assert "oidc_browser" in status["configured_modes"]
+    assert "oidc_bearer" in status["configured_modes"]
+    assert status["recommended_ui_mode"] == "oidc_browser"
+
+    configure_auth_runtime(
+        api_key_configured=True,
+        oidc_enabled=True,
+        oidc_browser_enabled=True,
+        trusted_proxy_enabled=True,
+    )
+    status = get_auth_runtime_status()
+    assert status["recommended_ui_mode"] == "reverse_proxy_oidc"
+
+
+def test_oidc_callback_happy_path_mints_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setenv("AGENT_BOM_OIDC_CLIENT_ID", "dashboard-client")
+    monkeypatch.setenv("AGENT_BOM_OIDC_REDIRECT_URI", "https://cp.example/v1/auth/oidc/callback")
+    monkeypatch.setenv("AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT", "1")
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+
+    state = enterprise._new_oidc_login_state()
+    sealed = seal_pkce_cookie(code_verifier="verifier-value", nonce="nonce-value")
+    import asyncio
+
+    with (
+        patch(
+            "agent_bom.api.oidc_browser.exchange_code_for_tokens",
+            return_value={"id_token": "fake.jwt.token"},
+        ),
+        patch(
+            "agent_bom.api.oidc_browser.verify_browser_id_token",
+            return_value={
+                "email": "analyst@example.com",
+                "sub": "oidc-sub-1",
+                "agent_bom_role": "analyst",
+            },
+        ),
+    ):
+        response = asyncio.run(
+            enterprise.oidc_browser_callback(
+                _request(path="/v1/auth/oidc/callback", cookies={"agent_bom_oidc_pkce": sealed}),
+                code="auth-code",
+                state=state,
+            )
+        )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+    cookies = response.headers.getlist("set-cookie")
+    assert any("agent_bom_session=" in c for c in cookies)
+    assert any("agent_bom_csrf=" in c for c in cookies)
+    assert any("agent_bom_oidc_pkce=" in c and "Max-Age=0" in c for c in cookies)

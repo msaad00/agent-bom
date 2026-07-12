@@ -193,14 +193,17 @@ Fleet trust scoring is advisory and evidence-backed. The score combines registry
 | Path | Configure with | Surface | Counts toward the boot-gate / `auth_configured`? |
 | --- | --- | --- | --- |
 | API key (M2M) | `AGENT_BOM_API_KEY` / `AGENT_BOM_API_KEYS` | CLI · API · MCP | Yes |
-| OIDC JWT (bearer) | `AGENT_BOM_OIDC_ISSUER` or `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON` | API · UI | Yes |
+| OIDC JWT (bearer) | `AGENT_BOM_OIDC_ISSUER` or `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON` | API · UI (bearer) | Yes |
+| OIDC browser SSO (auth-code + PKCE) | Issuer + `AGENT_BOM_OIDC_CLIENT_ID` + `AGENT_BOM_OIDC_REDIRECT_URI` (optional secret/scopes) | Dashboard `/login` → `/v1/auth/oidc/login` | Yes (signals `oidc_browser` in auth runtime) |
 | SAML SSO (browser) | `AGENT_BOM_SAML_IDP_*` + `AGENT_BOM_SAML_SP_*` | UI (mints a short-lived session API key) | Yes |
 | SCIM bearer (provisioning) | `AGENT_BOM_SCIM_BEARER_TOKEN` | `/scim/v2/*` only | Yes |
-| Trusted reverse proxy | `AGENT_BOM_TRUST_PROXY_AUTH=1` | UI · API | Yes (upstream proxy is the authority) |
+| Trusted reverse proxy | `AGENT_BOM_TRUST_PROXY_AUTH=1` | UI · API | Yes (upstream proxy is the authority; preferred when present) |
 | Browser session cookie | Minted server-side after OIDC/SAML/proxy login | UI | Derived — not a standalone configured path |
 | mTLS (client cert) | `AGENT_BOM_TLS_REQUIRE_CLIENT_CERT=1` | Transport | No — transport posture, not RBAC identity |
 
 A SAML-only deployment is a valid, fail-closed posture: browser users authenticate against the IdP and receive a short-lived session API key, while anonymous requests are still rejected (401) by the API-key middleware, which stays installed whenever any auth path is configured.
+
+**Dashboard OIDC auth-code + PKCE:** when the control plane has an OIDC issuer plus a confidential or public client (`AGENT_BOM_OIDC_CLIENT_ID`, `AGENT_BOM_OIDC_REDIRECT_URI`, optional `AGENT_BOM_OIDC_CLIENT_SECRET` / `AGENT_BOM_OIDC_SCOPES`), the dashboard shows **Sign in with SSO**. That CTA navigates same-origin to `GET /v1/auth/oidc/login`, completes the IdP authorize + callback with PKCE S256, and mints the usual httpOnly browser session + CSRF cookies. Role and tenant claims map through the same OIDC claim contract as bearer JWT verification. Reverse-proxy SSO remains preferred when `AGENT_BOM_TRUST_PROXY_AUTH=1` is set. Laptop-to-gateway MCP PKCE is a separate later surface — not this dashboard path. mTLS remains transport only and never substitutes for user identity.
 
 **Tracing:** every API response includes `X-Request-ID`, `X-Trace-ID`, `X-Span-ID`, and W3C `traceparent`. If your ingress or collector already sends `traceparent`, `tracestate`, or bounded W3C `baggage`, `agent-bom` preserves the upstream trace context and continues the chain. `GET /health` also reports the current tracing contract (`w3c_trace_context`, `w3c_tracestate`, `w3c_baggage`) plus OTLP export state so operators can confirm whether tracing is merely available or actively exported. Set `AGENT_BOM_OTEL_TRACES_ENDPOINT` to export API request spans over OTLP/HTTP, and use `AGENT_BOM_OTEL_TRACES_HEADERS` for collector auth headers when needed.
 
@@ -213,6 +216,11 @@ export AGENT_BOM_OIDC_ROLE_CLAIM="agent_bom_role"
 export AGENT_BOM_OIDC_TENANT_CLAIM="tenant_id"      # or a custom claim like org_slug
 # export AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1      # only for explicit single-tenant compatibility mode
 # export AGENT_BOM_OIDC_REQUIRED_NONCE="replace-me"  # optional when your IdP flow emits nonce
+# Dashboard SSO (auth-code + PKCE) — in addition to bearer verification:
+# export AGENT_BOM_OIDC_CLIENT_ID="agent-bom-dashboard"
+# export AGENT_BOM_OIDC_REDIRECT_URI="https://cp.example/v1/auth/oidc/callback"
+# export AGENT_BOM_OIDC_CLIENT_SECRET="..."         # optional for confidential clients
+# export AGENT_BOM_OIDC_SCOPES="openid profile email"
 ```
 
 That keeps API roles and tenant boundaries aligned with the upstream identity provider. Missing tenant claims now fail closed by default instead of silently falling back to a shared tenant; `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1` is the explicit compatibility escape hatch for single-tenant deployments.
@@ -373,8 +381,9 @@ payloads, that is not provided today; scope it explicitly rather than assuming i
 
 The browser UI exposes a dedicated sign-in surface at `/login`. Unauthenticated
 users are redirected there with a `returnTo` query parameter so they can resume
-the page they requested after establishing a browser session or completing
-upstream OIDC at the reverse proxy.
+the page they requested after establishing a browser session — via reverse-proxy
+SSO, first-party OIDC auth-code/PKCE (**Sign in with SSO** → `/v1/auth/oidc/login`),
+or API-key exchange.
 
 First command for a pilot operator:
 

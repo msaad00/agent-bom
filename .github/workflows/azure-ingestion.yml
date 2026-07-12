@@ -27,6 +27,15 @@ concurrency:
 jobs:
   ingest:
     name: Azure scan and API ingest
+    # Optional scheduled integration: only run when this repo has Azure OIDC
+    # federation configured. On repos/forks without the Azure variables set,
+    # the job is SKIPPED (neutral) instead of failing the daily schedule red.
+    # Set vars.AGENT_BOM_AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID (+ an Azure
+    # federated credential trusting this repo) to activate live ingestion.
+    if: >-
+      ${{ vars.AGENT_BOM_AZURE_CLIENT_ID != ''
+          && vars.AGENT_BOM_AZURE_TENANT_ID != ''
+          && vars.AGENT_BOM_AZURE_SUBSCRIPTION_ID != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

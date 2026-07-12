@@ -26,12 +26,16 @@ Enterprise auth, cloud-connect, and interop release: browser OIDC SSO, actionabl
 - **Read path off the event loop**: `list_findings` and graph reads no longer block the async loop under load (#3823).
 - **Severity-filter parity** across in-memory and SQL backends — `info` is no longer conflated with `low` (#3824).
 - **`scan --no-discover` honors an explicit `--project`** and hard-errors on zero input artifacts instead of exiting 0 clean (#3825).
+- **Leadership-first Overview**: unbroke the command-center layout (open-issues severity tiles no longer squeezed into an unreadable sliver), grade badge, and tile contrast; rebuilt Top Risks into ranked, correlated risk-chains (CVE → package → MCP/runtime → agent → credential); findings drill-down is now a wider tabbed drawer (Overview / Exposure path / Evidence / Triage) with a visual exposure path; findings lenses renamed to industry terms (Engineering / Compliance); connected-accounts table decluttered into an on-demand detail drawer (#3863).
+- **Scan entry points consolidated** to one vocabulary — `New Scan` opens the configurator, `Run scan` executes on a scoped target — aligned to the Connect → Scan → Assess workflow, removing duplicate CTAs (#3865).
+- **Reliable, fully-correlated demo estate**: the seeded demo now populates agents, exposure paths, and non-human identities and restores findings/posture deterministically after restart; a general governance-overlay fix stops managed identities from defaulting to orphaned/never-observed by propagating `owner`/`last_used` (#3866).
 - **`connect snowflake`** points at the real `scan --snowflake` command (#3846).
 - **AI-BOM**: canonical model-node identity (no more double-counted models) and real `observes` edges (#3829).
 - Capability counts reconciled across README/PyPI/docs and enforced in CI (#3827).
 - SAML SSO counts as a configured auth path (#3803).
 
 ### Security
+- **`POST /v1/scan` local-path jail**: the primary scan endpoint now routes every local-path field (including the previously-unvalidated `external_scan`/`vex`) through the same path-confinement helper + default-off gate the secondary `/scan/*` endpoints use, closing an authenticated arbitrary host-file read; `format`/`min_severity` are enum-constrained and the scan form validates repo URLs client-side (#3864).
 - **OAuth-AS issuer fails closed** on non-loopback listeners; agent-identity JWT now binds `aud`/`iss`; deprovisioning revokes API keys by owner (#3822).
 - **Signing keys file-first**: OAuth-AS RSA, compliance Ed25519, and proxy signing PEMs resolve from mounted files rather than inline env; `.env.example` leads with IRSA / workload identity (#3820, #3840).
 - **Postgres app-password no longer persists in cleartext** (init GUC is reset) and is kept out of the DSN; audit-HMAC and connection keys support rotation (#3817, #3821).

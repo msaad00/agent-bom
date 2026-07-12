@@ -1,7 +1,9 @@
 /**
- * Findings page altitude — same queue for engineers and GRC/audit.
- * Ops: reachability, remediation, investigation.
- * Trust: control gaps, disposition, OpenVEX / attestation evidence.
+ * Findings page altitude — same queue reframed for two personas. The internal
+ * keys stay "ops"/"trust" for URL + storage stability; the user-facing labels
+ * use industry language (Engineering / Compliance).
+ * ops   → Engineering: reachability, remediation, investigation (SecOps).
+ * trust → Compliance: control gaps, disposition, OpenVEX / attestation (GRC/audit).
  */
 export type FindingsLens = "ops" | "trust";
 
@@ -36,7 +38,7 @@ export function storeFindingsLens(lens: FindingsLens): void {
 }
 
 export function findingsLensLabel(lens: FindingsLens): string {
-  return lens === "trust" ? "Trust" : "Ops";
+  return lens === "trust" ? "Compliance" : "Engineering";
 }
 
 export function findingsLensHint(lens: FindingsLens): string {

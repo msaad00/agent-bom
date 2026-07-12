@@ -15,6 +15,7 @@ import {
   Clock,
   ArrowRight,
   ArrowLeft,
+  ChevronRight,
   Boxes,
   Fingerprint,
   KeyRound,
@@ -42,6 +43,7 @@ import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state
 import { Card, Section } from "@/components/card";
 import { PageLaneHeader } from "@/components/page-lane";
 import { Collapsible } from "@/components/collapsible";
+import { Drawer } from "@/components/drawer";
 import { CoverageCockpit } from "@/components/coverage-cockpit";
 import { StatCard } from "@/components/stat-card";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -394,6 +396,7 @@ export default function ConnectionsPage() {
     undefined,
   );
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [scanResults, setScanResults] = useState<
     Record<string, CloudConnectionScanResponse>
   >({});
@@ -695,7 +698,6 @@ export default function ConnectionsPage() {
                   {connections.map((connection) => {
                     const isBusy = busyId === connection.id;
                     const result = scanResults[connection.id];
-                    const scanError = scanErrors[connection.id];
                     const scannable = SCANNABLE_PROVIDERS.has(
                       connection.provider,
                     );
@@ -707,14 +709,7 @@ export default function ConnectionsPage() {
                         canManage={canManage}
                         scannable={scannable}
                         result={result}
-                        testResult={testResults[connection.id]}
-                        scanError={scanError}
-                        scheduleError={scheduleErrors[connection.id]}
-                        statusDetail={
-                          connection.status === "error"
-                            ? connection.status_detail
-                            : ""
-                        }
+                        onOpenDetail={() => setDetailId(connection.id)}
                         onTest={() => void handleTest(connection)}
                         onScan={() => void handleScan(connection)}
                         onScheduleChange={(value) =>
@@ -730,6 +725,30 @@ export default function ConnectionsPage() {
           )}
         </div>
       </Card>
+
+      <ConnectionDetailDrawer
+        connection={connections.find((c) => c.id === detailId) ?? null}
+        result={detailId ? scanResults[detailId] : undefined}
+        testResult={detailId ? testResults[detailId] : undefined}
+        scanError={detailId ? scanErrors[detailId] : undefined}
+        scheduleError={detailId ? scheduleErrors[detailId] : undefined}
+        isBusy={busyId === detailId}
+        canManage={canManage}
+        scannable={
+          detailId
+            ? SCANNABLE_PROVIDERS.has(
+                connections.find((c) => c.id === detailId)?.provider ?? "",
+              )
+            : false
+        }
+        onClose={() => setDetailId(null)}
+        onTest={(connection) => void handleTest(connection)}
+        onScan={(connection) => void handleScan(connection)}
+        onDelete={(connection) => {
+          setDetailId(null);
+          void handleDelete(connection);
+        }}
+      />
 
       {wizardOpen ? (
         <AddConnectionWizard
@@ -968,10 +987,7 @@ function FragmentRow({
   canManage,
   scannable,
   result,
-  testResult,
-  scanError,
-  scheduleError,
-  statusDetail,
+  onOpenDetail,
   onTest,
   onScan,
   onScheduleChange,
@@ -982,32 +998,30 @@ function FragmentRow({
   canManage: boolean;
   scannable: boolean;
   result: CloudConnectionScanResponse | undefined;
-  testResult: CloudConnectionTestResponse | undefined;
-  scanError: string | undefined;
-  scheduleError: string | undefined;
-  statusDetail: string;
+  onOpenDetail: () => void;
   onTest: () => void;
   onScan: () => void;
   onScheduleChange: (value: string) => void;
   onDelete: () => void;
 }) {
-  const handoffScanId = result?.scan_id ?? connection.last_scan_id;
   const mode = eventMode(connection);
-  const showDetail = Boolean(
-    result ||
-      testResult ||
-      handoffScanId ||
-      scanError ||
-      scheduleError ||
-      statusDetail,
-  );
   return (
-    <>
-      <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 align-top">
+      <tr className="group border-b border-[color:var(--border-subtle)] last:border-b-0 align-top">
         <td className="px-4 py-3">
-          <p className="max-w-[220px] truncate font-medium text-[var(--foreground)]" title={connection.display_name}>
-            {connection.display_name}
-          </p>
+          <button
+            type="button"
+            onClick={onOpenDetail}
+            title="View scan evidence, CIS results, and handoff links"
+            className="flex max-w-[240px] items-center gap-1 text-left"
+          >
+            <span
+              className="truncate font-medium text-[var(--foreground)] transition-colors group-hover:text-emerald-400"
+              title={connection.display_name}
+            >
+              {connection.display_name}
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--text-tertiary)] opacity-0 transition group-hover:opacity-100" />
+          </button>
           <p
             className="mt-0.5 max-w-[220px] truncate font-mono text-[11px] text-[var(--text-tertiary)]"
             title={connection.role_ref}
@@ -1018,6 +1032,11 @@ function FragmentRow({
             {connection.has_external_id ? (
               <span className="inline-flex items-center gap-1 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">
                 <Lock className="h-2.5 w-2.5" /> Secret configured
+              </span>
+            ) : null}
+            {result ? (
+              <span className="inline-flex items-center gap-1 rounded border border-emerald-800/60 bg-emerald-950/20 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                CIS {formatPassRate(result.cis_benchmark.pass_rate)}
               </span>
             ) : null}
             {connection.regions.slice(0, 3).map((region) => (
@@ -1125,38 +1144,120 @@ function FragmentRow({
           </div>
         </td>
       </tr>
-      {showDetail ? (
-        <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 bg-[color:var(--surface-elevated)]/40">
-          <td colSpan={7} className="px-4 pb-4 pt-0">
-            {result ? <ScanResultPanel result={result} /> : null}
-            {!result && testResult ? (
-              <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-200">
-                Read-only credential verified. No inventory, CIS, findings, or
-                resource writes ran.
-              </div>
-            ) : null}
-            {!result && handoffScanId ? (
-              <ScanHandoffLinks scanId={handoffScanId} />
-            ) : null}
-            {!result && scanError ? (
-              <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
-                {scanError}
-              </div>
-            ) : null}
-            {!result && !scanError && scheduleError ? (
-              <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
-                {scheduleError}
-              </div>
-            ) : null}
-            {!result && !scanError && !scheduleError && statusDetail ? (
-              <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200">
-                {statusDetail}
-              </div>
-            ) : null}
-          </td>
-        </tr>
-      ) : null}
-    </>
+  );
+}
+
+function ConnectionDetailDrawer({
+  connection,
+  result,
+  testResult,
+  scanError,
+  scheduleError,
+  isBusy,
+  canManage,
+  scannable,
+  onClose,
+  onTest,
+  onScan,
+  onDelete,
+}: {
+  connection: CloudConnectionRecord | null;
+  result: CloudConnectionScanResponse | undefined;
+  testResult: CloudConnectionTestResponse | undefined;
+  scanError: string | undefined;
+  scheduleError: string | undefined;
+  isBusy: boolean;
+  canManage: boolean;
+  scannable: boolean;
+  onClose: () => void;
+  onTest: (connection: CloudConnectionRecord) => void;
+  onScan: (connection: CloudConnectionRecord) => void;
+  onDelete: (connection: CloudConnectionRecord) => void;
+}) {
+  if (!connection) return null;
+  const handoffScanId = result?.scan_id ?? connection.last_scan_id;
+  const statusDetail =
+    connection.status === "error" ? connection.status_detail : "";
+
+  return (
+    <Drawer
+      open={Boolean(connection)}
+      onClose={onClose}
+      size="xl"
+      eyebrow={providerLabel(connection.provider)}
+      title={connection.display_name}
+      subtitle={
+        <span className="font-mono text-[11px] text-[color:var(--text-tertiary)]">
+          {connection.role_ref}
+        </span>
+      }
+      headerAside={<StatusPill status={connection.status} />}
+      footer={
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/scan?connection=${encodeURIComponent(connection.id)}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:border-emerald-600"
+          >
+            <FileSearch className="h-3.5 w-3.5" /> New Scan
+          </Link>
+          <button
+            onClick={() => onTest(connection)}
+            disabled={isBusy || !canManage || !scannable}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800/70 bg-emerald-950/20 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" /> {isBusy ? "Working…" : "Test"}
+          </button>
+          <button
+            onClick={() => onScan(connection)}
+            disabled={isBusy || !canManage || !scannable}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" /> {isBusy ? "Working…" : "Run scan"}
+          </button>
+          <button
+            onClick={() => onDelete(connection)}
+            disabled={isBusy || !canManage}
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-red-900/60 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Delete
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {result ? <ScanResultPanel result={result} /> : null}
+        {!result && testResult ? (
+          <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+            Read-only credential verified. No inventory, CIS, findings, or
+            resource writes ran.
+          </div>
+        ) : null}
+        {!result && handoffScanId ? (
+          <ScanHandoffLinks scanId={handoffScanId} />
+        ) : null}
+        {scanError ? (
+          <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
+            {scanError}
+          </div>
+        ) : null}
+        {scheduleError ? (
+          <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
+            {scheduleError}
+          </div>
+        ) : null}
+        {statusDetail ? (
+          <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200">
+            {statusDetail}
+          </div>
+        ) : null}
+        {!result && !testResult && !handoffScanId && !scanError && !scheduleError && !statusDetail ? (
+          <p className="text-sm text-[color:var(--text-secondary)]">
+            No scan has run for this account yet. Use “Run scan” below to
+            populate inventory, CIS results, and evidence links.
+          </p>
+        ) : null}
+      </div>
+    </Drawer>
   );
 }
 

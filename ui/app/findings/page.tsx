@@ -832,7 +832,7 @@ function FindingsPage() {
         )}
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-medium text-cyan-200">
-            Shared · ops &amp; GRC
+            Shared · Engineering &amp; Compliance
           </span>
         }
         actions={

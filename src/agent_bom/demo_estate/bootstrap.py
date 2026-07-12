@@ -9,7 +9,11 @@ from typing import Any
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _now
-from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT, seed_showcase_graph_if_empty
+from agent_bom.demo_estate.showcase_graph import (
+    SHOWCASE_TENANT,
+    seed_showcase_graph_if_empty,
+    seed_showcase_identities,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -111,8 +115,25 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     graph_store = _get_graph_store()
     summary: dict[str, Any] = {"enabled": True, "tenant_id": tenant_id, "seeded": False}
 
-    graph_seeded = seed_showcase_graph_if_empty(graph_store, tenant_id=tenant_id)
+    # Graph seed is isolated: a pre-existing (possibly stale) snapshot early-returns
+    # here, and any failure must NOT block the findings/scan or identity seeding
+    # below — those are what make posture + NHI reliably non-empty on every start.
+    graph_seeded = False
+    try:
+        graph_seeded = seed_showcase_graph_if_empty(graph_store, tenant_id=tenant_id)
+    except Exception:
+        _logger.warning("demo estate graph seeding failed", exc_info=True)
+        summary["graph_error"] = True
     summary["graph_seeded"] = graph_seeded
+
+    # Seed the live agent-identity store (NHI estate) independently of the graph
+    # snapshot so the NHI/Identity overview tile and the nhi-governance posture
+    # survive a restart even when the graph already exists. Idempotent.
+    try:
+        summary["identities"] = seed_showcase_identities(tenant_id=tenant_id)
+    except Exception:
+        _logger.warning("demo estate identity seeding failed", exc_info=True)
+        summary["identity_error"] = True
 
     # Seed the runtime gateway feed (proxy alerts + metrics + firewall
     # decisions) so the gateway/proxy/runtime dashboards show the AI-firewall in

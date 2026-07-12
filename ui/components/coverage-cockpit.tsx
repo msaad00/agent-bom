@@ -94,22 +94,13 @@ export function CoverageCockpit({
       aria-labelledby="coverage-cockpit-heading"
       className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4"
     >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="coverage-cockpit-heading" className="text-sm font-semibold text-[color:var(--foreground)]">
-            Onboard & coverage
-          </h2>
-          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-            Deployment is your control plane. Accounts are onboarded cloud boundaries. Scans are the evidence runs that feed Overview posture.
-          </p>
-        </div>
-        <Link
-          href="/scan"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-500"
-        >
-          Run scan
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+      <div className="mb-4">
+        <h2 id="coverage-cockpit-heading" className="text-sm font-semibold text-[color:var(--foreground)]">
+          Onboard & coverage
+        </h2>
+        <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+          Deployment is your control plane. Accounts are onboarded cloud boundaries. Scans are the evidence runs that feed Overview posture.
+        </p>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-3">
@@ -164,8 +155,8 @@ export function CoverageCockpit({
               ? `Latest evidence ${latestScanLabel}. Ad-hoc, connected-account, and source runs all land in Jobs.`
               : "No completed scans yet. Start with a connected account or an ad-hoc workstation scan."
           }
-          actionHref="/scan"
-          actionLabel="Start scan"
+          actionHref="/jobs"
+          actionLabel="View jobs"
           secondaryHref="/sources"
           secondaryLabel="Data sources"
         />

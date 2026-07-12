@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
 from agent_bom.api.agent_identity_store import (
+    AgentIdentity,
+    AgentJITGrant,
     InMemoryAgentIdentityStore,
-    issue_identity,
-    issue_jit_grant,
 )
 from agent_bom.graph.cnapp_overlay import apply_cnapp_overlay
 from agent_bom.graph.container import UnifiedGraph
@@ -27,6 +29,196 @@ SHOWCASE_SCAN_ID = "showcase"
 SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
 SHOWCASE_BASELINE_CREATED_AT = "2026-06-01T12:00:00+00:00"
 SHOWCASE_CURRENT_CREATED_AT = "2026-06-08T12:00:00+00:00"
+
+_logger = logging.getLogger(__name__)
+
+# Deterministic non-human-identity estate for the demo. Identity ids are stable
+# across restarts so the persisted MANAGED_IDENTITY graph nodes and the live
+# identity store agree — the governance overlay re-runs at request time and must
+# not inject a *second*, duplicate set of identities. Each row is shaped to tell
+# one clear NHI-governance story:
+#   * an over-granted but owned + active identity (standing tool scopes it never
+#     uses → right-size),
+#   * a dormant + orphaned admin identity that reaches an exposed resource (the
+#     textbook worst case → deprovision), and
+#   * clean, owned, least-privilege identities for contrast.
+_DEMO_IDENTITIES: tuple[dict[str, Any], ...] = (
+    {
+        "slug": "cursor",
+        "agent_label": "Cursor IDE Agent",
+        "role": "prod-admin",
+        "owner": "platform-team@corp",
+        "owner_type": "team",
+        "allowed_tools": ["run_shell", "exec_command", "read_file", "execute_sql", "query_vectors"],
+        "last_used_days": 1,
+    },
+    {
+        "slug": "support-copilot",
+        "agent_label": "Support Copilot",
+        "role": "support-admin",
+        "owner": "",  # orphaned — no accountable owner
+        "owner_type": "",
+        "allowed_tools": ["send_email", "create_ticket", "search_tickets"],
+        "last_used_days": None,  # never observed → dormant
+        "privileged": True,
+        "internet_exposed": True,
+    },
+    {
+        "slug": "data-pipeline",
+        "agent_label": "Data Pipeline Agent",
+        "role": "data-pipeline",
+        "owner": "data-eng@corp",
+        "owner_type": "team",
+        "allowed_tools": [],  # least privilege — access is JIT-granted
+        "last_used_days": 2,
+    },
+    {
+        "slug": "langchain-service",
+        "agent_label": "LangChain Service Agent",
+        "role": "service",
+        "owner": "ml-platform@corp",
+        "owner_type": "team",
+        "allowed_tools": [],
+        "last_used_days": 3,
+    },
+    {
+        "slug": "claude-desktop",
+        "agent_label": "Claude Desktop Agent",
+        "role": "agent",
+        "owner": "",  # orphaned
+        "owner_type": "",
+        "allowed_tools": [],
+        "last_used_days": None,  # dormant
+    },
+)
+
+# JIT grants that light up ACCESS_GRANT nodes for the least-privilege identities.
+_DEMO_JIT_GRANTS: tuple[tuple[str, str], ...] = (
+    ("cursor", "run_shell"),
+    ("data-pipeline", "execute_sql"),
+    ("langchain-service", "eval_expression"),
+)
+
+
+def _demo_identity_id(slug: str) -> str:
+    return f"demo-nhi-{slug}"
+
+
+def demo_identity_records(tenant_id: str = SHOWCASE_TENANT) -> tuple[list[AgentIdentity], list[AgentJITGrant]]:
+    """Return the deterministic enriched demo identities + JIT grants.
+
+    Single source of truth shared by the persisted graph seed and the live
+    identity-store seed so both carry identical ids and attributes.
+    """
+    now = datetime.now(timezone.utc)
+    issued_at = (now - timedelta(days=120)).isoformat()
+    expires_at = (now + timedelta(days=90)).isoformat()
+
+    identities: list[AgentIdentity] = []
+    by_slug: dict[str, str] = {}
+    for spec in _DEMO_IDENTITIES:
+        slug = str(spec["slug"])
+        identity_id = _demo_identity_id(slug)
+        by_slug[slug] = identity_id
+        last_used_days = spec.get("last_used_days")
+        last_used_at = "" if last_used_days is None else (now - timedelta(days=int(last_used_days))).isoformat()
+        identities.append(
+            AgentIdentity(
+                identity_id=identity_id,
+                agent_id=str(spec["agent_label"]),
+                tenant_id=tenant_id,
+                token_hash=f"demo-nhi-hash-{slug}",
+                token_prefix="demo",
+                role=str(spec.get("role") or "agent"),
+                blueprint_id=str(spec["agent_label"]),
+                status="active",
+                issued_at=issued_at,
+                expires_at=expires_at,
+                allowed_tools=list(spec.get("allowed_tools") or []),
+                owner=str(spec.get("owner") or ""),
+                owner_type=str(spec.get("owner_type") or ""),
+                last_used_at=last_used_at,
+            )
+        )
+
+    grants: list[AgentJITGrant] = []
+    approved_at = (now - timedelta(hours=2)).isoformat()
+    grant_expiry = (now + timedelta(hours=1)).isoformat()
+    for slug, tool_name in _DEMO_JIT_GRANTS:
+        grant_identity_id = by_slug.get(slug)
+        if not grant_identity_id:
+            continue
+        grants.append(
+            AgentJITGrant(
+                grant_id=f"demo-jit-{slug}-{tool_name}",
+                identity_id=grant_identity_id,
+                agent_id=next(str(s["agent_label"]) for s in _DEMO_IDENTITIES if s["slug"] == slug),
+                tenant_id=tenant_id,
+                tool_name=tool_name,
+                status="active",
+                requested_at=approved_at,
+                requested_by="oncall@corp",
+                approved_at=approved_at,
+                approved_by="oncall@corp",
+                starts_at=approved_at,
+                expires_at=grant_expiry,
+                ticket_id=f"OPS-{slug.upper()}",
+            )
+        )
+    return identities, grants
+
+
+def build_demo_identity_store(tenant_id: str = SHOWCASE_TENANT) -> InMemoryAgentIdentityStore:
+    """A throwaway identity store pre-loaded with the demo NHI estate."""
+    store = InMemoryAgentIdentityStore()
+    identities, grants = demo_identity_records(tenant_id)
+    for identity in identities:
+        store.put(identity)
+    for grant in grants:
+        store.put_jit_grant(grant)
+    return store
+
+
+def seed_showcase_identities(tenant_id: str = SHOWCASE_TENANT) -> dict[str, Any]:
+    """Populate the LIVE agent-identity store with the demo NHI estate.
+
+    Idempotent and independent of the graph seed so the NHI/Identity overview
+    tile and the ``/v1/*/nhi/governance`` posture survive a restart even when the
+    graph snapshot already exists. Only ever runs under demo-estate mode.
+    """
+    from agent_bom.api.agent_identity_store import get_agent_identity_store
+
+    store = get_agent_identity_store()
+    existing = {i.identity_id for i in store.list(tenant_id, include_inactive=True, limit=1000)}
+    if any(iid.startswith("demo-nhi-") for iid in existing):
+        return {"seeded": False, "reason": "identities_present", "count": len(existing)}
+
+    identities, grants = demo_identity_records(tenant_id)
+    for identity in identities:
+        store.put(identity)
+    for grant in grants:
+        store.put_jit_grant(grant)
+    return {"seeded": True, "identities": len(identities), "jit_grants": len(grants)}
+
+
+def _annotate_demo_identity_risk(graph: UnifiedGraph) -> None:
+    """Pin privilege / exposure signals the identity record cannot carry.
+
+    ``AgentIdentity`` has no privilege or internet-exposure field, so the
+    governance evaluator would otherwise only see dormancy/ownership. Stamp the
+    curated signals directly onto the persisted MANAGED_IDENTITY node so the demo
+    surfaces at least one clearly high/critical NHI (a dormant, orphaned, admin
+    identity). Node ids are deterministic; safe to call on any showcase snapshot.
+    """
+    for spec in _DEMO_IDENTITIES:
+        node = graph.nodes.get(f"managed_identity:{_demo_identity_id(str(spec['slug']))}")
+        if node is None:
+            continue
+        if spec.get("privileged"):
+            node.attributes["privilege_level"] = "admin"
+            node.attributes["is_admin"] = True
+        if spec.get("internet_exposed"):
+            node.attributes["internet_exposed"] = True
 
 
 class _DriftIncident:
@@ -57,6 +249,7 @@ def build_showcase_graph(
     tenant_id: str = SHOWCASE_TENANT,
     scan_id: str = SHOWCASE_SCAN_ID,
     profile: ShowcaseProfile = "current",
+    identity_store: InMemoryAgentIdentityStore | None = None,
 ) -> tuple[UnifiedGraph, InMemoryAgentIdentityStore, _DriftStore]:
     is_baseline = profile == "baseline"
     g = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
@@ -297,20 +490,10 @@ def build_showcase_graph(
         node("tool:legacy-chat-server:send_message", EntityType.TOOL, "send_message")
         edge("server:legacy-chat-server", "tool:legacy-chat-server:send_message", RelationshipType.PROVIDES_TOOL)
 
-    store = InMemoryAgentIdentityStore()
-    _jit_tools = {"cursor": "run_shell", "data-pipeline": "execute_sql", "langchain-service": "eval_expression"}
-    for aid, label in agents.items():
-        idn, _ = issue_identity(store, agent_id=label, tenant_id=tenant_id, allowed_tools=[])
-        if aid in _jit_tools:
-            issue_jit_grant(
-                store,
-                identity_id=idn.identity_id,
-                agent_id=label,
-                tenant_id=tenant_id,
-                tool_name=_jit_tools[aid],
-                ttl_seconds=3600,
-                approved_by="oncall@corp",
-            )
+    # Enriched, deterministic NHI estate (owner / last_used / standing scopes) so
+    # the governance overlay projects a real identity story. Shared with the live
+    # identity-store seed via ``demo_identity_records`` so ids/attributes match.
+    store = identity_store if identity_store is not None else build_demo_identity_store(tenant_id)
 
     drift = _DriftStore(
         [
@@ -416,10 +599,15 @@ def seed_showcase_graph_if_empty(
     if callable(latest_snapshot_id) and latest_snapshot_id(tenant_id=tenant_id):
         return False
 
+    # One shared, enriched identity estate feeds both snapshots so the persisted
+    # MANAGED_IDENTITY node ids match the live identity store the API re-projects.
+    identity_records = build_demo_identity_store(tenant_id)
+
     baseline_graph, baseline_identity, baseline_drift = build_showcase_graph(
         tenant_id=tenant_id,
         scan_id=SHOWCASE_BASELINE_SCAN_ID,
         profile="baseline",
+        identity_store=identity_records,
     )
     baseline_graph.created_at = SHOWCASE_BASELINE_CREATED_AT
     apply_showcase_overlays(
@@ -429,12 +617,15 @@ def seed_showcase_graph_if_empty(
         drift_store=baseline_drift,
     )
     finalize_showcase_snapshot(baseline_graph, profile="baseline")
+    _annotate_demo_identity_risk(baseline_graph)
+    _materialize_showcase_attack_paths(baseline_graph)
     graph_store.save_graph(baseline_graph)
 
     current_graph, identity_store, drift_store = build_showcase_graph(
         tenant_id=tenant_id,
         scan_id=SHOWCASE_SCAN_ID,
         profile="current",
+        identity_store=identity_records,
     )
     current_graph.created_at = SHOWCASE_CURRENT_CREATED_AT
     apply_showcase_overlays(
@@ -444,5 +635,28 @@ def seed_showcase_graph_if_empty(
         drift_store=drift_store,
     )
     finalize_showcase_snapshot(current_graph, profile="current")
+    _annotate_demo_identity_risk(current_graph)
+    _materialize_showcase_attack_paths(current_graph)
     graph_store.save_graph(current_graph)
     return True
+
+
+def _materialize_showcase_attack_paths(graph: UnifiedGraph) -> None:
+    """Persist derived attack paths so the materialized exposure-path queue is
+    non-empty for the demo.
+
+    ``/v1/graph/attack-paths`` derives paths on the fly, but
+    ``/v1/graph/exposure-paths`` reads the materialized ``attack_paths`` table
+    populated from ``graph.attack_paths`` at save time. The showcase graph never
+    set that, so exposure paths came back empty. Reuse the exact same deriver the
+    attack-path endpoint uses (pure seed-shaping — no algorithm change) and pin
+    the hero chains onto the snapshot before it is saved.
+    """
+    if graph.attack_paths:
+        return
+    try:
+        from agent_bom.api.routes.graph import _derived_attack_paths
+
+        graph.attack_paths = _derived_attack_paths(graph)
+    except Exception:  # noqa: BLE001 — never block the snapshot save on path shaping
+        _logger.warning("demo estate attack-path materialization failed", exc_info=True)

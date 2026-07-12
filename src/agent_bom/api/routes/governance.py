@@ -114,13 +114,15 @@ async def activity_timeline(days: int = 30):
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/cortex/telemetry", tags=["governance"])
+@router.get("/cortex/telemetry", tags=["governance"], deprecated=True)
 async def cortex_telemetry(hours: int = 24):
     """Aggregated Cortex agent telemetry with health assessments.
 
     Combines CORTEX_AGENT_USAGE_HISTORY and AI_OBSERVABILITY_EVENTS
     into per-agent metrics, error rates, latency percentiles, and
     health status.
+
+    Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
     """
     import os
 

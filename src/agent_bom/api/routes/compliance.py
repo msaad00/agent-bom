@@ -551,7 +551,7 @@ def _coerce_cis_row(row: dict[str, Any]) -> dict[str, Any]:
 # ─── CIS Benchmark Trend / Drilldown (#1832) ──────────────────────────────
 
 
-@router.get("/cis/trends", tags=["compliance"])
+@router.get("/cis/trends", tags=["compliance"], deprecated=True)
 async def cis_benchmark_trends(
     request: Request,
     days: int = 30,
@@ -567,6 +567,8 @@ async def cis_benchmark_trends(
     ClickHouse) when available; otherwise reconstructs the aggregation
     in-memory from the tenant's recent scan results so single-node and
     SQLite-only deployments still return data.
+
+    Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
 
     Query parameters:
     - ``days`` (1–366, default 30): rolling window size.
@@ -1681,9 +1683,12 @@ async def get_enrichment_posture() -> dict:
     return describe_enrichment_posture()
 
 
-@router.get("/posture/backpressure", tags=["compliance"])
+@router.get("/posture/backpressure", tags=["compliance"], deprecated=True)
 async def get_backpressure_posture() -> dict:
-    """Report adaptive runtime backpressure state for expensive paths."""
+    """Report adaptive runtime backpressure state for expensive paths.
+
+    Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
+    """
 
     from agent_bom.backpressure import describe_backpressure_posture
 

@@ -2417,9 +2417,12 @@ async def get_graph_compliance(
     )
 
 
-@router.get("/graph/legend", tags=["graph"])
+@router.get("/graph/legend", tags=["graph"], deprecated=True)
 async def get_graph_legend() -> dict:
-    """Return entity and relationship legends for UI rendering."""
+    """Return entity and relationship legends for UI rendering.
+
+    Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
+    """
     from agent_bom.graph import ENTITY_LEGEND, RELATIONSHIP_LEGEND
 
     return {

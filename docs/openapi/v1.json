@@ -4713,7 +4713,8 @@
     },
     "/v1/agents/mesh": {
       "get": {
-        "description": "Get a ReactFlow-compatible mesh topology of all discovered agents.\n\nShows agents, their MCP servers, tools, and vulnerability overlay\nas an interactive graph.",
+        "deprecated": true,
+        "description": "Get a ReactFlow-compatible mesh topology of all discovered agents.\n\nShows agents, their MCP servers, tools, and vulnerability overlay\nas an interactive graph.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).",
         "operationId": "get_agent_mesh_v1_agents_mesh_get",
         "responses": {
           "200": {
@@ -6174,7 +6175,8 @@
     },
     "/v1/cis/trends": {
       "get": {
-        "description": "Time-bucketed CIS finding counts for trend / drilldown surfaces.\n\nResolves to the columnar store (Postgres ``cis_benchmark_checks`` \u2192\nClickHouse) when available; otherwise reconstructs the aggregation\nin-memory from the tenant's recent scan results so single-node and\nSQLite-only deployments still return data.\n\nQuery parameters:\n- ``days`` (1\u2013366, default 30): rolling window size.\n- ``bucket`` (``hour`` | ``day`` | ``week``, default ``day``): bucket\n  width. Anything else falls back to ``day``.\n- ``cloud`` / ``section`` / ``status`` / ``severity``: optional\n  single-value filters narrowing the slice before aggregation.",
+        "deprecated": true,
+        "description": "Time-bucketed CIS finding counts for trend / drilldown surfaces.\n\nResolves to the columnar store (Postgres ``cis_benchmark_checks`` \u2192\nClickHouse) when available; otherwise reconstructs the aggregation\nin-memory from the tenant's recent scan results so single-node and\nSQLite-only deployments still return data.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).\n\nQuery parameters:\n- ``days`` (1\u2013366, default 30): rolling window size.\n- ``bucket`` (``hour`` | ``day`` | ``week``, default ``day``): bucket\n  width. Anything else falls back to ``day``.\n- ``cloud`` / ``section`` / ``status`` / ``severity``: optional\n  single-value filters narrowing the slice before aggregation.",
         "operationId": "cis_benchmark_trends_v1_cis_trends_get",
         "parameters": [
           {
@@ -9060,7 +9062,8 @@
     },
     "/v1/cortex/telemetry": {
       "get": {
-        "description": "Aggregated Cortex agent telemetry with health assessments.\n\nCombines CORTEX_AGENT_USAGE_HISTORY and AI_OBSERVABILITY_EVENTS\ninto per-agent metrics, error rates, latency percentiles, and\nhealth status.",
+        "deprecated": true,
+        "description": "Aggregated Cortex agent telemetry with health assessments.\n\nCombines CORTEX_AGENT_USAGE_HISTORY and AI_OBSERVABILITY_EVENTS\ninto per-agent metrics, error rates, latency percentiles, and\nhealth status.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).",
         "operationId": "cortex_telemetry_v1_cortex_telemetry_get",
         "parameters": [
           {
@@ -9201,6 +9204,8 @@
     },
     "/v1/credentials/posture": {
       "get": {
+        "deprecated": true,
+        "description": "Credential rotation posture rollup for the request tenant.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).",
         "operationId": "get_credential_rotation_posture_v1_credentials_posture_get",
         "responses": {
           "200": {
@@ -9648,7 +9653,8 @@
     },
     "/v1/estate/correlations": {
       "get": {
-        "description": "Return local\u2194cloud agent correlation matches for a completed scan.",
+        "deprecated": true,
+        "description": "Return local\u2194cloud agent correlation matches for a completed scan.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).",
         "operationId": "get_estate_correlations_v1_estate_correlations_get",
         "parameters": [
           {
@@ -13914,7 +13920,8 @@
     },
     "/v1/graph/legend": {
       "get": {
-        "description": "Return entity and relationship legends for UI rendering.",
+        "deprecated": true,
+        "description": "Return entity and relationship legends for UI rendering.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).",
         "operationId": "get_graph_legend_v1_graph_legend_get",
         "responses": {
           "200": {
@@ -18418,7 +18425,8 @@
     },
     "/v1/posture/backpressure": {
       "get": {
-        "description": "Report adaptive runtime backpressure state for expensive paths.",
+        "deprecated": true,
+        "description": "Report adaptive runtime backpressure state for expensive paths.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).",
         "operationId": "get_backpressure_posture_v1_posture_backpressure_get",
         "parameters": [
           {

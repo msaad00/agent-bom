@@ -131,8 +131,12 @@ async def list_credential_refs(
     }
 
 
-@router.get("/credentials/posture", tags=["credentials"])
+@router.get("/credentials/posture", tags=["credentials"], deprecated=True)
 async def get_credential_rotation_posture(request: Request) -> dict:
+    """Credential rotation posture rollup for the request tenant.
+
+    Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
+    """
     tenant_id = _tenant_id(request)
     credentials = _get_credential_ref_store().list_all(tenant_id=tenant_id)
     return build_credential_rotation_governance(credentials, tenant_id=tenant_id)

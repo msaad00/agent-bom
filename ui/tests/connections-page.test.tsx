@@ -324,7 +324,7 @@ describe("ConnectionsPage", () => {
     );
   });
 
-  it("deep-links the connection drawer into New Scan with a preselected account", async () => {
+  it("keeps one direct scan action in the connection drawer", async () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",
       tenant_id: "tenant-acme",
@@ -341,10 +341,8 @@ describe("ConnectionsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Production account" }));
     const drawer = await screen.findByRole("dialog", { name: "Production account" });
 
-    expect(within(drawer).getByRole("link", { name: "New Scan" })).toHaveAttribute(
-      "href",
-      "/scan?connection=conn-1",
-    );
+    expect(within(drawer).queryByRole("link", { name: "New Scan" })).not.toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Run scan" })).toBeInTheDocument();
   });
 
   it("tests a brokered credential without launching a scan", async () => {

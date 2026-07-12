@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
-import type { OverviewDomain, OverviewResponse } from "@/lib/api";
+import type { OverviewResponse } from "@/lib/api";
 import type { ServiceEntry, ServiceId } from "@/lib/api-types";
 import { Collapsible } from "@/components/collapsible";
 import { FrameworkIcon } from "@/components/framework-icon";
@@ -16,7 +16,6 @@ import {
   type IssueType,
   type SeverityBand,
 } from "@/lib/finding-issue-type";
-import { SERVICE_META, serviceStateLabel } from "@/lib/service-registry";
 
 export interface ExposurePathView {
   nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[];
@@ -83,35 +82,22 @@ export function OverviewCockpit({
   kev,
   credentials,
   agents,
-  cves,
   scans,
+  latestScan,
   summaryReady,
   severity,
   issueMatrix = null,
   domains,
   topPath,
   exposurePaths,
-  signals,
   compliance = null,
   services = null,
 }: OverviewCockpitProps) {
-  const domainList = domains ? Object.values(domains) : [];
-  const activeDomains = domainList.filter((domain) => domain.status !== "idle").length;
-  const coverage = domainList.length > 0 ? Math.round((activeDomains / domainList.length) * 100) : null;
+  const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
   const complianceScore =
-    summaryReady && scans != null && scans > 0 && compliance != null && hasEvaluatedCompliance(compliance)
+    hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance)
       ? `${Math.round(compliance.overallScore)}%`
       : undefined;
-
-  // Connected estate — real/zero surfaces that exist independent of any scan, so
-  // the exec read is never just "Awaiting scan".
-  const cloudAccounts = services?.cloud_accounts?.count ?? 0;
-  const liveServices = signals.activeServices;
-  const estateBits: string[] = [];
-  if (agents != null && agents > 0) estateBits.push(`${agents} agent${agents === 1 ? "" : "s"}`);
-  if (cloudAccounts > 0) estateBits.push(`${cloudAccounts} cloud account${cloudAccounts === 1 ? "" : "s"}`);
-  if (liveServices > 0) estateBits.push(`${liveServices} live service${liveServices === 1 ? "" : "s"}`);
-  const connectedSummary = estateBits.length > 0 ? `${estateBits.join(" · ")} connected` : null;
 
   return (
     <div className="space-y-4">
@@ -121,18 +107,19 @@ export function OverviewCockpit({
             Command center
           </p>
           <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
-            Posture, open issues, compliance, and the connected estate — one exec read.
+            Posture and open issues across every lane — one exec read.
           </p>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
+        {/* 1 — Posture headline + open issues by severity */}
+        <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
           <PostureHero
             grade={grade}
             score={score}
             summary={postureSummary}
             critical={critical}
             high={high}
-            connectedSummary={connectedSummary}
+            latestScan={latestScan}
           />
           <SeverityIssueStrip
             summaryReady={summaryReady}
@@ -144,55 +131,16 @@ export function OverviewCockpit({
             severity={severity}
             matrix={issueMatrix}
           />
-          <div className="min-w-[9rem]">
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-              Connected estate
-            </p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs lg:grid-cols-1">
-              <MetaLine label="Agents" value={agents != null ? String(agents) : "—"} href="/agents" />
-              <MetaLine label="Cloud accts" value={String(cloudAccounts)} href="/connections" />
-              <MetaLine label="Live services" value={String(liveServices)} href="/connections" />
-              <MetaLine label="CVEs" value={summaryReady && cves != null ? String(cves) : "—"} href={findingsHref({ issue: "vulnerability" })} />
-              <MetaLine label="Scans" value={summaryReady && scans != null ? String(scans) : "—"} href="/jobs" />
-            </div>
-          </div>
         </div>
 
-        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={Boolean(summaryReady && scans && scans > 0)} />
-        <ActivatedServicesPanel services={services} activeCount={signals.activeServices} />
+        {/* 2 — Cross-lane coverage: the single canonical estate view */}
+        <CrossLaneCoverage domains={domains} services={services} />
 
-        {domainList.length > 0 ? (
-          <Collapsible
-            bare
-            className="mt-4 border-t border-[color:var(--border-subtle)]"
-            title="Domain coverage"
-            subtitle={
-              coverage != null ? `${coverage}% domains reporting signal` : "Cross-domain posture roll-up"
-            }
-            count={domainList.length}
-            scrollMaxHeight="14rem"
-            defaultOpen
-            actions={
-              <div className="flex flex-wrap justify-end gap-1.5 text-[10px]">
-                <SignalChip
-                  label="Cred exposure"
-                  value={summaryReady && credentials != null ? String(credentials) : "—"}
-                />
-                <SignalChip label="Tools" value={summaryReady && signals.tools != null ? String(signals.tools) : "—"} />
-                <SignalChip label="Services" value={summaryReady ? String(signals.activeServices) : "—"} />
-                <SignalChip label="Connect" value={signals.connected ? "Live" : "Setup"} highlight={signals.connected} />
-              </div>
-            }
-          >
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-              {domainList.map((domain) => (
-                <DomainCard key={domain.href + domain.label} domain={domain} />
-              ))}
-            </div>
-          </Collapsible>
-        ) : null}
+        {/* 3 — Compliance: one honest strip, coverage after first scan */}
+        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
       </section>
 
+      {/* 4 — Top risks: the hero exposure path */}
       <section className="min-h-0">
         <TopRisksPanel
           topPath={topPath}
@@ -205,6 +153,100 @@ export function OverviewCockpit({
         />
       </section>
     </div>
+  );
+}
+
+type CoverageTile = {
+  key: string;
+  label: string;
+  metric: number | string;
+  metricLabel: string;
+  status: "ok" | "warn" | "critical" | "idle";
+  href: string;
+};
+
+function CrossLaneCoverage({
+  domains,
+  services,
+}: {
+  domains: OverviewResponse["domains"] | null;
+  services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
+}) {
+  const domainList = domains ? Object.values(domains) : [];
+  const tiles: CoverageTile[] = domainList.map((domain) => ({
+    key: `${domain.href}:${domain.label}`,
+    label: domain.label,
+    metric: domain.metric,
+    metricLabel: domain.metric_label,
+    status: domain.status,
+    href: domain.graph_href ?? domain.href,
+  }));
+
+  // Fold in connected surfaces that no domain lane already represents (e.g. data
+  // sources) so the estate reads in ONE grid — never a duplicate pill strip.
+  const dataSources = services?.data_sources;
+  if (
+    dataSources &&
+    (dataSources.state === "live" || dataSources.state === "connected") &&
+    dataSources.count > 0
+  ) {
+    tiles.push({
+      key: "data_sources",
+      label: "Data sources",
+      metric: dataSources.count,
+      metricLabel: "connected",
+      status: "ok",
+      href: "/sources",
+    });
+  }
+
+  if (tiles.length === 0) return null;
+  const reporting = tiles.filter((tile) => tile.status !== "idle").length;
+
+  return (
+    <section
+      className="mt-5 border-t border-[color:var(--border-subtle)] pt-4"
+      data-testid="overview-cross-lane-coverage"
+    >
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+            Cross-lane coverage
+          </p>
+          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+            {reporting} of {tiles.length} lanes reporting · click a lane to drill in
+          </p>
+        </div>
+        <Link
+          href="/connections"
+          className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400"
+        >
+          Connections <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {tiles.map((tile) => (
+          <CoverageTileCard key={tile.key} tile={tile} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CoverageTileCard({ tile }: { tile: CoverageTile }) {
+  const tone = domainStatusTone(tile.status);
+  return (
+    <Link
+      href={tile.href}
+      className="flex flex-col gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3.5 py-3 transition hover:border-[color:var(--border-strong)]"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-xs font-medium text-[color:var(--foreground)]">{tile.label}</span>
+        <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
+      </div>
+      <span className={`font-mono text-xl font-semibold ${tone.text}`}>{tile.metric}</span>
+      <span className="truncate text-[10px] text-[color:var(--text-tertiary)]">{tile.metricLabel}</span>
+    </Link>
   );
 }
 
@@ -300,78 +342,6 @@ function ComplianceSnapshotPanel({
         </div>
       )}
     </Collapsible>
-  );
-}
-
-function ActivatedServicesPanel({
-  services,
-  activeCount,
-}: {
-  services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
-  activeCount: number;
-}) {
-  const rows = (Object.entries(SERVICE_META) as [ServiceId, (typeof SERVICE_META)[ServiceId]][]).map(
-    ([id, meta]) => {
-      const entry = services?.[id] ?? { state: "locked" as const, count: 0 };
-      return { id, entry, meta };
-    },
-  );
-  const liveRows = rows.filter(({ entry }) => entry.state === "live" || entry.state === "connected");
-  const lockedCount = rows.length - liveRows.length;
-
-  return (
-    <div
-      className="mt-4 border-t border-[color:var(--border-subtle)] pt-4"
-      data-testid="overview-activated-services"
-    >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-            Live surfaces
-          </p>
-          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-            {activeCount > 0
-              ? `${activeCount} live · ${lockedCount} not connected`
-              : "Connect cloud, data, or runtime to activate surfaces"}
-          </p>
-        </div>
-        <Link href="/connections" className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
-          Connections <ArrowRight className="h-3 w-3" />
-        </Link>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {rows.map(({ id, entry, meta }) => {
-          const live = entry.state === "live" || entry.state === "connected";
-          return (
-            <Link
-              key={id}
-              href={meta.unlockHref}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition ${
-                live
-                  ? "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
-                  : "border-dashed border-[color:var(--border-subtle)] text-[color:var(--text-tertiary)] hover:border-[color:var(--border-strong)]"
-              }`}
-              title={serviceStateLabel(entry.state)}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  entry.state === "live"
-                    ? "bg-emerald-400"
-                    : entry.state === "connected"
-                      ? "bg-sky-400"
-                      : "bg-[color:var(--border-strong)]"
-                }`}
-                aria-hidden="true"
-              />
-              {meta.label}
-              {live && entry.count > 0 ? (
-                <span className="tabular-nums text-[color:var(--text-tertiary)]">{entry.count}</span>
-              ) : null}
-            </Link>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -480,14 +450,14 @@ function PostureHero({
   summary,
   critical,
   high,
-  connectedSummary,
+  latestScan,
 }: {
   grade: string;
   score?: number | undefined;
   summary?: string | undefined;
   critical: number;
   high: number;
-  connectedSummary?: string | null | undefined;
+  latestScan: string | null;
 }) {
   const tone =
     grade === "A" || grade === "B"
@@ -495,6 +465,7 @@ function PostureHero({
       : grade === "C" || grade === "D"
         ? "text-amber-500"
         : "text-red-500";
+  const graded = typeof score === "number" && grade !== "N/A" && grade !== "—";
 
   return (
     <div className="flex items-center gap-4">
@@ -506,20 +477,18 @@ function PostureHero({
           Risk posture
         </p>
         <p className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
-          {typeof score === "number" ? `Score ${score}` : "Awaiting scan"}
+          {graded ? `Score ${score}` : "Awaiting scan"}
         </p>
-        {typeof score === "number" && grade !== "N/A" && grade !== "—" ? (
-          <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
-            Latest completed scan
-          </p>
-        ) : null}
+        <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
+          {latestScan ? `Last scan · ${latestScan}` : "No completed scans"}
+        </p>
         <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">
-          {typeof score === "number"
+          {graded
             ? summary ??
               (critical > 0
                 ? `${critical} critical · ${high} high in the current snapshot.`
                 : "Rolled up across connected surfaces.")
-            : connectedSummary ?? "Connect a surface or run a scan to grade posture."}
+            : "Connect a surface or run a scan to grade posture."}
         </p>
       </div>
     </div>
@@ -719,58 +688,7 @@ function SeverityIssueStrip({
   );
 }
 
-function MetaLine({ label, value, href }: { label: string; value: string; href?: string | undefined }) {
-  const content = (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[color:var(--text-tertiary)]">{label}</span>
-      <span className="font-medium text-[color:var(--foreground)]">{value}</span>
-    </div>
-  );
-  return href ? <Link href={href} className="block rounded hover:bg-[color:var(--surface-muted)]">{content}</Link> : content;
-}
-
-function SignalChip({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean | undefined;
-}) {
-  return (
-    <span
-      className={`rounded-full border px-2.5 py-1 ${
-        highlight
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-          : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]"
-      }`}
-    >
-      <span className="text-[color:var(--text-tertiary)]">{label}</span> {value}
-    </span>
-  );
-}
-
-function DomainCard({ domain }: { domain: OverviewDomain }) {
-  const tone = domainStatusTone(domain.status);
-  return (
-    <Link
-      href={domain.graph_href ?? domain.href}
-      className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 transition hover:border-[color:var(--border-strong)]"
-    >
-      <div className="min-w-0">
-        <p className="truncate text-xs font-medium text-[color:var(--foreground)]">{domain.label}</p>
-        <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{domain.metric_label}</p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <span className={`font-mono text-sm font-semibold ${tone.text}`}>{domain.metric}</span>
-        <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-      </div>
-    </Link>
-  );
-}
-
-function domainStatusTone(status: OverviewDomain["status"]): { dot: string; text: string } {
+function domainStatusTone(status: CoverageTile["status"]): { dot: string; text: string } {
   switch (status) {
     case "critical":
       return { dot: "bg-red-500", text: "text-red-400" };

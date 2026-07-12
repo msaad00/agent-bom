@@ -2305,6 +2305,8 @@ export interface OverviewResponse {
   };
   domains: {
     cloud: OverviewDomain;
+    vuln: OverviewDomain;
+    code: OverviewDomain;
     runtime: OverviewDomain;
     cost: OverviewDomain;
     identity: OverviewDomain;

@@ -3,6 +3,27 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { OverviewCockpit } from "@/components/overview-cockpit";
+import type { OverviewResponse } from "@/lib/api";
+
+function domain(
+  label: string,
+  metric: number,
+  metricLabel: string,
+  status: OverviewResponse["domains"]["cloud"]["status"],
+  href: string,
+): OverviewResponse["domains"]["cloud"] {
+  return { label, href, metric, metric_label: metricLabel, status, detail: {} };
+}
+
+const sampleDomains: OverviewResponse["domains"] = {
+  cloud: domain("Cloud posture", 3, "accounts connected", "ok", "/connections"),
+  vuln: domain("Vuln / SCA", 15, "open CVEs", "critical", "/findings?issue=vulnerability"),
+  code: domain("Code / repo", 0, "repo scans", "idle", "/scan"),
+  runtime: domain("Runtime", 2, "active surfaces", "ok", "/gateway"),
+  cost: domain("LLM Cost", 0, "USD tracked", "idle", "/cost"),
+  identity: domain("NHI / Identity", 8, "identities + agents", "ok", "/identity"),
+  ops: domain("Ops", 1, "completed scans", "ok", "/jobs"),
+};
 
 describe("OverviewCockpit", () => {
   const baseProps = {
@@ -43,6 +64,38 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("Risk posture")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "CISO" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Agent mesh/i })).toHaveAttribute("href", "/agents/topology");
+    // De-dup: the old redundant "Connected estate" list and "Live surfaces" pill
+    // strip are gone — the cross-lane grid is the single estate view.
+    expect(screen.queryByText("Connected estate")).not.toBeInTheDocument();
+    expect(screen.queryByText("Live surfaces")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("overview-activated-services")).not.toBeInTheDocument();
+  });
+
+  it("renders one canonical cross-lane coverage grid without repeating signals", () => {
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+
+    const grid = screen.getByTestId("overview-cross-lane-coverage");
+    expect(grid).toBeInTheDocument();
+    // Every lane appears exactly once — no triple-render of the same number.
+    expect(screen.getByText("Cloud posture")).toBeInTheDocument();
+    expect(screen.getAllByText("Cloud posture")).toHaveLength(1);
+    expect(screen.getByText("Vuln / SCA")).toBeInTheDocument();
+    expect(screen.getByText("NHI / Identity")).toBeInTheDocument();
+    // 5 of 7 lanes report signal (code + cost are idle).
+    expect(screen.getByText(/5 of 7 lanes reporting/i)).toBeInTheDocument();
+  });
+
+  it("folds a connected data source into the coverage grid as one extra tile", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        domains={sampleDomains}
+        services={{ data_sources: { state: "connected", count: 2 } }}
+      />,
+    );
+
+    expect(screen.getByText("Data sources")).toBeInTheDocument();
+    expect(screen.getByText(/6 of 8 lanes reporting/i)).toBeInTheDocument();
   });
 
   it("surfaces risk themes and links into findings / compliance", () => {
@@ -60,10 +113,11 @@ describe("OverviewCockpit", () => {
     );
   });
 
-  it("shows compliance and compact live-surface chips when evidence exists", () => {
+  it("shows compliance and open-issue chips when evidence exists", () => {
     render(
       <OverviewCockpit
         {...baseProps}
+        domains={sampleDomains}
         compliance={{
           overallScore: 72,
           overallStatus: "warning",
@@ -71,11 +125,6 @@ describe("OverviewCockpit", () => {
             { id: "owasp-llm", label: "OWASP LLM Top 10", pass: 8, warn: 1, fail: 1, total: 10 },
             { id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 },
           ],
-        }}
-        services={{
-          cloud_accounts: { state: "live", count: 2 },
-          compliance: { state: "connected", count: 1 },
-          fleet: { state: "locked", count: 0 },
         }}
         issueMatrix={{
           vulnerability: { critical: 1, high: 4, medium: 2, low: 0 },
@@ -91,15 +140,23 @@ describe("OverviewCockpit", () => {
 
     expect(screen.getByTestId("overview-compliance-snapshot")).toBeInTheDocument();
     expect(screen.getByText("OWASP LLM Top 10")).toBeInTheDocument();
-    expect(screen.getByTestId("overview-activated-services")).toBeInTheDocument();
-    expect(screen.getByText("Live surfaces")).toBeInTheDocument();
-    expect(screen.getByText("Cloud accounts")).toBeInTheDocument();
     expect(screen.getByTestId("overview-severity-issue-strip")).toBeInTheDocument();
     expect(screen.getByText("Open issues")).toBeInTheDocument();
     expect(screen.getByText("Misconfig 4")).toBeInTheDocument();
     expect(screen.getByText("KEV 1")).toBeInTheDocument();
     expect(screen.getByText("Secrets 8")).toBeInTheDocument();
     expect(screen.getByText("Compliance 72%")).toBeInTheDocument();
+  });
+
+  it("surfaces the last scan time and an honest zero-state", () => {
+    const { rerender } = render(<OverviewCockpit {...baseProps} />);
+    expect(screen.getByText(/Last scan · Jul 9, 10:45 PM/i)).toBeInTheDocument();
+
+    rerender(
+      <OverviewCockpit {...baseProps} grade="—" score={undefined} scans={0} latestScan={null} />,
+    );
+    expect(screen.getByText("No completed scans")).toBeInTheDocument();
+    expect(screen.getByText(/Connect a surface or run a scan to grade posture/i)).toBeInTheDocument();
   });
 
   it("does not show green compliance pass tiles without scan evidence", () => {

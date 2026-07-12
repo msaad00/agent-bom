@@ -80,6 +80,27 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "inventory_summary",
+        "description": (
+            "Unified asset-inventory counts by OCSF entity type and source group (ai/cloud/identity/secrets/code)"
+            " across the one tenant-scoped graph snapshot; findings excluded"
+        ),
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "inventory_list",
+        "description": (
+            "Faceted, paginated asset rows across AI, cloud, Snowflake, and identity in the unified graph —"
+            " filter by type/search/severity/environment/provider/source with keyset paging; findings excluded"
+        ),
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "inventory_asset",
+        "description": "One asset's attributes, inbound/outbound relationships, neighbors, sources, and blast-radius impact",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "where",
         "description": "List supported MCP client discovery paths and coverage telemetry — useful for debugging discovery issues",
         "annotations": {"readOnlyHint": True},
@@ -373,6 +394,9 @@ _TOOL_CAPABILITY_CLASSES = {
     "skill_trust": ["READ", "LOCAL_FILE_READ"],
     "verify": ["READ", "NETWORK", "PROVENANCE"],
     "where": ["READ", "LOCAL_FILE_READ"],
+    "inventory_summary": ["READ", "GRAPH", "INVENTORY"],
+    "inventory_list": ["READ", "GRAPH", "INVENTORY"],
+    "inventory_asset": ["READ", "GRAPH", "INVENTORY", "ANALYZE"],
     "tool_risk_assessment": ["READ", "ANALYZE"],
     "inventory": ["READ", "LOCAL_FILE_READ"],
     "diff": ["WRITE", "READ", "LOCAL_FILE_READ", "ANALYZE", "HISTORY"],

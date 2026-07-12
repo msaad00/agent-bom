@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (70):
+Tools (73):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -19,6 +19,9 @@ Tools (70):
     skill_verify        — Verify instruction file Sigstore provenance
     skill_trust         — ClawHub-style trust assessment for SKILL.md files
     verify              — Package integrity + SLSA provenance verification
+    inventory_summary   — Unified asset-inventory counts by type and source group
+    inventory_list      — Faceted, paginated asset rows across the unified graph
+    inventory_asset     — One asset's attributes, relationships, and impact
     where               — Show all MCP discovery paths + existence status
     inventory           — List agents/servers without CVE scanning
     tool_risk_assessment — Score live MCP tool capabilities and server risk
@@ -496,6 +499,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     )
     from agent_bom.mcp_tools.graph import deploy_decision_impl, exposure_paths_impl
     from agent_bom.mcp_tools.intel import intel_daily_brief_impl, intel_lookup_impl, intel_match_impl, intel_sources_impl
+    from agent_bom.mcp_tools.inventory import inventory_asset_impl, inventory_list_impl, inventory_summary_impl
     from agent_bom.mcp_tools.registry import registry_lookup_impl
     from agent_bom.mcp_tools.runtime import verify_impl
     from agent_bom.mcp_tools.sbom import generate_sbom_impl, remediate_impl
@@ -1081,6 +1085,99 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             package=package,
             ecosystem=ecosystem,
             _validate_ecosystem=_validate_ecosystem,
+            _truncate_response=_truncate_response,
+        )
+
+    # ── Tools 13-15: unified asset inventory (agent-native) ─────────────
+    # The same faceted inventory the dashboard renders, exposed to headless MCP
+    # clients over the ONE unified graph snapshot via the shared inventory
+    # service — no HTTP self-call, no duplicated projection logic.
+
+    @mcp.tool(annotations=_READ_ONLY, title="Asset Inventory Summary")
+    async def inventory_summary(
+        tenant_id: Annotated[str, Field(description="Tenant scope for the snapshot. Defaults to 'default'.")] = "default",
+        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+    ) -> str:
+        """Return unified asset-inventory counts by type and source group.
+
+        Counts every non-finding asset in the tenant's current graph snapshot —
+        AI (agents, MCP servers, models, tools, credentials), cloud (resources,
+        data stores, accounts), Snowflake, and identity — bucketed by OCSF entity
+        type and by operator-facing group (ai / cloud / identity / secrets /
+        code). Findings (CVEs, misconfigurations) are excluded; use blast_radius
+        or exposure_paths for the finding queue.
+        """
+        return await _execute_tool_async(
+            "inventory_summary",
+            inventory_summary_impl,
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            _truncate_response=_truncate_response,
+        )
+
+    @mcp.tool(annotations=_READ_ONLY, title="Asset Inventory List")
+    async def inventory_list(
+        tenant_id: Annotated[str, Field(description="Tenant scope for the snapshot. Defaults to 'default'.")] = "default",
+        type: Annotated[
+            str | None,
+            Field(description="Comma-separated asset entity types to include, e.g. 'agent,cloud_resource'. Finding types are rejected."),
+        ] = None,
+        search: Annotated[str | None, Field(description="Free-text search over asset name / label / attributes.")] = None,
+        environment: Annotated[str | None, Field(description="Filter by environment facet, e.g. 'production'.")] = None,
+        provider: Annotated[str | None, Field(description="Filter by provider facet, e.g. 'aws', 'snowflake'.")] = None,
+        source: Annotated[str | None, Field(description="Filter by data-source / provenance facet.")] = None,
+        min_severity: Annotated[
+            str | None, Field(description="Minimum severity floor for included assets: critical / high / medium / low.")
+        ] = None,
+        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+        cursor: Annotated[str | None, Field(description="Opaque keyset cursor from a previous page's pagination.next_cursor.")] = None,
+        offset: Annotated[int, Field(ge=0, description="Pagination offset for non-cursor paging.")] = 0,
+        limit: Annotated[int, Field(ge=1, le=200, description="Maximum asset rows to return (1-200).")] = 50,
+    ) -> str:
+        """Return a filtered, paginated page of inventory asset rows.
+
+        ``type`` / ``search`` / ``min_severity`` are pushed into the graph store;
+        the ``environment`` / ``provider`` / ``source`` facets are matched with a
+        bounded keyset refill loop so a filtered page is never silently truncated.
+        Page deep with the returned ``pagination.next_cursor``. Findings never
+        appear in the list.
+        """
+        return await _execute_tool_async(
+            "inventory_list",
+            inventory_list_impl,
+            tenant_id=tenant_id,
+            type=type,
+            search=search,
+            environment=environment,
+            provider=provider,
+            source=source,
+            min_severity=min_severity,
+            scan_id=scan_id,
+            cursor=cursor,
+            offset=offset,
+            limit=limit,
+            _truncate_response=_truncate_response,
+        )
+
+    @mcp.tool(annotations=_READ_ONLY, title="Asset Inventory Detail")
+    async def inventory_asset(
+        asset_id: Annotated[str, Field(description="Graph node ID of the asset to inspect, e.g. 'cloud_resource:ec2' or 'agent:a'.")],
+        tenant_id: Annotated[str, Field(description="Tenant scope for the snapshot. Defaults to 'default'.")] = "default",
+        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+    ) -> str:
+        """Return one asset's attributes, relationships, and blast-radius impact.
+
+        Reuses the graph store's node context so an agent gets the same config,
+        inbound/outbound edges, neighbors, sources, and impact the dashboard
+        drawer renders. Returns a clean not-found error when the asset id is not
+        present in the tenant's snapshot.
+        """
+        return await _execute_tool_async(
+            "inventory_asset",
+            inventory_asset_impl,
+            asset_id=asset_id,
+            tenant_id=tenant_id,
+            scan_id=scan_id,
             _truncate_response=_truncate_response,
         )
 

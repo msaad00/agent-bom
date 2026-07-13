@@ -906,7 +906,7 @@ def architecture(theme_name: str) -> str:
     platform_items = [
         ("api", "REST API", "283 ops"),
         ("gate", "Gateway", "runtime"),
-        ("mcp", "MCP server", "70 tools"),
+        ("mcp", "MCP server", "73 tools"),
         ("fleet", "Fleet jobs", "Helm·EKS"),
     ]
     people = [("cli", "CLI"), ("ui", "Web UI")]

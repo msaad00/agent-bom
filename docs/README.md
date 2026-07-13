@@ -58,7 +58,7 @@ Two hubs cover the clustered material — start at the hub, then follow it to th
 
 ## AI / agent developers (MCP · clients · tools)
 
-- [`MCP_SERVER.md`](MCP_SERVER.md) — run the MCP server, 70 tools
+- [`MCP_SERVER.md`](MCP_SERVER.md) — run the MCP server, 73 tools
 - [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md) — connect MCP clients
 - [`PYTHON_API.md`](PYTHON_API.md) — Python control-plane client
 - [`PLUGIN_ENTRYPOINTS.md`](PLUGIN_ENTRYPOINTS.md) — opt-in plugin entry-point loader and author contract

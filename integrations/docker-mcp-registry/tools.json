@@ -317,6 +317,40 @@
     ]
   },
   {
+    "name": "inventory_summary",
+    "description": "Summarize unified tenant-scoped inventory counts by asset type and source group.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope (default: default)"},
+      {"name": "scan_id", "type": "string", "desc": "Optional graph snapshot scan id"}
+    ]
+  },
+  {
+    "name": "inventory_list",
+    "description": "List and filter paginated assets from the unified tenant-scoped inventory.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope (default: default)"},
+      {"name": "type", "type": "string", "desc": "Optional asset type filter"},
+      {"name": "search", "type": "string", "desc": "Optional text search"},
+      {"name": "environment", "type": "string", "desc": "Optional environment filter"},
+      {"name": "provider", "type": "string", "desc": "Optional provider filter"},
+      {"name": "source", "type": "string", "desc": "Optional source filter"},
+      {"name": "min_severity", "type": "string", "desc": "Optional minimum severity filter"},
+      {"name": "scan_id", "type": "string", "desc": "Optional graph snapshot scan id"},
+      {"name": "cursor", "type": "string", "desc": "Optional keyset pagination cursor"},
+      {"name": "offset", "type": "integer", "desc": "Pagination offset (default: 0)"},
+      {"name": "limit", "type": "integer", "desc": "Maximum assets to return (default: 50)"}
+    ]
+  },
+  {
+    "name": "inventory_asset",
+    "description": "Get one asset with relationships, neighbors, sources, and blast-radius impact.",
+    "arguments": [
+      {"name": "asset_id", "type": "string", "desc": "Asset identifier"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope (default: default)"},
+      {"name": "scan_id", "type": "string", "desc": "Optional graph snapshot scan id"}
+    ]
+  },
+  {
     "name": "where",
     "description": "Show all MCP discovery paths and which config files exist on this system.",
     "arguments": []

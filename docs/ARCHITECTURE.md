@@ -443,7 +443,7 @@ graph TB
 | Output | `src/agent_bom/output/__init__.py` | JSON, CycloneDX, SARIF, SPDX, console |
 | Policy | `src/agent_bom/policy.py` | Policy-as-code engine (17 conditions) |
 | Proxy | `src/agent_bom/proxy.py` | Runtime MCP proxy (7 inline detectors) |
-| MCP Server | `src/agent_bom/mcp_server*.py` | FastMCP server (70 tools across core, operator, runtime-catalog, and specialized modules) |
+| MCP Server | `src/agent_bom/mcp_server*.py` | FastMCP server (73 tools across core, operator, runtime-catalog, and specialized modules) |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, ClickHouse estate inventory + CIS posture |
 | Cloud side-scan | `src/agent_bom/cloud/side_scan.py`, `src/agent_bom/cloud/side_scan_targets.py` | Agentless workload side-scan (CWPP) — AWS EBS CLI executor with in-account snapshot/volume cleanup; Azure Managed Disk and GCP Persistent Disk targets share the same bounded lifecycle contract and graph-visible workload-disk model |
 | Registry sweep | `src/agent_bom/cloud/registry_sweep.py` | Registry-wide image enumeration + scan (ECR/ACR/GAR), digest-deduped, capped |

@@ -65,6 +65,7 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.canonical_ids import canonical_finding_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.security import sanitize_error
@@ -422,6 +423,127 @@ def _finding_key(finding: dict[str, Any]) -> str:
     return f"{vuln_id}:{package}"
 
 
+def _row_vuln_id(finding: dict[str, Any]) -> str:
+    """Return the CVE/advisory identifier for a finding, source-agnostic.
+
+    The unified stream carries it under ``cve_id`` while the blast-radius and
+    package-vulnerability representations carry the same value under
+    ``vulnerability_id`` — normalizing here lets the three collapse together.
+    """
+    return str(finding.get("cve_id") or finding.get("vulnerability_id") or "").strip()
+
+
+def _package_base_name(finding: dict[str, Any]) -> str:
+    """Return the bare package name (no version) shared across representations.
+
+    Blast-radius rows carry ``pkg@version`` while package-vulnerability rows
+    carry a bare ``package`` + separate ``package_version``; the unified stream
+    encodes it only in the ``"CVE-…: pkg@version"`` title. Strip all three to a
+    common lowercase base so the same vuln+package folds to one canonical group.
+    """
+    package = str(finding.get("package") or finding.get("package_name") or "").strip()
+    if not package:
+        title = str(finding.get("title") or "")
+        if ": " in title:
+            package = title.split(": ", 1)[1].strip()
+    if "@" in package:
+        package = package.split("@", 1)[0]
+    return package.strip().lower()
+
+
+def _canonical_group_key(finding: dict[str, Any]) -> str:
+    """Collapse the three per-CVE representations onto one grouping key.
+
+    Findings that carry a CVE/advisory id group by ``(vuln_id, package_base)``
+    so the ``MCP_SCAN`` (unified), ``blast_radius`` and ``package_vulnerability``
+    rows for the same vulnerability merge into a single list row. Non-CVE
+    findings (posture, malicious-package, etc.) fall back to their stable
+    identity so distinct findings stay distinct.
+    """
+    vuln = _row_vuln_id(finding)
+    if vuln:
+        return f"vuln:{vuln.lower()}:{_package_base_name(finding)}"
+    return f"id:{_finding_identity(finding)}"
+
+
+_EMPTY_FIELD_VALUES: tuple[Any, ...] = (None, "", [], {})
+
+# Descriptive/structural fields safe to backfill from the supplementary
+# (blast-radius / package-vulnerability) representations onto the authoritative
+# unified finding. Reachability and VEX verdicts are deliberately excluded: the
+# unified stream is the source of truth for those and must not be overridden by
+# a coarser blast-radius projection (see the unified-stream-wins contract).
+_SUPPLEMENTARY_BACKFILL_FIELDS: tuple[str, ...] = (
+    "package",
+    "package_name",
+    "package_version",
+    "ecosystem",
+    "summary",
+    "description",
+    "cvss_score",
+    "cvss_vector",
+    "attack_vector",
+    "attack_complexity",
+    "privileges_required",
+    "user_interaction",
+    "network_exploitable",
+    "references",
+    "fixed_version",
+    "epss_score",
+    "affected_agents",
+    "affected_servers",
+    "exposed_credentials",
+    "exposed_tools",
+    "phantom_tools",
+)
+
+
+def _backfill_supplementary_fields(base: dict[str, Any], incoming: dict[str, Any]) -> None:
+    """Fill only empty descriptive fields on ``base`` from ``incoming``.
+
+    Never overrides a value the authoritative row already carries, so the
+    unified finding's identifiers and reachability stay intact while
+    package/CVE metadata from the supplementary representations is preserved.
+    """
+    for field in _SUPPLEMENTARY_BACKFILL_FIELDS:
+        value = incoming.get(field)
+        if value in _EMPTY_FIELD_VALUES:
+            continue
+        if base.get(field) in _EMPTY_FIELD_VALUES:
+            base[field] = value
+
+
+def _normalize_finding_identifiers(finding: dict[str, Any]) -> dict[str, Any]:
+    """Guarantee every list row carries ``cve_id``/``title``/``finding_type``.
+
+    Blast-radius and package-vulnerability rows carry the identifier only under
+    ``vulnerability_id`` and omit ``title``/``finding_type``; normalize those so
+    no row surfaces null identifiers regardless of which representation seeded it.
+    """
+    vuln = finding.get("cve_id") or finding.get("vulnerability_id")
+    if vuln:
+        if not finding.get("cve_id"):
+            finding["cve_id"] = vuln
+        if not finding.get("vulnerability_id"):
+            finding["vulnerability_id"] = vuln
+    if not finding.get("title"):
+        package = finding.get("package") or finding.get("package_name") or ""
+        # Never fall back to summary/description here: those are replay-only,
+        # redacted-on-read fields, and the title is not redacted — deriving it
+        # from them would leak sensitive free-text past _redact_finding_page.
+        if vuln and package:
+            finding["title"] = f"{vuln}: {package}"
+        elif vuln:
+            finding["title"] = str(vuln)
+        elif package:
+            finding["title"] = f"Vulnerability in {package}"
+        else:
+            finding["title"] = str(finding.get("finding_type") or "Finding")
+    if not finding.get("finding_type"):
+        finding["finding_type"] = "CVE" if vuln else "VULNERABILITY"
+    return finding
+
+
 def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, Any]:
     vulnerability_id = item.get("vulnerability_id") or item.get("id") or ""
     package = item.get("package") or item.get("package_name") or ""
@@ -648,8 +770,6 @@ def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit
 
 def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     result = job.result or {}
-    findings: list[dict[str, Any]] = []
-    seen: set[str] = set()
     reach = _effective_reach_lookup(job)
     from agent_bom.finding_runtime_evidence import (
         attach_runtime_evidence_to_finding,
@@ -685,35 +805,44 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         row.setdefault("framework_tags", compliance_tags_from_finding_row(row))
         return attach_runtime_evidence_to_finding(row, runtime_index, incidents=incidents)
 
+    # Collapse the three per-vulnerability representations (unified ``findings``
+    # stream, ``blast_radius`` projection, nested ``package_vulnerability``) onto
+    # one row per canonical id. The unified stream is processed first and stays
+    # authoritative; later representations only backfill descriptive fields the
+    # unified row is missing (package/CVE metadata) — never reachability or VEX,
+    # so the unified-stream-wins contract holds. This keeps ``/v1/findings`` in
+    # step with the overview count instead of emitting one row per representation.
+    grouped: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+
+    def _absorb(row: dict[str, Any]) -> None:
+        key = _canonical_group_key(row)
+        existing = grouped.get(key)
+        if existing is None:
+            grouped[key] = row
+            order.append(key)
+            return
+        _backfill_supplementary_fields(existing, row)
+
     for item in result.get("findings", []) or []:
         if not isinstance(item, dict):
             continue
         row = dict(item)
         row.setdefault("scan_id", job.job_id)
         row.setdefault("scan_sources", _scan_source_labels(job))
-        key = _finding_key(row)
-        if key in seen:
-            continue
-        seen.add(key)
-        findings.append(_attach_reach(row))
+        _absorb(_attach_reach(row))
 
     for item in result.get("blast_radius", []) or result.get("blast_radii", []) or []:
         if not isinstance(item, dict):
             continue
-        row = _finding_from_blast_radius(item, job)
-        key = _finding_key(row)
-        if key in seen:
-            continue
-        seen.add(key)
-        findings.append(_attach_reach(row))
+        _absorb(_attach_reach(_finding_from_blast_radius(item, job)))
 
     for row in _iter_package_findings(job):
-        key = _finding_key(row)
-        if key in seen:
-            continue
-        seen.add(key)
-        findings.append(_attach_reach(row))
+        _absorb(_attach_reach(row))
 
+    findings = [grouped[key] for key in order]
+    for row in findings:
+        _normalize_finding_identifiers(row)
     return findings
 
 
@@ -1513,18 +1642,34 @@ async def list_findings(
     ``anyio.to_thread.run_sync`` propagates the current context, and the tenant
     scope is read from ``request.state`` and passed explicitly to the store, so
     behavior is identical to running inline.
+
+    The read is additionally guarded by adaptive backpressure (the same shared
+    primitive the graph route uses): the in-memory default hub copies and
+    re-sorts the whole current-state table per request, so a burst of deep
+    ``?sort=cvss`` reads at scale can pile up worker threads and starve
+    ``/health`` and unrelated endpoints. Under genuine saturation the guard
+    sheds excess reads with ``429 + Retry-After`` instead of degrading every
+    route. Normal single-reader load never trips it.
     """
-    return await anyio.to_thread.run_sync(
-        _list_findings_impl,
-        request,
-        severity,
-        scan_id,
-        sort,
-        limit,
-        offset,
-        cursor,
-        approximate_total,
-    )
+    try:
+        async with adaptive_backpressure("findings"):
+            return await anyio.to_thread.run_sync(
+                _list_findings_impl,
+                request,
+                severity,
+                scan_id,
+                sort,
+                limit,
+                offset,
+                cursor,
+                approximate_total,
+            )
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
 
 def _list_findings_impl(

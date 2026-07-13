@@ -121,7 +121,7 @@ class TestAgentBom:
         assert "quick-audit" in r.output
         assert "gateway-fleet-live-demo" in r.output
         assert "full tool catalog" in r.output
-        assert "Exposes 70 security tools via MCP protocol" in r.output
+        assert "Exposes 73 security tools via MCP protocol" in r.output
         assert "organized behind 8 workflow" in r.output
 
     def test_secrets_help_has_common_output_flags(self):

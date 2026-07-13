@@ -144,21 +144,22 @@ def test_openclaw_registry_has_real_tools():
         assert real_tool in tools, f"Missing real tool: {real_tool}"
 
 
-def test_openclaw_registry_has_real_cves():
-    """Registry should list real CVEs from OpenClaw's GitHub Security Advisories."""
+def test_openclaw_registry_has_real_historical_cves():
+    """Registry should retain OpenClaw advisory history without claiming the latest release is vulnerable."""
     import json
     from pathlib import Path
 
     registry_path = Path(__file__).parent.parent / "src" / "agent_bom" / "mcp_registry.json"
     data = json.loads(registry_path.read_text())
     entry = data["servers"]["openclaw"]
-    known_cves = entry.get("known_cves", [])
+    historical_cves = entry.get("historical_cves", [])
     # Real CVEs from https://github.com/openclaw/openclaw/security/advisories
-    assert "CVE-2026-27001" in known_cves  # CWD path injection into LLM prompts (HIGH)
-    assert "CVE-2026-27002" in known_cves  # Docker container escape via bind mount (MEDIUM)
-    assert "CVE-2026-27487" in known_cves  # Shell injection in macOS keychain (HIGH)
-    assert "CVE-2026-26321" in known_cves  # Local file disclosure in Feishu extension (HIGH)
-    assert len(known_cves) >= 12
+    assert "CVE-2026-27001" in historical_cves  # CWD path injection into LLM prompts (HIGH)
+    assert "CVE-2026-27002" in historical_cves  # Docker container escape via bind mount (MEDIUM)
+    assert "CVE-2026-27487" in historical_cves  # Shell injection in macOS keychain (HIGH)
+    assert "CVE-2026-26321" in historical_cves  # Local file disclosure in Feishu extension (HIGH)
+    assert len(historical_cves) >= 12
+    assert entry.get("known_cves") == []
 
 
 def test_openclaw_registry_no_fake_cves():
@@ -168,10 +169,10 @@ def test_openclaw_registry_no_fake_cves():
 
     registry_path = Path(__file__).parent.parent / "src" / "agent_bom" / "mcp_registry.json"
     data = json.loads(registry_path.read_text())
-    known_cves = data["servers"]["openclaw"].get("known_cves", [])
+    historical_cves = data["servers"]["openclaw"].get("historical_cves", [])
     fake_cves = ["CVE-2026-25253", "CVE-2026-24764", "CVE-2026-26322", "CVE-2026-26324", "CVE-2026-26326", "CVE-2026-26327"]
     for fake in fake_cves:
-        assert fake not in known_cves, f"Fake CVE still present: {fake}"
+        assert fake not in historical_cves, f"Fake CVE still present: {fake}"
 
 
 def test_openclaw_registry_no_fake_packages():

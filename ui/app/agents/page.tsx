@@ -251,21 +251,21 @@ function AgentsList() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-          <p className="text-zinc-400 text-sm mt-1">
+          <p className="text-[color:var(--text-secondary)] text-sm mt-1">
             Discovered AI clients/hosts and background agents, with their MCP servers
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/agents/topology"
-            className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-[color:var(--surface-elevated)] hover:bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded-lg text-sm text-[color:var(--text-secondary)] transition-colors"
           >
             <Network className="w-4 h-4" />
             Agent mesh
           </Link>
           <Link
             href="/mesh"
-            className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-[color:var(--surface-elevated)] hover:bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded-lg text-sm text-[color:var(--text-secondary)] transition-colors"
           >
             <GitBranch className="w-4 h-4" />
             Mesh View
@@ -278,28 +278,28 @@ function AgentsList() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first value</p>
-              <h2 className="text-base font-semibold text-zinc-100">See MCP surface area before you deploy proxy</h2>
-              <p className="text-sm leading-6 text-zinc-400 max-w-3xl">
+              <h2 className="text-base font-semibold text-[color:var(--foreground)]">See MCP surface area before you deploy proxy</h2>
+              <p className="text-sm leading-6 text-[color:var(--text-secondary)] max-w-3xl">
                 This page is useful on discovery alone. It shows which MCP servers are configured, what transport they use,
                 how many tools they expose, and whether they carry env-backed credentials or risky server state. Proxy and gateway
                 add runtime enforcement later; they are not required for inventory visibility.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs lg:min-w-[280px]">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500">Remote MCPs</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)]">Remote MCPs</div>
                 <div className="mt-1 text-sm font-semibold text-blue-400">{remoteServers}</div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500">Servers with credentials</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)]">Servers with credentials</div>
                 <div className="mt-1 text-sm font-semibold text-yellow-400">{serversWithCredentials}</div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500">Blocked or risky</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)]">Blocked or risky</div>
                 <div className="mt-1 text-sm font-semibold text-rose-400">{blockedServers}</div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500">AI clients · background</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)]">AI clients · background</div>
                 <div className="mt-1 text-sm font-semibold text-emerald-400">
                   {agentClasses.client} · {agentClasses.background}
                 </div>
@@ -312,16 +312,16 @@ function AgentsList() {
       {!loading && agents.length > 0 && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search agents or agent type"
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:outline-none focus:border-[color:var(--border-strong)]"
             />
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-[color:var(--text-tertiary)]">
             {filteredConfigured.length} configured · {installedOnly.length} installed only
           </p>
         </div>
@@ -350,39 +350,39 @@ function AgentsList() {
       {/* Summary stats bar */}
       {!loading && agents.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-zinc-400 text-xs mb-1">
+          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg p-3">
+            <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)] text-xs mb-1">
               <Shield className="w-3 h-3" /> Agents
             </div>
-            <div className="text-lg font-semibold text-zinc-100">{agents.length}</div>
-            <div className="text-[10px] text-zinc-500 mt-0.5">
+            <div className="text-lg font-semibold text-[color:var(--foreground)]">{agents.length}</div>
+            <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5">
               {configured.length} configured{installedOnly.length > 0 ? `, ${installedOnly.length} not configured` : ""}
             </div>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-zinc-400 text-xs mb-1">
+          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg p-3">
+            <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)] text-xs mb-1">
               <Server className="w-3 h-3" /> Servers
             </div>
-            <div className="text-lg font-semibold text-zinc-100">{totalServers}</div>
-            <div className="text-[10px] text-zinc-500 mt-0.5">MCP server instances</div>
+            <div className="text-lg font-semibold text-[color:var(--foreground)]">{totalServers}</div>
+            <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5">MCP server instances</div>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-zinc-400 text-xs mb-1">
+          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg p-3">
+            <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)] text-xs mb-1">
               <Package className="w-3 h-3" /> Packages
             </div>
-            <div className="text-lg font-semibold text-zinc-100">{totalPackages}</div>
-            <div className="text-[10px] text-zinc-500 mt-0.5">
+            <div className="text-lg font-semibold text-[color:var(--foreground)]">{totalPackages}</div>
+            <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5">
               {Object.entries(ecosystems).map(([eco, count]) => `${eco}: ${count}`).join(", ") || "\u2014"}
             </div>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-zinc-400 text-xs mb-1">
+          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg p-3">
+            <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)] text-xs mb-1">
               <Key className="w-3 h-3" /> Credentials
             </div>
-            <div className={`text-lg font-semibold ${totalCredentials > 0 ? "text-orange-400" : "text-zinc-100"}`}>
+            <div className={`text-lg font-semibold ${totalCredentials > 0 ? "text-orange-400" : "text-[color:var(--foreground)]"}`}>
               {totalCredentials}
             </div>
-            <div className="text-[10px] text-zinc-500 mt-0.5">
+            <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5">
               {totalCredentials > 0 ? "Exposed env vars" : "None detected"}
             </div>
           </div>
@@ -434,7 +434,7 @@ function AgentsList() {
               transform: `translateY(${virtualRow.start}px)`,
               paddingBottom: "16px",
             }}
-            className="bg-zinc-900 border border-zinc-800 rounded-xl p-5"
+            className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl p-5"
           >
             <button
               type="button"
@@ -443,27 +443,27 @@ function AgentsList() {
             >
               <div className="flex items-center gap-2">
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-zinc-500" />
+                  <ChevronDown className="w-4 h-4 text-[color:var(--text-tertiary)]" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-zinc-500" />
+                  <ChevronRight className="w-4 h-4 text-[color:var(--text-tertiary)]" />
                 )}
-                <h2 className="font-semibold text-zinc-100">{agent.name}</h2>
+                <h2 className="font-semibold text-[color:var(--foreground)]">{agent.name}</h2>
                 <span className="text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-400 rounded px-1.5 py-0.5">
                   configured
                 </span>
-                <span className="text-xs font-mono text-zinc-500">{agent.agent_type}</span>
+                <span className="text-xs font-mono text-[color:var(--text-tertiary)]">{agent.agent_type}</span>
                 {agent.source && (
-                  <span className="text-xs text-zinc-600">{agent.source}</span>
+                  <span className="text-xs text-[color:var(--text-tertiary)]">{agent.source}</span>
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-400">
+                <span className="text-xs font-mono bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded px-2 py-1 text-[color:var(--text-secondary)]">
                   {agent.mcp_servers.length} server{agent.mcp_servers.length !== 1 ? "s" : ""}
                 </span>
                 <Link
                   href={`/agents?name=${encodeURIComponent(agent.name)}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="text-zinc-500 hover:text-emerald-400 transition-colors"
+                  className="text-[color:var(--text-tertiary)] hover:text-emerald-400 transition-colors"
                   title="View agent detail"
                 >
                   <ArrowRight className="w-4 h-4" />
@@ -480,14 +480,14 @@ function AgentsList() {
                       Asset discovery provenance
                     </div>
                     <DiscoveryProvenanceTags provenance={agent.discovery_provenance} />
-                    <div className="mt-2 grid gap-2 text-[11px] text-zinc-400 sm:grid-cols-2">
-                      {agent.discovery_provenance.source && <span>Source: <span className="text-zinc-300">{agent.discovery_provenance.source}</span></span>}
+                    <div className="mt-2 grid gap-2 text-[11px] text-[color:var(--text-secondary)] sm:grid-cols-2">
+                      {agent.discovery_provenance.source && <span>Source: <span className="text-[color:var(--text-secondary)]">{agent.discovery_provenance.source}</span></span>}
                       {agent.discovery_provenance.resource_name && (
-                        <span>Resource: <span className="text-zinc-300">{agent.discovery_provenance.resource_name}</span></span>
+                        <span>Resource: <span className="text-[color:var(--text-secondary)]">{agent.discovery_provenance.resource_name}</span></span>
                       )}
-                      {agent.discovery_provenance.location && <span>Location: <span className="text-zinc-300">{agent.discovery_provenance.location}</span></span>}
+                      {agent.discovery_provenance.location && <span>Location: <span className="text-[color:var(--text-secondary)]">{agent.discovery_provenance.location}</span></span>}
                       {agent.discovery_provenance.resource_id && (
-                        <span className="min-w-0 truncate">ID: <span className="font-mono text-zinc-300">{agent.discovery_provenance.resource_id}</span></span>
+                        <span className="min-w-0 truncate">ID: <span className="font-mono text-[color:var(--text-secondary)]">{agent.discovery_provenance.resource_id}</span></span>
                       )}
                     </div>
                   </div>
@@ -496,10 +496,10 @@ function AgentsList() {
                   <DiscoveryEnvelopeCard envelope={agent.discovery_envelope} />
                 ) : null}
                 {agent.mcp_servers?.map((srv, j) => (
-                  <div key={j} className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
+                  <div key={j} className="bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-semibold text-zinc-200">{srv.name}</span>
+                        <span className="text-xs font-mono font-semibold text-[color:var(--foreground)]">{srv.name}</span>
                         {srv.security_blocked && (
                           <span className="rounded border border-rose-800 bg-rose-950 px-1.5 py-0.5 text-[10px] font-mono text-rose-300">
                             blocked
@@ -513,7 +513,7 @@ function AgentsList() {
                       </div>
                       <div className="flex items-center gap-2">
                         {srv.transport && (
-                          <span className="text-xs text-zinc-600 font-mono">{srv.transport}</span>
+                          <span className="text-xs text-[color:var(--text-tertiary)] font-mono">{srv.transport}</span>
                         )}
                       </div>
                     </div>
@@ -521,12 +521,12 @@ function AgentsList() {
                     <DiscoveryProvenanceTags provenance={srv.discovery_provenance} />
 
                     {srv.command && (
-                      <div className="text-xs font-mono text-zinc-500 mb-2">
+                      <div className="text-xs font-mono text-[color:var(--text-tertiary)] mb-2">
                         $ {srv.command} {srv.env ? Object.keys(srv.env).length > 0 ? `[${Object.keys(srv.env).length} env vars]` : "" : ""}
                       </div>
                     )}
 
-                    <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
+                    <div className="flex flex-wrap gap-3 text-xs text-[color:var(--text-tertiary)]">
                       {srv.packages.length > 0 && (
                         <span className="flex items-center gap-1">
                           <Package className="w-3 h-3" />
@@ -589,7 +589,7 @@ function AgentsList() {
       {/* Installed but not configured — virtualized for parity with the configured list */}
       {installedOnly.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-widest flex items-center gap-2">
             <AlertCircle className="w-3.5 h-3.5 text-yellow-500" />
             Installed but not configured
           </h2>
@@ -617,26 +617,26 @@ function AgentsList() {
                     transform: `translateY(${virtualRow.start}px)`,
                     paddingBottom: "12px",
                   }}
-                  className="bg-zinc-900/50 border border-dashed border-zinc-800 rounded-xl p-4"
+                  className="bg-[color:var(--surface-muted)]/50 border border-dashed border-[color:var(--border-subtle)] rounded-xl p-4"
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-zinc-300">{agent.name}</h3>
+                        <h3 className="font-semibold text-[color:var(--text-secondary)]">{agent.name}</h3>
                         <span className="text-[10px] font-mono bg-yellow-950 border border-yellow-800 text-yellow-400 rounded px-1.5 py-0.5">
                           not configured
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs font-mono text-zinc-500">{agent.agent_type}</span>
+                        <span className="text-xs font-mono text-[color:var(--text-tertiary)]">{agent.agent_type}</span>
                         {agent.config_path && (
-                          <span className="text-xs text-zinc-600 font-mono">{agent.config_path}</span>
+                          <span className="text-xs text-[color:var(--text-tertiary)] font-mono">{agent.config_path}</span>
                         )}
                       </div>
                     </div>
-                    <span className="text-xs text-zinc-600">0 servers</span>
+                    <span className="text-xs text-[color:var(--text-tertiary)]">0 servers</span>
                   </div>
-                  <p className="text-xs text-zinc-600 mt-2">
+                  <p className="text-xs text-[color:var(--text-tertiary)] mt-2">
                     Binary detected on PATH. Run setup to configure MCP servers.
                   </p>
                 </div>
@@ -664,8 +664,8 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
-      <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-1">
+    <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl p-3">
+      <div className="flex items-center gap-1.5 text-xs text-[color:var(--text-tertiary)] mb-1">
         <Icon className={`w-3.5 h-3.5 ${color}`} />
         {label}
       </div>
@@ -692,16 +692,16 @@ function AgentDetail({ agentName }: { agentName: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+      <div className="min-h-screen bg-[color:var(--surface)] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[color:var(--text-tertiary)]" />
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-zinc-950 p-8">
-        <Link href="/agents" className="text-zinc-400 hover:text-zinc-200 flex items-center gap-1 mb-6">
+      <div className="min-h-screen bg-[color:var(--surface)] p-8">
+        <Link href="/agents" className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 mb-6">
           <ArrowLeft className="w-4 h-4" /> Back to agents
         </Link>
         <div className="text-red-400 bg-red-950 border border-red-800 rounded-lg p-4">
@@ -729,11 +729,11 @@ function AgentDetail({ agentName }: { agentName: string }) {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-[color:var(--surface)] text-[color:var(--foreground)]">
       {/* Header */}
-      <div className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-10">
+      <div className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <Link href="/agents" className="text-zinc-500 hover:text-zinc-300 flex items-center gap-1 text-sm mb-2">
+          <Link href="/agents" className="text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)] flex items-center gap-1 text-sm mb-2">
             <ArrowLeft className="w-3.5 h-3.5" /> All Agents
           </Link>
           <div className="flex items-center justify-between">
@@ -742,8 +742,8 @@ function AgentDetail({ agentName }: { agentName: string }) {
                 <ShieldAlert className="w-6 h-6 text-emerald-400" />
                 {agent.name}
               </h1>
-              <div className="flex items-center gap-3 mt-1 text-sm text-zinc-500">
-                <span className="bg-zinc-800 px-2 py-0.5 rounded text-xs">
+              <div className="flex items-center gap-3 mt-1 text-sm text-[color:var(--text-tertiary)]">
+                <span className="bg-[color:var(--surface-elevated)] px-2 py-0.5 rounded text-xs">
                   {agent.agent_type}
                 </span>
                 {agent.config_path && (
@@ -769,46 +769,46 @@ function AgentDetail({ agentName }: { agentName: string }) {
           <div className="rounded-xl border border-sky-900/60 bg-sky-950/20 p-4">
             <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-sky-400">Observed state</p>
             <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500 text-xs">Lifecycle state</div>
-                <div className="mt-1 text-sm font-semibold text-zinc-100">{fleet.lifecycle_state}</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)] text-xs">Lifecycle state</div>
+                <div className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{fleet.lifecycle_state}</div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500 text-xs">Trust score</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)] text-xs">Trust score</div>
                 <div className="mt-1 text-sm font-semibold text-emerald-400">{fleet.trust_score.toFixed(1)}</div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500 text-xs">Last discovery</div>
-                <div className="mt-1 text-sm font-semibold text-zinc-100">{fleet.last_discovery || "not synced yet"}</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)] text-xs">Last discovery</div>
+                <div className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{fleet.last_discovery || "not synced yet"}</div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500 text-xs">Last scan</div>
-                <div className="mt-1 text-sm font-semibold text-zinc-100">{fleet.last_scan || "not scanned yet"}</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)] text-xs">Last scan</div>
+                <div className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{fleet.last_scan || "not scanned yet"}</div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500 text-xs">Updated</div>
-                <div className="mt-1 text-sm font-semibold text-zinc-100">{fleet.updated_at || "unknown"}</div>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+                <div className="text-[color:var(--text-tertiary)] text-xs">Updated</div>
+                <div className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{fleet.updated_at || "unknown"}</div>
               </div>
             </div>
           </div>
         )}
         <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-4">
           <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first view</p>
-          <p className="mt-1 text-sm leading-6 text-zinc-400">
+          <p className="mt-1 text-sm leading-6 text-[color:var(--text-secondary)]">
             This detail page is valuable before runtime proxy rollout. It shows the granted MCP surface area for
-            <span className="mx-1 font-semibold text-zinc-200">{agent.name}</span>
+            <span className="mx-1 font-semibold text-[color:var(--foreground)]">{agent.name}</span>
             using discovery and scan data alone: server transport, exposed tools, env-backed credentials, and attached package risk.
           </p>
         </div>
         {/* Summary Stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard icon={Server} label="MCP Servers" value={summary.total_servers} color="text-blue-400" />
-          <StatCard icon={Package} label="Packages" value={summary.total_packages} color="text-zinc-400" />
+          <StatCard icon={Package} label="Packages" value={summary.total_packages} color="text-[color:var(--text-secondary)]" />
           <StatCard icon={Wrench} label="Tools" value={summary.total_tools} color="text-purple-400" />
           <StatCard icon={KeyRound} label="Credentials" value={summary.total_credentials} color="text-yellow-400" />
           <StatCard icon={Bug} label="Vulnerabilities" value={summary.total_vulnerabilities} color="text-red-400" />
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
-            <div className="text-xs text-zinc-500 mb-1">Severity</div>
+          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl p-3">
+            <div className="text-xs text-[color:var(--text-tertiary)] mb-1">Severity</div>
             <div className="flex items-center gap-2 text-xs">
               {sev.critical > 0 && <span className="text-red-400 font-bold">{sev.critical}C</span>}
               {sev.high > 0 && <span className="text-orange-400 font-bold">{sev.high}H</span>}
@@ -852,15 +852,15 @@ function AgentDetail({ agentName }: { agentName: string }) {
                 0
               );
               return (
-                <div key={srv.name} className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                <div key={srv.name} className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl overflow-hidden">
                   <button
                     onClick={() => toggleServer(srv.name)}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/50 transition-colors"
+                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-[color:var(--surface-elevated)]/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      {isExpanded ? <ChevronDown className="w-4 h-4 text-zinc-500" /> : <ChevronRight className="w-4 h-4 text-zinc-500" />}
+                      {isExpanded ? <ChevronDown className="w-4 h-4 text-[color:var(--text-tertiary)]" /> : <ChevronRight className="w-4 h-4 text-[color:var(--text-tertiary)]" />}
                       <span className="font-medium">{srv.name}</span>
-                      <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded">
+                      <span className="text-xs bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] px-2 py-0.5 rounded">
                         {srv.transport || "stdio"}
                       </span>
                       {srv.security_blocked && (
@@ -887,7 +887,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                         </span>
                       ))}
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-zinc-500">
+                    <div className="flex items-center gap-3 text-xs text-[color:var(--text-tertiary)]">
                       <span>{srvPkgs.length} pkgs</span>
                       <span>{srvTools.length} tools</span>
                       {vulnCount > 0 && (
@@ -896,54 +896,54 @@ function AgentDetail({ agentName }: { agentName: string }) {
                     </div>
                   </button>
                   {isExpanded && (
-                    <div className="border-t border-zinc-800 px-4 py-3 space-y-3">
+                    <div className="border-t border-[color:var(--border-subtle)] px-4 py-3 space-y-3">
                       <div className="grid gap-3 md:grid-cols-2">
                         {srv.command && (
-                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                          <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
+                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
                               <TerminalSquare className="h-3.5 w-3.5" />
                               Command
                             </div>
-                            <div className="font-mono text-xs text-zinc-300 break-all">
+                            <div className="font-mono text-xs text-[color:var(--text-secondary)] break-all">
                               {safeCommandLine(srv.command, srv.args)}
                             </div>
                           </div>
                         )}
                         {srv.url && (
-                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                          <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
+                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
                               <Link2 className="h-3.5 w-3.5" />
                               Remote URL
                             </div>
-                            <div className="font-mono text-xs text-zinc-300 break-all">{safeDisplayUrl(srv.url)}</div>
+                            <div className="font-mono text-xs text-[color:var(--text-secondary)] break-all">{safeDisplayUrl(srv.url)}</div>
                           </div>
                         )}
                       </div>
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         {srv.config_path && (
-                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Config path</div>
-                            <div className="font-mono text-xs text-zinc-300 break-all">{srv.config_path}</div>
+                          <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Config path</div>
+                            <div className="font-mono text-xs text-[color:var(--text-secondary)] break-all">{srv.config_path}</div>
                           </div>
                         )}
                         {srv.auth_mode && (
-                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Auth mode</div>
-                            <div className="text-xs text-zinc-300">{srv.auth_mode}</div>
+                          <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Auth mode</div>
+                            <div className="text-xs text-[color:var(--text-secondary)]">{srv.auth_mode}</div>
                           </div>
                         )}
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                        <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
+                          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
                             <Clock3 className="h-3.5 w-3.5" />
                             Discovery context
                           </div>
-                          <div className="text-xs text-zinc-300">
+                          <div className="text-xs text-[color:var(--text-secondary)]">
                             {fleet?.last_discovery ? `Seen in fleet sync at ${fleet.last_discovery}` : "Discovery-only, not synced through fleet yet"}
                           </div>
                         </div>
                         {srv.provenance && (
-                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Provenance</div>
+                          <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Provenance</div>
                             <div className="flex flex-wrap gap-1.5">
                               {srv.provenance.observed_via.map((source) => (
                                 <span
@@ -954,12 +954,12 @@ function AgentDetail({ agentName }: { agentName: string }) {
                                 </span>
                               ))}
                             </div>
-                            <div className="mt-2 space-y-1 text-[11px] text-zinc-400">
-                              {srv.provenance.last_seen && <div>Last seen: <span className="text-zinc-300">{srv.provenance.last_seen}</span></div>}
-                              {srv.provenance.last_synced && <div>Last synced: <span className="text-zinc-300">{srv.provenance.last_synced}</span></div>}
+                            <div className="mt-2 space-y-1 text-[11px] text-[color:var(--text-secondary)]">
+                              {srv.provenance.last_seen && <div>Last seen: <span className="text-[color:var(--text-secondary)]">{srv.provenance.last_seen}</span></div>}
+                              {srv.provenance.last_synced && <div>Last synced: <span className="text-[color:var(--text-secondary)]">{srv.provenance.last_synced}</span></div>}
                               {srv.provenance.source_agents.length > 0 && (
                                 <div>
-                                  Gateway sources: <span className="text-zinc-300">{srv.provenance.source_agents.join(", ")}</span>
+                                  Gateway sources: <span className="text-[color:var(--text-secondary)]">{srv.provenance.source_agents.join(", ")}</span>
                                 </div>
                               )}
                             </div>
@@ -1008,19 +1008,19 @@ function AgentDetail({ agentName }: { agentName: string }) {
                                         {entry.confidence}
                                       </span>
                                       {entry.source_type && (
-                                        <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase text-zinc-400">
+                                        <span className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-[10px] uppercase text-[color:var(--text-secondary)]">
                                           {entry.source_type}
                                         </span>
                                       )}
                                       {entry.last_verified && (
-                                        <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                                        <span className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)]">
                                           Verified {entry.last_verified}
                                         </span>
                                       )}
                                     </div>
                                   </div>
                                 </div>
-                                <div className="mt-2 text-xs text-zinc-300">Recommendation: {entry.default_recommendation}</div>
+                                <div className="mt-2 text-xs text-[color:var(--text-secondary)]">Recommendation: {entry.default_recommendation}</div>
                                 {(entry.remediation_actions?.length ?? 0) > 0 && (
                                   <div className="mt-2 flex flex-wrap gap-1.5">
                                     {entry.remediation_actions?.map((action) => (
@@ -1075,15 +1075,15 @@ function AgentDetail({ agentName }: { agentName: string }) {
                       {/* Packages */}
                       {srvPkgs.length > 0 && (
                         <div>
-                          <h4 className="text-xs font-semibold text-zinc-400 mb-1">Packages</h4>
+                          <h4 className="text-xs font-semibold text-[color:var(--text-secondary)] mb-1">Packages</h4>
                           <div className="space-y-1">
                             {srvPkgs?.map((pkg) => (
                               <div key={`${pkg.name}@${pkg.version}`} className="flex items-center justify-between text-xs">
                                 <span className="font-mono">
                                   {pkg.name}
-                                  <span className="text-zinc-500">@{pkg.version}</span>
+                                  <span className="text-[color:var(--text-tertiary)]">@{pkg.version}</span>
                                 </span>
-                                <span className="text-zinc-600">{pkg.ecosystem}</span>
+                                <span className="text-[color:var(--text-tertiary)]">{pkg.ecosystem}</span>
                               </div>
                             ))}
                           </div>
@@ -1105,19 +1105,19 @@ function AgentDetail({ agentName }: { agentName: string }) {
             </h2>
             <div className="space-y-2">
               {blast_radius?.map((br, i) => (
-                <div key={`${br.vulnerability_id}-${i}`} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div key={`${br.vulnerability_id}-${i}`} className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <SeverityBadge severity={br.severity} />
                       <span className="font-mono font-medium">{br.vulnerability_id}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-zinc-500">
+                    <div className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">
                       {br.cvss_score && <span>CVSS {br.cvss_score}</span>}
                       {br.is_kev && <span className="text-red-400 font-bold">KEV</span>}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-3 text-xs text-zinc-400">
-                    {br.package && <span>Package: <span className="text-zinc-300">{br.package}</span></span>}
+                  <div className="flex flex-wrap gap-3 text-xs text-[color:var(--text-secondary)]">
+                    {br.package && <span>Package: <span className="text-[color:var(--text-secondary)]">{br.package}</span></span>}
                     {br.exposed_credentials.length > 0 && (
                       <span className="text-yellow-400">{br.exposed_credentials.length} credentials exposed</span>
                     )}
@@ -1161,7 +1161,7 @@ const NODE_ICONS: Record<string, React.ElementType> = {
 
 const NODE_COLORS: Record<string, string> = {
   cve: "border-red-600 bg-red-950/80",
-  package: "border-zinc-600 bg-zinc-900/80",
+  package: "border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]/80",
   server: "border-blue-600 bg-blue-950/80",
   agent: "border-emerald-600 bg-emerald-950/80",
   credential: "border-yellow-600 bg-yellow-950/80",
@@ -1195,21 +1195,21 @@ function LifecycleNode({ data }: { data: AttackFlowNodeData }) {
 
   return (
     <div className={`rounded-lg border-2 px-3 py-2 min-w-[140px] max-w-[200px] shadow-lg ${border}`}>
-      <Handle type="target" position={Position.Left} className="!bg-zinc-500 !w-2 !h-2" />
+      <Handle type="target" position={Position.Left} className="!bg-[color:var(--text-tertiary)] !w-2 !h-2" />
       <div className="flex items-center gap-2">
-        <Icon className="w-3.5 h-3.5 shrink-0 text-zinc-300" />
-        <span className="text-xs font-semibold text-zinc-100 truncate">{data.label}</span>
+        <Icon className="w-3.5 h-3.5 shrink-0 text-[color:var(--text-secondary)]" />
+        <span className="text-xs font-semibold text-[color:var(--foreground)] truncate">{data.label}</span>
       </div>
       {data.version && (
-        <div className="text-[10px] text-zinc-500 mt-0.5 font-mono">{data.version}</div>
+        <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5 font-mono">{data.version}</div>
       )}
       {data.severity && (
         <div className="mt-1"><SeverityBadge severity={data.severity} /></div>
       )}
       {data.description && (
-        <div className="text-[10px] text-zinc-500 mt-0.5 truncate">{data.description}</div>
+        <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5 truncate">{data.description}</div>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-zinc-500 !w-2 !h-2" />
+      <Handle type="source" position={Position.Right} className="!bg-[color:var(--text-tertiary)] !w-2 !h-2" />
     </div>
   );
 }
@@ -1221,7 +1221,7 @@ const nodeTypes = { lifecycleNode: LifecycleNode };
 function StatsBar({ stats }: { stats: Record<string, number> }) {
   const items = [
     { label: "Servers", value: stats.total_servers ?? 0, color: "text-blue-400" },
-    { label: "Packages", value: stats.total_packages ?? 0, color: "text-zinc-400" },
+    { label: "Packages", value: stats.total_packages ?? 0, color: "text-[color:var(--text-secondary)]" },
     { label: "Tools", value: stats.total_tools ?? 0, color: "text-purple-400" },
     { label: "Credentials", value: stats.total_credentials ?? 0, color: "text-yellow-400" },
     { label: "Vulns", value: stats.total_vulnerabilities ?? 0, color: "text-red-400" },
@@ -1231,7 +1231,7 @@ function StatsBar({ stats }: { stats: Record<string, number> }) {
       {items?.map((s) => (
         <div key={s.label} className="flex items-center gap-1">
           <span className={`font-bold ${s.color}`}>{s.value}</span>
-          <span className="text-zinc-500">{s.label}</span>
+          <span className="text-[color:var(--text-tertiary)]">{s.label}</span>
         </div>
       ))}
     </div>
@@ -1250,59 +1250,59 @@ function DetailPanel({
   const d = node.data;
   const Icon = NODE_ICONS[d.nodeType] ?? Bug;
   return (
-    <div className="absolute top-4 right-4 w-72 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+    <div className="absolute top-4 right-4 w-72 bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl shadow-2xl z-50 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)]">
         <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-zinc-400" />
+          <Icon className="w-4 h-4 text-[color:var(--text-secondary)]" />
           <span className="font-semibold text-sm">{d.label}</span>
         </div>
-        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200">
+        <button onClick={onClose} className="text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]">
           <X className="w-4 h-4" />
         </button>
       </div>
       <div className="px-4 py-3 space-y-2 text-xs">
-        <div className="flex justify-between text-zinc-400">
+        <div className="flex justify-between text-[color:var(--text-secondary)]">
           <span>Type</span>
-          <span className="text-zinc-200 capitalize">{d.nodeType}</span>
+          <span className="text-[color:var(--foreground)] capitalize">{d.nodeType}</span>
         </div>
         {d.severity && (
           <div className="flex justify-between">
-            <span className="text-zinc-400">Severity</span>
+            <span className="text-[color:var(--text-secondary)]">Severity</span>
             <SeverityBadge severity={d.severity} />
           </div>
         )}
         {d.cvss_score != null && (
-          <div className="flex justify-between text-zinc-400">
+          <div className="flex justify-between text-[color:var(--text-secondary)]">
             <span>CVSS</span>
-            <span className="text-zinc-200">{d.cvss_score}</span>
+            <span className="text-[color:var(--foreground)]">{d.cvss_score}</span>
           </div>
         )}
         {d.version && (
-          <div className="flex justify-between text-zinc-400">
+          <div className="flex justify-between text-[color:var(--text-secondary)]">
             <span>Version</span>
-            <span className="text-zinc-200 font-mono">{d.version}</span>
+            <span className="text-[color:var(--foreground)] font-mono">{d.version}</span>
           </div>
         )}
         {d.ecosystem && (
-          <div className="flex justify-between text-zinc-400">
+          <div className="flex justify-between text-[color:var(--text-secondary)]">
             <span>Ecosystem</span>
-            <span className="text-zinc-200">{d.ecosystem}</span>
+            <span className="text-[color:var(--foreground)]">{d.ecosystem}</span>
           </div>
         )}
         {d.agent_type && (
-          <div className="flex justify-between text-zinc-400">
+          <div className="flex justify-between text-[color:var(--text-secondary)]">
             <span>Agent Type</span>
-            <span className="text-zinc-200">{d.agent_type}</span>
+            <span className="text-[color:var(--foreground)]">{d.agent_type}</span>
           </div>
         )}
         {d.description && (
-          <div className="text-zinc-400 pt-1 border-t border-zinc-800">
+          <div className="text-[color:var(--text-secondary)] pt-1 border-t border-[color:var(--border-subtle)]">
             <span className="block mb-0.5">Description</span>
-            <span className="text-zinc-300">{d.description}</span>
+            <span className="text-[color:var(--text-secondary)]">{d.description}</span>
           </div>
         )}
         {d.fixed_version && (
-          <div className="flex justify-between text-zinc-400">
+          <div className="flex justify-between text-[color:var(--text-secondary)]">
             <span>Fix Available</span>
             <span className="text-emerald-400 font-mono">{d.fixed_version}</span>
           </div>
@@ -1345,22 +1345,22 @@ function LifecycleFlow({
   return (
     <div className="relative w-full h-full">
       {/* Header bar */}
-      <div className="absolute top-0 left-0 right-0 z-10 bg-zinc-950/90 backdrop-blur-sm border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
+      <div className="absolute top-0 left-0 right-0 z-10 bg-[color:var(--surface)]/90 backdrop-blur-sm border-b border-[color:var(--border-subtle)] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link
             href={`/agents?name=${encodeURIComponent(agentName)}`}
-            className="text-zinc-400 hover:text-zinc-200 flex items-center gap-1 text-sm"
+            className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="w-4 h-4" /> {agentName}
           </Link>
-          <span className="text-zinc-600">|</span>
-          <span className="text-sm font-semibold text-zinc-300">Lifecycle Graph</span>
+          <span className="text-[color:var(--text-tertiary)]">|</span>
+          <span className="text-sm font-semibold text-[color:var(--text-secondary)]">Lifecycle Graph</span>
         </div>
         <div className="flex items-center gap-4">
           <StatsBar stats={data.stats} />
           <button
             onClick={handleExport}
-            className="text-zinc-400 hover:text-zinc-200 flex items-center gap-1 text-xs border border-zinc-700 rounded px-2 py-1"
+            className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 text-xs border border-[color:var(--border-subtle)] rounded px-2 py-1"
           >
             <Download className="w-3.5 h-3.5" /> Export
           </button>
@@ -1375,13 +1375,13 @@ function LifecycleFlow({
         fitView
         minZoom={0.1}
         maxZoom={2}
-        className="!bg-zinc-950"
+        className="!bg-[color:var(--surface)]"
       >
         <Background color="#27272a" gap={20} />
-        <Controls className="!bg-zinc-900 !border-zinc-700 !rounded-lg [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-300" />
+        <Controls className="!bg-[color:var(--surface-muted)] !border-[color:var(--border-subtle)] !rounded-lg [&>button]:!bg-[color:var(--surface-elevated)] [&>button]:!border-[color:var(--border-subtle)] [&>button]:!text-[color:var(--text-secondary)]" />
         <MiniMap
           nodeColor={(n) => MINIMAP_COLORS[(n.data as AttackFlowNodeData)?.nodeType] ?? "#52525b"}
-          className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
+          className="!bg-[color:var(--surface-muted)] !border-[color:var(--border-subtle)] !rounded-lg"
           maskColor="rgba(0,0,0,0.7)"
         />
       </ReactFlow>
@@ -1410,16 +1410,16 @@ function AgentLifecycle({ agentName }: { agentName: string }) {
 
   if (loading) {
     return (
-      <div className="h-screen bg-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+      <div className="h-screen bg-[color:var(--surface)] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[color:var(--text-tertiary)]" />
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="h-screen bg-zinc-950 p-8">
-        <Link href="/agents" className="text-zinc-400 hover:text-zinc-200 flex items-center gap-1 mb-6">
+      <div className="h-screen bg-[color:var(--surface)] p-8">
+        <Link href="/agents" className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 mb-6">
           <ArrowLeft className="w-4 h-4" /> Back to agents
         </Link>
         <div className="text-red-400 bg-red-950 border border-red-800 rounded-lg p-4">
@@ -1430,7 +1430,7 @@ function AgentLifecycle({ agentName }: { agentName: string }) {
   }
 
   return (
-    <div className="h-screen w-screen bg-zinc-950">
+    <div className="h-screen w-screen bg-[color:var(--surface)]">
       <ReactFlowProvider>
         <LifecycleFlow data={data} agentName={agentName} />
       </ReactFlowProvider>
@@ -1460,7 +1460,7 @@ function AgentsRouter() {
 
 export default function AgentsPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin text-zinc-500" /></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin text-[color:var(--text-tertiary)]" /></div>}>
       <AgentsRouter />
     </Suspense>
   );
@@ -1503,16 +1503,16 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
         <span className="rounded border border-emerald-800 bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-300">
           {mode}
         </span>
-        <span className="rounded border border-zinc-700 bg-zinc-900/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-300">
+        <span className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-secondary)]">
           redaction: {redaction}
         </span>
       </div>
       {envelope.discovery_scope.length > 0 && (
-        <div className="mt-2 text-[11px] text-zinc-400">
-          <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Scope</div>
+        <div className="mt-2 text-[11px] text-[color:var(--text-secondary)]">
+          <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Scope</div>
           <div className="flex flex-wrap gap-1.5">
             {envelope.discovery_scope.map((s) => (
-              <span key={s} className="rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-300">
+              <span key={s} className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 font-mono text-[color:var(--text-secondary)]">
                 {s}
               </span>
             ))}
@@ -1520,13 +1520,13 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
         </div>
       )}
       {envelope.permissions_used.length > 0 && (
-        <details className="mt-2 text-[11px] text-zinc-400">
-          <summary className="cursor-pointer text-[10px] uppercase tracking-[0.14em] text-zinc-500 hover:text-zinc-300">
+        <details className="mt-2 text-[11px] text-[color:var(--text-secondary)]">
+          <summary className="cursor-pointer text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]">
             Permissions used ({envelope.permissions_used.length})
           </summary>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {envelope.permissions_used.map((p) => (
-              <span key={p} className="rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-300">
+              <span key={p} className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 font-mono text-[color:var(--text-secondary)]">
                 {p}
               </span>
             ))}
@@ -1534,7 +1534,7 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
         </details>
       )}
       {captured && (
-        <div className="mt-2 text-[10px] text-zinc-500">
+        <div className="mt-2 text-[10px] text-[color:var(--text-tertiary)]">
           Captured {captured} · envelope v{envelope.envelope_version}
         </div>
       )}

@@ -73,6 +73,17 @@ async function routeConnections(page: Page) {
       }),
     }),
   );
+  await page.route("**/v1/sources", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        schema_version: "sources.v1",
+        tenant_id: "default",
+        sources: [],
+        count: 0,
+      }),
+    }),
+  );
 }
 
 test("captures connections page and wizard", async ({ page }, testInfo) => {
@@ -81,7 +92,7 @@ test("captures connections page and wizard", async ({ page }, testInfo) => {
 
   await page.goto("/connections");
   await page.waitForLoadState("networkidle");
-  await expect(page.getByRole("heading", { name: "Cloud accounts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Connected accounts" })).toBeVisible();
   await expect(page.getByText("Production account")).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("connections-page.png"), fullPage: true });

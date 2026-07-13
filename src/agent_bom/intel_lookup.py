@@ -664,24 +664,38 @@ def lookup_advisory(advisory_id: str, *, db_path: Path | None = None) -> dict[st
     if not raw_id:
         raise ValueError("advisory_id is required")
     conn = init_db(db_path or resolve_intel_db_path())
+    # `UPPER(v.id) = ?` defeats the vulns.id PRIMARY KEY index and the `OR
+    # instr(aliases)` forces a full scan of vulns (hundreds of thousands of rows)
+    # on every advisory lookup — a request/MCP hot path. Serve the common case
+    # from the PK index (direct id, raw + upper-cased), and fall back to the
+    # non-sargable alias substring scan ONLY when the direct lookup misses.
+    _base = """
+        SELECT
+            v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
+            COALESCE(v.aliases, '') AS aliases, v.source, v.published, v.modified,
+            a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
+            e.probability AS epss_prob, e.percentile AS epss_pct,
+            k.date_added AS kev_date
+        FROM vulns v
+        LEFT JOIN affected a ON a.vuln_id = v.id
+        LEFT JOIN epss_scores e ON e.cve_id = v.id
+        LEFT JOIN kev_entries k ON k.cve_id = v.id
+        WHERE {where}
+        ORDER BY a.ecosystem, a.package_name
+    """
     try:
+        # Fast path: index-served direct id match (case-exact + upper-cased variant).
         rows = conn.execute(
-            """
-            SELECT
-                v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
-                COALESCE(v.aliases, '') AS aliases, v.source, v.published, v.modified,
-                a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
-                e.probability AS epss_prob, e.percentile AS epss_pct,
-                k.date_added AS kev_date
-            FROM vulns v
-            LEFT JOIN affected a ON a.vuln_id = v.id
-            LEFT JOIN epss_scores e ON e.cve_id = v.id
-            LEFT JOIN kev_entries k ON k.cve_id = v.id
-            WHERE UPPER(v.id) = ? OR instr(',' || UPPER(COALESCE(v.aliases, '')) || ',', ',' || ? || ',') > 0
-            ORDER BY a.ecosystem, a.package_name
-            """,
-            (upper_id, upper_id),
+            _base.format(where="v.id = ? OR v.id = ?"),
+            (raw_id, upper_id),
         ).fetchall()
+        if not rows:
+            # Rare fallback: the id was actually an alias of a vuln stored under a
+            # different id. Substring scan runs only here, not on the hot path.
+            rows = conn.execute(
+                _base.format(where="instr(',' || UPPER(COALESCE(v.aliases, '')) || ',', ',' || ? || ',') > 0"),
+                (upper_id,),
+            ).fetchall()
         if not rows:
             return {"schema_version": "intel.lookup.v1", "found": False, "query": raw_id, "advisory": None}
         first = rows[0]
@@ -828,25 +842,38 @@ def build_daily_brief(
     kev_cutoff = generated_at - timedelta(hours=kev_window_hours)
     profile = _tenant_profile(tenant_profile)
     conn = init_db(db_path or resolve_intel_db_path())
+    # The KEV↔vuln correlation matches on id OR an alias-substring, which is
+    # non-sargable — driving it from `vulns` (hundreds of thousands of rows) scans
+    # every KEV entry per vuln (~1e9 instr() calls) and hangs on a populated DB.
+    # Only KEV entries inside the brief window matter, so pre-filter KEV first: a
+    # `recent_kev` CTE (a handful of rows) drives the join, and the exact
+    # window bound is still applied in Python below. `date_added` is a
+    # 'YYYY-MM-DD' TEXT column with no index, so use a date-only lower bound one
+    # day looser than the cutoff — never tighter than the Python filter.
+    kev_lower_bound = (kev_cutoff - timedelta(days=1)).strftime("%Y-%m-%d")
     try:
         source_meta = _sync_meta(conn)
         rows = conn.execute(
             """
+            WITH recent_kev AS (
+                SELECT cve_id, date_added
+                FROM kev_entries
+                WHERE date_added >= ?
+            )
             SELECT
                 v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
                 COALESCE(v.aliases, '') AS aliases, v.source, v.published, v.modified,
                 e.probability AS epss_prob, e.percentile AS epss_pct,
-                k.date_added AS kev_date
-            FROM vulns v
+                rk.date_added AS kev_date
+            FROM recent_kev rk
+            JOIN vulns v
+                ON v.id = rk.cve_id
+                OR instr(',' || UPPER(COALESCE(v.aliases, '')) || ',', ',' || UPPER(rk.cve_id) || ',') > 0
             LEFT JOIN epss_scores e ON e.cve_id = v.id
-            LEFT JOIN kev_entries k
-                ON k.cve_id = v.id
-                OR instr(',' || UPPER(COALESCE(v.aliases, '')) || ',', ',' || UPPER(k.cve_id) || ',') > 0
-            WHERE k.date_added IS NOT NULL
-            ORDER BY k.date_added DESC, v.id
+            ORDER BY rk.date_added DESC, v.id
             LIMIT ?
             """,
-            (limit,),
+            (kev_lower_bound, limit),
         ).fetchall()
     finally:
         conn.close()

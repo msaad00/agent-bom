@@ -1309,23 +1309,36 @@ class SQLiteGraphStore:
                 params.extend(sev_params)
             where_sql = " AND ".join(node_where)
 
-            # Unfiltered node/edge totals are already materialised on the snapshot
-            # row at write time. Re-deriving them here re-scans graph_edges with a
-            # double id-membership subquery (seconds at 500k edges), so read the
-            # stored counts and only fall back to COUNT(*) when the snapshot row is
-            # missing or the counts were never populated. Any active entity-type or
-            # severity filter narrows the set, so the recompute path still runs.
+            # Unfiltered node/edge totals AND the entity-type / severity breakdowns
+            # are materialised on the snapshot row at write time. Re-deriving them
+            # here re-scans graph_nodes with two GROUP BYs (1-2s at 500k-1M nodes)
+            # plus a double id-membership edge subquery, so read the stored values
+            # and only fall back to the live queries when the snapshot row is missing
+            # or the cached breakdown was never populated (older snapshots). Any
+            # active entity-type or severity filter narrows the set, so the recompute
+            # path still runs.
             filters_active = bool(entity_types) or bool(min_severity_rank)
             stored_node_count: int | None = None
             stored_edge_count: int | None = None
+            cached_node_types: dict[str, int] | None = None
+            cached_severity_counts: dict[str, int] | None = None
             if not filters_active:
                 snap_row = conn.execute(
-                    "SELECT node_count, edge_count FROM graph_snapshots WHERE scan_id = ? AND tenant_id = ?",
+                    "SELECT node_count, edge_count, risk_summary, node_type_counts "
+                    "FROM graph_snapshots WHERE scan_id = ? AND tenant_id = ?",
                     (effective_scan_id, tenant_id),
                 ).fetchone()
                 if snap_row is not None:
                     stored_node_count = snap_row[0] if snap_row[0] is not None else None
                     stored_edge_count = snap_row[1] if snap_row[1] is not None else None
+                    # node_type_counts is NULL for snapshots written before the
+                    # breakdown was materialised — fall back to the live GROUP BY
+                    # for those. risk_summary already carries the severity counts.
+                    if snap_row[3] is not None:
+                        cached_node_types = {str(k): int(v) for k, v in json.loads(snap_row[3]).items()}
+                        cached_severity_counts = {
+                            str(k): int(v) for k, v in json.loads(snap_row[2] or "{}").items() if k
+                        }
 
             if stored_node_count is not None:
                 total_nodes = stored_node_count
@@ -1334,14 +1347,22 @@ class SQLiteGraphStore:
                     f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
                     params,
                 ).fetchone()[0]
-            node_type_rows = conn.execute(
-                f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
-                params,
-            ).fetchall()
-            severity_rows = conn.execute(
-                f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
-                params,
-            ).fetchall()
+            if cached_node_types is not None:
+                node_types = cached_node_types
+            else:
+                node_type_rows = conn.execute(
+                    f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchall()
+                node_types = {str(row[0]): int(row[1]) for row in node_type_rows}
+            if cached_severity_counts is not None:
+                severity_counts = cached_severity_counts
+            else:
+                severity_rows = conn.execute(
+                    f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchall()
+                severity_counts = {str(row[0]): int(row[1]) for row in severity_rows}
             if stored_edge_count is not None:
                 total_edges = stored_edge_count
             else:
@@ -1377,8 +1398,8 @@ class SQLiteGraphStore:
             return {
                 "total_nodes": int(total_nodes or 0),
                 "total_edges": int(total_edges or 0),
-                "node_types": {str(row[0]): int(row[1]) for row in node_type_rows},
-                "severity_counts": {str(row[0]): int(row[1]) for row in severity_rows},
+                "node_types": node_types,
+                "severity_counts": severity_counts,
                 "relationship_types": {str(row[0]): int(row[1]) for row in rel_rows},
                 "attack_path_count": int((attack_row[0] if attack_row else 0) or 0),
                 "interaction_risk_count": int((interaction_row[0] if interaction_row else 0) or 0),

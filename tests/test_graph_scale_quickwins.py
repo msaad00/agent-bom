@@ -94,6 +94,84 @@ def test_snapshot_stats_filtered_recomputes_and_ignores_stored_count(tmp_path):
     assert stats["total_edges"] == 0
 
 
+# ── inventory/summary breakdown: entity-type / severity counts are cached ─────
+
+
+def test_snapshot_stats_reads_cached_breakdown(tmp_path):
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_small_graph())
+
+    # Tamper the materialised breakdown. A cached read returns the sentinels; a
+    # live GROUP BY over graph_nodes would ignore them and return the real counts.
+    conn = sqlite3.connect(store._db_path)
+    conn.execute(
+        "UPDATE graph_snapshots SET node_type_counts = ?, risk_summary = ? WHERE scan_id = 'scale-scan'",
+        ('{"agent": 41}', '{"critical": 42}'),
+    )
+    conn.commit()
+    conn.close()
+
+    stats = store.snapshot_stats(tenant_id="default", scan_id="scale-scan")
+    assert stats["node_types"] == {"agent": 41}
+    assert stats["severity_counts"] == {"critical": 42}
+
+
+def test_cached_breakdown_matches_live_group_by(tmp_path):
+    """The cached entity-type/severity breakdown must equal the live GROUP BY."""
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_small_graph())
+
+    cached = store.snapshot_stats(tenant_id="default", scan_id="scale-scan")
+
+    # Force the fallback path by dropping the materialised breakdown, then
+    # recompute from graph_nodes directly.
+    conn = sqlite3.connect(store._db_path)
+    conn.execute("UPDATE graph_snapshots SET node_type_counts = NULL WHERE scan_id = 'scale-scan'")
+    conn.commit()
+    conn.close()
+
+    live = store.snapshot_stats(tenant_id="default", scan_id="scale-scan")
+
+    assert cached["node_types"] == live["node_types"] == {"agent": 1, "server": 1, "vulnerability": 1}
+    assert cached["severity_counts"] == live["severity_counts"] == {"critical": 1}
+
+
+def test_snapshot_stats_breakdown_falls_back_when_cache_null(tmp_path):
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_small_graph())
+
+    # Pre-migration snapshots have a NULL breakdown but a populated risk_summary;
+    # both node_types and severity_counts must still come from the live GROUP BY.
+    conn = sqlite3.connect(store._db_path)
+    conn.execute(
+        "UPDATE graph_snapshots SET node_type_counts = NULL, risk_summary = ? WHERE scan_id = 'scale-scan'",
+        ('{"critical": 999}',),
+    )
+    conn.commit()
+    conn.close()
+
+    stats = store.snapshot_stats(tenant_id="default", scan_id="scale-scan")
+    assert stats["node_types"] == {"agent": 1, "server": 1, "vulnerability": 1}
+    assert stats["severity_counts"] == {"critical": 1}
+
+
+def test_snapshot_stats_filtered_breakdown_recomputes(tmp_path):
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    store.save_graph(_small_graph())
+
+    # A stale cached breakdown must never leak into a filtered request.
+    conn = sqlite3.connect(store._db_path)
+    conn.execute(
+        "UPDATE graph_snapshots SET node_type_counts = ? WHERE scan_id = 'scale-scan'",
+        ('{"agent": 999}',),
+    )
+    conn.commit()
+    conn.close()
+
+    stats = store.snapshot_stats(tenant_id="default", scan_id="scale-scan", entity_types={"vulnerability"})
+    assert stats["node_types"] == {"vulnerability": 1}
+
+
 # ── FIX 3: deep OFFSET pagination is capped in favour of cursor= ──────────────
 
 

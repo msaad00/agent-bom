@@ -111,7 +111,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Cloud & Data",
     icon: Cloud,
     links: [
-      { href: "/connections", label: "Cloud Accounts", icon: Cloud, capability: "inventory.read" },
+      { href: "/connections", label: "Connections", icon: Cloud, capability: "inventory.read" },
       { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
       { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
       { href: "/identity", label: "Identity", icon: Fingerprint },

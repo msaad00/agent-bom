@@ -624,15 +624,15 @@ def _parse_date_or_datetime(value: str | None) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _row_aliases(row: sqlite3.Row) -> list[str]:
+def _row_aliases(row: sqlite3.Row | dict[str, Any]) -> list[str]:
     return [alias for alias in (row["aliases"] or "").split(",") if alias]
 
 
-def _row_cwes(row: sqlite3.Row) -> list[str]:
+def _row_cwes(row: sqlite3.Row | dict[str, Any]) -> list[str]:
     return [cwe for cwe in (row["cwe_ids"] or "").split(",") if cwe]
 
 
-def _brief_advisory(row: sqlite3.Row, *, section: str, match_reason: str) -> dict[str, Any]:
+def _brief_advisory(row: sqlite3.Row | dict[str, Any], *, section: str, match_reason: str) -> dict[str, Any]:
     aliases = _row_aliases(row)
     cwes = _row_cwes(row)
     source = row["source"]
@@ -814,6 +814,112 @@ def match_packages(packages: list[dict[str, Any]], *, db_path: Path | None = Non
     }
 
 
+# Column projection shared by both correlation passes so a KEV-matched vuln row
+# carries every key ``_brief_advisory`` reads (kev_date is injected in Python).
+_KEV_VULN_COLS = (
+    "v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids, "
+    "COALESCE(v.aliases, '') AS aliases, v.source, v.published, v.modified, "
+    "e.probability AS epss_prob, e.percentile AS epss_pct"
+)
+
+
+def _chunked(items: list[str], size: int) -> list[list[str]]:
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _kev_row_dict(row: sqlite3.Row, kev_date: str | None) -> dict[str, Any]:
+    """Materialise a KEV-matched vuln row as a plain dict keyed for ``_brief_advisory``."""
+    return {
+        "id": row["id"],
+        "summary": row["summary"],
+        "severity": row["severity"],
+        "cvss_score": row["cvss_score"],
+        "cvss_vector": row["cvss_vector"],
+        "fixed_version": row["fixed_version"],
+        "cwe_ids": row["cwe_ids"],
+        "aliases": row["aliases"],
+        "source": row["source"],
+        "published": row["published"],
+        "modified": row["modified"],
+        "epss_prob": row["epss_prob"],
+        "epss_pct": row["epss_pct"],
+        "kev_date": kev_date,
+    }
+
+
+def _correlate_kev_window(
+    conn: sqlite3.Connection,
+    windowed: dict[str, str],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Correlate in-window KEV CVEs to local vulns without a per-row alias scan.
+
+    The old query joined ``recent_kev`` to ``vulns`` on ``v.id = cve OR
+    instr(aliases…)``. The ``OR`` defeats the ``vulns`` primary-key index, so
+    SQLite full-scanned every vuln per KEV row — O(recent_kev × vulns), 31s at
+    300k vulns / 500 KEV (#3927). Split into two index-friendly passes:
+
+    1. **Direct match** — ``v.id IN (…)`` rides the ``vulns`` primary key
+       (case-sensitive, mirroring the old ``v.id = cve``).
+    2. **Alias match** — a *single* scan reads only ``(id, aliases)`` for vulns
+       that carry aliases and intersects each alias list against the recent-KEV
+       set in Python (GHSA/OSV rows whose id differs from the CVE). This pass is
+       O(vulns) once, independent of the KEV count, so a wide window or bulk KEV
+       import no longer multiplies the scan.
+
+    ``windowed`` maps the original-case KEV ``cve_id`` to its ``date_added`` and
+    is already filtered to the exact brief window by the caller.
+    """
+    if not windowed:
+        return []
+
+    # UPPER(cve) → newest date_added, for case-insensitive alias membership.
+    upper_to_date: dict[str, str] = {}
+    for cve, date_added in windowed.items():
+        key = cve.upper()
+        prev = upper_to_date.get(key)
+        upper_to_date[key] = date_added if prev is None else max(prev, date_added)
+
+    merged: dict[str, dict[str, Any]] = {}
+
+    # Pass 1 — direct primary-key match.
+    for chunk in _chunked(list(windowed.keys()), 500):
+        placeholders = ",".join("?" * len(chunk))
+        for row in conn.execute(
+            f"SELECT {_KEV_VULN_COLS} FROM vulns v "  # nosec B608 — column list is a fixed constant
+            f"LEFT JOIN epss_scores e ON e.cve_id = v.id WHERE v.id IN ({placeholders})",
+            chunk,
+        ).fetchall():
+            merged[row["id"]] = _kev_row_dict(row, windowed[row["id"]])
+
+    # Pass 2 — alias match: one scan of aliased vulns, Python-side membership.
+    alias_hits: dict[str, str] = {}
+    for row in conn.execute("SELECT id, COALESCE(aliases, '') AS aliases FROM vulns WHERE aliases != ''").fetchall():
+        vuln_id = str(row["id"])
+        if vuln_id in merged:
+            continue  # already matched directly
+        aliases_upper = {alias.upper() for alias in row["aliases"].split(",") if alias}
+        common = aliases_upper & upper_to_date.keys()
+        if common:
+            alias_hits[vuln_id] = max(upper_to_date[alias] for alias in common)
+
+    # Fetch full columns for the (few) alias-matched vulns via the PK index.
+    for chunk in _chunked(list(alias_hits.keys()), 500):
+        placeholders = ",".join("?" * len(chunk))
+        for row in conn.execute(
+            f"SELECT {_KEV_VULN_COLS} FROM vulns v "  # nosec B608 — column list is a fixed constant
+            f"LEFT JOIN epss_scores e ON e.cve_id = v.id WHERE v.id IN ({placeholders})",
+            chunk,
+        ).fetchall():
+            merged[row["id"]] = _kev_row_dict(row, alias_hits[str(row["id"])])
+
+    # ORDER BY date_added DESC, id ASC (stable sort: id-asc first, then date-desc).
+    ordered = sorted(merged.values(), key=lambda r: str(r["id"]))
+    ordered.sort(key=lambda r: r["kev_date"] or "", reverse=True)
+    return ordered if limit < 0 else ordered[:limit]
+
+
 def build_daily_brief(
     packages: list[dict[str, Any]] | None = None,
     *,
@@ -842,46 +948,31 @@ def build_daily_brief(
     kev_cutoff = generated_at - timedelta(hours=kev_window_hours)
     profile = _tenant_profile(tenant_profile)
     conn = init_db(db_path or resolve_intel_db_path())
-    # The KEV↔vuln correlation matches on id OR an alias-substring, which is
-    # non-sargable — driving it from `vulns` (hundreds of thousands of rows) scans
-    # every KEV entry per vuln (~1e9 instr() calls) and hangs on a populated DB.
-    # Only KEV entries inside the brief window matter, so pre-filter KEV first: a
-    # `recent_kev` CTE (a handful of rows) drives the join, and the exact
-    # window bound is still applied in Python below. `date_added` is a
-    # 'YYYY-MM-DD' TEXT column with no index, so use a date-only lower bound one
-    # day looser than the cutoff — never tighter than the Python filter.
+    # Pre-filter KEV to the brief window (a handful of rows), then correlate to
+    # local vulns via `_correlate_kev_window`, which splits the old non-sargable
+    # `v.id = cve OR instr(aliases…)` join into an index-backed direct match plus
+    # a single bounded alias scan (#3927). `date_added` is a 'YYYY-MM-DD' TEXT
+    # column with no index, so use a date-only lower bound one day looser than
+    # the cutoff — never tighter than the exact Python window filter below.
     kev_lower_bound = (kev_cutoff - timedelta(days=1)).strftime("%Y-%m-%d")
     try:
         source_meta = _sync_meta(conn)
-        rows = conn.execute(
-            """
-            WITH recent_kev AS (
-                SELECT cve_id, date_added
-                FROM kev_entries
-                WHERE date_added >= ?
-            )
-            SELECT
-                v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
-                COALESCE(v.aliases, '') AS aliases, v.source, v.published, v.modified,
-                e.probability AS epss_prob, e.percentile AS epss_pct,
-                rk.date_added AS kev_date
-            FROM recent_kev rk
-            JOIN vulns v
-                ON v.id = rk.cve_id
-                OR instr(',' || UPPER(COALESCE(v.aliases, '')) || ',', ',' || UPPER(rk.cve_id) || ',') > 0
-            LEFT JOIN epss_scores e ON e.cve_id = v.id
-            ORDER BY rk.date_added DESC, v.id
-            LIMIT ?
-            """,
-            (kev_lower_bound, limit),
+        recent_kev = conn.execute(
+            "SELECT cve_id, date_added FROM kev_entries WHERE date_added >= ?",
+            (kev_lower_bound,),
         ).fetchall()
+        windowed: dict[str, str] = {}
+        for kev in recent_kev:
+            parsed = _parse_date_or_datetime(kev["date_added"])
+            if parsed and parsed >= kev_cutoff:
+                windowed[str(kev["cve_id"])] = kev["date_added"]
+        kev_rows = _correlate_kev_window(conn, windowed, limit=limit)
     finally:
         conn.close()
 
     kev_last_24h = [
         _brief_advisory(row, section="kev_last_24h", match_reason=f"CISA KEV date_added is within the last {kev_window_hours} hours.")
-        for row in rows
-        if (parsed := _parse_date_or_datetime(row["kev_date"])) and parsed >= kev_cutoff
+        for row in kev_rows
     ]
 
     package_inputs = packages or []

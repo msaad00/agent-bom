@@ -26,7 +26,13 @@ import {
   Copy,
   Plug,
   Terminal,
-  MapPin,
+  Search,
+  GitBranch,
+  Container,
+  FileCode,
+  Database,
+  Bot,
+  Package,
 } from "lucide-react";
 
 import {
@@ -35,6 +41,7 @@ import {
   type CloudConnectionCreateRequest,
   type CloudConnectionTestResponse,
   type CloudConnectionScanResponse,
+  type SourceRecord,
 } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
 import { ErrorBanner } from "@/components/empty-state";
@@ -42,7 +49,6 @@ import { PageEmptyState } from "@/components/states/page-state";
 import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
 import { Card, Section } from "@/components/card";
 import { PageLaneHeader } from "@/components/page-lane";
-import { Collapsible } from "@/components/collapsible";
 import { Drawer } from "@/components/drawer";
 import { CoverageCockpit } from "@/components/coverage-cockpit";
 import { StatCard } from "@/components/stat-card";
@@ -259,6 +265,128 @@ const SCANNABLE_PROVIDERS = new Set(
   PROVIDER_OPTIONS.map((option) => option.value),
 );
 
+// ── Connector catalog ─────────────────────────────────────────────────────────
+// One scalable, filterable gallery over every connectable surface. Cloud tiles
+// open the read-only AddConnectionWizard; source tiles deep-link into the Data
+// Sources register hub for that kind; the coding-agent tile opens the local
+// MCP-server / skills onboarding drawer. Adding a surface = one array entry.
+
+type ConnectorCategory = "cloud" | "code" | "ai" | "data";
+
+type ConnectorAction =
+  | { type: "cloud"; provider: string }
+  | { type: "source"; href: string; sourceKind: string }
+  | { type: "coding-agent" };
+
+interface CatalogConnector {
+  id: string;
+  category: ConnectorCategory;
+  label: string;
+  tagline: string;
+  /** vendor id for ProviderLogo, when a brand mark exists. */
+  logo?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  /** extra free-text search terms (ecosystems, aliases). */
+  keywords?: string;
+  action: ConnectorAction;
+}
+
+const CONNECTOR_CATALOG: CatalogConnector[] = [
+  ...PROVIDER_OPTIONS.map((option): CatalogConnector => ({
+    id: option.value,
+    category: "cloud",
+    label: option.label,
+    tagline: option.tagline,
+    logo: option.value,
+    icon: Cloud,
+    keywords: `${option.permissions} cspm cis inventory`,
+    action: { type: "cloud", provider: option.value },
+  })),
+  {
+    id: "repo",
+    category: "code",
+    label: "Repositories",
+    tagline: "Git repo & package (SCA) scan",
+    logo: "github",
+    icon: GitBranch,
+    keywords: "git github gitlab sbom sca packages dependencies aspm",
+    action: { type: "source", href: "/sources", sourceKind: "scan.repo" },
+  },
+  {
+    id: "image",
+    category: "code",
+    label: "Container images",
+    tagline: "Image & OS package scan",
+    icon: Container,
+    keywords: "docker oci containers registry trivy os packages",
+    action: { type: "source", href: "/sources", sourceKind: "scan.image" },
+  },
+  {
+    id: "iac",
+    category: "code",
+    label: "IaC & clusters",
+    tagline: "Terraform & Kubernetes scan",
+    icon: FileCode,
+    keywords: "terraform k8s kubernetes helm iac misconfiguration",
+    action: { type: "source", href: "/sources", sourceKind: "scan.iac" },
+  },
+  {
+    id: "registry",
+    category: "code",
+    label: "Package registry",
+    tagline: "Read-only registry connector",
+    icon: Package,
+    keywords: "npm pypi maven artifactory ghcr registry connector",
+    action: { type: "source", href: "/sources", sourceKind: "connector.registry" },
+  },
+  {
+    id: "mcp",
+    category: "ai",
+    label: "MCP configs",
+    tagline: "Local MCP configuration scan",
+    icon: Plug,
+    keywords: "model context protocol mcp servers tools aispm",
+    action: { type: "source", href: "/sources", sourceKind: "scan.mcp_config" },
+  },
+  {
+    id: "coding-agent",
+    category: "ai",
+    label: "Coding agent",
+    tagline: "Claude & Cursor via MCP + skills",
+    logo: "claude",
+    icon: Bot,
+    keywords: "claude cursor mcp server skills cortex openclaw agent",
+    action: { type: "coding-agent" },
+  },
+  {
+    id: "warehouse",
+    category: "data",
+    label: "Warehouse & lake",
+    tagline: "Snowflake, BigQuery read-only",
+    icon: Database,
+    keywords: "snowflake bigquery redshift databricks dspm data lake connector",
+    action: { type: "source", href: "/sources", sourceKind: "connector.warehouse" },
+  },
+];
+
+const CONNECTOR_CATEGORIES: {
+  id: ConnectorCategory | "all";
+  label: string;
+}[] = [
+  { id: "all", label: "All" },
+  { id: "cloud", label: "Cloud" },
+  { id: "code", label: "Code" },
+  { id: "ai", label: "AI" },
+  { id: "data", label: "Data" },
+];
+
+const CONNECTOR_CATEGORY_TONE: Record<ConnectorCategory, string> = {
+  cloud: "border-purple-500/30 bg-purple-500/10 text-purple-200",
+  code: "border-sky-500/30 bg-sky-500/10 text-sky-200",
+  ai: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+  data: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+};
+
 const SCHEDULE_OPTIONS = [
   ["Manual", ""],
   ["Hourly", "60"],
@@ -372,15 +500,6 @@ function ProviderLogo({
   );
 }
 
-function ReadinessBadge({ readiness }: { readiness: ProviderReadiness }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
-      <CheckCircle2 className="h-3 w-3" />
-      {readiness === "live" ? "Live" : "Live"}
-    </span>
-  );
-}
-
 export default function ConnectionsPage() {
   const { hasCapability, session } = useAuthState();
   const { counts } = useDeploymentContext();
@@ -407,6 +526,10 @@ export default function ConnectionsPage() {
   const [scheduleErrors, setScheduleErrors] = useState<Record<string, string>>(
     {},
   );
+  const [sources, setSources] = useState<SourceRecord[]>([]);
+  const [galleryCategory, setGalleryCategory] = useState<ConnectorCategory | "all">("all");
+  const [gallerySearch, setGallerySearch] = useState("");
+  const [codingAgentOpen, setCodingAgentOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -429,6 +552,21 @@ export default function ConnectionsPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    let mounted = true;
+    api
+      .listSources()
+      .then((response) => {
+        if (mounted) setSources(response.sources ?? []);
+      })
+      .catch(() => {
+        if (mounted) setSources([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const openWizard = useCallback((provider?: string) => {
     setWizardProvider(provider);
@@ -547,12 +685,33 @@ export default function ConnectionsPage() {
     return counts;
   }, [connections]);
 
+  const sourceCountByKind = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const source of sources) {
+      counts[source.kind] = (counts[source.kind] ?? 0) + 1;
+    }
+    return counts;
+  }, [sources]);
+
+  const connectorConnectedCount = useCallback(
+    (connector: CatalogConnector): number => {
+      if (connector.action.type === "cloud") {
+        return connectedByProvider[connector.action.provider] ?? 0;
+      }
+      if (connector.action.type === "source") {
+        return sourceCountByKind[connector.action.sourceKind] ?? 0;
+      }
+      return 0;
+    },
+    [connectedByProvider, sourceCountByKind],
+  );
+
   return (
     <div className="space-y-6">
       <PageLaneHeader
         lane="cloud-data"
-        title="Cloud accounts"
-        subtitle="Connect AWS, Azure, GCP, or Snowflake with read-only roles, then launch inventory, CIS, and connected-surface scans from your control plane. Secrets are encrypted at rest and never returned to the browser."
+        title="Connections"
+        subtitle="Connect cloud accounts, code, AI, and data sources — all read-only. Cloud uses brokered roles; everything else registers in the control plane. Secrets are encrypted at rest and never returned to the browser."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-200">
             {deploymentModeLabel(counts?.deployment_mode)} · brokered read-only
@@ -575,6 +734,13 @@ export default function ConnectionsPage() {
               <Plus className="h-4 w-4" />
               Add cloud account
             </button>
+            <Link
+              href="/sources"
+              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-2 text-sm text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+            >
+              <Boxes className="h-4 w-4" />
+              Data sources
+            </Link>
           </>
         }
         banner={
@@ -616,22 +782,21 @@ export default function ConnectionsPage() {
         connections={connections}
       />
 
-      {/* Connect & deploy — provider connector catalog */}
+      {/* Connect — scalable connector gallery across cloud, code, AI, and data */}
       <Section
-        label="Connect a provider"
-        description="Pick a cloud. Grant read-only access with CLI, CloudShell, or Terraform — whichever your org allows — then finish the wizard with role ARN, external ID, and encrypted secrets."
+        label="Connect a source"
+        description="Every connectable surface in one gallery. Cloud accounts open a read-only wizard; code, AI, and data sources register in the control plane. All read-only — secrets are encrypted at rest and never returned to the browser."
       >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {PROVIDER_OPTIONS.map((option) => (
-            <ConnectorCard
-              key={option.value}
-              option={option}
-              connectedCount={connectedByProvider[option.value] ?? 0}
-              canManage={canManage}
-              onConnect={() => openWizard(option.value)}
-            />
-          ))}
-        </div>
+        <ConnectorGallery
+          activeCategory={galleryCategory}
+          onCategoryChange={setGalleryCategory}
+          search={gallerySearch}
+          onSearchChange={setGallerySearch}
+          connectedCountFor={connectorConnectedCount}
+          canManage={canManage}
+          onConnectCloud={openWizard}
+          onConnectCodingAgent={() => setCodingAgentOpen(true)}
+        />
       </Section>
 
       {/* Connected accounts */}
@@ -757,6 +922,11 @@ export default function ConnectionsPage() {
           onCreated={handleCreated}
         />
       ) : null}
+
+      <CodingAgentDrawer
+        open={codingAgentOpen}
+        onClose={() => setCodingAgentOpen(false)}
+      />
     </div>
   );
 }
@@ -829,153 +999,308 @@ function GrantMethodPicker({
   );
 }
 
-function ConnectorCard({
-  option,
+function ConnectorGallery({
+  activeCategory,
+  onCategoryChange,
+  search,
+  onSearchChange,
+  connectedCountFor,
+  canManage,
+  onConnectCloud,
+  onConnectCodingAgent,
+}: {
+  activeCategory: ConnectorCategory | "all";
+  onCategoryChange: (category: ConnectorCategory | "all") => void;
+  search: string;
+  onSearchChange: (value: string) => void;
+  connectedCountFor: (connector: CatalogConnector) => number;
+  canManage: boolean;
+  onConnectCloud: (provider: string) => void;
+  onConnectCodingAgent: () => void;
+}) {
+  const query = search.trim().toLowerCase();
+  const visible = CONNECTOR_CATALOG.filter((connector) => {
+    const inCategory =
+      activeCategory === "all" || connector.category === activeCategory;
+    if (!inCategory) return false;
+    if (!query) return true;
+    const haystack =
+      `${connector.label} ${connector.tagline} ${connector.keywords ?? ""}`.toLowerCase();
+    return haystack.includes(query);
+  });
+
+  function categoryCount(category: ConnectorCategory | "all"): number {
+    if (category === "all") return CONNECTOR_CATALOG.length;
+    return CONNECTOR_CATALOG.filter((c) => c.category === category).length;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Connector category">
+          {CONNECTOR_CATEGORIES.map((category) => {
+            const active = activeCategory === category.id;
+            return (
+              <button
+                key={category.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => onCategoryChange(category.id)}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                  active
+                    ? "border-emerald-600/60 bg-emerald-500/10 text-[color:var(--foreground)]"
+                    : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)]"
+                }`}
+              >
+                {category.label}
+                <span className="text-[10px] text-[color:var(--text-tertiary)]">
+                  {categoryCount(category.id)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <label className="relative w-full sm:w-64">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
+          <input
+            type="search"
+            aria-label="Search connectors"
+            placeholder="Search connectors…"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] py-1.5 pl-8 pr-3 text-sm text-[color:var(--foreground)] outline-none transition focus:border-emerald-500"
+          />
+        </label>
+      </div>
+
+      {visible.length === 0 ? (
+        <p className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">
+          No connectors match “{search}”.
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {visible.map((connector) => (
+            <ConnectorTile
+              key={connector.id}
+              connector={connector}
+              connectedCount={connectedCountFor(connector)}
+              canManage={canManage}
+              onConnectCloud={onConnectCloud}
+              onConnectCodingAgent={onConnectCodingAgent}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConnectorTile({
+  connector,
   connectedCount,
   canManage,
-  onConnect,
+  onConnectCloud,
+  onConnectCodingAgent,
 }: {
-  option: ProviderOption;
+  connector: CatalogConnector;
   connectedCount: number;
   canManage: boolean;
-  onConnect: () => void;
+  onConnectCloud: (provider: string) => void;
+  onConnectCodingAgent: () => void;
 }) {
-  const [grantMethod, setGrantMethod] = useState<CloudGrantMethod>("cli");
-  const meta = cloudProviderMeta(option.value);
-  const deployScript = buildGrantScript(option.value, grantMethod);
-  const authSummary = [
-    option.roleField.label,
-    ...option.authFields.map((field) => field.label),
-    option.secretField.label,
-  ].join(" · ");
+  const Icon = connector.icon;
+  const categoryLabel =
+    CONNECTOR_CATEGORIES.find((c) => c.id === connector.category)?.label ??
+    connector.category;
+  const connected = connectedCount > 0;
+
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex h-full flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[linear-gradient(145deg,var(--surface-elevated),var(--surface-muted))] shadow-inner shadow-black/20">
-            <ProviderLogo provider={option.value} className="h-7 w-7" />
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[linear-gradient(145deg,var(--surface-elevated),var(--surface-muted))] shadow-inner shadow-black/20">
+            {connector.logo ? (
+              <ProviderLogo provider={connector.logo} className="h-6 w-6" />
+            ) : (
+              <Icon className="h-5 w-5 text-emerald-400" />
+            )}
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-[var(--foreground)]">
-              {option.label}
+              {connector.label}
             </p>
             <p className="truncate text-[11px] text-[var(--text-secondary)]">
-              {option.tagline}
+              {connector.tagline}
             </p>
-            {meta ? (
-              <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                Read-only · CLI · CloudShell · Terraform
-              </p>
-            ) : null}
           </div>
         </div>
-        <ReadinessBadge readiness={option.readiness} />
+        <span
+          className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${CONNECTOR_CATEGORY_TONE[connector.category]}`}
+        >
+          {categoryLabel}
+        </span>
       </div>
 
-      {meta ? (
-        <div className="flex flex-wrap gap-1.5">
-          {meta.scanSurfaces.map((surface) => (
-            <span
-              key={surface}
-              className="rounded-full border border-purple-500/25 bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-200"
-            >
-              {surface}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+        {connector.action.type === "coding-agent" ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--text-tertiary)]">
+            <Lock className="h-3 w-3" /> Read-only
+          </span>
+        ) : connected ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-300">
+            <CheckCircle2 className="h-3 w-3" />
+            {connectedCount} connected
+          </span>
+        ) : (
+          <span className="text-[11px] text-[color:var(--text-tertiary)]">
+            Not connected
+          </span>
+        )}
 
-      <dl className="space-y-2 text-[11px]">
-        <CardFact icon={KeyRound} term="Permissions" detail={option.permissions} />
-        <CardFact icon={Fingerprint} term="Auth" detail={authSummary} />
-        <CardFact
-          icon={MapPin}
-          term="Regions"
-          detail={option.usesRegions ? "Per-region (you choose)" : "Account-wide"}
-        />
-      </dl>
-
-      {connectedCount > 0 ? (
-        <p className="inline-flex items-center gap-1.5 text-[11px] text-emerald-300">
-          <CheckCircle2 className="h-3 w-3" />
-          {connectedCount} connected
-        </p>
-      ) : null}
-
-      <Collapsible
-        title="Setup steps & grant script"
-        icon={Terminal}
-        defaultOpen={false}
-        className="bg-[color:var(--surface-elevated)]/40"
-      >
-        <ol className="list-decimal space-y-1.5 pl-4 text-[11px] leading-5 text-[var(--text-secondary)]">
-          {option.setupSteps.map((stepText) => (
-            <li key={stepText}>{stepText}</li>
-          ))}
-        </ol>
-        {meta?.deployNotes.length ? (
-          <ul className="mt-2 space-y-1 text-[11px] text-emerald-300/90">
-            {meta.deployNotes.map((note) => (
-              <li key={note} className="flex items-start gap-1.5">
-                <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
-                {note}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <div className="mt-3 space-y-2">
-          <GrantMethodPicker method={grantMethod} onChange={setGrantMethod} provider={option.value} />
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-              {cloudGrantMethodLabel(grantMethod)} grant
-            </p>
-            {deployScript ? (
-              <CopyTextButton text={deployScript} label="Copy script" />
-            ) : null}
-          </div>
-          <pre className="max-h-36 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]">
-            {deployScript || option.cli}
-          </pre>
-        </div>
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
-          <Terminal className="h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
-          <code className="overflow-x-auto whitespace-nowrap font-mono text-[11px] text-[var(--foreground)]">
-            {option.cli}
-          </code>
-        </div>
-      </Collapsible>
-
-      <button
-        type="button"
-        onClick={onConnect}
-        disabled={!canManage}
-        aria-label={`Connect ${option.value}`}
-        className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-700/60 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <Plug className="h-4 w-4" />
-        Connect
-      </button>
+        {connector.action.type === "cloud" ? (
+          <button
+            type="button"
+            onClick={() => onConnectCloud(connector.action.type === "cloud" ? connector.action.provider : "")}
+            disabled={!canManage}
+            aria-label={`Connect ${connector.label}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plug className="h-3.5 w-3.5" />
+            Connect
+          </button>
+        ) : connector.action.type === "coding-agent" ? (
+          <button
+            type="button"
+            onClick={onConnectCodingAgent}
+            aria-label="Set up coding agent"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20"
+          >
+            <Plug className="h-3.5 w-3.5" />
+            Set up
+          </button>
+        ) : (
+          <Link
+            href={connector.action.href}
+            aria-label={`Register ${connector.label}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-emerald-600 hover:text-emerald-300"
+          >
+            Register
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        )}
+      </div>
     </Card>
   );
 }
 
-function CardFact({
-  icon: Icon,
-  term,
-  detail,
+// ── Coding-agent onboarding drawer ────────────────────────────────────────────
+// Read-only: exposes the local `agent-bom mcp-server` (73 tools) + skills to
+// Claude Code / Cursor over MCP. No new capability — discoverability only.
+
+const CODING_AGENT_MCP_SNIPPET = `{
+  "mcpServers": {
+    "agent-bom": {
+      "command": "agent-bom",
+      "args": ["mcp-server"]
+    }
+  }
+}`;
+
+function CodingAgentDrawer({
+  open,
+  onClose,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
-  term: string;
-  detail: string;
+  open: boolean;
+  onClose: () => void;
 }) {
   return (
-    <div className="flex items-start gap-2">
-      <Icon className="mt-0.5 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
-      <div className="min-w-0">
-        <dt className="inline text-[var(--text-tertiary)]">{term}: </dt>
-        <dd className="inline text-[var(--text-secondary)]">{detail}</dd>
+    <Drawer
+      open={open}
+      onClose={onClose}
+      size="lg"
+      eyebrow="AI · Read-only"
+      title="Connect a coding agent"
+      subtitle={
+        <span className="text-[11px] text-[color:var(--text-tertiary)]">
+          Local MCP server + skills for Claude Code & Cursor
+        </span>
+      }
+      headerAside={
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
+          <Bot className="h-3 w-3" /> 73 MCP tools
+        </span>
+      }
+    >
+      <div className="space-y-4 text-sm text-[color:var(--text-secondary)]">
+        <p>
+          Expose Agent-BOM&apos;s read-only tools — scan, blast-radius,
+          exposure-paths, SBOM, compliance, and remediation — to your coding
+          agent over the Model Context Protocol. Everything runs locally against
+          your control plane; no code or credentials leave your machine.
+        </p>
+
+        <section className="space-y-2">
+          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+            <Terminal className="h-3.5 w-3.5" /> 1 · Start the MCP server
+          </h3>
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+            <code className="overflow-x-auto whitespace-nowrap font-mono text-[12px] text-[color:var(--foreground)]">
+              agent-bom mcp-server
+            </code>
+            <CopyTextButton text="agent-bom mcp-server" />
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+            <FileCode className="h-3.5 w-3.5" /> 2 · Register it in your agent
+          </h3>
+          <p className="text-[12px]">
+            Add to your agent&apos;s MCP config (Claude Code{" "}
+            <code className="font-mono">mcp.json</code>, Cursor{" "}
+            <code className="font-mono">~/.cursor/mcp.json</code>):
+          </p>
+          <div className="relative">
+            <pre className="overflow-x-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3 font-mono text-[11px] leading-5 text-[color:var(--foreground)]">
+              {CODING_AGENT_MCP_SNIPPET}
+            </pre>
+            <div className="mt-2">
+              <CopyTextButton text={CODING_AGENT_MCP_SNIPPET} label="Copy config" />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+            <ShieldCheck className="h-3.5 w-3.5" /> Bundled skills
+          </h3>
+          <ul className="space-y-1.5 text-[12px]">
+            <li className="flex items-start gap-2">
+              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
+              <span>
+                <strong className="text-[color:var(--foreground)]">Cortex Code</strong>{" "}
+                — scan-on-save, exposure-path lookups, and SBOM diffing inside your
+                editor.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
+              <span>
+                <strong className="text-[color:var(--foreground)]">OpenCLAW</strong>{" "}
+                — agent-driven remediation and compliance workflows over the same
+                read-only tools.
+              </span>
+            </li>
+          </ul>
+        </section>
+
+        <p className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-300">
+          <Lock className="h-3.5 w-3.5 shrink-0" /> Read-only. The server never
+          writes to your cloud, repos, or control-plane data.
+        </p>
       </div>
-    </div>
+    </Drawer>
   );
 }
 

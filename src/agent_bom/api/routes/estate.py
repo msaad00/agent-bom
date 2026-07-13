@@ -49,12 +49,15 @@ def _match_payload(match: Any) -> dict[str, Any]:
     return payload
 
 
-@router.get("/estate/correlations", tags=["estate"])
+@router.get("/estate/correlations", tags=["estate"], deprecated=True)
 async def get_estate_correlations(
     request: Request,
     scan_id: str | None = Query(None, description="Scan job ID; latest completed scan if omitted"),
 ) -> dict[str, Any]:
-    """Return local↔cloud agent correlation matches for a completed scan."""
+    """Return local↔cloud agent correlation matches for a completed scan.
+
+    Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
+    """
     tenant_id = _tenant_id(request)
     job = _latest_done_job(tenant_id, scan_id=scan_id)
     if job is None:

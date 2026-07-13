@@ -65,13 +65,48 @@ describe("LoginPage", () => {
     expect(screen.getByText("Enter your API key to access the dashboard.")).toBeInTheDocument();
     expect(screen.getByLabelText("API key")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /sign in with sso/i })).not.toBeInTheDocument();
     // First-run help points operators at the env var, no raw mode identifiers leak.
     expect(screen.getByText("AGENT_BOM_API_KEYS")).toBeInTheDocument();
     expect(screen.queryByText("Configured auth modes")).not.toBeInTheDocument();
     expect(screen.queryByText("session_api_key")).not.toBeInTheDocument();
   });
 
-  it("shows the SSO-handled hint (no fake button) when a proxy/OIDC mode is configured", async () => {
+  it("shows Sign in with SSO when browser OIDC is configured", async () => {
+    apiMock.getAuthMe.mockReset();
+    apiMock.getAuthMe.mockResolvedValue({
+      authenticated: false,
+      auth_required: true,
+      configured_modes: ["oidc_browser", "oidc_bearer", "api_key"],
+      recommended_ui_mode: "oidc_browser",
+      auth_method: null,
+      subject: null,
+      role: null,
+      tenant_id: "default",
+      role_summary: null,
+      memberships: [],
+      request_id: null,
+      trace_id: null,
+      span_id: null,
+    });
+
+    render(
+      <AuthProvider>
+        <LoginPage />
+      </AuthProvider>,
+    );
+
+    const ssoLink = await screen.findByRole("link", { name: /sign in with sso/i });
+    expect(ssoLink).toHaveAttribute("href", "/v1/auth/oidc/login");
+    expect(screen.getByText("Sign in with SSO, or use an API key as a fallback.")).toBeInTheDocument();
+    expect(screen.getByLabelText("API key")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Single sign-on is handled by your identity provider or reverse proxy."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the reverse-proxy SSO hint (no fake button) when trusted_proxy is configured", async () => {
     apiMock.getAuthMe.mockReset();
     apiMock.getAuthMe.mockResolvedValue({
       authenticated: false,
@@ -96,9 +131,11 @@ describe("LoginPage", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText("Single sign-on is handled by your identity provider or reverse proxy.")).toBeInTheDocument(),
+      expect(
+        screen.getByText("Single sign-on is handled by your reverse proxy. Continue there, or use an API key below."),
+      ).toBeInTheDocument(),
     );
-    expect(screen.queryByRole("button", { name: /continue with sso/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /sign in with sso/i })).not.toBeInTheDocument();
     expect(screen.getByLabelText("API key")).toBeInTheDocument();
   });
 

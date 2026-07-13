@@ -302,6 +302,20 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
     }
 
 
+def _evaluated_control_status(sev_breakdown: dict[str, int]) -> str:
+    """Status of a control that HAS mapped findings, by worst severity.
+
+    Mirror of ``compliance_narrative._control_status`` so ``/v1/compliance``, the
+    narrative, and the CLI export agree: critical/high → fail, medium/low →
+    warning, otherwise pass. Keep in sync with that function.
+    """
+    if sev_breakdown.get("critical", 0) > 0 or sev_breakdown.get("high", 0) > 0:
+        return "fail"
+    if sev_breakdown.get("medium", 0) > 0 or sev_breakdown.get("low", 0) > 0:
+        return "warning"
+    return "pass"
+
+
 @router.get("/compliance", tags=["compliance"])
 async def get_compliance(request: Request) -> dict:
     """Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,
@@ -370,11 +384,14 @@ async def get_compliance(request: Request) -> dict:
                 # status per control (mirrors the aggregate no_data top-line).
                 status = "not_assessed"
             elif findings == 0:
-                status = "pass"
-            elif sev_breakdown["critical"] > 0 or sev_breakdown["high"] > 0:
-                status = "fail"
+                # Scan ran but nothing maps to this control — no
+                # vulnerability-derived evidence, so it is not_evaluated, never a
+                # silent pass. Counting these as pass inflated overall_score
+                # toward 100 and contradicted the narrative + CLI export; all
+                # three surfaces now agree.
+                status = "not_evaluated"
             else:
-                status = "warning"
+                status = _evaluated_control_status(sev_breakdown)
 
             controls.append(
                 {
@@ -402,18 +419,25 @@ async def get_compliance(request: Request) -> dict:
         return p, w, f
 
     all_frameworks = list(framework_controls.values())
-    total_controls = sum(len(fw) for fw in all_frameworks)
-    total_pass = sum(_count_statuses(fw)[0] for fw in all_frameworks)
-    any_fail = any(_count_statuses(fw)[2] > 0 for fw in all_frameworks)
-    any_warn = any(_count_statuses(fw)[1] > 0 for fw in all_frameworks)
-    overall_score = round((total_pass / total_controls) * 100, 1) if total_controls > 0 else 100.0
+    status_totals = [_count_statuses(fw) for fw in all_frameworks]
+    total_pass = sum(s[0] for s in status_totals)
+    total_warn = sum(s[1] for s in status_totals)
+    total_fail = sum(s[2] for s in status_totals)
+    # Score over EVALUATED controls only (those with mapped findings). A control
+    # with no findings is not_evaluated, never a silent pass — otherwise every
+    # never-triggered bundled control inflates the score toward 100. Matches the
+    # narrative so a benign/empty estate can't read as "fully compliant".
+    evaluated_controls = total_pass + total_warn + total_fail
+    overall_score = round((total_pass / evaluated_controls) * 100, 1) if evaluated_controls > 0 else 0.0
 
-    if any_fail:
+    if total_fail > 0:
         overall_status = "fail"
-    elif any_warn:
+    elif total_warn > 0:
         overall_status = "warning"
-    else:
+    elif evaluated_controls > 0:
         overall_status = "pass"
+    else:
+        overall_status = "no_data"
 
     # With zero completed scans there is nothing to measure — every control
     # trivially "passes" because no findings map to it. Reporting
@@ -429,15 +453,17 @@ async def get_compliance(request: Request) -> dict:
     aisvs_summary = aisvs["summary"]
     summary: dict[str, int | float] = {}
     for metadata in TAG_MAPPED_FRAMEWORKS:
-        passed, warned, failed = _count_statuses(framework_controls[metadata.output_key])
+        controls_list = framework_controls[metadata.output_key]
+        passed, warned, failed = _count_statuses(controls_list)
         summary[f"{metadata.summary_prefix}_pass"] = passed
         summary[f"{metadata.summary_prefix}_warn"] = warned
         summary[f"{metadata.summary_prefix}_fail"] = failed
-        # On a zero-scan tenant every control is not_assessed (0 pass/warn/fail).
-        # Surface the catalogue size as not_evaluated so consumers can tell an
-        # empty estate apart from a fully-passing one.
-        if scan_count == 0:
-            summary[f"{metadata.summary_prefix}_not_evaluated"] = len(framework_controls[metadata.output_key])
+        # Controls with no mapped findings are not_evaluated (not_assessed on a
+        # zero-scan estate) — surface the count so consumers can tell an
+        # unevaluated control apart from a passing one.
+        not_evaluated = len(controls_list) - passed - warned - failed
+        if not_evaluated:
+            summary[f"{metadata.summary_prefix}_not_evaluated"] = not_evaluated
     summary.update(
         {
             "aisvs_pass": aisvs_summary["pass"],

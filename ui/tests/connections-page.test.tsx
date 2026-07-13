@@ -13,6 +13,7 @@ const { apiMock } = vi.hoisted(() => ({
     testCloudConnection: vi.fn(),
     scanCloudConnection: vi.fn(),
     getPostureCounts: vi.fn(),
+    listSources: vi.fn(),
   },
 }));
 
@@ -20,10 +21,15 @@ vi.mock("next/link", () => ({
   default: ({
     href,
     children,
+    ...rest
   }: {
     href: string;
     children: React.ReactNode;
-  }) => <a href={href}>{children}</a>,
+  } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("@/components/auth-provider", () => ({
@@ -82,6 +88,12 @@ beforeEach(() => {
     schema_version: "cloud.connections.v1",
     tenant_id: "tenant-acme",
     connections: [],
+    count: 0,
+  });
+  apiMock.listSources.mockResolvedValue({
+    schema_version: "sources.v1",
+    tenant_id: "tenant-acme",
+    sources: [],
     count: 0,
   });
 });
@@ -205,10 +217,11 @@ describe("ConnectionsPage", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
-    // Step 0: choose GCP, then advance to the details step.
-    fireEvent.click(screen.getByRole("button", { name: /Google Cloud/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    // Step 0: choose GCP inside the wizard dialog, then advance to details.
+    const wizard = screen.getByRole("dialog", { name: "Add cloud account" });
+    fireEvent.click(within(wizard).getByRole("button", { name: /Google Cloud/ }));
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
 
     fireEvent.change(screen.getByPlaceholderText("Production account"), {
       target: { value: "GCP prod" },
@@ -531,5 +544,77 @@ describe("ConnectionsPage", () => {
         screen.getByText("No cloud accounts connected"),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("renders a category-spanning connector gallery with cloud, code, AI, and data tiles", async () => {
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Connect Amazon Web Services" }),
+      ).toBeInTheDocument(),
+    );
+    // Non-cloud surfaces register into Data Sources rather than opening the wizard.
+    expect(
+      screen.getByRole("link", { name: "Register Repositories" }),
+    ).toHaveAttribute("href", "/sources");
+    expect(
+      screen.getByRole("link", { name: "Register Warehouse & lake" }),
+    ).toHaveAttribute("href", "/sources");
+    // The coding-agent surface is a set-up action, not a register link.
+    expect(
+      screen.getByRole("button", { name: "Set up coding agent" }),
+    ).toBeInTheDocument();
+  });
+
+  it("filters the gallery by category and free-text search", async () => {
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Connect Amazon Web Services" }),
+      ).toBeInTheDocument(),
+    );
+
+    // Switch to the Data category: cloud provider tiles drop out.
+    fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
+    expect(
+      screen.queryByRole("button", { name: "Connect Amazon Web Services" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Register Warehouse & lake" }),
+    ).toBeInTheDocument();
+
+    // Back to All, then search narrows to matching connectors.
+    fireEvent.click(screen.getByRole("tab", { name: /^All/ }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search connectors" }), {
+      target: { value: "kubernetes" },
+    });
+    expect(
+      screen.getByRole("link", { name: "Register IaC & clusters" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connect Amazon Web Services" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens the read-only coding-agent onboarding drawer with the MCP server snippet", async () => {
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Set up coding agent" }),
+      ).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Set up coding agent" }));
+
+    const drawer = await screen.findByRole("dialog", {
+      name: /Connect a coding agent/,
+    });
+    expect(
+      within(drawer).getByText("agent-bom mcp-server"),
+    ).toBeInTheDocument();
+    expect(within(drawer).getByText(/73 MCP tools/)).toBeInTheDocument();
   });
 });

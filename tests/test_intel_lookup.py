@@ -212,6 +212,50 @@ def test_daily_brief_summarizes_local_sources_without_scraping_claims(intel_db) 
     assert "Vendor webpage scraping is not shipped" in body["limitations"][1]
 
 
+def test_daily_brief_kev_alias_correlation_surfaces_ghsa_by_cve_alias(intel_db) -> None:  # noqa: ANN001
+    """A vuln whose id differs from the KEV CVE (GHSA row carrying the CVE as an
+    alias) still surfaces via the split alias-match pass (#3927)."""
+    # KEV CVE-2026-12345 (date_added 2026-05-04) is aliased by GHSA-abcd-1234-wxyz.
+    body = build_daily_brief(
+        db_path=intel_db,
+        now=datetime(2026, 5, 5, tzinfo=UTC),
+        kev_window_hours=24,
+    )
+    kev = body["sections"]["kev_last_24h"]
+    ghsa = next((item for item in kev if item["id"] == "GHSA-abcd-1234-wxyz"), None)
+    assert ghsa is not None, "alias-matched vuln missing from kev_last_24h"
+    assert ghsa["is_kev"] is True
+    assert ghsa["kev_date_added"] == "2026-05-04"
+
+
+def test_daily_brief_kev_window_excludes_out_of_window_alias(intel_db) -> None:  # noqa: ANN001
+    """The alias KEV (2026-05-04) falls outside a 24h window ending 2026-05-22, so
+    its aliased GHSA row must not surface; the in-window direct CVE still does."""
+    body = build_daily_brief(
+        db_path=intel_db,
+        now=datetime(2026, 5, 22, tzinfo=UTC),
+        kev_window_hours=24,
+    )
+    ids = {item["id"] for item in body["sections"]["kev_last_24h"]}
+    assert "GHSA-abcd-1234-wxyz" not in ids  # alias KEV out of window
+    assert "CVE-2026-55555" in ids  # direct KEV in window
+
+
+def test_daily_brief_kev_window_orders_by_date_desc(intel_db) -> None:  # noqa: ANN001
+    """Both KEVs in a wide window: direct + alias merged, ordered date_added DESC."""
+    body = build_daily_brief(
+        db_path=intel_db,
+        now=datetime(2026, 5, 5, tzinfo=UTC),
+        kev_window_hours=168,
+    )
+    kev = body["sections"]["kev_last_24h"]
+    ids = [item["id"] for item in kev]
+    assert "CVE-2026-55555" in ids and "GHSA-abcd-1234-wxyz" in ids
+    # CVE-2026-55555 (date_added 2026-05-21) sorts ahead of the alias match
+    # GHSA-abcd-1234-wxyz (date_added 2026-05-04).
+    assert ids.index("CVE-2026-55555") < ids.index("GHSA-abcd-1234-wxyz")
+
+
 def test_daily_brief_matches_governed_telemetry_and_tenant_profile(intel_db) -> None:  # noqa: ANN001
     body = build_daily_brief(
         [{"purl": "pkg:pypi/requests@2.31.0", "inventory_ref": "pkg-1"}],

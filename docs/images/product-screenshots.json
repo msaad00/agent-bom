@@ -1,6 +1,6 @@
 {
   "release_version": "0.95.0",
-  "captured_at": "2026-07-13T03:01:26.429Z",
+  "captured_at": "2026-07-13T19:41:49.902Z",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
     {
@@ -18,7 +18,7 @@
     {
       "path": "cloud-accounts-live.png",
       "page": "/connections?capture=1",
-      "scope": "Cloud accounts onboarding with provider catalog and account stats",
+      "scope": "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
       "visible_version": "0.95.0"
     },
     {

@@ -1521,7 +1521,7 @@ async function writeScreenshotManifest() {
     {
       path: "cloud-accounts-live.png",
       page: "/connections?capture=1",
-      scope: "Cloud accounts onboarding with provider catalog and account stats",
+      scope: "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
     },
     {
       path: "new-scan-live.png",
@@ -1628,7 +1628,7 @@ async function main() {
       await scrollTo(dashboardPage, 720);
     });
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {
-      await connectionsPage.getByRole("heading", { name: "Cloud accounts", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+      await connectionsPage.getByRole("heading", { name: "Connections", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     });
     await capture(page, "/scan?capture=1", "new-scan-live.png", async (scanPage) => {
       await scanPage.getByRole("heading", { name: /New Scan|Run scan/i }).first().waitFor({ state: "visible", timeout: 10_000 });

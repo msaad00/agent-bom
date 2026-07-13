@@ -404,14 +404,18 @@ def _upsert_current_finding_sqlite(
         updated_at=now,
     )
     origin_val = str(payload.get("origin") or "")
+    # Materialise the scan filter key: batch_id first, scan_id fallback — the
+    # canonical ``batch_id or scan_id`` the in-memory filter compares against so
+    # every backend agrees and the read rides the (tenant_id, scan_id) index.
+    scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")
     if has_ledger_col:
         conn.execute(
             """
             INSERT INTO hub_findings_current
                 (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                  cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                 updated_at, payload, ledger_finding_id, origin)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 updated_at, payload, ledger_finding_id, origin, scan_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
                 first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
                 last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
@@ -426,7 +430,8 @@ def _upsert_current_finding_sqlite(
                 updated_at = excluded.updated_at,
                 payload = excluded.payload,
                 ledger_finding_id = excluded.ledger_finding_id,
-                origin = excluded.origin
+                origin = excluded.origin,
+                scan_id = excluded.scan_id
             """,
             (
                 tenant_id,
@@ -445,6 +450,7 @@ def _upsert_current_finding_sqlite(
                 payload_json,
                 ledger_finding_id or None,
                 origin_val,
+                scan_id_val,
             ),
         )
     else:
@@ -453,8 +459,8 @@ def _upsert_current_finding_sqlite(
             INSERT INTO hub_findings_current
                 (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                  cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                 updated_at, payload, origin)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 updated_at, payload, origin, scan_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
                 first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
                 last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
@@ -468,7 +474,8 @@ def _upsert_current_finding_sqlite(
                 reopened_at = excluded.reopened_at,
                 updated_at = excluded.updated_at,
                 payload = excluded.payload,
-                origin = excluded.origin
+                origin = excluded.origin,
+                scan_id = excluded.scan_id
             """,
             (
                 tenant_id,
@@ -486,6 +493,7 @@ def _upsert_current_finding_sqlite(
                 merged["updated_at"],
                 payload_json,
                 origin_val,
+                scan_id_val,
             ),
         )
 
@@ -533,6 +541,50 @@ def _migrate_current_origin_col_sqlite(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE hub_findings_current SET origin = COALESCE(json_extract(payload, '$.origin'), '') WHERE origin = ''")
 
 
+def _migrate_current_scan_id_col_sqlite(conn: sqlite3.Connection) -> None:
+    """Promote ``scan_id`` to a real indexed column on ``hub_findings_current``.
+
+    The default ``/v1/findings`` (current-state) reach read filtered ``scan_id``
+    via ``json_extract(payload, '$.batch_id'/'$.scan_id')`` per row — a full-table
+    scan of the tenant, paid twice (COUNT + page). This mirrors the ledger fix
+    (#3641/#3913): backfill a materialised column so the filter rides an index.
+
+    The materialised value matches the canonical in-memory filter
+    (``batch_id or scan_id``): ``batch_id`` takes precedence and ``scan_id`` is
+    the fallback, so pre-migration rows resolve to the exact same key the old
+    per-row json_extract compared against. Idempotent: the guarded ALTER runs
+    once and the backfill only touches empty cells.
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current)").fetchall()}
+    if "scan_id" not in cols:
+        conn.execute("ALTER TABLE hub_findings_current ADD COLUMN scan_id TEXT NOT NULL DEFAULT ''")
+        conn.execute(
+            "UPDATE hub_findings_current SET scan_id = "
+            "COALESCE(NULLIF(json_extract(payload, '$.batch_id'), ''), json_extract(payload, '$.scan_id'), '') "
+            "WHERE scan_id = ''"
+        )
+
+
+def _ensure_current_scale_indexes_sqlite(conn: sqlite3.Connection) -> None:
+    """Partial indexes backing the current-state scan_id + severity filters.
+
+    Both are ``WHERE <col> != ''`` partial indexes: the common rows (no scan_id,
+    or an empty severity) stay OUT of the index so an all-empty
+    ``(tenant_id, col)`` index cannot shadow the default reach read as a
+    perfect tenant-equality candidate and force a filesort. Real filters always
+    query a non-empty value, so the partial index still serves them (mirrors the
+    ledger treatment in ``_ensure_scale_indexes``).
+    """
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_scan "
+        "ON hub_findings_current(tenant_id, scan_id) WHERE scan_id != ''"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_ci "
+        "ON hub_findings_current(tenant_id, LOWER(severity)) WHERE severity != ''"
+    )
+
+
 def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
     from agent_bom.api.finding_lifecycle import (
         _CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE,
@@ -544,7 +596,11 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
     # ``(tenant_id, origin, cvss_score DESC, …)`` index can build on pre-existing
     # tables that predate the column.
     _migrate_current_origin_col_sqlite(conn)
+    # Materialise scan_id before its index so the partial index can build on
+    # tables that predate the column (the default /v1/findings scan filter).
+    _migrate_current_scan_id_col_sqlite(conn)
     conn.executescript(_CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE)
+    _ensure_current_scale_indexes_sqlite(conn)
     _migrate_lifecycle_observations_l2_sqlite(conn)
     _migrate_current_ledger_ref_sqlite(conn)
     conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")
@@ -1481,12 +1537,20 @@ class SQLiteComplianceHubStore:
             params.append(origin)
         if severity is not None:
             # Match the materialised severity STRING (exact, lowercased) so all
-            # backends agree; ``severity_rank`` stays ORDER-BY-only (#3192).
-            where.append("LOWER(severity) = ?")
+            # backends agree; ``severity_rank`` stays ORDER-BY-only (#3192). The
+            # ``severity != ''`` guard is redundant for any real severity but
+            # lets the partial expression index idx_hub_findings_current_tenant_
+            # severity_ci serve the filter (#3926).
+            where.append("severity != '' AND LOWER(severity) = ?")
             params.append(severity.lower())
         if scan_id is not None:
-            where.append("(CAST(json_extract(payload, '$.batch_id') AS TEXT) = ? OR CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?)")
-            params.extend([scan_id, scan_id])
+            # Materialised column (backfilled from batch_id|scan_id) so the scan
+            # filter and its COUNT(*) ride idx_hub_findings_current_tenant_scan
+            # instead of a per-row json_extract full scan. The ``scan_id != ''``
+            # guard is redundant for any real scan_id but lets SQLite apply the
+            # partial index (it cannot prove a bound param is non-empty) (#3926).
+            where.append("scan_id = ? AND scan_id != ''")
+            params.append(scan_id)
         if cursor:
             keyset_sql, keyset_params = sqlite_keyset_clause(normalized_sort, cursor)
             where.append(keyset_sql.removeprefix(" AND "))

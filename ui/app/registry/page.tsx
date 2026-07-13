@@ -32,7 +32,7 @@ function riskColor(risk: string) {
     case "high": return "text-red-400 bg-red-950 border-red-800";
     case "medium": return "text-yellow-400 bg-yellow-950 border-yellow-800";
     case "low": return "text-emerald-400 bg-emerald-950 border-emerald-800";
-    default: return "text-zinc-400 bg-zinc-800 border-zinc-700";
+    default: return "text-[color:var(--text-secondary)] bg-[color:var(--surface-elevated)] border-[color:var(--border-subtle)]";
   }
 }
 
@@ -41,7 +41,7 @@ function riskBorderColor(risk: string) {
     case "high": return "border-red-800";
     case "medium": return "border-yellow-800";
     case "low": return "border-emerald-800";
-    default: return "border-zinc-800";
+    default: return "border-[color:var(--border-subtle)]";
   }
 }
 
@@ -56,8 +56,8 @@ function DetailSection({ title, icon: Icon, children, accent }: {
   accent?: string | undefined;
 }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-      <div className={`flex items-center gap-2 mb-3 text-xs font-medium uppercase tracking-wider ${accent || "text-zinc-500"}`}>
+    <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl p-4">
+      <div className={`flex items-center gap-2 mb-3 text-xs font-medium uppercase tracking-wider ${accent || "text-[color:var(--text-tertiary)]"}`}>
         <Icon className="w-3.5 h-3.5" />
         {title}
       </div>
@@ -90,7 +90,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[80vh] text-zinc-400">
+      <div className="flex items-center justify-center h-[80vh] text-[color:var(--text-secondary)]">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
         Loading server details...
       </div>
@@ -99,7 +99,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
 
   if (error || !server) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
+      <div className="flex flex-col items-center justify-center h-[80vh] text-[color:var(--text-secondary)] gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
         <p className="text-sm">{error || "Server not found"}</p>
         <button onClick={() => router.push("/registry")} className="text-xs text-emerald-400 hover:text-emerald-300">
@@ -118,7 +118,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
       {/* Back button */}
       <button
         onClick={() => router.push("/registry")}
-        className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+        className="flex items-center gap-1.5 text-sm text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to Registry
@@ -130,41 +130,41 @@ function RegistryDetail({ serverId }: { serverId: string }) {
           {server.verified ? (
             <ShieldCheck className="w-6 h-6 text-emerald-400 mt-0.5 shrink-0" />
           ) : (
-            <ShieldAlert className="w-6 h-6 text-zinc-500 mt-0.5 shrink-0" />
+            <ShieldAlert className="w-6 h-6 text-[color:var(--text-tertiary)] mt-0.5 shrink-0" />
           )}
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-100">{server.name}</h1>
-            <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500">
+            <h1 className="text-2xl font-semibold text-[color:var(--foreground)]">{server.name}</h1>
+            <div className="flex items-center gap-2 mt-1 text-sm text-[color:var(--text-tertiary)]">
               <span className="font-mono">{server.publisher}</span>
               {server.packages?.[0]?.ecosystem && (
                 <>
-                  <span className="text-zinc-700">&middot;</span>
+                  <span className="text-[color:var(--text-tertiary)]">&middot;</span>
                   <span>{server.packages[0].ecosystem}</span>
                 </>
               )}
               {server.license && (
                 <>
-                  <span className="text-zinc-700">&middot;</span>
+                  <span className="text-[color:var(--text-tertiary)]">&middot;</span>
                   <Scale className="w-3 h-3" />
                   <span>{server.license}</span>
                 </>
               )}
               {server.category && (
                 <>
-                  <span className="text-zinc-700">&middot;</span>
+                  <span className="text-[color:var(--text-tertiary)]">&middot;</span>
                   <Tag className="w-3 h-3" />
                   <span>{server.category}</span>
                 </>
               )}
               {server.latest_version && (
                 <>
-                  <span className="text-zinc-700">&middot;</span>
+                  <span className="text-[color:var(--text-tertiary)]">&middot;</span>
                   <span className="font-mono text-xs">{server.latest_version}</span>
                 </>
               )}
             </div>
             {server.description && (
-              <p className="text-sm text-zinc-400 mt-2">{server.description}</p>
+              <p className="text-sm text-[color:var(--text-secondary)] mt-2">{server.description}</p>
             )}
           </div>
         </div>
@@ -185,14 +185,14 @@ function RegistryDetail({ serverId }: { serverId: string }) {
 
       {/* Risk Justification */}
       {server.risk_justification && (
-        <div className={`rounded-xl border-2 p-4 ${riskBorderColor(server.risk_level)} bg-zinc-900`}>
-          <div className="flex items-center gap-2 mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <div className={`rounded-xl border-2 p-4 ${riskBorderColor(server.risk_level)} bg-[color:var(--surface-muted)]`}>
+          <div className="flex items-center gap-2 mb-2 text-xs font-medium uppercase tracking-wider text-[color:var(--text-tertiary)]">
             <Info className="w-3.5 h-3.5" />
             Risk rationale
           </div>
-          <p className="text-sm text-zinc-300 leading-relaxed">{server.risk_justification}</p>
+          <p className="text-sm text-[color:var(--text-secondary)] leading-relaxed">{server.risk_justification}</p>
           {cves.length === 0 ? (
-            <p className="mt-2 text-xs text-zinc-500">
+            <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
               This classification is capability-based. No known CVEs are currently attached to this server in registry data.
             </p>
           ) : null}
@@ -205,13 +205,13 @@ function RegistryDetail({ serverId }: { serverId: string }) {
           {tools.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {tools?.map((tool) => (
-                <span key={tool} className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs font-mono text-zinc-300">
+                <span key={tool} className="px-2 py-1 bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded text-xs font-mono text-[color:var(--text-secondary)]">
                   {tool}
                 </span>
               ))}
             </div>
           ) : (
-            <p className="text-xs text-zinc-600">No tools documented</p>
+            <p className="text-xs text-[color:var(--text-tertiary)]">No tools documented</p>
           )}
         </DetailSection>
 
@@ -227,7 +227,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-zinc-600">No credential environment variables</p>
+            <p className="text-xs text-[color:var(--text-tertiary)]">No credential environment variables</p>
           )}
         </DetailSection>
 
@@ -235,9 +235,9 @@ function RegistryDetail({ serverId }: { serverId: string }) {
         <DetailSection title="Package" icon={Package}>
           {server.packages?.map((pkg) => (
             <div key={pkg.name} className="space-y-1">
-              <code className="text-sm font-mono text-zinc-200">{pkg.name}</code>
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
-                <span className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded font-mono">
+              <code className="text-sm font-mono text-[color:var(--foreground)]">{pkg.name}</code>
+              <div className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">
+                <span className="px-1.5 py-0.5 bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded font-mono">
                   {pkg.ecosystem}
                 </span>
                 {server.latest_version && (
@@ -267,7 +267,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-zinc-600">No known CVEs for this server</p>
+            <p className="text-xs text-[color:var(--text-tertiary)]">No known CVEs for this server</p>
           )}
         </DetailSection>
       </div>
@@ -348,7 +348,7 @@ function RegistryList() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[80vh] text-zinc-400">
+      <div className="flex items-center justify-center h-[80vh] text-[color:var(--text-secondary)]">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
         Loading MCP registry...
       </div>
@@ -357,10 +357,10 @@ function RegistryList() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
+      <div className="flex flex-col items-center justify-center h-[80vh] text-[color:var(--text-secondary)] gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
         <p className="text-sm">Could not load MCP registry</p>
-        <p className="text-xs text-zinc-500">Make sure the API is running at localhost:8422</p>
+        <p className="text-xs text-[color:var(--text-tertiary)]">Make sure the API is running at localhost:8422</p>
       </div>
     );
   }
@@ -375,7 +375,7 @@ function RegistryList() {
       />
 
       {meta && (meta.updated || meta.sources?.length) ? (
-        <p className="-mt-3 text-xs text-zinc-500">
+        <p className="-mt-3 text-xs text-[color:var(--text-tertiary)]">
           Synced from{" "}
           {meta.sources?.includes("mcp-official")
             ? "the official MCP registry"
@@ -389,41 +389,41 @@ function RegistryList() {
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[240px] flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[color:var(--text-tertiary)]" />
             <input
               type="text"
               placeholder="Search servers, publishers, categories..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-600"
+              className="w-full pl-10 pr-4 py-2 bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg text-sm text-[color:var(--text-secondary)] placeholder:text-[color:var(--text-tertiary)] focus:outline-none focus:border-emerald-600"
             />
           </div>
 
           <div className="flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5 text-zinc-500 mr-1" />
+            <Filter className="w-3.5 h-3.5 text-[color:var(--text-tertiary)] mr-1" />
             {(["all", "high", "medium", "low"] as RiskFilter[]).map((r) => (
               <button
                 key={r}
                 onClick={() => setRiskFilter(r)}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   riskFilter === r
-                    ? "bg-zinc-700 text-zinc-100"
-                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                    : "text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)]"
                 }`}
               >
                 {r === "all" ? "All" : r.charAt(0).toUpperCase() + r.slice(1)}{" "}
-                <span className="text-zinc-500">({riskCounts[r]})</span>
+                <span className="text-[color:var(--text-tertiary)]">({riskCounts[r]})</span>
               </button>
             ))}
           </div>
 
           {categories.length > 0 && (
-            <label className="flex items-center gap-2 text-xs text-zinc-500">
+            <label className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">
               Category
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200"
+                className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-1.5 text-xs text-[color:var(--foreground)]"
               >
                 <option value="all">All categories</option>
                 {categories.map((cat) => (
@@ -435,12 +435,12 @@ function RegistryList() {
             </label>
           )}
 
-          <div className="ml-auto flex items-center gap-1 rounded-md border border-zinc-800 p-0.5">
+          <div className="ml-auto flex items-center gap-1 rounded-md border border-[color:var(--border-subtle)] p-0.5">
             <button
               type="button"
               onClick={() => setViewMode("table")}
               className={`rounded px-2.5 py-1 text-[11px] font-medium ${
-                viewMode === "table" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500"
+                viewMode === "table" ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]"
               }`}
             >
               Table
@@ -449,7 +449,7 @@ function RegistryList() {
               type="button"
               onClick={() => setViewMode("cards")}
               className={`rounded px-2.5 py-1 text-[11px] font-medium ${
-                viewMode === "cards" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500"
+                viewMode === "cards" ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]"
               }`}
             >
               Cards
@@ -459,9 +459,9 @@ function RegistryList() {
       </div>
 
       {viewMode === "table" ? (
-        <div className="overflow-x-auto rounded-lg border border-zinc-800">
+        <div className="overflow-x-auto rounded-lg border border-[color:var(--border-subtle)]">
           <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+            <thead className="bg-[color:var(--surface-muted)] text-xs uppercase tracking-wide text-[color:var(--text-tertiary)]">
               <tr>
                 <th className="px-4 py-3 font-medium">Server</th>
                 <th className="px-4 py-3 font-medium">Publisher</th>
@@ -477,16 +477,16 @@ function RegistryList() {
                 <th className="px-4 py-3 font-medium">Category</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800">
+            <tbody className="divide-y divide-[color:var(--border-subtle)]">
               {filtered.map((server) => (
                 <tr
                   key={server.id}
-                  className="cursor-pointer hover:bg-zinc-900/70"
+                  className="cursor-pointer hover:bg-[color:var(--surface-muted)]/70"
                   onClick={() => router.push(`/registry?id=${server.id}`)}
                 >
-                  <td className="px-4 py-3 font-medium text-zinc-200">{server.name}</td>
-                  <td className="px-4 py-3 text-zinc-500">{server.publisher ?? "—"}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-zinc-400">{server.latest_version ?? "—"}</td>
+                  <td className="px-4 py-3 font-medium text-[color:var(--foreground)]">{server.name}</td>
+                  <td className="px-4 py-3 text-[color:var(--text-tertiary)]">{server.publisher ?? "—"}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-[color:var(--text-secondary)]">{server.latest_version ?? "—"}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${riskColor(server.risk_level)}`}
@@ -495,9 +495,9 @@ function RegistryList() {
                       {server.risk_level}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-zinc-400">{server.tools?.length ?? 0}</td>
-                  <td className="px-4 py-3 text-zinc-400">{server.credential_env_vars?.length ?? 0}</td>
-                  <td className="px-4 py-3 text-zinc-500">{server.category ?? "—"}</td>
+                  <td className="px-4 py-3 text-[color:var(--text-secondary)]">{server.tools?.length ?? 0}</td>
+                  <td className="px-4 py-3 text-[color:var(--text-secondary)]">{server.credential_env_vars?.length ?? 0}</td>
+                  <td className="px-4 py-3 text-[color:var(--text-tertiary)]">{server.category ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -508,7 +508,7 @@ function RegistryList() {
           {filtered?.map((server) => (
             <div
               key={server.id}
-              className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 hover:border-zinc-600 transition-colors cursor-pointer group"
+              className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]/50 p-4 hover:border-[color:var(--border-strong)] transition-colors cursor-pointer group"
               onClick={() => router.push(`/registry?id=${server.id}`)}
             >
               {/* Top row */}
@@ -517,9 +517,9 @@ function RegistryList() {
                   {server.verified ? (
                     <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <ShieldAlert className="w-4 h-4 text-zinc-500 shrink-0" />
+                    <ShieldAlert className="w-4 h-4 text-[color:var(--text-tertiary)] shrink-0" />
                   )}
-                  <span className="font-mono text-sm font-medium text-zinc-200 truncate">
+                  <span className="font-mono text-sm font-medium text-[color:var(--foreground)] truncate">
                     {server.name}
                   </span>
                 </div>
@@ -530,17 +530,17 @@ function RegistryList() {
                   >
                     {server.risk_level}
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                  <ChevronRight className="w-3.5 h-3.5 text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)] transition-colors" />
                 </div>
               </div>
 
               {/* Description */}
               {server.description && (
-                <p className="text-xs text-zinc-500 mb-2 line-clamp-2">{server.description}</p>
+                <p className="text-xs text-[color:var(--text-tertiary)] mb-2 line-clamp-2">{server.description}</p>
               )}
 
               {/* Stats row */}
-              <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+              <div className="flex items-center gap-3 text-[10px] text-[color:var(--text-tertiary)]">
                 {server.packages && server.packages.length > 0 && (
                   <span className="flex items-center gap-0.5">
                     <Package className="w-2.5 h-2.5" /> {server.packages[0]!.ecosystem}
@@ -569,7 +569,7 @@ function RegistryList() {
       )}
 
       {filtered.length === 0 && (
-        <div className="text-center py-12 text-zinc-500 text-sm">
+        <div className="text-center py-12 text-[color:var(--text-tertiary)] text-sm">
           No servers match your search
         </div>
       )}
@@ -599,7 +599,7 @@ export default function RegistryPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center h-[80vh] text-zinc-400">
+        <div className="flex items-center justify-center h-[80vh] text-[color:var(--text-secondary)]">
           <Loader2 className="w-5 h-5 animate-spin mr-2" />
           Loading...
         </div>

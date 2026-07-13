@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 70 MCP tools as an MCP server. Any MCP-compatible client can
+agent-bom exposes 73 MCP tools as an MCP server. Any MCP-compatible client can
 connect and get vulnerability scanning, blast radius analysis, compliance
 checks, runtime posture, and supply-chain verification through natural
 conversation.
@@ -165,7 +165,7 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (70 tools)
+## Tool Categories (73 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|

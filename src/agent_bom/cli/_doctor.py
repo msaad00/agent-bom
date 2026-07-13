@@ -28,6 +28,7 @@ def doctor_cmd() -> None:
     core_checks: list[tuple[str, str, str]] = []
     runtime_checks: list[tuple[str, str, str]] = []
     platform_checks: list[tuple[str, str, str]] = []
+    cloud_sdk_checks: list[tuple[str, str, str]] = []
 
     # Python version
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -122,6 +123,26 @@ def doctor_cmd() -> None:
         else:
             platform_checks.append((label, "not set", "info"))
 
+    # Cloud SDK freshness — the tool's own provider SDK layer, checked against
+    # the version floor the connectors are built against. A stale SDK can
+    # silently under-cover a provider's estate, so it is never left silent.
+    try:
+        from agent_bom.cloud_sdk_freshness import cloud_sdk_posture
+
+        _sdk_status_map = {"ok": "ok", "outdated": "warn", "not_installed": "info", "unknown": "info"}
+        for sdk in cloud_sdk_posture()["sdks"]:
+            if sdk["status"] == "ok":
+                value = f"{sdk['installed_version']} (≥ floor {sdk['recommended_floor']})"
+            elif sdk["status"] == "outdated":
+                value = f"{sdk['installed_version']} < recommended floor {sdk['recommended_floor']} — upgrade agent-bom[{sdk['provider']}]"
+            elif sdk["status"] == "not_installed":
+                value = f"not installed (install agent-bom[{sdk['provider']}] to scan {sdk['provider']})"
+            else:
+                value = f"version unknown (floor {sdk['recommended_floor']})"
+            cloud_sdk_checks.append((sdk["distribution"], value, _sdk_status_map.get(sdk["status"], "info")))
+    except Exception:
+        cloud_sdk_checks.append(("Cloud SDKs", "freshness check unavailable", "info"))
+
     # Print results
     console.print("  [bold]agent-bom doctor[/bold]")
     console.print()
@@ -129,6 +150,7 @@ def doctor_cmd() -> None:
     _print_section(console, "Core readiness", core_checks)
     _print_section(console, "Runtime surfaces", runtime_checks)
     _print_section(console, "Platform integrations", platform_checks)
+    _print_section(console, "Cloud SDK freshness", cloud_sdk_checks)
 
     # Nothing-silent capability view — every gated feature with its state and
     # unlock path, so a skipped/degraded capability is never silent.

@@ -54,7 +54,7 @@
 
 Snowflake is a supported connector lane, not the product center.
 
-MCP server mode advertises 70 MCP tools, 6 resources, and 8 workflow prompts.
+MCP server mode advertises 73 MCP tools, 6 resources, and 8 workflow prompts.
 Registry metadata is tracked through the committed Smithery manifest and Glama
 listing; install and liveness checks live in the integration docs.
 

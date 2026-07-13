@@ -1052,15 +1052,29 @@ async def get_compliance_by_framework(request: Request, framework: str) -> dict:
         )
 
     controls = full.get(key, [])
+    # With zero completed scans every control trivially "passes" (no findings map
+    # to it), so reporting score 100 / "fully compliant" is compliance theater.
+    # Detect it from the aggregate's scan_count — the same no_data signal the
+    # summary endpoint uses — and surface an explicit no_data status instead.
+    no_data = int(full.get("scan_count") or 0) == 0
     pass_count = sum(1 for c in controls if c["status"] == "pass")
     warn_count = sum(1 for c in controls if c["status"] == "warning")
     fail_count = sum(1 for c in controls if c["status"] == "fail")
 
+    if no_data or not controls:
+        status = "no_data"
+        score = 0.0
+        pass_count = warn_count = fail_count = 0
+    else:
+        status = "fail" if fail_count else "warning" if warn_count else "pass"
+        score = round((pass_count / len(controls)) * 100, 1)
+
     return {
         "framework": framework,
+        "status": status,
         "controls": controls,
         "summary": {"pass": pass_count, "warning": warn_count, "fail": fail_count},
-        "score": round((pass_count / len(controls)) * 100, 1) if controls else 100.0,
+        "score": score,
     }
 
 

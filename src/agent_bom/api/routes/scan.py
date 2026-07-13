@@ -65,6 +65,7 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.canonical_ids import canonical_finding_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.security import sanitize_error
@@ -1641,18 +1642,34 @@ async def list_findings(
     ``anyio.to_thread.run_sync`` propagates the current context, and the tenant
     scope is read from ``request.state`` and passed explicitly to the store, so
     behavior is identical to running inline.
+
+    The read is additionally guarded by adaptive backpressure (the same shared
+    primitive the graph route uses): the in-memory default hub copies and
+    re-sorts the whole current-state table per request, so a burst of deep
+    ``?sort=cvss`` reads at scale can pile up worker threads and starve
+    ``/health`` and unrelated endpoints. Under genuine saturation the guard
+    sheds excess reads with ``429 + Retry-After`` instead of degrading every
+    route. Normal single-reader load never trips it.
     """
-    return await anyio.to_thread.run_sync(
-        _list_findings_impl,
-        request,
-        severity,
-        scan_id,
-        sort,
-        limit,
-        offset,
-        cursor,
-        approximate_total,
-    )
+    try:
+        async with adaptive_backpressure("findings"):
+            return await anyio.to_thread.run_sync(
+                _list_findings_impl,
+                request,
+                severity,
+                scan_id,
+                sort,
+                limit,
+                offset,
+                cursor,
+                approximate_total,
+            )
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
 
 def _list_findings_impl(

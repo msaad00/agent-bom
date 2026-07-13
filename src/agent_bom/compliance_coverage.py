@@ -12,6 +12,7 @@ from agent_bom.cmmc import CMMC_PRACTICES
 from agent_bom.eu_ai_act import EU_AI_ACT
 from agent_bom.fedramp import FEDRAMP_MODERATE
 from agent_bom.iso_27001 import ISO_27001
+from agent_bom.mitre_attack import get_bundled_attack_techniques
 from agent_bom.nist_800_53 import NIST_800_53
 from agent_bom.nist_ai_rmf import NIST_AI_RMF
 from agent_bom.nist_csf import NIST_CSF
@@ -185,7 +186,7 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         output_key="mitre_attack",
         summary_prefix="attack",
         tag_field="attack_tags",
-        catalog={},
+        catalog=get_bundled_attack_techniques(),
         report_label="MITRE ATT&CK",
         bundled_unit="techniques",
         source_standard_size="~600",

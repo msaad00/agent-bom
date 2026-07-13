@@ -363,7 +363,13 @@ async def get_compliance(request: Request) -> dict:
                     for agent in br.get("affected_agents", []):
                         affected_agents.add(agent)
 
-            if findings == 0:
+            if scan_count == 0:
+                # No completed scans means no evidence was gathered for this
+                # control. Rendering "pass" here reads as a clean audit when in
+                # fact nothing was measured, so surface an explicit not_assessed
+                # status per control (mirrors the aggregate no_data top-line).
+                status = "not_assessed"
+            elif findings == 0:
                 status = "pass"
             elif sev_breakdown["critical"] > 0 or sev_breakdown["high"] > 0:
                 status = "fail"
@@ -427,6 +433,11 @@ async def get_compliance(request: Request) -> dict:
         summary[f"{metadata.summary_prefix}_pass"] = passed
         summary[f"{metadata.summary_prefix}_warn"] = warned
         summary[f"{metadata.summary_prefix}_fail"] = failed
+        # On a zero-scan tenant every control is not_assessed (0 pass/warn/fail).
+        # Surface the catalogue size as not_evaluated so consumers can tell an
+        # empty estate apart from a fully-passing one.
+        if scan_count == 0:
+            summary[f"{metadata.summary_prefix}_not_evaluated"] = len(framework_controls[metadata.output_key])
     summary.update(
         {
             "aisvs_pass": aisvs_summary["pass"],
@@ -1011,17 +1022,10 @@ async def get_compliance_summary(request: Request) -> dict:
             }
     response["frameworks"] = framework_summary
 
-    if no_data:
-        raw_summary = full.get("summary")
-        if isinstance(raw_summary, dict):
-            adjusted: dict[str, Any] = {}
-            for count_key, count_value in raw_summary.items():
-                if count_key.endswith("_pass"):
-                    adjusted[count_key] = 0
-                    adjusted[f"{count_key[:-len('_pass')]}_not_evaluated"] = count_value
-                else:
-                    adjusted[count_key] = count_value
-            response["summary"] = adjusted
+    # When no_data the aggregate (get_compliance) already emits 0 pass/warn/fail
+    # and a per-framework *_not_evaluated count equal to the catalogue size, so
+    # the pass-through summary above is already honest — no reinterpretation
+    # needed here.
 
     return response
 

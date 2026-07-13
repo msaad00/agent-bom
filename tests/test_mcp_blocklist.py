@@ -271,6 +271,31 @@ def test_bundled_blocklist_matches_suspicious_exfiltration_names() -> None:
         assert match.match_type == "pattern"
 
 
+def test_bundled_blocklist_matches_expanded_heuristic_names() -> None:
+    """The seed ships heuristic name patterns beyond the original exfiltration entry."""
+    blocklist = load_mcp_blocklist()
+    cases = [
+        ("reverse-shell-mcp", "suspicious-remote-shell-backdoor-name"),
+        ("mcp-backdoor", "suspicious-remote-shell-backdoor-name"),
+        ("c2-beacon", "suspicious-command-and-control-beacon-name"),
+        ("wallet-stealer", "suspicious-crypto-wallet-stealer-name"),
+        ("mcp-keylogger", "suspicious-keylogger-screencapture-name"),
+        ("modlecontextprotocol", "suspicious-modelcontextprotocol-typosquat-name"),
+    ]
+
+    for name, expected_entry_id in cases:
+        matches = match_mcp_server(MCPServer(name=name, command="npx", args=["-y", name]), blocklist)
+        assert any(match.entry_id == expected_entry_id for match in matches), name
+
+
+def test_bundled_blocklist_does_not_flag_official_mcp_namespace() -> None:
+    """The typosquat heuristic must not fire on the legitimate namespace."""
+    blocklist = load_mcp_blocklist()
+    legit = MCPServer(name="filesystem", command="npx", args=["-y", "@modelcontextprotocol/server-filesystem"])
+    matches = match_mcp_server(legit, blocklist)
+    assert not [m for m in matches if m.entry_id == "suspicious-modelcontextprotocol-typosquat-name"]
+
+
 def test_bundled_blocklist_keeps_version_specific_mcp_package_pinned() -> None:
     blocklist = load_mcp_blocklist()
 

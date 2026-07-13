@@ -470,6 +470,13 @@ def _analytics_summary_rows(
     metavar="ROWS",
     help="Maximum rows to flush per ClickHouse batch.",
 )
+@click.option(
+    "--demo-estate",
+    is_flag=True,
+    default=False,
+    envvar="AGENT_BOM_DEMO_ESTATE",
+    help="Seed a labeled demo graph and curated offline findings on first API start.",
+)
 def serve_cmd(
     host: str,
     port: int,
@@ -486,6 +493,7 @@ def serve_cmd(
     analytics_buffered: bool,
     analytics_flush_interval: float,
     analytics_max_batch: int,
+    demo_estate: bool,
 ):
     """Start the API server and serve the dashboard when UI assets are built.
 
@@ -514,6 +522,8 @@ def serve_cmd(
 
     import os as _os
 
+    if demo_estate:
+        _os.environ["AGENT_BOM_DEMO_ESTATE"] = "1"
     if persist:
         _os.environ["AGENT_BOM_DB"] = str(Path(persist).resolve())
     if cors_allow_all:

@@ -21,6 +21,13 @@ def test_scan_request_accepts_repo_url_only() -> None:
     assert req.repo_url == "https://github.com/org/repo"
 
 
+def test_scan_request_repo_url_rejects_offline() -> None:
+    """offline cannot clone a remote repo — reject up front with a clear message
+    instead of failing deep in the pipeline with an opaque subpath error."""
+    with pytest.raises(ValueError, match="offline mode cannot clone a remote repo_url"):
+        ScanRequest(repo_url="https://github.com/org/repo", offline=True)
+
+
 def test_run_scan_sync_clones_repo_url_and_cleans_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     cloned = tmp_path / "cloned-repo"
     cloned.mkdir()

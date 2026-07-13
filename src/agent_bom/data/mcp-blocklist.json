@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated": "2026-04-28",
+  "updated": "2026-07-13",
   "description": "Curated MCP intelligence entries and suspicious-name patterns. Confirmed malicious entries carry references and default enforcement recommendations; heuristic entries remain review-oriented.",
   "policy_contract": {
     "confidence_levels": [
@@ -154,6 +154,121 @@
         "(^|[-_./@])token[-_]?grabber($|[-_./])"
       ],
       "severity": "high",
+      "source": "agent-bom-curated",
+      "references": []
+    },
+    {
+      "id": "suspicious-remote-shell-backdoor-name",
+      "title": "Suspicious remote-shell or backdoor server name",
+      "description": "Server name, registry id, package name, or command contains terms associated with reverse shells, bind shells, or backdoor implants. Malicious MCP packages have shipped reverse-shell payloads; review the server source before enabling it.",
+      "confidence": "heuristic",
+      "default_recommendation": "review",
+      "source_type": "heuristic",
+      "last_verified": "2026-07-13",
+      "remediation_actions": [
+        "review_server_source",
+        "verify_requested_permissions",
+        "audit_host_for_reverse_shell_activity"
+      ],
+      "match_type": "pattern",
+      "patterns": [
+        "(^|[-_./@])(reverse|bind|back)[-_]?shell($|[-_./])",
+        "(^|[-_./@])revshell($|[-_./])",
+        "(^|[-_./@])backconnect($|[-_./])",
+        "(^|[-_./@])backdoor($|[-_./])"
+      ],
+      "severity": "high",
+      "source": "agent-bom-curated",
+      "references": []
+    },
+    {
+      "id": "suspicious-command-and-control-beacon-name",
+      "title": "Suspicious command-and-control beacon server name",
+      "description": "Server name, registry id, package name, or command references common command-and-control or offensive-tooling frameworks. Legitimate MCP servers rarely name themselves after C2 implants.",
+      "confidence": "heuristic",
+      "default_recommendation": "review",
+      "source_type": "heuristic",
+      "last_verified": "2026-07-13",
+      "remediation_actions": [
+        "review_server_source",
+        "isolate_host_from_network",
+        "audit_outbound_connections"
+      ],
+      "match_type": "pattern",
+      "patterns": [
+        "(^|[-_./@])c2[-_]?(beacon|implant|server)($|[-_./])",
+        "(^|[-_./@])command[-_]?and[-_]?control($|[-_./])",
+        "(^|[-_./@])meterpreter($|[-_./])",
+        "(^|[-_./@])cobalt[-_]?strike($|[-_./])"
+      ],
+      "severity": "high",
+      "source": "agent-bom-curated",
+      "references": []
+    },
+    {
+      "id": "suspicious-crypto-wallet-stealer-name",
+      "title": "Suspicious cryptocurrency wallet or key stealer server name",
+      "description": "Server name, registry id, package name, or command references cryptocurrency wallet, seed-phrase, or private-key theft or clipboard-hijacking (clipper) behavior. Supply-chain campaigns have used MCP packages to harvest crypto keys.",
+      "confidence": "heuristic",
+      "default_recommendation": "review",
+      "source_type": "heuristic",
+      "last_verified": "2026-07-13",
+      "remediation_actions": [
+        "review_server_source",
+        "rotate_exposed_credentials",
+        "audit_wallet_and_key_access"
+      ],
+      "match_type": "pattern",
+      "patterns": [
+        "(^|[-_./@])(wallet|seed[-_]?phrase|private[-_]?key)[-_]?(stealer|grabber|drainer)($|[-_./])",
+        "(^|[-_./@])clipboard[-_]?(hijack|clipper)($|[-_./])",
+        "(^|[-_./@])crypto[-_]?(stealer|drainer)($|[-_./])"
+      ],
+      "severity": "high",
+      "source": "agent-bom-curated",
+      "references": []
+    },
+    {
+      "id": "suspicious-keylogger-screencapture-name",
+      "title": "Suspicious keylogger or screen-capture server name",
+      "description": "Server name, registry id, package name, or command references keystroke logging or stealthy screen capture. Such capabilities are unusual for a legitimate MCP tool and warrant review.",
+      "confidence": "heuristic",
+      "default_recommendation": "review",
+      "source_type": "heuristic",
+      "last_verified": "2026-07-13",
+      "remediation_actions": [
+        "review_server_source",
+        "verify_requested_permissions"
+      ],
+      "match_type": "pattern",
+      "patterns": [
+        "(^|[-_./@])key[-_]?(logger|stroke[-_]?logger)($|[-_./])",
+        "(^|[-_./@])screen[-_]?(grabber|capture[-_]?stealth)($|[-_./])"
+      ],
+      "severity": "high",
+      "source": "agent-bom-curated",
+      "references": []
+    },
+    {
+      "id": "suspicious-modelcontextprotocol-typosquat-name",
+      "title": "Suspicious typosquat of the Model Context Protocol namespace",
+      "description": "Package or registry id closely misspells the official 'modelcontextprotocol' namespace. Typosquats of the official namespace are a common vector for impersonating trusted MCP servers.",
+      "confidence": "heuristic",
+      "default_recommendation": "review",
+      "source_type": "heuristic",
+      "last_verified": "2026-07-13",
+      "remediation_actions": [
+        "review_server_source",
+        "confirm_official_namespace"
+      ],
+      "match_type": "pattern",
+      "patterns": [
+        "(^|[-_./@])modlecontextprotocol($|[-_./])",
+        "(^|[-_./@])modelcontextprotoco(al|coll|kol)($|[-_./])",
+        "(^|[-_./@])modelcontextprotocal($|[-_./])",
+        "(^|[-_./@])model[-_]?context[-_]?protcol($|[-_./])"
+      ],
+      "severity": "medium",
       "source": "agent-bom-curated",
       "references": []
     }

@@ -1018,6 +1018,7 @@ class SQLiteComplianceHubStore:
                 severity TEXT NOT NULL DEFAULT '',
                 severity_rank INTEGER NOT NULL DEFAULT 0,
                 cvss_score REAL NOT NULL DEFAULT 0,
+                scan_id TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (tenant_id, finding_id)
             )
             """
@@ -1067,6 +1068,14 @@ class SQLiteComplianceHubStore:
                 "UPDATE compliance_hub_findings SET cvss_score = "
                 "CAST(COALESCE(json_extract(payload, '$.cvss_score'), 0) AS REAL) WHERE cvss_score = 0"
             )
+        # Materialise scan_id so the scan filter rides an index instead of a
+        # per-row json_extract full scan of the tenant's findings. Backfill from
+        # the stored payload for legacy rows.
+        if "scan_id" not in cols:
+            self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN scan_id TEXT NOT NULL DEFAULT ''")
+            self._conn.execute(
+                "UPDATE compliance_hub_findings SET scan_id = COALESCE(json_extract(payload, '$.scan_id'), '') WHERE scan_id = ''"
+            )
 
     def _migrate_primary_key(self) -> None:
         """Collapse the primary key to ``(tenant_id, finding_id)`` (idempotent).
@@ -1096,6 +1105,7 @@ class SQLiteComplianceHubStore:
                 severity TEXT NOT NULL DEFAULT '',
                 severity_rank INTEGER NOT NULL DEFAULT 0,
                 cvss_score REAL NOT NULL DEFAULT 0,
+                scan_id TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (tenant_id, finding_id)
             )
             """
@@ -1106,9 +1116,9 @@ class SQLiteComplianceHubStore:
             """
             INSERT INTO compliance_hub_findings_v2
                 (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
-                 ordinal, effective_reach_score, origin, severity, severity_rank, cvss_score)
+                 ordinal, effective_reach_score, origin, severity, severity_rank, cvss_score, scan_id)
             SELECT f.tenant_id, f.finding_id, f.ingested_at, f.source, f.applicable_frameworks_csv,
-                   f.payload, f.ordinal, f.effective_reach_score, f.origin, f.severity, f.severity_rank, f.cvss_score
+                   f.payload, f.ordinal, f.effective_reach_score, f.origin, f.severity, f.severity_rank, f.cvss_score, f.scan_id
             FROM compliance_hub_findings f
             WHERE f.ordinal = (
                 SELECT MIN(s.ordinal) FROM compliance_hub_findings s
@@ -1148,6 +1158,23 @@ class SQLiteComplianceHubStore:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_severity_cvss "
             "ON compliance_hub_findings(tenant_id, origin, severity_rank, cvss_score DESC, ordinal)"
+        )
+        # Back the scan_id filter with an index (was a per-row json_extract scan).
+        # PARTIAL on scan_id != '' so the common no-scan_id rows stay OUT of the
+        # index — otherwise an all-empty (tenant_id, scan_id) index looks like a
+        # perfect tenant-equality candidate and the planner grabs it for the
+        # default reach read, forcing a filesort. Real filters always query a
+        # non-empty scan_id, so the partial index still serves them.
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan "
+            "ON compliance_hub_findings(tenant_id, scan_id) WHERE scan_id != ''"
+        )
+        # Expression index so the case-insensitive severity equality filter
+        # (LOWER(severity) = ?) is sargable. Partial on severity != '' for the
+        # same planner-shadowing reason as the scan index above.
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_severity_ci "
+            "ON compliance_hub_findings(tenant_id, LOWER(severity)) WHERE severity != ''"
         )
 
     def _reset_ingest_stats(self, tenant_id: str) -> None:
@@ -1226,6 +1253,7 @@ class SQLiteComplianceHubStore:
                     str(payload.get("severity") or ""),
                     _severity_rank(payload),
                     _cvss_value(payload),
+                    str(payload.get("scan_id") or ""),
                 )
             )
         existing_ids = self._existing_finding_ids(tenant_id, finding_ids)
@@ -1237,8 +1265,8 @@ class SQLiteComplianceHubStore:
             """
             INSERT INTO compliance_hub_findings
                 (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
-                 ordinal, effective_reach_score, origin, severity, severity_rank, cvss_score)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ordinal, effective_reach_score, origin, severity, severity_rank, cvss_score, scan_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tenant_id, finding_id) DO UPDATE SET
                 ingested_at = excluded.ingested_at,
                 source = excluded.source,
@@ -1248,7 +1276,8 @@ class SQLiteComplianceHubStore:
                 origin = excluded.origin,
                 severity = excluded.severity,
                 severity_rank = excluded.severity_rank,
-                cvss_score = excluded.cvss_score
+                cvss_score = excluded.cvss_score,
+                scan_id = excluded.scan_id
             """,
             rows,
         )
@@ -1290,11 +1319,16 @@ class SQLiteComplianceHubStore:
         if severity is not None:
             # Filter on the materialised severity STRING (exact match, lowercased)
             # so every backend agrees. ``severity_rank`` collapses info==low and
-            # is kept for ORDER BY only (#3192).
-            where.append("LOWER(severity) = ?")
+            # is kept for ORDER BY only (#3192). The ``severity != ''`` guard is
+            # redundant for any real severity but lets the partial expression
+            # index idx_hub_findings_tenant_severity_ci serve the filter.
+            where.append("severity != '' AND LOWER(severity) = ?")
             params.append(severity.lower())
         if scan_id is not None:
-            where.append("CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?")
+            # Materialised scan_id column + partial idx_hub_findings_tenant_scan
+            # (was a per-row json_extract scan). The ``scan_id != ''`` guard is
+            # redundant for any real scan_id but lets the partial index apply.
+            where.append("scan_id = ? AND scan_id != ''")
             params.append(scan_id)
         where_sql = " AND ".join(where)
 

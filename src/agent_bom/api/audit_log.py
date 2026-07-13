@@ -484,11 +484,24 @@ class SQLiteAuditLog:
             resource TEXT NOT NULL DEFAULT '',
             details TEXT NOT NULL DEFAULT '{}',
             prev_signature TEXT NOT NULL DEFAULT '',
-            hmac_signature TEXT NOT NULL
+            hmac_signature TEXT NOT NULL,
+            tenant_id TEXT NOT NULL DEFAULT 'default'
         )""")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(timestamp)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log(resource)")
+        # Materialise the canonical tenant (COALESCE-default — the same value the
+        # hash chain keys on) into a real column so tenant-scoped reads ride an
+        # index instead of a per-row json_extract scan. Derived from the signed
+        # `details`; the column itself is not part of the HMAC.
+        _audit_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(audit_log)").fetchall()}
+        if "tenant_id" not in _audit_cols:
+            self._conn.execute("ALTER TABLE audit_log ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+            self._conn.execute(
+                "UPDATE audit_log SET tenant_id = "
+                "COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default')"
+            )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_tenant_ts ON audit_log(tenant_id, timestamp DESC)")
         self._conn.execute("""CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (
             tenant_id TEXT PRIMARY KEY,
             entry_count INTEGER NOT NULL,
@@ -503,7 +516,7 @@ class SQLiteAuditLog:
             return
         tenants = self._conn.execute(
             """
-            SELECT DISTINCT COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default')
+            SELECT DISTINCT tenant_id
             FROM audit_log
             """
         ).fetchall()
@@ -511,7 +524,7 @@ class SQLiteAuditLog:
             count_row = self._conn.execute(
                 """
                 SELECT COUNT(*) FROM audit_log
-                WHERE COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default') = ?
+                WHERE tenant_id = ?
                 """,
                 (str(tenant_id),),
             ).fetchone()
@@ -564,10 +577,10 @@ class SQLiteAuditLog:
             SELECT tenant_id, hmac_signature
             FROM (
                 SELECT
-                    COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default') AS tenant_id,
+                    tenant_id,
                     hmac_signature,
                     ROW_NUMBER() OVER (
-                        PARTITION BY COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default')
+                        PARTITION BY tenant_id
                         ORDER BY timestamp DESC, rowid DESC
                     ) AS rn
                 FROM audit_log
@@ -589,8 +602,8 @@ class SQLiteAuditLog:
         self._conn.execute(
             "INSERT INTO audit_log"
             " (entry_id, timestamp, action, actor, resource,"
-            " details, prev_signature, hmac_signature)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " details, prev_signature, hmac_signature, tenant_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 entry.entry_id,
                 entry.timestamp,
@@ -600,6 +613,7 @@ class SQLiteAuditLog:
                 json.dumps(entry.details),
                 entry.prev_signature,
                 entry.hmac_signature,
+                tenant_id,
             ),
         )
         self._upsert_checkpoint(tenant_id, entry.hmac_signature)
@@ -617,7 +631,7 @@ class SQLiteAuditLog:
         clauses: list[str] = []
         params: list[Any] = []
         if tenant_id is not None:
-            clauses.append("json_extract(details, '$.tenant_id') = ?")
+            clauses.append("tenant_id = ?")
             params.append(tenant_id)
         if action:
             clauses.append("action = ?")
@@ -655,7 +669,7 @@ class SQLiteAuditLog:
         clauses = []
         params: list[object] = []
         if tenant_id is not None:
-            clauses.append("json_extract(details, '$.tenant_id') = ?")
+            clauses.append("tenant_id = ?")
             params.append(tenant_id)
         if action:
             clauses.append("action = ?")
@@ -672,7 +686,7 @@ class SQLiteAuditLog:
         clauses: list[str] = []
         params: list[object] = []
         if tenant_id is not None:
-            clauses.append("json_extract(details, '$.tenant_id') = ?")
+            clauses.append("tenant_id = ?")
             params.append(tenant_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = (

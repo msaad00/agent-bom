@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Annotated, Any
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.intel_lookup import build_daily_brief, list_intel_sources, lookup_advisory, match_packages
 from agent_bom.security import sanitize_error
 
@@ -40,12 +43,22 @@ async def get_intel_sources() -> dict[str, Any]:
     return list_intel_sources()
 
 
+def _backpressure_429(exc: BackpressureRejectedError) -> HTTPException:
+    return HTTPException(status_code=429, detail=exc.to_dict(), headers={"Retry-After": str(exc.retry_after_seconds)})
+
+
 @router.get("/intel/advisories/{advisory_id}", tags=["intel"])
 async def get_intel_advisory(advisory_id: str) -> dict[str, Any]:
     """Look up one CVE/GHSA/OSV advisory from local intel."""
 
+    # Offloaded to a worker thread with backpressure: the lookup does blocking
+    # SQLite work (with a full-scan alias fallback on a PK miss), so running it
+    # inline would block the event loop and freeze /health under load.
     try:
-        return lookup_advisory(advisory_id)
+        async with adaptive_backpressure("intel"):
+            return await anyio.to_thread.run_sync(lookup_advisory, advisory_id)
+    except BackpressureRejectedError as exc:
+        raise _backpressure_429(exc) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
 
@@ -58,7 +71,10 @@ async def post_intel_match(
     """Match inventory package coordinates to local advisory intel."""
 
     try:
-        result = match_packages(body.packages, limit=body.limit)
+        async with adaptive_backpressure("intel"):
+            result = await anyio.to_thread.run_sync(partial(match_packages, body.packages, limit=body.limit))
+    except BackpressureRejectedError as exc:
+        raise _backpressure_429(exc) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
     if not include_unmatched:
@@ -70,16 +86,24 @@ async def post_intel_match(
 async def post_intel_daily_brief(body: IntelDailyBriefRequest) -> dict[str, Any]:
     """Return a local analyst threat brief from governed intel sources."""
 
+    # Heaviest intel path (KEV/EPSS joins over the vuln DB); always offloaded so
+    # a large or wide-window brief never blocks the loop.
     try:
-        return build_daily_brief(
-            body.packages,
-            telemetry_indicators=body.telemetry_indicators,
-            campaign_activity=body.campaign_activity,
-            ransomware_claims=body.ransomware_claims,
-            tenant_profile=body.tenant_profile,
-            epss_threshold=body.epss_threshold,
-            kev_window_hours=body.kev_window_hours,
-            limit=body.limit,
-        )
+        async with adaptive_backpressure("intel"):
+            return await anyio.to_thread.run_sync(
+                partial(
+                    build_daily_brief,
+                    body.packages,
+                    telemetry_indicators=body.telemetry_indicators,
+                    campaign_activity=body.campaign_activity,
+                    ransomware_claims=body.ransomware_claims,
+                    tenant_profile=body.tenant_profile,
+                    epss_threshold=body.epss_threshold,
+                    kev_window_hours=body.kev_window_hours,
+                    limit=body.limit,
+                )
+            )
+    except BackpressureRejectedError as exc:
+        raise _backpressure_429(exc) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc

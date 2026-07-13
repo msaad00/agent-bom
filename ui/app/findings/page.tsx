@@ -33,6 +33,7 @@ import {
   serverFindingsSort,
   formatFindingsTotal,
   hasLifecycleMetadata,
+  computeFindingColumns,
   vulnRowKey,
 } from "@/lib/findings-view";
 import {
@@ -48,7 +49,7 @@ import {
 } from "@/lib/findings-lens";
 import { useFindingsLens } from "@/hooks/use-findings-lens";
 import { severityRank } from "@/lib/severity";
-import { Bug, Download, Layers, Loader2, Package, Server, ClipboardCheck } from "lucide-react";
+import { Bug, ChevronDown, ChevronRight, Download, Layers, Loader2, Package, Server, ClipboardCheck } from "lucide-react";
 import { PageLaneHeader } from "@/components/page-lane";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -320,6 +321,15 @@ function FindingsPage() {
   const PAGE_SIZE = 25;
   const useServerPaging = groupBy === "none" && !search.trim();
   const showLifecycleColumns = useMemo(() => hasLifecycleMetadata(vulns), [vulns]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = useCallback((groupLabel: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupLabel)) next.delete(groupLabel);
+      else next.add(groupLabel);
+      return next;
+    });
+  }, []);
 
   // URL-as-source-of-truth: when the query string changes (link, back/forward),
   // re-sync the derived filter state so the view matches the address bar instead
@@ -783,6 +793,10 @@ function FindingsPage() {
     return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
   }, [displayed, groupBy]);
 
+  // Auto-hide columns that are entirely empty/N/A across the filtered set — for
+  // CIS/misconfiguration scans CVSS, EPSS, Packages and Fix are pure noise.
+  const visibleColumns = useMemo(() => computeFindingColumns(displayed), [displayed]);
+
   const counts = useMemo(() => {
     const c = { critical: 0, high: 0, medium: 0, low: 0 };
     for (const v of vulns) {
@@ -1070,31 +1084,47 @@ function FindingsPage() {
                 // so users know they're seeing a slice.
                 const visibleGroupVulns = groupVulns.slice(0, PAGE_SIZE);
                 const groupOverflow = groupVulns.length - visibleGroupVulns.length;
+                const collapsed = collapsedGroups.has(groupLabel);
                 return (
                   <div key={groupLabel}>
-                    <div className="flex items-center gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(groupLabel)}
+                      aria-expanded={!collapsed}
+                      className="flex w-full items-center gap-2 mb-2 text-left transition-colors group"
+                    >
+                      {collapsed ? (
+                        <ChevronRight className="h-4 w-4 text-zinc-500 group-hover:text-zinc-300" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-zinc-500 group-hover:text-zinc-300" />
+                      )}
                       <h3 className="text-sm font-semibold text-zinc-300">{groupLabel}</h3>
                       <span className="text-xs font-mono text-zinc-600 bg-zinc-800 rounded px-1.5 py-0.5">
                         {groupVulns.length}
                       </span>
-                    </div>
-                    <FindingsQueueTable
-                      vulns={visibleGroupVulns}
-                      sortKey={sortKey}
-                      sortDir={sortDir}
-                      handleSort={handleSort}
-                      suppressed={suppressed}
-                      onMarkFP={handleMarkFP}
-                      selectedId={selectedId}
-                      onSelect={setSelectedId}
-                      showLifecycle={showLifecycleColumns}
-                    />
-                    {groupOverflow > 0 && (
-                      <p className="mt-2 text-xs text-zinc-600">
-                        Showing first {PAGE_SIZE} of {groupVulns.length} —
-                        narrow with the search box or switch to the flat
-                        view (Group: none) for full pagination.
-                      </p>
+                    </button>
+                    {!collapsed && (
+                      <>
+                        <FindingsQueueTable
+                          vulns={visibleGroupVulns}
+                          sortKey={sortKey}
+                          sortDir={sortDir}
+                          handleSort={handleSort}
+                          suppressed={suppressed}
+                          onMarkFP={handleMarkFP}
+                          selectedId={selectedId}
+                          onSelect={setSelectedId}
+                          showLifecycle={showLifecycleColumns}
+                          columns={visibleColumns}
+                        />
+                        {groupOverflow > 0 && (
+                          <p className="mt-2 text-xs text-zinc-600">
+                            Showing first {PAGE_SIZE} of {groupVulns.length} —
+                            narrow with the search box or switch to the flat
+                            view (Group: none) for full pagination.
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 );
@@ -1111,6 +1141,7 @@ function FindingsPage() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               showLifecycle={showLifecycleColumns}
+              columns={visibleColumns}
             />
           )}
 

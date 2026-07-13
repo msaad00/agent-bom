@@ -78,6 +78,119 @@ def test_iter_scan_findings_prefers_unified_stream_over_blast_radius():
     assert rows[0].get("symbol_reachability") != "reachable"
 
 
+def test_iter_scan_findings_collapses_three_representations_to_canonical():
+    """Regression for #3883: the unified/blast/package trio for one CVE folds
+    to a single list row that carries non-null cve_id/title/finding_type, with
+    package metadata backfilled but reachability left to the unified stream."""
+    job = _scan_job()
+    job.result = {
+        "agents": [
+            {
+                "name": "agent-x",
+                "mcp_servers": [
+                    {
+                        "name": "srv",
+                        "packages": [
+                            {
+                                "name": "requests",
+                                "version": "2.28.0",
+                                "ecosystem": "pypi",
+                                "vulnerabilities": [
+                                    {
+                                        "id": "CVE-2024-9999",
+                                        "severity": "high",
+                                        "summary": "boom",
+                                        "cvss_score": 7.5,
+                                        "fixed_version": "2.31.0",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        # Unified stream: the richest representation, already normalized.
+        "findings": [
+            {
+                "id": "b1e2c3d4-0000-0000-0000-000000000001",
+                "cve_id": "CVE-2024-9999",
+                "title": "CVE-2024-9999: requests@2.28.0",
+                "finding_type": "CVE",
+                "severity": "high",
+                "match_confidence_tier": "high",
+                "evidence": {"symbol_reachability": "unreachable"},
+                "asset": {"name": "srv", "asset_type": "mcp_server"},
+            }
+        ],
+        # Blast-radius projection: identifier only under vulnerability_id, no
+        # title/finding_type, plus a coarser (over-claiming) reachability signal.
+        "blast_radius": [
+            {
+                "vulnerability_id": "CVE-2024-9999",
+                "package": "requests@2.28.0",
+                "severity": "high",
+                "symbol_reachability": "reachable",
+                "graph_reachable": True,
+            }
+        ],
+    }
+
+    rows = _iter_scan_findings(job)
+
+    # One row per canonical id — not three representations.
+    cve_rows = [r for r in rows if (r.get("cve_id") or r.get("vulnerability_id")) == "CVE-2024-9999"]
+    assert len(cve_rows) == 1
+    row = cve_rows[0]
+
+    # Every identifier is populated (no null cve_id / title / finding_type).
+    assert row["cve_id"] == "CVE-2024-9999"
+    assert row["title"] == "CVE-2024-9999: requests@2.28.0"
+    assert row["finding_type"] == "CVE"
+
+    # Package + descriptive metadata backfilled from the supplementary reps.
+    assert row.get("package")
+    assert row.get("ecosystem") == "pypi"
+    assert row.get("fixed_version") == "2.31.0"
+
+    # Unified stream stays authoritative for reachability/confidence — the
+    # blast-radius "reachable" claim must not override the unified verdict.
+    assert row["match_confidence_tier"] == "high"
+    assert row["evidence"]["symbol_reachability"] == "unreachable"
+    assert row.get("symbol_reachability") != "reachable"
+
+    # Invariant across the whole page: no null identifiers, no duplicate groups.
+    assert all(r.get("title") for r in rows)
+    assert all(r.get("finding_type") for r in rows)
+    assert all(r.get("cve_id") for r in rows if r.get("finding_type") == "CVE")
+    from agent_bom.api.routes.scan import _canonical_group_key
+
+    keys = [_canonical_group_key(r) for r in rows]
+    assert len(keys) == len(set(keys))
+
+
+def test_iter_scan_findings_normalizes_blast_only_finding_identifiers():
+    """A vuln present only as a blast-radius row still surfaces cve_id/title/
+    finding_type after normalization (no null identifiers)."""
+    job = _scan_job()
+    job.result = {
+        "blast_radius": [
+            {
+                "vulnerability_id": "CVE-2024-8888",
+                "package": "urllib3@1.26.0",
+                "severity": "high",
+            }
+        ]
+    }
+    rows = _iter_scan_findings(job)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["cve_id"] == "CVE-2024-8888"
+    assert row["vulnerability_id"] == "CVE-2024-8888"
+    assert row["title"] == "CVE-2024-8888: urllib3@1.26.0"
+    assert row["finding_type"] == "CVE"
+
+
 def test_api_pipeline_ingests_external_scan(monkeypatch, tmp_path):
     class _DummyStore:
         def __init__(self) -> None:

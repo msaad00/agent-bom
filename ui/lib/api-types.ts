@@ -697,6 +697,8 @@ export type AgentStatus = "configured" | "installed-not-configured";
 export interface Agent {
   name: string;
   agent_type: string;
+  /** Display class from the API: "client" | "background" | "synthetic" (additive). */
+  agent_class?: string | undefined;
   config_path?: string | undefined;
   source?: string | undefined;
   source_id?: string | undefined;

@@ -8,6 +8,7 @@ import {
   api,
   Agent,
   isConfigured,
+  agentClassCounts,
   type AgentDetailResponse,
   type DiscoveryEnvelope,
   type DiscoveryProvenance,
@@ -214,6 +215,9 @@ function AgentsList() {
 
   const { configured, notConfigured: installedOnly, totalServers, totalPackages, totalCredentials, ecosystems, serversWithCredentials, blockedServers, remoteServers } =
     useAgentStats(agents);
+  // Split real agents into AI clients (host apps) vs background/framework agents,
+  // so the headline doesn't imply e.g. Cursor is an autonomous agent.
+  const agentClasses = agentClassCounts(agents);
 
   const filteredConfigured = configured.filter((a) =>
     !search || a.name.toLowerCase().includes(search.toLowerCase())
@@ -248,7 +252,7 @@ function AgentsList() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Discovered agent configurations and attached MCP servers
+            Discovered AI clients/hosts and background agents, with their MCP servers
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -295,8 +299,10 @@ function AgentsList() {
                 <div className="mt-1 text-sm font-semibold text-rose-400">{blockedServers}</div>
               </div>
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-                <div className="text-zinc-500">Configured agents</div>
-                <div className="mt-1 text-sm font-semibold text-emerald-400">{configured.length}</div>
+                <div className="text-zinc-500">AI clients · background</div>
+                <div className="mt-1 text-sm font-semibold text-emerald-400">
+                  {agentClasses.client} · {agentClasses.background}
+                </div>
               </div>
             </div>
           </div>

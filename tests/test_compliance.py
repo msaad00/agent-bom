@@ -168,7 +168,11 @@ def test_compliance_includes_latest_aisvs_benchmark():
     assert data["summary"]["aisvs_pass"] == 1
     assert data["summary"]["aisvs_fail"] == 1
     assert data["summary"]["aisvs_not_applicable"] == 1
-    assert data["overall_score"] == 100.0
+    # This scan produced only AISVS-benchmark results, no tag-mapped-framework
+    # findings, so the tag-mapped frameworks are not_evaluated — overall_score is
+    # 0.0 / no_data (AISVS results are surfaced separately in aisvs_benchmark).
+    assert data["overall_score"] == 0.0
+    assert data["overall_status"] == "no_data"
 
     _clear_jobs()
 
@@ -254,7 +258,9 @@ def test_compliance_with_findings():
 
     # LLM01 should be pass (no findings)
     lmm01 = next(c for c in data["owasp_llm_top10"] if c["code"] == "LLM01")
-    assert lmm01["status"] == "pass"
+    # No findings map to this control — it is not_evaluated (no evidence), never a
+    # silent pass. Matches the narrative + CLI export.
+    assert lmm01["status"] == "not_evaluated"
     assert lmm01["findings"] == 0
 
     _clear_jobs()
@@ -363,9 +369,12 @@ def test_compliance_summary_counts():
     s = data["summary"]
     # Verify OWASP: 1 fail (LLM05), 9 pass
     assert s["owasp_fail"] == 1
-    assert s["owasp_pass"] == 9
+    # The other 9 controls have no mapped findings → not_evaluated, not a silent
+    # pass (would otherwise inflate the score toward 100).
+    assert s["owasp_pass"] == 0
     assert s["owasp_warn"] == 0
-    assert s["owasp_pass"] + s["owasp_warn"] + s["owasp_fail"] == 10
+    assert s["owasp_not_evaluated"] == 9
+    assert s["owasp_pass"] + s["owasp_warn"] + s["owasp_fail"] + s["owasp_not_evaluated"] == 10
 
     _clear_jobs()
 
@@ -415,8 +424,10 @@ def test_compliance_summary_with_scan_counts_evaluated_controls():
     data = client.get("/v1/compliance/summary", headers=_AUTH_HEADERS).json()
     assert data["scan_count"] == 1
     assert data["summary"]["owasp_fail"] == 1
-    assert data["summary"]["owasp_pass"] == 9
-    assert "owasp_not_evaluated" not in data["summary"]
+    # Never-triggered controls are not_evaluated, not pass — so the evaluated
+    # split is surfaced even on a non-empty scan.
+    assert data["summary"]["owasp_pass"] == 0
+    assert data["summary"]["owasp_not_evaluated"] == 9
     _clear_jobs()
 
 

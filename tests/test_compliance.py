@@ -78,15 +78,16 @@ def test_compliance_no_scans():
     assert data["aisvs_benchmark"]["benchmark"]["checks"] == []
     assert data["summary"]["aisvs_pass"] == 0
     assert data["summary"]["aisvs_fail"] == 0
-    # All OWASP controls should be "pass"
+    # With no evidence, every control is not_assessed — not a trivial "pass".
     for c in data["owasp_llm_top10"]:
-        assert c["status"] == "pass"
+        assert c["status"] == "not_assessed"
         assert c["findings"] == 0
     for metadata in TAG_MAPPED_FRAMEWORKS:
         assert len(data[metadata.output_key]) == metadata.control_count
-        assert data["summary"][f"{metadata.summary_prefix}_pass"] == metadata.control_count
+        assert data["summary"][f"{metadata.summary_prefix}_pass"] == 0
         assert data["summary"][f"{metadata.summary_prefix}_warn"] == 0
         assert data["summary"][f"{metadata.summary_prefix}_fail"] == 0
+        assert data["summary"][f"{metadata.summary_prefix}_not_evaluated"] == metadata.control_count
     _clear_jobs()
 
 

@@ -153,6 +153,23 @@ def test_serve_cmd_non_loopback_never_auto_generates_dev_key(monkeypatch):
     mock_set_dev.assert_called_once_with(None)
 
 
+def test_serve_cmd_demo_estate_sets_env(monkeypatch):
+    """`serve --demo-estate` seeds the demo estate the same way `api --demo-estate` does."""
+    for name in _AUTH_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("AGENT_BOM_DEMO_ESTATE", raising=False)
+    runner = CliRunner()
+    with (
+        patch("agent_bom.api.server.configure_api"),
+        patch("agent_bom.api.server.set_dev_api_key"),
+        patch("uvicorn.run"),
+    ):
+        result = runner.invoke(serve_cmd, ["--demo-estate"])
+
+    assert result.exit_code == 0
+    assert os.environ.get("AGENT_BOM_DEMO_ESTATE") == "1"
+
+
 # ---------------------------------------------------------------------------
 # api_cmd
 # ---------------------------------------------------------------------------

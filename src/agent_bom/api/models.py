@@ -190,6 +190,10 @@ class ScanRequest(BaseModel):
         repo_url = (self.repo_url or "").strip()
         if not repo_url:
             return self
+        if self.offline:
+            raise ValueError(
+                "offline mode cannot clone a remote repo_url; drop offline or scan a local path instead"
+            )
         conflicts: list[str] = []
         if self.agent_projects:
             conflicts.append("agent_projects")

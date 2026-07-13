@@ -24,27 +24,13 @@ import {
 import type { Agent, BlastRadius } from "@/lib/api";
 import { buildBlastRadiusSummary } from "@/lib/insights-risk";
 import { severityRank } from "@/lib/severity";
+import { SEVERITY_HEX, getChartTheme } from "@/lib/theme-colors";
 
 // ─── Shared ──────────────────────────────────────────────────────────────────
 
-const SEVERITY_COLORS = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#3b82f6",
-} as const;
-
-const CHART_THEME = {
-  bg: "#18181b",
-  border: "#27272a",
-  grid: "#27272a",
-  text: "#71717a",
-  tooltip: {
-    bg: "#09090b",
-    border: "#27272a",
-    text: "#e4e4e7",
-  },
-} as const;
+const SEVERITY_COLORS = SEVERITY_HEX;
+const CHART_PANEL =
+  "rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg";
 
 export function ChartTooltip({
   active,
@@ -60,18 +46,18 @@ export function ChartTooltip({
     <div
       className="rounded-lg border px-3 py-2 text-xs shadow-xl"
       style={{
-        background: CHART_THEME.tooltip.bg,
-        borderColor: CHART_THEME.tooltip.border,
+        background: getChartTheme().tooltip.bg,
+        borderColor: getChartTheme().tooltip.border,
       }}
     >
       {label && (
-        <div className="text-zinc-500 mb-1 font-mono text-[10px]">{label}</div>
+        <div className="mb-1 font-mono text-[10px] text-[color:var(--text-tertiary)]">{label}</div>
       )}
       {payload?.map((entry) => (
         <div
           key={entry.name}
           className="flex items-center gap-2"
-          style={{ color: CHART_THEME.tooltip.text }}
+          style={{ color: getChartTheme().tooltip.text }}
         >
           <span
             className="w-2 h-2 rounded-full"
@@ -99,8 +85,8 @@ export function VulnTrendChart({ data }: { data: TrendDataPoint[] }) {
   if (data.length < 2) return null;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
-      <h3 className="text-sm font-semibold text-zinc-300 mb-4">
+    <div className={CHART_PANEL}>
+      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-4">
         Vulnerability Trend
       </h3>
       <div className="h-48">
@@ -108,17 +94,17 @@ export function VulnTrendChart({ data }: { data: TrendDataPoint[] }) {
           <AreaChart data={data}>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke={CHART_THEME.grid}
+              stroke={getChartTheme().grid}
               vertical={false}
             />
             <XAxis
               dataKey="label"
-              tick={{ fontSize: 10, fill: CHART_THEME.text }}
+              tick={{ fontSize: 10, fill: getChartTheme().text }}
               tickLine={false}
-              axisLine={{ stroke: CHART_THEME.border }}
+              axisLine={{ stroke: getChartTheme().border }}
             />
             <YAxis
-              tick={{ fontSize: 10, fill: CHART_THEME.text }}
+              tick={{ fontSize: 10, fill: getChartTheme().text }}
               tickLine={false}
               axisLine={false}
               allowDecimals={false}
@@ -175,11 +161,11 @@ export function EpssDistributionChart({ data }: { data: EpssDataPoint[] }) {
   if (data.length === 0) return null;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
-      <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+    <div className={CHART_PANEL}>
+      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">
         EPSS Distribution
       </h3>
-      <p className="text-[10px] text-zinc-600 mb-4">
+      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-4">
         Exploit probability scores across findings
       </p>
       <div className="h-48">
@@ -187,17 +173,17 @@ export function EpssDistributionChart({ data }: { data: EpssDataPoint[] }) {
           <BarChart data={data}>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke={CHART_THEME.grid}
+              stroke={getChartTheme().grid}
               vertical={false}
             />
             <XAxis
               dataKey="range"
-              tick={{ fontSize: 9, fill: CHART_THEME.text }}
+              tick={{ fontSize: 9, fill: getChartTheme().text }}
               tickLine={false}
-              axisLine={{ stroke: CHART_THEME.border }}
+              axisLine={{ stroke: getChartTheme().border }}
             />
             <YAxis
-              tick={{ fontSize: 10, fill: CHART_THEME.text }}
+              tick={{ fontSize: 10, fill: getChartTheme().text }}
               tickLine={false}
               axisLine={false}
               allowDecimals={false}
@@ -230,12 +216,12 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
   if (filtered.length === 0) return null;
   const total = filtered.reduce((s, d) => s + d.value, 0);
   const colors = filtered?.map(
-    (d) => SEVERITY_COLORS[d.name as keyof typeof SEVERITY_COLORS] ?? "#71717a"
+    (d) => SEVERITY_COLORS[d.name as keyof typeof SEVERITY_COLORS] ?? SEVERITY_HEX.none
   );
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
-      <h3 className="text-sm font-semibold text-zinc-300 mb-4">
+    <div className={CHART_PANEL}>
+      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-4">
         Severity Breakdown
       </h3>
       <div className="h-48 flex items-center justify-center">
@@ -252,17 +238,17 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
               stroke="none"
             >
               {filtered?.map((_, i) => (
-                <Cell key={i} fill={colors[i] ?? "#71717a"} fillOpacity={0.85} />
+                <Cell key={i} fill={colors[i] ?? SEVERITY_HEX.none} fillOpacity={0.85} />
               ))}
             </Pie>
             <Tooltip content={<ChartTooltip />} />
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute text-center pointer-events-none">
-          <div className="text-2xl font-bold font-mono text-zinc-100">
+          <div className="text-2xl font-bold font-mono text-[color:var(--foreground)]">
             {total}
           </div>
-          <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
+          <div className="text-[10px] text-[color:var(--text-tertiary)] uppercase tracking-wide">
             total
           </div>
         </div>
@@ -288,7 +274,7 @@ function TreemapCell({
   name?: string; color?: string;
 }) {
   if (!width || !height || width < 4 || height < 4) return null;
-  const bg = color ?? "#27272a";
+  const bg = color ?? SEVERITY_HEX.none;
   const showLabel = Boolean(name) && width >= 72 && height >= 34;
   const maxChars = Math.max(6, Math.floor((width - 16) / 7));
   const label = name && name.length > maxChars ? `${name.slice(0, Math.max(3, maxChars - 1))}…` : name;
@@ -310,7 +296,7 @@ function TreemapCell({
         x={x} y={y} width={width} height={height}
         fill={bg}
         fillOpacity={0.85}
-        stroke="#18181b"
+        stroke="var(--surface)"
         strokeWidth={1.5}
         rx={3}
       />
@@ -319,7 +305,7 @@ function TreemapCell({
           x={(x ?? 0) + 8}
           y={(y ?? 0) + 18}
           clipPath={`url(#${clipId})`}
-          fill="#f4f4f5"
+          fill="var(--foreground)"
           fontSize={Math.min(11, Math.max(9, width / 18))}
           fontFamily="monospace"
           fontWeight={700}
@@ -355,12 +341,12 @@ export function SupplyChainTreemap({
               "none" as string
             );
             const color = worst === "critical"
-              ? "#ef4444"
+              ? SEVERITY_HEX.critical
               : worst === "high"
-                ? "#f97316"
+                ? SEVERITY_HEX.high
                 : worst === "medium"
-                  ? "#eab308"
-                  : "#3b82f6";
+                  ? SEVERITY_HEX.medium
+                  : SEVERITY_HEX.low;
             return {
               name: `${pkg.name}@${pkg.version}`,
               size: Math.max(2, vulns.length * 3),
@@ -371,7 +357,7 @@ export function SupplyChainTreemap({
         return [
           ...vulnerablePackages,
           ...(cleanCount > 0
-            ? [{ name: `Clean packages (${cleanCount})`, size: cleanCount, color: "#22c55e", aggregate: true }]
+            ? [{ name: `Clean packages (${cleanCount})`, size: cleanCount, color: "#34d399", aggregate: true }]
             : []),
         ];
       })(),
@@ -381,9 +367,9 @@ export function SupplyChainTreemap({
   if (treeData.length === 0) return null;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
-      <h3 className="text-sm font-semibold text-zinc-300 mb-1">Supply Chain Map</h3>
-      <p className="text-[10px] text-zinc-600 mb-4">
+    <div className={CHART_PANEL}>
+      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">Supply Chain Map</h3>
+      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-4">
         Vulnerable packages stay expanded. Clean inventory is rolled up per server for readability.
       </p>
       <div className="h-64">
@@ -410,15 +396,15 @@ export function SupplyChainTreemap({
       </div>
       <div className="flex gap-4 mt-3">
         {[
-          { label: "Clean", color: "#22c55e" },
-          { label: "Low", color: "#3b82f6" },
-          { label: "Medium", color: "#eab308" },
-          { label: "High", color: "#f97316" },
-          { label: "Critical", color: "#ef4444" },
+          { label: "Clean", color: "#34d399" },
+          { label: "Low", color: SEVERITY_HEX.low },
+          { label: "Medium", color: SEVERITY_HEX.medium },
+          { label: "High", color: SEVERITY_HEX.high },
+          { label: "Critical", color: SEVERITY_HEX.critical },
         ].map(({ label, color }) => (
           <div key={label} className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-sm" style={{ background: color }} />
-            <span className="text-[10px] text-zinc-500">{label}</span>
+            <span className="text-[10px] text-[color:var(--text-tertiary)]">{label}</span>
           </div>
         ))}
       </div>
@@ -449,10 +435,10 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
     const sev = entry.severity?.toLowerCase() ?? "low";
     const score = entry.score;
     const fill =
-      sev === "critical" ? "#ef4444"
-      : sev === "high" ? "#f97316"
-      : sev === "medium" ? "#eab308"
-      : "#3b82f6";
+      sev === "critical" ? SEVERITY_HEX.critical
+      : sev === "high" ? SEVERITY_HEX.high
+      : sev === "medium" ? SEVERITY_HEX.medium
+      : SEVERITY_HEX.low;
     return {
       name: entry.name,
       value: Math.round((score / maxScore) * 100),
@@ -465,9 +451,9 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
   });
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
-      <h3 className="text-sm font-semibold text-zinc-300 mb-1">Blast Radius</h3>
-      <p className="text-[10px] text-zinc-600 mb-2">
+    <div className={CHART_PANEL}>
+      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">Blast Radius</h3>
+      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-2">
         Top reachable packages by highest priority, grouped by package
       </p>
       <div className="h-64">
@@ -485,7 +471,7 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
             <RadialBar
               dataKey="value"
               cornerRadius={4}
-              background={{ fill: "#27272a" }}
+              background={{ fill: getChartTheme().bg }}
               label={false}
             />
             <Tooltip
@@ -495,23 +481,23 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
                 return (
                   <div
                     className="rounded-lg border px-3 py-2 text-xs shadow-xl"
-                    style={{ background: "#09090b", borderColor: "#27272a" }}
+                    style={{ background: getChartTheme().tooltip.bg, borderColor: getChartTheme().tooltip.border }}
                   >
-                    <div className="font-mono text-zinc-300 mb-1 truncate max-w-[160px]">{d.name}</div>
+                    <div className="font-mono text-[color:var(--foreground)] mb-1 truncate max-w-[160px]">{d.name}</div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-zinc-500">Findings</span>
-                      <span className="font-mono text-zinc-300">{d.vulnerabilityCount}</span>
+                      <span className="text-[color:var(--text-tertiary)]">Findings</span>
+                      <span className="font-mono text-[color:var(--foreground)]">{d.vulnerabilityCount}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-zinc-500">Agents</span>
-                      <span className="font-mono text-zinc-300">{d.agentCount || "n/a"}</span>
+                      <span className="text-[color:var(--text-tertiary)]">Agents</span>
+                      <span className="font-mono text-[color:var(--foreground)]">{d.agentCount || "n/a"}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-zinc-500">Priority</span>
+                      <span className="text-[color:var(--text-tertiary)]">Priority</span>
                       <span className="font-mono" style={{ color: d.fill }}>{d.score.toFixed(1)}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-zinc-500">Relative</span>
+                      <span className="text-[color:var(--text-tertiary)]">Relative</span>
                       <span className="font-mono" style={{ color: d.fill }}>{d.value}%</span>
                     </div>
                   </div>
@@ -525,9 +511,9 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
         {radialData.slice(0, 5).map((d) => (
           <div key={d.name} className="flex items-center gap-2 text-[10px]">
             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.fill }} />
-            <span className="text-zinc-400 font-mono truncate flex-1">{d.name}</span>
-            <span className="text-zinc-600 font-mono">{d.vulnerabilityCount} findings</span>
-            <span className="text-zinc-600 font-mono">{d.score.toFixed(0)}</span>
+            <span className="font-mono text-[color:var(--text-secondary)] truncate flex-1">{d.name}</span>
+            <span className="font-mono text-[color:var(--text-tertiary)]">{d.vulnerabilityCount} findings</span>
+            <span className="font-mono text-[color:var(--text-tertiary)]">{d.score.toFixed(0)}</span>
           </div>
         ))}
       </div>
@@ -558,9 +544,9 @@ const PIPELINE_STAGES = [
 
 export function PipelineFlow({ stats }: { stats: PipelineStats }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
-      <h3 className="text-sm font-semibold text-zinc-300 mb-1">Scan Pipeline</h3>
-      <p className="text-[10px] text-zinc-600 mb-5">
+    <div className={CHART_PANEL}>
+      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">Scan Pipeline</h3>
+      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-5">
         End-to-end flow with live stats from the latest scan
       </p>
       <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
@@ -573,7 +559,7 @@ export function PipelineFlow({ stats }: { stats: PipelineStats }) {
                 className={`flex-1 min-w-[72px] flex flex-col items-center gap-1.5 px-3 py-3 rounded-lg border transition-colors ${
                   isAlert
                     ? "bg-red-950/30 border-red-800/50"
-                    : "bg-zinc-800/50 border-zinc-700/40"
+                    : "bg-[color:var(--surface-muted)] border-[color:var(--border-subtle)]"
                 }`}
               >
                 <div
@@ -581,7 +567,7 @@ export function PipelineFlow({ stats }: { stats: PipelineStats }) {
                     isAlert ? "bg-red-500" : "bg-emerald-500"
                   }`}
                 />
-                <span className="text-[10px] font-semibold text-zinc-300 uppercase tracking-wide whitespace-nowrap">
+                <span className="text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-[color:var(--foreground)]">
                   {stage.label}
                 </span>
                 <span
@@ -629,13 +615,13 @@ function ScatterTooltipContent({
   if (!active || !payload?.length) return null;
   const d = payload[0]!.payload;
   const sevColor =
-    SEVERITY_COLORS[d.severity as keyof typeof SEVERITY_COLORS] ?? "#71717a";
+    SEVERITY_COLORS[d.severity as keyof typeof SEVERITY_COLORS] ?? SEVERITY_HEX.none;
   return (
     <div
       className="rounded-lg border px-3 py-2 text-xs shadow-xl max-w-[200px]"
       style={{
-        background: CHART_THEME.tooltip.bg,
-        borderColor: CHART_THEME.tooltip.border,
+        background: getChartTheme().tooltip.bg,
+        borderColor: getChartTheme().tooltip.border,
       }}
     >
       <div className="font-mono font-semibold mb-1" style={{ color: sevColor }}>
@@ -647,23 +633,23 @@ function ScatterTooltipContent({
         )}
       </div>
       {d.package && (
-        <div className="text-zinc-500 truncate mb-1">{d.package}</div>
+        <div className="text-[color:var(--text-tertiary)] truncate mb-1">{d.package}</div>
       )}
       <div className="flex justify-between gap-4">
-        <span className="text-zinc-500">CVSS</span>
-        <span className="font-mono" style={{ color: CHART_THEME.tooltip.text }}>
+        <span className="text-[color:var(--text-tertiary)]">CVSS</span>
+        <span className="font-mono" style={{ color: getChartTheme().tooltip.text }}>
           {d.cvss.toFixed(1)}
         </span>
       </div>
       <div className="flex justify-between gap-4">
-        <span className="text-zinc-500">EPSS</span>
-        <span className="font-mono" style={{ color: CHART_THEME.tooltip.text }}>
+        <span className="text-[color:var(--text-tertiary)]">EPSS</span>
+        <span className="font-mono" style={{ color: getChartTheme().tooltip.text }}>
           {(d.epss * 100).toFixed(1)}%
         </span>
       </div>
       <div className="flex justify-between gap-4">
-        <span className="text-zinc-500">Blast</span>
-        <span className="font-mono" style={{ color: CHART_THEME.tooltip.text }}>
+        <span className="text-[color:var(--text-tertiary)]">Blast</span>
+        <span className="font-mono" style={{ color: getChartTheme().tooltip.text }}>
           {d.blast.toFixed(1)}
         </span>
       </div>
@@ -690,11 +676,11 @@ export function EpssVsCvssChart({ data }: { data: EpssVsCvssPoint[] }) {
     maxBlast > minBlast ? [40, 600] : [100, 100];
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
-      <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+    <div className={CHART_PANEL}>
+      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">
         EPSS × CVSS Risk Map
       </h3>
-      <p className="text-[10px] text-zinc-600 mb-4">
+      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-4">
         Bubble size = blast score · top-right = highest priority
       </p>
       <div className="h-56">
@@ -702,21 +688,21 @@ export function EpssVsCvssChart({ data }: { data: EpssVsCvssPoint[] }) {
           <ScatterChart margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke={CHART_THEME.grid}
+              stroke={getChartTheme().grid}
             />
             <XAxis
               type="number"
               dataKey="cvss"
               domain={[0, 10]}
               ticks={[0, 2, 4, 6, 8, 10]}
-              tick={{ fontSize: 9, fill: CHART_THEME.text }}
+              tick={{ fontSize: 9, fill: getChartTheme().text }}
               tickLine={false}
-              axisLine={{ stroke: CHART_THEME.border }}
+              axisLine={{ stroke: getChartTheme().border }}
               label={{
                 value: "CVSS",
                 position: "insideBottom",
                 offset: -2,
-                fill: CHART_THEME.text,
+                fill: getChartTheme().text,
                 fontSize: 9,
               }}
             />
@@ -725,7 +711,7 @@ export function EpssVsCvssChart({ data }: { data: EpssVsCvssPoint[] }) {
               dataKey="epss"
               domain={[0, 1]}
               tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
-              tick={{ fontSize: 9, fill: CHART_THEME.text }}
+              tick={{ fontSize: 9, fill: getChartTheme().text }}
               tickLine={false}
               axisLine={false}
               width={36}
@@ -735,13 +721,13 @@ export function EpssVsCvssChart({ data }: { data: EpssVsCvssPoint[] }) {
             {/* Threshold lines marking the "action zone" */}
             <ReferenceLine
               x={7}
-              stroke="#ef4444"
+              stroke={SEVERITY_HEX.critical}
               strokeDasharray="4 3"
               strokeOpacity={0.3}
             />
             <ReferenceLine
               y={0.1}
-              stroke="#f97316"
+              stroke={SEVERITY_HEX.high}
               strokeDasharray="4 3"
               strokeOpacity={0.3}
             />
@@ -772,8 +758,8 @@ export function EpssVsCvssChart({ data }: { data: EpssVsCvssPoint[] }) {
                 className="w-2 h-2 rounded-full"
                 style={{ background: SEVERITY_COLORS[sev] }}
               />
-              <span className="text-[10px] text-zinc-500 capitalize">{sev}</span>
-              <span className="text-[10px] text-zinc-700 font-mono">
+              <span className="text-[10px] text-[color:var(--text-tertiary)] capitalize">{sev}</span>
+              <span className="text-[10px] font-mono text-[color:var(--text-tertiary)]">
                 ({bySev[sev].length})
               </span>
             </div>

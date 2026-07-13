@@ -12,10 +12,10 @@ const ACCENT_GRADIENT: Record<StatAccent, string> = {
 
 const ACCENT_VALUE: Record<StatAccent, string> = {
   neutral: "text-[color:var(--foreground)]",
-  critical: "text-red-400",
-  high: "text-orange-400",
-  medium: "text-yellow-400",
-  info: "text-emerald-400",
+  critical: "text-[color:var(--severity-critical)]",
+  high: "text-[color:var(--severity-high)]",
+  medium: "text-[color:var(--severity-medium)]",
+  info: "text-[color:var(--status-success)]",
 };
 
 type StatCardProps = {

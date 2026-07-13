@@ -2,21 +2,54 @@
 
 :root {
   color-scheme: dark;
-  /* Lifted charcoal — readable surfaces without pure black washout */
-  --background: #14161c;
-  --foreground: #f2f3f7;
-  --surface: #1c1f28;
-  --surface-elevated: #262a35;
-  --surface-muted: rgba(58, 62, 74, 0.55);
-  --border-subtle: rgba(90, 96, 112, 0.72);
-  --border-strong: rgba(120, 128, 148, 0.88);
-  --text-secondary: #c2c6d0;
-  --text-tertiary: #9499a8;
-  --shadow-color: rgba(0, 0, 0, 0.32);
-  --scrollbar-thumb: #3a3f4c;
-  --scrollbar-thumb-hover: #525866;
+  /*
+   * Enterprise-console hierarchy (dark-first):
+   * page < card (--surface) < inset/elevated — each one step brighter,
+   * with borders and secondary text strong enough to read at a glance.
+   * Mint stays the brand accent; severity/status hues are sharpened below.
+   */
+  --background: #181a22;
+  --foreground: #f4f5f8;
+  --surface: #22262f;
+  --surface-elevated: #2c3140;
+  --surface-muted: rgba(72, 78, 94, 0.58);
+  --border-subtle: rgba(110, 118, 138, 0.78);
+  --border-strong: rgba(140, 148, 168, 0.92);
+  --text-secondary: #d0d4dc;
+  --text-tertiary: #a8aebc;
+  --shadow-color: rgba(0, 0, 0, 0.34);
+  --scrollbar-thumb: #454b5c;
+  --scrollbar-thumb-hover: #5c6478;
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 60px;
+
+  /* Mint brand accent */
+  --accent-mint: #34d399;
+
+  /* Severity — badges, charts, dots (hex aligned with ui/lib/theme-colors.ts) */
+  --severity-critical: #ff6b6b;
+  --severity-critical-bg: rgba(255, 107, 107, 0.16);
+  --severity-critical-border: rgba(255, 107, 107, 0.5);
+  --severity-high: #ff9f4a;
+  --severity-high-bg: rgba(255, 159, 74, 0.16);
+  --severity-high-border: rgba(255, 159, 74, 0.5);
+  --severity-medium: #f0c84a;
+  --severity-medium-bg: rgba(240, 200, 74, 0.15);
+  --severity-medium-border: rgba(240, 200, 74, 0.48);
+  --severity-low: #6ba3ff;
+  --severity-low-bg: rgba(107, 163, 255, 0.15);
+  --severity-low-border: rgba(107, 163, 255, 0.48);
+
+  /* Status — success / warn / danger */
+  --status-success: #34d399;
+  --status-success-bg: rgba(52, 211, 153, 0.14);
+  --status-success-border: rgba(52, 211, 153, 0.45);
+  --status-warn: #fbbf24;
+  --status-warn-bg: rgba(251, 191, 36, 0.14);
+  --status-warn-border: rgba(251, 191, 36, 0.45);
+  --status-danger: var(--severity-critical);
+  --status-danger-bg: var(--severity-critical-bg);
+  --status-danger-border: var(--severity-critical-border);
 
   /* Architecture diagram color semantics */
   --color-discover: #58a6ff;
@@ -29,18 +62,43 @@
 :root[data-theme="light"] {
   color-scheme: light;
   /* Cool gray canvas — white cards sit clearly above the page */
-  --background: #e8ecf3;
-  --foreground: #15171c;
+  --background: #e4e9f2;
+  --foreground: #12141a;
   --surface: #ffffff;
-  --surface-elevated: #f1f4f9;
-  --surface-muted: rgba(203, 210, 222, 0.55);
-  --border-subtle: rgba(148, 163, 184, 0.55);
-  --border-strong: rgba(100, 116, 139, 0.72);
-  --text-secondary: #3f4654;
-  --text-tertiary: #5b6472;
-  --shadow-color: rgba(15, 23, 42, 0.1);
-  --scrollbar-thumb: #a8b0bd;
-  --scrollbar-thumb-hover: #8790a0;
+  --surface-elevated: #eef2f8;
+  --surface-muted: rgba(190, 198, 212, 0.55);
+  --border-subtle: rgba(130, 145, 168, 0.62);
+  --border-strong: rgba(90, 105, 128, 0.8);
+  --text-secondary: #374151;
+  --text-tertiary: #4b5563;
+  --shadow-color: rgba(15, 23, 42, 0.11);
+  --scrollbar-thumb: #9aa3b2;
+  --scrollbar-thumb-hover: #7b8596;
+
+  --accent-mint: #059669;
+
+  --severity-critical: #dc2626;
+  --severity-critical-bg: rgba(220, 38, 38, 0.1);
+  --severity-critical-border: rgba(220, 38, 38, 0.38);
+  --severity-high: #ea580c;
+  --severity-high-bg: rgba(234, 88, 12, 0.1);
+  --severity-high-border: rgba(234, 88, 12, 0.38);
+  --severity-medium: #ca8a04;
+  --severity-medium-bg: rgba(202, 138, 4, 0.1);
+  --severity-medium-border: rgba(202, 138, 4, 0.38);
+  --severity-low: #2563eb;
+  --severity-low-bg: rgba(37, 99, 235, 0.1);
+  --severity-low-border: rgba(37, 99, 235, 0.38);
+
+  --status-success: #059669;
+  --status-success-bg: rgba(5, 150, 105, 0.1);
+  --status-success-border: rgba(5, 150, 105, 0.38);
+  --status-warn: #d97706;
+  --status-warn-bg: rgba(217, 119, 6, 0.1);
+  --status-warn-border: rgba(217, 119, 6, 0.38);
+  --status-danger: var(--severity-critical);
+  --status-danger-bg: var(--severity-critical-bg);
+  --status-danger-border: var(--severity-critical-border);
 }
 
 @theme inline {
@@ -119,11 +177,35 @@ body {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-strong) 35%, transparent);
 }
 
-/* Stat card gradient backgrounds */
-.stat-critical { background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, transparent 60%); }
-.stat-high { background: linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, transparent 60%); }
-.stat-medium { background: linear-gradient(135deg, rgba(234, 179, 8, 0.08) 0%, transparent 60%); }
-.stat-info { background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, transparent 60%); }
+/* Stat card gradient backgrounds — driven by severity/status tokens */
+.stat-critical {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--severity-critical) 14%, transparent) 0%,
+    transparent 60%
+  );
+}
+.stat-high {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--severity-high) 14%, transparent) 0%,
+    transparent 60%
+  );
+}
+.stat-medium {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--severity-medium) 14%, transparent) 0%,
+    transparent 60%
+  );
+}
+.stat-info {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--status-success) 14%, transparent) 0%,
+    transparent 60%
+  );
+}
 
 /* Smooth page transitions */
 main > div {

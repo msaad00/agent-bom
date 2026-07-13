@@ -87,7 +87,8 @@ export function rollupEntityToNodeType(entityType: string): LineageNodeType {
 
 export function rollupContainerSubtitle(container: GraphRollupContainer): string {
   const parts: string[] = [];
-  const descendants = container.aggregate.descendant_count;
+  const aggregate = container.aggregate;
+  const descendants = aggregate?.descendant_count ?? 0;
   if (descendants > 0) {
     parts.push(
       `${descendants} descendant${descendants === 1 ? "" : "s"}`,
@@ -97,13 +98,13 @@ export function rollupContainerSubtitle(container: GraphRollupContainer): string
       `${container.direct_child_count} direct child${container.direct_child_count === 1 ? "" : "ren"}`,
     );
   }
-  if (container.aggregate.worst_severity && container.aggregate.worst_severity !== "none") {
-    parts.push(`worst ${container.aggregate.worst_severity}`);
+  if (aggregate?.worst_severity && aggregate.worst_severity !== "none") {
+    parts.push(`worst ${aggregate.worst_severity}`);
   }
-  if (container.aggregate.internet_exposed) {
+  if (aggregate?.internet_exposed) {
     parts.push("internet exposed");
   }
-  if (container.aggregate.toxic_combo) {
+  if (aggregate?.toxic_combo) {
     parts.push("toxic combo");
   }
   if (container.has_children) {
@@ -116,20 +117,21 @@ function rollupContainerToNodeData(
   container: GraphRollupContainer,
 ): LineageNodeData {
   const nodeType = rollupEntityToNodeType(container.entity_type);
+  const aggregate = container.aggregate;
   return {
     label: container.label,
     nodeType,
     entityType: container.entity_type,
-    severity: container.severity || container.aggregate.worst_severity || undefined,
+    severity: container.severity || aggregate?.worst_severity || undefined,
     description: rollupContainerSubtitle(container),
     attributes: {
       node_id: container.id,
       rollup_has_children: container.has_children,
       rollup_is_container: container.is_container,
-      rollup_descendant_count: container.aggregate.descendant_count,
+      rollup_descendant_count: aggregate?.descendant_count ?? 0,
     },
-    highlighted: container.aggregate.worst_severity_rank >= 4,
-    isCritical: container.aggregate.worst_severity === "critical",
+    highlighted: (aggregate?.worst_severity_rank ?? 0) >= 4,
+    isCritical: aggregate?.worst_severity === "critical",
   };
 }
 

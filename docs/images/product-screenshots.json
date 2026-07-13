@@ -1,12 +1,12 @@
 {
   "release_version": "0.95.0",
-  "captured_at": "2026-07-11T23:36:21.543Z",
-  "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data \u2014 sample environment label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
+  "captured_at": "2026-07-13T03:01:26.429Z",
+  "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
       "page": "/?capture=1",
-      "scope": "Overview command center \u2014 posture ring, findings breakdown, scan coverage, environment tabs",
+      "scope": "Overview command center — posture ring, findings breakdown, scan coverage, environment tabs",
       "visible_version": "0.95.0"
     },
     {

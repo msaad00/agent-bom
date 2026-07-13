@@ -1147,8 +1147,8 @@ async function fulfill(route, body, status = 200) {
 }
 
 async function installRoutes(page) {
-  await page.route("**/health", (route) => fulfill(route, { status: "ok" }));
-  await page.route("**/version", (route) => fulfill(route, { version: "0.91.0", name: "agent-bom" }));
+  await page.route("**/health", (route) => fulfill(route, { status: "ok", version: RELEASE_VERSION }));
+  await page.route("**/version", (route) => fulfill(route, { version: RELEASE_VERSION, name: "agent-bom" }));
   await page.route("**/v1/auth/me", (route) => fulfill(route, {
     authenticated: true,
     auth_required: false,
@@ -1251,9 +1251,20 @@ async function installRoutes(page) {
       label: node.label,
       entity_type: node.entity_type,
       severity: node.severity,
-      child_count: 3,
-      risk_score: node.risk_score,
-      rollup_has_children: true,
+      is_container: true,
+      has_children: true,
+      direct_child_count: 3,
+      aggregate: {
+        descendant_count: 12,
+        by_type: { agent: 2, server: 3, package: 4, vulnerability: 3 },
+        severity_counts: { critical: 2, high: 4, medium: 3, low: 0 },
+        worst_severity: node.severity,
+        worst_severity_rank: severityId(node.severity),
+        internet_exposed: node.severity === "critical",
+        toxic_combo: node.severity === "critical",
+        exposed_count: node.severity === "critical" ? 2 : 0,
+        toxic_count: node.severity === "critical" ? 1 : 0,
+      },
     })),
     summary: {
       total_nodes: graph.nodes.length,
@@ -1580,7 +1591,7 @@ async function scrollTo(page, y) {
 }
 
 async function fitReactFlow(page, { timeout = 30_000 } = {}) {
-  await page.waitForSelector(".react-flow", { state: "visible", timeout });
+  await page.waitForSelector(".react-flow", { state: "attached", timeout });
   await page.waitForTimeout(250);
   await page.evaluate(() => {
     document.querySelector(".react-flow")?.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
@@ -1607,6 +1618,9 @@ async function main() {
     await installRoutes(page);
     await page.addInitScript(() => {
       window.localStorage.setItem("agent-bom-theme", "dark");
+      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
+      document.documentElement.dataset.theme = "dark";
     });
 
     await capture(page, "/?capture=1", "dashboard-live.png");
@@ -1614,7 +1628,7 @@ async function main() {
       await scrollTo(dashboardPage, 720);
     });
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {
-      await connectionsPage.getByRole("heading", { name: "Cloud accounts" }).waitFor({ state: "visible", timeout: 10_000 });
+      await connectionsPage.getByRole("heading", { name: "Cloud accounts", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     });
     await capture(page, "/scan?capture=1", "new-scan-live.png", async (scanPage) => {
       await scanPage.getByRole("heading", { name: /New Scan|Run scan/i }).first().waitFor({ state: "visible", timeout: 10_000 });
@@ -1622,7 +1636,11 @@ async function main() {
     await capture(page, "/mesh?capture=1", "mesh-live.png");
     await capture(page, "/security-graph?capture=1", "security-graph-live.png");
     await capture(page, `/graph?capture=1&scan=${SCAN_ID}`, "lineage-graph-live.png", async (lineagePage) => {
-      await fitReactFlow(lineagePage);
+      try {
+        await fitReactFlow(lineagePage);
+      } catch {
+        await lineagePage.waitForTimeout(800);
+      }
     });
     await capture(
       page,

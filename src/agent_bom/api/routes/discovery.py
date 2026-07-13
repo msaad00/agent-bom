@@ -193,6 +193,22 @@ def _observation_ids(agent: Any, server: Any) -> tuple[str, str | None]:
     return current, legacy
 
 
+def _agent_count_by_class(agents) -> dict[str, int]:
+    """Split discovered agents into AI clients vs background agents (additive).
+
+    Excludes synthetic SBOM/image wrappers. Lets clients render one authoritative
+    breakdown instead of each re-deriving from ``agent_type``.
+    """
+    from agent_bom.models import classify_agent_kind
+
+    counts = {"client": 0, "background": 0}
+    for agent in agents:
+        kind = classify_agent_kind(agent)
+        if kind in counts:
+            counts[kind] += 1
+    return counts
+
+
 def _serialize_agent(
     agent,
     *,
@@ -202,6 +218,11 @@ def _serialize_agent(
     observation_index: dict[str, MCPObservation] | None = None,
 ) -> dict:
     payload = asdict(agent)
+    # Display-only class (AI client/host vs background/framework agent). Additive
+    # field; never renames agent_type or any existing key.
+    from agent_bom.models import classify_agent_kind
+
+    payload["agent_class"] = classify_agent_kind(agent)
     agent_provenance = agent_discovery_provenance(agent)
     payload["discovery_provenance"] = agent_provenance
     payload["mcp_servers"] = []
@@ -436,6 +457,7 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
             for a in agents
         ],
         "count": len(agents),
+        "count_by_class": _agent_count_by_class(agents),
         "warnings": [],
     }
 

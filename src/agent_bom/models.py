@@ -1053,6 +1053,30 @@ class BlastRadius:
         return sorted(self.package.occurrences, key=lambda occ: (occ.layer_index, occ.layer_id, occ.package_path or ""))
 
 
+def classify_agent_kind(agent: "Agent") -> str:
+    """Display-only classification of a discovered agent record.
+
+    Distinguishes what "agent" actually means to avoid overstating autonomy:
+
+    - ``"client"`` — an AI **client/host** application discovered from config
+      (Cursor, Claude Desktop, VS Code/Copilot, Codex CLI, …). Signalled by a
+      specific ``agent_type`` (not ``CUSTOM``).
+    - ``"background"`` — a **framework/service agent** *definition* discovered
+      from code (CrewAI/LangChain/LangGraph, ``agent_type == CUSTOM`` with a
+      ``source``/name shaped like ``"langchain:orders"``).
+    - ``"synthetic"`` — an SBOM/image ingest wrapper (``agent_type == CUSTOM``
+      with a ``sbom:``/``image:`` name), not a real agent at all.
+
+    Layers vocabulary on top of the existing ``agent_type`` field; changes no
+    stored data, enum value, route, or API key.
+    """
+    if agent.agent_type != AgentType.CUSTOM:
+        return "client"
+    if (agent.name or "").startswith(("sbom:", "image:")):
+        return "synthetic"
+    return "background"
+
+
 @dataclass
 class AIBOMReport:
     """Complete AI-BOM report."""
@@ -1163,6 +1187,21 @@ class AIBOMReport:
         specific agent types (CLAUDE_DESKTOP, CURSOR, etc.).
         """
         return any(a.agent_type != AgentType.CUSTOM for a in self.agents)
+
+    @property
+    def agent_class_counts(self) -> dict[str, int]:
+        """Real agents split by display class: AI clients vs background agents.
+
+        Excludes synthetic SBOM/image wrappers. ``client`` = discovered AI
+        host apps; ``background`` = framework/service agent definitions. See
+        :func:`classify_agent_kind`.
+        """
+        counts = {"client": 0, "background": 0}
+        for agent in self.agents:
+            kind = classify_agent_kind(agent)
+            if kind in counts:
+                counts[kind] += 1
+        return counts
 
     def __post_init__(self) -> None:
         if not self.tool_version:

@@ -1301,4 +1301,4 @@ export const CMMC_PRACTICES: Record<string, string> = {
 // re-exports keep every existing `import { severityColor } from "@/lib/api"`
 // working unchanged so callers don't need to migrate in one big bang.
 
-export { severityColor, severityDot, formatDate, isConfigured } from "./api-format";
+export { severityColor, severityDot, formatDate, isConfigured, agentClass, agentClassCounts } from "./api-format";

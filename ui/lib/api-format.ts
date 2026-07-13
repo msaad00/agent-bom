@@ -49,3 +49,32 @@ export function formatDate(iso: string): string {
 export function isConfigured(agent: Agent): boolean {
   return agent.status !== "installed-not-configured";
 }
+
+const AGENT_SYNTHETIC_PREFIXES = ["sbom:", "image:"];
+
+/**
+ * Display class for a discovered agent, distinct from the configured/installed
+ * axis: an AI **client/host** app (Cursor, Claude Desktop, …) vs a **background**
+ * framework/service agent definition (CrewAI/LangChain) vs a synthetic
+ * SBOM/image wrapper. Mirrors the backend `classify_agent_kind`; prefers the
+ * server-provided `agent_class` when present.
+ */
+export function agentClass(agent: Agent): "client" | "background" | "synthetic" {
+  const provided = agent.agent_class;
+  if (provided === "client" || provided === "background" || provided === "synthetic") {
+    return provided;
+  }
+  if (agent.agent_type && agent.agent_type !== "custom") return "client";
+  if (AGENT_SYNTHETIC_PREFIXES.some((p) => (agent.name ?? "").startsWith(p))) return "synthetic";
+  return "background";
+}
+
+/** Real agents (excludes synthetic) split into AI clients vs background agents. */
+export function agentClassCounts(agents: Agent[]): { client: number; background: number } {
+  const counts = { client: 0, background: 0 };
+  for (const agent of agents) {
+    const kind = agentClass(agent);
+    if (kind === "client" || kind === "background") counts[kind] += 1;
+  }
+  return counts;
+}

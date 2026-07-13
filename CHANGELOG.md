@@ -9,7 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.95.0] - 2026-07-12
+## [0.95.0] - 2026-07-13
 
 Enterprise auth, cloud-connect, and interop release: browser OIDC SSO, actionable cloud connections, compliance honesty, refreshed dashboard/branding, and a large security-hardening batch on top of 0.94.2.
 

@@ -607,39 +607,39 @@ function SeverityIssueStrip({
     {
       key: "critical",
       label: "Critical",
-      tone: "text-red-600 dark:text-red-400",
-      tint: "border-red-500/40 bg-red-500/[0.08] hover:border-red-500/60",
+      tone: "text-[color:var(--severity-critical)]",
+      tint: "border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] hover:border-[color:var(--severity-critical)]",
       value: summaryReady ? (hasTyped ? resolved.totals.critical : critical) : 0,
     },
     {
       key: "high",
       label: "High",
-      tone: "text-orange-600 dark:text-orange-400",
-      tint: "border-orange-500/40 bg-orange-500/[0.08] hover:border-orange-500/60",
+      tone: "text-[color:var(--severity-high)]",
+      tint: "border-[color:var(--severity-high-border)] bg-[color:var(--severity-high-bg)] hover:border-[color:var(--severity-high)]",
       value: summaryReady ? (hasTyped ? resolved.totals.high : high) : 0,
     },
     {
       key: "medium",
       label: "Medium",
-      tone: "text-yellow-600 dark:text-yellow-300",
-      tint: "border-yellow-500/40 bg-yellow-500/[0.07] hover:border-yellow-500/60",
+      tone: "text-[color:var(--severity-medium)]",
+      tint: "border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] hover:border-[color:var(--severity-medium)]",
       value: summaryReady ? (hasTyped ? resolved.totals.medium : severity.medium) : 0,
     },
     {
       key: "low",
       label: "Low",
-      tone: "text-sky-600 dark:text-sky-300",
-      tint: "border-sky-500/40 bg-sky-500/[0.08] hover:border-sky-500/60",
+      tone: "text-[color:var(--severity-low)]",
+      tint: "border-[color:var(--severity-low-border)] bg-[color:var(--severity-low-bg)] hover:border-[color:var(--severity-low)]",
       value: summaryReady ? (hasTyped ? resolved.totals.low : severity.low) : 0,
     },
   ];
   const stackedTotal = bands.reduce((sum, band) => sum + band.value, 0);
   const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "identity"];
   const issueTone: Record<IssueType, string> = {
-    vulnerability: "bg-violet-500",
-    misconfiguration: "bg-orange-500",
-    secret: "bg-rose-500",
-    identity: "bg-cyan-500",
+    vulnerability: "bg-[color:var(--severity-critical)]",
+    misconfiguration: "bg-[color:var(--severity-high)]",
+    secret: "bg-[color:var(--status-warn)]",
+    identity: "bg-[color:var(--severity-low)]",
   };
 
   return (
@@ -692,12 +692,12 @@ function SeverityIssueStrip({
                 key={band.key}
                 className={
                   band.key === "critical"
-                    ? "bg-red-500"
+                    ? "bg-[color:var(--severity-critical)]"
                     : band.key === "high"
-                      ? "bg-orange-500"
+                      ? "bg-[color:var(--severity-high)]"
                       : band.key === "medium"
-                        ? "bg-yellow-500"
-                        : "bg-sky-500"
+                        ? "bg-[color:var(--severity-medium)]"
+                        : "bg-[color:var(--severity-low)]"
                 }
                 style={{ width: `${(band.value / stackedTotal) * 100}%` }}
                 title={`${band.label}: ${band.value}`}
@@ -705,7 +705,7 @@ function SeverityIssueStrip({
             ) : null,
           )
         ) : (
-          <div className="w-full bg-emerald-500/35" />
+          <div className="w-full bg-[color:var(--status-success)]/35" />
         )}
       </div>
 

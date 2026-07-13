@@ -12,30 +12,30 @@ import type { Agent } from "./api";
 export function severityColor(severity: string): string {
   switch (severity?.toLowerCase()) {
     case "critical":
-      return "text-red-400 bg-red-950 border-red-800";
+      return "text-[color:var(--severity-critical)] bg-[color:var(--severity-critical-bg)] border-[color:var(--severity-critical-border)]";
     case "high":
-      return "text-orange-400 bg-orange-950 border-orange-800";
+      return "text-[color:var(--severity-high)] bg-[color:var(--severity-high-bg)] border-[color:var(--severity-high-border)]";
     case "medium":
-      return "text-yellow-400 bg-yellow-950 border-yellow-800";
+      return "text-[color:var(--severity-medium)] bg-[color:var(--severity-medium-bg)] border-[color:var(--severity-medium-border)]";
     case "low":
-      return "text-blue-400 bg-blue-950 border-blue-800";
+      return "text-[color:var(--severity-low)] bg-[color:var(--severity-low-bg)] border-[color:var(--severity-low-border)]";
     default:
-      return "text-zinc-400 bg-zinc-800 border-zinc-700";
+      return "text-[color:var(--text-secondary)] bg-[color:var(--surface-muted)] border-[color:var(--border-subtle)]";
   }
 }
 
 export function severityDot(severity: string): string {
   switch (severity?.toLowerCase()) {
     case "critical":
-      return "bg-red-500";
+      return "bg-[color:var(--severity-critical)]";
     case "high":
-      return "bg-orange-500";
+      return "bg-[color:var(--severity-high)]";
     case "medium":
-      return "bg-yellow-500";
+      return "bg-[color:var(--severity-medium)]";
     case "low":
-      return "bg-blue-500";
+      return "bg-[color:var(--severity-low)]";
     default:
-      return "bg-zinc-500";
+      return "bg-[color:var(--text-tertiary)]";
   }
 }
 

@@ -75,9 +75,18 @@ vi.mock('@/lib/api', () => ({
 }))
 
 import { Nav } from '@/components/nav'
+import { SidebarLayoutProvider } from '@/components/sidebar-layout'
+
+function renderNav() {
+  return render(
+    <SidebarLayoutProvider>
+      <Nav />
+    </SidebarLayoutProvider>,
+  )
+}
 
 function renderExpandedNav() {
-  render(<Nav />)
+  renderNav()
   fireEvent.click(screen.getByRole('button', { name: /expand sidebar/i }))
 }
 
@@ -167,13 +176,13 @@ describe('Nav', () => {
   })
 
   it('defaults to a collapsed sidebar rail with expand control', () => {
-    render(<Nav />)
+    renderNav()
     expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeInTheDocument()
     expect(screen.queryByText('Proof path')).not.toBeInTheDocument()
   })
 
   it('opens the mobile drawer with usable expanded navigation links', () => {
-    render(<Nav />)
+    renderNav()
 
     fireEvent.click(screen.getByRole('button', { name: /open navigation menu/i }))
 
@@ -187,7 +196,7 @@ describe('Nav', () => {
   })
 
   it('surfaces curated workflow links in the command palette', () => {
-    render(<Nav />)
+    renderNav()
     fireEvent.keyDown(window, { key: 'k', metaKey: true })
     const palette = screen.getByRole('dialog', { name: /command palette/i })
     const hrefs = within(palette).getAllByRole('link').map((l) => l.getAttribute('href'))
@@ -260,7 +269,7 @@ describe('Nav', () => {
   })
 
   it('opens the command palette with page links and actions', () => {
-    render(<Nav />)
+    renderNav()
 
     fireEvent.keyDown(window, { key: 'k', metaKey: true })
 
@@ -274,7 +283,7 @@ describe('Nav', () => {
   })
 
   it('renders the canonical agent-bom brand lockup in the top bar', () => {
-    const { container } = render(<Nav />)
+    const { container } = renderNav()
     const wordmark = container.querySelector('img[alt="agent-bom"]')
     expect(wordmark).not.toBeNull()
     expect(wordmark!.getAttribute('src')).toMatch(/^\/brand\/wordmark-dark\.svg\?/)
@@ -317,7 +326,10 @@ describe('Nav', () => {
     }
 
     for (const [group, hrefs] of Object.entries(expectedByGroup)) {
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(group, 'i') }))
+      const groupButton = screen.getByRole('button', { name: new RegExp(group, 'i') })
+      if (groupButton.getAttribute('aria-expanded') !== 'true') {
+        fireEvent.click(groupButton)
+      }
       await waitFor(() => {
         const hrefsFound = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
         for (const href of hrefs) {
@@ -327,16 +339,14 @@ describe('Nav', () => {
     }
   })
 
-  it('expands every nav group in capture mode for screenshots', async () => {
+  it('keeps the sidebar rail collapsed in capture mode so screenshots show the platform', async () => {
     window.history.replaceState({}, '', '/?capture=1')
-    render(<Nav />)
+    renderNav()
 
     await waitFor(() => {
-      expect(screen.getAllByRole('link', { name: /overview/i }).length).toBeGreaterThan(0)
-      expect(screen.getAllByRole('link', { name: /new scan/i }).length).toBeGreaterThan(0)
-      expect(screen.getAllByRole('link', { name: /runtime/i }).length).toBeGreaterThan(0)
-      expect(screen.getAllByRole('link', { name: /remediation/i }).length).toBeGreaterThan(0)
+      expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeInTheDocument()
     })
+    expect(screen.queryByRole('button', { name: /collapse sidebar/i })).not.toBeInTheDocument()
   })
 
   it('moves inactive deployment surfaces into Unused capabilities', async () => {

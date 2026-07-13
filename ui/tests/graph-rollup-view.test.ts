@@ -49,6 +49,17 @@ describe("rollupContainerSubtitle", () => {
     expect(subtitle).toContain("internet exposed");
     expect(subtitle).toContain("click to drill down");
   });
+
+  it("tolerates missing aggregate without throwing", () => {
+    const subtitle = rollupContainerSubtitle(
+      sampleContainer({
+        aggregate: undefined as unknown as GraphRollupContainer["aggregate"],
+        direct_child_count: 2,
+      }),
+    );
+    expect(subtitle).toContain("2 direct children");
+    expect(subtitle).toContain("click to drill down");
+  });
 });
 
 describe("buildRollupFlowGraph", () => {

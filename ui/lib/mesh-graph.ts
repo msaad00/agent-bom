@@ -13,6 +13,7 @@ import {
   type ExposureRelationshipRef,
 } from "@/lib/exposure-path";
 import { severityAtOrAbove, severityRank } from "@/lib/severity";
+import { severityHex } from "@/lib/theme-colors";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -268,13 +269,7 @@ function severityWeight(sev: string | undefined): number {
 }
 
 function sevColor(sev: string): string {
-  switch (sev) {
-    case "critical": return "#ef4444";
-    case "high": return "#f97316";
-    case "medium": return "#eab308";
-    case "low": return "#3b82f6";
-    default: return "#52525b";
-  }
+  return severityHex(sev);
 }
 
 function meetsSeverityFilter(sev: string, filter: SeverityFilter): boolean {

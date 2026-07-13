@@ -202,6 +202,45 @@ def test_list_provider_facet_filter(inventory_store):
     }
 
 
+def test_list_facet_filter_paginates_without_dropping_rows(tmp_path):
+    """Regression: when a facet filter matches more rows than ``limit`` within a
+    single store page, the continuation cursor must resume after the last EMITTED
+    row — not after the last consumed store page (which silently dropped the
+    overflow and mis-reported ``has_more=False``). Paginating must return every
+    matching asset exactly once."""
+    from agent_bom.api.stores import _get_graph_store
+
+    original = _get_graph_store()
+    store = SQLiteGraphStore(tmp_path / "inv-many.db")
+    total = 130
+    g = UnifiedGraph(scan_id="inv-many", tenant_id="default")
+    for i in range(total):
+        g.add_node(_node(f"agent:a{i:03d}", EntityType.AGENT, f"agent-{i:03d}", environment="production"))
+    store.save_graph(g)
+    set_graph_store(store)
+    try:
+        client = TestClient(app)
+        seen: list[str] = []
+        cursor = ""
+        for _ in range(total):  # generous safety cap above any real page count
+            url = "/v1/inventory/assets?environment=production&limit=40"
+            if cursor:
+                url += f"&cursor={cursor}"
+            body = client.get(url).json()
+            assert body["pagination"]["facet_filtered"] is True
+            page = body["assets"]
+            assert len(page) <= 40
+            seen.extend(row["id"] for row in page)
+            pagination = body["pagination"]
+            if not pagination["has_more"] or not pagination["next_cursor"]:
+                break
+            cursor = pagination["next_cursor"]
+        assert len(seen) == total, f"facet pagination dropped rows: got {len(seen)} of {total}"
+        assert len(set(seen)) == total, "facet pagination returned duplicate rows across pages"
+    finally:
+        set_graph_store(original)
+
+
 def test_list_pagination_with_cursor(inventory_store):
     client = TestClient(app)
     seen: set[str] = set()

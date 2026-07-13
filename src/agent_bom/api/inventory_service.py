@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Awaitable, Callable, Optional
 
-from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET
+from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, encode_graph_cursor
 from agent_bom.graph import SEVERITY_RANK, EntityType
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 from agent_bom.security import sanitize_error
@@ -343,25 +343,36 @@ async def build_asset_list(
         # Offset paging is ambiguous once an in-route facet filter is applied, so
         # facet-filtered listing is cursor-only. Fall back to a fresh scan.
         offset = 0
-    collected: list[dict[str, Any]] = []
+    collected_nodes: list[Any] = []
+    collected_rows: list[dict[str, Any]] = []
     page_cursor = cursor
     exhausted = False
     for _ in range(MAX_FACET_SCAN_PAGES):
         nodes, _total, next_cursor = await _fetch(page_cursor, 0, MAX_PAGE_LIMIT)
         for node in nodes:
             if predicate(node):
-                collected.append(asset_row(node))
+                collected_nodes.append(node)
+                collected_rows.append(asset_row(node))
         page_cursor = next_cursor
         if not next_cursor:
             exhausted = True
             break
-        if len(collected) >= limit:
+        if len(collected_rows) >= limit:
             break
-    page_rows = collected[:limit]
-    # The continuation cursor is the store cursor after the last consumed store
-    # page; the extra collected rows beyond ``limit`` are re-derived on the next
-    # request, keeping the keyset stable without a private buffer.
-    has_more = not exhausted or len(collected) > limit
+    page_rows = collected_rows[:limit]
+    # The continuation cursor MUST resume after the last EMITTED row — not the
+    # store cursor after the last consumed page, which would skip the matches
+    # collected past ``limit`` within that final store page (a silent drop). When
+    # more matches than ``limit`` were collected, mint the keyset cursor from the
+    # boundary emitted node so the next request re-scans from exactly there;
+    # otherwise everything collected was emitted, so resume from the store cursor
+    # (cap hit, more to scan) or stop (store exhausted).
+    if len(collected_rows) > limit:
+        next_cursor_out = encode_graph_cursor(collected_nodes[limit - 1])
+        has_more = True
+    else:
+        next_cursor_out = "" if exhausted else (page_cursor or "")
+        has_more = bool(next_cursor_out)
     return {
         "schema_version": "inventory.assets.v1",
         "tenant_id": tenant_id,
@@ -379,8 +390,8 @@ async def build_asset_list(
             "offset": 0,
             "limit": limit,
             "cursor": cursor or "",
-            "next_cursor": page_cursor or "",
-            "has_more": bool(has_more and page_cursor),
+            "next_cursor": next_cursor_out,
+            "has_more": has_more,
             "facet_filtered": True,
         },
     }

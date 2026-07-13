@@ -45,6 +45,17 @@ def get_attack_techniques() -> dict[str, str]:
     return {tid: meta["name"] for tid, meta in get_techniques().items()}
 
 
+def get_bundled_attack_techniques() -> dict[str, str]:
+    """Return ``{technique_id: name}`` from the bundled ATT&CK catalog only.
+
+    Deterministic and offline (ignores any synced catalog). Used for disclosing
+    the bundled technique count in compliance coverage metadata and docs.
+    """
+    from agent_bom.mitre_fetch import get_bundled_techniques
+
+    return {tid: meta["name"] for tid, meta in get_bundled_techniques().items()}
+
+
 # Legacy alias kept for callers that import ATTACK_TECHNIQUES directly from
 # this module.  Evaluated lazily to avoid a network call on import.
 class _LazyTechniquesProxy:

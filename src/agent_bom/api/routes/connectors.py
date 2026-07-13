@@ -114,11 +114,31 @@ async def connector_health(name: str) -> dict:
 # ─── Registry endpoints ──────────────────────────────────────────────────────
 
 
+def _load_registry_meta() -> dict:
+    """Freshness/provenance metadata from the bundled registry (top-level keys)."""
+    import json as _json
+
+    registry_path = _Path(__file__).parent.parent.parent / "mcp_registry.json"
+    if not registry_path.exists():
+        return {}
+    try:
+        raw = _json.loads(registry_path.read_text())
+    except (_json.JSONDecodeError, OSError):
+        return {}
+    return {
+        "updated": raw.get("_updated"),
+        "total_servers": raw.get("_total_servers"),
+        "sources": raw.get("_sources", []),
+        "source_url": raw.get("_source"),
+        "schema_version": raw.get("_schema_version"),
+    }
+
+
 @router.get("/registry", tags=["registry"])
 async def list_registry() -> dict:
     """List all known MCP servers from the agent-bom registry."""
     servers = _load_registry()
-    return {"servers": servers, "count": len(servers)}
+    return {"servers": servers, "count": len(servers), "meta": _load_registry_meta()}
 
 
 @router.get("/registry/{server_id:path}", tags=["registry"])

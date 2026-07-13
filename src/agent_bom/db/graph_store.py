@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     node_count      INTEGER DEFAULT 0,
     edge_count      INTEGER DEFAULT 0,
     risk_summary    TEXT DEFAULT '{}',
+    node_type_counts TEXT DEFAULT NULL,
     PRIMARY KEY (scan_id, tenant_id)
 );
 CREATE INDEX IF NOT EXISTS idx_gs_recent ON graph_snapshots(tenant_id, created_at DESC);
@@ -296,6 +297,12 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     conn.execute("UPDATE graph_edges SET valid_from = first_seen WHERE valid_from = '' OR valid_from IS NULL")
     conn.execute("UPDATE graph_edges SET source_scan_id = scan_id WHERE source_scan_id = '' OR source_scan_id IS NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_valid ON graph_edges(tenant_id, valid_from, valid_to)")
+    # Materialise the per-snapshot entity-type breakdown so inventory/summary
+    # reads a cached count instead of a per-request GROUP BY over every node.
+    # NULL marks pre-migration snapshots, which fall back to the live GROUP BY.
+    snapshot_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_snapshots)").fetchall()}
+    if "node_type_counts" not in snapshot_columns:
+        conn.execute("ALTER TABLE graph_snapshots ADD COLUMN node_type_counts TEXT DEFAULT NULL")
     if backfill_legacy_tenants:
         _backfill_empty_tenant_ids(conn)
     conn.commit()
@@ -748,10 +755,26 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
         )
 
     # ── Snapshot ──
+    # Materialise the entity-type and severity breakdowns alongside the node/edge
+    # totals so inventory/summary serves them from this row instead of running a
+    # GROUP BY over every node per request (O(N) → O(1)). ``risk_summary`` already
+    # carries the severity breakdown; ``node_type_counts`` adds the entity types.
     stats = graph.stats()
     conn.execute(
-        "INSERT OR REPLACE INTO graph_snapshots VALUES (?, ?, ?, ?, ?, ?)",
-        (scan, tenant, now, stats["total_nodes"], stats["total_edges"], json.dumps(stats.get("severity_counts", {}))),
+        """
+        INSERT OR REPLACE INTO graph_snapshots
+            (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary, node_type_counts)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            scan,
+            tenant,
+            now,
+            stats["total_nodes"],
+            stats["total_edges"],
+            json.dumps(stats.get("severity_counts", {})),
+            json.dumps(stats.get("node_types", {})),
+        ),
     )
 
     conn.commit()

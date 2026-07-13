@@ -9,7 +9,13 @@ function that another route already exposes:
     * Runtime                          -> deployment-context signals
     * LLM cost                         -> cost store summary
     * NHI / identity                   -> agent-identity store + fleet store
-    * Posture                          -> latest scan posture scorecard
+    * Posture + headline               -> latest scan posture scorecard, folded
+      with compliance-hub current-state severity counts so findings ingested via
+      ``POST /v1/findings/bulk`` move the grade/headline (not scan jobs alone)
+
+Domain tiles (cloud / vuln / code / runtime / ...) remain scan-scoped by
+design; only the top-level posture + headline aggregate scan + ingested
+evidence.
 
 Endpoints:
     GET /v1/overview   cross-domain posture snapshot for the landing page
@@ -32,6 +38,7 @@ router = APIRouter(dependencies=[cast(Any, require_authenticated_permission("rea
 _logger = logging.getLogger(__name__)
 
 _SEVERITY_KEYS = ("critical", "high", "medium", "low")
+_HUB_SEVERITY_KEYS = ("critical", "high", "medium", "low", "info", "unknown")
 
 
 def _tenant_id(request: Request) -> str:
@@ -342,6 +349,74 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
     }
 
 
+def _hub_severity_snapshot(request: Request) -> dict[str, int]:
+    """Per-severity counts of hub-ingested findings (POST /v1/findings/bulk).
+
+    Reads the same compliance-hub ledger that powers /v1/compliance/hub/posture
+    via the store's indexed ``severity_breakdown`` (a GROUP BY / dict count, no
+    payload hydration) so bulk-ingested evidence contributes to the overview
+    posture + headline instead of being invisible until a scan runs. Tenant
+    scope is owned by the request; the store method is tenant-keyed. Degrades to
+    zeros if the hub store is unavailable so the overview never fails closed on
+    an optional dependency.
+    """
+    empty = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+    try:
+        from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+        store = get_compliance_hub_store()
+        breakdown = getattr(store, "severity_breakdown", None)
+        if not callable(breakdown):
+            return empty
+        counts = breakdown(_tenant_id(request)) or {}
+    except Exception:  # pragma: no cover - hub store optional
+        _logger.debug("hub severity snapshot failed", exc_info=True)
+        return empty
+    for key, value in counts.items():
+        empty[str(key).lower()] = empty.get(str(key).lower(), 0) + int(value or 0)
+    return empty
+
+
+def _blend_posture_with_hub(
+    posture: dict[str, Any],
+    scan_severity: dict[str, int],
+    hub_severity: dict[str, int],
+) -> dict[str, Any]:
+    """Fold hub-ingested findings into the scan posture grade.
+
+    With no hub findings the scan posture is returned unchanged (the demo estate
+    and every scan-only tenant keep their existing grade). When findings have
+    been bulk-ingested, a combined penalty score is derived from scan + hub
+    severity and the grade can only move *down* (``min`` of the two scores), so
+    ingested evidence never launders a failing posture into a passing one.
+    """
+    hub_total = sum(int(hub_severity.get(k, 0) or 0) for k in _HUB_SEVERITY_KEYS)
+    if hub_total <= 0:
+        return posture
+
+    from agent_bom.posture import _score_to_grade
+
+    combined_critical = int(scan_severity["critical"]) + int(hub_severity.get("critical", 0) or 0)
+    combined_high = int(scan_severity["high"]) + int(hub_severity.get("high", 0) or 0)
+    combined_total = sum(int(v) for v in scan_severity.values()) + hub_total
+    penalty = min(
+        100.0,
+        combined_critical * 12.0 + combined_high * 6.0 + max(0, combined_total - combined_critical - combined_high) * 1.5,
+    )
+    combined_score = max(0.0, round(100.0 - penalty, 1))
+
+    if posture.get("grade") in (None, "N/A"):
+        final_score = combined_score
+    else:
+        final_score = min(float(posture.get("score") or 0.0), combined_score)
+
+    return {
+        "grade": _score_to_grade(final_score),
+        "score": final_score,
+        "summary": f"{combined_total} finding(s) across scans + ingested evidence",
+    }
+
+
 def _cloud_account_count(request: Request) -> int:
     """Connected cloud accounts for the Cloud posture domain tile."""
     try:
@@ -384,12 +459,16 @@ async def get_overview(request: Request) -> dict[str, Any]:
     jobs = _get_store().list_all(tenant_id=_tenant_id(request))
 
     scan = _scan_rollup(jobs)
-    posture = _posture_snapshot(jobs)
+    hub_severity = _hub_severity_snapshot(request)
+    posture = _blend_posture_with_hub(_posture_snapshot(jobs), scan["severity"], hub_severity)
     runtime = _runtime_snapshot(request, jobs)
     cost = _cost_snapshot(request)
     identity = _identity_snapshot(request)
 
-    critical_high = scan["severity"]["critical"] + scan["severity"]["high"]
+    hub_findings = sum(int(hub_severity.get(k, 0) or 0) for k in _HUB_SEVERITY_KEYS)
+    headline_critical = scan["severity"]["critical"] + int(hub_severity.get("critical", 0) or 0)
+    headline_high = scan["severity"]["high"] + int(hub_severity.get("high", 0) or 0)
+    critical_high = headline_critical + headline_high
 
     cloud_accounts = _cloud_account_count(request)
     repo_scans = _repo_scan_count(jobs)
@@ -476,13 +555,14 @@ async def get_overview(request: Request) -> dict[str, Any]:
         "tenant_id": _tenant_id(request),
         "posture": posture,
         "headline": {
-            "critical": scan["severity"]["critical"],
-            "high": scan["severity"]["high"],
+            "critical": headline_critical,
+            "high": headline_high,
             "critical_high": critical_high,
             "kev": scan["kev"],
             "credential_exposed": scan["credential_exposed"],
             "scans": scan["scan_count"],
             "latest_scan_at": scan["latest_scan_at"],
+            "hub_findings": hub_findings,
         },
         "domains": domains,
         "top_risks": scan["top_risks"],

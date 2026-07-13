@@ -179,6 +179,78 @@ def test_overview_reads_compacted_scan_summary() -> None:
     assert data["domains"]["vuln"]["metric"] == 87
 
 
+def _ingest_hub_findings(findings: list[dict], *, tenant_id: str = "default") -> None:
+    """Append normalized findings straight into the compliance-hub ledger.
+
+    Mirrors what POST /v1/findings/bulk persists (hub_store.add) so the overview
+    can be exercised against ingested evidence without a full HTTP round-trip.
+    """
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().add(tenant_id, findings)
+
+
+def test_overview_counts_bulk_ingested_findings() -> None:
+    """Findings ingested via the hub (POST /v1/findings/bulk) move headline + grade."""
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+
+    client = TestClient(app)
+    # Baseline: no scans, no ingest -> N/A posture, zero headline.
+    baseline = client.get("/v1/overview", headers=_AUTH_HEADERS).json()
+    assert baseline["posture"]["grade"] == "N/A"
+    assert baseline["headline"]["critical"] == 0
+    assert baseline["headline"]["hub_findings"] == 0
+
+    _ingest_hub_findings(
+        [
+            {"finding_id": "F-1", "severity": "critical", "title": "boom"},
+            {"finding_id": "F-2", "severity": "critical", "title": "boom2"},
+            {"finding_id": "F-3", "severity": "high", "title": "warn"},
+        ]
+    )
+
+    data = client.get("/v1/overview", headers=_AUTH_HEADERS).json()
+    assert data["headline"]["critical"] == 2
+    assert data["headline"]["high"] == 1
+    assert data["headline"]["critical_high"] == 3
+    assert data["headline"]["hub_findings"] == 3
+    # Two criticals + one high drive the grade off N/A and down to a failing band.
+    assert data["posture"]["grade"] not in {"N/A", "A"}
+    assert data["posture"]["score"] < 100.0
+
+    get_compliance_hub_store().clear("default")
+
+
+def test_overview_hub_findings_do_not_upgrade_failing_scan() -> None:
+    """Ingested evidence can only move a scan grade down, never launder it up."""
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    _add_done_job(
+        [{"vulnerability_id": "CVE-2025-9999", "severity": "critical", "risk_score": 10}],
+        result_extra={
+            "posture_scorecard": {"grade": "F", "score": 30.0, "summary": "Failing"},
+        },
+    )
+    _ingest_hub_findings([{"finding_id": "H-1", "severity": "low", "title": "minor"}])
+
+    data = client_get_overview()
+    # Low-severity ingest must not raise the F grade / 30.0 score.
+    assert data["posture"]["grade"] == "F"
+    assert data["posture"]["score"] <= 30.0
+    assert data["headline"]["hub_findings"] == 1
+
+    get_compliance_hub_store().clear("default")
+
+
+def client_get_overview() -> dict:
+    return TestClient(app).get("/v1/overview", headers=_AUTH_HEADERS).json()
+
+
 def test_overview_requires_auth(monkeypatch) -> None:
     """Endpoint is read-only but still behind the standard viewer gate."""
     _clear_jobs()

@@ -127,7 +127,16 @@ _CONTROLLERS_LOCK = Lock()
 # false-trips on cold traffic. Give ``graph`` explicit headroom above its honest
 # build latency; genuinely degraded builds (well past this ceiling) and the
 # concurrency limit still shed real overload.
-_DEFAULT_P99_THRESHOLD_MS: dict[str, int] = {"graph": 12_000}
+#
+# ``findings`` gets the same treatment. The in-memory default hub copies and
+# re-sorts the entire current-state table in Python per request, so an honest
+# deep ``?sort=cvss`` read at millions of rows can legitimately take several
+# seconds. Below the generic 2500ms budget a single well-behaved deep read
+# would trip the shared cooldown and 429-storm every reader — shedding under
+# normal single-user load, not overload. Give it headroom above its honest
+# latency; the concurrency limit still sheds a genuine pile-up of concurrent
+# deep reads (the event-loop-starvation case this guard exists to prevent).
+_DEFAULT_P99_THRESHOLD_MS: dict[str, int] = {"graph": 12_000, "findings": 12_000}
 _GENERIC_P99_THRESHOLD_MS = 2500
 
 

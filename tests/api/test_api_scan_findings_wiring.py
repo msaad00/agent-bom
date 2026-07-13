@@ -131,3 +131,63 @@ def test_scan_vuln_flows_to_findings_and_attack_paths(wired_client):
     assert paths, "expected at least one derived attack path for the known vuln"
     path_vuln_ids = {vid for path in paths for vid in (path.get("vuln_ids") or [])}
     assert KNOWN_CVE in path_vuln_ids, f"known vuln missing from attack paths: {path_vuln_ids}"
+
+
+def test_findings_read_sheds_with_429_when_backpressure_opens(wired_client, monkeypatch):
+    """A saturated in-memory findings read path sheds with 429 + Retry-After.
+
+    The default hub copies and re-sorts the whole current-state table per
+    request, so a burst of deep reads can starve ``/health``. Under genuine
+    overload the shared adaptive-backpressure guard sheds excess reads instead
+    of degrading every route. Mirrors the graph route's shed contract.
+    """
+    import time
+
+    from agent_bom.api.routes import scan as scan_routes
+    from agent_bom.backpressure import reset_backpressure_for_tests
+
+    monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_FINDINGS_P99_MS", "1")
+    monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_FINDINGS_MIN_SAMPLES", "1")
+    monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_FINDINGS_COOLDOWN_SECONDS", "30")
+    reset_backpressure_for_tests()
+
+    original_impl = scan_routes._list_findings_impl
+
+    def _slow_impl(*args, **kwargs):
+        time.sleep(0.01)
+        return original_impl(*args, **kwargs)
+
+    monkeypatch.setattr(scan_routes, "_list_findings_impl", _slow_impl)
+
+    try:
+        # First read completes and records a latency above the 1ms ceiling,
+        # tripping the p99 cooldown; the next read must shed.
+        warm = wired_client.get("/v1/findings")
+        assert warm.status_code == 200
+
+        shed = wired_client.get("/v1/findings")
+        assert shed.status_code == 429
+        body = shed.json()["detail"]
+        assert body["path"] == "findings"
+        assert body["reason"] == "p99_latency_threshold"
+        assert int(shed.headers["Retry-After"]) >= 1
+    finally:
+        reset_backpressure_for_tests()
+
+
+def test_findings_read_not_shed_under_normal_load(wired_client):
+    """Default budgets never trip on ordinary single-reader traffic."""
+    from agent_bom.backpressure import describe_backpressure_posture, reset_backpressure_for_tests
+
+    reset_backpressure_for_tests()
+    try:
+        for _ in range(5):
+            resp = wired_client.get("/v1/findings")
+            assert resp.status_code == 200
+        posture = describe_backpressure_posture()
+        findings = next((p for p in posture["paths"] if p["path"] == "findings"), None)
+        assert findings is not None
+        assert findings["state"] == "closed"
+        assert findings["rejected"] == 0
+    finally:
+        reset_backpressure_for_tests()

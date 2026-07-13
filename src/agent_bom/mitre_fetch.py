@@ -386,6 +386,16 @@ def get_techniques() -> dict[str, dict]:
     return build_catalog().get("techniques", {})
 
 
+def get_bundled_techniques() -> dict[str, dict]:
+    """Return techniques from the bundled catalog only.
+
+    Deterministic and offline: ignores any locally synced catalog so callers
+    that disclose the *bundled* technique count (docs, compliance coverage
+    metadata) get the same figure in every environment.
+    """
+    return _load_bundled_catalog().get("techniques", {})
+
+
 def get_cwe_to_attack() -> dict[str, list[str]]:
     return build_catalog().get("cwe_to_attack", {})
 

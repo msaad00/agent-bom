@@ -748,6 +748,20 @@ async def _push_proxy_audit_batch(
     return True
 
 
+# Strong references to in-flight webhook tasks. asyncio holds only a weak
+# reference to a running task, so a bare ensure_future(_send_webhook(...)) can be
+# garbage-collected mid-send and silently drop the alert ("Task was destroyed but
+# it is pending"). Retaining the task until it completes fixes that (#3911).
+_WEBHOOK_TASKS: set[asyncio.Task] = set()
+
+
+def _fire_webhook(url: str, payload: dict) -> None:
+    """Dispatch an alert webhook without letting the task be GC'd mid-flight."""
+    task = asyncio.ensure_future(_send_webhook(url, payload))
+    _WEBHOOK_TASKS.add(task)
+    task.add_done_callback(_WEBHOOK_TASKS.discard)
+
+
 async def _send_webhook(url: str, payload: dict) -> None:
     """Fire-and-forget POST to an alert webhook URL.
 
@@ -833,7 +847,7 @@ async def _proxy_sse_server(
                 write_audit_record(log_f, alert_dict)
                 log_f.flush()
             if alert_webhook:
-                asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
+                _fire_webhook(alert_webhook, alert_dict)
 
     declared_tools: set[str] = set()
 
@@ -1485,7 +1499,7 @@ async def run_proxy(
                 write_audit_record(log_f, alert_dict)
                 log_f.flush()
             if alert_webhook:
-                asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
+                _fire_webhook(alert_webhook, alert_dict)
             if control_plane_url:
                 enriched = dict(alert_dict)
                 enriched.setdefault("source_id", control_plane_source_id)

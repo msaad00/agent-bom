@@ -44,6 +44,7 @@ import { useAuthState } from "@/components/auth-provider";
 import { BrandLogo } from "@/components/brand-logo";
 import { CommandPalette, type CommandPaletteAction } from "@/components/command-palette";
 import { DemoNavSignIn } from "@/components/demo-mode-cta";
+import { useSidebarLayout } from "@/components/sidebar-layout";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   deploymentModeLabel,
@@ -216,7 +217,7 @@ function navGroupIconClass(label: string, hasActiveChild: boolean): string {
 export function Nav() {
   const path = usePathname();
   const [captureMode, setCaptureMode] = useState(false);
-  const [collapsed, setCollapsed] = useState(true);
+  const { collapsed, setCollapsed } = useSidebarLayout();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(captureMode ? ALL_GROUP_LABELS : [activeGroupForPath(path)])
@@ -242,25 +243,24 @@ export function Nav() {
       const capture = new URLSearchParams(window.location.search).get("capture") === "1";
       setCaptureMode(capture);
       if (capture) {
-        setCollapsed(false);
-        setExpandedGroups(new Set(ALL_GROUP_LABELS));
-        setSearchOpen(false);
-        return;
-      }
-      if (!collapsed) {
+        // Keep the icon rail so product screenshots show the platform, not an
+        // expanded nav overlay covering main content.
+        setCollapsed(true);
         setExpandedGroups(new Set([activeGroupForPath(path)]));
+        setSearchOpen(false);
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [captureMode, collapsed, path]);
+  }, [path, setCollapsed]);
 
-  // Sync main content padding with sidebar collapsed state
+  // Accordion sync on route change only — never on collapsed toggles (that
+  // races with group-header clicks and can collapse the active group).
   useEffect(() => {
-    const main = document.getElementById("main-content");
-    if (main) {
-      main.style.paddingLeft = collapsed ? "60px" : "240px";
+    if (captureMode) {
+      return;
     }
-  }, [collapsed]);
+    setExpandedGroups(new Set([activeGroupForPath(path)]));
+  }, [path, captureMode]);
 
   const toggleGroup = useCallback((label: string) => {
     if (captureMode) {
@@ -473,7 +473,7 @@ export function Nav() {
       {/* Navigation Groups */}
       <nav className={`${isCollapsed ? "overflow-visible" : "overflow-y-auto scrollbar-thin"} flex-1 px-2 py-2 space-y-2`}>
         {navGroups.map((group) => {
-          const isExpanded = captureMode || expandedGroups.has(group.label);
+          const isExpanded = expandedGroups.has(group.label);
           const GroupIcon = group.icon;
           const hasActiveChild = [...group.visibleLinks, ...group.hiddenLinks, ...group.secondaryLinks].some(
             (l) => (l.href === "/" ? path === "/" : path.startsWith(l.href))

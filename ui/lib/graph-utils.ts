@@ -26,7 +26,10 @@ export const MINIMAP_CLASS =
 export const MINIMAP_BG = "#09090b";
 export const MINIMAP_MASK = "rgba(24,24,27,0.82)";
 
-export const BACKGROUND_COLOR = "#1c1c1e";
+// Dot-grid tint. #1c1c1e sat one step off the page background, so the canvas
+// read flat/dark; a lighter neutral makes the grid legible on both the dark
+// surface and the light-theme canvas, giving the graph perceptible depth.
+export const BACKGROUND_COLOR = "#3f4453";
 export const BACKGROUND_GAP = 24;
 
 const SHARED_SERVER_COLOR = "#22d3ee";
@@ -483,8 +486,8 @@ export function readableGraphEdges(
   } = {},
 ): Edge[] {
   const {
-    baseOpacity = 0.32,
-    highSignalOpacity = 0.54,
+    baseOpacity = 0.42,
+    highSignalOpacity = 0.64,
     inactiveOpacity = 0.08,
     activeOpacity = 0.96,
     quietAnimation = true,

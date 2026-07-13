@@ -381,7 +381,6 @@ function RegistryList() {
             ? "the official MCP registry"
             : meta.sources?.join(", ") || "curated sources"}
           {meta.updated ? ` · updated ${meta.updated}` : ""}
-          {typeof meta.total_servers === "number" ? ` · ${meta.total_servers.toLocaleString()} servers` : ""}
         </p>
       ) : null}
 

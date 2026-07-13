@@ -157,10 +157,13 @@ The CodeBuild buildspec is inlined in the template (`ScanProject.Source.BuildSpe
 ## Connector role — control-plane assume-role (1-click + org StackSet)
 
 `agent-bom-readonly-role.yaml` creates the read-only IAM role the agent-bom
-**control plane assumes** (`sts:AssumeRole` + an ExternalId) to run read-only
-inventory + CIS scans. No write permissions, no static keys — the control plane
-only holds short-lived STS credentials. This is the role the connection wizard
-registers (Role ARN + ExternalId).
+**control plane assumes** (`sts:AssumeRole` + an ExternalId). It is the CloudFormation
+**grant-provisioning** counterpart to the Terraform `connect-aws` module and the
+org fan-out (`AGENT_BOM_AWS_ORG_INVENTORY`) — see
+[`docs/CLOUD_CONNECT.md`](../../docs/CLOUD_CONNECT.md) for the authoritative story
+of **how agent-bom authenticates, what it reads, and why it stays read-only /
+least-privilege / zero-trust** (not repeated here). This template just mints the
+role the wizard registers (Role ARN + ExternalId); no writes, short-lived STS only.
 
 ### One account — 1-click Launch Stack
 

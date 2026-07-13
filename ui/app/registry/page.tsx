@@ -295,6 +295,12 @@ function RegistryDetail({ serverId }: { serverId: string }) {
 function RegistryList() {
   const router = useRouter();
   const [servers, setServers] = useState<RegistryServer[]>([]);
+  const [meta, setMeta] = useState<{
+    updated?: string | null;
+    total_servers?: number | null;
+    sources?: string[];
+    source_url?: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -305,7 +311,10 @@ function RegistryList() {
   useEffect(() => {
     api
       .listRegistry()
-      .then((res) => setServers(res.servers))
+      .then((res) => {
+        setServers(res.servers);
+        setMeta(res.meta ?? null);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -361,9 +370,20 @@ function RegistryList() {
       <PageLaneHeader
         lane="reference"
         title="MCP Catalog"
-        subtitle={`${servers.length.toLocaleString()} known servers · capability risk (not CVE status) · ${riskCounts.high} high · ${riskCounts.medium} medium`}
+        subtitle={`${(meta?.total_servers ?? servers.length).toLocaleString()} known servers · capability risk (not CVE status) · ${riskCounts.high} high · ${riskCounts.medium} medium`}
         banner={<CatalogBanner />}
       />
+
+      {meta && (meta.updated || meta.sources?.length) ? (
+        <p className="-mt-3 text-xs text-zinc-500">
+          Synced from{" "}
+          {meta.sources?.includes("mcp-official")
+            ? "the official MCP registry"
+            : meta.sources?.join(", ") || "curated sources"}
+          {meta.updated ? ` · updated ${meta.updated}` : ""}
+          {typeof meta.total_servers === "number" ? ` · ${meta.total_servers.toLocaleString()} servers` : ""}
+        </p>
+      ) : null}
 
       {/* Search + Filters */}
       <div className="space-y-3">

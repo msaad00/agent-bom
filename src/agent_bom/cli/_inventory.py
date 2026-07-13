@@ -186,7 +186,19 @@ def validate(inventory_file: str):
         agents = payload.get("agents", [])
         total_servers = sum(len(a.get("mcp_servers", [])) for a in agents)
         total_packages = sum(len(s.get("packages", [])) for a in agents for s in a.get("mcp_servers", []))
-        console.print(f"\n  [green]✓ Valid[/green] — {len(agents)} agent(s), {total_servers} server(s), {total_packages} package(s)")
+        # Split AI clients/hosts (specific agent_type) from background/framework
+        # agents (agent_type == custom), excluding synthetic sbom:/image: wrappers
+        # — mirrors models.classify_agent_kind so the count doesn't imply autonomy.
+        clients = sum(1 for a in agents if a.get("agent_type") and a.get("agent_type") != "custom")
+        background = sum(
+            1
+            for a in agents
+            if a.get("agent_type") == "custom" and not str(a.get("name") or "").startswith(("sbom:", "image:"))
+        )
+        breakdown = f" ({clients} client(s), {background} background)" if (clients or background) else ""
+        console.print(
+            f"\n  [green]✓ Valid[/green] — {len(agents)} agent(s){breakdown}, {total_servers} server(s), {total_packages} package(s)"
+        )
         console.print(f"\n  [dim]Scan exact inventory with:[/dim] agent-bom scan --inventory {inventory_file} --inventory-only")
     else:
         console.print(f"\n  [red]✗ Invalid — {len(errors)} error(s):[/red]\n")

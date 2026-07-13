@@ -61,7 +61,7 @@ What to look for:
 |---|---|---|
 | `Demo mode` | Uses the bundled curated sample instead of your workstation config. | The first run is reproducible and safe to share in a bug report or sales demo. |
 | `Offline mode` | Uses the bundled demo advisory DB and no network calls. | The command does not depend on live OSV/GHSA/network availability or a pre-synced local DB. |
-| `2 agent(s)` | Loads sample agent surfaces such as Cursor and Claude Desktop. | Findings are tied to AI agents, not only package names. |
+| `2 agent(s)` | Loads sample **AI client/host** surfaces such as Cursor and Claude Desktop (distinct from background/framework agents). | Findings are tied to AI clients and agents, not only package names. |
 | `12 packages` | Extracts Python and npm package evidence behind MCP servers. | The scan proves supply-chain inventory before reporting risk. |
 | `11 vulnerabilities` | Matches vulnerable demo package versions against curated advisory-backed ranges. | The findings are advisory-backed; they are not invented demo rows. |
 | severity summary | Groups findings by critical/high/medium/low. | Operators can immediately prioritize the highest-risk fixes. |

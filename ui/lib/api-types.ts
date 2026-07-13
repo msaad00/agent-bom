@@ -1731,9 +1731,18 @@ export interface RegistryServer {
   risk_justification?: string | undefined;
 }
 
+export interface RegistryMeta {
+  updated?: string | null;
+  total_servers?: number | null;
+  sources?: string[];
+  source_url?: string | null;
+  schema_version?: string | null;
+}
+
 export interface RegistryResponse {
   servers: RegistryServer[];
   count: number;
+  meta?: RegistryMeta;
 }
 
 export interface ControlNarrative {

@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     payload TEXT NOT NULL,
     ledger_finding_id TEXT,
     origin TEXT NOT NULL DEFAULT '',
+    scan_id TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (tenant_id, canonical_id)
 );
 
@@ -225,6 +226,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     payload JSONB NOT NULL,
     ledger_finding_id TEXT,
     origin TEXT NOT NULL DEFAULT '',
+    scan_id TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (tenant_id, canonical_id)
 );
 

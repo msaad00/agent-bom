@@ -320,6 +320,25 @@ class PostgresComplianceHubStore:
             conn.execute("ALTER TABLE hub_findings_current ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT ''")
             conn.execute("UPDATE hub_findings_current SET origin = COALESCE(payload->>'origin', '') WHERE origin = ''")
             conn.execute(_CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES)
+            # Materialise scan_id (default /v1/findings scan filter) so the read
+            # and its COUNT(*) ride an index instead of a per-row payload->>
+            # extract. Value mirrors the in-memory ``batch_id or scan_id`` key so
+            # every backend agrees. Partial index (WHERE scan_id <> '') keeps the
+            # common no-scan_id rows out so it cannot shadow the default read
+            # (#3926). Idempotent guards.
+            conn.execute("ALTER TABLE hub_findings_current ADD COLUMN IF NOT EXISTS scan_id TEXT NOT NULL DEFAULT ''")
+            conn.execute(
+                "UPDATE hub_findings_current SET scan_id = "
+                "COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') WHERE scan_id = ''"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_scan "
+                "ON hub_findings_current(tenant_id, scan_id) WHERE scan_id <> ''"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_ci "
+                "ON hub_findings_current(tenant_id, LOWER(severity)) WHERE severity <> ''"
+            )
             _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
             _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
             ensure_postgres_reference_tables(conn)
@@ -617,14 +636,16 @@ class PostgresComplianceHubStore:
                     updated_at=now,
                 )
                 origin_val = str(payload.get("origin") or "")
+                # Canonical ``batch_id or scan_id`` scan filter key (#3926).
+                scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")
                 if has_ledger_col:
                     conn.execute(
                         """
                         INSERT INTO hub_findings_current
                             (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                              cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                             updated_at, payload, ledger_finding_id, origin)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                             updated_at, payload, ledger_finding_id, origin, scan_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
                         ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
                             first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
                             last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
@@ -639,7 +660,8 @@ class PostgresComplianceHubStore:
                             updated_at = EXCLUDED.updated_at,
                             payload = EXCLUDED.payload,
                             ledger_finding_id = EXCLUDED.ledger_finding_id,
-                            origin = EXCLUDED.origin
+                            origin = EXCLUDED.origin,
+                            scan_id = EXCLUDED.scan_id
                         """,
                         (
                             tenant_id,
@@ -658,6 +680,7 @@ class PostgresComplianceHubStore:
                             encode_hub_payload(overlay),
                             ledger_finding_id or None,
                             origin_val,
+                            scan_id_val,
                         ),
                     )
                 else:
@@ -666,8 +689,8 @@ class PostgresComplianceHubStore:
                         INSERT INTO hub_findings_current
                             (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                              cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                             updated_at, payload, origin)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                             updated_at, payload, origin, scan_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
                         ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
                             first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
                             last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
@@ -681,7 +704,8 @@ class PostgresComplianceHubStore:
                             reopened_at = EXCLUDED.reopened_at,
                             updated_at = EXCLUDED.updated_at,
                             payload = EXCLUDED.payload,
-                            origin = EXCLUDED.origin
+                            origin = EXCLUDED.origin,
+                            scan_id = EXCLUDED.scan_id
                         """,
                         (
                             tenant_id,
@@ -699,6 +723,7 @@ class PostgresComplianceHubStore:
                             merged["updated_at"],
                             encode_hub_payload(overlay),
                             origin_val,
+                            scan_id_val,
                         ),
                     )
             conn.commit()
@@ -748,12 +773,18 @@ class PostgresComplianceHubStore:
             params.append(origin)
         if severity is not None:
             # Match the materialised severity STRING (exact, lowercased) so all
-            # backends agree; ``severity_rank`` stays ORDER-BY-only (#3192).
-            where.append("LOWER(severity) = %s")
+            # backends agree; ``severity_rank`` stays ORDER-BY-only (#3192). The
+            # ``severity <> ''`` guard lets the partial expression index
+            # idx_hub_findings_current_tenant_severity_ci serve the filter (#3926).
+            where.append("severity <> '' AND LOWER(severity) = %s")
             params.append(severity.lower())
         if scan_id is not None:
-            where.append("(payload->>'batch_id' = %s OR payload->>'scan_id' = %s)")
-            params.extend([scan_id, scan_id])
+            # Materialised column (backfilled from batch_id|scan_id) so the scan
+            # filter + COUNT(*) ride idx_hub_findings_current_tenant_scan instead
+            # of a per-row payload->> extract. The ``scan_id <> ''`` guard lets the
+            # partial index apply (a bound param is not provably non-empty) (#3926).
+            where.append("scan_id <> '' AND scan_id = %s")
+            params.append(scan_id)
         if cursor:
             keyset_sql, keyset_params = postgres_keyset_clause(normalized_sort, cursor)
             where.append(keyset_sql.removeprefix(" AND "))

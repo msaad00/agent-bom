@@ -90,6 +90,22 @@ def test_compliance_no_scans():
     _clear_jobs()
 
 
+def test_compliance_by_framework_no_scans_is_no_data():
+    """The single-framework endpoint must not report score 100 / a clean pass on
+    a zero-scan tenant — every control trivially "passes" with no evidence, so
+    mirror the aggregate no_data guard (regression: this path previously returned
+    ``score: 100.0``)."""
+    _clear_jobs()
+    client = TestClient(app)
+    resp = client.get("/v1/compliance/owasp-llm", headers=_AUTH_HEADERS)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "no_data"
+    assert data["score"] == 0.0
+    assert data["summary"] == {"pass": 0, "warning": 0, "fail": 0}
+    _clear_jobs()
+
+
 def test_compliance_includes_latest_aisvs_benchmark():
     """Aggregate compliance includes the latest tenant-scoped AISVS benchmark payload."""
     _clear_jobs()

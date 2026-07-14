@@ -2731,6 +2731,94 @@ class TestGraphStoreBackendSelection:
         assert any(call[0] == "node_context" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
+    def test_graph_node_neighbors_returns_bounded_metadata(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a", severity="high")
+        )
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:p", entity_type=EntityType.PACKAGE, label="pkg@1.0"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="pkg:p", relationship=RelationshipType.DEPENDS_ON, traversable=True)
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/node/server:s/neighbors")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["found"] is True
+        assert body["node_id"] == "server:s"
+        assert body["total_neighbors"] == 2
+        assert body["truncated"] is False
+        returned = {node["id"]: node for node in body["neighbors"]}
+        assert set(returned) == {"agent:a", "pkg:p"}
+        # Neighbor metadata (entity_type/label/severity) travels with the payload so
+        # the dashboard can render child nodes without a second round trip per id.
+        assert returned["agent:a"]["entity_type"] == "agent"
+        assert returned["agent:a"]["severity"] == "high"
+        assert {(edge["source_id"], edge["target_id"]) for edge in body["edges"]} == {
+            ("agent:a", "server:s"),
+            ("server:s", "pkg:p"),
+        }
+
+    def test_graph_node_neighbors_caps_fan_out_and_flags_truncation(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:hub", entity_type=EntityType.SERVER, label="hub"))
+        for index in range(5):
+            neighbor_id = f"pkg:p{index}"
+            recording_graph_store.graph.add_node(
+                UnifiedNode(id=neighbor_id, entity_type=EntityType.PACKAGE, label=f"pkg-{index}")
+            )
+            recording_graph_store.graph.add_edge(
+                UnifiedEdge(source="server:hub", target=neighbor_id, relationship=RelationshipType.DEPENDS_ON)
+            )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/node/server:hub/neighbors", params={"limit": 2})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_neighbors"] == 5
+        assert len(body["neighbors"]) == 2
+        assert body["truncated"] is True
+        # Bounded set is deterministic so repeated expands are stable.
+        assert [node["id"] for node in body["neighbors"]] == ["pkg:p0", "pkg:p1"]
+
+    def test_graph_node_neighbors_direction_filters_dependents(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:p", entity_type=EntityType.PACKAGE, label="pkg@1.0"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="pkg:p", relationship=RelationshipType.DEPENDS_ON)
+        )
+        client = TestClient(app)
+
+        out_only = client.get("/v1/graph/node/server:s/neighbors", params={"direction": "out"}).json()
+        assert [node["id"] for node in out_only["neighbors"]] == ["pkg:p"]
+
+        in_only = client.get("/v1/graph/node/server:s/neighbors", params={"direction": "in"}).json()
+        assert [node["id"] for node in in_only["neighbors"]] == ["agent:a"]
+
+    def test_graph_node_neighbors_unknown_node_does_not_raise(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/node/server:ghost/neighbors")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["found"] is False
+        assert body["neighbors"] == []
+        assert body["total_neighbors"] == 0
+
     def test_graph_query_truncates_on_edge_cap(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))

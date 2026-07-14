@@ -16,6 +16,8 @@ import type {
   GraphQueryRequest,
   GraphQueryResponse,
   GraphNodeDetailResponse,
+  GraphNodeNeighborsResponse,
+  GraphNeighborDirection,
   GraphImpactResponse,
   GraphRollupResponse,
   GraphSearchResponse,
@@ -27,6 +29,7 @@ import type {
   AgentBomManifestResponse,
   PostureCountsResponse,
   OverviewResponse,
+  AccountSummaryResponse,
   ScoreConfigRuntime,
   ScoreConfigUpdate,
   RemediationItem,
@@ -117,6 +120,9 @@ import type {
   CloudConnectionScanResponse
 } from "./api-types";
 export type {
+  AccountSummaryResponse,
+  AccountSummaryDomain,
+  AccountSummaryBenchmark,
   JobStatus,
   ScanRequest,
   StepStatus,
@@ -137,6 +143,8 @@ export type {
   GraphQueryResponse,
   GraphImpactResponse,
   GraphNodeDetailResponse,
+  GraphNodeNeighborsResponse,
+  GraphNeighborDirection,
   GraphSearchResponse,
   GraphSemanticClusterKind,
   GraphSemanticClusterExpansion,
@@ -731,6 +739,21 @@ export const api = {
     return get<GraphNodeDetailResponse>(`/v1/graph/node/${encodeURIComponent(nodeId)}${qs ? `?${qs}` : ""}`);
   },
 
+  /** Lazily load a bounded set of one node's direct graph neighbors for inline expand */
+  getGraphNodeNeighbors: (
+    nodeId: string,
+    options?: { scanId?: string | undefined; limit?: number | undefined; direction?: GraphNeighborDirection | undefined },
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.scanId) params.set("scan_id", options.scanId);
+    if (options?.limit != null) params.set("limit", String(options.limit));
+    if (options?.direction) params.set("direction", options.direction);
+    const qs = params.toString();
+    return get<GraphNodeNeighborsResponse>(
+      `/v1/graph/node/${encodeURIComponent(nodeId)}/neighbors${qs ? `?${qs}` : ""}`,
+    );
+  },
+
   /** Compute the blast radius (reverse-BFS impact) of a node */
   getGraphImpact: (nodeId: string, scanId?: string, maxDepth?: number) => {
     const params = new URLSearchParams();
@@ -789,6 +812,10 @@ export const api = {
 
   /** Cross-domain posture snapshot for the unified overview landing page */
   getOverview: () => get<OverviewResponse>("/v1/overview"),
+
+  /** Per-account, end-to-end posture drill for one cloud account (#3931) */
+  getCloudAccountSummary: (accountRef: string) =>
+    get<AccountSummaryResponse>(`/v1/cloud/accounts/${encodeURIComponent(accountRef)}/summary`),
 
   /** Configurable exec risk-score model + display config for this tenant (#3940) */
   getScoreConfig: () => get<ScoreConfigRuntime>("/v1/overview/score-config"),

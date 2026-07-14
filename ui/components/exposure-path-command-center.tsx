@@ -15,6 +15,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { pathDisplayTitle, pathFixLabel, type ExposureEntityRole, type ExposurePath } from "@/lib/exposure-path";
+import { ExposurePathNeighborExplorer } from "@/components/exposure-path-neighbor-explorer";
 
 export interface ExposurePathCommandAction {
   title: string;
@@ -49,9 +50,11 @@ const GRAPH_ROLE_STYLE: Record<ExposureEntityRole, { fill: string; stroke: strin
 export function ExposurePathCommandCenter({
   path,
   actions = [],
+  scanId,
 }: {
   path: ExposurePath;
   actions?: ExposurePathCommandAction[] | undefined;
+  scanId?: string | undefined;
 }) {
   const fixLabel = pathFixLabel(path);
   const evidence = path.evidence;
@@ -102,6 +105,8 @@ export function ExposurePathCommandCenter({
         <section aria-label="Selected exposure path graph" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[#05070b] p-1">
           <ExposurePathGraph path={path} />
         </section>
+
+        <ExposurePathNeighborExplorer path={path} scanId={scanId} />
 
         <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">

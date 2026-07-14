@@ -4206,6 +4206,69 @@ paths:
       summary: Cis Benchmark Trends
       tags:
       - compliance
+  /v1/cloud/accounts/{account_ref}/summary:
+    get:
+      description: "Per-account, end-to-end posture drill for one cloud account (issue\
+        \ #3931).\n\nReturns findings by security domain (each severity strip summing\
+        \ to its lane\ncount), stored CIS/compliance pass-rate, an asset count, and\
+        \ an\nidentity/role count \u2014 everything scoped to ``account_ref`` (e.g.\n\
+        ``aws:123456789012``). Read-only: composes the #3946 rollup + scope filters\n\
+        over already-ingested evidence and never triggers a provider scan.\n\nCanonicalized\
+        \ + tenant-scoped; a malformed or unknown account returns an\nhonest empty\
+        \ summary (all five lanes at zero, ``pass_rate: null``) rather\nthan raising.\
+        \ The read runs off the event loop under the shared findings\nbackpressure\
+        \ guard so a burst of account views cannot starve ``/health``."
+      operationId: cloud_account_summary_v1_cloud_accounts__account_ref__summary_get
+      parameters:
+      - in: path
+        name: account_ref
+        required: true
+        schema:
+          title: Account Ref
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Cloud Account Summary V1 Cloud Accounts  Account Ref  Summary
+                  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Cloud Account Summary
+      tags:
+      - cloud
   /v1/cloud/connections:
     get:
       description: List the authenticated tenant's connections (non-secret metadata
@@ -9265,6 +9328,76 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Graph Node
+      tags:
+      - graph
+  /v1/graph/node/{node_id}/neighbors:
+    get:
+      description: "Return a bounded set of a node's direct graph neighbors for inline\
+        \ expand.\n\nThis is the read side of the dashboard's progressive-disclosure\
+        \ attack-path\nview: expanding one hop loads only that hop's direct neighbors\
+        \ instead of the\nwhole graph. It is deliberately lazy and bounded \u2014\
+        \ fan-out is capped by\n``limit`` and a high-degree node reports an honest\
+        \ ``total_neighbors`` with\n``truncated`` set, so the UI can render a \"+N\
+        \ more\" affordance rather than\nexploding the view. Neighbor node metadata\
+        \ (entity type, label, severity)\ntravels with the payload so the client never\
+        \ needs a second round trip per\nneighbor id. An unknown node id returns an\
+        \ empty payload (200, ``found``\nfalse) instead of raising, so a stale client\
+        \ id degrades quietly in-place."
+      operationId: get_graph_node_neighbors_v1_graph_node__node_id__neighbors_get
+      parameters:
+      - in: path
+        name: node_id
+        required: true
+        schema:
+          title: Node Id
+          type: string
+      - description: Scan ID; latest if omitted
+        in: query
+        name: scan_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Scan ID; latest if omitted
+          title: Scan Id
+      - description: Max neighbors returned per expand
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 24
+          description: Max neighbors returned per expand
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+      - description: out=dependencies, in=dependents, both=either
+        in: query
+        name: direction
+        required: false
+        schema:
+          default: both
+          description: out=dependencies, in=dependents, both=either
+          title: Direction
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Graph Node Neighbors V1 Graph Node  Node Id  Neighbors
+                  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Graph Node Neighbors
       tags:
       - graph
   /v1/graph/paths:

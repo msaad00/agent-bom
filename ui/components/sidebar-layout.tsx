@@ -36,5 +36,5 @@ export function useSidebarLayout(): SidebarLayoutValue {
 
 /** Desktop sidebar is fixed; padding reserves the same width so content never sits underneath. */
 export function mainContentPaddingClass(collapsed: boolean): string {
-  return collapsed ? "lg:pl-[60px]" : "lg:pl-[240px]";
+  return collapsed ? "lg:pl-[52px]" : "lg:pl-[240px]";
 }

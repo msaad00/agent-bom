@@ -47,7 +47,7 @@ export function HitlApprovalQueuePanel() {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-10 text-sm text-zinc-400">
+      <div className="flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 px-4 py-10 text-sm text-[var(--text-secondary)]">
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading approval queue…
       </div>
@@ -64,7 +64,7 @@ export function HitlApprovalQueuePanel() {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 px-4 py-10 text-center text-sm text-zinc-500">
+      <div className="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface)]/40 px-4 py-10 text-center text-sm text-[var(--text-tertiary)]">
         No blocked tool calls in the approval queue. Gateway/proxy blocks appear here for human review.
       </div>
     );
@@ -72,38 +72,38 @@ export function HitlApprovalQueuePanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-300">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 px-4 py-3 text-sm text-[var(--text-secondary)]">
         <span>
-          <span className="font-semibold text-zinc-100">{pendingCount}</span> pending · {items.length} total blocked spans
+          <span className="font-semibold text-[var(--foreground)]">{pendingCount}</span> pending · {items.length} total blocked spans
         </span>
         <button
           type="button"
           onClick={() => void load()}
-          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
+          className="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
         >
           Refresh
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800">
+      <div className="overflow-hidden rounded-2xl border border-[var(--border-subtle)]">
         <table className="w-full text-sm">
-          <thead className="border-b border-zinc-800 bg-zinc-900">
+          <thead className="border-b border-[var(--border-subtle)] bg-[var(--surface)]">
             <tr>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Agent / tool</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Findings</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Controls</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Status</th>
-              <th className="px-4 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">Action</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Agent / tool</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Findings</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Controls</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Status</th>
+              <th className="px-4 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800 bg-zinc-950">
+          <tbody className="divide-y divide-[var(--border-subtle)] bg-[var(--background)]">
             {items.map((item) => (
-              <tr key={item.item_id} className="align-top hover:bg-zinc-900/60">
+              <tr key={item.item_id} className="align-top hover:bg-[var(--surface)]/60">
                 <td className="px-4 py-3">
-                  <div className="font-medium text-zinc-200">{item.agent || "unknown agent"}</div>
-                  <div className="mt-1 font-mono text-xs text-zinc-400">{item.tool}</div>
-                  {item.detail ? <p className="mt-2 text-xs text-zinc-500">{item.detail}</p> : null}
-                  <p className="mt-1 text-[11px] text-zinc-600">session {item.session_id}</p>
+                  <div className="font-medium text-[var(--foreground)]">{item.agent || "unknown agent"}</div>
+                  <div className="mt-1 font-mono text-xs text-[var(--text-secondary)]">{item.tool}</div>
+                  {item.detail ? <p className="mt-2 text-xs text-[var(--text-tertiary)]">{item.detail}</p> : null}
+                  <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">session {item.session_id}</p>
                 </td>
                 <td className="px-4 py-3">
                   {item.linked_finding_ids.length > 0 ? (
@@ -112,20 +112,20 @@ export function HitlApprovalQueuePanel() {
                         <Link
                           key={fid}
                           href={`/findings?search=${encodeURIComponent(fid)}`}
-                          className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300 hover:underline"
+                          className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-emerald-300 hover:underline"
                         >
                           {fid}
                         </Link>
                       ))}
                     </div>
                   ) : (
-                    <span className="text-xs text-zinc-600">—</span>
+                    <span className="text-xs text-[var(--text-tertiary)]">—</span>
                   )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {item.compliance_controls.slice(0, 4).map((tag) => (
-                      <span key={tag} className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+                      <span key={tag} className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
                         {tag}
                       </span>
                     ))}
@@ -168,7 +168,7 @@ export function HitlApprovalQueuePanel() {
                       </button>
                     </div>
                   ) : (
-                    <span className="text-xs text-zinc-500">{item.decided_by || "—"}</span>
+                    <span className="text-xs text-[var(--text-tertiary)]">{item.decided_by || "—"}</span>
                   )}
                 </td>
               </tr>

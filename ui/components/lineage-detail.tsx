@@ -111,7 +111,7 @@ const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
 };
 
 const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
-  provider: "border-zinc-700",
+  provider: "border-[var(--border-subtle)]",
   agent: "border-emerald-700",
   org: "border-teal-800",
   account: "border-teal-700",
@@ -127,7 +127,7 @@ const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
   cluster: "border-sky-700",
   server: "border-blue-700",
   sharedServer: "border-cyan-700",
-  package: "border-zinc-700",
+  package: "border-[var(--border-subtle)]",
   vulnerability: "border-red-700",
   misconfiguration: "border-orange-700",
   credential: "border-amber-700",
@@ -200,24 +200,24 @@ export function LineageDetailPanel({
 
   return (
     <div
-      className={`absolute right-0 top-0 bottom-0 w-80 bg-zinc-950/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50 overflow-y-auto`}
+      className={`absolute right-0 top-0 bottom-0 w-80 bg-[var(--background)]/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50 overflow-y-auto`}
     >
       <div className="p-4 space-y-4">
         <div className="flex items-start justify-between">
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+            <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
               {TYPE_LABELS[data.nodeType]}
             </span>
             <div className="flex items-center gap-2 mt-0.5">
-              <Icon className="w-4 h-4 text-zinc-400" />
-              <h3 className="text-sm font-semibold text-zinc-100">
+              <Icon className="w-4 h-4 text-[var(--text-secondary)]" />
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">
                 {data.label}
               </h3>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -383,7 +383,7 @@ export function LineageDetailPanel({
                     {data.effectiveReach.band}
                   </span>
                 </div>
-                <div className="text-[10px] font-mono text-zinc-400 break-all">
+                <div className="text-[10px] font-mono text-[var(--text-secondary)] break-all">
                   {reachFormula(data.effectiveReach)}
                 </div>
                 {data.effectiveReach.reachable_tools &&
@@ -436,7 +436,7 @@ export function LineageDetailPanel({
               </span>
             )}
             {data.description && (
-              <div className="text-xs text-zinc-400">{data.description}</div>
+              <div className="text-xs text-[var(--text-secondary)]">{data.description}</div>
             )}
           </div>
         )}
@@ -454,7 +454,7 @@ export function LineageDetailPanel({
         )}
 
         {data.nodeType === "tool" && data.description && (
-          <div className="text-xs text-zinc-400">{data.description}</div>
+          <div className="text-xs text-[var(--text-secondary)]">{data.description}</div>
         )}
 
         {data.nodeType === "model" && (
@@ -645,7 +645,7 @@ function GenericAssetSection({
   return (
     <div className="space-y-3">
       {description && (
-        <div className="text-xs text-zinc-400">{description}</div>
+        <div className="text-xs text-[var(--text-secondary)]">{description}</div>
       )}
       {version && <Row label="Version / hash" value={version} />}
       {typeof attributes?.verified === "boolean" && (
@@ -669,7 +669,7 @@ function TagList({
   const toneClass =
     tone === "blue"
       ? "bg-blue-950 text-blue-300 border-blue-800"
-      : "bg-zinc-800 text-zinc-400 border-zinc-700";
+      : "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]";
   return (
     <div>
       <Label>{label}</Label>
@@ -701,7 +701,7 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <Label>{label}</Label>
-      <div className="text-xs font-mono text-zinc-300 bg-zinc-900 rounded px-2 py-1 break-all">
+      <div className="text-xs font-mono text-[var(--text-secondary)] bg-[var(--surface)] rounded px-2 py-1 break-all">
         {value}
       </div>
     </div>
@@ -710,7 +710,7 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
 
 function Label({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">
+    <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] mb-0.5">
       {children}
     </div>
   );
@@ -727,9 +727,9 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 text-xs">
-      <span className="text-zinc-500">{label}</span>
+      <span className="text-[var(--text-tertiary)]">{label}</span>
       <span
-        className={`text-zinc-300 font-mono text-right break-all ${className}`}
+        className={`text-[var(--text-secondary)] font-mono text-right break-all ${className}`}
       >
         {value}
       </span>
@@ -792,7 +792,7 @@ function EvidenceTierBadge({
   // replay_only
   if (!captureReplay) {
     return (
-      <div className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-mono text-zinc-400">
+      <div className="flex items-center gap-1.5 rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-[10px] font-mono text-[var(--text-secondary)]">
         <ShieldOff className="w-3 h-3" />
         <span>Not persisted</span>
       </div>
@@ -833,7 +833,7 @@ function RuntimeEvidenceBadge({
   > = {
     static_scan: {
       text: "Static scan evidence",
-      className: "border-zinc-700 bg-zinc-900 text-zinc-300",
+      className: "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)]",
     },
     runtime_observed: {
       text: "Runtime observed path",

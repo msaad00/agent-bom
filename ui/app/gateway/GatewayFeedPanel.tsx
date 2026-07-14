@@ -182,14 +182,14 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
                 </>
               ) : (
                 <>
-                  <WifiOff className="w-3.5 h-3.5 text-zinc-500" />
-                  <span className="text-zinc-500">Disconnected</span>
+                  <WifiOff className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
+                  <span className="text-[var(--text-tertiary)]">Disconnected</span>
                 </>
               )}
             </div>
             <button
               onClick={load}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               Refresh
@@ -213,8 +213,8 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
               onClick={() => setActionFilter(value as GatewayFeedActionType | "")}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 actionFilter === value
-                  ? "bg-zinc-700 text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                  ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
+                  : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
               }`}
             >
               {label}
@@ -224,7 +224,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
 
         {loading && (
           <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+            <Loader2 className="w-5 h-5 animate-spin text-[var(--text-tertiary)]" />
           </div>
         )}
 
@@ -235,7 +235,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
         {!loading && !error && filtered.length === 0 && (
           <div className="text-center py-10">
             <ShieldCheck className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
-            <p className="text-zinc-600 text-xs">
+            <p className="text-[var(--text-tertiary)] text-xs">
               No gateway activity yet. Events appear as agents call tools through the gateway/proxy.
             </p>
           </div>
@@ -259,15 +259,15 @@ function FeedRow({ event }: { event: GatewayFeedEvent }) {
   const meta = ACTION_META[event.action_type];
   const Icon = meta.icon;
   return (
-    <div className="flex items-center justify-between px-3 py-2 bg-zinc-800/50 border border-zinc-800 rounded-lg">
+    <div className="flex items-center justify-between px-3 py-2 bg-[var(--surface-elevated)]/50 border border-[var(--border-subtle)] rounded-lg">
       <div className="flex items-center gap-3 min-w-0">
         <Icon className={`w-3.5 h-3.5 shrink-0 ${meta.tone}`} />
         {/* Per-agent attribution → target */}
-        <span className="text-xs text-zinc-200 font-mono shrink-0 max-w-[10rem] truncate" title={event.agent}>
+        <span className="text-xs text-[var(--foreground)] font-mono shrink-0 max-w-[10rem] truncate" title={event.agent}>
           {event.agent}
         </span>
-        <span className="text-zinc-600 shrink-0 text-xs">→</span>
-        <span className="text-xs text-zinc-400 font-mono shrink-0 max-w-[12rem] truncate" title={event.target}>
+        <span className="text-[var(--text-tertiary)] shrink-0 text-xs">→</span>
+        <span className="text-xs text-[var(--text-secondary)] font-mono shrink-0 max-w-[12rem] truncate" title={event.target}>
           {event.target}
         </span>
         <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs ${meta.badge}`}>
@@ -278,7 +278,7 @@ function FeedRow({ event }: { event: GatewayFeedEvent }) {
             shadow AI
           </span>
         )}
-        <span className="text-xs text-zinc-500 truncate" title={event.detail}>
+        <span className="text-xs text-[var(--text-tertiary)] truncate" title={event.detail}>
           {event.detail}
         </span>
       </div>

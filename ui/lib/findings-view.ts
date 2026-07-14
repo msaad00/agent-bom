@@ -103,7 +103,7 @@ export function findingStatusClass(status: string | undefined): string {
   if (normalized === "reopened") {
     return "bg-orange-950 border-orange-800 text-orange-300";
   }
-  return "bg-zinc-900 border-zinc-700 text-zinc-500";
+  return "bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--text-tertiary)]";
 }
 
 export function hasLifecycleMetadata(rows: EnrichedVuln[]): boolean {

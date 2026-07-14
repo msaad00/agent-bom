@@ -42,7 +42,7 @@ function ReachabilityBadge({
     return (
       <span
         title="Package is in inventory but no agent traversal reaches it"
-        className="text-xs font-mono bg-zinc-900 border border-zinc-700 text-zinc-500 rounded px-1.5 py-0.5"
+        className="text-xs font-mono bg-[var(--surface)] border border-[var(--border-subtle)] text-[var(--text-tertiary)] rounded px-1.5 py-0.5"
       >
         Unreachable
       </span>
@@ -77,7 +77,7 @@ function SortButton({
     <button
       onClick={() => onClick(field)}
       className={`flex items-center gap-0.5 text-xs font-medium uppercase tracking-wide transition-colors ${
-        active ? "text-zinc-200" : "text-zinc-500 hover:text-zinc-300"
+        active ? "text-[var(--foreground)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
       }`}
     >
       {label}
@@ -93,7 +93,7 @@ function renderScoreValue(value: number | undefined, missingLabel: string) {
     return value.toFixed(1);
   }
   return (
-    <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-500" title={missingLabel}>
+    <span className="rounded bg-[var(--surface)] px-1.5 py-0.5 text-[var(--text-tertiary)]" title={missingLabel}>
       N/A
     </span>
   );
@@ -104,7 +104,7 @@ function renderPercentValue(value: number | undefined, missingLabel: string) {
     return `${(value * 100).toFixed(1)}%`;
   }
   return (
-    <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-500" title={missingLabel}>
+    <span className="rounded bg-[var(--surface)] px-1.5 py-0.5 text-[var(--text-tertiary)]" title={missingLabel}>
       N/A
     </span>
   );
@@ -134,9 +134,9 @@ export function FindingsQueueTable({
   columns?: FindingColumnVisibility;
 }) {
   return (
-    <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
+    <div className="border border-[var(--border-subtle)] rounded-xl overflow-hidden overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-zinc-900 border-b border-zinc-800">
+        <thead className="bg-[var(--surface)] border-b border-[var(--border-subtle)]">
           <tr>
             <th className="text-left px-4 py-3">
               <SortButton label="CVE" field="id" current={sortKey} dir={sortDir} onClick={handleSort} />
@@ -146,8 +146,8 @@ export function FindingsQueueTable({
             </th>
             {showLifecycle ? (
               <>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Last seen</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Last seen</th>
               </>
             ) : null}
             {columns.cvss ? (
@@ -161,18 +161,18 @@ export function FindingsQueueTable({
               </th>
             ) : null}
             {columns.packages ? (
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Packages</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Packages</th>
             ) : null}
             {columns.agents ? (
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Agents</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Agents</th>
             ) : null}
             {columns.fix ? (
-              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Fix</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Fix</th>
             ) : null}
-            <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Actions</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-800 bg-zinc-950">
+        <tbody className="divide-y divide-[var(--border-subtle)] bg-[var(--background)]">
           {vulns?.map((v) => {
             const rowKey = vulnRowKey(v);
             const isSelected = selectedId === rowKey || selectedId === v.id;
@@ -180,7 +180,7 @@ export function FindingsQueueTable({
             return (
               <tr
                 key={rowKey}
-                className={`cursor-pointer transition-colors ${isSelected ? "bg-zinc-900/90 ring-1 ring-inset ring-emerald-900/60" : "hover:bg-zinc-900"}`}
+                className={`cursor-pointer transition-colors ${isSelected ? "bg-[var(--surface)]/90 ring-1 ring-inset ring-emerald-900/60" : "hover:bg-[var(--surface)]"}`}
                 onClick={() => onSelect(rowKey)}
               >
                 <td className="px-4 py-3">
@@ -191,7 +191,7 @@ export function FindingsQueueTable({
                         event.stopPropagation();
                         onSelect(rowKey);
                       }}
-                      className="mt-0.5 rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+                      className="mt-0.5 rounded p-0.5 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--text-secondary)]"
                       aria-label={`Open details for ${v.id}`}
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
@@ -205,7 +205,7 @@ export function FindingsQueueTable({
                               event.stopPropagation();
                               onSelect(rowKey);
                             }}
-                            className="font-mono text-xs text-zinc-200 transition-colors hover:text-emerald-400"
+                            className="font-mono text-xs text-[var(--foreground)] transition-colors hover:text-emerald-400"
                           >
                             {v.id}
                           </button>
@@ -214,7 +214,7 @@ export function FindingsQueueTable({
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(event) => event.stopPropagation()}
-                            className="inline-flex items-center gap-1 rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                            className="inline-flex items-center gap-1 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
                           >
                             OSV
                             <ExternalLink className="h-3 w-3" />
@@ -226,7 +226,7 @@ export function FindingsQueueTable({
                           />
                         </div>
                         {secondary && (
-                          <p className="text-xs text-zinc-600 mt-0.5 ml-3.5 line-clamp-1 max-w-xs">
+                          <p className="text-xs text-[var(--text-tertiary)] mt-0.5 ml-3.5 line-clamp-1 max-w-xs">
                             {secondary}
                           </p>
                         )}
@@ -247,18 +247,18 @@ export function FindingsQueueTable({
                           {findingStatusLabel(v.lifecycle_status)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                      <td className="px-4 py-3 text-xs font-mono text-[var(--text-secondary)]">
                         {formatFindingTimestamp(v.last_seen ?? v.first_seen)}
                       </td>
                     </>
                   ) : null}
                   {columns.cvss ? (
-                    <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                    <td className="px-4 py-3 text-xs font-mono text-[var(--text-secondary)]">
                       {renderScoreValue(v.cvss_score, "CVSS not published by the current advisory")}
                     </td>
                   ) : null}
                   {columns.epss ? (
-                    <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                    <td className="px-4 py-3 text-xs font-mono text-[var(--text-secondary)]">
                       {renderPercentValue(v.epss_score, "EPSS not available for this advisory")}
                     </td>
                   ) : null}
@@ -266,20 +266,20 @@ export function FindingsQueueTable({
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {v.packages.slice(0, 3).map((p) => (
-                          <span key={p} className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-400">
+                          <span key={p} className="text-xs font-mono bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-1.5 py-0.5 text-[var(--text-secondary)]">
                             {p}
                           </span>
                         ))}
                         {v.packages.length > 3 && (
-                          <span className="text-xs text-zinc-600">+{v.packages.length - 3}</span>
+                          <span className="text-xs text-[var(--text-tertiary)]">+{v.packages.length - 3}</span>
                         )}
                       </div>
                     </td>
                   ) : null}
                   {columns.agents ? (
-                    <td className="px-4 py-3 text-xs text-zinc-500">
+                    <td className="px-4 py-3 text-xs text-[var(--text-tertiary)]">
                       {v.agents.slice(0, 2).join(", ")}
-                      {v.agents.length > 2 && <span className="text-zinc-600"> +{v.agents.length - 2}</span>}
+                      {v.agents.length > 2 && <span className="text-[var(--text-tertiary)]"> +{v.agents.length - 2}</span>}
                     </td>
                   ) : null}
                   {columns.fix ? (
@@ -289,7 +289,7 @@ export function FindingsQueueTable({
                   ) : null}
                   <td className="px-4 py-3">
                     {suppressed.has(v.id) ? (
-                      <span className="text-xs font-medium px-2 py-0.5 rounded border bg-zinc-800 border-zinc-700 text-zinc-400">
+                      <span className="text-xs font-medium px-2 py-0.5 rounded border bg-[var(--surface-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)]">
                         Suppressed
                       </span>
                     ) : (
@@ -298,7 +298,7 @@ export function FindingsQueueTable({
                           event.stopPropagation();
                           onMarkFP(v.id, v.packages[0] ?? "");
                         }}
-                        className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-muted)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] transition-colors"
                       >
                         <ShieldOff className="w-3 h-3" />
                         Mark FP
@@ -312,7 +312,7 @@ export function FindingsQueueTable({
       </table>
 
       {vulns.length === 0 && (
-        <div className="px-4 py-8 text-center text-zinc-600 text-sm">
+        <div className="px-4 py-8 text-center text-[var(--text-tertiary)] text-sm">
           No vulnerabilities match your filters.
         </div>
       )}

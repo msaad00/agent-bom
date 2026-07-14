@@ -58,7 +58,7 @@ export default function GovernancePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-zinc-400">
+      <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
         <Loader2 className="h-6 w-6 animate-spin mr-2" />
         Loading governance report...
       </div>
@@ -96,18 +96,18 @@ export default function GovernancePage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-zinc-100 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-[var(--foreground)] flex items-center gap-2">
             <Eye className="w-6 h-6 text-emerald-400" />
             Governance Posture
           </h1>
-          <p className="mt-1 break-words text-sm text-zinc-500">
+          <p className="mt-1 break-words text-sm text-[var(--text-tertiary)]">
             Account: {report.account} | Discovered: {formatDate(report.discovered_at)}
           </p>
         </div>
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
-          className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300"
+          className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-md px-3 py-1.5 text-sm text-[var(--text-secondary)]"
         >
           <option value={7}>Last 7 days</option>
           <option value={30}>Last 30 days</option>
@@ -166,9 +166,9 @@ export default function GovernancePage() {
         }).filter((d) => d.critical + d.high + d.medium + d.low > 0);
         if (chartData.length === 0) return null;
         return (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-300 mb-1">Findings by Category & Severity</h3>
-            <p className="text-[10px] text-zinc-600 mb-4">Stacked count of findings per governance category</p>
+          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-1">Findings by Category & Severity</h3>
+            <p className="text-[10px] text-[var(--text-tertiary)] mb-4">Stacked count of findings per governance category</p>
             <div className="h-44">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
@@ -217,7 +217,7 @@ export default function GovernancePage() {
             onClick={() => setCategoryFilter(cat)}
           />
         ))}
-        <span className="w-px bg-zinc-700 mx-1" />
+        <span className="w-px bg-[var(--surface-muted)] mx-1" />
         <FilterButton
           label="All Severities"
           active={severityFilter === null}
@@ -235,11 +235,11 @@ export default function GovernancePage() {
 
       {/* Findings */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-zinc-200">
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">
           Findings ({filteredFindings.length})
         </h2>
         {filteredFindings.length === 0 ? (
-          <p className="text-sm text-zinc-500">No findings match the current filters.</p>
+          <p className="text-sm text-[var(--text-tertiary)]">No findings match the current filters.</p>
         ) : (
           filteredFindings?.map((f, i) => <FindingCard key={i} finding={f} />)
         )}
@@ -249,15 +249,15 @@ export default function GovernancePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Elevated Privileges */}
         {report.privilege_grants.filter((g) => g.is_elevated).length > 0 && (
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-            <h3 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
+            <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-3 flex items-center gap-2">
               <Lock className="w-4 h-4 text-purple-400" />
               Elevated Privileges
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-zinc-500 border-b border-zinc-800">
+                  <tr className="text-[var(--text-tertiary)] border-b border-[var(--border-subtle)]">
                     <th className="text-left py-1.5 pr-3">Role</th>
                     <th className="text-left py-1.5 pr-3">Privilege</th>
                     <th className="text-left py-1.5">Object</th>
@@ -268,10 +268,10 @@ export default function GovernancePage() {
                     .filter((g) => g.is_elevated)
                     .slice(0, 20)
                     .map((g, i) => (
-                      <tr key={i} className="border-b border-zinc-800/50">
-                        <td className="py-1.5 pr-3 text-zinc-300 font-mono">{g.grantee}</td>
+                      <tr key={i} className="border-b border-[var(--border-subtle)]/50">
+                        <td className="py-1.5 pr-3 text-[var(--text-secondary)] font-mono">{g.grantee}</td>
                         <td className="py-1.5 pr-3 text-red-400">{g.privilege}</td>
-                        <td className="py-1.5 text-zinc-500 font-mono truncate max-w-[200px]">
+                        <td className="py-1.5 text-[var(--text-tertiary)] font-mono truncate max-w-[200px]">
                           {g.object_name}
                         </td>
                       </tr>
@@ -284,15 +284,15 @@ export default function GovernancePage() {
 
         {/* Data Classifications */}
         {report.data_classifications.length > 0 && (
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-            <h3 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
+            <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-3 flex items-center gap-2">
               <Database className="w-4 h-4 text-blue-400" />
               Data Classifications
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-zinc-500 border-b border-zinc-800">
+                  <tr className="text-[var(--text-tertiary)] border-b border-[var(--border-subtle)]">
                     <th className="text-left py-1.5 pr-3">Object</th>
                     <th className="text-left py-1.5 pr-3">Tag</th>
                     <th className="text-left py-1.5">Value</th>
@@ -300,15 +300,15 @@ export default function GovernancePage() {
                 </thead>
                 <tbody>
                   {report.data_classifications.slice(0, 20).map((d, i) => (
-                    <tr key={i} className="border-b border-zinc-800/50">
-                      <td className="py-1.5 pr-3 text-zinc-300 font-mono truncate max-w-[200px]">
+                    <tr key={i} className="border-b border-[var(--border-subtle)]/50">
+                      <td className="py-1.5 pr-3 text-[var(--text-secondary)] font-mono truncate max-w-[200px]">
                         {d.object_name}
                         {d.column_name && (
-                          <span className="text-zinc-500">.{d.column_name}</span>
+                          <span className="text-[var(--text-tertiary)]">.{d.column_name}</span>
                         )}
                       </td>
                       <td className="py-1.5 pr-3 text-amber-400">{d.tag_name}</td>
-                      <td className="py-1.5 text-zinc-500">{d.tag_value}</td>
+                      <td className="py-1.5 text-[var(--text-tertiary)]">{d.tag_value}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -333,12 +333,12 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`w-4 h-4 ${color}`} />
-        <span className="text-xs text-zinc-500">{label}</span>
+        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-zinc-100">{value.toLocaleString()}</p>
+      <p className="text-2xl font-bold text-[var(--foreground)]">{value.toLocaleString()}</p>
     </div>
   );
 }
@@ -357,8 +357,8 @@ function FilterButton({
       onClick={onClick}
       className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors ${
         active
-          ? "bg-zinc-700 text-zinc-100"
-          : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
+          ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
+          : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-secondary)]"
       }`}
     >
       {label}
@@ -378,17 +378,17 @@ function FindingCard({ finding }: { finding: GovernanceFinding }) {
         <div className="flex min-w-0 items-start gap-3">
           <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${severityDot(finding.severity)}`} />
           <div className="min-w-0">
-            <p className="break-words text-sm font-medium text-zinc-100">{finding.title}</p>
-            <p className="mt-0.5 break-words text-xs text-zinc-400">{finding.description}</p>
+            <p className="break-words text-sm font-medium text-[var(--foreground)]">{finding.title}</p>
+            <p className="mt-0.5 break-words text-xs text-[var(--text-secondary)]">{finding.description}</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <span className="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-400 capitalize">
+              <span className="px-2 py-0.5 rounded text-xs bg-[var(--surface-elevated)] text-[var(--text-secondary)] capitalize">
                 {finding.category.replace("_", " ")}
               </span>
-              <span className="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-400 capitalize">
+              <span className="px-2 py-0.5 rounded text-xs bg-[var(--surface-elevated)] text-[var(--text-secondary)] capitalize">
                 {finding.severity}
               </span>
               {finding.agent_or_role && (
-                <span className="max-w-full break-all rounded bg-zinc-800 px-2 py-0.5 font-mono text-xs text-zinc-400">
+                <span className="max-w-full break-all rounded bg-[var(--surface-elevated)] px-2 py-0.5 font-mono text-xs text-[var(--text-secondary)]">
                   {finding.agent_or_role}
                 </span>
               )}
@@ -396,14 +396,14 @@ function FindingCard({ finding }: { finding: GovernanceFinding }) {
           </div>
         </div>
         {expanded ? (
-          <ChevronUp className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+          <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)] flex-shrink-0" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+          <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)] flex-shrink-0" />
         )}
       </div>
       {expanded && Object.keys(finding.details).length > 0 && (
-        <div className="mt-3 pl-5 border-t border-zinc-800 pt-3">
-          <pre className="text-xs text-zinc-400 whitespace-pre-wrap break-words">
+        <div className="mt-3 pl-5 border-t border-[var(--border-subtle)] pt-3">
+          <pre className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap break-words">
             {JSON.stringify(finding.details, null, 2)}
           </pre>
         </div>

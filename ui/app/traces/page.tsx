@@ -82,22 +82,22 @@ export default function TracesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-3xl border border-zinc-800 bg-zinc-950/70 p-6 shadow-2xl shadow-black/20 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-4 rounded-3xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-6 shadow-2xl shadow-black/20 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-3xl">
           <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-400">Trace review</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100">Runtime tool-call correlation</h1>
-          <p className="mt-3 text-sm leading-6 text-zinc-400">
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">Runtime tool-call correlation</h1>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
             {tracesUnavailable
               ? "Trace ingest is not enabled for this estate yet. Use the explorer when gateway traffic exists, or paste OTLP JSON to validate correlation."
               : "Explore blocked and observed tool calls joined to the same findings and compliance controls surfaced in triage."}{" "}
-            Production collectors send OTLP JSON to <code className="rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-zinc-200">POST /v1/traces</code>.
+            Production collectors send OTLP JSON to <code className="rounded bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[var(--foreground)]">POST /v1/traces</code>.
           </p>
-          <div className="mt-4 inline-flex rounded-xl border border-zinc-800 bg-zinc-900/70 p-1">
+          <div className="mt-4 inline-flex rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 p-1">
             <button
               type="button"
               onClick={() => setMode("explorer")}
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
-                mode === "explorer" ? "bg-emerald-600 text-white" : "text-zinc-400 hover:text-zinc-200"
+                mode === "explorer" ? "bg-emerald-600 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
               }`}
             >
               <GitBranch className="h-3.5 w-3.5" />
@@ -107,7 +107,7 @@ export default function TracesPage() {
               type="button"
               onClick={() => setMode("queue")}
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
-                mode === "queue" ? "bg-emerald-600 text-white" : "text-zinc-400 hover:text-zinc-200"
+                mode === "queue" ? "bg-emerald-600 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
               }`}
             >
               <ShieldAlert className="h-3.5 w-3.5" />
@@ -117,7 +117,7 @@ export default function TracesPage() {
               type="button"
               onClick={() => setMode("ingest")}
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
-                mode === "ingest" ? "bg-emerald-600 text-white" : "text-zinc-400 hover:text-zinc-200"
+                mode === "ingest" ? "bg-emerald-600 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
               }`}
             >
               <FileUp className="h-3.5 w-3.5" />
@@ -125,16 +125,16 @@ export default function TracesPage() {
             </button>
           </div>
         </div>
-        <div className="grid gap-3 text-xs text-zinc-400 sm:grid-cols-2 lg:w-[360px]">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Input</div>
-            <div className="mt-2 text-sm text-zinc-200">OTLP JSON export</div>
-            <div className="mt-1 text-zinc-500">Paste, upload, or send directly from a collector.</div>
+        <div className="grid gap-3 text-xs text-[var(--text-secondary)] sm:grid-cols-2 lg:w-[360px]">
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/60 p-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Input</div>
+            <div className="mt-2 text-sm text-[var(--foreground)]">OTLP JSON export</div>
+            <div className="mt-1 text-[var(--text-tertiary)]">Paste, upload, or send directly from a collector.</div>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Output</div>
-            <div className="mt-2 text-sm text-zinc-200">Flagged tool calls</div>
-            <div className="mt-1 text-zinc-500">Server, package, CVE, and severity correlation.</div>
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/60 p-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Output</div>
+            <div className="mt-2 text-sm text-[var(--foreground)]">Flagged tool calls</div>
+            <div className="mt-1 text-[var(--text-tertiary)]">Server, package, CVE, and severity correlation.</div>
           </div>
         </div>
       </div>
@@ -145,21 +145,21 @@ export default function TracesPage() {
         <HitlApprovalQueuePanel />
       ) : (
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-200">Trace intake</h2>
-              <p className="mt-1 text-xs text-zinc-500">Use a real OTLP export or the sample payload for a quick validation run.</p>
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">Trace intake</h2>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">Use a real OTLP export or the sample payload for a quick validation run.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-700">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]">
                 <FileUp className="h-3.5 w-3.5" />
                 Upload JSON
                 <input type="file" accept=".json,application/json" className="hidden" onChange={handleFile} />
               </label>
               <button
                 onClick={() => setPayload(SAMPLE_PAYLOAD)}
-                className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-700"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
               >
                 <PlayCircle className="h-3.5 w-3.5" />
                 Use sample
@@ -171,7 +171,7 @@ export default function TracesPage() {
             value={payload}
             onChange={(e) => setPayload(e.target.value)}
             rows={18}
-            className="mt-4 w-full resize-none rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono text-xs leading-6 text-zinc-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="mt-4 w-full resize-none rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 font-mono text-xs leading-6 text-[var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-emerald-500"
             spellCheck={false}
           />
 
@@ -184,25 +184,25 @@ export default function TracesPage() {
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Run correlation
             </button>
-            <p className="text-xs text-zinc-500">
-              Endpoint: <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-300">POST /v1/traces</code>
+            <p className="text-xs text-[var(--text-tertiary)]">
+              Endpoint: <code className="rounded bg-[var(--background)] px-1.5 py-0.5 font-mono text-[var(--text-secondary)]">POST /v1/traces</code>
             </p>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-200">Correlation result</h2>
-              <p className="mt-1 text-xs text-zinc-500">Review flagged calls with mapped server, package, and CVE context.</p>
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">Correlation result</h2>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">Review flagged calls with mapped server, package, and CVE context.</p>
             </div>
           </div>
 
           {!result && !error && (
-            <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 py-16 text-center">
-              <Activity className="mx-auto mb-3 h-8 w-8 text-zinc-700" />
-              <p className="text-sm text-zinc-500">No trace run yet.</p>
-              <p className="mt-1 text-xs text-zinc-600">Submit a payload to validate correlation against known vulnerable assets.</p>
+            <div className="mt-4 rounded-2xl border border-dashed border-[var(--border-subtle)] py-16 text-center">
+              <Activity className="mx-auto mb-3 h-8 w-8 text-[var(--text-tertiary)]" />
+              <p className="text-sm text-[var(--text-tertiary)]">No trace run yet.</p>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">Submit a payload to validate correlation against known vulnerable assets.</p>
             </div>
           )}
 
@@ -218,12 +218,12 @@ export default function TracesPage() {
           {result && (
             <div className="mt-4 space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Traces parsed</div>
-                  <div className="mt-2 text-2xl font-semibold text-zinc-100">{result.traces}</div>
+                <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Traces parsed</div>
+                  <div className="mt-2 text-2xl font-semibold text-[var(--foreground)]">{result.traces}</div>
                 </div>
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Flagged calls</div>
+                <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Flagged calls</div>
                   <div className={`mt-2 text-2xl font-semibold ${result.flagged.length > 0 ? "text-red-400" : "text-emerald-400"}`}>
                     {result.flagged.length}
                   </div>
@@ -231,7 +231,7 @@ export default function TracesPage() {
               </div>
 
               {result.message ? (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs text-zinc-500">
+                <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 text-xs text-[var(--text-tertiary)]">
                   {result.message}
                 </div>
               ) : null}
@@ -244,40 +244,40 @@ export default function TracesPage() {
                   </div>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-2xl border border-zinc-800">
+                <div className="overflow-hidden rounded-2xl border border-[var(--border-subtle)]">
                   <table className="w-full text-sm">
-                    <thead className="bg-zinc-900 border-b border-zinc-800">
+                    <thead className="bg-[var(--surface)] border-b border-[var(--border-subtle)]">
                       <tr>
-                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Tool</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Server</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Package</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">CVEs</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Risk</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Tool</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Server</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Package</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">CVEs</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Risk</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-800 bg-zinc-950">
+                    <tbody className="divide-y divide-[var(--border-subtle)] bg-[var(--background)]">
                       {result.flagged.map((flagged) => (
-                        <tr key={`${flagged.span_id}-${flagged.tool_name}`} className="align-top hover:bg-zinc-900/70">
+                        <tr key={`${flagged.span_id}-${flagged.tool_name}`} className="align-top hover:bg-[var(--surface)]/70">
                           <td className="px-4 py-3">
-                            <div className="font-mono text-xs text-zinc-200">{flagged.tool_name}</div>
-                            <div className="mt-1 text-xs text-zinc-500">{flagged.reason}</div>
+                            <div className="font-mono text-xs text-[var(--foreground)]">{flagged.tool_name}</div>
+                            <div className="mt-1 text-xs text-[var(--text-tertiary)]">{flagged.reason}</div>
                           </td>
-                          <td className="px-4 py-3 text-xs text-zinc-400">{flagged.server || "N/A"}</td>
-                          <td className="px-4 py-3 text-xs text-zinc-400">{flagged.package_name || "N/A"}</td>
+                          <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">{flagged.server || "N/A"}</td>
+                          <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">{flagged.package_name || "N/A"}</td>
                           <td className="px-4 py-3">
                             {flagged.cve_ids.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
                                 {flagged.cve_ids.map((cve) => (
                                   <span
                                     key={cve}
-                                    className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+                                    className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
                                   >
                                     {cve}
                                   </span>
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-xs text-zinc-600">N/A</span>
+                              <span className="text-xs text-[var(--text-tertiary)]">N/A</span>
                             )}
                           </td>
                           <td className="px-4 py-3">

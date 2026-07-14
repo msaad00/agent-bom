@@ -69,19 +69,19 @@ export function TopologyDetailDrawer({
       aria-label={`Topology details for ${title}`}
     >
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close topology details" onClick={onClose} />
-      <aside className="relative h-full w-full max-w-md overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
-        <div className="mb-4 flex items-start justify-between gap-4 border-b border-zinc-800 pb-4">
+      <aside className="relative h-full w-full max-w-md overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)] p-5 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-4 border-b border-[var(--border-subtle)] pb-4">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
               {selection.kind === "agent" ? "Agent runtime" : "Shared MCP service"}
             </p>
-            <h2 className="mt-2 text-lg font-semibold text-zinc-100">{title}</h2>
-            <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>
+            <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">{title}</h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">{subtitle}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-zinc-400 transition hover:text-zinc-100"
+            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] p-2 text-[var(--text-secondary)] transition hover:text-[var(--foreground)]"
             aria-label="Close topology drawer"
           >
             <X className="h-4 w-4" />
@@ -104,13 +104,13 @@ export function TopologyDetailDrawer({
 
         {selection.kind === "server" && connectedAgents.length > 1 ? (
           <div className="mb-4">
-            <p className="mb-2 flex items-center gap-1.5 text-xs text-zinc-500">
+            <p className="mb-2 flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
               <Users className="h-3.5 w-3.5" />
               Shared blast radius
             </p>
             <div className="flex flex-wrap gap-1.5">
               {connectedAgents.map((entry) => (
-                <span key={entry.name} className="rounded bg-zinc-900 px-2 py-0.5 text-xs text-zinc-300">
+                <span key={entry.name} className="rounded bg-[var(--surface)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
                   {topologyAgentDisplayName(entry)}
                 </span>
               ))}
@@ -124,7 +124,7 @@ export function TopologyDetailDrawer({
           ))}
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2 border-t border-zinc-800 pt-4">
+        <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--border-subtle)] pt-4">
           {selection.kind === "agent" ? (
             <Link
               href={`/agents?name=${encodeURIComponent(selection.name)}`}
@@ -135,13 +135,13 @@ export function TopologyDetailDrawer({
           ) : null}
           <Link
             href="/mesh"
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300"
+            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]"
           >
             Agent mesh
           </Link>
           <Link
             href="/security-graph"
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300"
+            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]"
           >
             Security graph
           </Link>
@@ -163,12 +163,12 @@ function Metric({
   tone?: "neutral" | "danger";
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-      <div className={`flex items-center gap-1.5 text-[10px] ${tone === "danger" ? "text-red-300" : "text-zinc-500"}`}>
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-3 py-2">
+      <div className={`flex items-center gap-1.5 text-[10px] ${tone === "danger" ? "text-red-300" : "text-[var(--text-tertiary)]"}`}>
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <div className={`mt-1 font-mono text-sm ${tone === "danger" ? "text-red-100" : "text-zinc-100"}`}>{value}</div>
+      <div className={`mt-1 font-mono text-sm ${tone === "danger" ? "text-red-100" : "text-[var(--foreground)]"}`}>{value}</div>
     </div>
   );
 }
@@ -176,13 +176,13 @@ function Metric({
 function ServerCard({ agentName, server }: { agentName: string; server: MCPServer }) {
   const vulns = serverVulnerabilityCount(server);
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/60 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-zinc-100">{server.name}</span>
+        <span className="text-sm font-medium text-[var(--foreground)]">{server.name}</span>
         {serverHasCredentials(server) ? <Lock className="h-3.5 w-3.5 text-amber-300" /> : null}
       </div>
-      <p className="mt-1 truncate font-mono text-[10px] text-zinc-500">{agentName}</p>
-      <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-500">
+      <p className="mt-1 truncate font-mono text-[10px] text-[var(--text-tertiary)]">{agentName}</p>
+      <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-[var(--text-tertiary)]">
         <span>{server.packages?.length ?? 0} packages</span>
         <span>{server.tools?.length ?? 0} tools</span>
         {vulns > 0 ? <span className="text-red-300">{vulns} CVE{vulns === 1 ? "" : "s"}</span> : null}

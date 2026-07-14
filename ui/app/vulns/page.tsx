@@ -16,7 +16,7 @@ function VulnsRedirect() {
   }, [router, searchParams]);
   return (
     <div className="flex min-h-[40vh] items-center justify-center">
-      <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+      <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
     </div>
   );
 }
@@ -26,7 +26,7 @@ export default function VulnsRedirectPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[40vh] items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+          <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
         </div>
       }
     >

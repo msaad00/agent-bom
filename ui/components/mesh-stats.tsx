@@ -42,7 +42,7 @@ export function MeshStats({
         {compact ? (
           <>
             <Stat icon={ShieldAlert} label="Agents" value={stats.totalAgents} color="text-emerald-400" />
-            <Stat icon={Package} label="Pkgs" value={stats.totalPackages} color="text-zinc-400" />
+            <Stat icon={Package} label="Pkgs" value={stats.totalPackages} color="text-[var(--text-secondary)]" />
             <Stat icon={Bug} label="Vulns" value={stats.totalVulnerabilities} color="text-red-400" />
             {stats.sharedServers > 0 && (
               <Stat icon={Server} label="Shared" value={stats.sharedServers} color="text-cyan-400" />
@@ -52,7 +52,7 @@ export function MeshStats({
           <>
             <Stat icon={ShieldAlert} label="Agents" value={stats.totalAgents} color="text-emerald-400" />
             <Stat icon={Server} label="Shared Servers" value={stats.sharedServers} color="text-cyan-400" />
-            <Stat icon={Package} label="Packages" value={stats.totalPackages} color="text-zinc-400" />
+            <Stat icon={Package} label="Packages" value={stats.totalPackages} color="text-[var(--text-secondary)]" />
             <Stat icon={Bug} label="Vulns" value={stats.totalVulnerabilities} color="text-red-400" />
             <Stat icon={KeyRound} label="Credential refs" value={stats.uniqueCredentials} color="text-amber-400" />
             <Stat icon={Wrench} label="Tool Overlap" value={stats.toolOverlap} color="text-purple-400" />
@@ -63,7 +63,7 @@ export function MeshStats({
         {totalSev > 0 && (
           <div className="flex items-center gap-1.5 ml-2">
             <span className="text-[var(--text-secondary)]">Severity:</span>
-            <div className="flex h-2.5 rounded-full overflow-hidden w-24 bg-zinc-800">
+            <div className="flex h-2.5 rounded-full overflow-hidden w-24 bg-[var(--surface-elevated)]">
               {stats.criticalCount > 0 && (
                 <div
                   className="bg-red-500 h-full"

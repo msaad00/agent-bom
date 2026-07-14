@@ -93,9 +93,9 @@ export function GraphLensSwitcher({
     <div
       className={
         variant === "floating"
-          ? "pointer-events-auto flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-zinc-700/80 bg-zinc-950/85 px-3 py-2 shadow-2xl shadow-black/40 backdrop-blur"
+          ? "pointer-events-auto flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--border-subtle)]/80 bg-[var(--background)]/85 px-3 py-2 shadow-2xl shadow-black/40 backdrop-blur"
           : variant === "compact"
-            ? "flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2"
+            ? "flex flex-col gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/80 px-3 py-2"
             : "flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3"
       }
     >

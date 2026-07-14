@@ -9,9 +9,9 @@ type CardProps = HTMLAttributes<HTMLDivElement> & {
 
 /**
  * Canonical card shell. The app duplicates this 50+× with two radius scales
- * (rounded-xl vs rounded-2xl) and two color systems (hardcoded zinc-* vs CSS
- * vars). This standardizes on a single radius (rounded-xl), the subtle border
- * + surface tokens, and p-5 padding so every card matches across themes.
+ * (rounded-xl vs rounded-2xl). This standardizes on a single radius
+ * (rounded-xl), the subtle border + surface tokens, and p-5 padding so every
+ * card reads correctly across both light and dark themes.
  */
 export function Card({ as, flush = false, className = "", children, ...rest }: CardProps) {
   const Tag = as ?? "div";

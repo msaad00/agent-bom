@@ -333,10 +333,10 @@ const SEVERITY_RANK_MAP: Record<string, number> = {
 };
 
 const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
-  { key: "provider", label: "Providers", color: "bg-zinc-500" },
+  { key: "provider", label: "Providers", color: "bg-[var(--text-tertiary)]" },
   { key: "agent", label: "Agents", color: "bg-emerald-500" },
   { key: "server", label: "Servers", color: "bg-blue-500" },
-  { key: "package", label: "Packages", color: "bg-zinc-500" },
+  { key: "package", label: "Packages", color: "bg-[var(--text-tertiary)]" },
   { key: "model", label: "Models", color: "bg-violet-500" },
   { key: "dataset", label: "Datasets", color: "bg-cyan-500" },
   { key: "container", label: "Containers", color: "bg-indigo-500" },

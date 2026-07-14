@@ -104,7 +104,7 @@ const RUNTIME_EVIDENCE_CHIP: Record<
   static_scan: {
     label: "Static",
     className:
-      "border-zinc-600/70 bg-zinc-900/80 text-zinc-300 dark:border-zinc-500 dark:bg-zinc-950",
+      "border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--text-secondary)]",
   },
   runtime_observed: {
     label: "Observed",
@@ -164,10 +164,10 @@ function NodeCard({
       />
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
-        <span className="text-[15px] font-semibold leading-5 text-zinc-950 dark:text-zinc-50 truncate">
+        <span className="text-[15px] font-semibold leading-5 text-[var(--foreground)] truncate">
           {data.label}
         </span>
-        <span className="ml-auto rounded border border-black/10 bg-white/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-zinc-600 dark:border-white/15 dark:bg-black/25 dark:text-zinc-200">
+        <span className="ml-auto rounded border border-black/10 bg-white/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)] dark:border-white/15 dark:bg-black/25">
           {NODE_TYPE_BADGES[data.nodeType]}
         </span>
         {data.runtimeEvidenceTier && data.runtimeEvidenceTier !== "static_scan" ? (
@@ -175,7 +175,7 @@ function NodeCard({
         ) : null}
       </div>
       {subtitle && (
-        <div className="text-xs leading-4 text-zinc-700 dark:text-zinc-200/90 truncate">
+        <div className="text-xs leading-4 text-[var(--text-secondary)] truncate">
           {subtitle}
         </div>
       )}
@@ -241,7 +241,7 @@ function AgentNode({ data }: { data: LineageNodeData }) {
       target={false}
       subtitle={data.agentType}
       footer={
-        <div className="flex gap-2 mt-1 text-[10px] text-zinc-600 dark:text-zinc-500">
+        <div className="flex gap-2 mt-1 text-[10px] text-[var(--text-tertiary)]">
           {data.serverCount !== undefined && (
             <span>{data.serverCount} srv</span>
           )}
@@ -261,14 +261,14 @@ function ProviderNode({ data }: { data: LineageNodeData }) {
   return (
     <NodeCard
       data={data}
-      borderClass="border-zinc-300 dark:border-zinc-600"
-      bgClass="bg-white dark:bg-zinc-900/90"
-      ringClass="ring-zinc-400"
-      iconClass="text-zinc-600 dark:text-zinc-400"
+      borderClass="border-[var(--border-subtle)]"
+      bgClass="bg-[var(--surface)]"
+      ringClass="ring-[var(--border-strong)]"
+      iconClass="text-[var(--text-tertiary)]"
       target={false}
       footer={
         data.agentCount !== undefined ? (
-          <div className="mt-1 text-[10px] text-zinc-600 dark:text-zinc-500">
+          <div className="mt-1 text-[10px] text-[var(--text-tertiary)]">
             {data.agentCount} agents
           </div>
         ) : undefined
@@ -365,7 +365,7 @@ function StructureNode({
       iconClass={iconClass}
       subtitle={data.description}
       footer={
-        <div className="flex gap-2 mt-1 text-[10px] text-zinc-600 dark:text-zinc-500">
+        <div className="flex gap-2 mt-1 text-[10px] text-[var(--text-tertiary)]">
           {data.agentCount !== undefined && (
             <span>{data.agentCount} agents</span>
           )}
@@ -436,7 +436,7 @@ function ServerNode({ data }: { data: LineageNodeData }) {
             </span>
           )}
           {data.packageCount !== undefined && data.packageCount > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] text-zinc-400">
+            <span className="flex items-center gap-0.5 text-[10px] text-[var(--text-secondary)]">
               <Package className="w-2.5 h-2.5" /> {data.packageCount}
             </span>
           )}
@@ -457,15 +457,15 @@ function PackageNode({ data }: { data: LineageNodeData }) {
       borderClass={
         hasVulns
           ? "border-red-400 dark:border-red-600/60"
-          : "border-zinc-300 dark:border-zinc-600"
+          : "border-[var(--border-subtle)]"
       }
       bgClass={
         hasVulns
           ? "bg-red-50 dark:bg-red-950/40"
-          : "bg-white dark:bg-zinc-900/80"
+          : "bg-[var(--surface)]"
       }
-      ringClass="ring-zinc-400"
-      iconClass="text-zinc-600 dark:text-zinc-400"
+      ringClass="ring-[var(--border-strong)]"
+      iconClass="text-[var(--text-tertiary)]"
       subtitle={
         data.version
           ? `${data.version}${data.ecosystem ? ` · ${data.ecosystem}` : ""}${provenance ? ` · ${provenance}` : ""}`
@@ -517,7 +517,7 @@ function FindingNode({
           )}
           {typeof data.cvssScore === "number" &&
           Number.isFinite(data.cvssScore) ? (
-            <span className="text-[10px] text-zinc-400">
+            <span className="text-[10px] text-[var(--text-secondary)]">
               CVSS {data.cvssScore.toFixed(1)}
             </span>
           ) : null}
@@ -721,7 +721,7 @@ function SharedServerNode({ data }: { data: LineageNodeData }) {
             </span>
           )}
           {data.packageCount !== undefined && data.packageCount > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] text-zinc-600 dark:text-zinc-300">
+            <span className="flex items-center gap-0.5 text-[10px] text-[var(--text-secondary)]">
               <Package className="w-2.5 h-2.5" /> {data.packageCount}
             </span>
           )}
@@ -747,7 +747,7 @@ function SummaryNode({ data }: { data: LineageNodeData }) {
         ? "border-orange-500 bg-orange-100 text-orange-950 dark:bg-orange-950/60 dark:text-orange-200"
         : sev === "medium"
           ? "border-yellow-500 bg-yellow-100 text-yellow-950 dark:bg-yellow-950/55 dark:text-yellow-200"
-          : "border-zinc-300 bg-white text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-200";
+          : "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--foreground)]";
   const vulnCount = data.vulnCount ?? 0;
   return (
     <div

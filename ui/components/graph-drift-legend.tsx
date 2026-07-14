@@ -71,7 +71,7 @@ export function GraphDriftLegend({
   return (
     <div
       data-testid="graph-drift-legend"
-      className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3"
+      className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -80,7 +80,7 @@ export function GraphDriftLegend({
             Drift lens
           </span>
           {comparedLabel ? (
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-[var(--text-tertiary)]">
               vs <span className="font-mono">{comparedLabel}</span>
             </span>
           ) : null}
@@ -94,7 +94,7 @@ export function GraphDriftLegend({
           className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
             active
               ? "border-sky-500/60 bg-sky-500/15 text-sky-200"
-              : "border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200"
+              : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
           }`}
         >
           {active ? "Lens on" : "Lens off"}
@@ -122,11 +122,11 @@ export function GraphDriftLegend({
                   className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                     selected
                       ? "border-sky-500/60 bg-sky-500/15 text-sky-100"
-                      : "border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200"
+                      : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
                   }`}
                 >
                   {CHIP_LABELS[chip]}
-                  <span className="ml-1.5 font-mono text-[11px] text-zinc-500">
+                  <span className="ml-1.5 font-mono text-[11px] text-[var(--text-tertiary)]">
                     {count}
                   </span>
                 </button>
@@ -151,8 +151,8 @@ export function GraphDriftLegend({
                     className="inline-block h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: meta.color }}
                   />
-                  <span className="text-[11px] text-zinc-300">{meta.label}</span>
-                  <span className="font-mono text-[11px] text-zinc-500">
+                  <span className="text-[11px] text-[var(--text-secondary)]">{meta.label}</span>
+                  <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
                     {counts[kind]}
                   </span>
                 </div>
@@ -177,7 +177,7 @@ export function GraphDriftLegend({
           ) : null}
         </>
       ) : (
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
           Turn the lens on to classify this snapshot against{" "}
           {comparedLabel ? (
             <span className="font-mono">{comparedLabel}</span>

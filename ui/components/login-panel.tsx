@@ -44,7 +44,7 @@ export function LoginPanel({
   if (loading) {
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
       </div>
     );
   }
@@ -58,18 +58,18 @@ export function LoginPanel({
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
         <div className="w-full max-w-xl rounded-3xl border border-amber-900/50 bg-amber-950/20 p-8 text-center shadow-2xl shadow-black/20">
           <ShieldCheck className="mx-auto mb-4 h-8 w-8 text-amber-300" />
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Control plane unreachable</h1>
-          <p className="mt-3 text-sm leading-6 text-zinc-400">
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--foreground)]">Control plane unreachable</h1>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
             Authentication could not be verified because the API is offline or returned a server error. The dashboard
             stays locked until session discovery succeeds.
           </p>
-          <p className="mt-2 text-xs text-zinc-500">
+          <p className="mt-2 text-xs text-[var(--text-tertiary)]">
             {userFacingApiErrorMessage(error, "Failed to load auth session")}
           </p>
           <button
             type="button"
             onClick={() => void refresh()}
-            className="mt-6 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400"
+            className="mt-6 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400"
           >
             Retry connection
           </button>
@@ -90,13 +90,13 @@ export function LoginPanel({
 
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-950/80 p-8 shadow-2xl shadow-black/20">
+        <div className="w-full max-w-md rounded-3xl border border-[var(--border-subtle)] bg-[var(--background)]/80 p-8 shadow-2xl shadow-black/20">
           <div className="mb-6 text-center">
             <div className="mx-auto mb-4 flex justify-center">
               <BrandLogo />
             </div>
-            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">{title}</h1>
-            <p className="mt-1 text-sm text-zinc-400">
+            <h1 className="text-xl font-semibold tracking-tight text-[var(--foreground)]">{title}</h1>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               {browserOidcConfigured
                 ? "Sign in with SSO, or use an API key as a fallback."
                 : "Enter your API key to access the dashboard."}
@@ -107,15 +107,15 @@ export function LoginPanel({
             <div className="mb-6">
               <a
                 href={OIDC_BROWSER_LOGIN_PATH}
-                className="flex w-full items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400"
+                className="flex w-full items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400"
               >
                 Sign in with SSO
               </a>
               {showApiKeyDivider ? (
-                <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-600">
-                  <span className="h-px flex-1 bg-zinc-800" />
+                <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-[var(--text-tertiary)]">
+                  <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
                   or use an API key
-                  <span className="h-px flex-1 bg-zinc-800" />
+                  <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
                 </div>
               ) : null}
             </div>
@@ -123,15 +123,15 @@ export function LoginPanel({
 
           {proxyOrBearerHint ? (
             <div className="mb-6">
-              <p className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-center text-sm text-zinc-400">
+              <p className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/60 px-4 py-3 text-center text-sm text-[var(--text-secondary)]">
                 {trustedProxyConfigured
                   ? "Single sign-on is handled by your reverse proxy. Continue there, or use an API key below."
                   : "Single sign-on is handled by your identity provider or reverse proxy."}
               </p>
-              <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-600">
-                <span className="h-px flex-1 bg-zinc-800" />
+              <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-[var(--text-tertiary)]">
+                <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
                 or use an API key
-                <span className="h-px flex-1 bg-zinc-800" />
+                <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
               </div>
             </div>
           ) : null}
@@ -163,28 +163,28 @@ export function LoginPanel({
           >
             <label
               htmlFor="agent-bom-browser-session-api-key"
-              className="mb-2 block text-xs uppercase tracking-[0.2em] text-zinc-500"
+              className="mb-2 block text-xs uppercase tracking-[0.2em] text-[var(--text-tertiary)]"
             >
               API key
             </label>
             <div className="relative">
-              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600" />
+              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
               <input
                 id="agent-bom-browser-session-api-key"
                 type="password"
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
-                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-9 pr-3 font-mono text-sm text-zinc-100 outline-none ring-0 placeholder:text-zinc-600 focus:border-emerald-500"
+                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] py-2.5 pl-9 pr-3 font-mono text-sm text-[var(--foreground)] outline-none ring-0 placeholder:text-[var(--text-tertiary)] focus:border-emerald-500"
                 placeholder="Paste your API key"
                 autoComplete="off"
                 autoFocus={!browserOidcConfigured}
               />
             </div>
-            <p className="mt-2 text-xs leading-5 text-zinc-500">
+            <p className="mt-2 text-xs leading-5 text-[var(--text-tertiary)]">
               No key yet? Server operators set API keys via the{" "}
-              <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-zinc-300">AGENT_BOM_API_KEYS</code> env var
+              <code className="rounded bg-[var(--surface)] px-1 py-0.5 font-mono text-[var(--text-secondary)]">AGENT_BOM_API_KEYS</code> env var
               (format{" "}
-              <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-zinc-300">&lt;key&gt;:&lt;admin|analyst|viewer&gt;</code>).
+              <code className="rounded bg-[var(--surface)] px-1 py-0.5 font-mono text-[var(--text-secondary)]">&lt;key&gt;:&lt;admin|analyst|viewer&gt;</code>).
             </p>
 
             <button
@@ -192,8 +192,8 @@ export function LoginPanel({
               disabled={!apiKey.trim()}
               className={
                 browserOidcConfigured
-                  ? "mt-5 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-950 disabled:text-zinc-600"
-                  : "mt-5 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                  ? "mt-5 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)] disabled:cursor-not-allowed disabled:border-[var(--border-subtle)] disabled:bg-[var(--background)] disabled:text-[var(--text-tertiary)]"
+                  : "mt-5 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-[var(--surface-elevated)] disabled:text-[var(--text-tertiary)]"
               }
             >
               Sign in
@@ -219,7 +219,7 @@ export function LoginPanel({
                   setApiKey("");
                   await refresh();
                 }}
-                className="text-xs text-zinc-500 underline-offset-4 transition hover:text-zinc-300 hover:underline"
+                className="text-xs text-[var(--text-tertiary)] underline-offset-4 transition hover:text-[var(--text-secondary)] hover:underline"
               >
                 Clear
               </button>
@@ -227,7 +227,7 @@ export function LoginPanel({
           </form>
 
           {!browserOidcConfigured && !proxyOrBearerHint ? (
-            <p className="mt-6 border-t border-zinc-900 pt-4 text-center text-xs text-zinc-600">
+            <p className="mt-6 border-t border-[var(--border-subtle)] pt-4 text-center text-xs text-[var(--text-tertiary)]">
               Setting up single sign-on? Configure browser OIDC, a reverse proxy, or an OIDC issuer in your deployment.
             </p>
           ) : null}

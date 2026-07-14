@@ -32,13 +32,13 @@ export function PaginationBar({
 
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 ${className}`}>
-      <p className="text-xs text-zinc-500">{summary}</p>
+      <p className="text-xs text-[var(--text-tertiary)]">{summary}</p>
       <div className="flex items-center gap-1">
         <button
           type="button"
           onClick={onPrevious}
           disabled={previousDisabled}
-          className="flex items-center gap-1 rounded-md border border-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-1 rounded-md border border-[var(--border-subtle)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-subtle)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ChevronLeft className="h-3 w-3" />
           Prev
@@ -47,7 +47,7 @@ export function PaginationBar({
           type="button"
           onClick={onNext}
           disabled={nextDisabled}
-          className="flex items-center gap-1 rounded-md border border-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-1 rounded-md border border-[var(--border-subtle)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-subtle)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           Next
           <ChevronRight className="h-3 w-3" />

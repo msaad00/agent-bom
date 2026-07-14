@@ -71,22 +71,22 @@ function ContextStats({ data, compact = false }: { data: ContextGraphData; compa
     ? [
         { label: "Agents", value: s.agent_count, color: "text-emerald-400" },
         { label: "Paths", value: s.lateral_path_count, color: "text-orange-400" },
-        { label: "Top risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-zinc-400" },
+        { label: "Top risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-[var(--text-secondary)]" },
       ]
     : [
         { label: "Agents", value: s.agent_count, color: "text-emerald-400" },
         { label: "Shared Servers", value: s.shared_server_count, color: "text-cyan-400" },
         { label: "Shared Credentials", value: s.shared_credential_count, color: "text-amber-400" },
         { label: "Lateral Paths", value: s.lateral_path_count, color: "text-orange-400" },
-        { label: "Highest Risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-zinc-400" },
+        { label: "Highest Risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-[var(--text-secondary)]" },
         { label: "Risk Patterns", value: s.interaction_risk_count, color: "text-purple-400" },
       ];
 
   return (
-    <div className={`flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 text-xs ${compact ? "py-1.5" : "py-2"}`}>
+    <div className={`flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 text-xs ${compact ? "py-1.5" : "py-2"}`}>
       {items?.map((it) => (
         <div key={it.label} className="flex items-center gap-1.5">
-          <span className="text-zinc-500">{it.label}</span>
+          <span className="text-[var(--text-tertiary)]">{it.label}</span>
           <span className={`font-semibold ${it.color}`}>{it.value}</span>
         </div>
       ))}
@@ -160,18 +160,18 @@ function LateralPanel({
   const topPaths = distinctPaths.slice(0, pathFocusActive ? 3 : 5);
 
   return (
-    <div className="w-80 shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-950">
-      <div className="p-3 border-b border-zinc-800">
-        <h3 className="text-xs font-semibold text-zinc-300 mb-1">
+    <div className="w-80 shrink-0 overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)]">
+      <div className="p-3 border-b border-[var(--border-subtle)]">
+        <h3 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">
           {agentScopeHeading(selectedAgent, agents)}
         </h3>
-        <p className="text-[10px] text-zinc-600">
+        <p className="text-[10px] text-[var(--text-tertiary)]">
           {pathFocusActive
             ? "Canvas shows the top lateral path only. Other agents appear when they share reachability — not because they are the same workload."
             : "Ranked reachability chains from scan evidence."}
         </p>
         {topPaths.length === 0 ? (
-          <p className="mt-2 text-[10px] text-zinc-600">No lateral paths found</p>
+          <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">No lateral paths found</p>
         ) : (
           <div className="mt-2 space-y-2">
             {topPaths?.map((p, i) => (
@@ -180,11 +180,11 @@ function LateralPanel({
                 className={`rounded-lg border p-2 ${
                   i === 0 && pathFocusActive
                     ? "border-orange-500/40 bg-orange-950/20"
-                    : "border-zinc-800 bg-zinc-900"
+                    : "border-[var(--border-subtle)] bg-[var(--surface)]"
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-zinc-500">
+                  <span className="text-[10px] text-[var(--text-tertiary)]">
                     {p.hops.length - 1} hop{p.hops.length - 1 !== 1 ? "s" : ""}
                   </span>
                   <span
@@ -193,13 +193,13 @@ function LateralPanel({
                         ? "text-red-400"
                         : p.composite_risk >= 4
                         ? "text-amber-400"
-                        : "text-zinc-400"
+                        : "text-[var(--text-secondary)]"
                     }`}
                   >
                     Risk {p.composite_risk.toFixed(1)}
                   </span>
                 </div>
-                <p className="break-words text-[11px] leading-relaxed text-zinc-200">
+                <p className="break-words text-[11px] leading-relaxed text-[var(--foreground)]">
                   {pathDisplayTitle(lateralPathToExposure(p, selectedAgent ?? "agent"))}
                 </p>
                 {p.credential_exposure.length > 0 && (
@@ -227,7 +227,7 @@ function LateralPanel({
       <div className="p-3">
         <button
           onClick={() => setRisksOpen(!risksOpen)}
-          className="flex items-center gap-1 text-xs font-semibold text-zinc-300 mb-2"
+          className="flex items-center gap-1 text-xs font-semibold text-[var(--text-secondary)] mb-2"
         >
           {risksOpen ? (
             <ChevronDown className="w-3 h-3" />
@@ -241,10 +241,10 @@ function LateralPanel({
             {risks?.map((r, i) => (
               <div
                 key={i}
-                className="bg-zinc-900 border border-zinc-800 rounded-lg p-2"
+                className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg p-2"
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-zinc-500 capitalize">
+                  <span className="text-[10px] text-[var(--text-tertiary)] capitalize">
                     {r.pattern.replace(/_/g, " ")}
                   </span>
                   <span
@@ -253,13 +253,13 @@ function LateralPanel({
                         ? "text-red-400"
                         : r.risk_score >= 5
                         ? "text-amber-400"
-                        : "text-zinc-400"
+                        : "text-[var(--text-secondary)]"
                     }`}
                   >
                     {r.risk_score.toFixed(1)}
                   </span>
                 </div>
-                <p className="break-words text-[10px] leading-relaxed text-zinc-400">
+                <p className="break-words text-[10px] leading-relaxed text-[var(--text-secondary)]">
                   {r.description}
                 </p>
                 {r.owasp_agentic_tag && (
@@ -569,14 +569,14 @@ export default function ContextPage() {
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
       {/* Header */}
-      <div className="flex flex-col gap-2 border-b border-zinc-800 px-4 py-2.5">
+      <div className="flex flex-col gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
+            <h1 className="text-base font-semibold text-[var(--foreground)] flex items-center gap-2">
               <Waypoints className="w-4 h-4 text-orange-400" />
               Context Map
             </h1>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-[var(--text-tertiary)]">
               Static reachability for one agent at a time. Path focus shows the highest-risk lateral chain.
             </p>
           </div>
@@ -587,7 +587,7 @@ export default function ContextPage() {
             onChange={(e) =>
               setSelectedAgent(e.target.value || null)
             }
-            className="min-w-0 max-w-[12rem] truncate rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 focus:outline-none focus:border-orange-600"
+            className="min-w-0 max-w-[12rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-orange-600"
           >
             <option value="">All agents</option>
             {agentNames?.map((name) => (
@@ -601,7 +601,7 @@ export default function ContextPage() {
           <select
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
-            className="min-w-0 max-w-[14rem] truncate rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600"
+            className="min-w-0 max-w-[14rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600"
           >
             {jobs?.map((j) => (
               <option key={j.job_id} value={j.job_id}>
@@ -613,13 +613,13 @@ export default function ContextPage() {
 
           {/* Search */}
           <div className="relative w-full min-w-0 sm:max-w-[14rem]">
-            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-[var(--text-tertiary)] absolute left-2 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search agent, server, tool, CVE"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded pl-7 pr-2 py-1 text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-600"
+              className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded pl-7 pr-2 py-1 text-xs text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-emerald-600"
             />
           </div>
 

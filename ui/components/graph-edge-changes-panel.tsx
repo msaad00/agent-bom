@@ -81,7 +81,7 @@ export function GraphEdgeChangesPanel({
   return (
     <div
       data-testid="graph-edge-changes-panel"
-      className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3"
+      className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -90,7 +90,7 @@ export function GraphEdgeChangesPanel({
             Edge changes
           </span>
           {comparedLabel ? (
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-[var(--text-tertiary)]">
               vs <span className="font-mono">{comparedLabel}</span>
             </span>
           ) : null}
@@ -101,7 +101,7 @@ export function GraphEdgeChangesPanel({
             loading
           </span>
         ) : summary ? (
-          <span className="font-mono text-[11px] text-zinc-500">
+          <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
             +{summary.added} −{summary.removed} ~{summary.changed}
           </span>
         ) : null}
@@ -110,9 +110,9 @@ export function GraphEdgeChangesPanel({
       {error ? (
         <p className="mt-2 text-xs text-amber-200">{error}</p>
       ) : loading && !changes ? (
-        <p className="mt-2 text-xs text-zinc-500">Loading edge lifecycle diff…</p>
+        <p className="mt-2 text-xs text-[var(--text-tertiary)]">Loading edge lifecycle diff…</p>
       ) : !hasDrillDown ? (
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
           No relationship additions, removals, or material changes between
           snapshots.
         </p>

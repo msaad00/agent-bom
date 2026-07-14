@@ -48,7 +48,7 @@ const MODE_COLORS: Record<PolicyMode, string> = {
 };
 
 const RUNTIME_COLORS: Record<GatewayPolicyRuntimeSummary["rollout_mode"], string> = {
-  disabled: "bg-zinc-900 text-zinc-300 border-zinc-700",
+  disabled: "bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
   advisory_only: "bg-blue-950 text-blue-300 border-blue-800",
   mixed: "bg-amber-950 text-amber-300 border-amber-800",
   default_deny: "bg-red-950 text-red-300 border-red-800",
@@ -165,7 +165,7 @@ export default function GatewayPage() {
             <Lock className="w-6 h-6 text-blue-400" />
             Gateway Policies
           </h1>
-          <p className="text-zinc-400 text-sm mt-1">
+          <p className="text-[var(--text-secondary)] text-sm mt-1">
             Runtime MCP gateway rules with policy-as-code enforcement
           </p>
         </div>
@@ -189,7 +189,7 @@ export default function GatewayPage() {
             <FirewallRuntimeCard runtime={stats.firewall_runtime} />
           )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Total Policies" value={stats.total_policies} icon={Lock} color="text-zinc-400" />
+            <StatCard label="Total Policies" value={stats.total_policies} icon={Lock} color="text-[var(--text-secondary)]" />
             <StatCard label="Enforce Mode" value={stats.enforce_count} icon={ShieldAlert} color="text-red-400" />
             <StatCard label="Audit Mode" value={stats.audit_count} icon={ShieldCheck} color="text-blue-400" />
             <StatCard label="Blocked" value={stats.blocked_count} icon={ShieldAlert} color="text-orange-400" />
@@ -205,8 +205,8 @@ export default function GatewayPage() {
             onClick={() => setTab(t)}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 ${
               tab === t
-                ? "bg-zinc-800 text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900"
+                ? "bg-[var(--surface-elevated)] text-[var(--foreground)]"
+                : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface)]"
             }`}
           >
             {t === "feed" && <Activity className="w-3.5 h-3.5" />}
@@ -229,7 +229,7 @@ export default function GatewayPage() {
       {/* Loading */}
       {loading && tab !== "feed" && (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+          <Loader2 className="w-6 h-6 animate-spin text-[var(--text-tertiary)]" />
         </div>
       )}
 
@@ -238,8 +238,8 @@ export default function GatewayPage() {
         <div className="text-center py-10 border border-dashed border-red-900/50 rounded-xl space-y-3">
           <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
           <p className="text-red-400 text-sm">Failed to load gateway data</p>
-          <p className="text-zinc-500 text-xs">{error}</p>
-          <button onClick={load} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors">
+          <p className="text-[var(--text-tertiary)] text-xs">{error}</p>
+          <button onClick={load} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors">
             <RefreshCw className="w-3.5 h-3.5" /> Retry
           </button>
         </div>
@@ -247,24 +247,24 @@ export default function GatewayPage() {
 
       {/* Create modal */}
       {showCreate && (
-        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-zinc-100">New Gateway Policy</h3>
+        <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">New Gateway Policy</h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-zinc-500 block mb-1">Name</label>
+              <label className="text-xs text-[var(--text-tertiary)] block mb-1">Name</label>
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-600"
+                className="w-full bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-3 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-600"
                 placeholder="block-exec-tools"
               />
             </div>
             <div>
-              <label className="text-xs text-zinc-500 block mb-1">Mode</label>
+              <label className="text-xs text-[var(--text-tertiary)] block mb-1">Mode</label>
               <select
                 value={newMode}
                 onChange={(e) => setNewMode(e.target.value as PolicyMode)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-600"
+                className="w-full bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-3 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-600"
               >
                 <option value="audit">Audit (log only)</option>
                 <option value="enforce">Enforce (block)</option>
@@ -272,27 +272,27 @@ export default function GatewayPage() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-zinc-500 block mb-1">Block Tools (comma-separated)</label>
+            <label className="text-xs text-[var(--text-tertiary)] block mb-1">Block Tools (comma-separated)</label>
             <input
               value={newBlockTools}
               onChange={(e) => setNewBlockTools(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-600"
+              className="w-full bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-3 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-600"
               placeholder="execute_command, write_file, http_request"
             />
           </div>
           <div>
-            <label className="text-xs text-zinc-500 block mb-1">Description</label>
+            <label className="text-xs text-[var(--text-tertiary)] block mb-1">Description</label>
             <input
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-600"
+              className="w-full bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-3 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-600"
               placeholder="Block dangerous command execution tools"
             />
           </div>
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => setShowCreate(false)}
-              className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
             >
               Cancel
             </button>
@@ -311,12 +311,12 @@ export default function GatewayPage() {
       {!loading && tab === "policies" && (
         <>
           {policies.length === 0 && (
-            <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-              <Lock className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-              <p className="text-zinc-500 text-sm">
+            <div className="text-center py-16 border border-dashed border-[var(--border-subtle)] rounded-xl">
+              <Lock className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
+              <p className="text-[var(--text-tertiary)] text-sm">
                 {gatewayUnavailable ? "Gateway not enabled for this estate." : "No gateway policies yet."}
               </p>
-              <p className="text-zinc-600 text-xs mt-1">
+              <p className="text-[var(--text-tertiary)] text-xs mt-1">
                 {gatewayUnavailable
                   ? "Enable the runtime gateway to manage shared MCP policy enforcement."
                   : "Create a policy to define runtime MCP tool enforcement rules."}
@@ -327,24 +327,24 @@ export default function GatewayPage() {
             {policies?.map((policy) => {
               const isExpanded = expanded.has(policy.policy_id);
               return (
-                <div key={policy.policy_id} className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                <div key={policy.policy_id} className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
                   <button
                     onClick={() => toggleExpand(policy.policy_id)}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/50 transition-colors"
+                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--surface-elevated)]/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      {isExpanded ? <ChevronDown className="w-4 h-4 text-zinc-500" /> : <ChevronRight className="w-4 h-4 text-zinc-500" />}
-                      <span className="font-medium text-zinc-100">{policy.name}</span>
+                      {isExpanded ? <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)]" />}
+                      <span className="font-medium text-[var(--foreground)]">{policy.name}</span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded border ${MODE_COLORS[policy.mode]}`}>
                         {policy.mode}
                       </span>
                       {!policy.enabled && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-500 border-zinc-800">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded border bg-[var(--surface)] text-[var(--text-tertiary)] border-[var(--border-subtle)]">
                           disabled
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-zinc-500">
+                    <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
                       <span>{policy.rules.length} rule{policy.rules.length !== 1 ? "s" : ""}</span>
                       {policy.bound_agents.length > 0 && (
                         <span>{policy.bound_agents.length} bound</span>
@@ -352,18 +352,18 @@ export default function GatewayPage() {
                     </div>
                   </button>
                   {isExpanded && (
-                    <div className="border-t border-zinc-800 px-4 py-3 space-y-3">
+                    <div className="border-t border-[var(--border-subtle)] px-4 py-3 space-y-3">
                       {policy.description && (
-                        <p className="text-xs text-zinc-400">{policy.description}</p>
+                        <p className="text-xs text-[var(--text-secondary)]">{policy.description}</p>
                       )}
                       {/* Rules */}
                       {policy.rules.length > 0 && (
                         <div>
-                          <span className="text-xs text-zinc-500 block mb-1">Rules</span>
+                          <span className="text-xs text-[var(--text-tertiary)] block mb-1">Rules</span>
                           <div className="space-y-1">
                             {policy.rules?.map((rule) => (
-                              <div key={rule.id} className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-zinc-400">
-                                <span className="text-zinc-200 font-mono">{rule.id}</span>
+                              <div key={rule.id} className="text-xs bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-2 py-1.5 text-[var(--text-secondary)]">
+                                <span className="text-[var(--foreground)] font-mono">{rule.id}</span>
                                 {rule.description && <span className="ml-2">{rule.description}</span>}
                                 {rule.block_tools.length > 0 && (
                                   <span className="ml-2 text-red-400">
@@ -383,27 +383,27 @@ export default function GatewayPage() {
                       {/* Detail grid */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                         <div>
-                          <span className="text-zinc-500">Created</span>
-                          <div className="text-zinc-300 mt-0.5">{policy.created_at ? formatDate(policy.created_at) : "—"}</div>
+                          <span className="text-[var(--text-tertiary)]">Created</span>
+                          <div className="text-[var(--text-secondary)] mt-0.5">{policy.created_at ? formatDate(policy.created_at) : "—"}</div>
                         </div>
                         <div>
-                          <span className="text-zinc-500">Updated</span>
-                          <div className="text-zinc-300 mt-0.5">{policy.updated_at ? formatDate(policy.updated_at) : "—"}</div>
+                          <span className="text-[var(--text-tertiary)]">Updated</span>
+                          <div className="text-[var(--text-secondary)] mt-0.5">{policy.updated_at ? formatDate(policy.updated_at) : "—"}</div>
                         </div>
                         <div>
-                          <span className="text-zinc-500">Bound Agents</span>
-                          <div className="text-zinc-300 mt-0.5">{policy.bound_agents.length > 0 ? policy.bound_agents.join(", ") : "All"}</div>
+                          <span className="text-[var(--text-tertiary)]">Bound Agents</span>
+                          <div className="text-[var(--text-secondary)] mt-0.5">{policy.bound_agents.length > 0 ? policy.bound_agents.join(", ") : "All"}</div>
                         </div>
                         <div>
-                          <span className="text-zinc-500">Environments</span>
-                          <div className="text-zinc-300 mt-0.5">{policy.bound_environments.length > 0 ? policy.bound_environments.join(", ") : "All"}</div>
+                          <span className="text-[var(--text-tertiary)]">Environments</span>
+                          <div className="text-[var(--text-secondary)] mt-0.5">{policy.bound_environments.length > 0 ? policy.bound_environments.join(", ") : "All"}</div>
                         </div>
                       </div>
                       {/* Actions */}
                       <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => { e.stopPropagation(); void handleToggleEnabled(policy); }}
-                          className="text-[10px] px-2 py-0.5 rounded border transition-colors hover:opacity-80 bg-zinc-800 text-zinc-300 border-zinc-700"
+                          className="text-[10px] px-2 py-0.5 rounded border transition-colors hover:opacity-80 bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]"
                         >
                           {policy.enabled ? "Disable" : "Enable"}
                         </button>
@@ -428,9 +428,9 @@ export default function GatewayPage() {
       {!loading && tab === "audit" && (
         <>
           {audit.length === 0 ? (
-            <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-              <FileText className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-              <p className="text-zinc-500 text-sm">No audit entries yet.</p>
+            <div className="text-center py-16 border border-dashed border-[var(--border-subtle)] rounded-xl">
+              <FileText className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
+              <p className="text-[var(--text-tertiary)] text-sm">No audit entries yet.</p>
             </div>
           ) : (
             <>
@@ -451,9 +451,9 @@ export default function GatewayPage() {
                   .slice(0, 10)
                   .map(([tool, counts]) => ({ tool: tool.length > 16 ? tool.slice(0, 14) + "…" : tool, ...counts }));
                 return (
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                    <h3 className="text-sm font-semibold text-zinc-300 mb-1">Enforcement Actions by Tool</h3>
-                    <p className="text-[10px] text-zinc-600 mb-4">Top tools by blocked + alerted count</p>
+                  <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-1">Enforcement Actions by Tool</h3>
+                    <p className="text-[10px] text-[var(--text-tertiary)] mb-4">Top tools by blocked + alerted count</p>
                     <div className="h-44">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
@@ -472,7 +472,7 @@ export default function GatewayPage() {
               })()}
             <div className="space-y-1">
               {audit?.map((entry) => (
-                <div key={entry.entry_id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 flex items-center justify-between">
+                <div key={entry.entry_id} className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-4 py-2 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                       entry.action_taken === "blocked"
@@ -483,11 +483,11 @@ export default function GatewayPage() {
                     }`}>
                       {entry.action_taken}
                     </span>
-                    <span className="text-xs text-zinc-300 font-mono">{entry.tool_name}</span>
-                    <span className="text-xs text-zinc-500">{entry.agent_name || "—"}</span>
-                    <span className="text-xs text-zinc-600 truncate max-w-xs">{entry.reason}</span>
+                    <span className="text-xs text-[var(--text-secondary)] font-mono">{entry.tool_name}</span>
+                    <span className="text-xs text-[var(--text-tertiary)]">{entry.agent_name || "—"}</span>
+                    <span className="text-xs text-[var(--text-tertiary)] truncate max-w-xs">{entry.reason}</span>
                   </div>
-                  <span className="text-xs text-zinc-600">{entry.timestamp ? formatDate(entry.timestamp) : ""}</span>
+                  <span className="text-xs text-[var(--text-tertiary)]">{entry.timestamp ? formatDate(entry.timestamp) : ""}</span>
                 </div>
               ))}
             </div>
@@ -498,30 +498,30 @@ export default function GatewayPage() {
 
       {/* Evaluate tab */}
       {!loading && tab === "evaluate" && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+        <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
             <Play className="w-4 h-4 text-blue-400" />
             Dry-Run Evaluation
           </h3>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-[var(--text-tertiary)]">
             Test how gateway policies would evaluate a tool call without actually making one.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-zinc-500 block mb-1">Tool Name</label>
+              <label className="text-xs text-[var(--text-tertiary)] block mb-1">Tool Name</label>
               <input
                 value={evalTool}
                 onChange={(e) => setEvalTool(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-100 font-mono focus:outline-none focus:border-blue-600"
+                className="w-full bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-3 py-1.5 text-sm text-[var(--foreground)] font-mono focus:outline-none focus:border-blue-600"
                 placeholder="execute_command"
               />
             </div>
             <div>
-              <label className="text-xs text-zinc-500 block mb-1">Arguments (JSON)</label>
+              <label className="text-xs text-[var(--text-tertiary)] block mb-1">Arguments (JSON)</label>
               <input
                 value={evalArgs}
                 onChange={(e) => setEvalArgs(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-100 font-mono focus:outline-none focus:border-blue-600"
+                className="w-full bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-3 py-1.5 text-sm text-[var(--foreground)] font-mono focus:outline-none focus:border-blue-600"
                 placeholder='{"command": "rm -rf /"}'
               />
             </div>
@@ -551,7 +551,7 @@ export default function GatewayPage() {
                 </span>
               </div>
               {evalResult.reason && (
-                <p className="text-xs text-zinc-400 mt-1">{evalResult.reason}</p>
+                <p className="text-xs text-[var(--text-secondary)] mt-1">{evalResult.reason}</p>
               )}
             </div>
           )}
@@ -575,10 +575,10 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
       <Icon className={`w-4 h-4 mb-2 ${color}`} />
       <div className="text-2xl font-bold font-mono">{value}</div>
-      <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
+      <div className="text-xs text-[var(--text-tertiary)] mt-0.5">{label}</div>
     </div>
   );
 }
@@ -599,29 +599,29 @@ function RuntimePostureCard({ runtime }: { runtime: GatewayPolicyRuntimeSummary 
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(9,9,11,0.98))] p-5">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(9,9,11,0.98))] p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
               Runtime posture
             </span>
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] ${RUNTIME_COLORS[runtime.rollout_mode]}`}>
               {runtime.rollout_mode.replaceAll("_", " ")}
             </span>
           </div>
-          <p className="max-w-2xl text-sm text-zinc-300">{runtime.summary}</p>
+          <p className="max-w-2xl text-sm text-[var(--text-secondary)]">{runtime.summary}</p>
           {runtime.denied_tool_classes.length > 0 && (
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-[var(--text-tertiary)]">
               Denied tool classes: {runtime.denied_tool_classes.join(", ")}
             </p>
           )}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {highlights.map((item) => (
-            <div key={item.label} className="rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{item.label}</div>
-              <div className="mt-1 text-sm font-semibold text-zinc-100">{item.value}</div>
+            <div key={item.label} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/80 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">{item.label}</div>
+              <div className="mt-1 text-sm font-semibold text-[var(--foreground)]">{item.value}</div>
             </div>
           ))}
         </div>
@@ -645,25 +645,25 @@ function FirewallRuntimeCard({ runtime }: { runtime: FirewallRuntimeStats }) {
   const enforcementMode = runtime.recent[0]?.enforcement_mode ?? null;
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(9,9,11,0.98))] p-5 space-y-4">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(9,9,11,0.98))] p-5 space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
               Inter-agent firewall
             </span>
             {enforcementMode && (
-              <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-300">
+              <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-secondary)]">
                 {enforcementMode === "dry_run" ? "dry run" : enforcementMode}
               </span>
             )}
           </div>
-          <p className="max-w-2xl text-sm text-zinc-300">
+          <p className="max-w-2xl text-sm text-[var(--text-secondary)]">
             {runtime.total_decisions} agent → agent decision(s) seen across the runtime plane. Last seen {lastSeen}.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          <FirewallStat label="Total" value={runtime.total_decisions} tone="text-zinc-100" />
+          <FirewallStat label="Total" value={runtime.total_decisions} tone="text-[var(--foreground)]" />
           <FirewallStat label="Allow" value={runtime.allow} tone="text-emerald-400" />
           <FirewallStat label="Warn" value={runtime.warn} tone="text-amber-400" />
           <FirewallStat label="Deny" value={runtime.deny} tone="text-rose-400" />
@@ -671,16 +671,16 @@ function FirewallRuntimeCard({ runtime }: { runtime: FirewallRuntimeStats }) {
       </div>
       {runtime.top_pairs.length > 0 && (
         <div>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-2">Top pairs</div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] mb-2">Top pairs</div>
           <div className="flex flex-wrap gap-2">
             {runtime.top_pairs.map((p) => (
               <div
                 key={`${p.source_agent}->${p.target_agent}`}
-                className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs"
+                className="flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--background)]/80 px-3 py-1.5 text-xs"
               >
-                <span className="font-medium text-zinc-200">{p.source_agent}</span>
-                <span className="text-zinc-500">→</span>
-                <span className="font-medium text-zinc-200">{p.target_agent}</span>
+                <span className="font-medium text-[var(--foreground)]">{p.source_agent}</span>
+                <span className="text-[var(--text-tertiary)]">→</span>
+                <span className="font-medium text-[var(--foreground)]">{p.target_agent}</span>
                 {p.deny > 0 && <span className="text-rose-400">{p.deny}d</span>}
                 {p.warn > 0 && <span className="text-amber-400">{p.warn}w</span>}
                 {p.allow > 0 && <span className="text-emerald-400">{p.allow}a</span>}
@@ -691,12 +691,12 @@ function FirewallRuntimeCard({ runtime }: { runtime: FirewallRuntimeStats }) {
       )}
       {runtime.recent.length > 0 && (
         <div>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-2">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] mb-2">
             Recent decisions
           </div>
-          <div className="overflow-hidden rounded-lg border border-zinc-800">
+          <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
             <table className="w-full text-xs">
-              <thead className="bg-zinc-900/60 text-zinc-500 uppercase tracking-[0.14em] text-[10px]">
+              <thead className="bg-[var(--surface)]/60 text-[var(--text-tertiary)] uppercase tracking-[0.14em] text-[10px]">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium">When</th>
                   <th className="text-left px-3 py-2 font-medium">Source → Target</th>
@@ -704,26 +704,26 @@ function FirewallRuntimeCard({ runtime }: { runtime: FirewallRuntimeStats }) {
                   <th className="text-left px-3 py-2 font-medium">Rule</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-900">
+              <tbody className="divide-y divide-[var(--border-subtle)]">
                 {runtime.recent.slice(0, 10).map((r, idx) => (
-                  <tr key={`${r.timestamp}-${idx}`} className="bg-zinc-950/40">
-                    <td className="px-3 py-2 text-zinc-400">
+                  <tr key={`${r.timestamp}-${idx}`} className="bg-[var(--background)]/40">
+                    <td className="px-3 py-2 text-[var(--text-secondary)]">
                       {r.timestamp ? new Date(r.timestamp * 1000).toLocaleTimeString() : "—"}
                     </td>
-                    <td className="px-3 py-2 text-zinc-200">
+                    <td className="px-3 py-2 text-[var(--foreground)]">
                       <span>{r.source_agent}</span>
-                      <span className="text-zinc-500 mx-1">→</span>
+                      <span className="text-[var(--text-tertiary)] mx-1">→</span>
                       <span>{r.target_agent}</span>
                     </td>
                     <td className={`px-3 py-2 font-semibold ${FIREWALL_DECISION_COLORS[r.effective_decision]}`}>
                       {r.effective_decision.toUpperCase()}
                       {r.decision !== r.effective_decision && (
-                        <span className="text-zinc-500 ml-1">
+                        <span className="text-[var(--text-tertiary)] ml-1">
                           (was {r.decision})
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-zinc-400">
+                    <td className="px-3 py-2 text-[var(--text-secondary)]">
                       {r.matched_rule
                         ? r.matched_rule.description || `${r.matched_rule.source} → ${r.matched_rule.target}`
                         : "default"}
@@ -741,8 +741,8 @@ function FirewallRuntimeCard({ runtime }: { runtime: FirewallRuntimeStats }) {
 
 function FirewallStat({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/80 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">{label}</div>
       <div className={`mt-1 text-sm font-semibold ${tone}`}>{value}</div>
     </div>
   );

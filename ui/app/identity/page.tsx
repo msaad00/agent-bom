@@ -52,7 +52,7 @@ function Badge({
     blue: "bg-blue-900/60 text-blue-300",
     red: "bg-red-900/60 text-red-300",
     amber: "bg-amber-900/60 text-amber-300",
-    zinc: "bg-zinc-800 text-zinc-400",
+    zinc: "bg-[var(--surface-elevated)] text-[var(--text-secondary)]",
   } as const;
   return (
     <span
@@ -94,12 +94,12 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
       <div className="mb-1 flex items-center gap-2">
         <Icon className={`h-4 w-4 ${color}`} />
-        <span className="text-xs text-zinc-500">{label}</span>
+        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-zinc-100">
+      <p className="text-2xl font-bold text-[var(--foreground)]">
         {value.toLocaleString()}
       </p>
     </div>
@@ -175,55 +175,55 @@ function CredentialExpiryPanel({ report }: { report: CredentialExpiryReport }) {
         : "green";
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
       <div className="mb-3 flex items-center gap-2">
         <KeyRound className="h-4 w-4 text-amber-400" />
-        <h3 className="text-sm font-semibold text-zinc-300">
+        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
           Credential expiry &amp; rotation
         </h3>
         <Badge tone={statusTone}>{report.status.replace(/_/g, " ")}</Badge>
-        <span className="ml-auto text-xs text-zinc-600">
+        <span className="ml-auto text-xs text-[var(--text-tertiary)]">
           {report.evaluated} evaluated · reference-only, no secret values
         </span>
       </div>
       <div className="mb-3 grid grid-cols-3 gap-3">
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-          <span className="text-xs text-zinc-500">Expired / overdue</span>
+        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
+          <span className="text-xs text-[var(--text-tertiary)]">Expired / overdue</span>
           <p
-            className={`text-xl font-bold ${overdue > 0 ? "text-red-400" : "text-zinc-100"}`}
+            className={`text-xl font-bold ${overdue > 0 ? "text-red-400" : "text-[var(--foreground)]"}`}
           >
             {overdue.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-          <span className="text-xs text-zinc-500">Expiring / rotation due</span>
+        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
+          <span className="text-xs text-[var(--text-tertiary)]">Expiring / rotation due</span>
           <p
-            className={`text-xl font-bold ${expiring > 0 ? "text-amber-400" : "text-zinc-100"}`}
+            className={`text-xl font-bold ${expiring > 0 ? "text-amber-400" : "text-[var(--foreground)]"}`}
           >
             {expiring.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-          <span className="text-xs text-zinc-500">Healthy</span>
-          <p className="text-xl font-bold text-zinc-100">
+        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
+          <span className="text-xs text-[var(--text-tertiary)]">Healthy</span>
+          <p className="text-xl font-bold text-[var(--foreground)]">
             {(report.counts.ok ?? 0).toLocaleString()}
           </p>
         </div>
       </div>
       {report.evaluated === 0 ? (
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-[var(--text-tertiary)]">
           No control-plane secrets or discovered NHI credentials carry an age or
           expiry signal yet.
         </p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-[var(--text-tertiary)]">
           All evaluated credentials are within rotation and expiry bounds.
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+              <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
                 <th className="pb-2 font-medium">Credential</th>
                 <th className="pb-2 font-medium">Provider</th>
                 <th className="pb-2 font-medium">State</th>
@@ -235,21 +235,21 @@ function CredentialExpiryPanel({ report }: { report: CredentialExpiryReport }) {
               {rows.map((c, i) => (
                 <tr
                   key={`${c.id ?? c.name ?? "cred"}-${i}`}
-                  className="border-b border-zinc-900 last:border-0"
+                  className="border-b border-[var(--border-subtle)] last:border-0"
                 >
-                  <td className="py-2 font-medium text-zinc-200">
+                  <td className="py-2 font-medium text-[var(--foreground)]">
                     {c.name ?? c.id ?? "—"}
                   </td>
-                  <td className="py-2 text-zinc-400">{c.provider ?? "—"}</td>
+                  <td className="py-2 text-[var(--text-secondary)]">{c.provider ?? "—"}</td>
                   <td className="py-2">
                     <Badge tone={credStateTone(c.state)}>
                       {c.state.replace(/_/g, " ")}
                     </Badge>
                   </td>
-                  <td className="py-2 text-right text-zinc-400">
+                  <td className="py-2 text-right text-[var(--text-secondary)]">
                     {c.age_days != null ? `${c.age_days}d` : "—"}
                   </td>
-                  <td className="py-2 text-right text-zinc-400">
+                  <td className="py-2 text-right text-[var(--text-secondary)]">
                     {c.days_until_expiry != null
                       ? `${c.days_until_expiry}d`
                       : "—"}
@@ -270,17 +270,17 @@ function AccessReviewPanel({
   campaigns: AccessReviewCampaign[];
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
       <div className="mb-3 flex items-center gap-2">
         <CalendarCheck className="h-4 w-4 text-emerald-400" />
-        <h3 className="text-sm font-semibold text-zinc-300">
+        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
           Access-review campaigns
         </h3>
       </div>
       {campaigns.length === 0 ? (
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-[var(--text-tertiary)]">
           No recertification campaigns. Create one via{" "}
-          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
+          <code className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
             POST /v1/identities/access-reviews
           </code>{" "}
           to schedule a review of non-human identities and their effective
@@ -290,7 +290,7 @@ function AccessReviewPanel({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+              <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
                 <th className="pb-2 font-medium">Campaign</th>
                 <th className="pb-2 font-medium">Status</th>
                 <th className="pb-2 text-right font-medium">Reviewed</th>
@@ -301,18 +301,18 @@ function AccessReviewPanel({
               {campaigns.map((c) => (
                 <tr
                   key={c.campaign_id}
-                  className="border-b border-zinc-900 last:border-0"
+                  className="border-b border-[var(--border-subtle)] last:border-0"
                 >
-                  <td className="py-2 font-medium text-zinc-200">{c.name}</td>
+                  <td className="py-2 font-medium text-[var(--foreground)]">{c.name}</td>
                   <td className="py-2">
                     <Badge tone={campaignTone(c.status)}>
                       {c.status.replace(/_/g, " ")}
                     </Badge>
                   </td>
-                  <td className="py-2 text-right text-zinc-400">
+                  <td className="py-2 text-right text-[var(--text-secondary)]">
                     {c.decided_count} / {c.item_count}
                   </td>
-                  <td className="py-2 text-zinc-500">
+                  <td className="py-2 text-[var(--text-tertiary)]">
                     {c.due_at ? formatDate(c.due_at) : "—"}
                   </td>
                 </tr>
@@ -340,19 +340,19 @@ function NhiDiscoveryPanel({
     (discovery.count === 0 && enabledProviders.length === 0);
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
       <div className="mb-3 flex items-center gap-2">
         <Radar className="h-4 w-4 text-sky-400" />
-        <h3 className="text-sm font-semibold text-zinc-300">
+        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
           Discovered non-human identities
         </h3>
       </div>
       {disabled ? (
-        <div className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-400">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+        <div className="flex items-start gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3 text-sm text-[var(--text-secondary)]">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-tertiary)]" />
           <span>
             NHI discovery is disabled. Enable an IdP connector (Okta / Entra) via
-            its <code className="text-zinc-300">*_DISCOVERY</code> environment
+            its <code className="text-[var(--text-secondary)]">*_DISCOVERY</code> environment
             flag and token to enumerate service accounts and service principals.
             Discovery is read-only and reference-only — it never reads secret
             material.
@@ -361,22 +361,22 @@ function NhiDiscoveryPanel({
       ) : (
         <>
           <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-              <span className="text-xs text-zinc-500">Identities</span>
-              <p className="text-xl font-bold text-zinc-100">
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
+              <span className="text-xs text-[var(--text-tertiary)]">Identities</span>
+              <p className="text-xl font-bold text-[var(--foreground)]">
                 {discovery.count.toLocaleString()}
               </p>
             </div>
             {discovery.providers.map((p) => (
               <div
                 key={p.provider ?? "provider"}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3"
               >
-                <span className="text-xs capitalize text-zinc-500">
+                <span className="text-xs capitalize text-[var(--text-tertiary)]">
                   {p.provider ?? "provider"}
                 </span>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-xl font-bold text-zinc-100">
+                  <p className="text-xl font-bold text-[var(--foreground)]">
                     {p.count.toLocaleString()}
                   </p>
                   <Badge tone={p.status === "ok" ? "green" : "zinc"}>
@@ -387,7 +387,7 @@ function NhiDiscoveryPanel({
             ))}
           </div>
           {discovery.warnings.length > 0 && (
-            <ul className="space-y-1 text-xs text-zinc-500">
+            <ul className="space-y-1 text-xs text-[var(--text-tertiary)]">
               {discovery.warnings.map((w, i) => (
                 <li key={i}>· {w}</li>
               ))}
@@ -491,8 +491,8 @@ export default function IdentityPage() {
       <div className="flex items-center gap-2">
         <Fingerprint className="h-6 w-6 text-indigo-400" />
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-100">Identity</h1>
-          <p className="text-sm text-zinc-500">
+          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Identity</h1>
+          <p className="text-sm text-[var(--text-tertiary)]">
             Managed agent identities, just-in-time access, and context-aware
             conditional access.
           </p>
@@ -522,7 +522,7 @@ export default function IdentityPage() {
           icon={Ban}
           label="Revoked / expired"
           value={inactiveIdentities}
-          color="text-zinc-400"
+          color="text-[var(--text-secondary)]"
         />
       </div>
 
@@ -541,17 +541,17 @@ export default function IdentityPage() {
       <NhiDiscoveryPanel discovery={discovery} />
 
       {identities.length > 0 && (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <Fingerprint className="h-4 w-4 text-indigo-400" />
-            <h3 className="text-sm font-semibold text-zinc-300">
+            <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
               Managed identities
             </h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
                   <th className="pb-2 font-medium">Agent</th>
                   <th className="pb-2 font-medium">Role</th>
                   <th className="pb-2 font-medium">Status</th>
@@ -564,28 +564,28 @@ export default function IdentityPage() {
                 {identities.map((i) => (
                   <tr
                     key={i.identity_id}
-                    className="border-b border-zinc-900 last:border-0"
+                    className="border-b border-[var(--border-subtle)] last:border-0"
                   >
-                    <td className="py-2 font-medium text-zinc-200">
+                    <td className="py-2 font-medium text-[var(--foreground)]">
                       {i.agent_id}
                     </td>
-                    <td className="py-2 text-zinc-400">{i.role}</td>
+                    <td className="py-2 text-[var(--text-secondary)]">{i.role}</td>
                     <td className="py-2">
                       <Badge tone={identityTone(i.status)}>{i.status}</Badge>
                     </td>
-                    <td className="py-2 text-zinc-400">
+                    <td className="py-2 text-[var(--text-secondary)]">
                       {i.allowed_tools.length === 0 ? (
-                        <span className="text-zinc-600">any tool</span>
+                        <span className="text-[var(--text-tertiary)]">any tool</span>
                       ) : (
                         <span className="font-mono text-xs">
                           {i.allowed_tools.join(", ")}
                         </span>
                       )}
                     </td>
-                    <td className="py-2 font-mono text-xs text-zinc-500">
+                    <td className="py-2 font-mono text-xs text-[var(--text-tertiary)]">
                       abi_{i.token_prefix}…
                     </td>
-                    <td className="py-2 text-zinc-500">
+                    <td className="py-2 text-[var(--text-tertiary)]">
                       {i.expires_at ? formatDate(i.expires_at) : "—"}
                     </td>
                   </tr>
@@ -597,17 +597,17 @@ export default function IdentityPage() {
       )}
 
       {grants.length > 0 && (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-emerald-400" />
-            <h3 className="text-sm font-semibold text-zinc-300">
+            <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
               JIT access grants
             </h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
                   <th className="pb-2 font-medium">Tool</th>
                   <th className="pb-2 font-medium">Agent</th>
                   <th className="pb-2 font-medium">Status</th>
@@ -620,22 +620,22 @@ export default function IdentityPage() {
                 {grants.map((g) => (
                   <tr
                     key={g.grant_id}
-                    className="border-b border-zinc-900 last:border-0"
+                    className="border-b border-[var(--border-subtle)] last:border-0"
                   >
-                    <td className="py-2 font-mono text-xs text-zinc-200">
+                    <td className="py-2 font-mono text-xs text-[var(--foreground)]">
                       {g.tool_name}
                     </td>
-                    <td className="py-2 text-zinc-400">{g.agent_id}</td>
+                    <td className="py-2 text-[var(--text-secondary)]">{g.agent_id}</td>
                     <td className="py-2">
                       <Badge tone={jitTone(g.status)}>{g.status}</Badge>
                     </td>
-                    <td className="py-2 font-mono text-xs text-zinc-500">
+                    <td className="py-2 font-mono text-xs text-[var(--text-tertiary)]">
                       {g.ticket_id || "—"}
                     </td>
-                    <td className="py-2 text-zinc-400">
+                    <td className="py-2 text-[var(--text-secondary)]">
                       {g.approved_by || "—"}
                     </td>
-                    <td className="py-2 text-zinc-500">
+                    <td className="py-2 text-[var(--text-tertiary)]">
                       {g.expires_at ? formatDate(g.expires_at) : "—"}
                     </td>
                   </tr>
@@ -647,10 +647,10 @@ export default function IdentityPage() {
       )}
 
       {policies.length > 0 && (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-blue-400" />
-            <h3 className="text-sm font-semibold text-zinc-300">
+            <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
               Conditional-access policies
             </h3>
           </div>
@@ -660,10 +660,10 @@ export default function IdentityPage() {
               .map((p) => (
                 <div
                   key={p.policy_id}
-                  className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"
+                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-zinc-200">
+                    <span className="text-sm font-medium text-[var(--foreground)]">
                       {p.name}
                     </span>
                     <Badge tone={p.effect === "deny" ? "red" : "blue"}>
@@ -672,16 +672,16 @@ export default function IdentityPage() {
                     <Badge tone={p.status === "active" ? "green" : "zinc"}>
                       {p.status}
                     </Badge>
-                    <span className="text-xs text-zinc-600">
+                    <span className="text-xs text-[var(--text-tertiary)]">
                       priority {p.priority}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-xs text-zinc-400">
-                    <span className="text-zinc-500">scope:</span>{" "}
+                  <p className="mt-1.5 text-xs text-[var(--text-secondary)]">
+                    <span className="text-[var(--text-tertiary)]">scope:</span>{" "}
                     {scopeSummary(p)}
                   </p>
-                  <p className="mt-0.5 text-xs text-zinc-400">
-                    <span className="text-zinc-500">when:</span>{" "}
+                  <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                    <span className="text-[var(--text-tertiary)]">when:</span>{" "}
                     {conditionSummary(p)}
                   </p>
                 </div>

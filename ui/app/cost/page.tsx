@@ -71,12 +71,12 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
       <div className="mb-1 flex items-center gap-2">
         <Icon className={`h-4 w-4 ${color}`} />
-        <span className="text-xs text-zinc-500">{label}</span>
+        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-zinc-100">{value}</p>
+      <p className="text-2xl font-bold text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
@@ -84,9 +84,9 @@ function StatCard({
 function BudgetBanner({ budget }: { budget: CostReport["budget"] }) {
   if (!budget?.configured) {
     return (
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
+      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-4 text-sm text-[var(--text-secondary)]">
         No spend budget configured for this tenant. Set one via{" "}
-        <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
+        <code className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
           POST /v1/observability/costs/budget
         </code>{" "}
         to enable pre-invocation enforcement at the gateway.
@@ -106,7 +106,7 @@ function BudgetBanner({ budget }: { budget: CostReport["budget"] }) {
       className={`rounded-xl border p-4 ${
         budget.exceeded
           ? "border-red-800/60 bg-red-950/20"
-          : "border-zinc-800 bg-zinc-900/40"
+          : "border-[var(--border-subtle)] bg-[var(--surface)]/40"
       }`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -114,14 +114,14 @@ function BudgetBanner({ budget }: { budget: CostReport["budget"] }) {
           <Gauge
             className={`h-4 w-4 ${budget.exceeded ? "text-red-400" : "text-emerald-400"}`}
           />
-          <span className="text-sm font-medium text-zinc-200">
+          <span className="text-sm font-medium text-[var(--foreground)]">
             Budget {budget.agent ? `· agent ${budget.agent}` : "· tenant-wide"}
           </span>
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               enforce
                 ? "bg-emerald-900/60 text-emerald-300"
-                : "bg-zinc-800 text-zinc-400"
+                : "bg-[var(--surface-elevated)] text-[var(--text-secondary)]"
             }`}
           >
             {enforce ? "enforce" : "report-only"}
@@ -132,17 +132,17 @@ function BudgetBanner({ budget }: { budget: CostReport["budget"] }) {
             </span>
           )}
         </div>
-        <span className="text-sm text-zinc-400">
+        <span className="text-sm text-[var(--text-secondary)]">
           {fmtUsd(budget.spend_usd)}{" "}
           {budget.limit_usd != null && <>/ {fmtUsd(budget.limit_usd)}</>}
           {budget.remaining_usd != null && (
-            <span className="ml-2 text-zinc-500">
+            <span className="ml-2 text-[var(--text-tertiary)]">
               ({fmtUsd(Math.max(0, budget.remaining_usd))} left)
             </span>
           )}
         </span>
       </div>
-      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-zinc-800">
+      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[var(--surface-elevated)]">
         <div
           className={`h-full ${barColor} transition-all duration-700`}
           style={{ width: `${pct}%` }}
@@ -161,14 +161,14 @@ function BreakdownTable({
 }) {
   const top = [...rows].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 12);
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
-      <h3 className="mb-3 text-sm font-semibold text-zinc-300">{title}</h3>
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+      <h3 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">{title}</h3>
       {top.length === 0 ? (
-        <p className="text-sm text-zinc-500">No cost records yet.</p>
+        <p className="text-sm text-[var(--text-tertiary)]">No cost records yet.</p>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+            <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
               <th className="pb-2 font-medium">Name</th>
               <th className="pb-2 text-right font-medium">Calls</th>
               <th className="pb-2 text-right font-medium">Tokens (in/out)</th>
@@ -179,18 +179,18 @@ function BreakdownTable({
             {top.map((r) => (
               <tr
                 key={r.key}
-                className="border-b border-zinc-900 last:border-0"
+                className="border-b border-[var(--border-subtle)] last:border-0"
               >
-                <td className="py-2 font-mono text-xs text-zinc-300">
+                <td className="py-2 font-mono text-xs text-[var(--text-secondary)]">
                   {r.key || "—"}
                 </td>
-                <td className="py-2 text-right text-zinc-400">
+                <td className="py-2 text-right text-[var(--text-secondary)]">
                   {fmtInt(r.calls)}
                 </td>
-                <td className="py-2 text-right text-zinc-500">
+                <td className="py-2 text-right text-[var(--text-tertiary)]">
                   {fmtInt(r.input_tokens)} / {fmtInt(r.output_tokens)}
                 </td>
-                <td className="py-2 text-right font-medium text-zinc-200">
+                <td className="py-2 text-right font-medium text-[var(--foreground)]">
                   {fmtUsd(r.cost_usd)}
                 </td>
               </tr>
@@ -229,7 +229,7 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
     ok: "bg-emerald-900/60 text-emerald-300",
     warn: "bg-amber-900/60 text-amber-300",
     danger: "bg-red-900/60 text-red-300",
-    muted: "bg-zinc-800 text-zinc-400",
+    muted: "bg-[var(--surface-elevated)] text-[var(--text-secondary)]",
   }[meta.tone];
 
   const hasRate = forecast?.burn_rate_usd_per_day != null;
@@ -241,10 +241,10 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
     forecast.days_remaining <= 14;
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
       <div className="mb-3 flex items-center gap-2">
         <CalendarClock className="h-4 w-4 text-sky-400" />
-        <h3 className="text-sm font-semibold text-zinc-300">
+        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
           Forecast &amp; runway
         </h3>
         <span
@@ -254,7 +254,7 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
         </span>
       </div>
       {!hasRate && !hasRunway ? (
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-[var(--text-tertiary)]">
           {status === "insufficient_history"
             ? "Not enough timestamped spend yet to project a burn rate. A forecast appears once at least two priced LLM calls are recorded."
             : status === "no_budget"
@@ -266,64 +266,64 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
               <div className="mb-1 flex items-center gap-1.5">
                 <Flame className="h-3.5 w-3.5 text-orange-400" />
-                <span className="text-xs text-zinc-500">Burn / day</span>
+                <span className="text-xs text-[var(--text-tertiary)]">Burn / day</span>
               </div>
-              <p className="text-lg font-bold text-zinc-100">
+              <p className="text-lg font-bold text-[var(--foreground)]">
                 {forecast?.burn_rate_usd_per_day != null
                   ? fmtUsd(forecast.burn_rate_usd_per_day)
                   : "—"}
               </p>
               {forecast?.burn_rate_basis && (
-                <p className="mt-0.5 text-[11px] text-zinc-600">
+                <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
                   {forecast.burn_rate_basis.replace(/_/g, " ")}
                 </p>
               )}
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
               <div className="mb-1 flex items-center gap-1.5">
-                <Gauge className="h-3.5 w-3.5 text-zinc-400" />
-                <span className="text-xs text-zinc-500">Runway</span>
+                <Gauge className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+                <span className="text-xs text-[var(--text-tertiary)]">Runway</span>
               </div>
               <p
-                className={`text-lg font-bold ${atRisk ? "text-amber-300" : "text-zinc-100"}`}
+                className={`text-lg font-bold ${atRisk ? "text-amber-300" : "text-[var(--foreground)]"}`}
               >
                 {forecast?.days_remaining != null
                   ? fmtDays(forecast.days_remaining)
                   : "—"}
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
               <div className="mb-1 flex items-center gap-1.5">
-                <CalendarClock className="h-3.5 w-3.5 text-zinc-400" />
-                <span className="text-xs text-zinc-500">Exhaustion</span>
+                <CalendarClock className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+                <span className="text-xs text-[var(--text-tertiary)]">Exhaustion</span>
               </div>
-              <p className="text-sm font-medium text-zinc-200">
+              <p className="text-sm font-medium text-[var(--foreground)]">
                 {forecast?.projected_exhaustion_at
                   ? formatDate(forecast.projected_exhaustion_at)
                   : "—"}
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
               <div className="mb-1 flex items-center gap-1.5">
-                <TrendingUp className="h-3.5 w-3.5 text-zinc-400" />
-                <span className="text-xs text-zinc-500">Projected period</span>
+                <TrendingUp className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+                <span className="text-xs text-[var(--text-tertiary)]">Projected period</span>
               </div>
-              <p className="text-sm font-medium text-zinc-200">
+              <p className="text-sm font-medium text-[var(--foreground)]">
                 {forecast?.projected_period_spend_usd != null
                   ? fmtUsd(forecast.projected_period_spend_usd)
                   : "—"}
               </p>
               {forecast?.budget_limit_usd != null && (
-                <p className="mt-0.5 text-[11px] text-zinc-600">
+                <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
                   of {fmtUsd(forecast.budget_limit_usd)} cap
                 </p>
               )}
             </div>
           </div>
-          <p className="mt-3 text-[11px] text-zinc-600">
+          <p className="mt-3 text-[11px] text-[var(--text-tertiary)]">
             Reference only — a forecast never blocks a call; enforcement stays at
             the gateway.
           </p>
@@ -337,26 +337,26 @@ function ChargebackPanel({ rows }: { rows: CostBreakdownRow[] }) {
   const top = [...rows].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 12);
   const total = rows.reduce((sum, r) => sum + r.cost_usd, 0);
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
       <div className="mb-3 flex items-center gap-2">
         <Building2 className="h-4 w-4 text-violet-400" />
-        <h3 className="text-sm font-semibold text-zinc-300">
+        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
           Chargeback by cost-center
         </h3>
       </div>
       {top.length === 0 ? (
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-[var(--text-tertiary)]">
           No chargeback allocation recorded. Tag GenAI spans with{" "}
-          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
+          <code className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
             agent.cost_center
           </code>{" "}
-          (or <code className="text-zinc-300">allocation.tag.*</code>) to attribute
+          (or <code className="text-[var(--text-secondary)]">allocation.tag.*</code>) to attribute
           spend to a budget unit.
         </p>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+            <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
               <th className="pb-2 font-medium">Cost center</th>
               <th className="pb-2 text-right font-medium">Calls</th>
               <th className="pb-2 text-right font-medium">Share</th>
@@ -369,18 +369,18 @@ function ChargebackPanel({ rows }: { rows: CostBreakdownRow[] }) {
               return (
                 <tr
                   key={r.key}
-                  className="border-b border-zinc-900 last:border-0"
+                  className="border-b border-[var(--border-subtle)] last:border-0"
                 >
-                  <td className="py-2 font-mono text-xs text-zinc-300">
+                  <td className="py-2 font-mono text-xs text-[var(--text-secondary)]">
                     {r.key || "unallocated"}
                   </td>
-                  <td className="py-2 text-right text-zinc-400">
+                  <td className="py-2 text-right text-[var(--text-secondary)]">
                     {fmtInt(r.calls)}
                   </td>
-                  <td className="py-2 text-right text-zinc-500">
+                  <td className="py-2 text-right text-[var(--text-tertiary)]">
                     {(share * 100).toFixed(1)}%
                   </td>
-                  <td className="py-2 text-right font-medium text-zinc-200">
+                  <td className="py-2 text-right font-medium text-[var(--foreground)]">
                     {fmtUsd(r.cost_usd)}
                   </td>
                 </tr>
@@ -408,18 +408,18 @@ function AnomalyRow({ a }: { a: CostAnomaly }) {
           <ShieldAlert
             className={`h-4 w-4 ${high ? "text-red-400" : "text-amber-400"}`}
           />
-          <span className="text-sm font-medium text-zinc-200">
+          <span className="text-sm font-medium text-[var(--foreground)]">
             {a.type.replace(/_/g, " ")}
           </span>
-          <span className="font-mono text-xs text-zinc-500">
+          <span className="font-mono text-xs text-[var(--text-tertiary)]">
             {a.agent ?? a.session_id ?? ""}
           </span>
         </div>
-        <span className="font-mono text-xs text-zinc-400">
+        <span className="font-mono text-xs text-[var(--text-secondary)]">
           z={a.z_score.toFixed(1)}
         </span>
       </div>
-      <p className="mt-1 text-xs text-zinc-400">
+      <p className="mt-1 text-xs text-[var(--text-secondary)]">
         {a.metric} ={" "}
         {typeof a.value === "number" ? a.value.toLocaleString() : a.value} vs
         baseline {a.baseline_median.toLocaleString()} — {a.recommendation}
@@ -544,28 +544,28 @@ export default function CostPage() {
               icon={ArrowDownToLine}
               label="Input tokens"
               value={fmtInt(report.total_input_tokens)}
-              color="text-zinc-400"
+              color="text-[var(--text-secondary)]"
             />
             <StatCard
               icon={ArrowUpFromLine}
               label="Output tokens"
               value={fmtInt(report.total_output_tokens)}
-              color="text-zinc-400"
+              color="text-[var(--text-secondary)]"
             />
             <StatCard
               icon={AlertTriangle}
               label="Unpriced calls"
               value={fmtInt(report.unpriced_calls)}
               color={
-                report.unpriced_calls > 0 ? "text-amber-400" : "text-zinc-400"
+                report.unpriced_calls > 0 ? "text-amber-400" : "text-[var(--text-secondary)]"
               }
             />
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
             <div className="mb-3 flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-emerald-400" />
-              <h3 className="text-sm font-semibold text-zinc-300">
+              <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
                 Spend by agent (top 10)
               </h3>
             </div>
@@ -607,10 +607,10 @@ export default function CostPage() {
         </>
       )}
 
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
         <div className="mb-3 flex items-center gap-2">
           <ShieldAlert className="h-4 w-4 text-amber-400" />
-          <h3 className="text-sm font-semibold text-zinc-300">
+          <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
             Cost & behavior anomalies
           </h3>
           {anomalyCount > 0 && (
@@ -620,7 +620,7 @@ export default function CostPage() {
           )}
         </div>
         {anomalyCount === 0 ? (
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-[var(--text-tertiary)]">
             No statistical anomalies detected across cost or call-rate
             baselines.
           </p>

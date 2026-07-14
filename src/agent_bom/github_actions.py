@@ -5,6 +5,8 @@ Scans ``.github/workflows/*.yml`` files to discover:
 - **AI SDK usage** in ``run:`` steps (openai, anthropic, langchain, etc.)
 - **Third-party AI actions** (e.g. ``openai/openai-github-action``)
 - **pip / npm packages** installed in workflow steps that are AI-related
+- **pipeline hardening gaps**: unpinned actions, ``pull_request_target``, and
+  workflows without an explicit top-level ``permissions:`` policy
 
 Treats each workflow file as a synthetic agent entry so blast radius
 analysis can show which CI pipelines are using AI with credential exposure.
@@ -67,6 +69,7 @@ _AI_RUN_PATTERNS = [
 # pip install / npm install AI packages in run steps
 _PIP_RE = re.compile(r"pip\s+install\s+([^\n&;]+)", re.IGNORECASE)
 _NPM_RE = re.compile(r"npm\s+(?:install|i)\s+([^\n&;]+)", re.IGNORECASE)
+_FULL_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
 
 # NOTE: These are *ecosystem-specific* package lists for detecting AI SDK
 # installs in GitHub Actions workflow run-steps.  They are intentionally
@@ -202,6 +205,68 @@ def _extract_workflow_info(content: str) -> dict:
     return result
 
 
+def _strip_yaml_scalar(value: str) -> str:
+    """Return a simple scalar without a trailing comment or quote wrapper."""
+    scalar = value.split("#", 1)[0].strip()
+    if len(scalar) >= 2 and scalar[0] == scalar[-1] and scalar[0] in {'"', "'"}:
+        scalar = scalar[1:-1].strip()
+    return scalar
+
+
+def _workflow_hardening_warnings(content: str, filename: str, used_actions: list[str]) -> list[str]:
+    """Return conservative pipeline-security warnings for one workflow.
+
+    This remains a zero-dependency, line-level audit. Local actions and Docker
+    references are not remote supply-chain downloads and therefore do not need
+    a Git commit pin. Remote reusable workflows use the same ``owner/repo@ref``
+    syntax as actions and are checked as well.
+    """
+    warnings: list[str] = []
+    active_lines = [line for line in content.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+
+    has_top_level_permissions = any(re.match(r"^permissions\s*:", line) for line in active_lines)
+    if not has_top_level_permissions:
+        warnings.append(
+            f"CI hardening in {filename}: missing top-level permissions: policy; "
+            "declare least-privilege GITHUB_TOKEN permissions"
+        )
+
+    has_pull_request_target = False
+    for index, line in enumerate(active_lines):
+        on_match = re.match(r"^on\s*:\s*(.*)$", line)
+        if on_match is None:
+            continue
+        inline_events = on_match.group(1)
+        if re.search(r"\bpull_request_target\b", inline_events):
+            has_pull_request_target = True
+            break
+        for event_line in active_lines[index + 1 :]:
+            if event_line == event_line.lstrip():
+                break
+            if re.match(r"^\s+pull_request_target\s*:", event_line):
+                has_pull_request_target = True
+                break
+        break
+    if has_pull_request_target:
+        warnings.append(
+            f"CI hardening in {filename}: pull_request_target runs in the base-repository "
+            "security context; do not execute untrusted pull-request code"
+        )
+
+    for raw_action in used_actions:
+        action = _strip_yaml_scalar(raw_action)
+        if not action or action.startswith(("./", "../", "docker://")):
+            continue
+        revision = action.rsplit("@", 1)[1] if "@" in action else ""
+        if not _FULL_COMMIT_SHA_RE.fullmatch(revision):
+            warnings.append(
+                f"CI hardening in {filename}: unpinned action {action}; pin remote actions "
+                "and reusable workflows to a full commit SHA"
+            )
+
+    return warnings
+
+
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -247,6 +312,7 @@ def scan_github_actions(repo_path: str) -> tuple[list[Agent], list[str]]:
             continue
 
         info = _extract_workflow_info(content)
+        warnings.extend(_workflow_hardening_warnings(content, wf_path.name, info["used_actions"]))
 
         # ── Check AI env vars ────────────────────────────────────────────────
         ai_env_keys: list[str] = [k for k in info["env_vars"] if _AI_ENV_NAMES.search(k)]

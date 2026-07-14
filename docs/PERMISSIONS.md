@@ -20,8 +20,14 @@ agent-bom reads only what you explicitly ask it to scan:
 | Docker images | `--image` | Image filesystem layers (via container inspection subprocess) |
 | Kubernetes | `--k8s` | Pod specs via `kubectl get pods -o json` (read-only) |
 | Terraform | `--tf-dir` | `.tf` source files (no state files, no `.tfvars`) |
-| GitHub Actions | `--gha` | `.github/workflows/*.yml` files |
+| GitHub Actions | `--gha` | `.github/workflows/*.yml` files; reports AI/credential use plus unpinned remote actions, `pull_request_target`, and missing top-level `permissions:` policies |
 | SBOM files | `--sbom` | CycloneDX/SPDX JSON you provide |
+
+Run `agent-bom agents --gha . --offline` to inspect workflow files without
+network access. Pipeline-hardening gaps appear as scan warnings; pin remote
+actions and reusable workflows to full commit SHAs, avoid executing untrusted
+pull-request code under `pull_request_target`, and declare least-privilege
+top-level `permissions:` before rerunning the same command.
 
 ---
 

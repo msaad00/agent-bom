@@ -56,6 +56,51 @@ Cloud scanning never moves customer data out of the account. The contract:
   any leftover temp resources (tagged by the scanner) after a hard crash, so a
   failed run leaves nothing behind. No volume bytes leave the account.
 
+### Control-plane identity
+
+The control plane never stores a customer's cloud keys. It reads a customer
+account by **assuming that account's read-only connection role** (AWS
+`sts:AssumeRole` with an ExternalId; Azure/GCP federated equivalents) and
+receives only short-lived credentials. To make that call the control plane needs
+its *own* cloud identity, and that identity is a **workload identity per target
+— never a static access key**:
+
+| Target | Control-plane identity | Keyless mechanism |
+|--------|------------------------|-------------------|
+| EKS | Scanner IRSA role | Projected SA token → STS `AssumeRoleWithWebIdentity` |
+| Self-managed k8s on EC2 / ECS | Node instance profile / ECS task role | AWS SDK default credential chain |
+| AKS | Azure workload identity | Federated pod SA token → Entra ID |
+| GKE | GCP Workload Identity | KSA → impersonated read-only service account |
+
+- **Assumes connection roles, cross-account.** The scanner identity is granted a
+  least-privilege `sts:AssumeRole` policy scoped to the connection-role name
+  pattern (`agent-bom-readonly*` / `abom-readonly*`), so it can assume the
+  read-only role in each target account for AWS Organizations fan-out and hosted
+  connect. Only `sts:AssumeRole` is granted — no other action, no broader
+  resource. Provisioned by `deploy/terraform/aws/baseline`
+  (`connect_role_arns`); set it to `[]` to disable cross-account assume.
+- **ExternalId is the reciprocal guard.** Every connection role's trust policy
+  requires a high-entropy `sts:ExternalId`, always enforced, closing the
+  confused-deputy gap even though the assume permission is scoped by name
+  pattern.
+- **Least-privilege, both sides.** The assumed role carries only read-only
+  managed policies (`SecurityAudit` / `ViewOnlyAccess` and equivalents); the
+  assuming identity carries only `sts:AssumeRole`. Neither side is ever
+  root/admin.
+- **No static keys.** No long-lived access key is created for the control-plane
+  identity in any supported path. Snowflake is the lone exception (no cloud
+  workload identity): it uses key-pair auth via a Secret reference, never a
+  password.
+- **Local/dev path is dev-only.** Running the control plane or CLI against your
+  own laptop credentials (`aws sso login`, `az login`,
+  `gcloud auth application-default login`) is supported for development and
+  one-off operator scans, but a personal base identity must never be wired into
+  a long-running hosted control plane — use the workload identity above.
+
+The end-to-end onboarding walk-through (read the identity ARN, create the trust
+in each account or via the org StackSet, connect in the UI) is in
+[`DEPLOY_PLATFORM.md` § Connect your cloud (zero keys)](DEPLOY_PLATFORM.md#connect-your-cloud-zero-keys).
+
 ### Network Enforcement
 
 - All external calls use HTTPS with full TLS certificate verification (`verify=True`)

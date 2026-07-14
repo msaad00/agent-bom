@@ -110,8 +110,20 @@ scanner:
   cloud:
     enabled: false
     aws:
-      # Sets AGENT_BOM_AWS_INVENTORY=1. Auth = IRSA (serviceAccount.annotations
-      # eks.amazonaws.com/role-arn -> the connect-aws read-only role).
+      # Sets AGENT_BOM_AWS_INVENTORY=1. Keyless control-plane identity, in order
+      # of preference:
+      #   - EKS: IRSA — set serviceAccount.annotations
+      #     eks.amazonaws.com/role-arn to the scanner/control-plane role. That
+      #     role reads THIS account directly and, cross-account, assumes each
+      #     connect-aws read-only role via sts:AssumeRole (org fan-out / hosted
+      #     connect). The baseline module attaches the least-privilege
+      #     sts:AssumeRole policy; see deploy/terraform/aws/baseline
+      #     (connect_role_arns).
+      #   - Self-managed k8s on EC2 / ECS: the pod inherits the node instance
+      #     profile or ECS task role from the AWS SDK default chain — still
+      #     keyless, no annotation needed. Give that role sts:AssumeRole on the
+      #     connect roles the same way.
+      # NEVER static access keys.
       inventory: false
       allRegions: false       # AGENT_BOM_AWS_ALL_REGIONS
       regions: ""             # AGENT_BOM_AWS_REGIONS (comma list, e.g. "us-east-1,eu-west-1")

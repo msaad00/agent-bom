@@ -65,6 +65,41 @@ resource "aws_iam_role_policy_attachment" "scanner" {
   policy_arn = aws_iam_policy.scanner.arn
 }
 
+# ---------------------------------------------------------------------------
+# Cross-account connect: let the keyless control-plane (scanner) identity
+# sts:AssumeRole the read-only connection roles in OTHER accounts. Without this
+# the scanner can only read the account it runs in — org fan-out
+# (AGENT_BOM_AWS_ORG_INVENTORY) and hosted connect both need to assume a
+# read-only role in each target account. Least-privilege: the ONLY action
+# granted is sts:AssumeRole, scoped to the connection-role resource ARNs; the
+# connection role's own trust policy + ExternalId are the reciprocal guard. No
+# static keys — the assumed session is short-lived STS. Set connect_role_arns
+# to [] to disable cross-account assume entirely.
+# ---------------------------------------------------------------------------
+data "aws_iam_policy_document" "scanner_assume_connect" {
+  count = length(var.connect_role_arns) > 0 ? 1 : 0
+
+  statement {
+    sid       = "AssumeReadOnlyConnectionRoles"
+    effect    = "Allow"
+    actions   = ["sts:AssumeRole"]
+    resources = var.connect_role_arns
+  }
+}
+
+resource "aws_iam_policy" "scanner_assume_connect" {
+  count  = length(var.connect_role_arns) > 0 ? 1 : 0
+  name   = "${var.name}-scanner-assume-connect"
+  policy = data.aws_iam_policy_document.scanner_assume_connect[0].json
+  tags   = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "scanner_assume_connect" {
+  count      = length(var.connect_role_arns) > 0 ? 1 : 0
+  role       = aws_iam_role.scanner.name
+  policy_arn = aws_iam_policy.scanner_assume_connect[0].arn
+}
+
 data "aws_iam_policy_document" "backup_assume_role" {
   statement {
     effect  = "Allow"

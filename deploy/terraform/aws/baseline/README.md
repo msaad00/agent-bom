@@ -17,6 +17,14 @@ Helm owns the `agent-bom` workloads inside the cluster.
 - IAM roles and policies for scanner + backup IRSA
 - Secrets Manager secret containers / generated secret references
 
+The scanner IRSA role is the **keyless control-plane cloud identity**. Besides
+reading the account it runs in, it is granted a least-privilege `sts:AssumeRole`
+policy (`connect_role_arns`, default `agent-bom-readonly*` / `abom-readonly*`) so
+it can assume the read-only connection role in **other** accounts — the keyless
+path behind AWS Organizations fan-out and hosted connect. Only `sts:AssumeRole`
+is granted; the connection role's own trust policy + ExternalId are the
+reciprocal guard. Set `connect_role_arns = []` to disable cross-account assume.
+
 ## What Helm still owns
 
 - Deployments, CronJobs, Services, Ingress, HPAs, PDBs

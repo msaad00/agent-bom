@@ -177,6 +177,22 @@ radius.
 > `sts:AssumeRole` only to the management/delegated-admin principal running the
 > scan.
 
+> **Control-plane identity (the *caller*, not the role).** When you onboard a
+> connection through the Connections wizard, the control plane assumes the
+> read-only role for you via `sts:AssumeRole`. That call is made by the control
+> plane's **own** identity — the *caller* — which is separate from the read-only
+> role the connection points at. If the control plane has no base credentials,
+> Test/scan fails with **"Control plane has no AWS credentials to assume the
+> role"** — the connection's role is fine; the caller has no identity. Provide one:
+>
+> - **Production:** run the control plane with an **EC2 instance profile** or
+>   **IRSA** (EKS) — no static keys. This is the recommended, keyless path.
+> - **Local / dev:** configure standard AWS credentials for the control-plane
+>   process (`AWS_PROFILE` or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`).
+> - The caller identity also needs **`sts:AssumeRole`** permission on the target
+>   role; for a **same-account** role, the base identity needs `sts:AssumeRole`
+>   too (cross-account is covered by the role's trust policy + ExternalId).
+
 **Why read-only is enough:** the connector calls only `List*`/`Describe*`/`Get*`
 and `sts:GetCallerIdentity`. The exact action set is declared as permission
 constants in `cloud/aws_inventory.py` (`_AWS_*_PERMISSIONS`) and

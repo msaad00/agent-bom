@@ -4,7 +4,13 @@ import Link from "next/link";
 import { ArrowRight, ChevronRight } from "lucide-react";
 
 import type { OverviewResponse } from "@/lib/api";
-import type { ExecScoreDriver, OverviewCoverageLane, ServiceEntry, ServiceId } from "@/lib/api-types";
+import type {
+  ExecScoreDriver,
+  OverviewCoverageLane,
+  OverviewDomainStatus,
+  ServiceEntry,
+  ServiceId,
+} from "@/lib/api-types";
 import { Collapsible } from "@/components/collapsible";
 import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
@@ -240,12 +246,15 @@ export function OverviewCockpit({
               so the grade is legible, not opaque (#3940). */}
           <ScoreExplainer breakdown={scoreBreakdown} grade={grade} />
 
-          {/* 2 — Cross-lane coverage: the single canonical estate view */}
-          <CrossLaneCoverage domains={domains} services={services} />
-
-          {/* 2b — Security coverage lanes: the five posture domains 1:1, each
-              with a reconciled severity strip (sum === count, unrated shown). */}
+          {/* 2 — Security coverage: the five posture domains 1:1, each with a
+              reconciled severity strip (sum === count, unrated shown). This is
+              the lead coverage block — the exec security posture. */}
           <SecurityCoverageLanes coverage={coverage} />
+
+          {/* 2b — Estate / operations: the genuinely-operational lanes
+              (runtime, cost, identity, ops) shown by activation. The security
+              lanes above already cover cloud posture, vuln mgmt, and AppSec. */}
+          <EstateOpsStrip domains={domains} services={services} />
 
           {/* 3 — Compliance: one honest strip, coverage after first scan */}
           <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
@@ -346,52 +355,73 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
   );
 }
 
-type CoverageTile = {
-  key: string;
+// The genuinely-operational estate lanes — cloud / vuln / code are deliberately
+// excluded because the five security-coverage lanes above already own CSPM,
+// Vuln mgmt, and AppSec-SCA. Rendering them here too would double-count.
+const OPERATIONAL_DOMAIN_KEYS = ["runtime", "cost", "identity", "ops"] as const;
+type OperationalDomainKey = (typeof OPERATIONAL_DOMAIN_KEYS)[number];
+
+type OpsTile = {
+  key: OperationalDomainKey;
   label: string;
-  metric: number | string;
+  metric: number;
   metricLabel: string;
-  status: "ok" | "warn" | "critical" | "idle";
+  status: OverviewDomainStatus;
   href: string;
-  /** One-line scope clarifier surfaced as a tooltip so overlapping lanes
-   *  (Vuln/SCA vs Code/repo) read distinctly. */
+  /** One-line scope clarifier surfaced as a tooltip so the tile can stay a
+   *  terse name + count + dot instead of an always-visible sentence. */
   hint?: string | undefined;
 };
 
-// Scope clarifiers keyed by the overview domain key. Vuln/SCA and Code/repo in
-// particular read as overlapping — one counts dependency CVEs across every
-// source, the other counts repository/SAST scan runs (#3940).
-const LANE_HINTS: Record<string, string> = {
-  cloud: "Connected cloud accounts (AWS, Azure, GCP, Snowflake) with brokered inventory + CIS posture.",
-  vuln: "Dependency & package CVEs correlated across every scan source (SBOM, images, cloud, agents) — not repo scan runs.",
-  code: "Repository / SAST scan runs of source you connect — the scan count, distinct from the dependency CVEs in Vuln / SCA.",
+// Scope clarifiers keyed by the operational domain key, shown as tooltips only.
+const LANE_HINTS: Record<OperationalDomainKey, string> = {
   runtime: "Live runtime surfaces — gateway, proxy, traces, and agent mesh.",
   cost: "LLM spend tracked across agents and providers.",
   identity: "Non-human identities and agents under governance.",
   ops: "Completed scan jobs feeding the estate rollup.",
 };
 
-function CrossLaneCoverage({
+/** A lane is "active" once it is reporting (status !== idle) or carries a
+ *  non-zero metric — otherwise it's applicable-but-not-connected. */
+function opsLaneActive(tile: OpsTile): boolean {
+  return tile.status !== "idle" || tile.metric > 0;
+}
+
+/**
+ * Estate / operations strip — the genuinely-operational lanes (runtime, cost,
+ * identity, ops) shown by activation. Active lanes get a full tile with their
+ * number + status dot; applicable-but-not-connected lanes de-emphasize into a
+ * muted "Connect …" prompt so the strip never fabricates a wall of zero tiles.
+ * Verbose scope copy lives in tooltips, not always-visible sentences. This is a
+ * lighter-weight companion to the five security-coverage lanes above.
+ */
+function EstateOpsStrip({
   domains,
   services,
 }: {
   domains: OverviewResponse["domains"] | null;
   services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
 }) {
-  const domainEntries = domains ? Object.entries(domains) : [];
-  const tiles: CoverageTile[] = domainEntries.map(([key, domain]) => ({
-    key: `${domain.href}:${domain.label}`,
-    label: domain.label,
-    metric: domain.metric,
-    metricLabel: domain.metric_label,
-    status: domain.status,
-    href: domain.graph_href ?? domain.href,
-    hint: LANE_HINTS[key],
-  }));
+  if (!domains) return null;
+  const tiles: OpsTile[] = OPERATIONAL_DOMAIN_KEYS.flatMap((key) => {
+    const domain = domains[key];
+    if (!domain) return [];
+    return [
+      {
+        key,
+        label: domain.label,
+        metric: domain.metric,
+        metricLabel: domain.metric_label,
+        status: domain.status,
+        href: domain.graph_href ?? domain.href,
+        hint: LANE_HINTS[key],
+      },
+    ];
+  });
+  if (tiles.length === 0) return null;
 
-  // Data sources / connections are operational plumbing, not an exec risk lane —
-  // keep them OFF the cross-lane grid and demote to a small count next to the
-  // Connections link so the exec pane stays focused on posture + risk.
+  // Data sources / connections are operational plumbing — surfaced as a small
+  // connected count next to the Connections link, not as an equal-weight lane.
   const dataSources = services?.data_sources;
   const dataSourceCount =
     dataSources &&
@@ -399,17 +429,16 @@ function CrossLaneCoverage({
       ? dataSources.count
       : 0;
 
-  if (tiles.length === 0) return null;
-  const reporting = tiles.filter((tile) => tile.status !== "idle").length;
+  const active = tiles.filter(opsLaneActive).length;
 
   return (
     <Collapsible
       bare
       className="mt-5 border-t border-[color:var(--border-subtle)] pt-1"
-      data-testid="overview-cross-lane-coverage"
-      title="Cross-lane coverage"
+      data-testid="overview-estate-ops"
+      title="Estate / operations"
       titleClassName={SECTION_TITLE_CLASS}
-      subtitle={`${reporting} of ${tiles.length} lanes reporting · click a lane to drill in`}
+      subtitle={`${active} of ${tiles.length} operational lanes active · runtime, cost, identity, ops`}
       count={tiles.length}
       defaultOpen
       actions={
@@ -424,36 +453,50 @@ function CrossLaneCoverage({
         </Link>
       }
     >
-      <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => (
-          <CoverageTileCard key={tile.key} tile={tile} />
+          <OpsTileCard key={tile.key} tile={tile} />
         ))}
       </div>
     </Collapsible>
   );
 }
 
-function CoverageTileCard({ tile }: { tile: CoverageTile }) {
+function OpsTileCard({ tile }: { tile: OpsTile }) {
+  // Applicable-but-not-connected lane: de-emphasize into a muted, available
+  // "Connect …" affordance instead of a loud zero tile.
+  if (!opsLaneActive(tile)) {
+    return (
+      <Link
+        href={tile.href}
+        title={tile.hint ?? tile.label}
+        className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-[color:var(--border-subtle)] bg-transparent px-3 py-2 text-[color:var(--text-tertiary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+      >
+        <span className="truncate text-[11px] font-medium">{tile.label}</span>
+        <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium">
+          Connect <ArrowRight className="h-3 w-3" />
+        </span>
+      </Link>
+    );
+  }
+
   const tone = domainStatusTone(tile.status);
   return (
     <Link
       href={tile.href}
       title={tile.hint ?? tile.label}
-      className="flex flex-col gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3.5 py-3 transition hover:border-[color:var(--border-strong)]"
+      className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 transition hover:border-[color:var(--border-strong)]"
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-xs font-medium text-[color:var(--foreground)]">{tile.label}</span>
+      <div className="flex min-w-0 items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
+        <span className="truncate text-[11px] font-medium text-[color:var(--foreground)]">{tile.label}</span>
       </div>
-      <span className={`font-mono text-xl font-semibold ${tone.text}`}>{tile.metric}</span>
-      <span className="truncate text-[10px] text-[color:var(--text-tertiary)]" title={tile.metricLabel}>
-        {tile.metricLabel}
-      </span>
-      {tile.hint ? (
-        <span className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-[color:var(--text-tertiary)]">
-          {tile.hint}
+      <div className="flex shrink-0 items-baseline gap-1">
+        <span className={`font-mono text-base font-semibold ${tone.text}`}>{tile.metric}</span>
+        <span className="truncate text-[10px] text-[color:var(--text-tertiary)]" title={tile.metricLabel}>
+          {tile.metricLabel}
         </span>
-      ) : null}
+      </div>
     </Link>
   );
 }
@@ -1129,7 +1172,7 @@ function SeverityIssueStrip({
   );
 }
 
-function domainStatusTone(status: CoverageTile["status"]): { dot: string; text: string } {
+function domainStatusTone(status: OverviewDomainStatus): { dot: string; text: string } {
   switch (status) {
     case "critical":
       return { dot: "bg-red-500", text: "text-red-400" };

@@ -186,6 +186,14 @@ and scans each independently — partitioned in the graph by account so thousand
 of subscriptions stay separable. A defensive `AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS`
 cap (default 500) bounds blast radius.
 
+> **Mass-onboarding grant.** Rather than assigning `Reader` per subscription,
+> assign it **once at a management group** (the tenant root covers everything)
+> so a single assignment covers every subscription under it — the Azure analogue
+> of the AWS Organizations StackSet (§3) and the GCP org/folder binding (§5). The
+> `connect-azure` module does this with `scope_override` set to a management-group
+> ID (`/providers/Microsoft.Management/managementGroups/<id>`); the assignment
+> stays read-only (`Reader` + optional `Security Reader`).
+
 **SDK fragility, handled:** Azure SDKs are per-service distributions, so each is
 imported under `try/except ImportError` and degrades to a warning if absent —
 one missing package never crashes a scan.
@@ -232,10 +240,19 @@ organization → folders → projects hierarchy, runs each project scan separate
 and writes graph nodes under the right org/folder/project parent so exposures
 stay drillable at tenant scale. `AGENT_BOM_GCP_MAX_PROJECTS` bounds the run.
 
+> **Mass-onboarding grant.** Rather than granting the two read-only roles per
+> project, bind them **once at the organization or folder** so a single grant
+> covers every project the fan-out reaches — the GCP analogue of the AWS
+> Organizations StackSet (§3) and the Azure management-group scope (§4). The
+> `connect-gcp` module does this with `iam_binding_scope = "organization"` (or
+> `"folder"`); the binding stays strictly read-only (`roles/viewer` +
+> `roles/iam.securityReviewer`).
+
 **Secure-by-default provisioning** (`deploy/terraform/connect-gcp`): the module
 mints a unique read-only service account and binds only `roles/viewer` plus
-`roles/iam.securityReviewer`. Optional Workload Identity Federation is locked to
-a scoped `attribute_condition`, pinned audiences, and a specific
+`roles/iam.securityReviewer` — at the project by default, or org/folder-wide via
+`iam_binding_scope` for fleet onboarding. Optional Workload Identity Federation
+is locked to a scoped `attribute_condition`, pinned audiences, and a specific
 `principalSet`; broad wildcard federation is rejected.
 
 **Why read-only is enough:** the connector uses list/get style APIs and IAM

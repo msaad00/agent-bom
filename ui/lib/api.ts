@@ -29,6 +29,7 @@ import type {
   AgentBomManifestResponse,
   PostureCountsResponse,
   OverviewResponse,
+  AccountSummaryResponse,
   ScoreConfigRuntime,
   ScoreConfigUpdate,
   RemediationItem,
@@ -119,6 +120,9 @@ import type {
   CloudConnectionScanResponse
 } from "./api-types";
 export type {
+  AccountSummaryResponse,
+  AccountSummaryDomain,
+  AccountSummaryBenchmark,
   JobStatus,
   ScanRequest,
   StepStatus,
@@ -808,6 +812,10 @@ export const api = {
 
   /** Cross-domain posture snapshot for the unified overview landing page */
   getOverview: () => get<OverviewResponse>("/v1/overview"),
+
+  /** Per-account, end-to-end posture drill for one cloud account (#3931) */
+  getCloudAccountSummary: (accountRef: string) =>
+    get<AccountSummaryResponse>(`/v1/cloud/accounts/${encodeURIComponent(accountRef)}/summary`),
 
   /** Configurable exec risk-score model + display config for this tenant (#3940) */
   getScoreConfig: () => get<ScoreConfigRuntime>("/v1/overview/score-config"),

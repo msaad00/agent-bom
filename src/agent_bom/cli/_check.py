@@ -581,8 +581,10 @@ def check(
     \b
     Exit codes:
       0  Clean — no known vulnerabilities
-      1  Unsafe — vulnerabilities found
-      2  Incomplete — OS package context insufficient for a trustworthy verdict
+      1  Unsafe — vulnerabilities found, or package flagged as malicious
+      2  Incomplete — insufficient context for a trustworthy clean verdict
+         (missing version, OS package metadata, or offline scan of an
+         ecosystem the local DB carries no advisories for)
 
     \b
     Notes:
@@ -715,7 +717,13 @@ def check(
         status_context = nullcontext()
 
     with status_context:
-        from agent_bom.scanners import IncompleteScanError, ScanOptions, consume_scan_warnings, scan_packages
+        from agent_bom.scanners import (
+            IncompleteScanError,
+            ScanOptions,
+            consume_coverage_warnings,
+            consume_scan_warnings,
+            scan_packages,
+        )
 
         try:
             asyncio.run(scan_packages(pkgs, options=ScanOptions(offline=offline)))
@@ -740,12 +748,51 @@ def check(
             sys.exit(2)
 
     scan_warnings = consume_scan_warnings()
+    coverage_warnings = consume_coverage_warnings()
+    offline_coverage_gap = offline and any(
+        w.get("kind") == "offline_ecosystem_gap" for w in coverage_warnings
+    )
     if scan_warnings and not quiet and not structured_output:
         console.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
 
     matched_pkg = next((p for p in pkgs if p.vulnerabilities), pkgs[0])
     vulns = matched_pkg.vulnerabilities
     fail_threshold = fail_on_severity.lower() if fail_on_severity else None
+
+    # ── Malicious-package gate (fail closed) ─────────────────────────────────
+    # A package flagged as malicious (typosquat, dependency-confusion, or a
+    # known-malicious MAL- advisory) is a BLOCK regardless of CVE rows. Reading
+    # only vuln rows let such a package report "No known vulnerabilities" and
+    # exit 0 — a pre-install gate must never install a malicious package, and
+    # this decision is independent of --exit-zero / --fail-on-severity, which
+    # only govern vulnerability triage.
+    malicious_pkg = next((p for p in pkgs if getattr(p, "is_malicious", False)), None)
+    if malicious_pkg is not None:
+        reason = malicious_pkg.malicious_reason or "flagged as malicious (typosquat / dependency confusion / known-malicious advisory)"
+        message = f"MALICIOUS package {malicious_pkg.name}@{malicious_pkg.version} — {reason}. Do not install."
+        if structured_output:
+            _write_check_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=ecosystems,
+                    verdict="malicious",
+                    message=message,
+                    exit_code=1,
+                    vulnerabilities=vulns,
+                    warnings=scan_warnings,
+                ),
+                output_path,
+                agent_mode=agent_mode,
+                exit_code=1,
+                output_format=output_format,
+            )
+            sys.exit(1)
+        if quiet:
+            click.echo(f"{name}@{version}: MALICIOUS — {reason}")
+        else:
+            console.print(f"  [red]✗ MALICIOUS: {message}[/red]\n")
+        sys.exit(1)
 
     if enrich and any(pkg.vulnerabilities for pkg in pkgs):
         from agent_bom.enrichment import enrich_vulnerabilities
@@ -765,6 +812,41 @@ def check(
             scan_warnings.append(f"External enrichment skipped: {exc}")
             if not quiet and not structured_output:
                 console.print(f"  [yellow]⚠[/yellow] External enrichment skipped: {exc}")
+
+    if not vulns and offline_coverage_gap:
+        # Symmetric with the deb/apk/rpm incomplete path below: an offline scan
+        # of an ecosystem the local DB carries no advisories for produced no
+        # vulns because nothing could be matched — NOT because the package is
+        # clean. Fail closed (rc=2) so a pre-install gate isn't silently green.
+        # Re-run online, `agent-bom db update` for coverage, or --exit-zero to
+        # force a non-failing exploratory result.
+        message = (
+            f"Incomplete offline coverage for {name}@{version} ({eco_display}). "
+            "The local vulnerability DB carries no advisories for this ecosystem, so a clean result "
+            "cannot be trusted. Run `agent-bom db update` (online) for full coverage."
+        )
+        if structured_output:
+            _write_check_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=ecosystems,
+                    verdict="incomplete",
+                    message=message,
+                    exit_code=2,
+                    warnings=scan_warnings,
+                ),
+                output_path,
+                agent_mode=agent_mode,
+                exit_code=2,
+                output_format=output_format,
+            )
+            sys.exit(2)
+        if quiet:
+            click.echo(f"{name}@{version}: incomplete offline coverage ({eco_display})")
+        else:
+            console.print(f"  [yellow]⚠ {message}[/yellow]\n")
+        sys.exit(2)
 
     if not vulns and matched_pkg.ecosystem in {"deb", "apk", "rpm"} and not os_context_complete:
         message = (

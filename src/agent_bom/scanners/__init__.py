@@ -1207,6 +1207,18 @@ async def scan_packages(
                     f"offline coverage gap: {len(uncovered)} package(s) in ecosystem(s) "
                     f"{', '.join(gap_ecos)} have no advisories in the local vulnerability DB"
                 )
+                # Structured signal so consumers (e.g. `check`) can fail closed
+                # deterministically instead of string-matching the warning above.
+                # A zero-vuln result for an ecosystem the local DB carries no
+                # advisories for is NOT a clean bill of health.
+                record_coverage_warning(
+                    {
+                        "kind": "offline_ecosystem_gap",
+                        "release": f"offline:{','.join(gap_ecos)}",
+                        "ecosystems": gap_ecos,
+                        "package_count": len(uncovered),
+                    }
+                )
         results = {}
     elif scan_prefer_local_db and osv_targets:
         # DB is fresh — only query OSV for packages genuinely missing from DB

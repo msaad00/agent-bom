@@ -28,7 +28,7 @@ export default function ScanPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center h-[50vh] text-zinc-400">
+        <div className="flex items-center justify-center h-[50vh] text-[var(--text-secondary)]">
           <Loader2 className="w-5 h-5 animate-spin mr-2" />Loading...
         </div>
       }

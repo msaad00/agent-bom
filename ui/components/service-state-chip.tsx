@@ -7,7 +7,7 @@ import {
 } from "@/lib/service-registry";
 
 const STATE_STYLE: Record<ServiceEntry["state"], string> = {
-  locked: "border-zinc-700 bg-zinc-900/80 text-zinc-400",
+  locked: "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]",
   connected: "border-amber-500/30 bg-amber-500/10 text-amber-200",
   live: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
 };

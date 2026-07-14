@@ -37,9 +37,9 @@ function StatusIcon({ status }: { status: JobStatus }) {
     case "running":
       return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
     case "cancelled":
-      return <XCircle className="w-4 h-4 text-zinc-500" />;
+      return <XCircle className="w-4 h-4 text-[var(--text-tertiary)]" />;
     default:
-      return <Clock className="w-4 h-4 text-zinc-500" />;
+      return <Clock className="w-4 h-4 text-[var(--text-tertiary)]" />;
   }
 }
 
@@ -52,8 +52,8 @@ function statusColor(s: JobStatus) {
     case "done":      return "text-emerald-400";
     case "failed":    return "text-red-400";
     case "running":   return "text-blue-400";
-    case "cancelled": return "text-zinc-500";
-    default:          return "text-zinc-400";
+    case "cancelled": return "text-[var(--text-tertiary)]";
+    default:          return "text-[var(--text-secondary)]";
   }
 }
 
@@ -183,13 +183,13 @@ function JobsPageContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Scan jobs</h1>
-          <p className="text-zinc-400 text-sm mt-1">Completed and in-flight evidence runs</p>
+          <p className="text-[var(--text-secondary)] text-sm mt-1">Completed and in-flight evidence runs</p>
         </div>
         <div className="flex items-center gap-2">
           {jobs.length > 0 && (
             <button
               onClick={() => downloadJson(filteredJobs, `jobs-${new Date().toISOString().slice(0, 10)}.json`)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium rounded-lg transition-colors"
               title="Export job list as JSON"
             >
               <Download className="w-3.5 h-3.5" />
@@ -206,19 +206,19 @@ function JobsPageContent() {
         </div>
       </div>
 
-      {loading && <p className="text-zinc-500 text-sm">Loading jobs…</p>}
+      {loading && <p className="text-[var(--text-tertiary)] text-sm">Loading jobs…</p>}
       {error && (
         <div className="flex items-center gap-3 p-3 bg-red-950/30 border border-red-800/40 rounded-lg">
           <p className="text-red-400 text-sm flex-1">{error}</p>
-          <button onClick={load} className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1 border border-zinc-700 rounded">Retry</button>
+          <button onClick={load} className="text-xs text-[var(--text-secondary)] hover:text-[var(--foreground)] px-2 py-1 border border-[var(--border-subtle)] rounded">Retry</button>
         </div>
       )}
 
       {!loading && jobs.length === 0 && (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <Clock className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">No scan jobs yet.</p>
-          <p className="text-zinc-600 text-xs mt-1">
+        <div className="text-center py-16 border border-dashed border-[var(--border-subtle)] rounded-xl">
+          <Clock className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
+          <p className="text-[var(--text-tertiary)] text-sm">No scan jobs yet.</p>
+          <p className="text-[var(--text-tertiary)] text-xs mt-1">
             <Link href="/scan" className="text-emerald-500 hover:text-emerald-400">Run your first scan</Link> to see results here.
           </p>
         </div>
@@ -227,28 +227,28 @@ function JobsPageContent() {
       {!loading && (jobs.length > 0 || sources.length > 0 || schedules.length > 0) && (
         <section
           data-testid="source-job-evidence-workflow"
-          className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950 p-5"
+          className="space-y-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] p-5"
         >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
                 Source → job → evidence
               </p>
-              <h2 className="mt-1 text-base font-semibold text-zinc-100">Control-plane workflow</h2>
-              <p className="mt-1 max-w-3xl text-sm text-zinc-500">
+              <h2 className="mt-1 text-base font-semibold text-[var(--foreground)]">Control-plane workflow</h2>
+              <p className="mt-1 max-w-3xl text-sm text-[var(--text-tertiary)]">
                 Registered sources enqueue scan jobs. Each job runs the six-stage read-only pipeline below, then publishes findings, graph, and compliance evidence.
               </p>
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-400">
-                <span className="rounded-full border border-zinc-800 px-2.5 py-1">
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-[var(--text-secondary)]">
+                <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1">
                   {sources.length} sources · {sources.filter((source) => source.enabled).length} enabled
                 </span>
-                <span className="rounded-full border border-zinc-800 px-2.5 py-1">
+                <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1">
                   {jobs.filter((job) => job.status === "running").length} running · {jobs.length} total jobs
                 </span>
-                <span className="rounded-full border border-zinc-800 px-2.5 py-1">
+                <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1">
                   {evidenceReadyJobs.length} evidence-ready
                 </span>
-                <span className="rounded-full border border-zinc-800 px-2.5 py-1">
+                <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1">
                   {schedules.filter((schedule) => schedule.enabled).length} active schedules
                 </span>
               </div>
@@ -258,7 +258,7 @@ function JobsPageContent() {
                 type="button"
                 onClick={() => setWorkflowOpen((open) => !open)}
                 aria-expanded={workflowOpen}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
               >
                 {workflowOpen ? (
                   <ChevronDown className="h-3.5 w-3.5" />
@@ -269,7 +269,7 @@ function JobsPageContent() {
               </button>
               <Link
                 href="/sources"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
               >
                 Manage sources
               </Link>
@@ -286,8 +286,8 @@ function JobsPageContent() {
                 summary={featuredJob.summary}
               />
             ) : (
-              <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/30 p-4">
-                <p className="text-sm text-zinc-400">
+              <div className="rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface)]/30 p-4">
+                <p className="text-sm text-[var(--text-secondary)]">
                   Run a scan to see the live six-stage pipeline DAG with per-step timing and activity.
                 </p>
                 <div className="mt-4">
@@ -310,8 +310,8 @@ function JobsPageContent() {
                   onClick={() => { setStatusFilter(s); setPage(1); }}
                   className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
                     statusFilter === s
-                      ? "text-zinc-200 border-zinc-600 bg-zinc-800"
-                      : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                      ? "text-[var(--foreground)] border-[var(--border-strong)] bg-[var(--surface-elevated)]"
+                      : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
                   }`}
                 >
                   {s === "all"
@@ -321,32 +321,32 @@ function JobsPageContent() {
               ))}
             </div>
             <div className="relative w-full sm:w-56">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)]" />
               <input
                 type="text"
                 placeholder="Search jobs or sources…"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg pl-8 pr-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--border-strong)]"
               />
             </div>
           </div>
 
-          <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
+          <div className="border border-[var(--border-subtle)] rounded-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-zinc-900 border-b border-zinc-800">
+              <thead className="bg-[var(--surface)] border-b border-[var(--border-subtle)]">
                 <tr>
                   <th className="w-10 px-3 py-3" aria-label="Expand pipeline" />
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Job ID</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Source</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Started</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Completed</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Evidence</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Job ID</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Source</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Started</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Completed</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">Evidence</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800 bg-zinc-950">
+              <tbody className="divide-y divide-[var(--border-subtle)] bg-[var(--background)]">
                 {pagedJobs?.map((job) => {
                   const linkedSource = sourceForJob(job, sourceById, sourceByLastJobId);
                   const sourceId = sourceIdForJob(job);
@@ -355,7 +355,7 @@ function JobsPageContent() {
                   return (
                     <Fragment key={job.job_id}>
                     <tr
-                      className="hover:bg-zinc-900 transition-colors cursor-pointer group"
+                      className="hover:bg-[var(--surface)] transition-colors cursor-pointer group"
                       onClick={() => setExpandedJobId((current) => (current === job.job_id ? null : job.job_id))}
                     >
                       <td className="px-3 py-3">
@@ -367,7 +367,7 @@ function JobsPageContent() {
                             event.stopPropagation();
                             setExpandedJobId((current) => (current === job.job_id ? null : job.job_id));
                           }}
-                          className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                          className="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]"
                         >
                           {expanded ? (
                             <ChevronDown className="h-4 w-4" />
@@ -380,7 +380,7 @@ function JobsPageContent() {
                         <Link
                           href={`/scan?id=${encodeURIComponent(job.job_id)}`}
                           onClick={(event) => event.stopPropagation()}
-                          className="font-mono text-xs text-zinc-300 hover:text-emerald-300"
+                          className="font-mono text-xs text-[var(--text-secondary)] hover:text-emerald-300"
                         >
                           {job.job_id.slice(0, 8)}…
                         </Link>
@@ -393,24 +393,24 @@ function JobsPageContent() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="max-w-56">
-                          <p className="truncate text-xs font-medium text-zinc-300">
+                          <p className="truncate text-xs font-medium text-[var(--text-secondary)]">
                             {linkedSource?.display_name ?? (sourceId || "Manual / pushed scan")}
                           </p>
-                          <p className="mt-0.5 truncate text-[11px] text-zinc-600">
+                          <p className="mt-0.5 truncate text-[11px] text-[var(--text-tertiary)]">
                             {linkedSource ? `${linkedSource.kind} · ${linkedSource.owner || "unowned"}` : sourceId || "No registered source"}
                           </p>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-xs text-zinc-500">
+                      <td className="px-4 py-3 text-xs text-[var(--text-tertiary)]">
                         {formatDate(job.created_at)}
                       </td>
-                      <td className="px-4 py-3 text-xs text-zinc-500">
+                      <td className="px-4 py-3 text-xs text-[var(--text-tertiary)]">
                         {job.completed_at ? formatDate(job.completed_at) : "—"}
                       </td>
                       <td className="px-4 py-3">
                         {evidenceReady ? (
                           <div className="space-y-2">
-                            <p className="text-[11px] text-zinc-500">{evidenceSummary(job)}</p>
+                            <p className="text-[11px] text-[var(--text-tertiary)]">{evidenceSummary(job)}</p>
                             <div className="flex flex-wrap gap-1.5">
                               {[
                                 { href: `/findings?scan=${encodeURIComponent(job.job_id)}`, label: "Findings" },
@@ -421,7 +421,7 @@ function JobsPageContent() {
                                   key={link.label}
                                   href={link.href}
                                   onClick={(event) => event.stopPropagation()}
-                                  className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-400 hover:border-zinc-700 hover:text-zinc-100"
+                                  className="rounded-md border border-[var(--border-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-subtle)] hover:text-[var(--foreground)]"
                                 >
                                   {link.label}
                                 </Link>
@@ -429,14 +429,14 @@ function JobsPageContent() {
                             </div>
                           </div>
                         ) : (
-                          <span className="text-xs text-zinc-600">Available when complete</span>
+                          <span className="text-xs text-[var(--text-tertiary)]">Available when complete</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={(e) => handleDelete(job.job_id, e)}
                           disabled={deleting === job.job_id}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-red-400 transition-all rounded"
+                          className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-tertiary)] hover:text-red-400 transition-all rounded"
                           title="Delete job"
                         >
                           {deleting === job.job_id
@@ -447,7 +447,7 @@ function JobsPageContent() {
                       </td>
                     </tr>
                     {expanded ? (
-                      <tr key={`${job.job_id}-pipeline`} className="bg-zinc-900/40">
+                      <tr key={`${job.job_id}-pipeline`} className="bg-[var(--surface)]/40">
                         <td colSpan={8} className="px-4 py-4">
                           <JobPipelinePanel
                             jobId={job.job_id}
@@ -464,7 +464,7 @@ function JobsPageContent() {
                 })}
                 {pagedJobs.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-zinc-600 text-sm">
+                    <td colSpan={8} className="px-4 py-8 text-center text-[var(--text-tertiary)] text-sm">
                       No jobs match your filters.
                     </td>
                   </tr>
@@ -490,7 +490,7 @@ export default function JobsPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center py-20 text-zinc-400">
+        <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
           <Loader2 className="mr-2 h-6 w-6 animate-spin" />
           Loading jobs...
         </div>

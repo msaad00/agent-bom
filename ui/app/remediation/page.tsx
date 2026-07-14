@@ -80,7 +80,7 @@ function SortButton({
     <button
       onClick={() => onClick(field)}
       className={`flex items-center gap-0.5 text-xs font-medium uppercase tracking-wide transition-colors ${
-        active ? "text-zinc-200" : "text-zinc-500 hover:text-zinc-300"
+        active ? "text-[var(--foreground)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
       }`}
     >
       {label}
@@ -110,7 +110,7 @@ function NarrativeRow({
 
   return (
     <>
-      <tr className="hover:bg-zinc-900 transition-colors">
+      <tr className="hover:bg-[var(--surface)] transition-colors">
         {/* Package */}
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
@@ -120,11 +120,11 @@ function NarrativeRow({
               )}`}
             />
           <div>
-              <span className="font-mono text-xs text-zinc-200">
+              <span className="font-mono text-xs text-[var(--foreground)]">
                 {item.package}
               </span>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-zinc-400">
+                <span className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[var(--text-secondary)]">
                   current {item.current_version}
                 </span>
               </div>
@@ -138,13 +138,13 @@ function NarrativeRow({
             {item.vulnerabilities.slice(0, 2).map((cve) => (
               <span
                 key={cve}
-                className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+                className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
               >
                 {cve}
               </span>
             ))}
             {item.vulnerabilities.length > 2 && (
-              <span className="text-[10px] text-zinc-500">+{item.vulnerabilities.length - 2}</span>
+              <span className="text-[10px] text-[var(--text-tertiary)]">+{item.vulnerabilities.length - 2}</span>
             )}
           </div>
         </td>
@@ -170,14 +170,14 @@ function NarrativeRow({
           {item.fixed_version ? (
             <span className="font-mono text-emerald-400">{item.fixed_version}</span>
           ) : (
-            <span className="text-zinc-600">N/A</span>
+            <span className="text-[var(--text-tertiary)]">N/A</span>
           )}
         </td>
 
         {/* Risk score */}
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="w-16 h-1.5 bg-[var(--surface-elevated)] rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full ${
                   item.impact_score >= 8
@@ -191,16 +191,16 @@ function NarrativeRow({
                 style={{ width: `${(item.impact_score / 10) * 100}%` }}
               />
             </div>
-            <span className="text-xs font-mono text-zinc-300">
+            <span className="text-xs font-mono text-[var(--text-secondary)]">
               {item.impact_score.toFixed(1)}
             </span>
           </div>
         </td>
 
         {/* Reach */}
-        <td className="px-4 py-3 text-xs text-zinc-400">
+        <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
           <div>{item.affected_agents?.length ?? 0} agent{(item.affected_agents?.length ?? 0) !== 1 ? "s" : ""}</div>
-          <div className="text-zinc-600">{item.exposed_credentials?.length ?? 0} credential{(item.exposed_credentials?.length ?? 0) !== 1 ? "s" : ""}</div>
+          <div className="text-[var(--text-tertiary)]">{item.exposed_credentials?.length ?? 0} credential{(item.exposed_credentials?.length ?? 0) !== 1 ? "s" : ""}</div>
         </td>
 
         {/* Compliance tags */}
@@ -209,13 +209,13 @@ function NarrativeRow({
             {allTags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
-                className="text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-400"
+                className="text-[10px] font-mono bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-1.5 py-0.5 text-[var(--text-secondary)]"
               >
                 {tag}
               </span>
             ))}
             {allTags.length > 3 && (
-              <span className="text-[10px] text-zinc-600">
+              <span className="text-[10px] text-[var(--text-tertiary)]">
                 +{allTags.length - 3}
               </span>
             )}
@@ -227,7 +227,7 @@ function NarrativeRow({
           {item.risk_narrative || item.command || item.verify_command ? (
             <button
               onClick={() => setExpanded((v) => !v)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
             >
               {expanded ? (
                 <ChevronUp className="w-3 h-3" />
@@ -237,7 +237,7 @@ function NarrativeRow({
               Details
             </button>
           ) : (
-            <span className="text-xs text-zinc-600">—</span>
+            <span className="text-xs text-[var(--text-tertiary)]">—</span>
           )}
         </td>
 
@@ -245,7 +245,7 @@ function NarrativeRow({
         <td className="px-4 py-3">
           <button
             onClick={() => onCreateJira(item)}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
             title="Create Jira ticket"
           >
             <Ticket className="w-3 h-3" />
@@ -256,12 +256,12 @@ function NarrativeRow({
 
       {/* Expanded narrative */}
       {expanded && (item.risk_narrative || item.command || item.verify_command) && (
-        <tr className="bg-zinc-900/50">
+        <tr className="bg-[var(--surface)]/50">
           <td colSpan={9} className="px-6 py-4">
             <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
               <div className="space-y-3">
                 {item.risk_narrative ? (
-                  <div className="border-l-2 border-emerald-800 pl-3 text-xs leading-relaxed text-zinc-400">
+                  <div className="border-l-2 border-emerald-800 pl-3 text-xs leading-relaxed text-[var(--text-secondary)]">
                     {item.risk_narrative}
                   </div>
                 ) : null}
@@ -269,7 +269,7 @@ function NarrativeRow({
                   {item.vulnerabilities.map((cve) => (
                     <span
                       key={cve}
-                      className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+                      className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
                     >
                       {cve}
                     </span>
@@ -277,13 +277,13 @@ function NarrativeRow({
                 </div>
                 {(item.reachable_tools?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-zinc-600">
+                    <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
                       Reachable tools
                     </span>
                     {item.reachable_tools.map((t) => (
                       <span
                         key={t}
-                        className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500"
+                        className="rounded border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-tertiary)]"
                       >
                         {t}
                       </span>
@@ -293,17 +293,17 @@ function NarrativeRow({
               </div>
               <div className="space-y-3">
                 {item.command ? (
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Recommended command</div>
+                  <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Recommended command</div>
                     <code className="mt-2 block whitespace-pre-wrap font-mono text-xs leading-6 text-emerald-300">
                       {item.command}
                     </code>
                   </div>
                 ) : null}
                 {item.verify_command ? (
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Verify</div>
-                    <code className="mt-2 block whitespace-pre-wrap font-mono text-xs leading-6 text-zinc-300">
+                  <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Verify</div>
+                    <code className="mt-2 block whitespace-pre-wrap font-mono text-xs leading-6 text-[var(--text-secondary)]">
                       {item.verify_command}
                     </code>
                   </div>
@@ -371,12 +371,12 @@ function JiraModal({
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md bg-zinc-900 border border-zinc-700/60 rounded-xl shadow-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-zinc-800">
-          <h2 className="text-sm font-semibold text-zinc-100">
+      <div className="relative w-full max-w-md bg-[var(--surface)] border border-[var(--border-subtle)]/60 rounded-xl shadow-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-[var(--border-subtle)]">
+          <h2 className="text-sm font-semibold text-[var(--foreground)]">
             Create Jira Ticket
           </h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
             {item.package} {item.current_version}
           </p>
         </div>
@@ -388,7 +388,7 @@ function JiraModal({
             </p>
             <button
               onClick={onClose}
-              className="mt-4 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
+              className="mt-4 px-4 py-2 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm rounded-lg transition-colors"
             >
               Close
             </button>
@@ -430,7 +430,7 @@ function JiraModal({
               },
             ].map(({ id, label, val, set, type, placeholder }) => (
               <div key={id}>
-                <label className="block text-xs text-zinc-400 mb-1">
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">
                   {label}
                 </label>
                 <input
@@ -439,7 +439,7 @@ function JiraModal({
                   onChange={(e) => set(e.target.value)}
                   placeholder={placeholder}
                   required
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="w-full bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--border-strong)]"
                 />
               </div>
             ))}
@@ -450,7 +450,7 @@ function JiraModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+                className="px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
               >
                 Cancel
               </button>
@@ -476,7 +476,7 @@ export default function RemediationPageWrapper() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center py-20 text-zinc-400">
+        <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           Loading remediation plan...
         </div>
@@ -605,7 +605,7 @@ function RemediationPage() {
     {
       key: "all",
       label: `All (${items.length})`,
-      color: "text-zinc-300",
+      color: "text-[var(--text-secondary)]",
     },
     {
       key: "critical",
@@ -642,7 +642,7 @@ function RemediationPage() {
           <h1 className="text-2xl font-semibold tracking-tight">
             Remediation
           </h1>
-          <p className="text-zinc-400 text-sm mt-1">
+          <p className="text-[var(--text-secondary)] text-sm mt-1">
             {items.length} packages prioritized by reach, severity, and available fixes
           </p>
         </div>
@@ -654,7 +654,7 @@ function RemediationPage() {
                 `remediation-plan-${new Date().toISOString().slice(0, 10)}.json`
               )
             }
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium rounded-lg transition-colors"
             title="Export remediation plan as JSON"
           >
             <Download className="w-3.5 h-3.5" />
@@ -665,7 +665,7 @@ function RemediationPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-20 text-zinc-400">
+        <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           Loading remediation plan...
         </div>
@@ -673,11 +673,11 @@ function RemediationPage() {
 
       {/* Error */}
       {!loading && error && (
-        <div className="text-center py-12 border border-dashed border-zinc-800 rounded-xl">
+        <div className="text-center py-12 border border-dashed border-[var(--border-subtle)] rounded-xl">
           <p className="text-red-400 text-sm mb-3">{error}</p>
           <button
             onClick={load}
-            className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
+            className="px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm rounded-lg transition-colors"
           >
             Retry
           </button>
@@ -686,12 +686,12 @@ function RemediationPage() {
 
       {/* Empty */}
       {!loading && !error && items.length === 0 && (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <Wrench className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">
+        <div className="text-center py-16 border border-dashed border-[var(--border-subtle)] rounded-xl">
+          <Wrench className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
+          <p className="text-[var(--text-tertiary)] text-sm">
             Run a scan to see remediation recommendations
           </p>
-          <p className="text-zinc-600 text-xs mt-1">
+          <p className="text-[var(--text-tertiary)] text-xs mt-1">
             Remediation plans are generated automatically after each completed
             scan.
           </p>
@@ -702,22 +702,22 @@ function RemediationPage() {
       {!loading && !error && items.length > 0 && (
         <>
           {/* Compliance impact summary */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4">
-            <p className="text-sm text-zinc-300">
+          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl px-5 py-4">
+            <p className="text-sm text-[var(--text-secondary)]">
               <span className="font-semibold text-emerald-400">
                 Fixing the top 5 packages
               </span>{" "}
               clears{" "}
-              <span className="font-semibold text-zinc-100">
+              <span className="font-semibold text-[var(--foreground)]">
                 {impact.controls} controls
               </span>{" "}
               across{" "}
-              <span className="font-semibold text-zinc-100">
+              <span className="font-semibold text-[var(--foreground)]">
                 {impact.frameworks} framework
                 {impact.frameworks !== 1 ? "s" : ""}
               </span>
             </p>
-            <p className="text-xs text-zinc-600 mt-1">
+            <p className="text-xs text-[var(--text-tertiary)] mt-1">
               Based on OWASP LLM Top 10 and MITRE ATLAS tags assigned to each
               remediation item.
             </p>
@@ -734,8 +734,8 @@ function RemediationPage() {
                     onClick={() => setSeverityFilter(key)}
                     className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
                       severityFilter === key
-                        ? `${color} border-zinc-600 bg-zinc-800`
-                        : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                        ? `${color} border-[var(--border-strong)] bg-[var(--surface-elevated)]`
+                        : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
                     }`}
                   >
                     {label}
@@ -751,8 +751,8 @@ function RemediationPage() {
                     onClick={() => setFrameworkFilter(key)}
                     className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
                       frameworkFilter === key
-                        ? "text-zinc-200 border-zinc-600 bg-zinc-800"
-                        : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                        ? "text-[var(--foreground)] border-[var(--border-strong)] bg-[var(--surface-elevated)]"
+                        : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
                     }`}
                   >
                     {label}
@@ -763,7 +763,7 @@ function RemediationPage() {
                   className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
                     fixableOnly
                       ? "text-emerald-400 border-emerald-800 bg-emerald-950/40"
-                      : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                      : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
                   }`}
                 >
                   Fixable only
@@ -773,14 +773,14 @@ function RemediationPage() {
           </div>
 
           {/* Table */}
-          <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
+          <div className="border border-[var(--border-subtle)] rounded-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-zinc-900 border-b border-zinc-800">
+              <thead className="bg-[var(--surface)] border-b border-[var(--border-subtle)]">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
                     Package
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
                     CVEs
                   </th>
                   <th className="text-left px-4 py-3">
@@ -792,7 +792,7 @@ function RemediationPage() {
                       onClick={handleSort}
                     />
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
                     Fix
                   </th>
                   <th className="text-left px-4 py-3">
@@ -804,21 +804,21 @@ function RemediationPage() {
                       onClick={handleSort}
                     />
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
                     Reach
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
                     Compliance
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
                     Details
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800 bg-zinc-950">
+              <tbody className="divide-y divide-[var(--border-subtle)] bg-[var(--background)]">
                 {paged.map((item) => (
                   <NarrativeRow
                     key={`${item.package}-${item.current_version}`}
@@ -830,7 +830,7 @@ function RemediationPage() {
             </table>
 
             {paged.length === 0 && (
-              <div className="px-4 py-8 text-center text-zinc-600 text-sm">
+              <div className="px-4 py-8 text-center text-[var(--text-tertiary)] text-sm">
                 No items match your filters.
               </div>
             )}

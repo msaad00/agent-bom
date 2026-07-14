@@ -28,7 +28,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center text-zinc-400">
+        <div className="flex min-h-screen items-center justify-center text-[var(--text-secondary)]">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           Loading sign-in...
         </div>

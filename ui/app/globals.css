@@ -26,6 +26,11 @@
   /* Mint brand accent */
   --accent-mint: #34d399;
 
+  /* Text that sits on a bright accent fill (emerald/sky buttons). Near-black
+   * in both themes because the fill stays bright — replaces hardcoded
+   * text-zinc-950 so light theme keeps the same legible contrast (#3966). */
+  --on-accent: #0b0d10;
+
   /* Severity — badges, charts, dots (hex aligned with ui/lib/theme-colors.ts) */
   --severity-critical: #ff6b6b;
   --severity-critical-bg: rgba(255, 107, 107, 0.16);

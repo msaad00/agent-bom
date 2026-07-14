@@ -38,12 +38,12 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
       <div className="mb-1 flex items-center gap-2">
         <Icon className={`h-4 w-4 ${color}`} />
-        <span className="text-xs text-zinc-500">{label}</span>
+        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-zinc-100">{value}</p>
+      <p className="text-2xl font-bold text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
@@ -70,15 +70,15 @@ function IncidentCard({
     <div
       className={`rounded-xl border p-4 ${
         incident.resolved
-          ? "border-zinc-800 bg-zinc-900/30 opacity-70"
-          : "border-zinc-800 bg-zinc-900/50"
+          ? "border-[var(--border-subtle)] bg-[var(--surface)]/30 opacity-70"
+          : "border-[var(--border-subtle)] bg-[var(--surface)]/50"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <GitBranch className="h-4 w-4 text-zinc-500" />
-            <span className="font-mono text-sm font-semibold text-zinc-200">
+            <GitBranch className="h-4 w-4 text-[var(--text-tertiary)]" />
+            <span className="font-mono text-sm font-semibold text-[var(--foreground)]">
               {incident.blueprint_id}
             </span>
             <span
@@ -95,12 +95,12 @@ function IncidentCard({
                 : incident.status.replace(/_/g, " ")}
             </span>
             {incident.occurrences > 1 && (
-              <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+              <span className="rounded bg-[var(--surface-elevated)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
                 ×{incident.occurrences}
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
             {incident.violation_count} violation
             {incident.violation_count !== 1 ? "s" : ""} ·{" "}
             {incident.warning_count} warning
@@ -134,13 +134,13 @@ function IncidentCard({
       </div>
 
       <div className="mt-3 flex items-center gap-3">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--surface-elevated)]">
           <div
             className={`h-full ${scoreColor(incident.drift_score)} transition-all`}
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className="font-mono text-xs text-zinc-400">
+        <span className="font-mono text-xs text-[var(--text-secondary)]">
           drift {incident.drift_score.toFixed(2)}
         </span>
       </div>
@@ -150,7 +150,7 @@ function IncidentCard({
           {incident.top_violations.slice(0, 8).map((v, i) => (
             <span
               key={i}
-              className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-xs text-zinc-300"
+              className="rounded bg-[var(--surface-elevated)] px-2 py-0.5 font-mono text-xs text-[var(--text-secondary)]"
             >
               {(v.tool_name as string) || (v.type as string) || "violation"}
             </span>
@@ -159,7 +159,7 @@ function IncidentCard({
       )}
 
       {incident.resolved && incident.resolved_by && (
-        <p className="mt-2 text-xs text-zinc-600">
+        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
           Resolved by {incident.resolved_by}
           {incident.resolved_at ? ` · ${formatDate(incident.resolved_at)}` : ""}
           {incident.resolution_note ? ` · ${incident.resolution_note}` : ""}
@@ -236,14 +236,14 @@ export default function DriftPage() {
         <div className="flex items-center gap-2">
           <Radar className="h-6 w-6 text-rose-400" />
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-100">Drift</h1>
-            <p className="text-sm text-zinc-500">
+            <h1 className="text-2xl font-semibold text-[var(--foreground)]">Drift</h1>
+            <p className="text-sm text-[var(--text-tertiary)]">
               Behavioral drift incidents where live agent activity diverged from
               its declared blueprint.
             </p>
           </div>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
           <input
             type="checkbox"
             checked={showResolved}

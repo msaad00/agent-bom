@@ -51,7 +51,7 @@ export function TraceExplorerPanel() {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-10 text-sm text-zinc-400">
+      <div className="flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 px-4 py-10 text-sm text-[var(--text-secondary)]">
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading runtime trace explorer…
       </div>
@@ -68,7 +68,7 @@ export function TraceExplorerPanel() {
 
   if (!data || data.sessions.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 px-4 py-10 text-center text-sm text-zinc-500">
+      <div className="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface)]/40 px-4 py-10 text-center text-sm text-[var(--text-tertiary)]">
         No runtime sessions yet. Gateway/proxy blocks and authorized tool calls will appear here once enforcement traffic is flowing.
       </div>
     );
@@ -76,9 +76,9 @@ export function TraceExplorerPanel() {
 
   return (
     <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
-        <h2 className="text-sm font-semibold text-zinc-200">Sessions</h2>
-        <p className="mt-1 text-xs text-zinc-500">{data.session_count} sessions · {data.blocked_count} blocked spans</p>
+      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
+        <h2 className="text-sm font-semibold text-[var(--foreground)]">Sessions</h2>
+        <p className="mt-1 text-xs text-[var(--text-tertiary)]">{data.session_count} sessions · {data.blocked_count} blocked spans</p>
         <div className="mt-4 space-y-2">
           {data.sessions.map((session) => (
             <button
@@ -91,11 +91,11 @@ export function TraceExplorerPanel() {
               className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
                 selectedSessionId === session.session_id
                   ? "border-emerald-700/60 bg-emerald-950/30"
-                  : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                  : "border-[var(--border-subtle)] bg-[var(--background)]/60 hover:border-[var(--border-subtle)]"
               }`}
             >
-              <div className="text-sm font-medium text-zinc-100">{session.agent || session.session_id}</div>
-              <div className="mt-1 text-xs text-zinc-500">
+              <div className="text-sm font-medium text-[var(--foreground)]">{session.agent || session.session_id}</div>
+              <div className="mt-1 text-xs text-[var(--text-tertiary)]">
                 {session.spans.length} spans · {session.blocked_count} blocked
               </div>
             </button>
@@ -103,9 +103,9 @@ export function TraceExplorerPanel() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
-        <h2 className="text-sm font-semibold text-zinc-200">Flow</h2>
-        <p className="mt-1 text-xs text-zinc-500">Tool-call timeline for the selected session.</p>
+      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
+        <h2 className="text-sm font-semibold text-[var(--foreground)]">Flow</h2>
+        <p className="mt-1 text-xs text-[var(--text-tertiary)]">Tool-call timeline for the selected session.</p>
         <div className="mt-4 space-y-2">
           {(selectedSession?.spans ?? []).map((span) => (
             <button
@@ -115,7 +115,7 @@ export function TraceExplorerPanel() {
               className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
                 selectedSpanId === span.span_id
                   ? "border-sky-700/60 bg-sky-950/20"
-                  : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                  : "border-[var(--border-subtle)] bg-[var(--background)]/60 hover:border-[var(--border-subtle)]"
               }`}
             >
               <span
@@ -128,24 +128,24 @@ export function TraceExplorerPanel() {
                 {span.verdict === "blocked" ? <ShieldAlert className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-mono text-xs text-zinc-200">{span.tool || span.action_type}</span>
-                <span className="mt-1 block text-[11px] text-zinc-500">{span.timestamp || "—"} · {span.verdict}</span>
+                <span className="block truncate font-mono text-xs text-[var(--foreground)]">{span.tool || span.action_type}</span>
+                <span className="mt-1 block text-[11px] text-[var(--text-tertiary)]">{span.timestamp || "—"} · {span.verdict}</span>
               </span>
             </button>
           ))}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
-        <h2 className="text-sm font-semibold text-zinc-200">Detail</h2>
+      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
+        <h2 className="text-sm font-semibold text-[var(--foreground)]">Detail</h2>
         {!selectedSpan ? (
-          <p className="mt-4 text-sm text-zinc-500">Select a span to inspect policy and finding joins.</p>
+          <p className="mt-4 text-sm text-[var(--text-tertiary)]">Select a span to inspect policy and finding joins.</p>
         ) : (
           <div className="mt-4 space-y-4 text-sm">
             <div>
-              <div className="text-[11px] uppercase tracking-wide text-zinc-500">Tool call</div>
-              <div className="mt-1 font-mono text-zinc-100">{selectedSpan.tool || "unknown"}</div>
-              <div className="mt-2 text-xs text-zinc-400">{selectedSpan.detail}</div>
+              <div className="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">Tool call</div>
+              <div className="mt-1 font-mono text-[var(--foreground)]">{selectedSpan.tool || "unknown"}</div>
+              <div className="mt-2 text-xs text-[var(--text-secondary)]">{selectedSpan.detail}</div>
             </div>
             <div className="flex flex-wrap gap-2">
               <span className={`rounded border px-2 py-0.5 text-xs uppercase ${
@@ -155,18 +155,18 @@ export function TraceExplorerPanel() {
               }`}>
                 {selectedSpan.verdict}
               </span>
-              <span className="rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs text-zinc-300">
+              <span className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
                 {selectedSpan.agent}
               </span>
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-wide text-zinc-500">Linked findings</div>
+              <div className="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">Linked findings</div>
               {selectedSpan.linked_findings.length === 0 ? (
-                <p className="mt-2 text-xs text-zinc-500">No correlated CVE findings for this agent/tool path.</p>
+                <p className="mt-2 text-xs text-[var(--text-tertiary)]">No correlated CVE findings for this agent/tool path.</p>
               ) : (
                 <div className="mt-2 space-y-2">
                   {selectedSpan.linked_findings.map((finding) => (
-                    <div key={String(finding.finding_id)} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                    <div key={String(finding.finding_id)} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
                       <div className="flex items-center justify-between gap-2">
                         <Link href={`/findings?cve=${encodeURIComponent(String(finding.vulnerability_id || ""))}`} className="font-mono text-xs text-emerald-300 hover:underline">
                           {finding.vulnerability_id}
@@ -188,10 +188,10 @@ export function TraceExplorerPanel() {
             </div>
             {selectedSpan.compliance_controls.length > 0 && (
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-zinc-500">Compliance controls</div>
+                <div className="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">Compliance controls</div>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {selectedSpan.compliance_controls.map((tag) => (
-                    <span key={tag} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 font-mono text-[10px] text-zinc-300">
+                    <span key={tag} className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
                       {tag}
                     </span>
                   ))}

@@ -45,7 +45,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
       </div>
     );
   }
@@ -58,11 +58,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center px-4 py-10">
         <div className="w-full max-w-xl rounded-3xl border border-amber-900/50 bg-amber-950/20 p-8 text-center shadow-2xl shadow-black/20">
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Control plane unreachable</h1>
-          <p className="mt-3 text-sm leading-6 text-zinc-400">
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--foreground)]">Control plane unreachable</h1>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
             Authentication could not be verified because the API is offline or returned a server error.
           </p>
-          <p className="mt-2 text-xs text-zinc-500">{error}</p>
+          <p className="mt-2 text-xs text-[var(--text-tertiary)]">{error}</p>
         </div>
       </div>
     );
@@ -71,7 +71,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (needsAuth) {
     return (
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
       </div>
     );
   }

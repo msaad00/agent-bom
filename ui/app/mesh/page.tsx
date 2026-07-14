@@ -80,15 +80,15 @@ function MeshToolbar({
   toggleAgent: (name: string) => void;
 }) {
   const toggles: { key: keyof NodeTypeFilter; label: string; color: string }[] = [
-    { key: "packages", label: "Packages", color: "text-zinc-400" },
+    { key: "packages", label: "Packages", color: "text-[var(--text-secondary)]" },
     { key: "vulnerabilities", label: "Vulns", color: "text-red-400" },
     { key: "credentials", label: "Creds", color: "text-amber-400" },
     { key: "tools", label: "Tools", color: "text-purple-400" },
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 py-2 text-xs">
-      <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+    <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2 text-xs">
+      <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--text-tertiary)] shrink-0" />
 
       {/* Node type toggles */}
       {toggles?.map((t) => (
@@ -97,19 +97,19 @@ function MeshToolbar({
             type="checkbox"
             checked={nodeFilter[t.key]}
             onChange={() => setNodeFilter({ ...nodeFilter, [t.key]: !nodeFilter[t.key] })}
-            className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-0 focus:ring-offset-0"
+            className="w-3 h-3 rounded border-[var(--border-strong)] bg-[var(--surface-elevated)] text-emerald-500 focus:ring-0 focus:ring-offset-0"
           />
-          <span className={nodeFilter[t.key] ? t.color : "text-zinc-600"}>{t.label}</span>
+          <span className={nodeFilter[t.key] ? t.color : "text-[var(--text-tertiary)]"}>{t.label}</span>
         </label>
       ))}
 
-      <div className="hidden h-4 w-px bg-zinc-700 sm:block" />
+      <div className="hidden h-4 w-px bg-[var(--surface-muted)] sm:block" />
 
       {/* Severity filter */}
       <select
         value={severityFilter}
         onChange={(e) => setSeverityFilter(e.target.value as SeverityFilter)}
-        className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600"
+        className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600"
       >
         <option value="all">All Severities</option>
         <option value="critical">Critical Only</option>
@@ -118,32 +118,32 @@ function MeshToolbar({
         <option value="low">Low+</option>
       </select>
 
-      <label className="flex items-center gap-1.5 text-zinc-400">
+      <label className="flex items-center gap-1.5 text-[var(--text-secondary)]">
         <input
           type="checkbox"
           checked={vulnerableOnly}
           onChange={(event) => setVulnerableOnly(event.target.checked)}
-          className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-0 focus:ring-offset-0"
+          className="w-3 h-3 rounded border-[var(--border-strong)] bg-[var(--surface-elevated)] text-emerald-500 focus:ring-0 focus:ring-offset-0"
         />
         Vulnerable only
       </label>
 
-      <div className="hidden h-4 w-px bg-zinc-700 sm:block" />
+      <div className="hidden h-4 w-px bg-[var(--surface-muted)] sm:block" />
 
       {/* Search */}
       <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
-        <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2" />
+        <Search className="w-3.5 h-3.5 text-[var(--text-tertiary)] absolute left-2 top-1/2 -translate-y-1/2" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search nodes, CVEs, packages..."
-          className="w-full bg-zinc-900 border border-zinc-700 rounded pl-7 pr-2 py-1 text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-600"
+          className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded pl-7 pr-2 py-1 text-xs text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-emerald-600"
         />
         {searchQuery && (
           <button
             onClick={() => setSearchQuery("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
           >
             ×
           </button>
@@ -152,7 +152,7 @@ function MeshToolbar({
 
       {agentOptions.length > 0 && (
         <>
-          <div className="hidden h-4 w-px bg-zinc-700 sm:block" />
+          <div className="hidden h-4 w-px bg-[var(--surface-muted)] sm:block" />
           <div className="flex max-w-full items-center gap-1.5 overflow-x-auto pb-1 sm:max-w-[28rem]">
             {agentOptions.map(({ key, label }) => {
               const active = selectedAgents.includes(key);
@@ -164,7 +164,7 @@ function MeshToolbar({
                   className={`max-w-[13rem] truncate rounded-full border px-2.5 py-1 text-[11px] transition ${
                     active
                       ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
-                      : "border-zinc-700 bg-zinc-900/70 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
+                      : "border-[var(--border-subtle)] bg-[var(--surface)]/70 text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
                   }`}
                 >
                   {label}
@@ -513,7 +513,7 @@ export default function MeshPage() {
             </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <div className="flex max-w-full items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
+            <div className="flex max-w-full items-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]">
               {[
                 { key: "radial" as const, label: "Risk Map", icon: Orbit },
                 { key: "topology" as const, label: "Flow", icon: Network },
@@ -526,7 +526,7 @@ export default function MeshPage() {
                   className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium transition-colors ${
                     layoutMode === key
                       ? "bg-emerald-600 text-white"
-                      : "text-zinc-400 hover:text-zinc-200"
+                      : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -537,7 +537,7 @@ export default function MeshPage() {
             <select
               value={selectedJob}
               onChange={(e) => setSelectedJob(e.target.value)}
-              className="min-w-0 max-w-[14rem] truncate rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 focus:outline-none focus:border-emerald-600"
+              className="min-w-0 max-w-[14rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600"
             >
               {jobs?.map((j) => (
                 <option key={j.job_id} value={j.job_id}>
@@ -563,8 +563,8 @@ export default function MeshPage() {
 
       {/* Filter toolbar */}
       {!captureMode && (
-      <details className="group border-b border-zinc-800" open={!pathFocusActive}>
-        <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-1.5 text-[11px] text-zinc-500 [&::-webkit-details-marker]:hidden">
+      <details className="group border-b border-[var(--border-subtle)]" open={!pathFocusActive}>
+        <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-1.5 text-[11px] text-[var(--text-tertiary)] [&::-webkit-details-marker]:hidden">
           <span className="font-medium uppercase tracking-[0.16em]">Scope & filters</span>
           <span className="text-[10px] uppercase tracking-[0.14em] group-open:hidden">show</span>
           <span className="hidden text-[10px] uppercase tracking-[0.14em] group-open:inline">hide</span>

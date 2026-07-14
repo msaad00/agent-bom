@@ -54,7 +54,7 @@ function StatPill({
   tone?: "zinc" | "red" | "amber" | "emerald";
 }) {
   const toneClass = {
-    zinc: "border-zinc-800 bg-zinc-950/70 text-zinc-300",
+    zinc: "border-[var(--border-subtle)] bg-[var(--background)]/70 text-[var(--text-secondary)]",
     red: "border-red-500/30 bg-red-950/25 text-red-100",
     amber: "border-amber-500/30 bg-amber-950/25 text-amber-100",
     emerald: "border-emerald-500/30 bg-emerald-950/25 text-emerald-100",
@@ -63,7 +63,7 @@ function StatPill({
   return (
     <div className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 ${toneClass}`}>
       <Icon className="h-4 w-4 shrink-0" />
-      <span className="min-w-0 truncate text-[11px] uppercase tracking-[0.14em] text-zinc-500">{label}</span>
+      <span className="min-w-0 truncate text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">{label}</span>
       <span className="ml-auto shrink-0 font-mono text-sm font-semibold">{value}</span>
     </div>
   );
@@ -76,12 +76,12 @@ function RelationshipRail({ items }: { items: Array<{ relationship: string; coun
       {items.map((item) => (
         <span
           key={item.relationship}
-          className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/75 px-2.5 py-1 text-[11px] text-zinc-300"
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--background)]/75 px-2.5 py-1 text-[11px] text-[var(--text-secondary)]"
         >
           <span className="max-w-36 truncate" title={item.relationship}>
             {item.relationship.replace(/_/g, " ")}
           </span>
-          <span className="font-mono text-zinc-500">{item.count}</span>
+          <span className="font-mono text-[var(--text-tertiary)]">{item.count}</span>
         </span>
       ))}
     </div>
@@ -211,20 +211,20 @@ export function SigmaGraphOverview({
 
   return (
     <div
-      className="flex h-full min-h-[72vh] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/30"
+      className="flex h-full min-h-[72vh] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] shadow-2xl shadow-black/30"
       data-testid="sigma-graph-overview"
     >
-      <div className="border-b border-zinc-800 bg-zinc-950/95 p-3">
+      <div className="border-b border-[var(--border-subtle)] bg-[var(--background)]/95 p-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-950/25 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
             <Sparkles className="h-3.5 w-3.5" />
             WebGL graph overview
           </span>
-          <span className="min-w-0 text-xs text-zinc-500">
+          <span className="min-w-0 text-xs text-[var(--text-tertiary)]">
             Sigma.js renderer for broad estate scans; focused investigations still use React Flow.
           </span>
         </div>
-        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--text-tertiary)]">
           <span>
             Switches on with renderer=webgl at {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes or{" "}
             {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges.
@@ -264,8 +264,8 @@ export function SigmaGraphOverview({
           </div>
         )}
         <div className="pointer-events-auto absolute right-3 top-3 max-w-[min(30rem,calc(100vw-2rem))]">
-          <details className="rounded-xl border border-zinc-800 bg-zinc-950/85 p-2 backdrop-blur">
-            <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-zinc-400 [&::-webkit-details-marker]:hidden">
+          <details className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/85 p-2 backdrop-blur">
+            <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
               Legend
             </summary>
             <div className="mt-2">

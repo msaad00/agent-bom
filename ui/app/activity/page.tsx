@@ -53,7 +53,7 @@ export default function ActivityPage() {
     return (
       <div className="space-y-6">
         <GatewayLiveFeedCard />
-        <div className="flex items-center justify-center py-20 text-zinc-400">
+        <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           Loading activity timeline...
         </div>
@@ -121,18 +121,18 @@ export default function ActivityPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-[var(--foreground)] flex items-center gap-2">
             <Clock className="w-6 h-6 text-emerald-400" />
             Agent Activity Timeline
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">
             Account: {timeline.account} | Discovered: {formatDate(timeline.discovered_at)}
           </p>
         </div>
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
-          className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300"
+          className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-md px-3 py-1.5 text-sm text-[var(--text-secondary)]"
         >
           <option value={7}>Last 7 days</option>
           <option value={30}>Last 30 days</option>
@@ -187,9 +187,9 @@ export default function ActivityPage() {
 
       {/* Activity bar chart */}
       {Object.keys(patternCounts).length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Agent Query Patterns</h3>
-          <p className="text-[10px] text-zinc-600 mb-4">Query count by detected agent pattern</p>
+        <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-1">Agent Query Patterns</h3>
+          <p className="text-[10px] text-[var(--text-tertiary)] mb-4">Query count by detected agent pattern</p>
           <div className="h-44">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -229,24 +229,24 @@ export default function ActivityPage() {
           />
         </div>
         <div className="relative flex-1 max-w-xs">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
           <input
             type="text"
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-md pl-9 pr-3 py-1.5 text-sm text-zinc-300 placeholder-zinc-600"
+            className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-md pl-9 pr-3 py-1.5 text-sm text-[var(--text-secondary)] placeholder-[var(--text-tertiary)]"
           />
         </div>
       </div>
 
       {/* Query History Tab */}
       {tab === "queries" && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900">
+                <tr className="text-[var(--text-tertiary)] border-b border-[var(--border-subtle)] bg-[var(--surface)]">
                   <th className="text-left py-2 px-3">Time</th>
                   <th className="text-left py-2 px-3">User</th>
                   <th className="text-left py-2 px-3">Role</th>
@@ -260,15 +260,15 @@ export default function ActivityPage() {
                 {filteredQueries.slice(0, 100).map((q) => (
                   <tr
                     key={q.query_id}
-                    className="border-b border-zinc-800/50 hover:bg-zinc-800/30"
+                    className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--surface-elevated)]/30"
                   >
-                    <td className="py-1.5 px-3 text-zinc-500 whitespace-nowrap">
+                    <td className="py-1.5 px-3 text-[var(--text-tertiary)] whitespace-nowrap">
                       {formatDate(q.start_time)}
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-300 font-mono">
+                    <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono">
                       {q.user_name}
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-400 font-mono">
+                    <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono">
                       {q.role_name}
                     </td>
                     <td className="py-1.5 px-3">
@@ -277,16 +277,16 @@ export default function ActivityPage() {
                           {q.agent_pattern}
                         </span>
                       ) : (
-                        <span className="text-zinc-600">-</span>
+                        <span className="text-[var(--text-tertiary)]">-</span>
                       )}
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-400 font-mono truncate max-w-[300px]">
+                    <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono truncate max-w-[300px]">
                       {q.query_text}
                     </td>
                     <td className="py-1.5 px-3">
                       <StatusBadge status={q.execution_status} />
                     </td>
-                    <td className="py-1.5 px-3 text-right text-zinc-500 font-mono">
+                    <td className="py-1.5 px-3 text-right text-[var(--text-tertiary)] font-mono">
                       {q.execution_time_ms.toLocaleString()}
                     </td>
                   </tr>
@@ -294,7 +294,7 @@ export default function ActivityPage() {
               </tbody>
             </table>
             {filteredQueries.length === 0 && (
-              <div className="text-center py-8 text-zinc-500 text-sm">
+              <div className="text-center py-8 text-[var(--text-tertiary)] text-sm">
                 No queries match the search.
               </div>
             )}
@@ -304,11 +304,11 @@ export default function ActivityPage() {
 
       {/* Observability Events Tab */}
       {tab === "events" && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900">
+                <tr className="text-[var(--text-tertiary)] border-b border-[var(--border-subtle)] bg-[var(--surface)]">
                   <th className="text-left py-2 px-3">Time</th>
                   <th className="text-left py-2 px-3">Agent</th>
                   <th className="text-left py-2 px-3">Event Type</th>
@@ -323,30 +323,30 @@ export default function ActivityPage() {
                 {filteredEvents.slice(0, 100).map((e) => (
                   <tr
                     key={e.event_id}
-                    className="border-b border-zinc-800/50 hover:bg-zinc-800/30"
+                    className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--surface-elevated)]/30"
                   >
-                    <td className="py-1.5 px-3 text-zinc-500 whitespace-nowrap">
+                    <td className="py-1.5 px-3 text-[var(--text-tertiary)] whitespace-nowrap">
                       {formatDate(e.timestamp)}
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-300 font-mono">
+                    <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono">
                       {e.agent_name || "-"}
                     </td>
                     <td className="py-1.5 px-3">
                       <EventTypeBadge type={e.event_type} />
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-400 font-mono">
+                    <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono">
                       {e.tool_name || "-"}
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-500 font-mono text-xs">
+                    <td className="py-1.5 px-3 text-[var(--text-tertiary)] font-mono text-xs">
                       {e.model_name || "-"}
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-600 font-mono truncate max-w-[100px]">
+                    <td className="py-1.5 px-3 text-[var(--text-tertiary)] font-mono truncate max-w-[100px]">
                       {e.trace_id || "-"}
                     </td>
-                    <td className="py-1.5 px-3 text-right text-zinc-500 font-mono">
+                    <td className="py-1.5 px-3 text-right text-[var(--text-tertiary)] font-mono">
                       {(e.input_tokens + e.output_tokens).toLocaleString()}
                     </td>
-                    <td className="py-1.5 px-3 text-right text-zinc-500 font-mono">
+                    <td className="py-1.5 px-3 text-right text-[var(--text-tertiary)] font-mono">
                       {e.duration_ms.toLocaleString()}ms
                     </td>
                   </tr>
@@ -354,7 +354,7 @@ export default function ActivityPage() {
               </tbody>
             </table>
             {filteredEvents.length === 0 && (
-              <div className="text-center py-8 text-zinc-500 text-sm">
+              <div className="text-center py-8 text-[var(--text-tertiary)] text-sm">
                 {timeline.observability_events.length === 0
                   ? "No AI observability events available. Enable AI observability in Snowflake."
                   : "No events match the search."}
@@ -379,12 +379,12 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`w-4 h-4 ${color}`} />
-        <span className="text-xs text-zinc-500">{label}</span>
+        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-zinc-100">{value.toLocaleString()}</p>
+      <p className="text-2xl font-bold text-[var(--foreground)]">{value.toLocaleString()}</p>
     </div>
   );
 }
@@ -403,8 +403,8 @@ function TabButton({
       onClick={onClick}
       className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
         active
-          ? "bg-zinc-700 text-zinc-100"
-          : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
+          ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
+          : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
       }`}
     >
       {label}
@@ -418,7 +418,7 @@ function StatusBadge({ status }: { status: string }) {
       ? "text-emerald-400 bg-emerald-950 border-emerald-800"
       : status === "FAIL" || status === "FAILED"
         ? "text-red-400 bg-red-950 border-red-800"
-        : "text-zinc-400 bg-zinc-800 border-zinc-700";
+        : "text-[var(--text-secondary)] bg-[var(--surface-elevated)] border-[var(--border-subtle)]";
 
   return (
     <span className={`px-2 py-0.5 rounded text-xs border ${color}`}>
@@ -438,7 +438,7 @@ function EventTypeBadge({ type }: { type: string }) {
   return (
     <span
       className={`px-2 py-0.5 rounded text-xs border ${
-        colorMap[type] || "text-zinc-400 bg-zinc-800 border-zinc-700"
+        colorMap[type] || "text-[var(--text-secondary)] bg-[var(--surface-elevated)] border-[var(--border-subtle)]"
       }`}
     >
       {type}

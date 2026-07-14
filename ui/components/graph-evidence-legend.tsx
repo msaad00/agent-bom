@@ -39,7 +39,7 @@ export function GraphEvidenceLegend({
   return (
     <div
       data-testid="graph-evidence-legend"
-      className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3"
+      className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -56,7 +56,7 @@ export function GraphEvidenceLegend({
           className={`rounded-full border px-3 py-1 text-xs transition-colors ${
             active
               ? "border-violet-500/60 bg-violet-500/15 text-violet-100"
-              : "border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200"
+              : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
           }`}
         >
           {active ? "Lens on" : "Lens off"}
@@ -77,11 +77,11 @@ export function GraphEvidenceLegend({
                 className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                   selected
                     ? "border-violet-500/60 bg-violet-500/15 text-violet-100"
-                    : "border-zinc-700 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200"
+                    : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
                 }`}
               >
                 {CHIP_LABELS[chip]}
-                <span className="ml-1.5 font-mono text-[11px] text-zinc-500">
+                <span className="ml-1.5 font-mono text-[11px] text-[var(--text-tertiary)]">
                   {counts[chip]}
                 </span>
               </button>
@@ -89,7 +89,7 @@ export function GraphEvidenceLegend({
           })}
         </div>
       ) : (
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
           Turn the lens on to highlight nodes backed by runtime observed or blocked
           evidence instead of static scan inference alone.
         </p>

@@ -80,10 +80,10 @@ export function ScanMeshView({ id }: { id: string }) {
   const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => { setHoveredNodeId(node.id); }, []);
   const onNodeMouseLeave = useCallback(() => { setHoveredNodeId(null); }, []);
 
-  if (loading) return <div className="flex items-center justify-center h-[80vh] text-zinc-400"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading mesh...</div>;
+  if (loading) return <div className="flex items-center justify-center h-[80vh] text-[var(--text-secondary)]"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading mesh...</div>;
 
   if (error || !job?.result) return (
-    <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
+    <div className="flex flex-col items-center justify-center h-[80vh] text-[var(--text-secondary)] gap-3">
       <AlertTriangle className="w-8 h-8 text-amber-500" />
       <p className="text-sm">{error ?? "No scan results found"}</p>
       <Link href={`/scan?id=${id}`} className="text-xs text-emerald-400 hover:text-emerald-300 underline">Back to scan results</Link>
@@ -92,13 +92,13 @@ export function ScanMeshView({ id }: { id: string }) {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
         <div>
           <div className="flex items-center gap-2">
-            <Link href={`/scan?id=${id}`} className="text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-4 h-4" /></Link>
-            <h1 className="text-lg font-semibold text-zinc-100">Agent Mesh</h1>
+            <Link href={`/scan?id=${id}`} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"><ArrowLeft className="w-4 h-4" /></Link>
+            <h1 className="text-lg font-semibold text-[var(--foreground)]">Agent Mesh</h1>
           </div>
-          <p className="text-xs text-zinc-500 ml-6">
+          <p className="text-xs text-[var(--text-tertiary)] ml-6">
             Agent-centered shared infrastructure for scan {id.slice(0, 8)} — {job.created_at ? new Date(job.created_at).toLocaleDateString() : ""}
           </p>
         </div>

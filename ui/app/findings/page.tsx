@@ -884,7 +884,7 @@ function FindingsPage() {
     {
       key: "all",
       label: `All (${useServerPaging ? findingsTotalLabel : vulns.length})`,
-      color: "text-zinc-300",
+      color: "text-[var(--text-secondary)]",
     },
     { key: "critical", label: `Critical${useServerPaging ? "" : ` (${counts.critical})`}`, color: "text-red-400" },
     { key: "high",     label: `High${useServerPaging ? "" : ` (${counts.high})`}`,         color: "text-orange-400" },
@@ -957,7 +957,7 @@ function FindingsPage() {
                 </button>
                 <button
                   onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium rounded-lg transition-colors"
                   title="Export filtered findings as JSON"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -1017,16 +1017,16 @@ function FindingsPage() {
         <>
           {/* Controls */}
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-zinc-200">{findingsQueueTitle(lens)}</h2>
-                <p className="mt-1 text-xs text-zinc-500">{findingsQueueDetail(lens)}</p>
+                <h2 className="text-sm font-semibold text-[var(--foreground)]">{findingsQueueTitle(lens)}</h2>
+                <p className="mt-1 text-xs text-[var(--text-tertiary)]">{findingsQueueDetail(lens)}</p>
               </div>
-              <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{PAGE_SIZE} per page</span>
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{displayed.length} filtered</span>
+              <div className="flex flex-wrap gap-2 text-xs text-[var(--text-tertiary)]">
+                <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1">{PAGE_SIZE} per page</span>
+                <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1">{displayed.length} filtered</span>
                 <span
-                  className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1"
+                  className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1"
                   title="OpenVEX export is available after a finding is triaged as not_affected with justification"
                 >
                   {vexEligibleCount} OpenVEX-ready
@@ -1041,7 +1041,7 @@ function FindingsPage() {
                 ) : (
                   <a
                     href="/remediation"
-                    className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1 hover:border-zinc-700 hover:text-zinc-300"
+                    className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
                   >
                     Remediation
                   </a>
@@ -1053,7 +1053,7 @@ function FindingsPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-1">
-                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">Issue type</span>
+                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Issue type</span>
                   {ISSUE_TYPE_FILTERS.map(({ key, label, hint }) => (
                     <button
                       key={key}
@@ -1063,7 +1063,7 @@ function FindingsPage() {
                       className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
                         issueTypeFilter === key
                           ? "border-cyan-700 bg-cyan-950/40 text-cyan-200"
-                          : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
+                          : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
                       }`}
                     >
                       {label}
@@ -1071,15 +1071,15 @@ function FindingsPage() {
                   ))}
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
-                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">Severity</span>
+                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Severity</span>
                   {FILTERS?.map(({ key, label, color }) => (
                     <button
                       key={key}
                       onClick={() => setFilter(key)}
                       className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
                         filter === key
-                          ? `${color} border-zinc-600 bg-zinc-800`
-                          : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                          ? `${color} border-[var(--border-strong)] bg-[var(--surface-elevated)]`
+                          : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
                       }`}
                     >
                       {label}
@@ -1092,23 +1092,23 @@ function FindingsPage() {
                 placeholder={findingsSearchPlaceholder(lens)}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full sm:w-64 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                className="w-full sm:w-64 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--border-strong)]"
               />
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Scope</span>
+                <span className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide font-medium">Scope</span>
                 <select
                   value={scope}
                   onChange={(e) => setScope(e.target.value as ScanScope)}
-                  className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"
+                  className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--border-strong)]"
                 >
                   <option value="latest">Latest completed scan</option>
                   <option value="all">All completed scans</option>
                 </select>
               </div>
-              <p className="text-xs text-zinc-600">
+              <p className="text-xs text-[var(--text-tertiary)]">
                 Default stays scoped for speed. Expand to all scans only when you need history-wide findings aggregation.
               </p>
             </div>
@@ -1189,7 +1189,7 @@ function FindingsPage() {
             </div>
 
             {detailLoading && vulns.length > 0 && (
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
+              <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 {scope === "latest" ? "Refreshing latest scan..." : "Refreshing historical aggregation..."}
               </div>
@@ -1197,15 +1197,15 @@ function FindingsPage() {
 
             {/* Group by */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Group by</span>
+              <span className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide font-medium">Group by</span>
               {GROUP_OPTIONS?.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
                   onClick={() => setGroupBy(key)}
                   className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
                     groupBy === key
-                      ? "text-zinc-200 border-zinc-600 bg-zinc-800"
-                      : "text-zinc-500 border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                      ? "text-[var(--foreground)] border-[var(--border-strong)] bg-[var(--surface-elevated)]"
+                      : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
                   }`}
                 >
                   <Icon className="w-3 h-3" />
@@ -1238,12 +1238,12 @@ function FindingsPage() {
                       className="flex w-full items-center gap-2 mb-2 text-left transition-colors group"
                     >
                       {collapsed ? (
-                        <ChevronRight className="h-4 w-4 text-zinc-500 group-hover:text-zinc-300" />
+                        <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]" />
                       ) : (
-                        <ChevronDown className="h-4 w-4 text-zinc-500 group-hover:text-zinc-300" />
+                        <ChevronDown className="h-4 w-4 text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]" />
                       )}
-                      <h3 className="text-sm font-semibold text-zinc-300">{groupLabel}</h3>
-                      <span className="text-xs font-mono text-zinc-600 bg-zinc-800 rounded px-1.5 py-0.5">
+                      <h3 className="text-sm font-semibold text-[var(--text-secondary)]">{groupLabel}</h3>
+                      <span className="text-xs font-mono text-[var(--text-tertiary)] bg-[var(--surface-elevated)] rounded px-1.5 py-0.5">
                         {groupVulns.length}
                       </span>
                     </button>
@@ -1262,7 +1262,7 @@ function FindingsPage() {
                           columns={visibleColumns}
                         />
                         {groupOverflow > 0 && (
-                          <p className="mt-2 text-xs text-zinc-600">
+                          <p className="mt-2 text-xs text-[var(--text-tertiary)]">
                             Showing first {PAGE_SIZE} of {groupVulns.length} —
                             narrow with the search box or switch to the flat
                             view (Group: none) for full pagination.
@@ -1301,7 +1301,7 @@ function FindingsPage() {
           )}
 
           {grouped && (
-            <p className="text-xs text-zinc-600 text-right">
+            <p className="text-xs text-[var(--text-tertiary)] text-right">
               Showing {displayed.length} of {vulns.length} findings
             </p>
           )}

@@ -152,15 +152,15 @@ export function ActivityFeed({
 
   return (
     <div
-      className={`bg-zinc-900 border border-zinc-800 rounded-xl ${className ?? ""}`}
+      className={`bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl ${className ?? ""}`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-        <h3 className="text-sm font-semibold text-zinc-300">Activity</h3>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
+        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">Activity</h3>
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as ActivityType | "all")}
-          className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-400"
+          className="text-xs bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--text-secondary)]"
         >
           <option value="all">All</option>
           <option value="scan_started">Scans</option>
@@ -170,13 +170,13 @@ export function ActivityFeed({
       </div>
 
       {/* Event list */}
-      <div className="divide-y divide-zinc-800 max-h-[400px] overflow-y-auto">
+      <div className="divide-y divide-[var(--border-subtle)] max-h-[400px] overflow-y-auto">
         {loading ? (
-          <div className="p-4 text-center text-zinc-600 text-xs">
+          <div className="p-4 text-center text-[var(--text-tertiary)] text-xs">
             Loading...
           </div>
         ) : filtered.length === 0 ? (
-          <div className="p-4 text-center text-zinc-600 text-xs">
+          <div className="p-4 text-center text-[var(--text-tertiary)] text-xs">
             No activity yet
           </div>
         ) : (
@@ -186,16 +186,16 @@ export function ActivityFeed({
             return (
               <div
                 key={event.id}
-                className="flex items-start gap-3 px-4 py-3 hover:bg-zinc-800/50 transition-colors"
+                className="flex items-start gap-3 px-4 py-3 hover:bg-[var(--surface-elevated)]/50 transition-colors"
               >
                 <Icon
                   className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${color}`}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-zinc-300 leading-tight truncate">
+                  <p className="text-xs text-[var(--text-secondary)] leading-tight truncate">
                     {event.message}
                   </p>
-                  <p className="text-[10px] text-zinc-600 mt-0.5">
+                  <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">
                     {timeAgo(event.timestamp)}
                   </p>
                 </div>

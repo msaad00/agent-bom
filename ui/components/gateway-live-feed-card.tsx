@@ -184,18 +184,18 @@ export function GatewayLiveFeedCard({
   return (
     <div
       data-testid="gateway-live-feed"
-      className={`flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 ${
+      className={`flex flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] ${
         className ?? ""
       }`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
-        <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-zinc-200">
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
+        <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
           <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
           <span className="truncate">Gateway Live Feed</span>
         </h3>
         {isSample ? (
-          <span className="shrink-0 rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+          <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
             sample data
           </span>
         ) : (
@@ -211,21 +211,21 @@ export function GatewayLiveFeedCard({
 
       {/* Rows */}
       {loading ? (
-        <div className="px-4 py-8 text-center text-xs text-zinc-600">
+        <div className="px-4 py-8 text-center text-xs text-[var(--text-tertiary)]">
           Loading gateway activity…
         </div>
       ) : rows.length === 0 ? (
-        <div className="px-4 py-8 text-center text-xs text-zinc-600">
+        <div className="px-4 py-8 text-center text-xs text-[var(--text-tertiary)]">
           No gateway activity yet.
         </div>
       ) : (
-        <ul className="divide-y divide-zinc-800">
+        <ul className="divide-y divide-[var(--border-subtle)]">
           {rows.map((event, i) => {
             const blocked = isBlocked(event);
             return (
               <li
                 key={`${event.ts}-${event.agent}-${i}`}
-                className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-zinc-800/40"
+                className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--surface-elevated)]/40"
               >
                 {/* Status dot */}
                 <span
@@ -238,20 +238,20 @@ export function GatewayLiveFeedCard({
                 {/* Text column — min-w-0 lets children truncate instead of overflow */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-zinc-100">
+                    <span className="truncate text-sm font-medium text-[var(--foreground)]">
                       {decisionTitle(event)}
                     </span>
-                    <time className="shrink-0 text-[10px] tabular-nums text-zinc-600">
+                    <time className="shrink-0 text-[10px] tabular-nums text-[var(--text-tertiary)]">
                       {eventTime(event.ts)}
                     </time>
                   </div>
                   <code
-                    className="mt-0.5 block truncate font-mono text-xs text-zinc-400"
+                    className="mt-0.5 block truncate font-mono text-xs text-[var(--text-secondary)]"
                     title={`${event.agent} → ${event.target}`}
                   >
                     {event.agent} → {event.target}
                   </code>
-                  <p className="mt-0.5 truncate text-xs text-zinc-500">
+                  <p className="mt-0.5 truncate text-xs text-[var(--text-tertiary)]">
                     {subLabel(event)}
                   </p>
                 </div>
@@ -262,8 +262,8 @@ export function GatewayLiveFeedCard({
       )}
 
       {/* Aggregate footer */}
-      <div className="mt-auto border-t border-zinc-800 px-4 py-2.5">
-        <p className="truncate text-center text-[11px] tabular-nums text-zinc-500">
+      <div className="mt-auto border-t border-[var(--border-subtle)] px-4 py-2.5">
+        <p className="truncate text-center text-[11px] tabular-nums text-[var(--text-tertiary)]">
           {footerText(kpis)}
         </p>
       </div>

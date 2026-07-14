@@ -19,10 +19,10 @@ import type { GraphChangeKind, GraphDiffResponse } from "@/lib/api-types";
 // ─── Shared Styling Constants ────────────────────────────────────────────────
 
 export const CONTROLS_CLASS =
-  "!bg-zinc-900/90 !border-zinc-700 !rounded-lg !backdrop-blur-sm [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-300 [&>button:hover]:!bg-zinc-700";
+  "!bg-[var(--surface)]/90 !border-[var(--border-subtle)] !rounded-lg !backdrop-blur-sm [&>button]:!bg-[var(--surface-elevated)] [&>button]:!border-[var(--border-subtle)] [&>button]:!text-[var(--text-secondary)] [&>button:hover]:!bg-[var(--surface-muted)]";
 
 export const MINIMAP_CLASS =
-  "!bg-zinc-900/90 !border-zinc-700 !rounded-lg !backdrop-blur-sm";
+  "!bg-[var(--surface)]/90 !border-[var(--border-subtle)] !rounded-lg !backdrop-blur-sm";
 export const MINIMAP_BG = "#09090b";
 export const MINIMAP_MASK = "rgba(24,24,27,0.82)";
 

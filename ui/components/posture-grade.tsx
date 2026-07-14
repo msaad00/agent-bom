@@ -225,13 +225,13 @@ function CompactDimensionCard({
   const content = (
     <>
       <div className="flex items-center justify-between gap-3">
-        <span className="truncate text-xs font-medium text-zinc-200">{dimension.label}</span>
+        <span className="truncate text-xs font-medium text-[var(--foreground)]">{dimension.label}</span>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${tone.badge}`}>
           {tone.label}
         </span>
       </div>
       <div className="mt-2 flex items-baseline justify-between gap-3">
-        <span className="font-mono text-lg text-zinc-100">{dimension.score}/100</span>
+        <span className="font-mono text-lg text-[var(--foreground)]">{dimension.score}/100</span>
         <span className="text-[11px] text-[var(--text-tertiary)]">{postureDimensionHint(dimensionKey, dimension.label)}</span>
       </div>
       <div className="mt-2 h-1.5 rounded-full bg-[var(--surface-muted)]">
@@ -278,7 +278,7 @@ function DimensionRow({
   const content = (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-zinc-300">{dimension.label}</span>
+        <span className="text-xs font-medium text-[var(--text-secondary)]">{dimension.label}</span>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${tone.badge}`}>
           {tone.label}
         </span>

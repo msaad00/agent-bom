@@ -34,7 +34,7 @@ const ACTION_COLORS: Record<string, string> = {
   fleet_change: "bg-purple-950 text-purple-300 border-purple-800",
   exception: "bg-yellow-950 text-yellow-300 border-yellow-800",
   alert: "bg-red-950 text-red-300 border-red-800",
-  config: "bg-zinc-800 text-zinc-300 border-zinc-700",
+  config: "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
 };
 
 const ACTION_TYPES = ["scan", "policy_eval", "fleet_change", "exception", "alert", "config"];
@@ -154,7 +154,7 @@ export default function AuditLogPage() {
                 void loadAdmin();
               }
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Refresh
@@ -176,17 +176,17 @@ export default function AuditLogPage() {
       {/* Integrity banner + stats */}
       {integrity && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
             <FileText className="w-4 h-4 mb-2 text-blue-400" />
             <div className="text-2xl font-bold font-mono">{total.toLocaleString()}</div>
-            <div className="text-xs text-zinc-500 mt-0.5">Total Entries</div>
+            <div className="text-xs text-[var(--text-tertiary)] mt-0.5">Total Entries</div>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
             <CheckCircle2 className="w-4 h-4 mb-2 text-emerald-400" />
             <div className="text-2xl font-bold font-mono">{integrity.verified.toLocaleString()}</div>
-            <div className="text-xs text-zinc-500 mt-0.5">HMAC Verified</div>
+            <div className="text-xs text-[var(--text-tertiary)] mt-0.5">HMAC Verified</div>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
             {integrity.tampered > 0 ? (
               <ShieldAlert className="w-4 h-4 mb-2 text-red-400" />
             ) : (
@@ -195,19 +195,19 @@ export default function AuditLogPage() {
             <div className={`text-2xl font-bold font-mono ${integrity.tampered > 0 ? "text-red-400" : ""}`}>
               {integrity.tampered}
             </div>
-            <div className="text-xs text-zinc-500 mt-0.5">Tampered</div>
+            <div className="text-xs text-[var(--text-tertiary)] mt-0.5">Tampered</div>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <Search className="w-4 h-4 mb-2 text-zinc-400" />
+          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
+            <Search className="w-4 h-4 mb-2 text-[var(--text-secondary)]" />
             <div className="text-2xl font-bold font-mono">{integrity.checked.toLocaleString()}</div>
-            <div className="text-xs text-zinc-500 mt-0.5">Checked</div>
+            <div className="text-xs text-[var(--text-tertiary)] mt-0.5">Checked</div>
           </div>
         </div>
       )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+        <div className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
           <Filter className="w-3.5 h-3.5" />
           Filter:
         </div>
@@ -215,7 +215,7 @@ export default function AuditLogPage() {
           <button
             onClick={() => { setActionFilter(""); setPage(0); }}
             className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-              !actionFilter ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+              !actionFilter ? "bg-[var(--surface-muted)] text-[var(--foreground)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
             }`}
           >
             All
@@ -225,7 +225,7 @@ export default function AuditLogPage() {
               key={a}
               onClick={() => { setActionFilter(a); setPage(0); }}
               className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                actionFilter === a ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                actionFilter === a ? "bg-[var(--surface-muted)] text-[var(--foreground)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
               }`}
             >
               {a}
@@ -236,14 +236,14 @@ export default function AuditLogPage() {
           value={resourceFilter}
           onChange={(e) => { setResourceFilter(e.target.value); setPage(0); }}
           placeholder="Filter by resource…"
-          className="w-full min-w-0 rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-blue-600 sm:w-48"
+          className="w-full min-w-0 rounded border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2.5 py-1 text-xs text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-blue-600 sm:w-48"
         />
       </div>
 
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+          <Loader2 className="w-6 h-6 animate-spin text-[var(--text-tertiary)]" />
         </div>
       )}
 
@@ -252,10 +252,10 @@ export default function AuditLogPage() {
         <div className="text-center py-10 border border-dashed border-red-900/50 rounded-xl space-y-3">
           <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
           <p className="text-red-400 text-sm">Failed to load audit log</p>
-          <p className="text-zinc-500 text-xs">{error}</p>
+          <p className="text-[var(--text-tertiary)] text-xs">{error}</p>
           <button
             onClick={load}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Retry
           </button>
@@ -266,12 +266,12 @@ export default function AuditLogPage() {
       {!loading && !error && (
         <>
           {entries.length === 0 ? (
-            <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-              <FileText className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-              <p className="text-zinc-500 text-sm">
+            <div className="text-center py-16 border border-dashed border-[var(--border-subtle)] rounded-xl">
+              <FileText className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
+              <p className="text-[var(--text-tertiary)] text-sm">
                 {auditUnavailable ? "No runtime audit surfaces enabled" : "No audit log entries"}
               </p>
-              <p className="text-zinc-600 text-xs mt-1">
+              <p className="text-[var(--text-tertiary)] text-xs mt-1">
                 {auditUnavailable
                   ? "Enable proxy, gateway, or trace ingest to populate runtime audit history."
                   : "Entries will appear as scan, policy, and fleet actions are performed."}
@@ -284,11 +284,11 @@ export default function AuditLogPage() {
                 return (
                   <div
                     key={entry.entry_id}
-                    className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden"
+                    className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg overflow-hidden"
                   >
                     <button
                       onClick={() => toggleExpand(entry.entry_id)}
-                      className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-zinc-800/50 transition-colors"
+                      className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-[var(--surface-elevated)]/50 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <span
@@ -298,51 +298,51 @@ export default function AuditLogPage() {
                         >
                           {entry.action}
                         </span>
-                        <span className="text-xs text-zinc-300 font-mono shrink-0">
+                        <span className="text-xs text-[var(--text-secondary)] font-mono shrink-0">
                           {entry.actor}
                         </span>
-                        <span className="text-xs text-zinc-500 truncate">
+                        <span className="text-xs text-[var(--text-tertiary)] truncate">
                           {entry.resource}
                         </span>
                       </div>
-                      <span className="text-[10px] text-zinc-600 shrink-0 ml-3">
+                      <span className="text-[10px] text-[var(--text-tertiary)] shrink-0 ml-3">
                         {formatDate(entry.timestamp)}
                       </span>
                     </button>
                     {isExpanded && (
-                      <div className="border-t border-zinc-800 px-4 py-3 space-y-2">
+                      <div className="border-t border-[var(--border-subtle)] px-4 py-3 space-y-2">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                           <div>
-                            <span className="text-zinc-500">Entry ID</span>
-                            <div className="text-zinc-300 mt-0.5 font-mono text-[10px] break-all">
+                            <span className="text-[var(--text-tertiary)]">Entry ID</span>
+                            <div className="text-[var(--text-secondary)] mt-0.5 font-mono text-[10px] break-all">
                               {entry.entry_id}
                             </div>
                           </div>
                           <div>
-                            <span className="text-zinc-500">Timestamp</span>
-                            <div className="text-zinc-300 mt-0.5">
+                            <span className="text-[var(--text-tertiary)]">Timestamp</span>
+                            <div className="text-[var(--text-secondary)] mt-0.5">
                               {formatDate(entry.timestamp)}
                             </div>
                           </div>
                           <div>
-                            <span className="text-zinc-500">Actor</span>
-                            <div className="text-zinc-300 mt-0.5 font-mono">
+                            <span className="text-[var(--text-tertiary)]">Actor</span>
+                            <div className="text-[var(--text-secondary)] mt-0.5 font-mono">
                               {entry.actor}
                             </div>
                           </div>
                           <div>
-                            <span className="text-zinc-500">HMAC</span>
-                            <div className="text-zinc-300 mt-0.5 font-mono text-[10px] truncate">
+                            <span className="text-[var(--text-tertiary)]">HMAC</span>
+                            <div className="text-[var(--text-secondary)] mt-0.5 font-mono text-[10px] truncate">
                               {entry.hmac_signature.slice(0, 16)}…
                             </div>
                           </div>
                         </div>
                         {Object.keys(entry.details).length > 0 && (
                           <div>
-                            <span className="text-xs text-zinc-500 block mb-1">
+                            <span className="text-xs text-[var(--text-tertiary)] block mb-1">
                               Details
                             </span>
-                            <pre className="text-[11px] text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-lg p-3 overflow-x-auto max-h-48">
+                            <pre className="text-[11px] text-[var(--text-secondary)] bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded-lg p-3 overflow-x-auto max-h-48">
                               {JSON.stringify(entry.details, null, 2)}
                             </pre>
                           </div>

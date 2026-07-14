@@ -224,7 +224,7 @@ function toneForStatus(status: string): string {
     case "degraded":
       return "text-amber-400";
     case "disabled":
-      return "text-zinc-400";
+      return "text-[var(--text-secondary)]";
     default:
       return "text-sky-400";
   }
@@ -1123,7 +1123,7 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
           className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
             trust.supports_scope_zero
               ? "border-emerald-900 bg-emerald-950/40 text-emerald-300"
-              : "border-zinc-800 bg-zinc-950/60 text-zinc-400"
+              : "border-[var(--border-subtle)] bg-[var(--background)]/60 text-[var(--text-secondary)]"
           }`}
         >
           {trust.supports_scope_zero ? "scope-zero" : "direct pull"}
@@ -1158,7 +1158,7 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
           <span className="text-[var(--text-tertiary)]">Permissions used: </span>
           <span className="text-[var(--foreground)]">{permissions.length}</span>
           {permissions.length > 0 ? (
-            <span className="ml-1 font-mono text-[11px] text-zinc-400">
+            <span className="ml-1 font-mono text-[11px] text-[var(--text-secondary)]">
               {permissions.slice(0, 3).join(", ")}
               {permissions.length > 3 ? ` +${permissions.length - 3}` : ""}
             </span>
@@ -1166,7 +1166,7 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
         </div>
         <div>
           <span className="text-[var(--text-tertiary)]">Network: </span>
-          <span className="font-mono text-[11px] text-zinc-400">
+          <span className="font-mono text-[11px] text-[var(--text-secondary)]">
             {destinations.length ? destinations.slice(0, 3).join(", ") : "none"}
             {destinations.length > 3 ? ` +${destinations.length - 3}` : ""}
           </span>

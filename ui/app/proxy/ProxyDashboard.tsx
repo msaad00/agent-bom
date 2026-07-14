@@ -48,7 +48,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   high: "bg-orange-950 text-orange-300 border-orange-800",
   medium: "bg-yellow-950 text-yellow-300 border-yellow-800",
   low: "bg-blue-950 text-blue-300 border-blue-800",
-  info: "bg-zinc-800 text-zinc-300 border-zinc-700",
+  info: "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
 };
 
 const PIE_COLORS = ["#ef4444", "#f97316", "#eab308", "#3b82f6", "#71717a"];
@@ -208,7 +208,7 @@ export default function ProxyDashboard() {
             <Shield className="w-6 h-6 text-emerald-400" />
             Proxy Dashboard
           </h1>
-          <p className="text-zinc-400 text-sm mt-1">
+          <p className="text-[var(--text-secondary)] text-sm mt-1">
             Runtime MCP proxy metrics, detector activity, and security alerts
           </p>
         </div>
@@ -221,14 +221,14 @@ export default function ProxyDashboard() {
               </>
             ) : (
               <>
-                <WifiOff className="w-3.5 h-3.5 text-zinc-500" />
-                <span className="text-zinc-500">Disconnected</span>
+                <WifiOff className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
+                <span className="text-[var(--text-tertiary)]">Disconnected</span>
               </>
             )}
           </div>
           <button
             onClick={load}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Refresh
@@ -240,7 +240,7 @@ export default function ProxyDashboard() {
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+          <Loader2 className="w-6 h-6 animate-spin text-[var(--text-tertiary)]" />
         </div>
       )}
 
@@ -249,10 +249,10 @@ export default function ProxyDashboard() {
         <div className="text-center py-10 border border-dashed border-red-900/50 rounded-xl space-y-3">
           <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
           <p className="text-red-400 text-sm">Failed to load proxy data</p>
-          <p className="text-zinc-500 text-xs">{error}</p>
+          <p className="text-[var(--text-tertiary)] text-xs">{error}</p>
           <button
             onClick={load}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Retry
           </button>
@@ -261,12 +261,12 @@ export default function ProxyDashboard() {
 
       {/* No proxy session */}
       {!loading && !error && !isActive && (
-        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 p-8">
-          <Shield className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-300 text-sm text-center">
+        <div className="rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--background)]/70 p-8">
+          <Shield className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
+          <p className="text-[var(--text-secondary)] text-sm text-center">
             {proxyUnavailable ? "Proxy telemetry is not enabled for this estate" : "No runtime telemetry connected"}
           </p>
-          <p className="text-zinc-500 text-xs mt-2 max-w-2xl mx-auto text-center">
+          <p className="text-[var(--text-tertiary)] text-xs mt-2 max-w-2xl mx-auto text-center">
             {proxyUnavailable
               ? "Enable an inline proxy when you want live tool-call review, policy enforcement, and audit alerts."
               : "Proxy is an optional runtime feed for live tool-call review, policy enforcement, and audit alerts. Core scanning, graph analysis, and compliance workflows do not depend on it."}
@@ -323,18 +323,18 @@ export default function ProxyDashboard() {
               label="Uptime"
               value={uptime != null ? formatUptime(uptime) : "—"}
               icon={Activity}
-              color="text-zinc-400"
+              color="text-[var(--text-secondary)]"
             />
           </div>
 
           {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Tool call frequency */}
-            <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+            <div className="lg:col-span-2 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-1">
                 Tool Call Frequency
               </h3>
-              <p className="text-[10px] text-zinc-600 mb-4">
+              <p className="text-[10px] text-[var(--text-tertiary)] mb-4">
                 Top tools by invocation count
               </p>
               {toolChartData.length > 0 ? (
@@ -383,18 +383,18 @@ export default function ProxyDashboard() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="h-52 flex items-center justify-center text-zinc-600 text-xs">
+                <div className="h-52 flex items-center justify-center text-[var(--text-tertiary)] text-xs">
                   No tool calls recorded yet
                 </div>
               )}
             </div>
 
             {/* Blocked breakdown pie */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+            <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-1">
                 Block Reasons
               </h3>
-              <p className="text-[10px] text-zinc-600 mb-4">
+              <p className="text-[10px] text-[var(--text-tertiary)] mb-4">
                 Why tool calls were blocked
               </p>
               {blockedPieData.length > 0 ? (
@@ -435,7 +435,7 @@ export default function ProxyDashboard() {
                     {blockedPieData?.map((d, i) => (
                       <div
                         key={d.name}
-                        className="flex items-center gap-1.5 text-[10px] text-zinc-400"
+                        className="flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)]"
                       >
                         <span
                           className="w-2 h-2 rounded-full"
@@ -453,7 +453,7 @@ export default function ProxyDashboard() {
                 <div className="h-52 flex items-center justify-center">
                   <div className="text-center">
                     <ShieldCheck className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
-                    <span className="text-zinc-600 text-xs">
+                    <span className="text-[var(--text-tertiary)] text-xs">
                       No blocked calls
                     </span>
                   </div>
@@ -464,8 +464,8 @@ export default function ProxyDashboard() {
 
           {/* Detectors */}
           {status?.detectors_active && status.detectors_active.length > 0 && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-zinc-300 mb-3">
+            <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">
                 Active Detectors
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -482,13 +482,13 @@ export default function ProxyDashboard() {
           )}
 
           {/* Alerts */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-300">
+                <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
                   Recent Alerts
                 </h3>
-                <p className="text-[10px] text-zinc-600 mt-0.5">
+                <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">
                   Security alerts from proxy detectors
                 </p>
               </div>
@@ -499,8 +499,8 @@ export default function ProxyDashboard() {
                     onClick={() => setSeverityFilter(sev)}
                     className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
                       severityFilter === sev
-                        ? "bg-zinc-700 text-zinc-100"
-                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                        ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
+                        : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
                     }`}
                   >
                     {sev || "All"}
@@ -512,7 +512,7 @@ export default function ProxyDashboard() {
             {filteredAlerts.length === 0 ? (
               <div className="text-center py-8">
                 <ShieldCheck className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
-                <p className="text-zinc-600 text-xs">No alerts</p>
+                <p className="text-[var(--text-tertiary)] text-xs">No alerts</p>
               </div>
             ) : (
               <div className="space-y-1 max-h-96 overflow-y-auto">
@@ -521,7 +521,7 @@ export default function ProxyDashboard() {
                     key={proxyAlertKey(alert, i)}
                     type="button"
                     onClick={() => setSelectedAlert(alert)}
-                    className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+                    className="flex w-full items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]/50 px-3 py-2 text-left transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)]"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <span
@@ -531,17 +531,17 @@ export default function ProxyDashboard() {
                       >
                         {alert.severity}
                       </span>
-                      <span className="shrink-0 font-mono text-xs text-zinc-400">
+                      <span className="shrink-0 font-mono text-xs text-[var(--text-secondary)]">
                         {alert.detector}
                       </span>
-                      <span className="shrink-0 font-mono text-xs text-zinc-300">
+                      <span className="shrink-0 font-mono text-xs text-[var(--text-secondary)]">
                         {alert.tool_name}
                       </span>
-                      <span className="truncate text-xs text-zinc-500">
+                      <span className="truncate text-xs text-[var(--text-tertiary)]">
                         {proxyAlertSummary(alert)}
                       </span>
                     </div>
-                    <span className="ml-3 shrink-0 text-[10px] text-zinc-600">
+                    <span className="ml-3 shrink-0 text-[10px] text-[var(--text-tertiary)]">
                       {alert.ts ? formatDate(alert.ts) : ""}
                     </span>
                   </button>
@@ -569,10 +569,10 @@ function SetupCard({
   command: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-      <p className="text-sm font-medium text-zinc-100">{title}</p>
-      <p className="mt-2 text-xs leading-5 text-zinc-500">{body}</p>
-      <code className="mt-3 block rounded-lg bg-zinc-950 px-3 py-2 text-[11px] text-zinc-300">
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 p-4">
+      <p className="text-sm font-medium text-[var(--foreground)]">{title}</p>
+      <p className="mt-2 text-xs leading-5 text-[var(--text-tertiary)]">{body}</p>
+      <code className="mt-3 block rounded-lg bg-[var(--background)] px-3 py-2 text-[11px] text-[var(--text-secondary)]">
         {command}
       </code>
     </div>
@@ -601,10 +601,10 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">
       <Icon className={`w-4 h-4 mb-2 ${color}`} />
       <div className="text-2xl font-bold font-mono">{value}</div>
-      <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
+      <div className="text-xs text-[var(--text-tertiary)] mt-0.5">{label}</div>
     </div>
   );
 }

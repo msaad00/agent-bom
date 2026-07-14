@@ -2199,7 +2199,7 @@ function GraphPageInner() {
       : 1;
   if (loadingSnapshots) {
     return (
-      <div className="flex items-center justify-center h-[80vh] text-zinc-400">
+      <div className="flex items-center justify-center h-[80vh] text-[var(--text-secondary)]">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
         Loading persisted graph snapshots...
       </div>
@@ -2208,12 +2208,12 @@ function GraphPageInner() {
 
   if (error && snapshots.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
+      <div className="flex flex-col items-center justify-center h-[80vh] text-[var(--text-secondary)] gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
         {rateLimited ? (
           <>
             <p className="text-sm">Graph temporarily rate-limited</p>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-[var(--text-tertiary)]">
               The API is shedding load (HTTP 429). Wait a moment and retry — your
               snapshots are still there.
             </p>
@@ -2221,7 +2221,7 @@ function GraphPageInner() {
         ) : (
           <>
             <p className="text-sm">Could not load the unified graph</p>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-[var(--text-tertiary)]">
               Run a scan first so the API can persist graph snapshots.
             </p>
           </>
@@ -2232,10 +2232,10 @@ function GraphPageInner() {
 
   if (snapshots.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
-        <ShieldAlert className="w-8 h-8 text-zinc-600" />
+      <div className="flex flex-col items-center justify-center h-[80vh] text-[var(--text-secondary)] gap-3">
+        <ShieldAlert className="w-8 h-8 text-[var(--text-tertiary)]" />
         <p className="text-sm">No graph snapshots found</p>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-[var(--text-tertiary)]">
           Run a scan to persist the unified inventory and security graph.
         </p>
       </div>
@@ -2252,16 +2252,16 @@ function GraphPageInner() {
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
       <PulseStyles />
 
-      <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-3">
+      <div className="border-b border-[var(--border-subtle)] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-3">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
               Unified graph
             </p>
-            <h1 className="mt-1 text-lg font-semibold text-zinc-100">
+            <h1 className="mt-1 text-lg font-semibold text-[var(--foreground)]">
               Lineage Graph
             </h1>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-[var(--text-tertiary)]">
               Evidence-backed relationships across agents, servers, packages,
               credentials, tools, and findings.
             </p>
@@ -2293,7 +2293,7 @@ function GraphPageInner() {
             <select
               value={selectedScanId}
               onChange={(event) => setSelectedScanId(event.target.value)}
-              className="rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-sm text-zinc-300 focus:border-sky-600 focus:outline-none"
+              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none"
             >
               {snapshots.map((snapshot) => (
                 <option key={snapshot.scan_id} value={snapshot.scan_id}>
@@ -2325,18 +2325,18 @@ function GraphPageInner() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search nodes, tags, severities, or attributes"
-              className="min-w-[260px] flex-1 rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-sm text-zinc-300 placeholder:text-zinc-500 focus:border-sky-600 focus:outline-none"
+              className="min-w-[260px] flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:border-sky-600 focus:outline-none"
             />
             <button
               type="submit"
               disabled={searching || !selectedScanId}
-              className="rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-sm text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {searching ? "Searching..." : "Search"}
             </button>
           </form>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
             <ViewPill
               label="Scope"
               value={filters.agentName ? filters.agentName : "all agents"}
@@ -2349,7 +2349,7 @@ function GraphPageInner() {
             {sourceNodeCount > 0 && (
               <span
                 data-testid="graph-compression-summary"
-                className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400"
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1 text-[var(--text-secondary)]"
               >
                 {compressedGroupCount > 0
                   ? `${compressedGroupCount} compressed groups`
@@ -2441,8 +2441,8 @@ function GraphPageInner() {
             )}
 
           {searchResults.length > 0 && (
-            <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2">
-              <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+            <div className="mt-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/90 p-2">
+              <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                 Search respects current entity scope
                 {filters.severity ? ` and ${filters.severity}+ severity` : ""}
               </div>
@@ -2453,15 +2453,15 @@ function GraphPageInner() {
                     type="button"
                     data-testid={`graph-search-result-${result.id}`}
                     onClick={() => void focusSearchResult(result)}
-                    className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
+                    className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-left transition hover:border-[var(--border-strong)] hover:bg-[var(--surface)]"
                   >
-                    <p className="truncate text-sm font-medium text-zinc-100">
+                    <p className="truncate text-sm font-medium text-[var(--foreground)]">
                       {result.label}
                     </p>
-                    <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                    <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                       {String(result.entity_type)}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-500">
+                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-[var(--text-tertiary)]">
                       {result.severity && <span>{result.severity}</span>}
                       <span>
                         risk{" "}
@@ -2478,7 +2478,7 @@ function GraphPageInner() {
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-zinc-500">
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-[var(--text-tertiary)]">
           {activeSnapshot && (
             <>
               <span>{activeSnapshot.node_count} nodes</span>
@@ -2501,40 +2501,40 @@ function GraphPageInner() {
             View controls, operator evaluation/diff lenses, and the ranked
             attack-path queue — so the operator reaches them in one place
             without any of them stacking on the default page load. */}
-        <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 group">
+        <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 group">
           <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-2 [&::-webkit-details-marker]:hidden">
             <div>
-              <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+              <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
                 Advanced controls
               </span>
-              <p className="mt-1 text-xs text-zinc-400">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 View controls, operator evaluation and diff lenses, and the
                 ranked attack-path queue.
               </p>
             </div>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
               show
             </span>
-            <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">
+            <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
               hide
             </span>
           </summary>
-          <div className="space-y-3 border-t border-zinc-800/80 p-3">
-          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
+          <div className="space-y-3 border-t border-[var(--border-subtle)]/80 p-3">
+          <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3 group">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
               <div>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
                   View controls
                 </span>
-                <p className="mt-1 text-xs text-zinc-400">
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   Change scope, layers, severity, traversal, and page size
                   without changing the persisted graph.
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
                 show
               </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
                 hide
               </span>
             </summary>
@@ -2616,16 +2616,16 @@ function GraphPageInner() {
             </div>
           </details>
 
-        <details className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70">
-          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-zinc-400 [&::-webkit-details-marker]:hidden">
+        <details className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70">
+          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
             Operator details · evaluation, diff, lenses
           </summary>
-          <div className="space-y-3 border-t border-zinc-800/80 px-3 py-3">
-            <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-3 py-2">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+          <div className="space-y-3 border-t border-[var(--border-subtle)]/80 px-3 py-3">
+            <div className="rounded-xl border border-[var(--border-subtle)]/80 bg-[var(--background)]/50 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                 Graph evaluation
               </p>
-              <p className="mt-1 text-xs text-zinc-300">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Score {Math.round(graphEvaluation.score)} ({graphEvaluation.grade})
               </p>
               <GraphEvaluationSummary evaluation={graphEvaluation} />
@@ -2639,13 +2639,13 @@ function GraphPageInner() {
             stop them from owning a full screen of vertical space on every
             page-load. */}
         {activeSnapshot && (
-          <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
+          <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3 group">
             <summary className="flex flex-wrap items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-3">
                 <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
                   Snapshot diff
                 </span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-[var(--text-tertiary)]">
                   {graphDiff
                     ? `+${graphDiff.nodes_added.length} −${graphDiff.nodes_removed.length} nodes · +${graphDiff.edges_added.length} −${graphDiff.edges_removed.length} edges`
                     : previousSnapshot
@@ -2660,10 +2660,10 @@ function GraphPageInner() {
                     loading
                   </span>
                 )}
-                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
                   show
                 </span>
-                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hidden group-open:inline">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] hidden group-open:inline">
                   hide
                 </span>
               </div>
@@ -2723,8 +2723,8 @@ function GraphPageInner() {
         )}
 
         {graphDiff && (
-          <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-            <summary className="cursor-pointer list-none text-xs font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
+          <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
+            <summary className="cursor-pointer list-none text-xs font-medium text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
               Snapshot drift lens · {drift.critical} critical changes
             </summary>
             <div className="mt-3">
@@ -2754,8 +2754,8 @@ function GraphPageInner() {
           />
         ) : null}
 
-        <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-          <summary className="cursor-pointer list-none text-xs font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
+        <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
+          <summary className="cursor-pointer list-none text-xs font-medium text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
             Evidence lens · {evidenceCounts.all} nodes
           </summary>
           <div className="mt-3">
@@ -2772,15 +2772,15 @@ function GraphPageInner() {
           </div>
         </details>
 
-        <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400 group">
+        <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3 text-xs text-[var(--text-secondary)] group">
           <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-            <span className="font-medium text-zinc-200">
+            <span className="font-medium text-[var(--foreground)]">
               How to read this graph
             </span>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
               show
             </span>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hidden group-open:inline">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] hidden group-open:inline">
               hide
             </span>
           </summary>
@@ -2823,28 +2823,28 @@ function GraphPageInner() {
         </details>
 
         {attackPaths.length > 0 && (
-          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3 group">
+          <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/60 p-3 group">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.24em] text-orange-400">
                   Attack paths
                 </p>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-[var(--text-tertiary)]">
                   {attackPaths.length} ranked path
                   {attackPaths.length === 1 ? "" : "s"} available for focused
                   investigation.
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
                 show queue
               </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
                 hide queue
               </span>
             </summary>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="mt-3 text-xs text-zinc-500">
+                <p className="mt-3 text-xs text-[var(--text-tertiary)]">
                   Focus the current graph on a precomputed exploit chain in this
                   filtered snapshot page.
                 </p>
@@ -2855,7 +2855,7 @@ function GraphPageInner() {
                   onClick={() => {
                     setSelectedAttackPathKey(null);
                   }}
-                  className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
                 >
                   Clear path focus
                 </button>
@@ -2871,7 +2871,7 @@ function GraphPageInner() {
                 return (
                   <div
                     key={key}
-                    className={`min-w-[360px] rounded-2xl transition ${isActive ? "ring-2 ring-orange-400/70 ring-offset-2 ring-offset-zinc-950" : ""}`}
+                    className={`min-w-[360px] rounded-2xl transition ${isActive ? "ring-2 ring-orange-400/70 ring-offset-2 ring-offset-[var(--background)]" : ""}`}
                   >
                     <AttackPathCard
                       nodes={pathNodes}
@@ -3080,7 +3080,7 @@ function GraphPageInner() {
           {loadingGraph && graphData && <GraphRefreshOverlay />}
 
           {graphData && graphData.pagination.total > filters.pageSize && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-800/80 px-1 pt-2 text-xs">
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)]/80 px-1 pt-2 text-xs">
               <button
                 type="button"
                 onClick={() =>
@@ -3089,7 +3089,7 @@ function GraphPageInner() {
                   )
                 }
                 disabled={loadingGraph || pageOffset === 0}
-                className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Previous page
               </button>
@@ -3099,11 +3099,11 @@ function GraphPageInner() {
                   setPageOffset((current) => current + filters.pageSize)
                 }
                 disabled={loadingGraph || !graphData?.pagination.has_more}
-                className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next page
               </button>
-              <span className="text-zinc-500">
+              <span className="text-[var(--text-tertiary)]">
                 Page {pageNumber} of {totalPages} · showing {pageStart}-{pageEnd} of{" "}
                 {graphData.pagination.total} nodes
               </span>
@@ -3158,20 +3158,20 @@ function MetricCard({
         ? "border-orange-500/20 bg-orange-500/10 text-orange-200"
         : accent === "blue"
           ? "border-sky-500/20 bg-sky-500/10 text-sky-200"
-          : "border-zinc-800 bg-zinc-900/80 text-zinc-300";
+          : "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]";
 
   return (
     <div className={`rounded-xl border px-3 py-1.5 text-xs ${accentClass}`}>
-      <span className="font-mono text-zinc-100">{value}</span> {label}
+      <span className="font-mono text-[var(--foreground)]">{value}</span> {label}
     </div>
   );
 }
 
 function ViewPill({ label, value }: { label: string; value: string }) {
   return (
-    <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1">
-      <span className="text-zinc-500">{label}</span>
-      <span className="ml-1 text-zinc-300">{value}</span>
+    <span className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1">
+      <span className="text-[var(--text-tertiary)]">{label}</span>
+      <span className="ml-1 text-[var(--text-secondary)]">{value}</span>
     </span>
   );
 }
@@ -3230,12 +3230,12 @@ function ReachabilityDrillInPanel({
 
       {summary && (
         <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <div className="rounded-xl border border-rose-400/20 bg-zinc-950/45 p-2">
+          <div className="rounded-xl border border-rose-400/20 bg-[var(--background)]/45 p-2">
             <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">
               Affected by type
             </p>
             {Object.keys(summary.countsByType).length === 0 ? (
-              <p className="mt-2 text-zinc-400">
+              <p className="mt-2 text-[var(--text-secondary)]">
                 No downstream nodes returned for this root.
               </p>
             ) : (
@@ -3254,12 +3254,12 @@ function ReachabilityDrillInPanel({
             )}
           </div>
 
-          <div className="rounded-xl border border-rose-400/20 bg-zinc-950/45 p-2">
+          <div className="rounded-xl border border-rose-400/20 bg-[var(--background)]/45 p-2">
             <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">
               Bounded paths
             </p>
             {summary.pathPreviews.length === 0 ? (
-              <p className="mt-2 text-zinc-400">
+              <p className="mt-2 text-[var(--text-secondary)]">
                 No path preview is available for this root.
               </p>
             ) : (
@@ -3267,18 +3267,18 @@ function ReachabilityDrillInPanel({
                 {summary.pathPreviews.map((path) => (
                   <div
                     key={`${path.targetId}:${path.hops.join(">")}`}
-                    className="rounded-lg bg-zinc-950/70 px-2 py-1.5"
+                    className="rounded-lg bg-[var(--background)]/70 px-2 py-1.5"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium text-rose-50">
                         {path.targetLabel}
                       </span>
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
                         {prettifyReachabilityType(path.targetType)} ·{" "}
                         {path.depth} hop{path.depth === 1 ? "" : "s"}
                       </span>
                     </div>
-                    <p className="mt-1 truncate font-mono text-[10px] text-zinc-400">
+                    <p className="mt-1 truncate font-mono text-[10px] text-[var(--text-secondary)]">
                       {path.labels.join(" -> ")}
                     </p>
                   </div>
@@ -3344,7 +3344,7 @@ function BlastRadiusPanel({
       </div>
 
       {summary && Object.keys(summary.countsByType).length > 0 && (
-        <div className="mt-3 rounded-xl border border-violet-400/20 bg-zinc-950/45 p-2">
+        <div className="mt-3 rounded-xl border border-violet-400/20 bg-[var(--background)]/45 p-2">
           <p className="text-[10px] uppercase tracking-[0.2em] text-violet-300">
             Impacted by type
           </p>
@@ -3364,7 +3364,7 @@ function BlastRadiusPanel({
       )}
 
       {summary && summary.affectedCount === 0 && (
-        <p className="mt-2 text-zinc-400">
+        <p className="mt-2 text-[var(--text-secondary)]">
           Nothing downstream depends on this node in the current snapshot.
         </p>
       )}
@@ -3471,7 +3471,7 @@ function RollupNavigationPanel({
 function scopeButtonClass(active: boolean): string {
   return active
     ? "rounded-lg border border-sky-500/40 bg-sky-500/15 px-2.5 py-1 text-sky-100 transition hover:border-sky-400/70"
-    : "rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100";
+    : "rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1 text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]";
 }
 
 function PathStat({
@@ -3490,14 +3490,14 @@ function PathStat({
         ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
         : tone === "blue"
           ? "border-sky-500/20 bg-sky-500/10 text-sky-200"
-          : "border-zinc-800 bg-zinc-900/80 text-zinc-300";
+          : "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]";
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
         {label}
       </p>
-      <p className="mt-1 font-mono text-sm text-zinc-100">{value}</p>
+      <p className="mt-1 font-mono text-sm text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
@@ -3513,16 +3513,16 @@ function PathTagList({
 }) {
   return (
     <div
-      className={`rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 ${wide ? "lg:col-span-4" : ""}`}
+      className={`rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 p-3 ${wide ? "lg:col-span-4" : ""}`}
     >
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
         {label}
       </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {tags.map((tag) => (
           <span
             key={`${label}-${tag}`}
-            className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-2 py-1 text-[11px] text-zinc-300"
+            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]/80 px-2 py-1 text-[11px] text-[var(--text-secondary)]"
           >
             {tag}
           </span>
@@ -3550,10 +3550,10 @@ function DiffMetric({
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
         {label}
       </p>
-      <p className="mt-1 font-mono text-lg text-zinc-100">{value}</p>
+      <p className="mt-1 font-mono text-lg text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
@@ -3573,12 +3573,12 @@ function DiffLoadingGrid() {
       ].map((label) => (
         <div
           key={label}
-          className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2"
+          className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-3 py-2"
         >
-          <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
             {label}
           </p>
-          <div className="mt-2 h-6 w-12 animate-pulse rounded-full bg-zinc-800" />
+          <div className="mt-2 h-6 w-12 animate-pulse rounded-full bg-[var(--surface-elevated)]" />
         </div>
       ))}
     </div>
@@ -3605,12 +3605,12 @@ export function DiffPreview({
 }) {
   const visible = items.slice(0, 5);
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
           {label}
         </p>
-        <span className="font-mono text-[11px] text-zinc-500">
+        <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
           {items.length}
         </span>
       </div>
@@ -3618,13 +3618,13 @@ export function DiffPreview({
         {visible.map((item) => (
           <p
             key={`${label}-${diffItemKey(item)}`}
-            className="truncate font-mono text-[11px] text-zinc-300"
+            className="truncate font-mono text-[11px] text-[var(--text-secondary)]"
           >
             {diffItemLabel(item)}
           </p>
         ))}
         {items.length > visible.length && (
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-[11px] text-[var(--text-tertiary)]">
             +{items.length - visible.length} more
           </p>
         )}

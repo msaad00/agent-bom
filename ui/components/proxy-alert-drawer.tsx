@@ -11,7 +11,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   high: "bg-orange-950 text-orange-300 border-orange-800",
   medium: "bg-yellow-950 text-yellow-300 border-yellow-800",
   low: "bg-blue-950 text-blue-300 border-blue-800",
-  info: "bg-zinc-800 text-zinc-300 border-zinc-700",
+  info: "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
 };
 
 export function ProxyAlertDrawer({
@@ -36,10 +36,10 @@ export function ProxyAlertDrawer({
         aria-label="Close proxy alert details"
         onClick={onClose}
       />
-      <aside className="relative h-full w-full max-w-lg overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
-        <div className="mb-4 flex items-start justify-between gap-4 border-b border-zinc-800 pb-4">
+      <aside className="relative h-full w-full max-w-lg overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)] p-5 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-4 border-b border-[var(--border-subtle)] pb-4">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
               Runtime alert
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -50,20 +50,20 @@ export function ProxyAlertDrawer({
               >
                 {alert.severity}
               </span>
-              <span className="font-mono text-sm text-zinc-100">{alert.detector}</span>
+              <span className="font-mono text-sm text-[var(--foreground)]">{alert.detector}</span>
             </div>
-            <h2 className="mt-2 break-all font-mono text-lg font-semibold text-zinc-100">
+            <h2 className="mt-2 break-all font-mono text-lg font-semibold text-[var(--foreground)]">
               {alert.tool_name}
             </h2>
-            <p className="mt-1 text-sm text-zinc-400">{proxyAlertSummary(alert)}</p>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">{proxyAlertSummary(alert)}</p>
             {alert.ts ? (
-              <p className="mt-2 text-xs text-zinc-600">{formatDate(alert.ts)}</p>
+              <p className="mt-2 text-xs text-[var(--text-tertiary)]">{formatDate(alert.ts)}</p>
             ) : null}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-100"
+            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] p-2 text-[var(--text-secondary)] transition-colors hover:border-[var(--border-subtle)] hover:text-[var(--foreground)]"
             aria-label="Close proxy alert drawer"
           >
             <X className="h-4 w-4" />
@@ -74,12 +74,12 @@ export function ProxyAlertDrawer({
           {rows.map((row) => (
             <div
               key={`${row.label}:${row.value}`}
-              className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2"
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/60 px-3 py-2"
             >
-              <dt className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+              <dt className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
                 {row.label}
               </dt>
-              <dd className="mt-1 break-words font-mono text-xs text-zinc-200">{row.value}</dd>
+              <dd className="mt-1 break-words font-mono text-xs text-[var(--foreground)]">{row.value}</dd>
             </div>
           ))}
         </dl>

@@ -2409,6 +2409,55 @@ export interface OverviewResponse {
   top_risks: OverviewTopRisk[];
 }
 
+/** One security-domain lane on the per-account drill summary (#3931). Its
+ * severity strip sums to ``count`` (same honest invariant as the overview). */
+export interface AccountSummaryDomain {
+  domain: "cspm" | "vuln" | "appsec_sca" | "dspm" | "aispm";
+  label: string;
+  count: number;
+  severity: CoverageSeverity;
+  /** Pre-filtered /findings deep-link (provider + account + domain). */
+  href: string;
+}
+
+/** One stored CIS benchmark run folded into the account's compliance health. */
+export interface AccountSummaryBenchmark {
+  provider: string;
+  benchmark: string;
+  passed: number;
+  failed: number;
+  evaluated: number;
+  pass_rate: number | null;
+}
+
+/** GET /v1/cloud/accounts/{account_ref}/summary — per-account end-to-end drill. */
+export interface AccountSummaryResponse {
+  schema_version: string;
+  tenant_id: string;
+  account_ref: string;
+  provider: string;
+  account: string;
+  regions: string[];
+  environments: string[];
+  findings_total: number;
+  severity: CoverageSeverity;
+  domains: AccountSummaryDomain[];
+  compliance: {
+    evaluated: number;
+    passed: number;
+    failed: number;
+    pass_rate: number | null;
+    benchmarks: AccountSummaryBenchmark[];
+    href: string;
+  };
+  assets: { count: number; href: string; note: string };
+  identities: { count: number; roles: number; note: string };
+  drill: { findings_href: string; graph_href: string };
+  truncated: boolean;
+  empty: boolean;
+  note: string;
+}
+
 export interface EnrichmentSourcePosture {
   source: string;
   status: "ok" | "stale" | "degraded" | "unknown" | string;

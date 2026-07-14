@@ -4206,6 +4206,69 @@ paths:
       summary: Cis Benchmark Trends
       tags:
       - compliance
+  /v1/cloud/accounts/{account_ref}/summary:
+    get:
+      description: "Per-account, end-to-end posture drill for one cloud account (issue\
+        \ #3931).\n\nReturns findings by security domain (each severity strip summing\
+        \ to its lane\ncount), stored CIS/compliance pass-rate, an asset count, and\
+        \ an\nidentity/role count \u2014 everything scoped to ``account_ref`` (e.g.\n\
+        ``aws:123456789012``). Read-only: composes the #3946 rollup + scope filters\n\
+        over already-ingested evidence and never triggers a provider scan.\n\nCanonicalized\
+        \ + tenant-scoped; a malformed or unknown account returns an\nhonest empty\
+        \ summary (all five lanes at zero, ``pass_rate: null``) rather\nthan raising.\
+        \ The read runs off the event loop under the shared findings\nbackpressure\
+        \ guard so a burst of account views cannot starve ``/health``."
+      operationId: cloud_account_summary_v1_cloud_accounts__account_ref__summary_get
+      parameters:
+      - in: path
+        name: account_ref
+        required: true
+        schema:
+          title: Account Ref
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Cloud Account Summary V1 Cloud Accounts  Account Ref  Summary
+                  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Cloud Account Summary
+      tags:
+      - cloud
   /v1/cloud/connections:
     get:
       description: List the authenticated tenant's connections (non-secret metadata

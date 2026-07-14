@@ -65,9 +65,9 @@ def test_domain_dependency_cve_is_vuln() -> None:
     assert security_domain_for(FindingSource.MCP_SCAN, FindingType.MALICIOUS_PACKAGE) == "vuln"
 
 
-def test_domain_sast_and_secret_is_appsec_sca() -> None:
-    assert security_domain_for(FindingSource.SAST, FindingType.SAST) == "appsec_sca"
-    assert security_domain_for(FindingSource.SECRET_SCAN, FindingType.CREDENTIAL_EXPOSURE) == "appsec_sca"
+def test_domain_sast_and_secret_is_aspm() -> None:
+    assert security_domain_for(FindingSource.SAST, FindingType.SAST) == "aspm"
+    assert security_domain_for(FindingSource.SECRET_SCAN, FindingType.CREDENTIAL_EXPOSURE) == "aspm"
 
 
 def test_domain_mcp_agent_signals_are_aispm() -> None:
@@ -83,10 +83,20 @@ def test_domain_snowflake_governance_is_dspm() -> None:
 
 
 def test_domain_is_one_of_the_five() -> None:
-    valid = {"cspm", "vuln", "appsec_sca", "dspm", "aispm"}
+    valid = {"cspm", "vuln", "aspm", "dspm", "aispm"}
     for source in FindingSource:
         for ftype in FindingType:
             assert security_domain_for(source, ftype) in valid
+
+
+def test_legacy_appsec_sca_domain_resolves_to_aspm() -> None:
+    """Rows persisted under the pre-rename key still land in the ASPM lane."""
+    from agent_bom.finding_scope import canonical_domain, domain_for_row
+
+    assert canonical_domain("appsec_sca") == "aspm"
+    assert canonical_domain("aspm") == "aspm"
+    assert canonical_domain("bogus") is None
+    assert domain_for_row({"security_domain": "appsec_sca"}) == "aspm"
 
 
 # ---------------------------------------------------------------------------

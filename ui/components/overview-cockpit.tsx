@@ -1,7 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ChevronRight } from "lucide-react";
+import type { ElementType } from "react";
+import {
+  ArrowRight,
+  Bug,
+  ChevronRight,
+  Fingerprint,
+  Flame,
+  KeyRound,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import type { OverviewResponse } from "@/lib/api";
 import type {
@@ -158,7 +168,7 @@ export interface OverviewCockpitProps {
   /** Severity × issue-type matrix (CVEs, misconfigs, secrets, identity). */
   issueMatrix?: IssueSeverityMatrix | null | undefined;
   domains: OverviewResponse["domains"] | null;
-  /** Five security-posture coverage lanes (CSPM / Vuln / AppSec-SCA / DSPM /
+  /** Five security-posture coverage lanes (CSPM / Vuln / ASPM / DSPM /
    *  AISPM) with reconciled, non-overlapping counts (issue #3946). */
   coverage?: OverviewCoverageLane[] | null | undefined;
   topPath: ExposurePathView | null;
@@ -253,7 +263,7 @@ export function OverviewCockpit({
 
           {/* 2b — Estate / operations: the genuinely-operational lanes
               (runtime, cost, identity, ops) shown by activation. The security
-              lanes above already cover cloud posture, vuln mgmt, and AppSec. */}
+              lanes above already cover cloud posture, vuln mgmt, and application posture. */}
           <EstateOpsStrip domains={domains} services={services} />
 
           {/* 3 — Compliance: one honest strip, coverage after first scan */}
@@ -289,7 +299,7 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
 
 /**
  * The five security-posture coverage lanes rendered 1:1 (CSPM / Vuln mgmt /
- * AppSec-SCA / DSPM / AISPM). Each lane's count is the sum of its severity
+ * ASPM / DSPM / AISPM). Each lane's count is the sum of its severity
  * strip, so the metric can never contradict the strip. An ``unrated`` chip is
  * surfaced only when unknown-severity findings are present. All colors come from
  * design tokens (no hardcoded palette) so light + dark both read correctly.
@@ -357,7 +367,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
 
 // The genuinely-operational estate lanes — cloud / vuln / code are deliberately
 // excluded because the five security-coverage lanes above already own CSPM,
-// Vuln mgmt, and AppSec-SCA. Rendering them here too would double-count.
+// Vuln mgmt, and ASPM. Rendering them here too would double-count.
 const OPERATIONAL_DOMAIN_KEYS = ["runtime", "cost", "identity", "ops"] as const;
 type OperationalDomainKey = (typeof OPERATIONAL_DOMAIN_KEYS)[number];
 
@@ -976,6 +986,54 @@ function PostureHero({
   );
 }
 
+// One distinct glyph per issue type so a category reads by shape, not by a
+// severity hue it doesn't own (KEV/Secrets/Misconfig/Identity all go neutral).
+const ISSUE_TYPE_GLYPH: Record<IssueType, ElementType> = {
+  vulnerability: Bug,
+  misconfiguration: SlidersHorizontal,
+  secret: KeyRound,
+  identity: Fingerprint,
+};
+
+// Neutral grayscale fills for the in-tile issue-type mini bar — segments stay
+// distinguishable by lightness (theme-safe text tokens), never by severity hue.
+const ISSUE_TYPE_BAR: Record<IssueType, string> = {
+  vulnerability: "bg-[color:var(--text-secondary)]",
+  misconfiguration: "bg-[color:var(--text-tertiary)]",
+  secret: "bg-[color:var(--text-secondary)] opacity-60",
+  identity: "bg-[color:var(--text-tertiary)] opacity-50",
+};
+
+/**
+ * A neutral, iconified category chip for the Open-issues header (KEV / Secrets /
+ * Compliance). Uses only surface/border/text tokens so it never mimics a
+ * severity band; the glyph carries the category meaning. Works in both themes.
+ */
+function CategoryChip({
+  href,
+  icon: Icon,
+  label,
+  value,
+  title,
+}: {
+  href: string;
+  icon: ElementType;
+  label: string;
+  value: number | string;
+  title?: string | undefined;
+}) {
+  return (
+    <Link
+      href={href}
+      title={title}
+      className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+    >
+      <Icon className="h-3 w-3 text-[color:var(--text-tertiary)]" aria-hidden="true" />
+      {label} {value}
+    </Link>
+  );
+}
+
 function SeverityIssueStrip({
   summaryReady,
   critical,
@@ -1029,12 +1087,6 @@ function SeverityIssueStrip({
   ];
   const stackedTotal = bands.reduce((sum, band) => sum + band.value, 0);
   const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "identity"];
-  const issueTone: Record<IssueType, string> = {
-    vulnerability: "bg-[color:var(--severity-critical)]",
-    misconfiguration: "bg-[color:var(--severity-high)]",
-    secret: "bg-[color:var(--status-warn)]",
-    identity: "bg-[color:var(--severity-low)]",
-  };
 
   return (
     <div
@@ -1049,29 +1101,36 @@ function SeverityIssueStrip({
         defaultOpen
         actions={
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* Category chips are neutral + iconified: hue is reserved for
+                severity alone, so a category never mimics a severity band
+                (KEV is not amber, Secrets is not red, Compliance is not a
+                green pass). The glyph carries the distinction. */}
             {summaryReady && kev != null ? (
-              <Link
+              <CategoryChip
                 href={findingsHref({ kev: true })}
-                className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200"
-              >
-                KEV {kev}
-              </Link>
+                icon={Flame}
+                label="KEV"
+                value={kev}
+                title="Known-exploited vulnerabilities (CISA KEV)"
+              />
             ) : null}
             {summaryReady && credentials != null ? (
-              <Link
+              <CategoryChip
                 href={findingsHref({ issue: "secret" })}
-                className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200"
-              >
-                Secrets {credentials}
-              </Link>
+                icon={KeyRound}
+                label="Secrets"
+                value={credentials}
+                title="Findings that expose credentials or secrets"
+              />
             ) : null}
             {complianceScore ? (
-              <Link
+              <CategoryChip
                 href="/compliance"
-                className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200"
-              >
-                Compliance {complianceScore}
-              </Link>
+                icon={ShieldCheck}
+                label="Compliance"
+                value={complianceScore}
+                title="Overall compliance score across evaluated frameworks"
+              />
             ) : null}
           </div>
         }
@@ -1123,7 +1182,7 @@ function SeverityIssueStrip({
                     return (
                       <div
                         key={issue}
-                        className={issueTone[issue]}
+                        className={ISSUE_TYPE_BAR[issue]}
                         style={{ width: `${(count / band.value) * 100}%` }}
                         title={`${ISSUE_TYPE_SHORT[issue]}: ${count}`}
                       />
@@ -1134,8 +1193,10 @@ function SeverityIssueStrip({
                   {issueTypes.map((issue) => {
                     const count = resolved[issue][band.key];
                     if (count <= 0) return null;
+                    const Glyph = ISSUE_TYPE_GLYPH[issue];
                     return (
-                      <span key={issue}>
+                      <span key={issue} className="inline-flex items-center gap-0.5">
+                        <Glyph className="h-2.5 w-2.5" aria-hidden="true" />
                         {ISSUE_TYPE_SHORT[issue]} {count}
                       </span>
                     );
@@ -1154,13 +1215,14 @@ function SeverityIssueStrip({
           {issueTypes.map((issue) => {
             const total = resolved.byType[issue];
             if (total <= 0) return null;
+            const Glyph = ISSUE_TYPE_GLYPH[issue];
             return (
               <Link
                 key={issue}
                 href={findingsHref({ issue })}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)]"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${issueTone[issue]}`} aria-hidden="true" />
+                <Glyph className="h-3 w-3 text-[color:var(--text-tertiary)]" aria-hidden="true" />
                 {ISSUE_TYPE_SHORT[issue]} {total}
               </Link>
             );

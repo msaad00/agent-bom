@@ -98,7 +98,7 @@ describe("OverviewCockpit", () => {
     const coverage = [
       { domain: "cspm" as const, label: "CSPM", href: "/findings?domain=cspm", count: 3, severity: { critical: 1, high: 1, medium: 0, low: 0, unrated: 1 } },
       { domain: "vuln" as const, label: "Vuln mgmt", href: "/findings?domain=vuln", count: 2, severity: { critical: 2, high: 0, medium: 0, low: 0, unrated: 0 } },
-      { domain: "appsec_sca" as const, label: "AppSec / SCA", href: "/findings?domain=appsec_sca", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
+      { domain: "aspm" as const, label: "ASPM", href: "/findings?domain=aspm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
       { domain: "dspm" as const, label: "DSPM", href: "/findings?domain=dspm", count: 0, severity: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 } },
       { domain: "aispm" as const, label: "AISPM", href: "/findings?domain=aispm", count: 1, severity: { critical: 0, high: 0, medium: 1, low: 0, unrated: 0 } },
     ];

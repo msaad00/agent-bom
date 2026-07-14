@@ -308,7 +308,7 @@ def test_overview_coverage_lanes_map_to_five_domains() -> None:
 
     data = client_get_overview()
     coverage = {lane["domain"]: lane for lane in data["coverage"]}
-    assert set(coverage) == {"cspm", "vuln", "appsec_sca", "dspm", "aispm"}
+    assert set(coverage) == {"cspm", "vuln", "aspm", "dspm", "aispm"}
 
     cspm = coverage["cspm"]
     assert cspm["count"] == 2
@@ -319,7 +319,7 @@ def test_overview_coverage_lanes_map_to_five_domains() -> None:
     assert coverage["vuln"]["count"] == 1
     assert coverage["aispm"]["count"] == 1
     assert coverage["dspm"]["count"] == 0
-    assert coverage["appsec_sca"]["count"] == 0
+    assert coverage["aspm"]["count"] == 0
     # CIS misconfig went to CSPM, not the vuln lane.
     assert coverage["vuln"]["severity"]["critical"] == 1
 
@@ -359,7 +359,7 @@ def test_overview_headline_reflects_noncve_spine_critical() -> None:
             {"id": "vuln-cve", "security_domain": "vuln", "severity": "medium", "cve_id": "CVE-2025-1000"},
             {
                 "id": "mal-1",
-                "security_domain": "appsec_sca",
+                "security_domain": "aspm",
                 "severity": "critical",
                 "is_malicious": True,
                 "title": "malicious package foo",
@@ -373,7 +373,7 @@ def test_overview_headline_reflects_noncve_spine_critical() -> None:
     assert data["headline"]["critical"] == 1
     # Coverage (which always read the spine) and the headline now agree.
     coverage = {lane["domain"]: lane for lane in data["coverage"]}
-    assert coverage["appsec_sca"]["severity"]["critical"] == 1
+    assert coverage["aspm"]["severity"]["critical"] == 1
     # The grade moves off a clean posture — a critical carries penalty.
     assert data["posture"]["grade"] not in {"N/A", "A"}
     crit_row = next(r for r in data["posture"]["breakdown"] if r["driver"] == "critical")

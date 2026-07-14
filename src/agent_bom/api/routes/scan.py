@@ -1491,7 +1491,12 @@ def _canonical_scope_filters(
     if environment and environment.strip():
         filters["environment"] = environment.strip().lower()
     if domain and domain.strip():
-        filters["domain"] = domain.strip().lower()
+        # Map the pre-rename ``appsec_sca`` alias to ``aspm`` so historical
+        # deep-links keep resolving; unknown values pass through untouched.
+        from agent_bom.finding_scope import _LEGACY_DOMAIN_ALIASES
+
+        key = domain.strip().lower()
+        filters["domain"] = _LEGACY_DOMAIN_ALIASES.get(key, key)
     return filters
 
 

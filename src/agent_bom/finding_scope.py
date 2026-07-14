@@ -24,17 +24,35 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.finding import FindingSource, FindingType
 
 # The five posture lanes. Kept as plain strings (not an enum) so the value can
-# flow through JSON, the API, and the UI without a serialization shim.
-SECURITY_DOMAINS: tuple[str, ...] = ("cspm", "vuln", "appsec_sca", "dspm", "aispm")
+# flow through JSON, the API, and the UI without a serialization shim. The
+# posture-management family is symmetric: CSPM (cloud) · ASPM (application) ·
+# DSPM (data) · AISPM (AI), with Vuln mgmt as the cross-surface CVE lane.
+SECURITY_DOMAINS: tuple[str, ...] = ("cspm", "vuln", "aspm", "dspm", "aispm")
 
 # Human labels for the UI coverage lanes (one per domain, 1:1).
 SECURITY_DOMAIN_LABELS: dict[str, str] = {
     "cspm": "CSPM",
     "vuln": "Vuln mgmt",
-    "appsec_sca": "AppSec / SCA",
+    "aspm": "ASPM",
     "dspm": "DSPM",
     "aispm": "AISPM",
 }
+
+# Back-compat: rows persisted under the pre-rename ``appsec_sca`` key still
+# resolve to the ``aspm`` lane so historical findings are never dropped.
+_LEGACY_DOMAIN_ALIASES: dict[str, str] = {"appsec_sca": "aspm"}
+
+
+def canonical_domain(value: str | None) -> Optional[str]:
+    """Return a recognized posture-lane key for ``value``, applying legacy aliases.
+
+    Accepts a stored/queried domain string, maps the pre-rename ``appsec_sca``
+    alias to ``aspm``, and returns the canonical key only when it is one of the
+    five posture lanes (else None so callers decide the default).
+    """
+    key = (value or "").strip().lower()
+    key = _LEGACY_DOMAIN_ALIASES.get(key, key)
+    return key if key in SECURITY_DOMAINS else None
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +122,7 @@ def security_domain_for(
          other cloud CIS finding is CSPM.
       2. ``FindingType`` is decisive for the portable signals — a dependency CVE
          or malicious package is vuln-management wherever it was discovered; SAST
-         and secret findings are AppSec/SCA.
+         and secret-in-code findings are application-security posture (ASPM).
       3. Otherwise route by source (container/SBOM/external/filesystem → vuln;
          everything MCP/agent/runtime/prompt/skill/graph → AISPM).
     """
@@ -128,7 +146,7 @@ def security_domain_for(
         return "vuln"
 
     if finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE):
-        return "appsec_sca"
+        return "aspm"
 
     if source in (
         FindingSource.CONTAINER,
@@ -139,7 +157,7 @@ def security_domain_for(
         return "vuln"
 
     if source in (FindingSource.SAST, FindingSource.SECRET_SCAN):
-        return "appsec_sca"
+        return "aspm"
 
     # MCP scan, proxy, skill, browser-ext, prompt scan, graph correlation, and
     # any AI-native finding type (tool drift, injection, cloaking, blocklist,
@@ -154,8 +172,8 @@ def domain_for_row(row: dict) -> Optional[str]:
     source/type mapping for legacy rows. Returns None when neither the field nor
     a recognizable source/type is present, so callers decide the default.
     """
-    dom = str(row.get("security_domain") or "").strip().lower()
-    if dom in SECURITY_DOMAINS:
+    dom = canonical_domain(row.get("security_domain"))
+    if dom is not None:
         return dom
     from agent_bom.finding import FindingSource, FindingType
 

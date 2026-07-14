@@ -174,4 +174,35 @@ describe("FindingsPage", () => {
     expect(duplicateKeyWarning).toBe(false);
     consoleError.mockRestore();
   });
+
+  it("tucks advanced filters into a Filters (n) popover with removable active chips", async () => {
+    render(<FindingsPage />);
+    expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
+
+    // Advanced filters start collapsed: the toggle shows no active count and no
+    // chips are rendered.
+    const toggle = screen.getByTestId("findings-filters-toggle");
+    expect(toggle).toHaveTextContent("Filters");
+    expect(toggle).not.toHaveTextContent("(1)");
+    expect(screen.queryByTestId("findings-active-filters")).not.toBeInTheDocument();
+
+    // Open the popover and pick a domain facet.
+    fireEvent.click(toggle);
+    const popover = screen.getByTestId("findings-filters-popover");
+    fireEvent.click(within(popover).getByRole("button", { name: "ASPM" }));
+
+    // Active count reflects the selection and a removable chip surfaces it.
+    await waitFor(() =>
+      expect(screen.getByTestId("findings-filters-toggle")).toHaveTextContent("Filters (1)"),
+    );
+    const chip = screen.getByTestId("findings-chip-domain");
+    expect(chip).toHaveTextContent("Domain: ASPM");
+
+    // Removing the chip clears the filter (count returns to zero, chip gone).
+    fireEvent.click(chip);
+    await waitFor(() =>
+      expect(screen.queryByTestId("findings-chip-domain")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("findings-filters-toggle")).not.toHaveTextContent("(1)");
+  });
 });

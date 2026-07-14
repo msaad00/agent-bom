@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, useMemo, type ElementType } from "react";
+import { Suspense, useCallback, useEffect, useState, useMemo, useRef, type ElementType } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   api,
@@ -49,7 +49,7 @@ import {
 } from "@/lib/findings-lens";
 import { useFindingsLens } from "@/hooks/use-findings-lens";
 import { severityRank } from "@/lib/severity";
-import { Bug, ChevronDown, ChevronRight, Download, Layers, Loader2, Package, Server, ClipboardCheck } from "lucide-react";
+import { Bug, ChevronDown, ChevronRight, Download, Layers, Loader2, Package, Server, ClipboardCheck, SlidersHorizontal, X } from "lucide-react";
 import { PageLaneHeader } from "@/components/page-lane";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -257,7 +257,7 @@ const DOMAIN_FILTERS: { key: string; label: string }[] = [
   { key: "all", label: "All domains" },
   { key: "cspm", label: "CSPM" },
   { key: "vuln", label: "Vuln mgmt" },
-  { key: "appsec_sca", label: "AppSec / SCA" },
+  { key: "aspm", label: "ASPM" },
   { key: "dspm", label: "DSPM" },
   { key: "aispm", label: "AISPM" },
 ];
@@ -345,6 +345,27 @@ function FindingsPage() {
   const PAGE_SIZE = 25;
   const useServerPaging = groupBy === "none" && !search.trim();
   const showLifecycleColumns = useMemo(() => hasLifecycleMetadata(vulns), [vulns]);
+  // Advanced-filter popover (scope / domain / cloud scope) — kept behind a
+  // single "Filters (n)" control so the primary toolbar stays compact.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFiltersOpen(false);
+    };
+    const onPointer = (e: MouseEvent) => {
+      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
+        setFiltersOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [filtersOpen]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const toggleGroup = useCallback((groupLabel: string) => {
     setCollapsedGroups((prev) => {
@@ -878,7 +899,36 @@ function FindingsPage() {
     useServerPaging && findingsTotalApproximate,
   );
 
-  const cloudScopeActive = Boolean(providerFilter.trim() || accountFilter.trim() || environmentFilter.trim());
+  // Advanced filters live behind the "Filters (n)" popover. ``n`` counts the
+  // non-default ones; each active filter is also surfaced as a removable chip so
+  // state stays visible without opening the panel. Clearing a chip resets the
+  // filter to its default, which the URL-sync effect drops from the query string.
+  const domainFilterLabel = DOMAIN_FILTERS.find((d) => d.key === domainFilter)?.label ?? domainFilter;
+  const activeFilterChips: { key: string; label: string; onClear: () => void }[] = [
+    scope !== "latest"
+      ? { key: "scope", label: "Scope: All scans", onClear: () => setScope("latest") }
+      : null,
+    domainFilter !== "all"
+      ? { key: "domain", label: `Domain: ${domainFilterLabel}`, onClear: () => setDomainFilter("all") }
+      : null,
+    providerFilter.trim()
+      ? { key: "provider", label: `Cloud: ${providerFilter.trim().toUpperCase()}`, onClear: () => setProviderFilter("") }
+      : null,
+    accountFilter.trim()
+      ? { key: "account", label: `Account: ${accountFilter.trim()}`, onClear: () => setAccountFilter("") }
+      : null,
+    environmentFilter.trim()
+      ? { key: "environment", label: `Env: ${environmentFilter.trim()}`, onClear: () => setEnvironmentFilter("") }
+      : null,
+  ].filter((chip): chip is { key: string; label: string; onClear: () => void } => chip !== null);
+  const activeFilterCount = activeFilterChips.length;
+  const clearAdvancedFilters = () => {
+    setScope("latest");
+    setDomainFilter("all");
+    setProviderFilter("");
+    setAccountFilter("");
+    setEnvironmentFilter("");
+  };
 
   const FILTERS: { key: SeverityFilter; label: string; color: string }[] = [
     {
@@ -1015,20 +1065,22 @@ function FindingsPage() {
 
       {!error && vulns.length > 0 && (
         <>
-          {/* Controls */}
+          {/* Controls — compact toolbar; advanced facets live behind a single
+              "Filters (n)" popover with removable active-filter chips. */}
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-[var(--foreground)]">{findingsQueueTitle(lens)}</h2>
-                <p className="mt-1 text-xs text-[var(--text-tertiary)]">{findingsQueueDetail(lens)}</p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs text-[var(--text-tertiary)]">
-                <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1">{PAGE_SIZE} per page</span>
-                <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1">{displayed.length} filtered</span>
-                <span
-                  className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1"
-                  title="OpenVEX export is available after a finding is triaged as not_affected with justification"
-                >
+            {/* One-line queue caption (verbose explainer moved to the title tooltip). */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-[var(--text-tertiary)]">
+                <span className="font-semibold text-[var(--text-secondary)]" title={findingsQueueDetail(lens)}>
+                  {findingsQueueTitle(lens)}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>{displayed.length} filtered</span>
+                <span aria-hidden="true">·</span>
+                <span>{PAGE_SIZE} per page</span>
+              </p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-tertiary)]">
+                <span title="OpenVEX export is available after a finding is triaged as not_affected with justification">
                   {vexEligibleCount} OpenVEX-ready
                 </span>
                 {lens === "trust" ? (
@@ -1041,7 +1093,7 @@ function FindingsPage() {
                 ) : (
                   <a
                     href="/remediation"
-                    className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
+                    className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
                   >
                     Remediation
                   </a>
@@ -1049,27 +1101,147 @@ function FindingsPage() {
               </div>
             </div>
 
-            {/* Issue type + severity filters */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-1">
-                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Issue type</span>
-                  {ISSUE_TYPE_FILTERS.map(({ key, label, hint }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setIssueTypeFilter(key)}
-                      title={hint}
-                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-                        issueTypeFilter === key
-                          ? "border-cyan-700 bg-cyan-950/40 text-cyan-200"
-                          : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
-                      }`}
+            {/* Primary toolbar: search + issue type + severity + group by, with
+                advanced filters tucked into the "Filters (n)" popover. */}
+            <div className="flex flex-col gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  placeholder={findingsSearchPlaceholder(lens)}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="min-w-[12rem] flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:border-[var(--border-strong)] focus:outline-none"
+                />
+                <div className="relative" ref={filtersRef}>
+                  <button
+                    type="button"
+                    onClick={() => setFiltersOpen((o) => !o)}
+                    aria-expanded={filtersOpen}
+                    aria-haspopup="dialog"
+                    data-testid="findings-filters-toggle"
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      activeFilterCount > 0
+                        ? "border-[color:var(--border-strong)] bg-[var(--surface-elevated)] text-[var(--foreground)]"
+                        : "border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+                    }`}
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                  </button>
+                  {filtersOpen && (
+                    <div
+                      role="dialog"
+                      aria-label="Advanced filters"
+                      data-testid="findings-filters-popover"
+                      className="absolute right-0 z-40 mt-2 flex w-[min(22rem,90vw)] flex-col gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 shadow-xl"
                     >
-                      {label}
-                    </button>
-                  ))}
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Scope</span>
+                        <select
+                          value={scope}
+                          onChange={(e) => setScope(e.target.value as ScanScope)}
+                          className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] focus:border-[var(--border-strong)] focus:outline-none"
+                        >
+                          <option value="latest">Latest completed scan</option>
+                          <option value="all">All completed scans</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Domain</span>
+                        <div className="flex flex-wrap items-center gap-1">
+                          {DOMAIN_FILTERS.map(({ key, label }) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => setDomainFilter(key)}
+                              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                domainFilter === key
+                                  ? "border-[color:var(--accent-mint)] bg-[color:var(--surface-muted)] text-[color:var(--foreground)]"
+                                  : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Cloud</span>
+                        <select
+                          value={providerFilter}
+                          onChange={(e) => setProviderFilter(e.target.value)}
+                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                        >
+                          <option value="">Any provider</option>
+                          {PROVIDER_OPTIONS.map((p) => (
+                            <option key={p} value={p}>
+                              {p.toUpperCase()}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Account</span>
+                        <input
+                          type="text"
+                          placeholder="e.g. aws:123456789012"
+                          value={accountFilter}
+                          onChange={(e) => setAccountFilter(e.target.value)}
+                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Environment</span>
+                        <input
+                          type="text"
+                          placeholder="e.g. prod"
+                          value={environmentFilter}
+                          onChange={(e) => setEnvironmentFilter(e.target.value)}
+                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-2 border-t border-[color:var(--border-subtle)] pt-2">
+                        <button
+                          type="button"
+                          onClick={clearAdvancedFilters}
+                          disabled={activeFilterCount === 0}
+                          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Clear all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFiltersOpen(false)}
+                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition-colors hover:border-[color:var(--border-strong)]"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Issue type</span>
+                {ISSUE_TYPE_FILTERS.map(({ key, label, hint }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setIssueTypeFilter(key)}
+                    title={hint}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      issueTypeFilter === key
+                        ? "border-cyan-700 bg-cyan-950/40 text-cyan-200"
+                        : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-1">
                   <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Severity</span>
                   {FILTERS?.map(({ key, label, color }) => (
@@ -1079,114 +1251,60 @@ function FindingsPage() {
                       className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
                         filter === key
                           ? `${color} border-[var(--border-strong)] bg-[var(--surface-elevated)]`
-                          : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
+                          : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
                       }`}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
+                <div className="flex items-center gap-1">
+                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Group by</span>
+                  {GROUP_OPTIONS?.map(({ key, label, icon: Icon }) => (
+                    <button
+                      key={key}
+                      onClick={() => setGroupBy(key)}
+                      className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                        groupBy === key
+                          ? "text-[var(--foreground)] border-[var(--border-strong)] bg-[var(--surface-elevated)]"
+                          : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+                      }`}
+                    >
+                      <Icon className="h-3 w-3" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <input
-                type="text"
-                placeholder={findingsSearchPlaceholder(lens)}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full sm:w-64 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--border-strong)]"
-              />
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide font-medium">Scope</span>
-                <select
-                  value={scope}
-                  onChange={(e) => setScope(e.target.value as ScanScope)}
-                  className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--border-strong)]"
-                >
-                  <option value="latest">Latest completed scan</option>
-                  <option value="all">All completed scans</option>
-                </select>
-              </div>
-              <p className="text-xs text-[var(--text-tertiary)]">
-                Default stays scoped for speed. Expand to all scans only when you need history-wide findings aggregation.
-              </p>
-            </div>
-
-            {/* Security domain + cloud scope facets (issue #3946). Design-token
-                styled so both themes read correctly; URL-synced via state. */}
-            <div className="flex flex-col gap-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-                  Domain
-                </span>
-                {DOMAIN_FILTERS.map(({ key, label }) => (
+            {/* Active advanced-filter chips — removable, keep state visible
+                without opening the panel. Clearing resets to default, which the
+                URL-sync effect drops from the query string. */}
+            {activeFilterChips.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5" data-testid="findings-active-filters">
+                {activeFilterChips.map((chip) => (
                   <button
-                    key={key}
+                    key={chip.key}
                     type="button"
-                    onClick={() => setDomainFilter(key)}
-                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-                      domainFilter === key
-                        ? "border-[color:var(--accent-mint)] bg-[color:var(--surface-muted)] text-[color:var(--foreground)]"
-                        : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                    }`}
+                    onClick={chip.onClear}
+                    data-testid={`findings-chip-${chip.key}`}
+                    aria-label={`Remove filter ${chip.label}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-xs font-medium text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   >
-                    {label}
+                    {chip.label}
+                    <X className="h-3 w-3" aria-hidden="true" />
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={clearAdvancedFilters}
+                  className="rounded-full px-2 py-1 text-xs font-medium text-[color:var(--text-tertiary)] transition hover:text-[color:var(--foreground)]"
+                >
+                  Clear all
+                </button>
               </div>
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Cloud</span>
-                  <select
-                    value={providerFilter}
-                    onChange={(e) => setProviderFilter(e.target.value)}
-                    className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
-                  >
-                    <option value="">Any provider</option>
-                    {PROVIDER_OPTIONS.map((p) => (
-                      <option key={p} value={p}>
-                        {p.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Account</span>
-                  <input
-                    type="text"
-                    placeholder="e.g. aws:123456789012"
-                    value={accountFilter}
-                    onChange={(e) => setAccountFilter(e.target.value)}
-                    className="w-52 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Environment</span>
-                  <input
-                    type="text"
-                    placeholder="e.g. prod"
-                    value={environmentFilter}
-                    onChange={(e) => setEnvironmentFilter(e.target.value)}
-                    className="w-40 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
-                  />
-                </label>
-                {(cloudScopeActive || domainFilter !== "all") && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDomainFilter("all");
-                      setProviderFilter("");
-                      setAccountFilter("");
-                      setEnvironmentFilter("");
-                    }}
-                    className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                  >
-                    Clear scope
-                  </button>
-                )}
-              </div>
-            </div>
+            )}
 
             {detailLoading && vulns.length > 0 && (
               <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
@@ -1194,25 +1312,6 @@ function FindingsPage() {
                 {scope === "latest" ? "Refreshing latest scan..." : "Refreshing historical aggregation..."}
               </div>
             )}
-
-            {/* Group by */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide font-medium">Group by</span>
-              {GROUP_OPTIONS?.map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => setGroupBy(key)}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
-                    groupBy === key
-                      ? "text-[var(--foreground)] border-[var(--border-strong)] bg-[var(--surface-elevated)]"
-                      : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
-                  }`}
-                >
-                  <Icon className="w-3 h-3" />
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Grouped view */}

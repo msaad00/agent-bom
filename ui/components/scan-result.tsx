@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
 import { useScanStream } from "@/lib/use-scan-stream";
 import { mergePipelineSteps, parsePipelineStepsFromProgress } from "@/lib/scan-pipeline-progress";
+import { domainFindingsForScan } from "@/lib/scan-domain-findings";
 import { ScanPipeline } from "@/components/scan-pipeline";
 import { RepoScanOverviewPanel } from "@/components/repo-scan-overview-panel";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -101,6 +102,13 @@ export function ScanResultView({ id }: { id: string }) {
 
   const result = job?.result as ScanResult | undefined;
   const summary = result?.summary;
+  const pipelineLanes = useMemo(
+    () =>
+      job?.status === "done"
+        ? domainFindingsForScan({ result, summary }).lanes
+        : undefined,
+    [job?.status, result, summary],
+  );
   const blastRadius = result?.blast_radius ?? [];
   const cloudEvidence = result ? summarizeCloudEvidence(result) : null;
   const repoUrl =
@@ -177,7 +185,7 @@ export function ScanResultView({ id }: { id: string }) {
             </span>
           </div>
           {replayedSteps.size > 0 ? (
-            <ScanPipeline steps={replayedSteps} />
+            <ScanPipeline steps={replayedSteps} lanes={pipelineLanes} className="h-[300px]" />
           ) : (
             <p className="text-xs font-mono text-[color:var(--text-tertiary)] animate-pulse">Waiting for scan to start...</p>
           )}

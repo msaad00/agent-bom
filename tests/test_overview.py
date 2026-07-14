@@ -9,6 +9,7 @@ from agent_bom.api.store import InMemoryJobStore
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 _AUTH_HEADERS = proxy_headers(tenant="default")
+_ADMIN_HEADERS = proxy_headers(role="admin", tenant="default")
 
 
 def setup_module() -> None:
@@ -172,8 +173,13 @@ def test_overview_reads_compacted_scan_summary() -> None:
     assert resp.status_code == 200
     data = resp.json()
 
+    # The configurable exec-score engine (#3940) recomputes the grade from the
+    # honest estate counts and takes the *worst* of that and the scan scorecard
+    # floor (42.0). 3 critical + 12 high + 72 unrated caps the penalty, so the
+    # honest score is 0.0 — still an F, and the CVE/severity tiles are populated
+    # (the compaction-must-not-zero-tiles intent this test guards).
     assert data["posture"]["grade"] == "F"
-    assert data["posture"]["score"] == 42.0
+    assert data["posture"]["score"] <= 42.0
     assert data["headline"]["critical"] == 3
     assert data["headline"]["high"] == 12
     assert data["domains"]["vuln"]["metric"] == 87
@@ -338,6 +344,86 @@ def test_overview_requires_auth(monkeypatch) -> None:
     client = TestClient(app)
     resp = client.get("/v1/overview")
     assert resp.status_code in (401, 403)
+
+
+def _reset_score_config() -> None:
+    from agent_bom.api.stores import set_tenant_score_config_store
+    from agent_bom.api.tenant_score_config_store import InMemoryTenantScoreConfigStore
+
+    set_tenant_score_config_store(InMemoryTenantScoreConfigStore())
+
+
+def test_score_config_defaults_and_update_roundtrip() -> None:
+    """GET returns the documented default model; PUT persists a canonical override."""
+    _reset_score_config()
+    client = TestClient(app)
+
+    default = client.get("/v1/overview/score-config", headers=_AUTH_HEADERS).json()
+    assert default["active_override"] is False
+    assert default["display_format"] == "percent"
+    assert default["weights"]["critical"] == 12.0
+    assert any(d["driver"] == "kev" for d in default["drivers"])
+
+    resp = client.put(
+        "/v1/overview/score-config",
+        headers=_ADMIN_HEADERS,
+        json={"display_format": "grade", "weights": {"critical": 20}},
+    )
+    assert resp.status_code == 200
+    updated = resp.json()
+    assert updated["active_override"] is True
+    assert updated["display_format"] == "grade"
+    assert updated["weights"]["critical"] == 20.0
+
+    # Persisted: a fresh GET reflects the override and the overview grade uses it.
+    again = client.get("/v1/overview/score-config", headers=_AUTH_HEADERS).json()
+    assert again["weights"]["critical"] == 20.0
+    _reset_score_config()
+
+
+def test_score_config_update_never_raises_on_garbage() -> None:
+    """Out-of-range / junk overrides are clamped server-side, never 422/500."""
+    _reset_score_config()
+    client = TestClient(app)
+    resp = client.put(
+        "/v1/overview/score-config",
+        headers=_ADMIN_HEADERS,
+        json={"weights": {"critical": -999, "bogus": 5}, "display_format": "nonsense", "grade_thresholds": {"A": 40, "B": 90}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["weights"]["critical"] == 0.0  # negative clamped
+    assert "bogus" not in data["weights"]
+    assert data["display_format"] == "percent"  # invalid -> default
+    # Thresholds kept monotonic A>=B despite inverted input.
+    assert data["grade_thresholds"]["A"] >= data["grade_thresholds"]["B"]
+    _reset_score_config()
+
+
+def test_overview_posture_carries_score_breakdown() -> None:
+    """The overview posture exposes the weighted-input breakdown for explainability."""
+    _clear_jobs()
+    _reset_score_config()
+    _add_done_job([{"vulnerability_id": "CVE-1", "severity": "critical", "risk_score": 9}])
+    data = client_get_overview()
+    posture = data["posture"]
+    assert posture["grade"] in {"A", "B", "C", "D", "F"}
+    assert "breakdown" in posture and isinstance(posture["breakdown"], list)
+    crit_row = next(row for row in posture["breakdown"] if row["driver"] == "critical")
+    assert crit_row["count"] == 1
+    assert crit_row["contribution"] == crit_row["weight"] * 1
+    assert posture["display_format"] == "percent"
+    _reset_score_config()
+
+
+def test_score_config_update_requires_admin() -> None:
+    """A viewer token cannot mutate the tenant score model (admin-gated verb)."""
+    _reset_score_config()
+    viewer_headers = proxy_headers(tenant="default", role="viewer")
+    client = TestClient(app)
+    resp = client.put("/v1/overview/score-config", headers=viewer_headers, json={"display_format": "grade"})
+    assert resp.status_code in (401, 403)
+    _reset_score_config()
 
 
 def test_overview_is_read_only() -> None:

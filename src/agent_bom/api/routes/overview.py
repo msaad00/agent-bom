@@ -29,9 +29,10 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 
-from agent_bom.api.models import JobStatus
+from agent_bom.api.models import ExecScoreConfigUpdateRequest, JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.exec_score import compute_exec_score
 from agent_bom.rbac import require_authenticated_permission
 
 router = APIRouter(dependencies=[cast(Any, require_authenticated_permission("read"))])
@@ -462,59 +463,56 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
     return empty
 
 
-def _blend_posture_with_hub(
-    posture: dict[str, Any],
-    scan_severity: dict[str, int],
+def _combined_severity(scan_severity: dict[str, int], hub_severity: dict[str, int]) -> dict[str, int]:
+    """Merge scan + hub-ingested severity into the five reconciled buckets.
+
+    The hub histogram carries ``info``/``unknown`` bands the exec-score model
+    doesn't rate — they fold into ``unrated`` so nothing is dropped and the
+    merged buckets still sum to the true counted total (the same invariant PR1's
+    coverage lanes hold).
+    """
+    merged = {key: int(scan_severity.get(key, 0) or 0) for key in _ALL_SEVERITY_KEYS}
+    for band in ("critical", "high", "medium", "low"):
+        merged[band] += int(hub_severity.get(band, 0) or 0)
+    merged[_UNRATED_KEY] += int(hub_severity.get("info", 0) or 0) + int(hub_severity.get("unknown", 0) or 0)
+    return merged
+
+
+def _exec_posture(
+    request: Request,
+    scan_posture: dict[str, Any],
+    scan: dict[str, Any],
     hub_severity: dict[str, int],
 ) -> dict[str, Any]:
-    """Fold hub-ingested findings into the scan posture grade.
+    """Compute the configurable exec risk score from the honest estate counts.
 
-    With no hub findings the scan posture is returned unchanged (the demo estate
-    and every scan-only tenant keep their existing grade). When findings have
-    been bulk-ingested, a combined penalty score is derived from scan + hub
-    severity and the grade can only move *down* (``min`` of the two scores), so
-    ingested evidence never launders a failing posture into a passing one.
+    The grade derives from the same reconciled severity buckets, KEV, and
+    credential/blast-radius exposure the overview already exposes — so it can
+    never contradict them (a non-zero counted total always carries penalty). An
+    authoritative scan scorecard is passed as a *floor*: the final score is the
+    worst of the count-derived score and that scorecard, so ingested/benign
+    evidence can only move the grade down, never launder a failing posture up.
+    Reads the tenant's persisted score-config (defaults < env < tenant override).
     """
-    hub_total = sum(int(hub_severity.get(k, 0) or 0) for k in _HUB_SEVERITY_KEYS)
-    scan_total = sum(int(v) for v in scan_severity.values())
-    posture_is_na = posture.get("grade") in (None, "N/A")
+    from agent_bom.api.exec_score_config import resolve_exec_score_config
 
-    # An existing scorecard/summary posture stays authoritative unless ingested
-    # evidence adds to it — never recompute a graded scan from severity counts
-    # (that would double-penalize and drift the published grade). Only synthesize
-    # a grade from counts when the posture is N/A but findings exist, so the
-    # blurb can never claim "no vulnerabilities" while the counted total > 0.
-    if hub_total <= 0 and not posture_is_na:
-        return posture
-    if hub_total <= 0 and scan_total <= 0:
-        return posture
-
-    from agent_bom.posture import _score_to_grade
-
-    combined_critical = int(scan_severity["critical"]) + int(hub_severity.get("critical", 0) or 0)
-    combined_high = int(scan_severity["high"]) + int(hub_severity.get("high", 0) or 0)
-    combined_total = scan_total + hub_total
-    penalty = min(
-        100.0,
-        combined_critical * 12.0 + combined_high * 6.0 + max(0, combined_total - combined_critical - combined_high) * 1.5,
+    combined = _combined_severity(scan["severity"], hub_severity)
+    floor: float | None = None
+    if scan_posture.get("grade") not in (None, "N/A"):
+        floor = float(scan_posture.get("score") or 0.0)
+    config = resolve_exec_score_config(_tenant_id(request))
+    return compute_exec_score(
+        severity=combined,
+        kev=int(scan.get("kev", 0) or 0),
+        exposure=int(scan.get("credential_exposed", 0) or 0),
+        # Live compliance-failing count is a follow-up (#3940 notes) — wiring the
+        # full compliance aggregation into this hot exec endpoint is deferred so
+        # the snapshot stays cheap; the driver + weight ship ready in the model.
+        compliance_failing=0,
+        config=config,
+        floor_score=floor,
+        floor_summary=str(scan_posture.get("summary") or "") or None,
     )
-    combined_score = max(0.0, round(100.0 - penalty, 1))
-
-    if posture_is_na:
-        final_score = combined_score
-    else:
-        final_score = min(float(posture.get("score") or 0.0), combined_score)
-
-    if hub_total > 0:
-        summary = f"{combined_total} finding(s) across scans + ingested evidence"
-    else:
-        summary = f"{combined_total} finding(s) from completed scans"
-
-    return {
-        "grade": _score_to_grade(final_score),
-        "score": final_score,
-        "summary": summary,
-    }
 
 
 def _cloud_account_count(request: Request) -> int:
@@ -561,7 +559,7 @@ async def get_overview(request: Request) -> dict[str, Any]:
     scan = _scan_rollup(jobs)
     coverage = _domain_rollup(jobs)
     hub_severity = _hub_severity_snapshot(request)
-    posture = _blend_posture_with_hub(_posture_snapshot(jobs), scan["severity"], hub_severity)
+    posture = _exec_posture(request, _posture_snapshot(jobs), scan, hub_severity)
     runtime = _runtime_snapshot(request, jobs)
     cost = _cost_snapshot(request)
     identity = _identity_snapshot(request)
@@ -672,6 +670,68 @@ async def get_overview(request: Request) -> dict[str, Any]:
         "coverage": coverage,
         "top_risks": scan["top_risks"],
     }
+
+
+@router.get("/overview/score-config", tags=["overview"])
+async def get_overview_score_config(request: Request) -> dict[str, Any]:
+    """Return the tenant's effective exec risk-score model + display config (#3940).
+
+    Read-only view of the documented default weighting model, any tenant
+    overrides, the effective weights/thresholds, and the active display format.
+    """
+    from agent_bom.api.exec_score_config import exec_score_config_runtime
+
+    return exec_score_config_runtime(_tenant_id(request))
+
+
+@router.put("/overview/score-config", tags=["overview"])
+async def update_overview_score_config(request: Request, req: ExecScoreConfigUpdateRequest) -> dict[str, Any]:
+    """Update the tenant's exec risk-score weights, thresholds, or display format.
+
+    Admin-gated (mutating ``/v1`` verb). The body is canonicalized and clamped
+    server-side — out-of-range weights are pinned into range, unknown keys are
+    dropped, and an invalid display format falls back to the default, so a bad
+    override never raises.
+    """
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.exec_score_config import exec_score_config_runtime, set_exec_score_config
+
+    tenant_id = _tenant_id(request)
+    updates = req.model_dump(exclude_none=True)
+    if not updates:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="Provide at least one of weights, grade_thresholds, or display_format.")
+
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    canonical = set_exec_score_config(tenant_id, updates)
+    log_action(
+        "overview.score_config_updated",
+        actor=actor,
+        resource=f"tenant/{tenant_id}",
+        tenant_id=tenant_id,
+        updated_fields=sorted(updates),
+        display_format=canonical.get("display_format"),
+    )
+    return exec_score_config_runtime(tenant_id)
+
+
+@router.delete("/overview/score-config", tags=["overview"], status_code=204)
+async def reset_overview_score_config(request: Request) -> None:
+    """Clear the tenant's exec risk-score overrides (revert to defaults)."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.exec_score_config import clear_exec_score_config
+
+    tenant_id = _tenant_id(request)
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    cleared = clear_exec_score_config(tenant_id)
+    if cleared:
+        log_action(
+            "overview.score_config_reset",
+            actor=actor,
+            resource=f"tenant/{tenant_id}",
+            tenant_id=tenant_id,
+        )
 
 
 def _status_for(critical: int, high: int) -> str:

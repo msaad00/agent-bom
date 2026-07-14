@@ -87,7 +87,10 @@ jobs:
           # NOT expand any of the VM-side shell variables, then splice in only
           # the two runner-provided values via sed.
           cat > remote.sh <<'REMOTE'
-          set -euo pipefail
+          # SSM AWS-RunShellScript executes this under /bin/sh (dash on Ubuntu),
+          # which has no `pipefail` — use POSIX-safe `set -eu` so the script does
+          # not abort at line 1 with "Illegal option -o pipefail".
+          set -eu
           DEPLOY_DIR="__DEPLOY_DIR__"
           RESET_DEMO="__RESET_DEMO__"
           cd "$DEPLOY_DIR"

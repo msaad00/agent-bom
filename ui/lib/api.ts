@@ -27,6 +27,8 @@ import type {
   AgentBomManifestResponse,
   PostureCountsResponse,
   OverviewResponse,
+  ScoreConfigRuntime,
+  ScoreConfigUpdate,
   RemediationItem,
   FindingsResponse,
   FindingTriageRequest,
@@ -151,6 +153,11 @@ export type {
   DeploymentMode,
   PostureCountsResponse,
   OverviewResponse,
+  OverviewPosture,
+  ExecScoreDriver,
+  ExecScoreDisplayFormat,
+  ScoreConfigRuntime,
+  ScoreConfigUpdate,
   OverviewDomain,
   OverviewTopRisk,
   RemediationItem,
@@ -782,6 +789,13 @@ export const api = {
 
   /** Cross-domain posture snapshot for the unified overview landing page */
   getOverview: () => get<OverviewResponse>("/v1/overview"),
+
+  /** Configurable exec risk-score model + display config for this tenant (#3940) */
+  getScoreConfig: () => get<ScoreConfigRuntime>("/v1/overview/score-config"),
+
+  /** Update the exec risk-score weights, thresholds, or display format (admin) */
+  updateScoreConfig: (body: ScoreConfigUpdate) =>
+    put<ScoreConfigRuntime>("/v1/overview/score-config", body),
 
   /** Runtime health for external vulnerability enrichment sources */
   getEnrichmentPosture: () => get<EnrichmentPostureResponse>("/v1/posture/enrichment"),

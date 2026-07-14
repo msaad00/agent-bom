@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { OverviewCockpit } from "@/components/overview-cockpit";
 import type { OverviewResponse } from "@/lib/api";
@@ -251,6 +251,68 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("CIS Controls v8")).toBeInTheDocument();
     expect(screen.getByText(/0% overall · 1 framework need attention/i)).toBeInTheDocument();
     expect(screen.queryByText(/coverage appears after the first completed scan/i)).not.toBeInTheDocument();
+  });
+
+  it("never renders a green PASS for a framework with zero evaluated controls (#3889)", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        compliance={{
+          overallScore: 100,
+          overallStatus: "pass",
+          frameworks: [
+            // Evaluated (some findings mapped) — legitimately shows.
+            { id: "cis", label: "CIS Controls v8", pass: 8, warn: 1, fail: 1, total: 10 },
+            // Scan ran but nothing mapped: 0 evaluated must read "Not evaluated".
+            { id: "soc2", label: "SOC 2", pass: 0, warn: 0, fail: 0, total: 65 },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("SOC 2")).toBeInTheDocument();
+    expect(screen.getByText(/Not evaluated · 0\/65 controls/i)).toBeInTheDocument();
+    // The unevaluated framework must not claim any pass count.
+    expect(screen.queryByText(/0\/65 pass/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the score breakdown explainer from weighted inputs (#3940)", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        grade="C"
+        score={70}
+        scoreBreakdown={[
+          { driver: "critical", label: "Critical findings", count: 2, weight: 12, contribution: 24 },
+          { driver: "high", label: "High findings", count: 1, weight: 6, contribution: 6 },
+          { driver: "medium", label: "Medium findings", count: 0, weight: 2, contribution: 0 },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("overview-score-explainer")).toBeInTheDocument();
+    expect(screen.getByTestId("score-driver-critical")).toBeInTheDocument();
+    expect(screen.getByText("−24.0")).toBeInTheDocument();
+    // Zero-contribution drivers are omitted so the panel stays legible.
+    expect(screen.queryByTestId("score-driver-medium")).not.toBeInTheDocument();
+  });
+
+  it("toggles the score display format and calls the persist handler (#3940)", async () => {
+    const user = userEvent.setup();
+    const onScoreFormatChange = vi.fn();
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        grade="C"
+        score={70}
+        scoreFormat="percent"
+        onScoreFormatChange={onScoreFormatChange}
+      />,
+    );
+
+    const toggle = screen.getByTestId("score-format-toggle");
+    await user.click(within(toggle).getByRole("button", { name: "Grade" }));
+    expect(onScoreFormatChange).toHaveBeenCalledWith("grade");
   });
 
   it("lets operators collapse overview sections", async () => {

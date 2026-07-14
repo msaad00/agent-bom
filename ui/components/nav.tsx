@@ -34,7 +34,7 @@ import {
   Radar,
   Bot,
   Boxes,
-  Cloud,
+  Plug,
   ClipboardList,
   FileCheck,
   Layers,
@@ -52,6 +52,28 @@ import {
   navLinkNeedsSetup,
 } from "@/lib/deployment-context";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
+
+// A clean, symmetric cloud mark (the lucide `Cloud` glyph reads lopsided at
+// sidebar sizes). Uses `currentColor` so the per-group tint classes apply, and
+// mirrors lucide's 24×24 stroke conventions so it sizes with `h-*`/`w-*`.
+function CloudGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={24}
+      height={24}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M5 18a3.5 3.5 0 0 1 1.2-6.6a5 5 0 0 1 11.6 0a3.5 3.5 0 0 1 1.2 6.6Z" />
+    </svg>
+  );
+}
 
 // ─── Navigation Structure ──────────────────────────────────────────────────
 
@@ -109,9 +131,9 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Cloud & Data",
-    icon: Cloud,
+    icon: CloudGlyph,
     links: [
-      { href: "/connections", label: "Connections", icon: Cloud, capability: "inventory.read" },
+      { href: "/connections", label: "Connections", icon: Plug, capability: "inventory.read" },
       { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
       { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
       { href: "/identity", label: "Identity", icon: Fingerprint },

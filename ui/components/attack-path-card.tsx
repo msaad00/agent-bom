@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { ArrowRight, Bot, Bug, ChevronRight, KeyRound, Package, Server } from "lucide-react";
+import { ArrowRight, Bot, Bug, ChevronRight, Database, Fingerprint, KeyRound, Package, Server, ShieldAlert, Wrench } from "lucide-react";
 
 interface AttackPathNode {
-  type: "cve" | "package" | "server" | "agent" | "credential";
+  type: "cve" | "package" | "server" | "agent" | "credential" | "tool" | "data" | "identity" | "entity";
   label: string;
   severity?: string | undefined;
 }
@@ -17,6 +17,7 @@ interface AttackPathCardProps {
   href?: string | undefined;
   captureMode?: boolean | undefined;
   compact?: boolean | undefined;
+  showRiskBadge?: boolean | undefined;
 }
 
 const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string; ring: string }> = {
@@ -25,9 +26,25 @@ const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string
   server: { icon: Server, tint: "text-sky-300 bg-sky-500/12", ring: "border-sky-500/25" },
   agent: { icon: Bot, tint: "text-emerald-300 bg-emerald-500/12", ring: "border-emerald-500/25" },
   credential: { icon: KeyRound, tint: "text-fuchsia-300 bg-fuchsia-500/12", ring: "border-fuchsia-500/25" },
+  tool: { icon: Wrench, tint: "text-purple-300 bg-purple-500/12", ring: "border-purple-500/25" },
+  data: { icon: Database, tint: "text-cyan-300 bg-cyan-500/12", ring: "border-cyan-500/25" },
+  identity: { icon: Fingerprint, tint: "text-indigo-300 bg-indigo-500/12", ring: "border-indigo-500/25" },
+  entity: {
+    icon: ShieldAlert,
+    tint: "text-[color:var(--text-secondary)] bg-[color:var(--surface-elevated)]",
+    ring: "border-[color:var(--border-subtle)]",
+  },
 };
 
-export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = false, compact = false }: AttackPathCardProps) {
+export function AttackPathCard({
+  nodes,
+  riskScore,
+  onClick,
+  href,
+  captureMode = false,
+  compact = false,
+  showRiskBadge = true,
+}: AttackPathCardProps) {
   const riskTone =
     riskScore >= 8
       ? "border-red-500/25 bg-red-500/10 text-red-200"
@@ -51,7 +68,7 @@ export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = 
       )}
 
       <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "justify-between" : ""}`}>
-        {compact && (
+        {compact && showRiskBadge && (
           <div className={`rounded-lg border px-2 py-0.5 font-mono text-[11px] font-semibold ${riskTone}`}>
             {riskScore.toFixed(1)}
           </div>
@@ -77,8 +94,11 @@ export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = 
                 <Icon className="h-3.5 w-3.5 shrink-0" />
                 <div className="min-w-0">
                   <p
+                    title={node.label}
                     className={`text-[11px] font-medium text-[color:var(--foreground)] ${
-                      captureMode ? "max-w-[13rem] whitespace-normal break-words leading-4" : "max-w-[120px] truncate"
+                      captureMode
+                        ? "max-w-[13rem] whitespace-normal break-words leading-4"
+                        : "max-w-[16rem] whitespace-normal break-words leading-4 [overflow-wrap:anywhere]"
                     }`}
                   >
                     {node.label}

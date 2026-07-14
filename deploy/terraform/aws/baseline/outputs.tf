@@ -7,6 +7,11 @@ output "scanner_role_arn" {
   value       = aws_iam_role.scanner.arn
 }
 
+output "scanner_assume_connect_policy_arn" {
+  description = "IAM policy ARN granting the scanner sts:AssumeRole on the read-only connection roles cross-account (empty when connect_role_arns = [])."
+  value       = length(var.connect_role_arns) > 0 ? aws_iam_policy.scanner_assume_connect[0].arn : ""
+}
+
 output "backup_role_arn" {
   description = "IRSA role ARN for the Postgres backup CronJob service account."
   value       = var.create_backup_bucket ? aws_iam_role.backup[0].arn : null

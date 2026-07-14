@@ -71,7 +71,8 @@ terraform output ui_url
 | `domain` | `""` | Public hostname for the UI/API ingress; empty = no ingress, use port-forward |
 | `image_tag` | `""` | Override the API/UI image tag (empty = chart default) |
 | `extra_helm_values` | `""` | Raw YAML merged last into the Helm release |
-| `create_aws_connect_role` | `false` | Mint the read-only role the scanner assumes |
+| `create_aws_connect_role` | `false` | Mint the read-only role the scanner assumes (same-account) |
+| `connect_role_arns` | `["arn:aws:iam::*:role/agent-bom-readonly*", "arn:aws:iam::*:role/abom-readonly*"]` | Read-only connection roles the scanner IRSA role may `sts:AssumeRole` **cross-account** (org fan-out / hosted connect). Least-privilege: only `sts:AssumeRole`, scoped to these ARNs. Set `[]` to disable |
 | `report_export_bucket` | `""` | Existing S3 bucket for async report export. When set, mints a dedicated API IRSA role (least-privilege `s3:` on that bucket only), wires it onto the API service account, and turns on S3 export. Empty = disabled |
 
 See `variables.tf` for the full list.
@@ -92,6 +93,7 @@ role scoped to only that bucket and binds it to the `-api` service account.
 | `scanner_role_arn` | IRSA role bound to the scanner service account |
 | `backup_bucket_name` | S3 bucket for the packaged Postgres backups |
 | `connect_role_arn` | Read-only role the scanner assumes (when enabled) |
+| `scanner_assume_connect_policy_arn` | Policy letting the scanner assume read-only connect roles cross-account (empty when `connect_role_arns = []`) |
 | `report_export_role_arn` | API IRSA role for S3 report export (when `report_export_bucket` is set) |
 
 ## Composition notes

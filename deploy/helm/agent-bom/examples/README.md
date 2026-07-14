@@ -20,6 +20,7 @@ product split.
 | `oidc-discovery-shim` | `eks-mcp-pilot-values.yaml` + `gateway-upstreams.example.yaml` + `oidc-discovery-shim-values.yaml` | Gateway-hosted `/.well-known/openid-configuration` for legacy IdPs (MCP OAuth interop) |
 | `snowflake-backend` | `eks-snowflake-values.yaml` | Overlay for Snowflake governance and selected store parity, not a claim of full control-plane replacement |
 | `gateway-runtime` | `eks-mcp-pilot-values.yaml` + `gateway-upstreams.example.yaml` | Focused pilot plus central gateway rendering for shared MCP relay/policy |
+| `control-plane-identity` | `control-plane-identity-values.yaml` | Keyless control-plane cloud identity (EKS IRSA / EC2-ECS instance role / AKS + GKE workload identity) that assumes read-only connect roles — zero static keys. See `docs/DEPLOY_PLATFORM.md` "Connect your cloud (zero keys)" |
 
 ## Validate the shipped profiles
 

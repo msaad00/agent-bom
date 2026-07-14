@@ -251,6 +251,19 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
 }
 
 
+// Security-domain facets (issue #3946). Map 1:1 to the overview coverage lanes
+// so drilling from a coverage lane lands on the matching findings filter.
+const DOMAIN_FILTERS: { key: string; label: string }[] = [
+  { key: "all", label: "All domains" },
+  { key: "cspm", label: "CSPM" },
+  { key: "vuln", label: "Vuln mgmt" },
+  { key: "appsec_sca", label: "AppSec / SCA" },
+  { key: "dspm", label: "DSPM" },
+  { key: "aispm", label: "AISPM" },
+];
+
+const PROVIDER_OPTIONS = ["aws", "azure", "gcp", "snowflake", "databricks"];
+
 export default function FindingsPageWrapper() {
   return (
     <Suspense fallback={
@@ -278,6 +291,11 @@ function FindingsPage() {
   const paramScan = searchParams.get("scan") ?? searchParams.get("scan_id");
   const paramIssueType = searchParams.get("issue");
   const paramLens = searchParams.get("lens");
+  // First-class scope + taxonomy facets (issue #3946), URL-synced.
+  const paramDomain = searchParams.get("domain");
+  const paramProvider = searchParams.get("provider");
+  const paramAccount = searchParams.get("account");
+  const paramEnvironment = searchParams.get("environment");
   const { lens, selectLens, lenses, label: lensLabel, hint: lensHint } = useFindingsLens(paramLens);
 
   const [jobs, setJobs] = useState<JobListItem[]>([]);
@@ -300,6 +318,12 @@ function FindingsPage() {
     }
     return "all";
   });
+  const [domainFilter, setDomainFilter] = useState<string>(
+    paramDomain && DOMAIN_FILTERS.some((d) => d.key === paramDomain) ? paramDomain : "all",
+  );
+  const [providerFilter, setProviderFilter] = useState<string>(paramProvider ?? "");
+  const [accountFilter, setAccountFilter] = useState<string>(paramAccount ?? "");
+  const [environmentFilter, setEnvironmentFilter] = useState<string>(paramEnvironment ?? "");
   const [sortKey, setSortKey] = useState<SortKey>("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [search, setSearch] = useState(paramQuery ?? paramCve ?? paramAgent ?? "");
@@ -375,6 +399,22 @@ function FindingsPage() {
   }, [paramIssueType]);
 
   useEffect(() => {
+    setDomainFilter(paramDomain && DOMAIN_FILTERS.some((d) => d.key === paramDomain) ? paramDomain : "all");
+  }, [paramDomain]);
+
+  useEffect(() => {
+    setProviderFilter(paramProvider ?? "");
+  }, [paramProvider]);
+
+  useEffect(() => {
+    setAccountFilter(paramAccount ?? "");
+  }, [paramAccount]);
+
+  useEffect(() => {
+    setEnvironmentFilter(paramEnvironment ?? "");
+  }, [paramEnvironment]);
+
+  useEffect(() => {
     const params = new URLSearchParams();
     if (filter !== "all") params.set("severity", filter);
     if (issueTypeFilter !== "all") params.set("issue", issueTypeFilter);
@@ -382,11 +422,30 @@ function FindingsPage() {
     if (search.trim()) params.set("q", search.trim());
     if (scope !== "latest") params.set("scope", scope);
     if (groupBy !== "none") params.set("group", groupBy);
+    if (domainFilter !== "all") params.set("domain", domainFilter);
+    if (providerFilter.trim()) params.set("provider", providerFilter.trim());
+    if (accountFilter.trim()) params.set("account", accountFilter.trim());
+    if (environmentFilter.trim()) params.set("environment", environmentFilter.trim());
     if (page > 1) params.set("page", String(page));
     if (paramScan) params.set("scan", paramScan);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [filter, issueTypeFilter, lens, search, scope, groupBy, page, paramScan, pathname, router]);
+  }, [
+    filter,
+    issueTypeFilter,
+    lens,
+    search,
+    scope,
+    groupBy,
+    domainFilter,
+    providerFilter,
+    accountFilter,
+    environmentFilter,
+    page,
+    paramScan,
+    pathname,
+    router,
+  ]);
 
   const collectVulns = useCallback((fullJobs: ScanJob[]) => {
     const vulnMap = new Map<string, EnrichedVuln>();
@@ -665,6 +724,10 @@ function FindingsPage() {
           const response = await api.listFindings({
             ...(scanId ? { scanId } : {}),
             ...(filter !== "all" ? { severity: filter } : {}),
+            ...(domainFilter !== "all" ? { domain: domainFilter } : {}),
+            ...(providerFilter.trim() ? { provider: providerFilter.trim() } : {}),
+            ...(accountFilter.trim() ? { account: accountFilter.trim() } : {}),
+            ...(environmentFilter.trim() ? { environment: environmentFilter.trim() } : {}),
             sort: serverFindingsSort(sortKey),
             limit: PAGE_SIZE,
             offset: (page - 1) * PAGE_SIZE,
@@ -697,6 +760,10 @@ function FindingsPage() {
     useServerPaging,
     page,
     filter,
+    domainFilter,
+    providerFilter,
+    accountFilter,
+    environmentFilter,
     sortKey,
   ]);
 
@@ -747,7 +814,7 @@ function FindingsPage() {
   }, [vulns, filter, issueTypeFilter, search, sortKey, sortDir, useServerPaging]);
 
   // Reset page when filters change
-  useEffect(() => { setPage(1); }, [filter, issueTypeFilter, search, sortKey, sortDir, groupBy, scope, paramScan]);
+  useEffect(() => { setPage(1); }, [filter, issueTypeFilter, search, sortKey, sortDir, groupBy, scope, paramScan, domainFilter, providerFilter, accountFilter, environmentFilter]);
 
   const totalPages = useServerPaging
     ? Math.max(1, Math.ceil(findingsTotal / PAGE_SIZE))
@@ -810,6 +877,8 @@ function FindingsPage() {
     findingsTotal,
     useServerPaging && findingsTotalApproximate,
   );
+
+  const cloudScopeActive = Boolean(providerFilter.trim() || accountFilter.trim() || environmentFilter.trim());
 
   const FILTERS: { key: SeverityFilter; label: string; color: string }[] = [
     {
@@ -1042,6 +1111,81 @@ function FindingsPage() {
               <p className="text-xs text-zinc-600">
                 Default stays scoped for speed. Expand to all scans only when you need history-wide findings aggregation.
               </p>
+            </div>
+
+            {/* Security domain + cloud scope facets (issue #3946). Design-token
+                styled so both themes read correctly; URL-synced via state. */}
+            <div className="flex flex-col gap-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+                  Domain
+                </span>
+                {DOMAIN_FILTERS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setDomainFilter(key)}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      domainFilter === key
+                        ? "border-[color:var(--accent-mint)] bg-[color:var(--surface-muted)] text-[color:var(--foreground)]"
+                        : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Cloud</span>
+                  <select
+                    value={providerFilter}
+                    onChange={(e) => setProviderFilter(e.target.value)}
+                    className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                  >
+                    <option value="">Any provider</option>
+                    {PROVIDER_OPTIONS.map((p) => (
+                      <option key={p} value={p}>
+                        {p.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Account</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. aws:123456789012"
+                    value={accountFilter}
+                    onChange={(e) => setAccountFilter(e.target.value)}
+                    className="w-52 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Environment</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. prod"
+                    value={environmentFilter}
+                    onChange={(e) => setEnvironmentFilter(e.target.value)}
+                    className="w-40 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                  />
+                </label>
+                {(cloudScopeActive || domainFilter !== "all") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDomainFilter("all");
+                      setProviderFilter("");
+                      setAccountFilter("");
+                      setEnvironmentFilter("");
+                    }}
+                    className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                  >
+                    Clear scope
+                  </button>
+                )}
+              </div>
             </div>
 
             {detailLoading && vulns.length > 0 && (

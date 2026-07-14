@@ -39,6 +39,11 @@
   --severity-low: #6ba3ff;
   --severity-low-bg: rgba(107, 163, 255, 0.15);
   --severity-low-border: rgba(107, 163, 255, 0.48);
+  /* Unrated — findings whose severity is unknown/unscored (issue #3946). Neutral
+   * grey so it never reads as a severity band but is still visibly counted. */
+  --severity-unrated: #9aa3b8;
+  --severity-unrated-bg: rgba(154, 163, 184, 0.14);
+  --severity-unrated-border: rgba(154, 163, 184, 0.46);
 
   /* Status — success / warn / danger */
   --status-success: #34d399;
@@ -89,6 +94,9 @@
   --severity-low: #2563eb;
   --severity-low-bg: rgba(37, 99, 235, 0.1);
   --severity-low-border: rgba(37, 99, 235, 0.38);
+  --severity-unrated: #64748b;
+  --severity-unrated-bg: rgba(100, 116, 139, 0.1);
+  --severity-unrated-border: rgba(100, 116, 139, 0.36);
 
   --status-success: #059669;
   --status-success-bg: rgba(5, 150, 105, 0.1);

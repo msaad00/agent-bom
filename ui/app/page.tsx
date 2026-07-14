@@ -403,6 +403,7 @@ export default function Dashboard() {
         severity={severity}
         issueMatrix={issueMatrix}
         domains={overview?.domains ?? null}
+        coverage={overview?.coverage ?? null}
         topPath={topExposurePath}
         exposurePaths={exposurePaths}
         signals={{

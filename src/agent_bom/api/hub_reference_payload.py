@@ -38,6 +38,7 @@ _CVE_INTEL_KEYS: tuple[str, ...] = (
 _FRAMEWORK_TAG_KEYS: tuple[str, ...] = (
     "owasp_tags",
     "atlas_tags",
+    "attack_tags",
     "nist_ai_rmf_tags",
     "owasp_mcp_tags",
     "owasp_agentic_tags",

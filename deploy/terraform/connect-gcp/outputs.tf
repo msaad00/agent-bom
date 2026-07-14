@@ -9,8 +9,13 @@ output "service_account_name" {
 }
 
 output "granted_roles" {
-  description = "Predefined read-only roles bound to the service account at the project."
+  description = "Predefined read-only roles bound to the service account at the configured scope."
   value       = ["roles/viewer", "roles/iam.securityReviewer"]
+}
+
+output "iam_binding_scope" {
+  description = "Where the read-only roles were bound: project, organization, or folder."
+  value       = var.iam_binding_scope
 }
 
 output "workload_identity_pool_name" {

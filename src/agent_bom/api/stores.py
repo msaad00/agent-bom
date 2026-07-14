@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from agent_bom.api.source_store import SourceStore
     from agent_bom.api.tenant_graph_retention_store import TenantGraphRetentionStore
     from agent_bom.api.tenant_quota_store import TenantQuotaStore
+    from agent_bom.api.tenant_score_config_store import TenantScoreConfigStore
 
 # ── Shared lock (protects lazy init of all stores) ───────────────────────────
 _store_lock = threading.Lock()
@@ -324,6 +325,37 @@ def set_tenant_graph_retention_store(store: TenantGraphRetentionStore) -> None:
     """Switch the tenant graph retention override store backend."""
     global _tenant_graph_retention_store
     _tenant_graph_retention_store = store
+
+
+# ─── Tenant exec-score config override store (pluggable) ───────────────────
+_tenant_score_config_store: TenantScoreConfigStore | None = None
+
+
+def _get_tenant_score_config_store() -> TenantScoreConfigStore:
+    """Get the active per-tenant exec-score config override store (#3940)."""
+    global _tenant_score_config_store
+    if _tenant_score_config_store is None:
+        with _store_lock:
+            if _tenant_score_config_store is None:
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    from agent_bom.api.postgres_tenant_score_config import PostgresTenantScoreConfigStore
+
+                    _tenant_score_config_store = PostgresTenantScoreConfigStore()
+                elif os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.api.tenant_score_config_store import SQLiteTenantScoreConfigStore
+
+                    _tenant_score_config_store = SQLiteTenantScoreConfigStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.api.tenant_score_config_store import InMemoryTenantScoreConfigStore
+
+                    _tenant_score_config_store = InMemoryTenantScoreConfigStore()
+    return _tenant_score_config_store
+
+
+def set_tenant_score_config_store(store: TenantScoreConfigStore) -> None:
+    """Switch the tenant exec-score config override store backend."""
+    global _tenant_score_config_store
+    _tenant_score_config_store = store
 
 
 # ─── SCIM lifecycle store (enterprise identity) ────────────────────────────

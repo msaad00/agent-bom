@@ -434,6 +434,11 @@ AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS
 AGENT_BOM_POSTURE_POLICY
 AGENT_BOM_POSTURE_POLICY_FILE
 
+# Dynamic exec risk-score policy inputs read at runtime by exec_score.py (#3940);
+# JSON weighting model / grade thresholds, not scalar config knobs.
+AGENT_BOM_EXEC_SCORE_POLICY
+AGENT_BOM_EXEC_SCORE_POLICY_FILE
+
 # File-only Postgres credential consumed by postgres_common.py. The value is a
 # mounted secret path, not a scalar application setting for config.py.
 AGENT_BOM_POSTGRES_PASSWORD_FILE

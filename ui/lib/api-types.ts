@@ -2320,10 +2320,72 @@ export interface OverviewTopRisk {
   affected_agents: string[];
 }
 
+/** One weighted input into the configurable exec risk score (#3940). */
+export interface ExecScoreDriver {
+  driver: string;
+  label: string;
+  count: number;
+  weight: number;
+  contribution: number;
+}
+
+/** How the exec risk score is displayed. */
+export type ExecScoreDisplayFormat = "grade" | "percent" | "points";
+
+/** The configurable exec risk-score posture block on the overview payload. */
+export interface OverviewPosture {
+  grade: string;
+  score: number;
+  summary: string;
+  points?: number;
+  percent?: number;
+  display?: string | null;
+  display_format?: ExecScoreDisplayFormat;
+  policy_source?: string;
+  penalty_total?: number;
+  floored?: boolean;
+  finding_total?: number;
+  weights?: Record<string, number>;
+  grade_thresholds?: Record<string, number>;
+  breakdown?: ExecScoreDriver[];
+}
+
+/** GET/PUT /v1/overview/score-config — tenant exec-score model + display config. */
+export interface ScoreConfigRuntime {
+  active_override: boolean;
+  source: string;
+  override_endpoint: string;
+  display_format: ExecScoreDisplayFormat;
+  display_formats: ExecScoreDisplayFormat[];
+  weights: Record<string, number>;
+  grade_thresholds: Record<string, number>;
+  drivers: {
+    driver: string;
+    label: string;
+    default_weight: number;
+    weight: number;
+    overridden: boolean;
+  }[];
+  defaults: {
+    weights: Record<string, number>;
+    grade_thresholds: Record<string, number>;
+    display_format: ExecScoreDisplayFormat;
+  };
+  overrides: Record<string, unknown>;
+  message: string;
+}
+
+/** Body for PUT /v1/overview/score-config (all fields optional, clamped server-side). */
+export interface ScoreConfigUpdate {
+  weights?: Record<string, number>;
+  grade_thresholds?: Record<string, number>;
+  display_format?: ExecScoreDisplayFormat;
+}
+
 export interface OverviewResponse {
   schema_version: string;
   tenant_id: string;
-  posture: { grade: string; score: number; summary: string };
+  posture: OverviewPosture;
   headline: {
     critical: number;
     high: number;

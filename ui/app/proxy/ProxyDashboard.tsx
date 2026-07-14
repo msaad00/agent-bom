@@ -40,6 +40,7 @@ import {
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { ProxyAlertDrawer } from "@/components/proxy-alert-drawer";
 import { proxyAlertKey, proxyAlertSummary } from "@/lib/proxy-alerts";
+import { useChartTheme } from "@/lib/theme-colors";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -50,8 +51,6 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: "bg-blue-950 text-blue-300 border-blue-800",
   info: "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
 };
-
-const PIE_COLORS = ["#ef4444", "#f97316", "#eab308", "#3b82f6", "#71717a"];
 
 // ─── WebSocket metrics type ──────────────────────────────────────────────────
 
@@ -69,6 +68,14 @@ interface LiveMetrics {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function ProxyDashboard() {
+  const chart = useChartTheme();
+  const pieColors = [
+    chart.severity.critical,
+    chart.severity.high,
+    chart.severity.medium,
+    chart.severity.low,
+    chart.severity.unrated,
+  ];
   const embedded = useRuntimeEmbedded();
   const { counts } = useDeploymentContext();
   const [status, setStatus] = useState<ProxyStatusResponse | null>(null);
@@ -346,17 +353,17 @@ export default function ProxyDashboard() {
                     >
                       <CartesianGrid
                         strokeDasharray="3 3"
-                        stroke="#27272a"
+                        stroke={chart.grid}
                         vertical={false}
                       />
                       <XAxis
                         dataKey="tool"
-                        tick={{ fontSize: 9, fill: "#71717a" }}
+                        tick={{ fontSize: 9, fill: chart.text }}
                         tickLine={false}
-                        axisLine={{ stroke: "#27272a" }}
+                        axisLine={{ stroke: chart.border }}
                       />
                       <YAxis
-                        tick={{ fontSize: 10, fill: "#71717a" }}
+                        tick={{ fontSize: 10, fill: chart.text }}
                         tickLine={false}
                         axisLine={false}
                         allowDecimals={false}
@@ -364,18 +371,18 @@ export default function ProxyDashboard() {
                       />
                       <Tooltip
                         contentStyle={{
-                          background: "#09090b",
-                          border: "1px solid #27272a",
+                          background: chart.tooltip.bg,
+                          border: `1px solid ${chart.tooltip.border}`,
                           borderRadius: 8,
                           fontSize: 12,
                         }}
-                        itemStyle={{ color: "#e4e4e7" }}
-                        labelStyle={{ color: "#71717a", marginBottom: 4 }}
+                        itemStyle={{ color: chart.tooltip.text }}
+                        labelStyle={{ color: chart.text, marginBottom: 4 }}
                       />
                       <Bar
                         dataKey="count"
                         name="Calls"
-                        fill="#34d399"
+                        fill={chart.accent}
                         fillOpacity={0.8}
                         radius={[4, 4, 0, 0]}
                       />
@@ -409,25 +416,25 @@ export default function ProxyDashboard() {
                         outerRadius={70}
                         dataKey="value"
                         nameKey="name"
-                        stroke="#09090b"
+                        stroke={chart.bg}
                         strokeWidth={2}
                       >
                         {blockedPieData?.map((_, i) => (
                           <Cell
                             key={i}
-                            fill={PIE_COLORS[i % PIE_COLORS.length] ?? "#71717a"}
+                            fill={pieColors[i % pieColors.length] ?? chart.severity.unrated}
                             fillOpacity={0.85}
                           />
                         ))}
                       </Pie>
                       <Tooltip
                         contentStyle={{
-                          background: "#09090b",
-                          border: "1px solid #27272a",
+                          background: chart.tooltip.bg,
+                          border: `1px solid ${chart.tooltip.border}`,
                           borderRadius: 8,
                           fontSize: 12,
                         }}
-                        itemStyle={{ color: "#e4e4e7" }}
+                        itemStyle={{ color: chart.tooltip.text }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -441,7 +448,7 @@ export default function ProxyDashboard() {
                           className="w-2 h-2 rounded-full"
                           style={{
                             backgroundColor:
-                              PIE_COLORS[i % PIE_COLORS.length],
+                              pieColors[i % pieColors.length],
                           }}
                         />
                         {d.name}: {d.value}

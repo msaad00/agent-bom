@@ -70,6 +70,40 @@ export function formatDurationMs(ms: number | null | undefined): string {
   return `${minutes}m ${remainder}s`;
 }
 
+/**
+ * Honest wall-clock label. A synchronous scan (cloud-connection runs, dry
+ * runs) finishes with no streamed timing, so its elapsed time collapses to
+ * ~0ms — reporting "0ms" is misleading. Show "summarized" instead of faking a
+ * duration, and "running…" while a live scan has no end yet.
+ */
+export function describeWallClock(
+  wallClockMs: number | null | undefined,
+  opts: { synthesized?: boolean; running?: boolean } = {},
+): string {
+  if (opts.synthesized) return "summarized";
+  if (wallClockMs == null) return opts.running ? "running…" : "—";
+  if (wallClockMs <= 0) return "summarized";
+  return formatDurationMs(wallClockMs);
+}
+
+/**
+ * Honest per-stage timing cell. Real streamed stages show their measured
+ * duration; a summarized (synthesized) stage says so rather than claiming a
+ * crisp "done" with no numbers behind it.
+ */
+export function formatStageDuration(
+  duration: number | null | undefined,
+  status: StepStatus | undefined,
+  synthesized = false,
+): string {
+  if (duration != null) return formatDurationMs(duration);
+  if (status === "running") return "running…";
+  if (synthesized && (status === "done" || status === "skipped")) return "summarized";
+  if (status === "done") return "done";
+  if (status === "skipped") return "skipped";
+  return "—";
+}
+
 export function jobWallClockMs(input: {
   created_at: string;
   started_at?: string | null;

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  describeWallClock,
   formatDurationMs,
+  formatStageDuration,
   jobWallClockMs,
   mergePipelineSteps,
   parsePipelineStepsFromProgress,
@@ -116,6 +118,26 @@ describe("scan-pipeline-progress", () => {
     });
     expect(summary.completedSteps).toBe(6);
     expect(summary.currentStepLabel).toBeNull();
+  });
+
+  it("reports summarized instead of a misleading 0ms wall clock", () => {
+    // Synchronous cloud scan: created_at === completed_at → 0ms elapsed.
+    expect(
+      describeWallClock(0, { synthesized: true }),
+    ).toBe("summarized");
+    expect(describeWallClock(0)).toBe("summarized");
+    expect(describeWallClock(null, { running: true })).toBe("running…");
+    expect(describeWallClock(null)).toBe("—");
+    expect(describeWallClock(2_000)).toBe("2.0s");
+  });
+
+  it("labels summarized stage timing honestly rather than a bare done", () => {
+    expect(formatStageDuration(2_000, "done")).toBe("2.0s");
+    expect(formatStageDuration(null, "running")).toBe("running…");
+    expect(formatStageDuration(null, "done", true)).toBe("summarized");
+    expect(formatStageDuration(null, "done", false)).toBe("done");
+    expect(formatStageDuration(null, "skipped", false)).toBe("skipped");
+    expect(formatStageDuration(null, "pending")).toBe("—");
   });
 
   it("leaves real step events untouched and does not synthesize while running", () => {

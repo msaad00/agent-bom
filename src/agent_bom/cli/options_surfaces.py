@@ -360,7 +360,8 @@ def iac_sast_options(fn):
                 "gha_path",
                 type=click.Path(exists=True),
                 metavar="REPO",
-                help="Repository root to scan GitHub Actions workflows for AI usage and credential exposure. "
+                help="Repository root to scan GitHub Actions workflows for AI usage, credential exposure, "
+                "unpinned actions, pull_request_target risk, and missing permissions policies. "
                 "Auto-detected when scanning --project or --repo if .github/workflows exists.",
             ),
             click.option(

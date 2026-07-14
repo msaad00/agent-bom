@@ -1074,7 +1074,9 @@ def test_broker_secret_failure_does_not_leak(monkeypatch: pytest.MonkeyPatch) ->
 _BROKER_SESSION_SENTINEL = object()
 
 
-def _install_scan_mocks(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False) -> dict[str, Any]:
+def _install_scan_mocks(
+    monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, inventory: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Patch the broker + AWS inventory/CIS the scan route reuses.
 
     Captures the session each discovery call receives so a test can assert the
@@ -1093,6 +1095,8 @@ def _install_scan_mocks(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False) 
     def _fake_inventory(region: str | None = None, force: bool = False, session: Any = None, **kwargs: Any) -> dict[str, Any]:
         calls["inventory_session"] = session
         calls["inventory_force"] = force
+        if inventory is not None:
+            return inventory
         return {
             "provider": "aws",
             "status": "ok",
@@ -1181,6 +1185,43 @@ def test_scan_launch_brokers_runs_persists_and_marks_active(monkeypatch: pytest.
     assert listing["connections"][0]["last_scan_id"] == scan_id
     # No secret anywhere in the response surface.
     assert "super-secret-external-id" not in str(body)
+
+
+def test_scan_persists_inventory_counts_for_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A completed cloud-connection scan must persist resource/identity counts so the
+    Scan-jobs pipeline panel and scan-result view surface real stats (not empty)."""
+    inventory = {
+        "provider": "aws",
+        "status": "ok",
+        "account_id": "123456789012",
+        "region": "us-east-1",
+        "buckets": [{"name": "b1"}, {"name": "b2"}],
+        "instances": [{"id": "i-1"}],
+        "security_groups": [{"id": "sg-1"}],
+        "roles": [{"name": "r1"}, {"name": "r2"}, {"name": "r3"}],
+        "users": [{"name": "u1"}],
+        "warnings": [],
+    }
+    _install_scan_mocks(monkeypatch, inventory=inventory)
+    client = TestClient(_app())
+    cid = _seed_connection("tenant-alpha")
+
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 200
+    scan_id = resp.json()["scan_id"]
+
+    from agent_bom.api.stores import _get_store
+
+    job = _get_store().get(scan_id, "tenant-alpha")
+    assert job is not None and job.result is not None
+    persisted = job.result["cloud_inventory"]
+    # Raw provider lists preserved for the graph builder …
+    assert persisted["buckets"] == inventory["buckets"]
+    # … and enriched with UI-facing counts (buckets+instances+security_groups = 4 resources,
+    # roles+users = 4 identities).
+    assert persisted["resource_count"] == 4
+    assert persisted["identity_count"] == 4
+    assert isinstance(persisted["node_summary"], dict)
 
 
 def test_scan_failure_marks_error_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:

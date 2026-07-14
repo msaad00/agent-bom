@@ -43,9 +43,89 @@ function hasEvaluatedCompliance(compliance: OverviewComplianceSnapshot | null | 
   return Boolean(compliance?.frameworks.some((framework) => framework.total > 0));
 }
 
+// Shared class for the collapsible section headers (Command center, Cross-lane
+// coverage, Open issues, Compliance) — larger + normal-case so exec section
+// titles read as headings, not micro-labels (issue #3940 / #3931 item G).
+const SECTION_TITLE_CLASS =
+  "text-sm font-semibold normal-case tracking-normal text-[color:var(--foreground)]";
+
+/**
+ * How the posture score is rendered. Display-only groundwork for a future
+ * user-configurable weighting/mapping (that deeper config is a backend
+ * follow-up — see #3940). "percent" treats the 0–100 score as a percentage,
+ * "points" shows the raw score, "grade" leans on the letter grade alone.
+ */
+export type PostureScoreFormat = "percent" | "points" | "grade";
+
+function formatPostureScore(
+  score: number | undefined,
+  grade: string,
+  format: PostureScoreFormat,
+): string | null {
+  if (typeof score !== "number") return null;
+  const rounded = Math.round(score);
+  switch (format) {
+    case "grade":
+      return `Grade ${grade}`;
+    case "points":
+      return `${rounded} / 100`;
+    case "percent":
+    default:
+      return `${rounded}%`;
+  }
+}
+
+/**
+ * Honest, self-consistent posture blurb. Never asserts "no vulnerabilities"
+ * while the open-CVE / severity counts on the same screen are > 0: those counts
+ * are the estate-wide rollup, whereas a backend `summary` is derived from only
+ * the latest single scan's scorecard (see #3940 — 78 open CVEs vs a clean
+ * latest-scan "no vulnerabilities" summary). When anything is open we derive the
+ * blurb from the visible counts and ignore a contradicting summary.
+ */
+function derivePostureBlurb({
+  summary,
+  critical,
+  high,
+  cves,
+  graded,
+}: {
+  summary?: string | undefined;
+  critical: number;
+  high: number;
+  cves: number | null;
+  graded: boolean;
+}): string {
+  if (!graded) return "Connect a surface or run a scan to grade posture.";
+  const openCves = cves ?? 0;
+  const hasOpen = critical > 0 || high > 0 || openCves > 0;
+
+  if (hasOpen) {
+    const sevBits = [
+      critical > 0 ? `${critical} critical` : null,
+      high > 0 ? `${high} high` : null,
+    ].filter(Boolean);
+    const sev = sevBits.join(" · ");
+    if (openCves > 0) {
+      return `${openCves} open CVE${openCves === 1 ? "" : "s"}${sev ? ` · ${sev}` : ""} across connected surfaces.`;
+    }
+    return `${sev} in the current snapshot.`;
+  }
+
+  // Nothing open: a backend summary can only be trusted here (it can't now
+  // contradict the counts). Strip a trailing "(A, 95%)" that duplicates the
+  // grade/score already shown beside it.
+  const cleaned = summary?.replace(/\s*\([A-F][+-]?,\s*[\d.]+%\)\s*$/i, "").trim();
+  return cleaned && cleaned.length > 0
+    ? cleaned
+    : "No open vulnerabilities across connected surfaces.";
+}
+
 export interface OverviewCockpitProps {
   grade: string;
   score?: number | undefined;
+  /** Display-only score presentation. Defaults to a percentage. */
+  scoreFormat?: PostureScoreFormat | undefined;
   postureSummary?: string | undefined;
   critical: number;
   high: number;
@@ -76,12 +156,14 @@ export interface OverviewCockpitProps {
 export function OverviewCockpit({
   grade,
   score,
+  scoreFormat = "percent",
   postureSummary,
   critical,
   high,
   kev,
   credentials,
   agents,
+  cves,
   scans,
   latestScan,
   summaryReady,
@@ -102,45 +184,46 @@ export function OverviewCockpit({
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 lg:p-5">
-        <div className="mb-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-            Command center
-          </p>
-          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
-            Posture and open issues across every lane — one exec read.
-          </p>
-        </div>
+        <Collapsible
+          bare
+          title="Command center"
+          titleClassName={SECTION_TITLE_CLASS}
+          subtitle="Posture and open issues across every lane — one exec read."
+          defaultOpen
+        >
+          {/* 1 — Posture headline + open issues by severity.
+              Posture track is capped (minmax) so a long summary can't grow it
+              unbounded and squeeze the open-issues severity tiles into an
+              unreadable sliver. */}
+          <div className="mt-1 grid gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
+            <PostureHero
+              grade={grade}
+              score={score}
+              scoreFormat={scoreFormat}
+              summary={postureSummary}
+              critical={critical}
+              high={high}
+              cves={cves}
+              latestScan={latestScan}
+            />
+            <SeverityIssueStrip
+              summaryReady={summaryReady}
+              critical={critical}
+              high={high}
+              kev={kev}
+              credentials={credentials}
+              complianceScore={complianceScore}
+              severity={severity}
+              matrix={issueMatrix}
+            />
+          </div>
 
-        {/* 1 — Posture headline + open issues by severity.
-            Posture track is capped (minmax) so a long summary can't grow it
-            unbounded and squeeze the open-issues severity tiles into an
-            unreadable sliver. */}
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
-          <PostureHero
-            grade={grade}
-            score={score}
-            summary={postureSummary}
-            critical={critical}
-            high={high}
-            latestScan={latestScan}
-          />
-          <SeverityIssueStrip
-            summaryReady={summaryReady}
-            critical={critical}
-            high={high}
-            kev={kev}
-            credentials={credentials}
-            complianceScore={complianceScore}
-            severity={severity}
-            matrix={issueMatrix}
-          />
-        </div>
+          {/* 2 — Cross-lane coverage: the single canonical estate view */}
+          <CrossLaneCoverage domains={domains} services={services} />
 
-        {/* 2 — Cross-lane coverage: the single canonical estate view */}
-        <CrossLaneCoverage domains={domains} services={services} />
-
-        {/* 3 — Compliance: one honest strip, coverage after first scan */}
-        <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
+          {/* 3 — Compliance: one honest strip, coverage after first scan */}
+          <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
+        </Collapsible>
       </section>
 
       {/* 4 — Top risks: the hero exposure path */}
@@ -166,6 +249,22 @@ type CoverageTile = {
   metricLabel: string;
   status: "ok" | "warn" | "critical" | "idle";
   href: string;
+  /** One-line scope clarifier surfaced as a tooltip so overlapping lanes
+   *  (Vuln/SCA vs Code/repo) read distinctly. */
+  hint?: string | undefined;
+};
+
+// Scope clarifiers keyed by the overview domain key. Vuln/SCA and Code/repo in
+// particular read as overlapping — one counts dependency CVEs across every
+// source, the other counts repository/SAST scan runs (#3940).
+const LANE_HINTS: Record<string, string> = {
+  cloud: "Connected cloud accounts (AWS, Azure, GCP, Snowflake) with brokered inventory + CIS posture.",
+  vuln: "Dependency & package CVEs correlated across every scan source (SBOM, images, cloud, agents) — not repo scan runs.",
+  code: "Repository / SAST scan runs of source you connect — the scan count, distinct from the dependency CVEs in Vuln / SCA.",
+  runtime: "Live runtime surfaces — gateway, proxy, traces, and agent mesh.",
+  cost: "LLM spend tracked across agents and providers.",
+  identity: "Non-human identities and agents under governance.",
+  ops: "Completed scan jobs feeding the estate rollup.",
 };
 
 function CrossLaneCoverage({
@@ -175,14 +274,15 @@ function CrossLaneCoverage({
   domains: OverviewResponse["domains"] | null;
   services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
 }) {
-  const domainList = domains ? Object.values(domains) : [];
-  const tiles: CoverageTile[] = domainList.map((domain) => ({
+  const domainEntries = domains ? Object.entries(domains) : [];
+  const tiles: CoverageTile[] = domainEntries.map(([key, domain]) => ({
     key: `${domain.href}:${domain.label}`,
     label: domain.label,
     metric: domain.metric,
     metricLabel: domain.metric_label,
     status: domain.status,
     href: domain.graph_href ?? domain.href,
+    hint: LANE_HINTS[key],
   }));
 
   // Data sources / connections are operational plumbing, not an exec risk lane —
@@ -199,19 +299,16 @@ function CrossLaneCoverage({
   const reporting = tiles.filter((tile) => tile.status !== "idle").length;
 
   return (
-    <section
-      className="mt-5 border-t border-[color:var(--border-subtle)] pt-4"
+    <Collapsible
+      bare
+      className="mt-5 border-t border-[color:var(--border-subtle)] pt-1"
       data-testid="overview-cross-lane-coverage"
-    >
-      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-            Cross-lane coverage
-          </p>
-          <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-            {reporting} of {tiles.length} lanes reporting · click a lane to drill in
-          </p>
-        </div>
+      title="Cross-lane coverage"
+      titleClassName={SECTION_TITLE_CLASS}
+      subtitle={`${reporting} of ${tiles.length} lanes reporting · click a lane to drill in`}
+      count={tiles.length}
+      defaultOpen
+      actions={
         <Link
           href="/connections"
           className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400"
@@ -221,13 +318,14 @@ function CrossLaneCoverage({
           ) : null}
           Connections <ArrowRight className="h-3 w-3" />
         </Link>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      }
+    >
+      <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {tiles.map((tile) => (
           <CoverageTileCard key={tile.key} tile={tile} />
         ))}
       </div>
-    </section>
+    </Collapsible>
   );
 }
 
@@ -236,6 +334,7 @@ function CoverageTileCard({ tile }: { tile: CoverageTile }) {
   return (
     <Link
       href={tile.href}
+      title={tile.hint ?? tile.label}
       className="flex flex-col gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3.5 py-3 transition hover:border-[color:var(--border-strong)]"
     >
       <div className="flex items-center justify-between gap-2">
@@ -243,7 +342,14 @@ function CoverageTileCard({ tile }: { tile: CoverageTile }) {
         <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
       </div>
       <span className={`font-mono text-xl font-semibold ${tone.text}`}>{tile.metric}</span>
-      <span className="truncate text-[10px] text-[color:var(--text-tertiary)]">{tile.metricLabel}</span>
+      <span className="truncate text-[10px] text-[color:var(--text-tertiary)]" title={tile.metricLabel}>
+        {tile.metricLabel}
+      </span>
+      {tile.hint ? (
+        <span className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-[color:var(--text-tertiary)]">
+          {tile.hint}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -276,6 +382,7 @@ function ComplianceSnapshotPanel({
       bare
       className="mt-4 border-t border-[color:var(--border-subtle)]"
       title="Compliance"
+      titleClassName={SECTION_TITLE_CLASS}
       defaultOpen={defaultOpen}
       subtitle={
         evidenceReady
@@ -530,16 +637,20 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
 function PostureHero({
   grade,
   score,
+  scoreFormat = "percent",
   summary,
   critical,
   high,
+  cves,
   latestScan,
 }: {
   grade: string;
   score?: number | undefined;
+  scoreFormat?: PostureScoreFormat | undefined;
   summary?: string | undefined;
   critical: number;
   high: number;
+  cves: number | null;
   latestScan: string | null;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
@@ -551,32 +662,38 @@ function PostureHero({
         ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
         : "border-red-500/40 bg-red-500/10 text-red-400";
   const graded = typeof score === "number" && !ungraded;
+  const scoreDisplay = graded ? formatPostureScore(score, grade, scoreFormat) : null;
+  const blurb = derivePostureBlurb({ summary, critical, high, cves, graded });
 
   return (
     <div className="flex items-center gap-4">
       <div
-        className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border ${badgeTone}`}
+        className={`flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl border ${badgeTone}`}
+        title={graded ? `Grade ${grade}${scoreDisplay ? ` · ${scoreDisplay}` : ""}` : "Awaiting scan"}
       >
         <span className="text-3xl font-bold leading-none">{grade}</span>
+        {graded && scoreFormat !== "grade" && scoreDisplay ? (
+          <span className="mt-0.5 text-[10px] font-semibold leading-none opacity-80">{scoreDisplay}</span>
+        ) : null}
       </div>
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
           Risk posture
         </p>
-        <p className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
-          {graded ? `Score ${score}` : "Awaiting scan"}
+        <p className="mt-1 flex items-baseline gap-2 text-lg font-semibold text-[color:var(--foreground)]">
+          {graded ? (
+            <>
+              <span>{scoreDisplay}</span>
+              <span className="text-xs font-medium text-[color:var(--text-tertiary)]">Grade {grade}</span>
+            </>
+          ) : (
+            "Awaiting scan"
+          )}
         </p>
         <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
           {latestScan ? `Last scan · ${latestScan}` : graded ? "Scan complete" : "No completed scans"}
         </p>
-        <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">
-          {graded
-            ? summary ??
-              (critical > 0
-                ? `${critical} critical · ${high} high in the current snapshot.`
-                : "Rolled up across connected surfaces.")
-            : "Connect a surface or run a scan to grade posture."}
-        </p>
+        <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">{blurb}</p>
       </div>
     </div>
   );
@@ -644,47 +761,45 @@ function SeverityIssueStrip({
 
   return (
     <div
-      className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3"
+      className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1"
       data-testid="overview-severity-issue-strip"
     >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-            Open issues
-          </p>
-          <p className="mt-0.5 text-[11px] text-[color:var(--text-secondary)]">
-            By severity · CVE, misconfig, secret, identity
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {summaryReady && kev != null ? (
-            <Link
-              href={findingsHref({ kev: true })}
-              className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200"
-            >
-              KEV {kev}
-            </Link>
-          ) : null}
-          {summaryReady && credentials != null ? (
-            <Link
-              href={findingsHref({ issue: "secret" })}
-              className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200"
-            >
-              Secrets {credentials}
-            </Link>
-          ) : null}
-          {complianceScore ? (
-            <Link
-              href="/compliance"
-              className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200"
-            >
-              Compliance {complianceScore}
-            </Link>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="mb-3 flex h-2.5 overflow-hidden rounded-full bg-[color:var(--surface)]">
+      <Collapsible
+        bare
+        title="Open issues"
+        titleClassName={SECTION_TITLE_CLASS}
+        subtitle="By severity · CVE, misconfig, secret, identity"
+        defaultOpen
+        actions={
+          <div className="flex flex-wrap items-center gap-1.5">
+            {summaryReady && kev != null ? (
+              <Link
+                href={findingsHref({ kev: true })}
+                className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200"
+              >
+                KEV {kev}
+              </Link>
+            ) : null}
+            {summaryReady && credentials != null ? (
+              <Link
+                href={findingsHref({ issue: "secret" })}
+                className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200"
+              >
+                Secrets {credentials}
+              </Link>
+            ) : null}
+            {complianceScore ? (
+              <Link
+                href="/compliance"
+                className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200"
+              >
+                Compliance {complianceScore}
+              </Link>
+            ) : null}
+          </div>
+        }
+      >
+      <div className="mb-3 mt-1 flex h-2.5 overflow-hidden rounded-full bg-[color:var(--surface)]">
         {summaryReady && stackedTotal > 0 ? (
           bands.map((band) =>
             band.value > 0 ? (
@@ -775,6 +890,7 @@ function SeverityIssueStrip({
           })}
         </div>
       ) : null}
+      </Collapsible>
     </div>
   );
 }
@@ -788,6 +904,6 @@ function domainStatusTone(status: CoverageTile["status"]): { dot: string; text: 
     case "ok":
       return { dot: "bg-emerald-500", text: "text-emerald-400" };
     default:
-      return { dot: "bg-zinc-600", text: "text-zinc-500" };
+      return { dot: "bg-[color:var(--text-tertiary)]", text: "text-[color:var(--text-tertiary)]" };
   }
 }

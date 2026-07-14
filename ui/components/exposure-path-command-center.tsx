@@ -15,6 +15,8 @@ import {
   Wrench,
 } from "lucide-react";
 import { pathDisplayTitle, pathFixLabel, type ExposureEntityRole, type ExposurePath } from "@/lib/exposure-path";
+import { GRAPH_ROLE_STYLE } from "@/lib/exposure-path-graph-style";
+import { buildPathGraphLayout, wrapGraphText, truncateGraphText } from "@/lib/exposure-path-graph-layout";
 import { ExposurePathNeighborExplorer } from "@/components/exposure-path-neighbor-explorer";
 
 export interface ExposurePathCommandAction {
@@ -33,18 +35,6 @@ const ROLE_META: Record<ExposureEntityRole, { label: string; icon: LucideIcon; t
   environment: { label: "Environment", icon: Database, tint: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200" },
   cluster: { label: "Cluster", icon: Database, tint: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200" },
   unknown: { label: "Entity", icon: ShieldAlert, tint: "border-slate-500/30 bg-slate-500/10 text-slate-200" },
-};
-
-const GRAPH_ROLE_STYLE: Record<ExposureEntityRole, { fill: string; stroke: string; text: string; accent: string }> = {
-  agent: { fill: "#052e24", stroke: "#10b981", text: "#d1fae5", accent: "#34d399" },
-  server: { fill: "#082f49", stroke: "#0ea5e9", text: "#e0f2fe", accent: "#38bdf8" },
-  package: { fill: "#422006", stroke: "#f59e0b", text: "#fef3c7", accent: "#fbbf24" },
-  finding: { fill: "#450a0a", stroke: "#ef4444", text: "#fee2e2", accent: "#f87171" },
-  credential: { fill: "#3b0764", stroke: "#d946ef", text: "#fae8ff", accent: "#e879f9" },
-  tool: { fill: "#2e1065", stroke: "#a855f7", text: "#f3e8ff", accent: "#c084fc" },
-  environment: { fill: "#164e63", stroke: "#06b6d4", text: "#cffafe", accent: "#22d3ee" },
-  cluster: { fill: "#312e81", stroke: "#6366f1", text: "#e0e7ff", accent: "#818cf8" },
-  unknown: { fill: "#1e293b", stroke: "#64748b", text: "#f1f5f9", accent: "#94a3b8" },
 };
 
 export function ExposurePathCommandCenter({
@@ -201,12 +191,14 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
   const layout = buildPathGraphLayout(path);
 
   return (
-    <div className="overflow-x-auto p-2">
+    <div className="flex justify-center overflow-x-auto p-2">
       <svg
         viewBox={`0 0 ${layout.width} ${layout.height}`}
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={`Selected exposure path graph for ${pathDisplayTitle(path)}`}
-        className="block h-auto min-w-[720px] w-full md:min-w-0"
+        style={{ maxWidth: `${layout.fitWidth}px` }}
+        className="mx-auto block h-auto w-full"
       >
         <defs>
           <marker id="exposure-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -252,7 +244,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
         {layout.nodes.map((node, index) => {
           const style = GRAPH_ROLE_STYLE[node.role] ?? GRAPH_ROLE_STYLE.unknown;
           const meta = ROLE_META[node.role] ?? ROLE_META.unknown;
-          const titleLines = wrapGraphText(node.label, 18, 2);
+          const titleLines = wrapGraphText(node.label, layout.labelChars, 2);
           return (
             <g key={`${node.id}-${index}`} transform={`translate(${node.x} ${node.y})`}>
               <rect
@@ -286,112 +278,6 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
       </svg>
     </div>
   );
-}
-
-function buildPathGraphLayout(path: ExposurePath) {
-  // Geometry note: nodes are spaced with a generous horizontal gap so the
-  // relationship pill sits centred in the clear channel between two node boxes
-  // — never overlapping a node or getting clipped at the container edge. The
-  // SVG scales to its container via viewBox, so a wider board just renders a
-  // little smaller; it never crowds the labels.
-  const nodeWidth = 188;
-  const nodeHeight = 76;
-  const marginX = 28;
-  const marginY = 30;
-  const columnGap = 132;
-  const rowGap = 116;
-  const columns = Math.min(4, Math.max(1, path.hops.length));
-  const rows = Math.max(1, Math.ceil(path.hops.length / columns));
-  const pitchX = nodeWidth + columnGap;
-  const width = marginX * 2 + columns * nodeWidth + (columns - 1) * columnGap;
-  const height = marginY * 2 + rows * nodeHeight + (rows - 1) * (rowGap - nodeHeight);
-  const nodes = path.hops.map((hop, index) => {
-    const row = Math.floor(index / columns);
-    const col = index % columns;
-    const visualCol = row % 2 === 0 ? col : columns - 1 - col;
-    return {
-      ...hop,
-      x: marginX + visualCol * pitchX,
-      y: marginY + row * rowGap,
-    };
-  });
-  const edges = nodes.slice(0, -1).map((source, index) => {
-    const target = nodes[index + 1]!;
-    const relationship = relationshipForPathStep(path, source.id, target.id, index);
-    const startX = source.x + nodeWidth;
-    const startY = source.y + nodeHeight / 2;
-    const endX = target.x;
-    const endY = target.y + nodeHeight / 2;
-    const sameRow = Math.abs(startY - endY) < 10;
-    const control = sameRow ? Math.max(40, Math.abs(endX - startX) / 2) : 56;
-    const pathD = sameRow
-      ? `M ${startX} ${startY} C ${startX + control} ${startY}, ${endX - control} ${endY}, ${endX} ${endY}`
-      : `M ${source.x + nodeWidth / 2} ${source.y + nodeHeight} C ${source.x + nodeWidth / 2} ${source.y + nodeHeight + control}, ${target.x + nodeWidth / 2} ${target.y - control}, ${target.x + nodeWidth / 2} ${target.y}`;
-    const style = GRAPH_ROLE_STYLE[target.role] ?? GRAPH_ROLE_STYLE.unknown;
-    return {
-      id: `${source.id}->${target.id}`,
-      path: pathD,
-      stroke: style.stroke,
-      label: truncateGraphText(relationship, 16),
-      // Centre the pill on the edge line, mid-channel between the two nodes.
-      labelX: sameRow ? (startX + endX) / 2 : source.x + nodeWidth / 2,
-      labelY: sameRow ? startY : (source.y + nodeHeight + target.y) / 2,
-    };
-  });
-  const relationshipLabels = edges.map((edge) => ({
-    id: `${edge.id}:label`,
-    text: edge.label,
-    x: edge.labelX,
-    y: edge.labelY,
-    width: Math.max(50, Math.round(edge.label.length * 6.6 + 22)),
-  }));
-
-  return { width, height, nodeWidth, nodeHeight, nodes, edges, relationshipLabels };
-}
-
-function relationshipForPathStep(path: ExposurePath, source: string, target: string, index: number): string {
-  const byEndpoints = path.relationships.find((relationship) => relationship.source === source && relationship.target === target);
-  const raw = byEndpoints?.relationship ?? path.relationships[index]?.relationship ?? "reaches";
-  return humanizeRelationship(raw);
-}
-
-function humanizeRelationship(value: string): string {
-  return value
-    .replace(/[_:]+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function truncateGraphText(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, Math.max(1, maxLength - 1))}…` : value;
-}
-
-function wrapGraphText(value: string, maxLineLength: number, maxLines: number): string[] {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLineLength) return [normalized];
-
-  const lines: string[] = [];
-  let remaining = normalized;
-  while (remaining.length > 0 && lines.length < maxLines) {
-    const isLastLine = lines.length === maxLines - 1;
-    if (remaining.length <= maxLineLength) {
-      lines.push(remaining);
-      break;
-    }
-    if (isLastLine) {
-      lines.push(truncateGraphText(remaining, maxLineLength));
-      break;
-    }
-
-    const window = remaining.slice(0, maxLineLength + 1);
-    const breakpoints = [" ", "-", "_", "/", ":", "@", "."].map((character) => window.lastIndexOf(character));
-    const breakpoint = Math.max(...breakpoints);
-    const cut = breakpoint >= Math.floor(maxLineLength * 0.45) ? breakpoint + 1 : maxLineLength;
-    lines.push(remaining.slice(0, cut).trim());
-    remaining = remaining.slice(cut).trim();
-  }
-
-  return lines.length > 0 ? lines : [truncateGraphText(normalized, maxLineLength)];
 }
 
 function EvidenceRow({

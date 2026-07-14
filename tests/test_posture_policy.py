@@ -4,12 +4,52 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.models import AIBOMReport
+from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
 from agent_bom.posture import (
     DEFAULT_DIMENSION_WEIGHTS,
     compute_posture_scorecard,
     load_posture_policy,
 )
+
+
+def test_no_artifact_scan_returns_na_not_passing_grade() -> None:
+    """A scan that examined zero artifacts must not report a passing grade.
+
+    Previously an empty report defaulted every dimension to 100/50 and produced
+    a "B" (87.5) — an honest-looking pass for a scan that evaluated nothing.
+    """
+    scorecard = compute_posture_scorecard(AIBOMReport(agents=[], blast_radii=[]))
+    assert scorecard.grade == "N/A"
+    assert scorecard.score == 0
+    assert scorecard.no_data is True
+    # Policy plumbing is still preserved for downstream consumers.
+    assert scorecard.policy_source == "default"
+    d = scorecard.to_dict()
+    assert d["grade"] == "N/A"
+    assert d["no_data"] is True
+
+
+def test_scan_with_real_artifacts_gets_a_real_grade() -> None:
+    """A scan that actually examined a package still gets a real letter grade."""
+    report = AIBOMReport(
+        agents=[
+            Agent(
+                name="cursor",
+                agent_type=AgentType.CUSTOM,
+                config_path="/tmp/mcp.json",
+                mcp_servers=[
+                    MCPServer(
+                        name="fs",
+                        packages=[Package(name="requests", version="2.31.0", ecosystem="pypi")],
+                    )
+                ],
+            )
+        ],
+        blast_radii=[],
+    )
+    scorecard = compute_posture_scorecard(report)
+    assert scorecard.grade in {"A", "B", "C", "D", "F"}
+    assert scorecard.no_data is False
 
 
 def test_default_policy_weights_sum_to_one() -> None:

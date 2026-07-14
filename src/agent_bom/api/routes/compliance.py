@@ -1704,6 +1704,26 @@ async def get_posture_scorecard(request: Request) -> dict:
             "score": 0,
             "summary": "No completed scans available",
             "dimensions": {},
+            "no_data": True,
+        }
+
+    # Did-we-scan guard: a completed scan that examined ZERO gradable artifacts
+    # must not report a passing grade. Mirror the honest no-data / N/A treatment
+    # rather than surfacing a fallback "B" from empty-default dimensions.
+    summary = latest_result.get("summary") or {}
+    examined_artifacts = (
+        int(summary.get("total_packages") or 0)
+        + int(summary.get("total_mcp_servers") or 0)
+        + int(summary.get("total_findings") or 0)
+        + int(summary.get("total_vulnerabilities") or 0)
+    )
+    if examined_artifacts == 0:
+        return {
+            "grade": "N/A",
+            "score": 0,
+            "summary": "No artifacts scanned — posture grade unavailable. Connect a surface or run a scan to grade posture.",
+            "dimensions": {},
+            "no_data": True,
         }
 
     scorecard = latest_result.get("posture_scorecard")
@@ -1715,6 +1735,7 @@ async def get_posture_scorecard(request: Request) -> dict:
         "score": 0,
         "summary": "Scorecard not computed for this scan",
         "dimensions": {},
+        "no_data": True,
     }
 
 

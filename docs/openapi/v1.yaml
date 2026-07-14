@@ -927,6 +927,32 @@ components:
       - package_name
       title: ExceptionRequest
       type: object
+    ExecScoreConfigUpdateRequest:
+      description: "Body for PUT /v1/overview/score-config (issue #3940).\n\nDeliberately\
+        \ lenient: unknown keys are ignored and values are canonicalized\n/ clamped\
+        \ server-side (see ``agent_bom.exec_score.canonicalize_config``) so\nan ad-hoc\
+        \ override never raises \u2014 out-of-range weights are clamped, junk\nkeys\
+        \ dropped, an invalid display format falls back to the default."
+      properties:
+        display_format:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Display Format
+        grade_thresholds:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Grade Thresholds
+        weights:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Weights
+      title: ExecScoreConfigUpdateRequest
+      type: object
     FalsePositiveRequest:
       additionalProperties: false
       description: Request body for POST /v1/findings/false-positive.
@@ -11945,6 +11971,157 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Overview
+      tags:
+      - overview
+  /v1/overview/score-config:
+    delete:
+      description: Clear the tenant's exec risk-score overrides (revert to defaults).
+      operationId: reset_overview_score_config_v1_overview_score_config_delete
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Reset Overview Score Config
+      tags:
+      - overview
+    get:
+      description: 'Return the tenant''s effective exec risk-score model + display
+        config (#3940).
+
+
+        Read-only view of the documented default weighting model, any tenant
+
+        overrides, the effective weights/thresholds, and the active display format.'
+      operationId: get_overview_score_config_v1_overview_score_config_get
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Overview Score Config V1 Overview Score Config
+                  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Overview Score Config
+      tags:
+      - overview
+    put:
+      description: "Update the tenant's exec risk-score weights, thresholds, or display\
+        \ format.\n\nAdmin-gated (mutating ``/v1`` verb). The body is canonicalized\
+        \ and clamped\nserver-side \u2014 out-of-range weights are pinned into range,\
+        \ unknown keys are\ndropped, and an invalid display format falls back to the\
+        \ default, so a bad\noverride never raises."
+      operationId: update_overview_score_config_v1_overview_score_config_put
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecScoreConfigUpdateRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Update Overview Score Config V1 Overview Score Config
+                  Put
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Update Overview Score Config
       tags:
       - overview
   /v1/plugins/status:

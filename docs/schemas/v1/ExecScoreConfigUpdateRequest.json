@@ -1,0 +1,45 @@
+{
+  "description": "Body for PUT /v1/overview/score-config (issue #3940).\n\nDeliberately lenient: unknown keys are ignored and values are canonicalized\n/ clamped server-side (see ``agent_bom.exec_score.canonicalize_config``) so\nan ad-hoc override never raises \u2014 out-of-range weights are clamped, junk\nkeys dropped, an invalid display format falls back to the default.",
+  "properties": {
+    "display_format": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Display Format"
+    },
+    "grade_thresholds": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Grade Thresholds"
+    },
+    "weights": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Weights"
+    }
+  },
+  "title": "ExecScoreConfigUpdateRequest",
+  "type": "object"
+}

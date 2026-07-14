@@ -18,6 +18,7 @@ import {
   OverviewCockpit,
   type ExposurePathView,
   type OverviewComplianceSnapshot,
+  type PostureScoreFormat,
 } from "@/components/overview-cockpit";
 import { PageLaneHeader } from "@/components/page-lane";
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -63,6 +64,9 @@ export default function Dashboard() {
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
+  // Local display-format override; falls back to the persisted per-tenant
+  // config carried on the overview posture. Toggling persists via the API (#3940).
+  const [scoreFormatOverride, setScoreFormatOverride] = useState<PostureScoreFormat | null>(null);
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
   const seededEvidence = captureMode || Boolean(counts?.scan_sources?.some((source) => source.includes("demo")));
@@ -333,8 +337,20 @@ export default function Dashboard() {
 
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} kind={apiErrorKind} detail={apiErrorDetail} />;
 
-  const postureGrade = posture?.grade ?? overview?.posture.grade ?? "—";
-  const postureScore = posture?.score ?? overview?.posture.score;
+  // The overview's configurable exec risk score (#3940) is authoritative for the
+  // exec grade — it derives from the honest estate counts and the tenant's score
+  // model. Fall back to /v1/posture only until the overview payload lands.
+  const postureGrade = overview?.posture.grade ?? posture?.grade ?? "—";
+  const postureScore = overview?.posture.score ?? posture?.score;
+  const scoreFormat: PostureScoreFormat =
+    scoreFormatOverride ?? overview?.posture.display_format ?? "percent";
+  const scoreBreakdown = overview?.posture.breakdown ?? null;
+  const handleScoreFormatChange = (format: PostureScoreFormat) => {
+    // Optimistic local update, then persist per-tenant. A failed persist (e.g.
+    // a viewer without admin) still keeps the local view; it just won't stick.
+    setScoreFormatOverride(format);
+    api.updateScoreConfig({ display_format: format }).catch(() => {});
+  };
   const latestScanShort =
     summaryReady && effectiveRecentJobs[0]?.created_at
       ? formatShortScanTime(effectiveRecentJobs[0].created_at)
@@ -389,7 +405,10 @@ export default function Dashboard() {
       <OverviewCockpit
         grade={postureGrade}
         score={postureScore}
-        postureSummary={posture?.summary ?? overview?.posture.summary}
+        scoreFormat={scoreFormat}
+        scoreBreakdown={scoreBreakdown}
+        onScoreFormatChange={handleScoreFormatChange}
+        postureSummary={overview?.posture.summary ?? posture?.summary}
         critical={criticalCount}
         high={highCount}
         kev={summaryReady ? displayedKevCount : null}

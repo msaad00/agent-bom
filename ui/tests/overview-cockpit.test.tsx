@@ -161,6 +161,43 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/Connect a surface or run a scan to grade posture/i)).toBeInTheDocument();
   });
 
+  it("never asserts 'no vulnerabilities' while open CVEs are present", () => {
+    // Backend posture summary is derived from only the latest single scan, so it
+    // can read "No vulnerabilities found" even when the estate rollup shows open
+    // CVEs (#3940). The exec read must stay consistent with the visible counts.
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        postureSummary="No vulnerabilities found; strong best-practice/config posture (A, 95%)"
+        critical={0}
+        high={0}
+        cves={78}
+      />,
+    );
+
+    expect(screen.queryByText(/no vulnerabilities/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/78 open CVEs across connected surfaces/i)).toBeInTheDocument();
+  });
+
+  it("shows the posture score as a percentage alongside the letter grade", () => {
+    render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
+
+    // Percent appears both in the grade badge and the headline score line.
+    expect(screen.getAllByText("62%").length).toBeGreaterThan(0);
+    expect(screen.getByText("Grade C")).toBeInTheDocument();
+  });
+
+  it("distinguishes the Vuln / SCA and Code / repo lanes with scope hints", () => {
+    render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
+
+    expect(
+      screen.getByText(/Dependency & package CVEs correlated across every scan source/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Repository \/ SAST scan runs of source you connect/i),
+    ).toBeInTheDocument();
+  });
+
   it("does not show green compliance pass tiles without scan evidence", () => {
     render(
       <OverviewCockpit

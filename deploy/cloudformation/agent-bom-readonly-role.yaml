@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+  agent-bom read-only connector role. Creates an IAM role that the agent-bom
+  control plane assumes (via sts:AssumeRole with an ExternalId) to run
+  read-only inventory + CIS scans. No write permissions, no static keys —
+  the control plane receives only short-lived STS credentials. Deploy in one
+  account, or roll out across an AWS Organization with a StackSet (see
+  deploy/cloudformation/README.md).
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: agent-bom connection
+        Parameters:
+          - TrustedPrincipalArn
+          - ExternalId
+          - RoleName
+          - PermissionScope
+    ParameterLabels:
+      TrustedPrincipalArn:
+        default: Control-plane principal allowed to assume this role
+      ExternalId:
+        default: ExternalId (paste this into the agent-bom wizard)
+      RoleName:
+        default: Role name
+      PermissionScope:
+        default: Read-only permission scope
+
+Parameters:
+  TrustedPrincipalArn:
+    Type: String
+    Description: >-
+      ARN of the agent-bom control-plane identity that may assume this role
+      (e.g. the hosted control-plane role ARN, or for a self-hosted control
+      plane the IAM user/role its process runs as). For a same-account
+      self-host you may use the account root ARN
+      (arn:aws:iam::<ACCOUNT_ID>:root) — the ExternalId is the guard.
+    AllowedPattern: "^arn:aws[a-z-]*:(iam|sts)::[0-9]{12}:(root|user/.+|role/.+|assumed-role/.+)$"
+    ConstraintDescription: Must be a valid IAM/STS principal ARN.
+
+  ExternalId:
+    Type: String
+    Description: >-
+      Shared secret required on every AssumeRole call. Generate a random,
+      high-entropy value and paste the SAME value into the agent-bom connection
+      wizard. Rotating it here + in the wizard revokes old sessions.
+    MinLength: 16
+    MaxLength: 1224
+    NoEcho: true
+
+  RoleName:
+    Type: String
+    Description: Name for the created role.
+    Default: agent-bom-readonly
+    AllowedPattern: "^[A-Za-z0-9+=,.@_-]{1,64}$"
+
+  PermissionScope:
+    Type: String
+    Description: >-
+      ReadOnlyAndSecurityAudit attaches both AWS-managed ReadOnlyAccess and
+      SecurityAudit (recommended for full inventory + CIS coverage).
+      SecurityAuditOnly attaches only SecurityAudit (tighter, config-focused).
+    Default: ReadOnlyAndSecurityAudit
+    AllowedValues:
+      - ReadOnlyAndSecurityAudit
+      - SecurityAuditOnly
+
+Conditions:
+  AttachReadOnly: !Equals [!Ref PermissionScope, ReadOnlyAndSecurityAudit]
+
+Resources:
+  AgentBomReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Read-only role assumed by the agent-bom control plane for inventory + CIS scans.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref TrustedPrincipalArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      ManagedPolicyArns:
+        !If
+          - AttachReadOnly
+          - - arn:aws:iam::aws:policy/ReadOnlyAccess
+            - arn:aws:iam::aws:policy/SecurityAudit
+          - - arn:aws:iam::aws:policy/SecurityAudit
+      Tags:
+        - Key: app
+          Value: agent-bom
+        - Key: purpose
+          Value: read-only-connector
+
+Outputs:
+  RoleArn:
+    Description: Paste this Role ARN into the agent-bom connection wizard.
+    Value: !GetAtt AgentBomReadOnlyRole.Arn
+  RoleName:
+    Description: The created role name.
+    Value: !Ref RoleName
+  AccountId:
+    Description: This account's ID.
+    Value: !Ref AWS::AccountId
+  Region:
+    Description: Stack region (the role is global; region is where the stack lives).
+    Value: !Ref AWS::Region

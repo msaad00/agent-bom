@@ -565,30 +565,32 @@ def _policy_actions_from_document(document: Any) -> list[str]:
     return actions
 
 
-def _policy_privilege(iam: Any, policy_arn: str, policy_name: str, *, warnings: list[str]) -> tuple[str, list[str]]:
-    """Return (privilege_level, sampled_actions) for an attached policy.
+def _policy_privilege(iam: Any, policy_arn: str, policy_name: str, *, warnings: list[str]) -> tuple[str, list[str], dict[str, Any] | None]:
+    """Return (privilege_level, sampled_actions, raw_document) for an attached policy.
 
-    AWS-managed policies are classified by their canonical name (no API call).
-    Customer-managed policies are fetched and classified by their actions.
-    Degrades to ('unknown', []) on any error — never blocks discovery.
+    AWS-managed policies are classified by their canonical name (no API call) and
+    carry no document. Customer-managed policies are fetched and classified by
+    their actions, and the raw document is returned so the effective-permissions
+    overlay can run real policy evaluation.
+    Degrades to ('unknown', [], None) on any error — never blocks discovery.
     """
     name_key = (policy_name or policy_arn).rsplit("/", 1)[-1].lower()
     if ":aws:policy/" in policy_arn and name_key in _AWS_MANAGED_PRIVILEGE:
-        return _AWS_MANAGED_PRIVILEGE[name_key], []
+        return _AWS_MANAGED_PRIVILEGE[name_key], [], None
     if ":aws:policy/" in policy_arn:
         # Unknown AWS-managed policy — name still hints at privilege.
         if "fullaccess" in name_key or "admin" in name_key:
-            return "admin", []
+            return "admin", [], None
         if "readonly" in name_key or "viewonly" in name_key:
-            return "read", []
+            return "read", [], None
     try:
         version_id = iam.get_policy(PolicyArn=policy_arn)["Policy"]["DefaultVersionId"]
         document = iam.get_policy_version(PolicyArn=policy_arn, VersionId=version_id)["PolicyVersion"]["Document"]
         actions = _policy_actions_from_document(document)
-        return _classify_policy_actions(actions), sorted(set(actions))[:25]
+        return _classify_policy_actions(actions), sorted(set(actions))[:25], document if isinstance(document, dict) else None
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"IAM policy action lookup skipped for {policy_name or policy_arn}: {sanitize_discovery_warning(exc)}")
-        return "unknown", []
+        return "unknown", [], None
 
 
 def _enrich_agents_with_iam(session: Any, agents: list[Agent], *, account_id: str | None, warnings: list[str]) -> None:
@@ -624,17 +626,20 @@ def _enrich_agents_with_iam(session: Any, agents: list[Agent], *, account_id: st
                     policy_name = str(policy.get("PolicyName") or policy_arn or "")
                     if not (policy_arn or policy_name):
                         continue
-                    privilege_level, actions = _policy_privilege(iam, policy_arn, policy_name, warnings=warnings)
-                    policies.append(
-                        {
-                            "policy_id": policy_arn,
-                            "policy_name": policy_name,
-                            "attachment_type": "managed",
-                            "privilege_level": privilege_level,
-                            "actions": actions,
-                            "source_field": "ListAttachedRolePolicies.AttachedPolicies",
-                        }
-                    )
+                    privilege_level, actions, document = _policy_privilege(iam, policy_arn, policy_name, warnings=warnings)
+                    policy_entry: dict[str, Any] = {
+                        "policy_id": policy_arn,
+                        "policy_name": policy_name,
+                        "attachment_type": "managed",
+                        "privilege_level": privilege_level,
+                        "actions": actions,
+                        "source_field": "ListAttachedRolePolicies.AttachedPolicies",
+                    }
+                    # Retain the raw document (customer-managed only) so the graph
+                    # can run real effective-permission evaluation.
+                    if isinstance(document, dict):
+                        policy_entry["policy_document"] = document
+                    policies.append(policy_entry)
         except Exception as exc:
             warnings.append(f"IAM role enrichment skipped for {role_name}: {sanitize_discovery_warning(exc)}")
             continue

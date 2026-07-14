@@ -89,6 +89,12 @@ services:
       - AGENT_BOM_AUDIT_HMAC_KEY_FILE=/run/secrets/audit_hmac_key
       - AGENT_BOM_REQUIRE_AUDIT_HMAC=${AGENT_BOM_REQUIRE_AUDIT_HMAC:-1}
       - AGENT_BOM_CONNECTIONS_KEY_FILE=/run/secrets/connections_key
+      # Role for any request that reaches the API without an authenticated
+      # identity. This stack ships with API-key auth (above), so unauthenticated
+      # requests fail closed (401) and this never applies — it only takes effect
+      # if an operator removes all auth backends. analyst (not viewer) lets a
+      # no-auth local bring-up connect + scan; viewer is read-only.
+      - AGENT_BOM_NO_AUTH_ROLE=${AGENT_BOM_NO_AUTH_ROLE:-analyst}
       - AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_FILE=/run/secrets/browser_session_signing_key
       - AGENT_BOM_SESSION_COOKIE_SECURE=${AGENT_BOM_SESSION_COOKIE_SECURE:-1}
       - AGENT_BOM_DISABLE_DOCS=1

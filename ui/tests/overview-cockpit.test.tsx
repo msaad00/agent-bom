@@ -71,18 +71,27 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByTestId("overview-activated-services")).not.toBeInTheDocument();
   });
 
-  it("renders one canonical cross-lane coverage grid without repeating signals", () => {
+  it("renders an estate/operations strip without the security-duplicate lanes", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
 
-    const grid = screen.getByTestId("overview-cross-lane-coverage");
-    expect(grid).toBeInTheDocument();
-    // Every lane appears exactly once — no triple-render of the same number.
-    expect(screen.getByText("Cloud posture")).toBeInTheDocument();
-    expect(screen.getAllByText("Cloud posture")).toHaveLength(1);
-    expect(screen.getByText("Vuln / SCA")).toBeInTheDocument();
-    expect(screen.getByText("NHI / Identity")).toBeInTheDocument();
-    // 5 of 7 lanes report signal (code + cost are idle).
-    expect(screen.getByText(/5 of 7 lanes reporting/i)).toBeInTheDocument();
+    const strip = screen.getByTestId("overview-estate-ops");
+    expect(strip).toBeInTheDocument();
+    // The old 7-lane cross-lane grid no longer exists as such.
+    expect(screen.queryByTestId("overview-cross-lane-coverage")).not.toBeInTheDocument();
+    // Cloud posture / Vuln / SCA / Code / repo duplicate the five security
+    // coverage lanes above, so they must NOT appear as operational tiles.
+    expect(within(strip).queryByText("Cloud posture")).not.toBeInTheDocument();
+    expect(within(strip).queryByText("Vuln / SCA")).not.toBeInTheDocument();
+    expect(within(strip).queryByText("Code / repo")).not.toBeInTheDocument();
+    // Only the genuinely-operational lanes render.
+    expect(within(strip).getByText("Runtime")).toBeInTheDocument();
+    expect(within(strip).getByText("NHI / Identity")).toBeInTheDocument();
+    expect(within(strip).getByText("Ops")).toBeInTheDocument();
+    // 3 of 4 active — cost is idle, so it de-emphasizes into a Connect prompt
+    // instead of a loud zero tile.
+    expect(within(strip).getByText(/3 of 4 operational lanes active/i)).toBeInTheDocument();
+    expect(within(strip).getByText("LLM Cost")).toBeInTheDocument();
+    expect(within(strip).getByText("Connect")).toBeInTheDocument();
   });
 
   it("renders the five security coverage lanes with reconciled severity strips", () => {
@@ -115,7 +124,7 @@ describe("OverviewCockpit", () => {
     );
 
     expect(screen.queryByText("Data sources")).not.toBeInTheDocument();
-    expect(screen.getByText(/5 of 7 lanes reporting/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 4 operational lanes active/i)).toBeInTheDocument();
     expect(screen.getByText(/2 connected/i)).toBeInTheDocument();
   });
 
@@ -207,15 +216,14 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("Grade C")).toBeInTheDocument();
   });
 
-  it("distinguishes the Vuln / SCA and Code / repo lanes with scope hints", () => {
+  it("carries operational lane scope hints as tooltips, not visible sentences", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
 
-    expect(
-      screen.getByText(/Dependency & package CVEs correlated across every scan source/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Repository \/ SAST scan runs of source you connect/i),
-    ).toBeInTheDocument();
+    const strip = screen.getByTestId("overview-estate-ops");
+    // The scope clarifier is a title tooltip on the tile, not always-visible copy.
+    const runtimeTile = within(strip).getByText("Runtime").closest("a");
+    expect(runtimeTile).toHaveAttribute("title", expect.stringMatching(/Live runtime surfaces/i));
+    expect(within(strip).queryByText(/Live runtime surfaces — gateway/i)).not.toBeInTheDocument();
   });
 
   it("does not show green compliance pass tiles without scan evidence", () => {

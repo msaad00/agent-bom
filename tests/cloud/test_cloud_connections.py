@@ -848,6 +848,35 @@ def test_broker_aws_assume_role_uses_decrypted_external_id(monkeypatch: pytest.M
     assert sessions["region_name"] == "us-east-1"
 
 
+def test_broker_aws_no_base_credentials_is_actionable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the control plane itself has no credentials, the broker explains the
+    caller-identity problem (instance profile / IRSA / local creds) rather than a
+    generic 'AssumeRole failed'."""
+    boto3 = pytest.importorskip("boto3")
+    from botocore.exceptions import NoCredentialsError
+
+    from agent_bom.cloud import connection_broker
+
+    class _NoCredsSTS:
+        def assume_role(self, **kwargs: Any) -> dict[str, Any]:
+            raise NoCredentialsError()
+
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: _NoCredsSTS())
+
+    record = _record("tenant-a")
+    with pytest.raises(connection_broker.ConnectionBrokerError) as exc:
+        connection_broker.broker_session(record)
+
+    # The actionable guidance rides the curated ``remediation`` channel.
+    remediation = exc.value.remediation or ""
+    assert "Control plane has no AWS credentials" in remediation
+    assert "instance profile or IRSA" in remediation
+    # Never leaks the secret; distinct from the generic role/trust failure.
+    assert "super-secret-external-id" not in remediation
+    assert "super-secret-external-id" not in str(exc.value)
+    assert "AssumeRole failed" not in str(exc.value)
+
+
 def _install_fake_module(monkeypatch: pytest.MonkeyPatch, dotted: str, leaf: types.ModuleType) -> None:
     """Inject a fake module (and any missing parent packages) into sys.modules.
 
@@ -1089,7 +1118,10 @@ def _install_scan_mocks(
     def _fake_broker(record: CloudConnectionRecord, **kwargs: Any) -> Any:
         calls["broker_record_id"] = record.id
         if fail:
-            raise connection_broker.ConnectionBrokerError(f"AssumeRole failed for connection {record.id}.")
+            raise connection_broker.ConnectionBrokerError(
+                f"AssumeRole failed for connection {record.id}.",
+                remediation="AssumeRole failed. Verify the role ARN, trust policy, and ExternalId.",
+            )
         return _BROKER_SESSION_SENTINEL
 
     def _fake_inventory(region: str | None = None, force: bool = False, session: Any = None, **kwargs: Any) -> dict[str, Any]:
@@ -1232,10 +1264,16 @@ def test_scan_failure_marks_error_without_secret(monkeypatch: pytest.MonkeyPatch
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
     assert resp.status_code == 502
     assert "super-secret-external-id" not in str(resp.json())
+    # The curated broker reason (why + how to fix) reaches the caller — not a
+    # "see server logs" dead end nor the fixed generic string.
+    assert "AssumeRole failed" in resp.json()["detail"]
+    assert "An internal error occurred" not in resp.json()["detail"]
 
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert fetched["status"] == "error"
     assert fetched["status_detail"]
+    # The same actionable reason is persisted for the UI Error state to render.
+    assert "AssumeRole failed" in fetched["status_detail"]
     assert "super-secret-external-id" not in fetched["status_detail"]
     assert fetched["last_scan_at"] is None
     assert fetched["last_scan_id"] is None

@@ -888,20 +888,38 @@ def test_rpm_sqlite_gpg_pubkey_skipped():
     assert any(p.name == "bash" for p in result.packages)
 
 
-def test_legacy_bdb_rpmdb_emits_coverage_warning():
-    """A BerkeleyDB ``Packages`` db produces a coverage warning, not silent zero RPMs."""
-    # Arbitrary binary blob standing in for an undecodable BerkeleyDB rpm db.
-    tar = _make_docker_save_tar([{"var/lib/rpm/Packages": b"\x00\x06\x15\x61 legacy bdb \x00"}])
+def test_legacy_bdb_rpmdb_extracts_embedded_package_headers():
+    """BerkeleyDB page bytes yield their canonical embedded RPM headers."""
+    database = (
+        b"\x00\x06\x15\x61berkeley-page-metadata\x00"
+        + _make_rpm_header_blob("bash", "4.4.20", "5.el8")
+        + b"\x00page-boundary\x00"
+        + _make_rpm_header_blob("curl", "7.61.1", "34.el8")
+    )
+    tar = _make_docker_save_tar([{"var/lib/rpm/Packages": database}])
     result = parse_oci_tarball(tar)
-    assert not any(p.ecosystem == "rpm" for p in result.packages)
-    assert any("BerkeleyDB" in w and "not yet supported" in w for w in result.warnings)
+    versions = {p.name: p.version for p in result.packages if p.ecosystem == "rpm"}
+    assert versions == {"bash": "4.4.20-5.el8", "curl": "7.61.1-34.el8"}
+    assert result.warnings == []
 
 
-def test_legacy_ndb_rpmdb_emits_coverage_warning():
-    """An NDB ``Packages.db`` db produces a coverage warning tagged NDB."""
-    tar = _make_docker_save_tar([{"var/lib/rpm/Packages.db": b"\x00\x00\x00 legacy ndb \x00"}])
+def test_legacy_ndb_rpmdb_extracts_package_headers_and_skips_pubkeys():
+    database = (
+        b"ndb-slot-table\x00"
+        + _make_rpm_header_blob("openssl-libs", "1.1.1k", "14.el8")
+        + _make_rpm_header_blob("gpg-pubkey", "deadbeef", "1")
+    )
+    tar = _make_docker_save_tar([{"var/lib/rpm/Packages.db": database}])
     result = parse_oci_tarball(tar)
-    assert any("NDB" in w and "not yet supported" in w for w in result.warnings)
+    rpm_packages = [p for p in result.packages if p.ecosystem == "rpm"]
+    assert [(p.name, p.version) for p in rpm_packages] == [("openssl-libs", "1.1.1k-14.el8")]
+    assert result.warnings == []
+
+
+def test_malformed_legacy_rpmdb_fails_closed():
+    tar = _make_docker_save_tar([{"var/lib/rpm/Packages": b"not an rpm package database"}])
+    with pytest.raises(OCIParseError, match="no valid package header records"):
+        parse_oci_tarball(tar)
 
 
 def test_modern_sqlite_rpmdb_emits_no_legacy_warning():

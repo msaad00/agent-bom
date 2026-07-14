@@ -16,7 +16,7 @@ Package ecosystems extracted from each layer filesystem:
 - Node: ``node_modules/*/package.json``
 - Debian/Ubuntu: ``var/lib/dpkg/status``
 - Alpine Linux: ``lib/apk/db/installed``
-- RPM: ``var/lib/rpm/rpmdb.sqlite`` (sqlite3) + ``var/log/installed-rpms`` (log manifest)
+- RPM: modern SQLite plus legacy BerkeleyDB/NDB package databases and ``var/log/installed-rpms``
 - Java: ``*.jar``/``*.war``/``*.ear`` → ``META-INF/maven/*/pom.properties`` or ``META-INF/MANIFEST.MF``
 - Go binaries: embedded buildinfo (``\xff Go buildinf:`` magic, dep lines)
 - Ruby: ``**/specifications/*.gemspec`` (regex name/version extraction)
@@ -241,13 +241,12 @@ _GEMSPEC_VER_RE = re.compile(r'\.version\s*=\s*(?:Gem::Version\.new\()?["\']([^"
 
 # RPM sqlite: database path candidates in a container layer
 _RPM_SQLITE_PATHS = ("var/lib/rpm/rpmdb.sqlite", "./var/lib/rpm/rpmdb.sqlite")
-# Legacy rpm databases we cannot decode natively yet: the BerkeleyDB ``Packages``
-# file (RPM < 4.16, RHEL/CentOS <= 8, many older UBI images) and the NDB
-# ``Packages.db``. Tracked so a layer carrying one of these emits a coverage
-# warning instead of silently reporting zero RPMs.
+# Legacy RPM database paths: BerkeleyDB ``Packages`` (RPM < 4.16,
+# RHEL/CentOS <= 8 and older UBI images) and NDB ``Packages.db``.
 _RPM_BDB_PATHS = ("var/lib/rpm/Packages", "./var/lib/rpm/Packages")
 _RPM_NDB_PATHS = ("var/lib/rpm/Packages.db", "./var/lib/rpm/Packages.db")
 _RPM_MANIFEST_PATHS = ("var/log/installed-rpms", "./var/log/installed-rpms")
+_MAX_LEGACY_RPMDB_BYTES = 512 * 1024 * 1024
 # RPM header magic (8 bytes)
 _RPM_HDR_MAGIC = b"\x8e\xad\xe8\x01\x00\x00\x00\x00"
 _RPMTAG_NAME = 1000
@@ -474,6 +473,58 @@ def _parse_rpm_header_blob(blob: bytes) -> Optional[tuple[str, str]]:
         return None
 
 
+def _parse_legacy_rpmdb_bytes(database: bytes) -> list[tuple[str, str]]:
+    """Extract embedded RPM header records from BerkeleyDB or NDB payloads.
+
+    Both legacy backends store canonical RPM header blobs as record values. The
+    database page/index format is backend-specific, but the value format is not:
+    every package header starts with ``_RPM_HDR_MAGIC`` and carries bounded index
+    and data lengths. Scanning for those self-describing records avoids a native
+    BerkeleyDB dependency while preserving exact RPM name/version/release data.
+    """
+    packages: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    cursor = 0
+    while True:
+        start = database.find(_RPM_HDR_MAGIC, cursor)
+        if start < 0:
+            break
+        cursor = start + len(_RPM_HDR_MAGIC)
+        if start + 16 > len(database):
+            continue
+        try:
+            nindex, hsize = struct.unpack_from(">II", database, start + 8)
+        except struct.error:
+            continue
+        if nindex > 100_000 or hsize > _MAX_LEGACY_RPMDB_BYTES:
+            continue
+        record_size = 16 + nindex * 16 + hsize
+        end = start + record_size
+        if record_size < 16 or end > len(database):
+            continue
+        parsed = _parse_rpm_header_blob(database[start:end])
+        if parsed is None or parsed[0] == "gpg-pubkey" or parsed in seen:
+            continue
+        seen.add(parsed)
+        packages.append(parsed)
+        cursor = end
+    return packages
+
+
+def _query_legacy_rpmdb(layer_tf: tarfile.TarFile, database_path: str) -> list[tuple[str, str]]:
+    """Read and decode one bounded BerkeleyDB/NDB package database member."""
+    member = _safe_getmember(layer_tf, database_path)
+    if member is None or not member.isfile() or member.size > _MAX_LEGACY_RPMDB_BYTES:
+        raise OCIParseError("Legacy RPM database is missing, invalid, or exceeds the 512 MiB safety limit")
+    source = _safe_extractfile(layer_tf, database_path)
+    if source is None:
+        raise OCIParseError("Legacy RPM database could not be read safely")
+    packages = _parse_legacy_rpmdb_bytes(source.read())
+    if not packages:
+        raise OCIParseError("Legacy RPM database contains no valid package header records")
+    return packages
+
+
 # ─── Package extraction from a layer filesystem ───────────────────────────────
 
 
@@ -618,8 +669,7 @@ def _extract_packages_from_layer(
         packages: Mutable list of packages — updated in place.
         deleted_paths: Set of paths deleted in LATER layers (whiteouts already processed).
         layer: Layer provenance metadata for this concrete tar blob.
-        warnings: Optional mutable list — coverage gaps (e.g. an unsupported
-            legacy rpm database) are appended here for the caller to surface.
+        warnings: Optional mutable list for non-fatal parser diagnostics.
 
     Returns:
         Set of paths marked as whiteout in THIS layer (for caller to accumulate).
@@ -872,28 +922,26 @@ def _extract_packages_from_layer(
             _logger.debug("Failed to parse rpmdb.sqlite")
         break
 
-    # --- Legacy rpm database coverage gap (BerkeleyDB / NDB) ---
-    # Only the modern ``rpmdb.sqlite`` (RPM >= 4.16) is decoded above. Older
-    # RHEL/CentOS/UBI images keep packages in the BerkeleyDB ``Packages`` file
-    # (or the NDB ``Packages.db``), which we cannot read yet. If a layer carries
-    # one of those and no rpmdb.sqlite / installed-rpms manifest to fall back on,
-    # the layer would silently contribute zero RPMs — surface a clear coverage
-    # warning so operators know the result is partial, not clean.
-    if warnings is not None:
-        has_parsable_rpm = any(
-            p in names and not _is_deleted(p) for p in (*_RPM_SQLITE_PATHS, *_RPM_MANIFEST_PATHS)
+    # --- Legacy rpm database (BerkeleyDB / NDB) ---
+    has_modern_rpm_source = any(
+        p in names and not _is_deleted(p) for p in (*_RPM_SQLITE_PATHS, *_RPM_MANIFEST_PATHS)
+    )
+    if not has_modern_rpm_source:
+        legacy_rpmdb = next(
+            (p for p in (*_RPM_BDB_PATHS, *_RPM_NDB_PATHS) if p in names and not _is_deleted(p)),
+            None,
         )
-        if not has_parsable_rpm:
-            legacy_rpmdb = next(
-                (p for p in (*_RPM_BDB_PATHS, *_RPM_NDB_PATHS) if p in names and not _is_deleted(p)),
-                None,
-            )
-            if legacy_rpmdb:
-                fmt = "NDB" if legacy_rpmdb.endswith("Packages.db") else "BerkeleyDB"
-                normalized = legacy_rpmdb[2:] if legacy_rpmdb.startswith("./") else legacy_rpmdb
-                warnings.append(
-                    f"Legacy {fmt} rpm database at /{normalized} is not yet supported — "
-                    "OS package coverage for this image is incomplete"
+        if legacy_rpmdb:
+            for rpm_name, rpm_ver in _query_legacy_rpmdb(layer_tf, legacy_rpmdb):
+                _add_package(
+                    packages_by_key,
+                    packages,
+                    rpm_name,
+                    rpm_ver,
+                    "rpm",
+                    f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}",
+                    layer=layer,
+                    package_path=legacy_rpmdb,
                 )
 
     # --- Java: JARs via META-INF/maven/*/pom.properties or MANIFEST.MF ---

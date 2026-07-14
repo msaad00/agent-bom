@@ -35,6 +35,14 @@ services:
       AGENT_BOM_DEPLOYMENT_ENV: pilot-loopback
       AGENT_BOM_DEMO_ESTATE: ${AGENT_BOM_DEMO_ESTATE:-0}
       AGENT_BOM_SKIP_UPDATE_CHECK: "1"
+      # Local no-auth pilots resolve to a role. Default to analyst so a first-run
+      # operator can connect a cloud + run a scan (viewer is read-only and would
+      # 403 on create/scan). DEMO_ESTATE still clamps to viewer for public demos.
+      AGENT_BOM_NO_AUTH_ROLE: ${AGENT_BOM_NO_AUTH_ROLE:-analyst}
+      # Connection-secret at-rest key is auto-seeded to /home/abom/.agent-bom/
+      # connections.key on first run (persisted in the data volume) so creating a
+      # cloud connection does not 503. Set AGENT_BOM_CONNECTIONS_KEY / a managed
+      # provider to bring your own; AGENT_BOM_NO_AUTO_CONNECTIONS_KEY=1 disables it.
     ports:
       - "127.0.0.1:8422:8422"
     volumes:

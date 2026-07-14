@@ -30,6 +30,48 @@ brokered catalog.
 
 ---
 
+## 1c. Control-plane Connections wizard (browser onboarding)
+
+The dashboard **Connections** page runs the same read-only grant flow as a
+three-step wizard: **Provider → Setup → Details**.
+
+- **One ExternalId, carried end-to-end.** For AWS the wizard generates a single
+  high-entropy `sts:ExternalId` **once** and carries it unchanged from Setup into
+  Details. The value embedded in the copy-ready grant script (the one you paste
+  into your trust policy) is the exact value the connection stores — the two can
+  never diverge. "Regenerate" (Setup step only) mints a fresh value and updates
+  both places together; only use it before you have applied the grant. The other
+  providers' secret field is a real credential you paste (Azure client secret,
+  GCP service-account key JSON, Snowflake PEM), encrypted at rest and never
+  returned to the browser.
+- **Roles.** Creating a connection or running a scan needs the **analyst**
+  (Contributor) role or higher; **viewer** is read-only. The wizard and empty
+  states surface your role and, when an action needs a higher one, the concrete
+  way to elevate. Roles are the closed enum in `src/agent_bom/rbac.py`.
+
+### Self-host defaults ("just works" on the shipped compose)
+
+The pilot compose (`deploy/docker-compose.pilot.yml`) is preset so first-run
+connect works without extra flags:
+
+- `AGENT_BOM_NO_AUTH_ROLE=analyst` — a local **no-auth** stack resolves to
+  analyst (not viewer), so you can connect and scan. `AGENT_BOM_DEMO_ESTATE=1`
+  always clamps to read-only viewer for public demos.
+- **Connection encryption key auto-seeded.** On first boot a local/no-auth stack
+  generates a Fernet key at `~/.agent-bom/connections.key` (persisted in the data
+  volume) and wires `AGENT_BOM_CONNECTIONS_KEY_FILE` to it, so creating a
+  connection does not fail closed with `AGENT_BOM_CONNECTIONS_KEY unset` (503).
+  Set `AGENT_BOM_CONNECTIONS_KEY` / `_FILE` or a managed key provider to bring
+  your own; `AGENT_BOM_NO_AUTO_CONNECTIONS_KEY=1` disables auto-seeding.
+
+The production-shaped compose (`deploy/docker-compose.platform.yml`) is
+auth-required and takes every secret — including `connections_key` — from mounted
+Docker secret files (write them with `scripts/deploy/hosted_poc_preflight.py
+--write-secret`; see `deploy/secrets/README.md`). It never auto-seeds and never
+carries plaintext secrets in the compose.
+
+---
+
 ## 1. The approach (why it is safe to point at production)
 
 | Principle | What it means here |

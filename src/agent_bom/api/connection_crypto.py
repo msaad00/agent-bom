@@ -78,11 +78,15 @@ next operation re-resolves the rotated list.
 from __future__ import annotations
 
 import base64
+import logging
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from agent_bom.config import resolved_vault_addr
+
+logger = logging.getLogger(__name__)
 
 CONNECTIONS_KEY_ENV = "AGENT_BOM_CONNECTIONS_KEY"
 CONNECTIONS_KEY_PROVIDER_ENV = "AGENT_BOM_CONNECTIONS_KEY_PROVIDER"
@@ -97,6 +101,9 @@ PROVIDER_VAULT = "vault"
 
 # Default field name inside a Vault KV v2 secret when ``...#field`` is omitted.
 DEFAULT_VAULT_FIELD = "key"
+
+# Filename for an auto-seeded local at-rest key (self-hosted / pilot first run).
+LOCAL_KEY_FILENAME = "connections.key"
 
 # In-process cache of the resolved key material. ``None`` means "not yet
 # resolved"; cleared by :func:`reset_key_cache`. The value may carry a
@@ -139,13 +146,19 @@ def connections_key_configured() -> bool:
     """
     if _RESOLVED_KEY is not None:
         return True
+    from agent_bom.api.secret_source import secret_is_configured
+
     provider = _provider()
+    # env / aws-kms carry the key material in AGENT_BOM_CONNECTIONS_KEY, which may
+    # be supplied either directly or via the mounted-file ``*_FILE`` form (Docker
+    # secrets on the shipped compose). Honor both so a file-only deployment does
+    # not fail closed with a spurious 503.
     if provider == PROVIDER_ENV:
-        return bool(os.environ.get(CONNECTIONS_KEY_ENV, "").strip())
+        return secret_is_configured(CONNECTIONS_KEY_ENV)
     if provider == PROVIDER_AWS_SECRETS:
         return bool(os.environ.get(CONNECTIONS_KEY_REF_ENV, "").strip())
     if provider == PROVIDER_AWS_KMS:
-        return bool(os.environ.get(CONNECTIONS_KEY_ENV, "").strip())
+        return secret_is_configured(CONNECTIONS_KEY_ENV)
     if provider == PROVIDER_VAULT:
         return bool(
             resolved_vault_addr()
@@ -366,6 +379,43 @@ def encrypt_secret(plaintext: str) -> str:
     fernet = _fernet()
     token = fernet.encrypt(plaintext.encode("utf-8"))
     return str(token.decode("ascii"))
+
+
+def seed_local_connection_key(directory: Path) -> Path:
+    """Generate and persist a Fernet key for a local/no-auth first run.
+
+    Writes a fresh base64 ``Fernet`` key to ``directory/connections.key`` with
+    ``0600`` permissions and returns the path. An existing key is never
+    overwritten so ciphertext stays decryptable across restarts (the file lives
+    on the persistent state volume). The key material is never logged.
+
+    This is the "just works" self-hosted default: the CLI wires
+    ``AGENT_BOM_CONNECTIONS_KEY_FILE`` at boot to the returned path so a fresh
+    pilot can create a connection without a 503. It is intentionally *only*
+    called for a local, unauthenticated stack — managed key providers and
+    authenticated deployments own their own key material.
+    """
+    from cryptography.fernet import Fernet
+
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / LOCAL_KEY_FILENAME
+    if path.exists():
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        return path
+    key = Fernet.generate_key()
+    try:
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        # Lost a race with a concurrent boot — the existing key is authoritative.
+        return path
+    try:
+        os.write(fd, key)
+    finally:
+        os.close(fd)
+    return path
 
 
 def decrypt_secret(token: str) -> str:

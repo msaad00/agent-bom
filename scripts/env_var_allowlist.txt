@@ -132,6 +132,8 @@ AGENT_BOM_CRED_NEAR_EXPIRY_DAYS
 AGENT_BOM_CRED_ROTATION_DAYS
 # Opt-out flag for the zero-config loopback dev API key; when set, `agent-bom serve` stays fail-closed on loopback instead of auto-minting a dev key. Read in cli/_server.py.
 AGENT_BOM_NO_AUTO_DEV_KEY
+# Opt-out flag for the local/no-auth auto-seeded connection encryption key; when set, `agent-bom serve|api` does not write ~/.agent-bom/connections.key and connection creation stays 503 until a key is provided. Read in cli/_server.py.
+AGENT_BOM_NO_AUTO_CONNECTIONS_KEY
 # Dormancy window (days, default 90) before a non-human identity with no recent usage is flagged dormant; read in graph/nhi_governance.py.
 AGENT_BOM_NHI_DORMANT_DAYS
 # Opt-in window (days, default 0 = disabled) after which a dormant agent-bom-issued identity is auto-revoked; read in api/agent_identity_store.py.

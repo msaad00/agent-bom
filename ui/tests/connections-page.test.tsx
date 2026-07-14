@@ -102,8 +102,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function openAwsWizard(): HTMLElement {
+  // The header "Add cloud account" button opens the wizard defaulted to AWS.
+  fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
+  return screen.getByRole("dialog", { name: "Add cloud account" });
+}
+
 describe("ConnectionsPage", () => {
-  it("creates a connection through the wizard and lists it with has_external_id, never rendering the secret", async () => {
+  it("carries one AWS ExternalId from setup through details into create", async () => {
     apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
     // After create, the list refresh returns the new connection.
     apiMock.listCloudConnections
@@ -128,36 +134,50 @@ describe("ConnectionsPage", () => {
       ).toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
-    // Step 0 -> 1 -> 2. Advancing must NOT trigger a premature form submit.
-    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    const wizard = openAwsWizard();
+
+    // Step 0 -> 1 (Setup). Advancing must NOT trigger a premature form submit.
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    // A single ExternalId is generated once and shown in the trust-policy panel
+    // and embedded in the grant script the user copies.
+    const setupId = within(wizard)
+      .getByTestId("wizard-external-id")
+      .textContent!.trim();
+    expect(setupId).toMatch(/^[a-f0-9]{32}$/);
+    expect(within(wizard).getByText(/EXTERNAL_ID=/)).toBeInTheDocument();
+
+    // Step 1 -> 2 (Details). The carried ExternalId must be identical — never
+    // a fresh mint that would not match the applied trust policy.
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
     expect(screen.queryByText("A display name is required.")).toBeNull();
     expect(apiMock.createCloudConnection).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByPlaceholderText("Production account"), {
+    const detailsId = within(wizard)
+      .getByTestId("wizard-external-id-details")
+      .textContent!.trim();
+    expect(detailsId).toBe(setupId);
+
+    fireEvent.change(within(wizard).getByPlaceholderText("Production account"), {
       target: { value: "Production account" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/arn:aws:iam/), {
+    fireEvent.change(within(wizard).getByPlaceholderText(/arn:aws:iam/), {
       target: { value: "arn:aws:iam::123456789012:role/agent-bom-readonly" },
     });
-    const secretInput = screen.getByPlaceholderText(
-      "••••••••••••",
-    ) as HTMLInputElement;
-    expect(secretInput.type).toBe("password");
-    fireEvent.change(secretInput, { target: { value: SECRET } });
-    fireEvent.change(screen.getByPlaceholderText("us-east-1, us-west-2"), {
+    fireEvent.change(within(wizard).getByPlaceholderText("us-east-1, us-west-2"), {
       target: { value: "us-east-1" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
+    fireEvent.click(
+      within(wizard).getByRole("button", { name: "Create connection" }),
+    );
 
+    // The stored ExternalId is exactly the value shown in setup + details.
     await waitFor(() =>
       expect(apiMock.createCloudConnection).toHaveBeenCalledWith({
         provider: "aws",
         display_name: "Production account",
         role_ref: "arn:aws:iam::123456789012:role/agent-bom-readonly",
-        external_id: SECRET,
+        external_id: setupId,
         regions: ["us-east-1"],
         // AWS has no provider-specific params, so auth_params is an empty map.
         auth_params: {},
@@ -169,13 +189,9 @@ describe("ConnectionsPage", () => {
       expect(screen.getByText("Production account")).toBeInTheDocument(),
     );
     expect(screen.getByText("Secret configured")).toBeInTheDocument();
-
-    // The plaintext secret must not be present anywhere in the rendered DOM.
-    expect(document.body.textContent).not.toContain(SECRET);
-    expect(document.querySelector(`input[value="${SECRET}"]`)).toBeNull();
   });
 
-  it("generates an AWS external ID in the wizard and pre-fills the secret field", async () => {
+  it("regenerating the AWS ExternalId updates setup and details together", async () => {
     render(<ConnectionsPage />);
 
     await waitFor(() =>
@@ -184,22 +200,25 @@ describe("ConnectionsPage", () => {
       ).toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
-    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    const wizard = openAwsWizard();
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Generate external ID" }),
-    );
+    const firstId = within(wizard)
+      .getByTestId("wizard-external-id")
+      .textContent!.trim();
 
-    const generated = screen.getByText(/^[a-f0-9]{32}$/);
-    expect(generated).toBeInTheDocument();
+    fireEvent.click(within(wizard).getByRole("button", { name: "Regenerate" }));
+    const regeneratedId = within(wizard)
+      .getByTestId("wizard-external-id")
+      .textContent!.trim();
+    expect(regeneratedId).toMatch(/^[a-f0-9]{32}$/);
+    expect(regeneratedId).not.toBe(firstId);
 
-    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
-
-    const secretInput = screen.getByPlaceholderText(
-      "••••••••••••",
-    ) as HTMLInputElement;
-    expect(secretInput.value).toBe(generated.textContent);
+    // The Details step reflects the regenerated value — the two never diverge.
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    expect(
+      within(wizard).getByTestId("wizard-external-id-details").textContent!.trim(),
+    ).toBe(regeneratedId);
   });
 
   it("maps provider-specific GCP fields to role_ref / external_id / auth_params", async () => {
@@ -249,6 +268,12 @@ describe("ConnectionsPage", () => {
         auth_params: { project_id: "proj-123" },
       }),
     );
+
+    // The pasted credential is dropped from state on success and never rendered.
+    await waitFor(() =>
+      expect(document.body.textContent).not.toContain(SECRET),
+    );
+    expect(document.querySelector(`textarea[value="${SECRET}"]`)).toBeNull();
   });
 
   it("runs a read-only scan and shows inventory counts + CIS pass rate", async () => {

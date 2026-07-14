@@ -104,11 +104,13 @@ test("captures connections page and wizard", async ({ page }, testInfo) => {
   const dialog = page.getByRole("dialog", { name: "Add cloud account" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  const setupExternalId = (await dialog.getByTestId("wizard-external-id").textContent())?.trim();
+  expect(setupExternalId).toMatch(/^[a-f0-9]{32}$/);
   await dialog.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.getByText("Read-only connection · step 3 of 3")).toBeVisible();
   await dialog.getByPlaceholder("Production account").fill("Production account");
   await dialog.getByPlaceholder(/arn:aws:iam/).fill("arn:aws:iam::123456789012:role/agent-bom-readonly");
-  await dialog.getByPlaceholder("••••••••••••").fill("example-external-id");
+  await expect(dialog.getByTestId("wizard-external-id-details")).toHaveText(setupExternalId!);
   await dialog.getByPlaceholder("us-east-1, us-west-2").fill("us-east-1, us-west-2");
   await expect(dialog.getByText("A display name is required.")).toHaveCount(0);
   await page.screenshot({ path: ".screenshots/connections-wizard.png" });

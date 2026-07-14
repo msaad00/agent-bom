@@ -391,3 +391,38 @@ def test_sqlite_severity_breakdown_counts_empty_as_unknown(tmp_path: Any) -> Non
     counts = store.severity_breakdown("t1")
     assert counts["high"] == 1
     assert counts["unknown"] == 1
+
+
+def test_in_memory_sort_ceiling_warns_once_per_tenant(monkeypatch, caplog) -> None:
+    """The in-memory backend re-sorts the whole tenant per read; above the ceiling
+    it warns (once per tenant) instead of degrading silently. Results are unchanged."""
+    from agent_bom.api import compliance_hub_store as hub
+
+    monkeypatch.setattr(hub, "IN_MEMORY_SORT_CEILING", 3)
+    store = InMemoryComplianceHubStore()
+    tenant = "tenant-ceiling"
+    store.add(tenant, [_finding(i) for i in range(5)])  # 5 rows > ceiling 3
+
+    with caplog.at_level("WARNING", logger="agent_bom.api.compliance_hub_store"):
+        rows1, total = store.list_page(tenant, limit=2, sort="effective_reach")
+        store.list_page(tenant, limit=2, sort="effective_reach")  # second read
+
+    # Behaviour is unchanged — still a correctly bounded page.
+    assert len(rows1) == 2
+    assert total == 5
+    warnings = [r for r in caplog.records if r.levelname == "WARNING" and "sorting" in r.getMessage()]
+    assert len(warnings) == 1  # once per tenant, not once per read
+
+
+def test_in_memory_sort_ceiling_silent_below_ceiling(monkeypatch, caplog) -> None:
+    from agent_bom.api import compliance_hub_store as hub
+
+    monkeypatch.setattr(hub, "IN_MEMORY_SORT_CEILING", 100)
+    store = InMemoryComplianceHubStore()
+    tenant = "tenant-small"
+    store.add(tenant, [_finding(i) for i in range(5)])
+
+    with caplog.at_level("WARNING", logger="agent_bom.api.compliance_hub_store"):
+        store.list_page(tenant, limit=2, sort="effective_reach")
+
+    assert not [r for r in caplog.records if "sorting" in r.getMessage()]

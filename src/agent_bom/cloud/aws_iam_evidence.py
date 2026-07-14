@@ -24,6 +24,7 @@ class UsageEvidenceState(StrEnum):
     AVAILABLE = "available"
     ACCESS_DENIED = "access_denied"
     NOT_SUPPORTED = "not_supported"
+    PENDING = "pending"
     UNAVAILABLE = "unavailable"
 
 
@@ -165,4 +166,3 @@ class IamPrincipalEvidence:
     usage: tuple[IamServiceUsageEvidence, ...] = ()
     policy_completeness: EvidenceCompleteness = EvidenceCompleteness.UNAVAILABLE
     usage_state: UsageEvidenceState = UsageEvidenceState.UNAVAILABLE
-

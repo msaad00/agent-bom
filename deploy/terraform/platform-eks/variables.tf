@@ -193,6 +193,24 @@ variable "create_aws_connect_role" {
   default     = false
 }
 
+variable "connect_role_arns" {
+  description = <<-EOT
+    ARNs / ARN patterns of the read-only connection roles the control-plane
+    scanner may assume cross-account (AWS Organizations fan-out, hosted connect).
+    Passed to the baseline module, which attaches a least-privilege
+    sts:AssumeRole policy to the scanner IRSA role — the keyless control-plane
+    identity can then read OTHER accounts, not only the one it runs in. Defaults
+    match the connect-aws / CloudFormation connector role names
+    (agent-bom-readonly*, abom-readonly*). Set to [] to disable cross-account
+    assume.
+  EOT
+  type        = list(string)
+  default = [
+    "arn:aws:iam::*:role/agent-bom-readonly*",
+    "arn:aws:iam::*:role/abom-readonly*",
+  ]
+}
+
 ###############################################################################
 # Optional S3 report-artifact export (async report download via presigned URL)
 ###############################################################################

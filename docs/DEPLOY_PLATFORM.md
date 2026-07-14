@@ -193,6 +193,87 @@ enterprise customer-owned install path.
 
 ---
 
+## Connect your cloud (zero keys)
+
+Once the control plane is up (any tier above), connecting an account is four
+steps and **never** involves a static access key or your laptop's base identity.
+The control plane reads a customer cloud by **assuming that account's read-only
+role** (`sts:AssumeRole` + ExternalId); it only needs its own workload identity
+to make that call. That identity is provisioned automatically by the deploy.
+
+**(a) Deploy the control plane — it gets a keyless identity automatically.**
+
+| Target | Control-plane identity (keyless) | Provisioned by |
+|--------|----------------------------------|----------------|
+| EKS | IRSA role on the scanner/control-plane ServiceAccount | `platform-eks` / `aws/baseline` (`scanner_role_arn`) |
+| Self-managed k8s on EC2 / ECS | Node instance profile / ECS task role (AWS SDK default chain) | your node/task role — grant it `sts:AssumeRole` on the connect roles |
+| AKS | Azure workload identity federated to the pod SA | `connect-azure` + Helm `cloud.azure.clientId/tenantId` |
+| GKE | GCP Workload Identity; the KSA impersonates the read-only SA | `connect-gcp` + Helm `cloud.gcp.impersonateSa` |
+
+On EKS the scanner IRSA role is minted with a least-privilege `sts:AssumeRole`
+policy scoped to the connection-role name pattern (`agent-bom-readonly*` /
+`abom-readonly*`) so it can assume those roles in **any** target account —
+`aws/baseline` variable `connect_role_arns`. Narrow it to explicit ARNs, or set
+`[]` to disable cross-account assume.
+
+**(b) Read the control plane's identity ARN — this is what target accounts trust.**
+
+```bash
+# EKS one-apply
+terraform -chdir=deploy/terraform/platform-eks output -raw scanner_role_arn
+# aws/baseline standalone
+terraform -chdir=deploy/terraform/aws/baseline output -raw scanner_role_arn
+```
+
+For EC2/ECS it is the node instance-profile / ECS task role ARN; for AKS/GCP it
+is the workload-identity principal your `connect-azure` / `connect-gcp` apply
+prints. This is the value the read-only role in each target account will trust.
+
+**(c) In each target account, create the read-only role trusting THAT identity + ExternalId.**
+
+One account (Terraform or the 1-click CloudFormation Launch Stack the wizard
+generates):
+
+```bash
+cd deploy/terraform/connect-aws
+terraform apply -var 'trusted_principal_arns=["<CONTROL_PLANE_IDENTITY_ARN>"]'
+terraform output role_arn               # hand to the wizard
+terraform output -raw external_id       # confused-deputy guard
+```
+
+All accounts at once — the AWS Organizations **StackSet** with auto-deploy, so
+new accounts enroll automatically (never account-by-account):
+
+```bash
+aws cloudformation create-stack-set \
+  --stack-set-name agent-bom-readonly \
+  --template-body file://deploy/cloudformation/agent-bom-readonly-role.yaml \
+  --permission-model SERVICE_MANAGED \
+  --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters ParameterKey=ExternalId,ParameterValue="$EXTERNAL_ID" \
+               ParameterKey=TrustedPrincipalArn,ParameterValue="<CONTROL_PLANE_IDENTITY_ARN>"
+```
+
+See [`deploy/cloudformation/README.md`](../deploy/cloudformation/README.md) for
+the full StackSet flow, and [`connect-*`](../deploy/terraform/) for the Azure
+management-group and GCP org/folder equivalents.
+
+**(d) Connect in the UI.** Open **Connections**, paste the `role_arn` +
+`ExternalId`, and scan. The control plane assumes the role with short-lived STS
+— no key ever leaves the target account, nothing is mutated.
+
+> **Zero-key throughout.** The one exception to workload identity is Snowflake,
+> which has no cloud workload identity and uses key-pair (never password) auth
+> supplied via a Secret reference. Everything else is keyless. The
+> laptop/local-credential path (`aws sso login`, `az login`,
+> `gcloud auth application-default login`) exists for **dev only** — never wire a
+> personal base identity into a running control plane.
+
+Full read-only contract (what is read, why it stays least-privilege) lives in
+[`CLOUD_CONNECT.md`](CLOUD_CONNECT.md); the identity model is in
+[`SECURITY_ARCHITECTURE.md` § Control-plane identity](SECURITY_ARCHITECTURE.md#control-plane-identity).
+
 ## Choosing a tier
 
 | Need | Tier |

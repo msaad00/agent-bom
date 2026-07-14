@@ -26,6 +26,26 @@ variable "cluster_oidc_issuer_url" {
   type        = string
 }
 
+variable "connect_role_arns" {
+  description = <<-EOT
+    ARNs (or ARN patterns) of the read-only connection roles the control-plane
+    scanner identity may assume cross-account via sts:AssumeRole. This is what
+    lets the keyless scanner read OTHER accounts (AWS Organizations fan-out /
+    hosted connect), not only the account it runs in. Least-privilege: the only
+    action granted is sts:AssumeRole, scoped to these resource ARNs; the
+    connection role's own trust policy + ExternalId are the reciprocal guard.
+    Defaults match the role names minted by connect-aws and the CloudFormation
+    connector template (agent-bom-readonly*, abom-readonly*). Narrow to explicit
+    ARNs for a tighter blast radius, or set to [] to disable cross-account
+    assume entirely.
+  EOT
+  type        = list(string)
+  default = [
+    "arn:aws:iam::*:role/agent-bom-readonly*",
+    "arn:aws:iam::*:role/abom-readonly*",
+  ]
+}
+
 variable "vpc_id" {
   description = "VPC ID that hosts the EKS cluster and RDS instance."
   type        = string

@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Control-plane identity — KEYLESS, out-of-box cloud connect (zero static keys)
+# ─────────────────────────────────────────────────────────────────────────────
+# The control plane reads a customer cloud by ASSUMING that account's read-only
+# connection role (sts:AssumeRole + ExternalId) — it never stores customer keys.
+# To make that call it needs its OWN cloud identity. This example wires the
+# control-plane workload identity for each target, and none of them use a static
+# access key.
+#
+#   EKS  → IRSA: annotate the ServiceAccount with the scanner/control-plane role
+#          ARN. That role reads THIS account directly and assumes the per-account
+#          connect-aws read-only roles cross-account (org fan-out / hosted
+#          connect). The baseline Terraform module attaches the least-privilege
+#          sts:AssumeRole policy (see deploy/terraform/aws/baseline,
+#          connect_role_arns). On self-managed k8s on EC2/ECS the pod instead
+#          inherits the node instance profile / ECS task role — also keyless, no
+#          annotation needed; grant that role the same sts:AssumeRole.
+#   AKS  → Azure workload identity: set clientId + tenantId; the chart renders the
+#          azure.workload.identity/client-id SA annotation and labels the pod.
+#   GKE  → Workload Identity: annotate the SA with the Google service account and
+#          set impersonateSa to the connect-gcp read-only SA.
+#
+# Read the control plane's identity per target, then create the read-only role in
+# each account trusting THAT identity + ExternalId (deploy/cloudformation or
+# deploy/terraform/connect-*), or run the org StackSet for every account at once.
+# See docs/DEPLOY_PLATFORM.md "Connect your cloud (zero keys)".
+# ─────────────────────────────────────────────────────────────────────────────
+
+controlPlane:
+  enabled: true
+
+# Top-level SA the control-plane pods run as. On EKS this is the identity that
+# assumes the read-only connection roles. Replace with your scanner/control-plane
+# role ARN (platform-eks output: scanner_role_arn), or pass via --set.
+serviceAccount:
+  create: true
+  name: agent-bom
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-scanner
+
+scanner:
+  enabled: true
+  serviceAccount:
+    create: true
+    annotations:
+      # Same keyless identity for the scheduled scan CronJob.
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-scanner
+  cloud:
+    enabled: true
+    aws:
+      inventory: true
+    # AKS — Azure workload identity (keyless). Uncomment and set your IDs.
+    # azure:
+    #   inventory: true
+    #   clientId: "00000000-0000-0000-0000-000000000000"
+    #   tenantId: "11111111-1111-1111-1111-111111111111"
+    # GKE — Workload Identity (keyless). Annotate the SA above with
+    #   iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
+    # and set the connect-gcp read-only SA to impersonate.
+    # gcp:
+    #   inventory: true
+    #   impersonateSa: agent-bom-readonly@PROJECT_ID.iam.gserviceaccount.com

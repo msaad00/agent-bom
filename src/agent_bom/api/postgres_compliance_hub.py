@@ -356,14 +356,37 @@ class PostgresComplianceHubStore:
 
     @staticmethod
     def _migrate_primary_key(conn: Any) -> None:
-        """Collapse the primary key to ``(tenant_id, finding_id)`` (idempotent).
+        """Collapse the primary key to ``(tenant_id, finding_id)`` (true no-op once done).
 
         Pre-idempotency deployments keyed on ``(tenant_id, finding_id, ordinal)``
         so every resend of the same finding appended a fresh row. Dedup existing
-        duplicates (keep the lowest ordinal), then swap the primary key. Guarded
-        so it is a no-op once the collapsed key is in place.
+        duplicates (keep the lowest ordinal), then swap the primary key.
+
+        The dedup DELETE is a full-table self-join — O(n^2)-class on a large
+        table — so we must never run it on an already-migrated store. Probe
+        ``pg_constraint`` first and return early when the collapsed key is
+        already in place: no DELETE, no DDL. Only a genuinely old-shape (or
+        missing) primary key triggers the dedup + constraint swap. Without this
+        guard the self-join ran on every store init and blew the default 15s
+        ``statement_timeout`` at scale, so init 500'd on every request (#3980).
         """
-        # Drop duplicates ahead of the unique key, keeping the original ingest.
+        pk_row = conn.execute(
+            """
+            SELECT string_agg(a.attname, ',' ORDER BY array_position(c.conkey, a.attnum))
+              FROM pg_constraint c
+              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+             WHERE c.conrelid = 'compliance_hub_findings'::regclass
+               AND c.contype = 'p'
+            """
+        ).fetchone()
+        pk_cols = pk_row[0] if pk_row else None
+        if pk_cols == "tenant_id,finding_id":
+            # Already collapsed — skip the dedup DELETE + DDL entirely so an
+            # already-migrated (possibly very large) table pays nothing at
+            # init and cannot exceed statement_timeout (#3980).
+            return
+        # Old-shape or missing primary key: drop duplicates ahead of the unique
+        # key, keeping the original ingest, then swap the primary key.
         conn.execute(
             """
             DELETE FROM compliance_hub_findings a

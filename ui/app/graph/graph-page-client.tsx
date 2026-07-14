@@ -704,7 +704,6 @@ function GraphPageInner() {
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<
     string | null
   >(null);
-  const [autoPathDismissed, setAutoPathDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
   const [searching, setSearching] = useState(false);
@@ -841,7 +840,6 @@ function GraphPageInner() {
     setExpandedClusterIds(new Set());
     setPinnedFocusId(null);
     setHoveredNodeId(null);
-    setAutoPathDismissed(false);
     setReachabilitySummary(null);
     setReachabilityError(null);
   }, [serverFilterKey]);
@@ -850,7 +848,6 @@ function GraphPageInner() {
     setSearchResults([]);
     setSearchQuery("");
     setSelectedAttackPathKey(null);
-    setAutoPathDismissed(false);
     setInvestigationMode(null);
     setReachabilitySummary(null);
     setReachabilityError(null);
@@ -1055,11 +1052,13 @@ function GraphPageInner() {
     [mergedGraphData?.attack_paths],
   );
 
-  const effectiveSelectedAttackPathKey =
-    selectedAttackPathKey ??
-    (!autoPathDismissed && activeScopePreset !== "expanded" && attackPaths[0]
-      ? attackPathKey(attackPaths[0])
-      : null);
+  // Attack-path focus is opt-in (#3932). Auto-selecting the top-ranked path on
+  // load filtered the canvas down to a single chain, and when that chain's
+  // nodes fell outside the current page/scope the graph rendered the "No nodes
+  // match" empty state on top of a fully-populated snapshot. The graph now
+  // lands on the full filtered topology; selecting a path from the queue
+  // narrows to it.
+  const effectiveSelectedAttackPathKey = selectedAttackPathKey;
 
   const selectedAttackPath = useMemo(
     () =>
@@ -1937,7 +1936,6 @@ function GraphPageInner() {
       });
       setSelectedNodeId(node.id);
       setSelectedAttackPathKey(null);
-      setAutoPathDismissed(true);
       // Click pin (#2257): toggle a "pinned focus" on the clicked node.
       // Re-clicking the same node clears the pin. Hover state is reset
       // because the pin replaces hover as the focus source.
@@ -1978,7 +1976,6 @@ function GraphPageInner() {
     setSelectedNodeId(id);
     setHoveredNodeId(id);
     setSelectedAttackPathKey(null);
-    setAutoPathDismissed(true);
   }, []);
 
   const runSearch = useCallback(async () => {
@@ -2028,7 +2025,6 @@ function GraphPageInner() {
       setPinnedFocusId(null);
       setHoveredNodeId(request.rootId);
       setSelectedAttackPathKey(null);
-      setAutoPathDismissed(true);
       setReachabilitySummary(null);
       setReachabilityError(null);
       setSearchResults([]);
@@ -2117,7 +2113,6 @@ function GraphPageInner() {
     setPinnedFocusId(null);
     setHoveredNodeId(null);
     setSelectedAttackPathKey(null);
-    setAutoPathDismissed(false);
     setReachabilitySummary(null);
     setReachabilityError(null);
     setBlastRadius(null);
@@ -2133,7 +2128,6 @@ function GraphPageInner() {
     setRollupDismissed(true);
     setRollupStack([]);
     setRollupError(null);
-    setAutoPathDismissed(false);
     setPageOffset(0);
   }, []);
 
@@ -2368,103 +2362,10 @@ function GraphPageInner() {
                 refreshing
               </span>
             )}
-          </div>
-
-          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
-            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
-              <div>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-                  View controls
-                </span>
-                <p className="mt-1 text-xs text-zinc-400">
-                  Change scope, layers, severity, traversal, and page size
-                  without changing the persisted graph.
-                </p>
-              </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
-                show
-              </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">
-                hide
-              </span>
-            </summary>
-            <div className="mt-3 space-y-3">
-              <div className="flex flex-wrap gap-2 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFilters(
-                      createImmediateGraphFilters(
-                        filters.agentName ?? flow.agentNames[0] ?? null,
-                      ),
-                    )
-                  }
-                  className={scopeButtonClass(
-                    activeScopePreset === "immediate",
-                  )}
-                  title="One-hop triage around the selected agent"
-                >
-                  Immediate
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFilters(
-                      createFocusedGraphFilters(
-                        filters.agentName ?? flow.agentNames[0] ?? null,
-                      ),
-                    )
-                  }
-                  className={scopeButtonClass(activeScopePreset === "relevant")}
-                  title="Default fix-first graph with bounded path context"
-                >
-                  Relevant paths
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilters(createExpandedGraphFilters(null))}
-                  className={scopeButtonClass(activeScopePreset === "expanded")}
-                  title="Broader topology review with lower-priority context included"
-                >
-                  Expanded topology
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFilters(
-                      createAssetLifecycleDriftGraphFilters(
-                        filters.agentName ?? flow.agentNames[0] ?? null,
-                      ),
-                    )
-                  }
-                  className={scopeButtonClass(
-                    activeScopePreset === "assetDrift",
-                  )}
-                  title="Governance paths and drift incidents across estate containers"
-                >
-                  Asset lifecycle drift
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFilters({ ...filters, vulnOnly: !filters.vulnOnly })
-                  }
-                  className={scopeButtonClass(filters.vulnOnly)}
-                  title="Limit the graph to vulnerability-bearing paths"
-                >
-                  Vulnerable only
-                </button>
-              </div>
-              <FilterPanel
-                filters={filters}
-                onChange={setFilters}
-                agentNames={flow.agentNames}
-                validValues={validValues}
-                onReset={handleResetFilters}
-                variant="panel"
-              />
+            <div className="ml-auto">
+              <GraphLensSwitcher variant="compact" legendItems={legendItems} />
             </div>
-          </details>
+          </div>
 
           {activeScopePreset === "assetDrift" && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
@@ -2594,6 +2495,126 @@ function GraphPageInner() {
             </span>
           )}
         </div>
+
+        {/* #3932: one collapsed-by-default "Advanced controls" shelf keeps the
+            canvas above the fold. It nests the three former full-width bands —
+            View controls, operator evaluation/diff lenses, and the ranked
+            attack-path queue — so the operator reaches them in one place
+            without any of them stacking on the default page load. */}
+        <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 group">
+          <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-2 [&::-webkit-details-marker]:hidden">
+            <div>
+              <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Advanced controls
+              </span>
+              <p className="mt-1 text-xs text-zinc-400">
+                View controls, operator evaluation and diff lenses, and the
+                ranked attack-path queue.
+              </p>
+            </div>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+              show
+            </span>
+            <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">
+              hide
+            </span>
+          </summary>
+          <div className="space-y-3 border-t border-zinc-800/80 p-3">
+          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+              <div>
+                <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                  View controls
+                </span>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Change scope, layers, severity, traversal, and page size
+                  without changing the persisted graph.
+                </p>
+              </div>
+              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+                show
+              </span>
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">
+                hide
+              </span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilters(
+                      createImmediateGraphFilters(
+                        filters.agentName ?? flow.agentNames[0] ?? null,
+                      ),
+                    )
+                  }
+                  className={scopeButtonClass(
+                    activeScopePreset === "immediate",
+                  )}
+                  title="One-hop triage around the selected agent"
+                >
+                  Immediate
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilters(
+                      createFocusedGraphFilters(
+                        filters.agentName ?? flow.agentNames[0] ?? null,
+                      ),
+                    )
+                  }
+                  className={scopeButtonClass(activeScopePreset === "relevant")}
+                  title="Default fix-first graph with bounded path context"
+                >
+                  Relevant paths
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilters(createExpandedGraphFilters(null))}
+                  className={scopeButtonClass(activeScopePreset === "expanded")}
+                  title="Broader topology review with lower-priority context included"
+                >
+                  Expanded topology
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilters(
+                      createAssetLifecycleDriftGraphFilters(
+                        filters.agentName ?? flow.agentNames[0] ?? null,
+                      ),
+                    )
+                  }
+                  className={scopeButtonClass(
+                    activeScopePreset === "assetDrift",
+                  )}
+                  title="Governance paths and drift incidents across estate containers"
+                >
+                  Asset lifecycle drift
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilters({ ...filters, vulnOnly: !filters.vulnOnly })
+                  }
+                  className={scopeButtonClass(filters.vulnOnly)}
+                  title="Limit the graph to vulnerability-bearing paths"
+                >
+                  Vulnerable only
+                </button>
+              </div>
+              <FilterPanel
+                filters={filters}
+                onChange={setFilters}
+                agentNames={flow.agentNames}
+                validValues={validValues}
+                onReset={handleResetFilters}
+                variant="panel"
+              />
+            </div>
+          </details>
 
         <details className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70">
           <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-zinc-400 [&::-webkit-details-marker]:hidden">
@@ -2833,7 +2854,6 @@ function GraphPageInner() {
                   type="button"
                   onClick={() => {
                     setSelectedAttackPathKey(null);
-                    setAutoPathDismissed(true);
                   }}
                   className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
                 >
@@ -2861,7 +2881,6 @@ function GraphPageInner() {
                         setReachabilitySummary(null);
                         setReachabilityError(null);
                         const clearing = effectiveSelectedAttackPathKey === key;
-                        setAutoPathDismissed(clearing);
                         setSelectedAttackPathKey(clearing ? null : key);
                       }}
                     />
@@ -2936,13 +2955,12 @@ function GraphPageInner() {
             )}
           </details>
         )}
+          </div>
+        </details>
       </div>
 
       <div className="flex-1 flex relative min-h-[68vh]">
         <div className="flex-1 relative min-h-[60vh] flex flex-col">
-          <div className="mb-2 shrink-0 px-1">
-            <GraphLensSwitcher variant="compact" legendItems={legendItems} />
-          </div>
           {selectedAttackPath && (
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
               <span>
@@ -2955,7 +2973,6 @@ function GraphPageInner() {
                   type="button"
                   onClick={() => {
                     setSelectedAttackPathKey(null);
-                    setAutoPathDismissed(true);
                   }}
                   className="rounded-lg border border-orange-400/30 bg-orange-950/40 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
                 >
@@ -2964,7 +2981,7 @@ function GraphPageInner() {
               </div>
             </div>
           )}
-          <div className="relative min-h-0 flex-1">
+          <div className="relative min-h-0 flex-1 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
               title="Loading graph window"

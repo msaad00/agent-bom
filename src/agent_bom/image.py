@@ -43,10 +43,8 @@ from agent_bom.security import validate_image_ref
 
 _logger = logging.getLogger(__name__)
 _PLATFORM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){1,2}$")
-# Legacy rpm databases (BerkeleyDB ``Packages`` / NDB ``Packages.db``) are not
-# decoded natively yet — only the modern ``rpmdb.sqlite``. Older RHEL/CentOS/UBI
-# images ship one of these, so a tar that yields nothing else is partial
-# coverage, not an extraction failure.
+# Legacy RPM database paths decoded by the same native header-record parser as
+# OCI layers. Kept here for the flattened ``docker export`` fallback.
 _LEGACY_RPMDB_PATHS = ("var/lib/rpm/Packages", "var/lib/rpm/Packages.db")
 
 
@@ -632,19 +630,17 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                 except Exception:
                     _logger.debug("Failed to parse Alpine apk db from container")
 
-            # --- RHEL/Fedora: rpm database ---
-            # The docker-export fallback can only read plaintext sources. Older
-            # RHEL/CentOS/UBI images keep packages in a BerkeleyDB ``Packages``
-            # file (or the NDB ``Packages.db``) we cannot decode yet; when one is
-            # present and no installed-rpms manifest covers it, warn so the empty
-            # result reads as partial coverage rather than a clean scan.
+            # --- RHEL/Fedora: legacy BerkeleyDB/NDB rpm database ---
             legacy_rpmdb = next((p for p in _LEGACY_RPMDB_PATHS if p in names), None)
             if legacy_rpmdb and "var/log/installed-rpms" not in names:
-                _logger.warning(
-                    "Legacy rpm database at /%s is not yet supported — OS package "
-                    "coverage from this image is incomplete",
-                    legacy_rpmdb,
-                )
+                from agent_bom.oci_parser import OCIParseError, _query_legacy_rpmdb
+
+                try:
+                    decoded_rpms = _query_legacy_rpmdb(tf, legacy_rpmdb)
+                except OCIParseError:
+                    raise ImageScanError("Legacy RPM database could not be decoded safely") from None
+                for rpm_name, rpm_ver in decoded_rpms:
+                    _add(rpm_name, rpm_ver, "rpm", f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}")
 
             rpm_manifest = "var/log/installed-rpms"
             if rpm_manifest in names:
@@ -709,16 +705,6 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
     return packages
 
 
-def _tar_contains_legacy_rpmdb(tar_path: Path) -> str | None:
-    """Return the legacy rpmdb path if the tar carries an unparsed BerkeleyDB/NDB rpm db."""
-    try:
-        with tarfile.open(tar_path, "r") as tf:
-            names = set(tf.getnames())
-    except (tarfile.TarError, OSError):
-        return None
-    return next((p for p in _LEGACY_RPMDB_PATHS if p in names), None)
-
-
 def _scan_with_docker(image_ref: str, platform: Optional[str] = None) -> list[Package]:
     """Scan a Docker image natively and fail if no packages can be extracted."""
     from agent_bom.oci_parser import OCIParseError, scan_oci
@@ -777,20 +763,6 @@ def _scan_with_docker(image_ref: str, platform: Optional[str] = None) -> list[Pa
             packages = _packages_from_tar(tar_path)
             if packages:
                 return packages
-
-            # Distinguish a real extraction failure from a known coverage gap.
-            # A legacy BerkeleyDB/NDB rpm database (/var/lib/rpm/Packages) we
-            # cannot decode yet is correct-but-partial, so report 0 with a
-            # warning instead of failing the whole scan.
-            legacy_rpmdb = _tar_contains_legacy_rpmdb(tar_path)
-            if legacy_rpmdb:
-                _logger.warning(
-                    "Image %s uses a legacy rpm database at /%s that is not yet "
-                    "supported — reporting 0 packages; OS coverage is incomplete",
-                    image_ref,
-                    legacy_rpmdb,
-                )
-                return []
 
         raise ImageScanError(
             f"Native image scan extracted 0 packages from {image_ref}. This is likely an extraction or parser failure, not a clean scan."

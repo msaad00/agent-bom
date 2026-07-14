@@ -56,6 +56,22 @@ agent-bom image python:3.12-slim
 ```
 
 Uses agent-bom's native image scanning pipeline to enumerate OS and language packages within container images.
+The native parser reads Debian dpkg, Alpine apk, modern SQLite RPM databases,
+and legacy RPM BerkeleyDB/NDB databases without requiring a scanner binary.
+Malformed legacy RPM databases fail the scan instead of producing a clean
+zero-package result.
+
+The default OS result remains precision-first and reports distro-confirmed
+advisories. To include unfixed, pending, no-DSA, and end-of-life distro
+advisories for an exhaustive review, run:
+
+```bash
+AGENT_BOM_INCLUDE_UNFIXED=1 agent-bom image python:3.12-slim
+```
+
+The artifact is the same findings report with lower-confidence unfixed distro
+rows included; review their match-confidence tier before using them as a CI
+block. Language-package coverage is unaffected by this switch.
 
 ## IaC and cloud posture
 

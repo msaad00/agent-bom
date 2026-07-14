@@ -112,7 +112,7 @@ export function toAttackCardNodes(path: AttackPath, nodeById: Map<string, Unifie
   return nodes;
 }
 
-function exposureRoleForEntityType(entityType: string): ExposureEntityRole {
+export function exposureRoleForEntityType(entityType: string): ExposureEntityRole {
   switch (entityType) {
     case EntityType.VULNERABILITY:
     case EntityType.MISCONFIGURATION:

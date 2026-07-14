@@ -46,6 +46,11 @@ output "backup_bucket_name" {
   value       = module.baseline.backup_bucket_name
 }
 
+output "scanner_assume_connect_policy_arn" {
+  description = "IAM policy ARN letting the scanner identity assume read-only connection roles cross-account (empty when connect_role_arns = [])."
+  value       = module.baseline.scanner_assume_connect_policy_arn
+}
+
 output "connect_role_arn" {
   description = "Read-only IAM role ARN the scanner assumes to inventory this AWS account (empty unless create_aws_connect_role = true)."
   value       = var.create_aws_connect_role ? module.connect_aws[0].role_arn : ""

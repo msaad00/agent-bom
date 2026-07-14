@@ -173,6 +173,10 @@ module "baseline" {
   db_multi_az            = var.db_multi_az
   db_deletion_protection = var.db_deletion_protection
 
+  # Keyless cross-account read: the scanner IRSA role may sts:AssumeRole the
+  # read-only connection roles in target accounts (org fan-out / hosted connect).
+  connect_role_arns = var.connect_role_arns
+
   tags = var.tags
 }
 

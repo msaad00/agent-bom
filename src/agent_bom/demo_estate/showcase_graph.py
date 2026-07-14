@@ -589,15 +589,72 @@ def finalize_showcase_snapshot(graph: UnifiedGraph, *, profile: ShowcaseProfile)
         blocked_tool.attributes["evidence_tier"] = "runtime_blocked"
 
 
+def _existing_snapshots(
+    graph_store: GraphStoreProtocol, tenant_id: str
+) -> list[dict[str, Any]]:
+    """Return the tenant's snapshots (scan_id + created_at) for staleness checks.
+
+    Prefers ``list_snapshots`` so we can tell a real scan and a stale demo seed
+    apart. Minimal stores that only expose ``latest_snapshot_id`` degrade to a
+    single-entry view with an unknown ``created_at`` (which reads as stale).
+    """
+    list_snapshots = getattr(graph_store, "list_snapshots", None)
+    if callable(list_snapshots):
+        try:
+            return list(list_snapshots(tenant_id=tenant_id))
+        except Exception:  # noqa: BLE001 — fall back rather than block seeding
+            _logger.warning("showcase seed could not list snapshots", exc_info=True)
+    latest_snapshot_id = getattr(graph_store, "latest_snapshot_id", None)
+    if callable(latest_snapshot_id):
+        scan_id = latest_snapshot_id(tenant_id=tenant_id)
+        if scan_id:
+            return [{"scan_id": scan_id, "created_at": ""}]
+    return []
+
+
+def _showcase_seed_is_current(snapshots: list[dict[str, Any]]) -> bool:
+    """True when both showcase snapshots are present at the expected timestamps."""
+    created_at_by_id = {
+        str(row.get("scan_id")): str(row.get("created_at") or "") for row in snapshots
+    }
+    return (
+        created_at_by_id.get(SHOWCASE_SCAN_ID) == SHOWCASE_CURRENT_CREATED_AT
+        and created_at_by_id.get(SHOWCASE_BASELINE_SCAN_ID) == SHOWCASE_BASELINE_CREATED_AT
+    )
+
+
 def seed_showcase_graph_if_empty(
     graph_store: GraphStoreProtocol,
     *,
     tenant_id: str = SHOWCASE_TENANT,
 ) -> bool:
-    """Persist baseline + current showcase snapshots when the tenant has none yet."""
-    latest_snapshot_id = getattr(graph_store, "latest_snapshot_id", None)
-    if callable(latest_snapshot_id) and latest_snapshot_id(tenant_id=tenant_id):
+    """Persist baseline + current showcase snapshots, stale-aware (issue #3964).
+
+    Seeding is gated on *what* already occupies the tenant, not merely whether
+    anything does:
+
+    * A real (non-showcase) scan is never shadowed — if any snapshot has a
+      scan id outside the showcase set, a fresh scan owns the graph and the demo
+      seed is skipped. The read path already defaults to the newest snapshot, so
+      the fresh scan stays the one served.
+    * A *current* showcase seed (both snapshots at the expected ``created_at``)
+      is idempotent — nothing is rewritten.
+    * A *stale* showcase seed (missing baseline, or an out-of-date ``created_at``
+      left by an older build / polluted DB) is cleared and re-seeded so
+      ``--demo-estate`` boots on today's curated estate.
+    """
+    showcase_ids = {SHOWCASE_SCAN_ID, SHOWCASE_BASELINE_SCAN_ID}
+    snapshots = _existing_snapshots(graph_store, tenant_id)
+    if any(str(row.get("scan_id")) not in showcase_ids for row in snapshots):
         return False
+    if snapshots and _showcase_seed_is_current(snapshots):
+        return False
+    if snapshots:
+        # Only stale showcase snapshots remain (no real scan reached here); wipe
+        # them so the refreshed seed does not leave orphaned nodes/edges behind.
+        delete_tenant = getattr(graph_store, "delete_tenant", None)
+        if callable(delete_tenant):
+            delete_tenant(tenant_id=tenant_id)
 
     # One shared, enriched identity estate feeds both snapshots so the persisted
     # MANAGED_IDENTITY node ids match the live identity store the API re-projects.

@@ -115,9 +115,10 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     graph_store = _get_graph_store()
     summary: dict[str, Any] = {"enabled": True, "tenant_id": tenant_id, "seeded": False}
 
-    # Graph seed is isolated: a pre-existing (possibly stale) snapshot early-returns
-    # here, and any failure must NOT block the findings/scan or identity seeding
-    # below — those are what make posture + NHI reliably non-empty on every start.
+    # Graph seed is isolated and stale-aware: a real scan is left untouched, a
+    # current demo seed is a no-op, and a stale demo seed is refreshed (see
+    # seed_showcase_graph_if_empty). Any failure must NOT block the findings/scan
+    # or identity seeding below — those keep posture + NHI non-empty on start.
     graph_seeded = False
     try:
         graph_seeded = seed_showcase_graph_if_empty(graph_store, tenant_id=tenant_id)

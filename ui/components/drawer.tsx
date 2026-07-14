@@ -73,7 +73,7 @@ export function Drawer({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-sm transition-opacity duration-200 ${
+      className={`fixed inset-0 z-[80] flex justify-end bg-black/45 backdrop-blur-sm transition-opacity duration-200 ${
         entered ? "opacity-100" : "opacity-0"
       }`}
       role="dialog"

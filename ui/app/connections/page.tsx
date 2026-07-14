@@ -48,6 +48,7 @@ import { ErrorBanner } from "@/components/empty-state";
 import { PageEmptyState } from "@/components/states/page-state";
 import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
 import { Card, Section } from "@/components/card";
+import { Collapsible } from "@/components/collapsible";
 import { PageLaneHeader } from "@/components/page-lane";
 import { Drawer } from "@/components/drawer";
 import { CoverageCockpit } from "@/components/coverage-cockpit";
@@ -406,6 +407,15 @@ function formatWhen(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+/** Compact date (e.g. "Jul 14") for KPI tiles where a full timestamp overflows. */
+function formatWhenShort(value: string | null): string {
+  if (!value) return "Never";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 function eventMode(connection: CloudConnectionRecord): {
   label: string;
   detail: string;
@@ -683,6 +693,16 @@ export default function ConnectionsPage() {
     [connections],
   );
 
+  const lastAccountScan = useMemo(() => {
+    const stamps = connections
+      .map((c) => c.last_scan_at)
+      .filter((v): v is string => Boolean(v))
+      .sort((a, b) => b.localeCompare(a));
+    return stamps[0] ?? null;
+  }, [connections]);
+
+  const hasConnections = connections.length > 0;
+
   const connectedByProvider = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const connection of connections) {
@@ -712,12 +732,25 @@ export default function ConnectionsPage() {
     [connectedByProvider, sourceCountByKind],
   );
 
+  const gallery = (
+    <ConnectorGallery
+      activeCategory={galleryCategory}
+      onCategoryChange={setGalleryCategory}
+      search={gallerySearch}
+      onSearchChange={setGallerySearch}
+      connectedCountFor={connectorConnectedCount}
+      canManage={canManage}
+      onConnectCloud={openWizard}
+      onConnectCodingAgent={() => setCodingAgentOpen(true)}
+    />
+  );
+
   return (
     <div className="space-y-6">
       <PageLaneHeader
         lane="cloud-data"
         title="Connections"
-        subtitle="Connect cloud accounts, code, AI, and data sources — all read-only. Cloud uses brokered roles; everything else registers in the control plane. Secrets are encrypted at rest and never returned to the browser."
+        subtitle="Connect cloud accounts, code, AI, and data sources — read-only, with secrets encrypted at rest."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-200">
             {deploymentModeLabel(counts?.deployment_mode)} · brokered read-only
@@ -750,11 +783,13 @@ export default function ConnectionsPage() {
           </>
         }
         banner={
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             <StatCard label="Connections" value={loading ? "…" : connections.length} />
             <StatCard label="Active" value={loading ? "…" : activeCount} accent="info" />
-            <StatCard label="Providers" value={PROVIDER_OPTIONS.length} />
-            <StatCard label="Secret storage" value="Encrypted" accent="info" />
+            <StatCard
+              label="Last scan"
+              value={loading ? "…" : formatWhenShort(lastAccountScan)}
+            />
           </div>
         }
       />
@@ -800,24 +835,33 @@ export default function ConnectionsPage() {
         connections={connections}
       />
 
-      {/* Connect — scalable connector gallery across cloud, code, AI, and data */}
-      <Section
-        label="Connect a source"
-        description="Every connectable surface in one gallery. Cloud accounts open a read-only wizard; code, AI, and data sources register in the control plane. All read-only — secrets are encrypted at rest and never returned to the browser."
-      >
-        <ConnectorGallery
-          activeCategory={galleryCategory}
-          onCategoryChange={setGalleryCategory}
-          search={gallerySearch}
-          onSearchChange={setGallerySearch}
-          connectedCountFor={connectorConnectedCount}
-          canManage={canManage}
-          onConnectCloud={openWizard}
-          onConnectCodingAgent={() => setCodingAgentOpen(true)}
-        />
-      </Section>
+      {/* Connected-first: CSS order makes the accounts table the hero once ≥1
+          account is connected; the connector picker demotes into a collapsed
+          "Add a source" below it. On an empty estate the picker leads. */}
+      <div className="flex flex-col gap-6">
+      {/* Connect — connector gallery across cloud, code, AI, and data */}
+      <div className={hasConnections ? "order-2" : "order-1"}>
+        {hasConnections ? (
+          <Collapsible
+            title="Add a source"
+            subtitle="Cloud accounts open a read-only wizard; code, AI, and data sources register in the control plane."
+            defaultOpen={false}
+            data-testid="add-source-picker"
+          >
+            {gallery}
+          </Collapsible>
+        ) : (
+          <Section
+            label="Connect a source"
+            description="Cloud accounts open a read-only wizard; code, AI, and data sources register in the control plane."
+          >
+            {gallery}
+          </Section>
+        )}
+      </div>
 
       {/* Connected accounts */}
+      <div className={hasConnections ? "order-1" : "order-2"}>
       <Card flush className="overflow-hidden p-5">
         <div className="flex items-start gap-3">
           <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
@@ -828,8 +872,8 @@ export default function ConnectionsPage() {
               Connected accounts
             </h2>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
-              Each row is a tenant-scoped, encrypted connection. Run a read-only
-              scan to see live inventory counts and CIS pass rate.
+              Each row is a tenant-scoped, encrypted connection. Run a scan to see
+              live inventory counts and CIS pass rate.
             </p>
           </div>
         </div>
@@ -908,8 +952,17 @@ export default function ConnectionsPage() {
           )}
         </div>
       </Card>
+      </div>
+      </div>
 
-      <RolePermissionsPanel session={session} />
+      <Collapsible
+        title="Roles & permissions"
+        subtitle="Viewer reads · Contributor connects and scans · Admin manages keys, policy, and fleet."
+        defaultOpen={false}
+        data-testid="roles-permissions"
+      >
+        <RolePermissionsPanel session={session} bare />
+      </Collapsible>
 
       <ConnectionDetailDrawer
         connection={connections.find((c) => c.id === detailId) ?? null}
@@ -1994,27 +2047,14 @@ function AddConnectionWizard({
             {step === 1 ? (
               <div className="space-y-3">
                 <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                  Read-only setup
+                  Grant read-only access
                 </p>
                 <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-xs leading-6 text-[var(--text-secondary)]">
                   <p className="text-[var(--foreground)]">
-                    Set up a read-only {provider.label} connection:
+                    Run this in your {provider.label} to create the read-only
+                    grant, then paste the {provider.roleField.label.toLowerCase()}{" "}
+                    in the next step.
                   </p>
-                  <ol className="mt-2 list-decimal space-y-1.5 pl-4">
-                    {provider.setupSteps.map((stepText) => (
-                      <li key={stepText}>{stepText}</li>
-                    ))}
-                  </ol>
-                  {providerMeta?.deployNotes.length ? (
-                    <ul className="mt-3 space-y-1 text-emerald-300/90">
-                      {providerMeta.deployNotes.map((note) => (
-                        <li key={note} className="flex items-start gap-1.5">
-                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
-                          {note}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
                   <div className="mt-4 space-y-2">
                     <GrantMethodPicker
                       method={grantMethod}
@@ -2034,52 +2074,64 @@ function AddConnectionWizard({
                     </pre>
                   </div>
                   {isAws ? (
-                    <div className="mt-4 rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[11px] font-medium text-emerald-200">
-                          External ID for trust policy
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-900/50 bg-emerald-950/20 px-2.5 py-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-200/80">
+                          ExternalId (embedded in the script above)
                         </p>
-                        <div className="flex items-center gap-1.5">
-                          {generatedExternalId ? (
-                            <CopyTextButton text={generatedExternalId} label="Copy ID" />
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={handleRegenerateExternalId}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-500"
+                        {generatedExternalId ? (
+                          <p
+                            data-testid="wizard-external-id"
+                            className="break-all font-mono text-[11px] text-[var(--foreground)]"
                           >
-                            <RefreshCcw className="h-3 w-3" />
-                            Regenerate
-                          </button>
-                        </div>
+                            {generatedExternalId}
+                          </p>
+                        ) : null}
                       </div>
-                      {generatedExternalId ? (
-                        <p
-                          data-testid="wizard-external-id"
-                          className="mt-2 break-all font-mono text-[11px] text-[var(--foreground)]"
+                      <div className="flex items-center gap-1.5">
+                        {generatedExternalId ? (
+                          <CopyTextButton text={generatedExternalId} label="Copy" />
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={handleRegenerateExternalId}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-500"
                         >
-                          {generatedExternalId}
-                        </p>
-                      ) : null}
-                      <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">
-                        This exact ID is embedded in the grant script above and is
-                        what the connection stores — apply it as the trust policy
-                        ExternalId. It carries to the next step unchanged; do not
-                        regenerate after you have applied the grant.
-                      </p>
+                          <RefreshCcw className="h-3 w-3" />
+                          Regenerate
+                        </button>
+                      </div>
                     </div>
                   ) : null}
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
-                    <Terminal className="h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
-                    <code className="overflow-x-auto whitespace-nowrap font-mono text-[11px] text-[var(--foreground)]">
-                      {provider.cli}
-                    </code>
-                  </div>
-                  <p className="mt-3 inline-flex items-center gap-1.5 text-emerald-300">
-                    <Lock className="h-3.5 w-3.5" /> The{" "}
-                    {provider.secretField.label.toLowerCase()} is stored
-                    encrypted and never displayed again.
-                  </p>
+                  <Collapsible
+                    title="How this works & security"
+                    defaultOpen={false}
+                    bare
+                    className="mt-3"
+                    titleClassName="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]"
+                  >
+                    <ul className="mt-2 space-y-1 text-[11px] text-[var(--text-secondary)]">
+                      {providerMeta?.deployNotes.map((note) => (
+                        <li key={note} className="flex items-start gap-1.5">
+                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                          {note}
+                        </li>
+                      ))}
+                      {isAws ? (
+                        <li className="flex items-start gap-1.5">
+                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                          The ExternalId is embedded in the grant script and is
+                          what the connection stores — it carries to the next step
+                          unchanged. Regenerate only before you apply the grant.
+                        </li>
+                      ) : null}
+                      <li className="flex items-start gap-1.5">
+                        <Lock className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                        The {provider.secretField.label.toLowerCase()} is stored
+                        encrypted at rest and never displayed again.
+                      </li>
+                    </ul>
+                  </Collapsible>
                 </div>
               </div>
             ) : null}

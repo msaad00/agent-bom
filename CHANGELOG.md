@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Snowflake CIS benchmark reachable over REST** (#3967): `GET /v1/cloud/snowflake/cis-benchmark` no longer 404s — it runs the real `snowflake_cis_benchmark` and, when the connector/credentials are absent, degrades to the shared HTTP-200 `unavailable` envelope like AWS/Azure/GCP, bringing the REST surface to parity with the CLI/MCP `cis-benchmark --provider snowflake`.
+- **In-memory compliance-hub sort ceiling guarded** (#3967): the process-local demo backend re-sorts a tenant's whole row list per paged read; past a documented ceiling it now warns once per tenant (steering operators to the SQLite/Postgres backend) instead of degrading silently. No behavior change to results.
+
 ## [0.95.0] - 2026-07-13
 
 Enterprise auth, cloud-connect, and interop release: browser OIDC SSO, actionable cloud connections, compliance honesty, refreshed dashboard/branding, and a large security-hardening batch on top of 0.94.2.

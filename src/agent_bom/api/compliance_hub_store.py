@@ -21,6 +21,7 @@ with ``ingested_at`` so future expiry / TTL work has a key.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 from collections.abc import Callable, Iterable, Sequence
@@ -50,8 +51,18 @@ from agent_bom.api.hub_reference_store import (
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.graph.severity import severity_policy_rank
 
+_logger = logging.getLogger(__name__)
+
 # Chunk size for reconcile UPDATE … IN (…) to stay under SQLite/Postgres bind limits.
 RECONCILE_ABSENT_CHUNK = 500
+
+# Row-count ceiling for the process-local InMemoryComplianceHubStore. Its paged
+# read copies + re-sorts a tenant's entire row list on every request (O(n log n)
+# per read, independent of page size) — fine for the demo/single-node backend it
+# is scoped to, but it degrades on a large tenant. Above this ceiling we emit a
+# one-time-per-tenant warning steering operators to a SQL backend (SQLite /
+# Postgres), which sort in the query plan instead of in Python.
+IN_MEMORY_SORT_CEILING = 50_000
 
 # Defined here (module scope) so ``list`` resolves to the builtin: the store
 # classes below define a ``list`` method that would otherwise shadow it in
@@ -640,10 +651,20 @@ def _migrate_lifecycle_observations_l2_sqlite(conn: sqlite3.Connection) -> None:
 
 
 class InMemoryComplianceHubStore:
-    """Process-local store. Ephemeral; tests + single-node demos only."""
+    """Process-local store. Ephemeral; tests + single-node demos only.
+
+    Scale ceiling: reads copy + re-sort a tenant's whole row list per request
+    (see ``IN_MEMORY_SORT_CEILING``). This backend is intentionally the demo /
+    single-node path; production deployments use the SQLite or Postgres backend,
+    which sort in the query plan. A tenant that grows past the ceiling logs a
+    one-time warning rather than silently degrading.
+    """
 
     def __init__(self) -> None:
         self._by_tenant: dict[str, list[dict[str, Any]]] = {}
+        # Tenants already warned about crossing IN_MEMORY_SORT_CEILING, so the
+        # guard logs once per tenant instead of on every paged read.
+        self._sort_ceiling_warned: set[str] = set()
         # Maps finding_id -> ingest-order slot so a resend of the same
         # (tenant_id, finding_id) refreshes its row in place instead of
         # appending a duplicate (idempotent ingest, mirrors the SQL backends).
@@ -681,6 +702,25 @@ class InMemoryComplianceHubStore:
             rows = list(self._by_tenant.get(tenant_id, []))
         return hydrate_finding_payloads_memory(tenant_id, rows)
 
+    def _guard_sort_ceiling(self, tenant_id: str, row_count: int) -> None:
+        """Warn once per tenant when the whole-tenant re-sort ceiling is crossed.
+
+        The in-memory backend re-sorts a tenant's entire row list on every paged
+        read. Past ``IN_MEMORY_SORT_CEILING`` that is a real per-request cost;
+        surface it (once per tenant) instead of degrading silently — a SQL
+        backend sorts in the query plan and should be used at that scale.
+        """
+        if row_count <= IN_MEMORY_SORT_CEILING or tenant_id in self._sort_ceiling_warned:
+            return
+        self._sort_ceiling_warned.add(tenant_id)
+        _logger.warning(
+            "InMemoryComplianceHubStore is sorting %d rows per read (ceiling %d); "
+            "this demo/single-node backend re-sorts the whole tenant per request — "
+            "use the SQLite or Postgres backend at this scale.",
+            row_count,
+            IN_MEMORY_SORT_CEILING,
+        )
+
     def list_page(
         self,
         tenant_id: str,
@@ -695,6 +735,7 @@ class InMemoryComplianceHubStore:
     ) -> FindingPage:
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
+        self._guard_sort_ceiling(tenant_id, len(rows))
         rows = _filter_hub_rows(rows, severity=severity, scan_id=scan_id, origin=origin)
         total = len(rows) if include_total else None
         if sort != "ordinal":

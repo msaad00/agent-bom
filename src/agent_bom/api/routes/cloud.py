@@ -71,7 +71,7 @@ _CIS_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 _INVENTORY_PROVIDERS = ("aws", "azure", "gcp")
-_CIS_PROVIDERS = ("aws", "azure", "gcp")
+_CIS_PROVIDERS = ("aws", "azure", "gcp", "snowflake")
 _REGION_RE = re.compile(r"[a-z]{2}(-gov)?-[a-z]+-\d{1,2}")
 _PROFILE_RE = re.compile(r"[a-zA-Z0-9._-]{1,100}")
 # Audit-field allowlists. IAM action identifiers (AWS ``svc:Action``, GCP
@@ -280,6 +280,17 @@ async def cloud_cis_benchmark(
                 from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
 
                 report = run_azure_cis(subscription_id=subscription_id.strip() or None, checks=check_list)
+            elif requested == "snowflake":
+                from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_snowflake_cis
+
+                # Snowflake has no region/profile/subscription/project scoping; its
+                # account/user/authenticator come from the standard read-only env
+                # credentials (SNOWFLAKE_ACCOUNT/USER + key-pair/SSO), mirroring how
+                # the CLI/MCP snowflake CIS path resolves them. When the connector or
+                # credentials are absent, run_benchmark raises CloudDiscoveryError and
+                # the handler below degrades to the same HTTP-200 "unavailable" shape
+                # as the other providers — never a 500.
+                report = run_snowflake_cis(checks=check_list)
             else:  # gcp
                 from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
 
@@ -297,6 +308,8 @@ async def cloud_cis_benchmark(
                 provider_label = "azure"
             elif requested == "gcp":
                 provider_label = "gcp"
+            elif requested == "snowflake":
+                provider_label = "snowflake"
             else:
                 provider_label = "unknown"
             _logger.warning("Cloud CIS benchmark unavailable for %s", provider_label)

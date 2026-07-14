@@ -23,7 +23,11 @@ export const CONTROLS_CLASS =
 
 export const MINIMAP_CLASS =
   "!bg-[var(--surface)]/90 !border-[var(--border-subtle)] !rounded-lg !backdrop-blur-sm";
-export const MINIMAP_BG = "#09090b";
+// React Flow forwards `bgColor` into an inline CSS custom property that its
+// stylesheet resolves with `var()`, so a token reference here follows the
+// light/dark toggle without any runtime JS (was a hardcoded near-black #09090b
+// that rendered as a black panel on the light canvas).
+export const MINIMAP_BG = "var(--surface)";
 export const MINIMAP_MASK = "rgba(24,24,27,0.82)";
 
 // Dot-grid tint. #1c1c1e sat one step off the page background, so the canvas

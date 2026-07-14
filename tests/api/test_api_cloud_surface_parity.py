@@ -136,6 +136,29 @@ def test_cloud_cis_unknown_provider_404() -> None:
     assert resp.status_code == 404
 
 
+def test_cloud_cis_snowflake_is_wired_not_404() -> None:
+    # Snowflake CIS is a real benchmark (snowflake_cis_benchmark.run_benchmark);
+    # it must not 404 like an unknown provider. Without the snowflake connector /
+    # credentials in the test env it degrades to the shared "unavailable"
+    # envelope (HTTP 200), exactly like the other providers — never 404, never 500.
+    client = TestClient(app)
+    resp = client.get("/v1/cloud/snowflake/cis-benchmark", headers=_proxy_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    if "error" in body:
+        assert body["status"] == "unavailable"
+        assert body["provider"] == "snowflake"
+    else:
+        assert body["audit_metadata"]["read_only"] is True
+        assert "checks" in body or "summary" in body
+
+
+def test_cloud_cis_snowflake_rejects_underprivileged_role() -> None:
+    client = TestClient(app)
+    resp = client.get("/v1/cloud/snowflake/cis-benchmark", headers=_proxy_headers(role="viewer"))
+    assert resp.status_code == 403
+
+
 def test_cloud_cis_bad_region_400() -> None:
     client = TestClient(app)
     resp = client.get("/v1/cloud/aws/cis-benchmark?region=BAD", headers=_proxy_headers())

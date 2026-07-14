@@ -973,7 +973,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
 
     @mcp.tool(annotations=_READ_ONLY, title="Generate SBOM")
     async def generate_sbom(
-        format: Annotated[str, Field(description="SBOM format: 'cyclonedx' (CycloneDX 1.6) or 'spdx' (SPDX 3.0).")] = "cyclonedx",
+        format: Annotated[str, Field(description="SBOM format: 'cyclonedx' (CycloneDX 1.7) or 'spdx' (SPDX 3.0).")] = "cyclonedx",
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
     ) -> str:
         """Generate a Software Bill of Materials (SBOM) for your AI agent setup.
@@ -982,7 +982,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         and generates a standards-compliant SBOM.
 
         Args:
-            format: SBOM format — "cyclonedx" (CycloneDX 1.6) or "spdx" (SPDX 3.0).
+            format: SBOM format — "cyclonedx" (CycloneDX 1.7) or "spdx" (SPDX 3.0).
             config_path: Path to a specific MCP config directory.
                          If not provided, auto-discovers all local agent configs.
 

@@ -131,7 +131,7 @@ SLO or openCypher endpoint.
 | **Registry** | 967 MCP server security metadata entries |
 | **Compliance** | OWASP LLM/Agentic/MCP Top 10, MITRE ATLAS, EU AI Act, NIST AI RMF, CIS |
 | **Runtime proxy** | Policy enforcement, credential leak detection, audit logging |
-| **SBOM** | CycloneDX 1.6, SPDX 3.0 output |
+| **SBOM** | CycloneDX 1.7, SPDX 3.0 output |
 | **Cloud** | AWS, Snowflake, Azure, GCP CIS benchmarks |
 
 ## Deploy In Your Infra

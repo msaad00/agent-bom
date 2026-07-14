@@ -1,6 +1,6 @@
-"""CycloneDX 1.6 SBOM output format with ML BOM extensions.
+"""CycloneDX 1.7 SBOM output format with ML BOM extensions.
 
-Supports native CycloneDX 1.6 machine learning extensions:
+Supports native CycloneDX 1.7 machine learning extensions:
 - ``modelCard`` — model provenance, training parameters, performance metrics
 - ``data`` — dataset provenance, governance, classification
 - Component type ``machine-learning-model`` for ML model artifacts
@@ -28,7 +28,7 @@ from agent_bom.security import sanitize_launch_command, sanitize_path_label
 def _sanitize_bom_ref(raw: str) -> str:
     """Sanitize a CycloneDX bom-ref to contain only valid characters.
 
-    CycloneDX 1.6 bom-ref should match ``^[a-zA-Z0-9._-]+$``.
+    CycloneDX 1.7 bom-ref should match ``^[a-zA-Z0-9._-]+$``.
     Replace invalid characters (``@``, ``/``, spaces, etc.) with ``-``.
     """
     return re.sub(r"[^a-zA-Z0-9._-]", "-", raw)
@@ -57,7 +57,7 @@ def _append_discovery_provenance_properties(properties: list[dict], provenance: 
 
 
 def _build_model_card(provenance: dict) -> dict:
-    """Build a CycloneDX 1.6 modelCard from a model provenance dict.
+    """Build a CycloneDX 1.7 modelCard from a model provenance dict.
 
     Maps HuggingFace/Ollama provenance metadata to the CycloneDX modelCard
     schema: bom-ref, modelParameters, quantitativeAnalysis, considerations.
@@ -97,7 +97,7 @@ def _build_model_card(provenance: dict) -> dict:
 
 
 def _build_model_component(provenance: dict, comp_id: int) -> tuple[dict, str]:
-    """Build a CycloneDX 1.6 component of type machine-learning-model.
+    """Build a CycloneDX 1.7 component of type machine-learning-model.
 
     Returns (component_dict, bom_ref).
     """
@@ -122,7 +122,7 @@ def _build_model_component(provenance: dict, comp_id: int) -> tuple[dict, str]:
     if digest:
         component["hashes"] = [{"alg": "SHA-256", "content": digest}]
 
-    # Model card (CycloneDX 1.6 native)
+    # Model card (CycloneDX 1.7 native)
     model_card = _build_model_card(provenance)
     if model_card:
         component["modelCard"] = model_card
@@ -135,7 +135,7 @@ def _build_model_component(provenance: dict, comp_id: int) -> tuple[dict, str]:
 
 
 def _build_model_file_component(model_file: dict, comp_id: int) -> tuple[dict, str]:
-    """Build a CycloneDX 1.6 component from a local model file scan result."""
+    """Build a CycloneDX 1.7 component from a local model file scan result."""
     filename = model_file.get("filename", f"model-file-{comp_id}")
     ref = _sanitize_bom_ref(f"ml-file-{filename}-{comp_id}")
 
@@ -166,9 +166,9 @@ def _build_model_file_component(model_file: dict, comp_id: int) -> tuple[dict, s
 
 
 def _build_dataset_component(dataset: dict, comp_id: int) -> tuple[dict, str]:
-    """Build a CycloneDX 1.6 component with data classification for datasets.
+    """Build a CycloneDX 1.7 component with data classification for datasets.
 
-    Uses the CycloneDX 1.6 ``data`` extension for dataset governance:
+    Uses the CycloneDX 1.7 ``data`` extension for dataset governance:
     type, name, classification, contents, governance.
     """
     ds_name = dataset.get("name", f"dataset-{comp_id}")
@@ -193,7 +193,7 @@ def _build_dataset_component(dataset: dict, comp_id: int) -> tuple[dict, str]:
         else:
             component["licenses"] = [{"license": {"id": lic}}]
 
-    # CycloneDX 1.6 data extension — governance and classification
+    # CycloneDX 1.7 data extension — governance and classification
     data_ext: dict = {"type": "dataset", "name": ds_name}
 
     # Contents description
@@ -228,7 +228,7 @@ def _build_dataset_component(dataset: dict, comp_id: int) -> tuple[dict, str]:
 
 
 def _build_training_component(run: dict, comp_id: int) -> tuple[dict, str]:
-    """Build a CycloneDX 1.6 component for a training pipeline run.
+    """Build a CycloneDX 1.7 component for a training pipeline run.
 
     Uses modelCard.quantitativeAnalysis for metrics and
     modelCard.modelParameters for hyperparameters.
@@ -286,9 +286,9 @@ def _build_training_component(run: dict, comp_id: int) -> tuple[dict, str]:
 
 
 def to_cyclonedx(report: AIBOMReport) -> dict:
-    """Build CycloneDX 1.6 dict from report with ML BOM extensions.
+    """Build CycloneDX 1.7 dict from report with ML BOM extensions.
 
-    Emits native CycloneDX 1.6 ``machine-learning-model`` components with
+    Emits native CycloneDX 1.7 ``machine-learning-model`` components with
     ``modelCard`` for model provenance, ``data`` components for datasets,
     and training run metadata via ``quantitativeAnalysis``.
     """
@@ -358,9 +358,9 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 "properties": server_props,
             }
             components.append(server_component)
-            # MCP tool capabilities belong in the top-level CycloneDX 1.6
+            # MCP tool capabilities belong in the top-level CycloneDX 1.7
             # ``services`` array — ``services`` is not a valid property of a
-            # component, so nesting it here fails strict 1.6 validation.
+            # component, so nesting it here fails strict 1.7 validation.
             for tool in server.tools:
                 service_entry: dict = {
                     "bom-ref": _sanitize_bom_ref(f"service-{server_ref}-{tool.name}"),
@@ -419,7 +419,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 }
                 if pkg.license_expression or pkg.license:
                     lic_val = pkg.license_expression or pkg.license or ""
-                    # CycloneDX 1.6: compound expressions (AND/OR/WITH) use
+                    # CycloneDX 1.7: compound expressions (AND/OR/WITH) use
                     # "expression" at the licenses array level, not "license.id".
                     # Single SPDX IDs use "license.id".
                     if any(op in lic_val for op in (" AND ", " OR ", " WITH ")):
@@ -523,7 +523,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
     cdx = {
         "bomFormat": "CycloneDX",
-        "specVersion": "1.6",
+        "specVersion": "1.7",
         "serialNumber": f"urn:uuid:{report.scan_id}" if report.scan_id else f"urn:uuid:{uuid4()}",
         "version": 1,
         "metadata": {
@@ -547,8 +547,8 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
         },
         "components": components,
         "dependencies": dependencies,
-        # CDX 1.6 defines `formulation` as a top-level BOM array, not a metadata
-        # field — placing it under metadata fails strict 1.6 schema validation.
+        # CDX 1.7 defines `formulation` as a top-level BOM array, not a metadata
+        # field — placing it under metadata fails strict 1.7 schema validation.
         "formulation": [
             {
                 "components": [
@@ -590,6 +590,6 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
 
 def export_cyclonedx(report: AIBOMReport, output_path: str) -> None:
-    """Export report as CycloneDX 1.6 JSON file."""
+    """Export report as CycloneDX 1.7 JSON file."""
     cdx = to_cyclonedx(report)
     Path(output_path).write_text(json.dumps(cdx, indent=2))

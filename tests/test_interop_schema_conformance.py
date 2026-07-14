@@ -1,13 +1,13 @@
 """Interop conformance gate: validate every machine-readable export against its
 official schema, and prove byte-for-byte determinism.
 
-agent-bom advertises spec-conformant SARIF 2.1.0, CycloneDX 1.6, SPDX 2.3, and
+agent-bom advertises spec-conformant SARIF 2.1.0, CycloneDX 1.7, SPDX 2.3, and
 SPDX 3.0 output. Downstream consumers (GitHub/GitLab code scanning, Dependency
 Track, SPDX tooling) reject documents that drift from the spec, so this suite
 generates each format from one multi-entity report (agent -> MCP server -> tool
 -> vulnerable package -> CVE, plus a malicious package) and asserts:
 
-* SARIF 2.1.0 / CycloneDX 1.6 / SPDX 2.3 validate against their vendored
+* SARIF 2.1.0 / CycloneDX 1.7 / SPDX 2.3 validate against their vendored
   official JSON schemas (``jsonschema``);
 * SPDX 3.0 is emitted as canonical SPDX 3.0.1 JSON-LD (``@context`` + ``@graph``
   with a ``CreationInfo`` blank node and ``SpdxDocument`` root) and is checked
@@ -59,10 +59,16 @@ def _load_schema(name: str) -> dict | None:
 
 
 def _cyclonedx_registry() -> Registry:
-    """CDX 1.6 ``$ref``s ``spdx.schema.json`` and ``jsf-0.82.schema.json`` — map
-    each vendored schema by its declared ``$id`` so refs resolve offline."""
+    """CDX 1.7 ``$ref``s ``spdx.schema.json``, ``jsf-0.82.schema.json`` and
+    ``cryptography-defs.schema.json`` — map each vendored schema by its declared
+    ``$id`` so refs resolve offline."""
     resources = []
-    for name in ("cyclonedx-1.6.schema.json", "spdx.schema.json", "jsf-0.82.schema.json"):
+    for name in (
+        "cyclonedx-1.7.schema.json",
+        "spdx.schema.json",
+        "jsf-0.82.schema.json",
+        "cryptography-defs.schema.json",
+    ):
         schema = _load_schema(name)
         if schema is None:
             continue
@@ -152,18 +158,20 @@ def test_sarif_conforms_to_2_1_0_schema(report: AIBOMReport) -> None:
     _assert_schema_valid("SARIF 2.1.0", "sarif-schema-2.1.0.json", Draft7Validator, to_sarif(report))
 
 
-def test_cyclonedx_conforms_to_1_6_schema(report: AIBOMReport) -> None:
+def test_cyclonedx_conforms_to_1_7_schema(report: AIBOMReport) -> None:
+    cdx = to_cyclonedx(report)
+    assert cdx["specVersion"] == "1.7", "CycloneDX output must advertise specVersion 1.7"
     _assert_schema_valid(
-        "CycloneDX 1.6",
-        "cyclonedx-1.6.schema.json",
+        "CycloneDX 1.7",
+        "cyclonedx-1.7.schema.json",
         Draft7Validator,
-        to_cyclonedx(report),
+        cdx,
         registry=_cyclonedx_registry(),
     )
 
 
 def test_cyclonedx_formulation_is_top_level(report: AIBOMReport) -> None:
-    """CDX 1.6 defines ``formulation`` as a top-level BOM array — not a metadata
+    """CDX 1.7 defines ``formulation`` as a top-level BOM array — not a metadata
     field. Nesting it under metadata fails strict validation (regression guard)."""
     cdx = to_cyclonedx(report)
     assert isinstance(cdx.get("formulation"), list) and cdx["formulation"], "formulation must be a top-level array"
@@ -171,7 +179,7 @@ def test_cyclonedx_formulation_is_top_level(report: AIBOMReport) -> None:
 
 
 def test_cyclonedx_services_are_top_level(report: AIBOMReport) -> None:
-    """MCP tool capabilities are CDX 1.6 top-level ``services`` — ``services`` is
+    """MCP tool capabilities are CDX 1.7 top-level ``services`` — ``services`` is
     not a valid component property (strict-validity regression guard)."""
     cdx = to_cyclonedx(report)
     assert any(s.get("name") == "query" for s in cdx.get("services", [])), "MCP tool must surface as a top-level service"

@@ -222,6 +222,11 @@ class AgentBomClient:
 
         return self._request("GET", "/v1/findings/triage/vex")
 
+    def ingest_finding_triage_vex(self, vex: Mapping[str, JsonValue]) -> JsonObject:
+        """Ingest an OpenVEX document, applying not_affected/fixed statements as triage."""
+
+        return self._request("POST", "/v1/findings/triage/vex/ingest", json={"vex": dict(vex)})
+
     def ingest_findings(
         self,
         findings: Sequence[Mapping[str, JsonValue]],

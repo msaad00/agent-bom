@@ -1974,3 +1974,37 @@ def test_scan_without_aws_deep_leaves_aws_includes_off(monkeypatch, tmp_path):
     assert seen["aws_include_step_functions"] is False
     assert seen["aws_include_ec2"] is False
     assert seen["aws_include_iam"] is False
+
+
+# ---------------------------------------------------------------------------
+# --repo + --offline is a contradiction: reject up front (#3889)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_repo_url_with_offline_rejected_up_front():
+    """`--repo` needs network to clone; combining it with `--offline` is rejected clearly.
+
+    Regression: previously the clone attempt ran anyway and failed deep in the
+    pipeline with an opaque temp-dir / subpath error. Now the contradiction is
+    caught before any clone attempt with an actionable message.
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "scan",
+            "--repo",
+            "https://github.com/octocat/Hello-World",
+            "--offline",
+            "--no-auto-update-db",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0, result.output
+    lowered = result.output.lower()
+    assert "--offline" in result.output
+    assert "--repo" in result.output
+    assert "network" in lowered or "clone" in lowered
+    # Must not be the old opaque temp-dir/subpath failure.
+    assert "subpath" not in lowered
+    assert "does not exist" not in lowered

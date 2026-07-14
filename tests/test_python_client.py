@@ -115,6 +115,7 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
         decision_reason="not reachable",
     )
     client.export_finding_triage_vex()
+    client.ingest_finding_triage_vex({"@context": "https://openvex.dev/ns/v0.2.0", "statements": []})
     client.ingest_findings(findings=[{"id": "finding-1", "severity": "high"}], source="sdk-test")
     client.register_dataset_version("dataset-a", version_id="v1")
     client.dataset_versions("dataset-a")
@@ -129,6 +130,7 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
         ("POST", "/v1/findings/triage"),
         ("PUT", "/v1/findings/triage/triage-1/decision"),
         ("GET", "/v1/findings/triage/vex"),
+        ("POST", "/v1/findings/triage/vex/ingest"),
         ("POST", "/v1/findings/bulk"),
         ("POST", "/v1/datasets/dataset-a/versions"),
         ("GET", "/v1/datasets/dataset-a/versions"),

@@ -374,6 +374,24 @@ def _parse_openvex(data: dict) -> VexDocument:
     return VexDocument(statements=statements, metadata=metadata)
 
 
+def parse_vex(data: dict) -> VexDocument:
+    """Parse an already-decoded VEX document (OpenVEX / CycloneDX / CSAF).
+
+    Auto-detects the source format and returns a normalized :class:`VexDocument`.
+    Use this for in-memory ingest (e.g. an OpenVEX document posted to the API);
+    :func:`load_vex` is the file-path convenience wrapper.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("VEX document must be a JSON object")
+
+    fmt = _detect_vex_format(data)
+    if fmt == "cyclonedx":
+        return _parse_cyclonedx_vex(data)
+    if fmt == "csaf":
+        return _parse_csaf_vex(data)
+    return _parse_openvex(data)
+
+
 def load_vex(path: str) -> VexDocument:
     """Load a VEX document from a JSON file.
 
@@ -388,12 +406,7 @@ def load_vex(path: str) -> VexDocument:
     if not isinstance(data, dict):
         raise ValueError(f"VEX document in {path} must be a JSON object")
 
-    fmt = _detect_vex_format(data)
-    if fmt == "cyclonedx":
-        return _parse_cyclonedx_vex(data)
-    if fmt == "csaf":
-        return _parse_csaf_vex(data)
-    return _parse_openvex(data)
+    return parse_vex(data)
 
 
 # ---------------------------------------------------------------------------

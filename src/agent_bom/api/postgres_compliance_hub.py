@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from agent_bom.api.compliance_hub_store import (
+    _LEDGER_ORDINAL_SENTINEL,
     RECONCILE_ABSENT_CHUNK,
     FindingCursorPage,
     FindingPage,
@@ -102,6 +103,66 @@ def _migrate_current_ledger_ref_postgres(conn: Any) -> None:
         END $$;
         """
     )
+
+
+def _migrate_current_ledger_ordinal_postgres(conn: Any) -> None:
+    """Materialise the ledger ingest ``ordinal`` onto ``hub_findings_current``.
+
+    Postgres mirror of the SQLite migration (#3984): promote ``sort=ordinal``
+    off a per-row correlated ledger subquery onto a stored column backed by
+    ``idx_hub_findings_current_tenant_ordinal``. The guarded ALTER seeds
+    pre-existing rows with the ``MAX(bigint)`` sort sentinel; the one-shot
+    backfill resolves the real ordinal for rows with a ledger pointer, matching
+    the old ``COALESCE(subquery, 9223372036854775807)`` value. Idempotent: the
+    backfill only runs while the column is freshly added and no-ops on empty
+    tables. Requires ``ledger_finding_id`` to already exist.
+    """
+    conn.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'hub_findings_current'
+                  AND column_name = 'ledger_ordinal'
+            ) THEN
+                ALTER TABLE hub_findings_current
+                    ADD COLUMN ledger_ordinal BIGINT NOT NULL DEFAULT 9223372036854775807;
+                UPDATE hub_findings_current c SET ledger_ordinal = COALESCE(
+                    (
+                        SELECT f.ordinal FROM compliance_hub_findings f
+                        WHERE f.tenant_id = c.tenant_id
+                          AND f.finding_id = c.ledger_finding_id
+                        LIMIT 1
+                    ),
+                    9223372036854775807
+                )
+                WHERE c.ledger_finding_id IS NOT NULL AND c.ledger_finding_id <> '';
+            END IF;
+        END $$;
+        """
+    )
+
+
+def _resolve_current_ledger_ordinal_postgres(
+    conn: Any,
+    tenant_id: str,
+    ledger_finding_id: str,
+) -> int:
+    """Return the ledger ingest ``ordinal`` for a current-state row's pointer.
+
+    Point lookup on the ledger primary key ``(tenant_id, finding_id)``; the
+    ledger row is always written (``add``) before the current batch upsert.
+    Missing pointers fall back to the sort sentinel (``MAX(bigint)``).
+    """
+    if not ledger_finding_id:
+        return _LEDGER_ORDINAL_SENTINEL
+    row = conn.execute(
+        "SELECT ordinal FROM compliance_hub_findings WHERE tenant_id = %s AND finding_id = %s",
+        (tenant_id, ledger_finding_id),
+    ).fetchone()
+    return int(row[0]) if row else _LEDGER_ORDINAL_SENTINEL
 
 
 def _fetch_ledger_payloads_postgres(
@@ -303,6 +364,7 @@ class PostgresComplianceHubStore:
                 _CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES,
                 _CURRENT_LIFECYCLE_POSTGRES_DDL,
                 _CURRENT_LIFECYCLE_POSTGRES_OBSERVATIONS_LEGACY_DDL,
+                _CURRENT_LIFECYCLE_SORT_INDEXES_POSTGRES,
             )
             from agent_bom.api.hub_observations_partition import (
                 ensure_observation_partitions,
@@ -321,6 +383,9 @@ class PostgresComplianceHubStore:
                 ensure_observation_partitions(conn)
             _migrate_lifecycle_observations_l2_postgres(conn)
             _migrate_current_ledger_ref_postgres(conn)
+            # Materialise the ledger ingest ordinal (needs ledger_finding_id) so
+            # the sort indexes below can build on pre-existing tables (#3984).
+            _migrate_current_ledger_ordinal_postgres(conn)
             conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")
             # Promote origin to a materialised, indexed column so the exact
             # COUNT(*) rides the (tenant_id, origin) prefix instead of scanning
@@ -347,6 +412,11 @@ class PostgresComplianceHubStore:
                 "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_ci "
                 "ON hub_findings_current(tenant_id, LOWER(severity)) WHERE severity <> ''"
             )
+            # Ordinal range-scan index + severity-composite sort indexes. Built
+            # after the ledger_ordinal migration so pre-existing tables carry the
+            # column first (#3984).
+            for sort_index_sql in _CURRENT_LIFECYCLE_SORT_INDEXES_POSTGRES:
+                conn.execute(sort_index_sql)
             _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
             _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
             ensure_postgres_reference_tables(conn)
@@ -673,13 +743,19 @@ class PostgresComplianceHubStore:
                 # Canonical ``batch_id or scan_id`` scan filter key (#3926).
                 scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")
                 if has_ledger_col:
+                    # Materialise the ledger ingest ordinal so ``sort=ordinal``
+                    # rides idx_hub_findings_current_tenant_ordinal instead of a
+                    # per-row correlated ledger subquery (#3984).
+                    ledger_ordinal_val = _resolve_current_ledger_ordinal_postgres(
+                        conn, tenant_id, ledger_finding_id or ""
+                    )
                     conn.execute(
                         """
                         INSERT INTO hub_findings_current
                             (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                              cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                             updated_at, payload, ledger_finding_id, origin, scan_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
+                             updated_at, payload, ledger_finding_id, origin, scan_id, ledger_ordinal)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
                         ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
                             first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
                             last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
@@ -695,7 +771,8 @@ class PostgresComplianceHubStore:
                             payload = EXCLUDED.payload,
                             ledger_finding_id = EXCLUDED.ledger_finding_id,
                             origin = EXCLUDED.origin,
-                            scan_id = EXCLUDED.scan_id
+                            scan_id = EXCLUDED.scan_id,
+                            ledger_ordinal = EXCLUDED.ledger_ordinal
                         """,
                         (
                             tenant_id,
@@ -715,6 +792,7 @@ class PostgresComplianceHubStore:
                             ledger_finding_id or None,
                             origin_val,
                             scan_id_val,
+                            ledger_ordinal_val,
                         ),
                     )
                 else:

@@ -53,8 +53,8 @@ is wired into the docs site so drift produces a visible regression.
 | `config/schemas/inventory.schema.json` | `Agent.agent_type` enum values | 30 |
 | `config/schemas/inventory.schema.json` | `Package.ecosystem` enum values | 9 |
 | `config/schemas/inventory.schema.json` | `MCPServer.transport` enum values | 3 |
-| `docs/openapi/v1.json` | paths | 259 |
-| `docs/openapi/v1.json` | component schemas | 67 |
+| `docs/openapi/v1.json` | paths | 260 |
+| `docs/openapi/v1.json` | component schemas | 68 |
 
 <!-- DATA_MODEL_ATLAS:END -->
 
@@ -604,7 +604,7 @@ represent, but the canonical report keeps everything.
 |---|---|---|---|
 | JSON | `json_fmt.py` | Full report, lossless | nothing |
 | SARIF 2.1 | `sarif.py` | Findings, locations, fix recommendations | runtime trace, fleet membership |
-| CycloneDX 1.6 (+ ML BOM) | `cyclonedx_fmt.py` | Components, vulnerabilities, services, ML-BOM `model` blocks | dashboard-only attributes |
+| CycloneDX 1.7 (+ ML BOM) | `cyclonedx_fmt.py` | Components, vulnerabilities, services, ML-BOM `model` blocks | dashboard-only attributes |
 | SPDX 3.0 | `spdx_fmt.py` | Packages, relationships, licenses, vulnerability assessments | runtime + agent context |
 | HTML | `html.py` | Interactive dashboard view | suitable for emailed PDF |
 | Graph JSON | `graph_export.py` | `UnifiedGraph` nodes/edges/paths | textual narratives |

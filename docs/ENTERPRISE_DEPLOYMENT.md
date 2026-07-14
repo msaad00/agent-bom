@@ -632,7 +632,7 @@ the stack up. Image import for disconnected registries is documented in
 |--------|---------|--------|
 | GitHub Security tab | `--format sarif --output results.sarif` | SARIF |
 | SIEM (Splunk, Elastic) | `--format json` | JSON |
-| Compliance audit | `--format cyclonedx --output sbom.json` | CycloneDX 1.6 |
+| Compliance audit | `--format cyclonedx --output sbom.json` | CycloneDX 1.7 |
 | Jira/ServiceNow | Fleet API + webhook | JSON webhook |
 | Prometheus/Grafana | `--format prometheus` | Exposition format |
 | CI/CD gate | `--fail-on-severity critical` | Exit code |

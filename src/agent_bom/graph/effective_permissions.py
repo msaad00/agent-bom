@@ -20,9 +20,17 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from typing import Any, Mapping, Sequence
 
+from agent_bom.cloud.aws_iam_evaluator import IamDecision, evaluate_identity_policies
+from agent_bom.cloud.aws_iam_evidence import (
+    EvidenceCompleteness,
+    NormalizedIamPolicy,
+    normalize_iam_policy_document,
+)
 from agent_bom.graph.container import InteractionRisk, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 
 _logger = logging.getLogger(__name__)
@@ -56,6 +64,71 @@ _MAX_PRINCIPALS = 5000
 _MAX_DEPTH = 6
 _ADMIN_PRIVILEGE_KEYWORDS = ("administratoraccess", "fullaccess", "poweruseraccess", "iamfullaccess", "*:*", "admin", "owner", "root")
 
+# Admin-equivalence probes for real IAM evaluation. A policy that ALLOWs any of
+# these unrestricted (Resource "*") actions grants effective admin: either full
+# access (``*``) or an IAM self-escalation primitive that lets the identity mint
+# arbitrary permissions for itself. Evaluation respects explicit Deny, resource
+# scope, and conditions — so a scoped or denied variant is NOT flagged, which a
+# name/keyword match cannot distinguish.
+_ADMIN_EQUIVALENCE_PROBES: tuple[tuple[str, str], ...] = (
+    ("*", "*"),
+    ("iam:PutUserPolicy", "*"),
+    ("iam:PutRolePolicy", "*"),
+    ("iam:PutGroupPolicy", "*"),
+    ("iam:AttachUserPolicy", "*"),
+    ("iam:AttachRolePolicy", "*"),
+    ("iam:AttachGroupPolicy", "*"),
+    ("iam:CreatePolicyVersion", "*"),
+    ("iam:UpdateAssumeRolePolicy", "*"),
+    ("iam:CreateAccessKey", "*"),
+)
+
+# Node-attribute keys under which a raw IAM policy document (or list of them) may
+# be carried, so the overlay can run real evaluation when the evidence is present.
+_POLICY_DOC_KEYS = ("policy_document", "policy_documents", "policy_documents_json")
+
+
+def _iter_policy_documents(attrs: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Extract raw IAM policy documents from a node's attributes (best-effort)."""
+    docs: list[Mapping[str, Any]] = []
+    for key in _POLICY_DOC_KEYS:
+        value = attrs.get(key)
+        if isinstance(value, Mapping):
+            docs.append(value)
+        elif isinstance(value, (list, tuple)):
+            docs.extend(item for item in value if isinstance(item, Mapping))
+    return docs
+
+
+def _is_admin_equivalent(policies: Sequence[NormalizedIamPolicy]) -> bool:
+    """True when real IAM evaluation ALLOWs an unrestricted admin/escalation action."""
+    for action, resource in _ADMIN_EQUIVALENCE_PROBES:
+        result = evaluate_identity_policies(policies, action=action, resource=resource)
+        if result.decision is IamDecision.ALLOW:
+            return True
+    return False
+
+
+def _normalized_policies_for(
+    principal: UnifiedNode, attached_policies: Sequence[UnifiedNode]
+) -> list[NormalizedIamPolicy]:
+    """Collect normalized IAM policies from a principal's inline + attached documents.
+
+    Documents may be carried on the principal node itself (inline policies) or on
+    each attached ``POLICY`` node. Documents that normalize to no statements
+    (``UNAVAILABLE``) are dropped so ``[]`` cleanly means "no evidence to evaluate"
+    and the caller degrades to the scanner/name signal.
+    """
+    raw_docs: list[Mapping[str, Any]] = list(_iter_policy_documents(principal.attributes))
+    for policy in attached_policies:
+        raw_docs.extend(_iter_policy_documents(policy.attributes))
+    normalized: list[NormalizedIamPolicy] = []
+    for doc in raw_docs:
+        parsed = normalize_iam_policy_document(doc)
+        if parsed.completeness is not EvidenceCompleteness.UNAVAILABLE:
+            normalized.append(parsed)
+    return normalized
+
 
 def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     """Emit HAS_PERMISSION edges + privilege-escalation signals in place.
@@ -87,6 +160,7 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     assumes: dict[str, set[str]] = defaultdict(set)
     member_of_groups: dict[str, set[str]] = defaultdict(set)
     attached_policy_labels: dict[str, list[str]] = defaultdict(list)
+    attached_policy_nodes: dict[str, list[UnifiedNode]] = defaultdict(list)
     admin_by_policy_actions: set[str] = set()
     for edge in graph.edges:
         rel = edge.relationship
@@ -107,20 +181,54 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             policy = graph.nodes.get(edge.target)
             if policy is not None and policy.entity_type == EntityType.POLICY:
                 attached_policy_labels[edge.source].append(policy.label)
+                attached_policy_nodes[edge.source].append(policy)
                 # Action-derived privilege from the scanner (precise, beats name match).
                 if policy.attributes.get("privilege_level") == "admin":
                     admin_by_policy_actions.add(edge.source)
 
-    # A principal is admin-privileged when a scanner-classified policy grants admin
-    # actions, or (fallback) its own name or an attached policy name signals broad
-    # access (AdministratorAccess / *FullAccess / wildcard).
-    admin_principals: set[str] = set(admin_by_policy_actions)
+    # Admin-equivalence is derived, in priority order, from:
+    #   1. REAL IAM evaluation of attached/inline policy documents (policy
+    #      simulation over the actual statements — honors Deny, resource scope,
+    #      conditions). This replaces the name/keyword guess for every identity
+    #      the evaluator has policy evidence for.
+    #   2. The scanner's action-derived ``privilege_level == "admin"`` classification
+    #      (already computed from real actions upstream) for policies with no
+    #      inline document on the node.
+    #   3. A name/keyword heuristic (AdministratorAccess / *FullAccess / wildcard),
+    #      used ONLY as a degraded fallback when neither policy documents nor a
+    #      scanner classification are available — the basis is noted on the node.
+    admin_principals: set[str] = set()
+    admin_via_evaluation = 0
+    admin_via_scanner = 0
+    admin_via_heuristic = 0
     for p in principals:
-        if p.id in admin_principals:
-            continue
-        haystack = " ".join([p.label, *attached_policy_labels.get(p.id, [])]).lower().replace(" ", "")
-        if any(kw in haystack for kw in _ADMIN_PRIVILEGE_KEYWORDS):
+        docs = _normalized_policies_for(p, attached_policy_nodes.get(p.id, ()))
+        basis: str | None = None
+        if docs:
+            # The evaluator has real policy evidence for this identity: its verdict
+            # is authoritative; the keyword heuristic is not consulted.
+            if _is_admin_equivalent(docs):
+                basis = "policy_evaluation"
+                admin_via_evaluation += 1
+            elif p.id in admin_by_policy_actions:
+                basis = "scanner_actions"
+                admin_via_scanner += 1
+            else:
+                # Evaluated and NOT admin — record the (non-admin) evaluation basis
+                # so consumers can see this was a real verdict, not a missing guess.
+                p.attributes["admin_equivalence_basis"] = "policy_evaluation"
+        elif p.id in admin_by_policy_actions:
+            basis = "scanner_actions"
+            admin_via_scanner += 1
+        else:
+            haystack = " ".join([p.label, *attached_policy_labels.get(p.id, [])]).lower().replace(" ", "")
+            if any(kw in haystack for kw in _ADMIN_PRIVILEGE_KEYWORDS):
+                basis = "name_heuristic"
+                admin_via_heuristic += 1
+        if basis is not None:
             admin_principals.add(p.id)
+            p.attributes["admin_equivalent"] = True
+            p.attributes["admin_equivalence_basis"] = basis
 
     def _group_closure(principal_id: str) -> set[str]:
         """Return the GROUP ids a principal belongs to, transitively (nested groups)."""
@@ -213,4 +321,11 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             )
             escalations += 1
 
-    return {"has_permission_edges": edges_added, "privilege_escalations": escalations}
+    return {
+        "has_permission_edges": edges_added,
+        "privilege_escalations": escalations,
+        "admin_principals": len(admin_principals),
+        "admin_via_evaluation": admin_via_evaluation,
+        "admin_via_scanner": admin_via_scanner,
+        "admin_via_heuristic": admin_via_heuristic,
+    }

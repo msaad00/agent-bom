@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     ledger_finding_id TEXT,
     origin TEXT NOT NULL DEFAULT '',
     scan_id TEXT NOT NULL DEFAULT '',
+    ledger_ordinal INTEGER NOT NULL DEFAULT 9223372036854775807,
     PRIMARY KEY (tenant_id, canonical_id)
 );
 
@@ -179,6 +180,14 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity
     ON hub_findings_current(tenant_id, severity_rank DESC, last_seen DESC, canonical_id ASC);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_origin_cvss
     ON hub_findings_current(tenant_id, origin, cvss_score DESC, last_seen DESC, canonical_id ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_ordinal
+    ON hub_findings_current(tenant_id, ledger_ordinal ASC, first_seen ASC, canonical_id ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_reach
+    ON hub_findings_current(tenant_id, LOWER(severity), effective_reach_score DESC, last_seen DESC, canonical_id ASC)
+    WHERE severity != '';
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_cvss
+    ON hub_findings_current(tenant_id, LOWER(severity), cvss_score DESC, last_seen DESC, canonical_id ASC)
+    WHERE severity != '';
 """
 
 
@@ -227,6 +236,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     ledger_finding_id TEXT,
     origin TEXT NOT NULL DEFAULT '',
     scan_id TEXT NOT NULL DEFAULT '',
+    ledger_ordinal BIGINT NOT NULL DEFAULT 9223372036854775807,
     PRIMARY KEY (tenant_id, canonical_id)
 );
 
@@ -239,6 +249,24 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_cvss
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity
     ON hub_findings_current(tenant_id, severity_rank DESC, last_seen DESC, canonical_id ASC);
 """
+
+# Ordinal + severity-composite sort indexes for hub_findings_current, created
+# after the ``ledger_ordinal`` column migration (the column post-dates the base
+# DDL for pre-existing Postgres deployments, so these cannot live in the CREATE
+# TABLE block). The ordinal index backs the ``sort=ordinal`` order clause as an
+# index range scan (replacing a per-row correlated ledger subquery, #3984); the
+# severity composites let a severity-filtered reach/cvss-ordered page ride one
+# index for both the filter and the sort instead of an equality index + sort.
+_CURRENT_LIFECYCLE_SORT_INDEXES_POSTGRES = (
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_ordinal "
+    "ON hub_findings_current(tenant_id, ledger_ordinal ASC, first_seen ASC, canonical_id ASC)",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_reach "
+    "ON hub_findings_current(tenant_id, LOWER(severity), effective_reach_score DESC, last_seen DESC, canonical_id ASC) "
+    "WHERE severity <> ''",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_cvss "
+    "ON hub_findings_current(tenant_id, LOWER(severity), cvss_score DESC, last_seen DESC, canonical_id ASC) "
+    "WHERE severity <> ''",
+)
 
 # Origin-scoped composite index — created after the ``origin`` column migration
 # (the column post-dates the base DDL, so it cannot live in the CREATE TABLE

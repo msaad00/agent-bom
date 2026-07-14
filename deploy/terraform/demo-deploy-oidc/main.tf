@@ -32,9 +32,12 @@ locals {
   oidc_provider_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
 
   # ARNs SendCommand is scoped to: the AWS-managed shell document plus the one
-  # demo instance. Both are required for a single ssm:SendCommand call.
+  # demo instance. Both are required for a single ssm:SendCommand call. The
+  # instance resource for ssm:SendCommand is the EC2 instance ARN (service
+  # `ec2`, not `ssm`) — IAM evaluates SendCommand against arn:aws:ec2:...:instance/...,
+  # so an ssm-service instance ARN silently fails closed with AccessDenied.
   run_shell_document_arn = "arn:${data.aws_partition.current.partition}:ssm:*::document/AWS-RunShellScript"
-  demo_instance_arn      = "arn:${data.aws_partition.current.partition}:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:instance/${var.demo_instance_id}"
+  demo_instance_arn      = "arn:${data.aws_partition.current.partition}:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:instance/${var.demo_instance_id}"
 }
 
 data "aws_partition" "current" {}

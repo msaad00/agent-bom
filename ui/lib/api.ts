@@ -34,6 +34,7 @@ import type {
   ScoreConfigUpdate,
   RemediationItem,
   FindingsResponse,
+  FindingListEnvelope,
   FindingTriageRequest,
   FindingTriageDecisionRequest,
   FindingTriageResponse,
@@ -953,7 +954,7 @@ export const api = {
     const params = new URLSearchParams({ days: String(days) });
     if (severity) params.set("severity", severity);
     if (category) params.set("category", category);
-    return get<{ findings: GovernanceFinding[]; count: number; warnings: string[] }>(
+    return get<FindingListEnvelope<GovernanceFinding>>(
       `/v1/governance/findings?${params}`
     );
   },

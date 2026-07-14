@@ -39,6 +39,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
+from agent_bom.api.finding_list_envelope import finding_list_envelope
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.models import (
     BrowserExtensionsRequest,
@@ -1920,23 +1921,18 @@ def _list_findings_impl(
         page_rows = combined[offset : offset + limit]
 
     page = _redact_finding_page(page_rows)
-    response: dict[str, Any] = {
-        "schema_version": "v1",
-        "findings": page,
-        "count": len(page),
-        "total": total,
-        "limit": limit,
-        "offset": 0 if cursor else offset,
-        "sort": sort_key,
-        "scan_id": scan_id,
-        "cursor": cursor or "",
-        "next_cursor": next_cursor or "",
-        "has_more": bool(next_cursor),
-        "warnings": warnings,
-    }
-    if total_approximate:
-        response["total_approximate"] = True
-    return response
+    return finding_list_envelope(
+        findings=page,
+        total=total,
+        limit=limit,
+        offset=0 if cursor else offset,
+        sort=sort_key,
+        scan_id=scan_id,
+        cursor=cursor or "",
+        next_cursor=next_cursor or "",
+        warnings=warnings,
+        total_approximate=total_approximate,
+    )
 
 
 @router.post("/findings/bulk", tags=["scan"], status_code=201)

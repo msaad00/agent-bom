@@ -54,11 +54,25 @@ async def governance_findings(
     days: int = 30,
     severity: str | None = None,
     category: str | None = None,
+    limit: int = 500,
+    offset: int = 0,
 ):
-    """Return only governance findings, optionally filtered."""
+    """Return only governance findings, optionally filtered.
+
+    Returns the canonical finding-list envelope (#3666) shared with
+    ``/v1/findings`` so consumers learn one shape across every finding surface.
+    Governance findings are computed on demand from Snowflake discovery rather
+    than served from a keyset store, so pagination is in-memory ``limit`` /
+    ``offset`` over the materialized list; ``cursor`` / ``next_cursor`` stay
+    empty for this surface.
+    """
     import os
 
+    from agent_bom.api.finding_list_envelope import finding_list_envelope
+
     days = max(1, min(days, 365))
+    safe_limit = max(1, min(limit, 1000))
+    safe_offset = max(0, offset)
 
     if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
@@ -77,11 +91,15 @@ async def governance_findings(
         if category:
             findings = [f for f in findings if f["category"] == category.lower()]
 
-        return {
-            "findings": findings,
-            "count": len(findings),
-            "warnings": report.warnings,
-        }
+        total = len(findings)
+        page = findings[safe_offset : safe_offset + safe_limit]
+        return finding_list_envelope(
+            findings=page,
+            total=total,
+            limit=safe_limit,
+            offset=safe_offset,
+            warnings=list(report.warnings),
+        )
     except Exception as exc:
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))

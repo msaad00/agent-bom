@@ -916,18 +916,30 @@ export interface UnifiedFinding {
   scan_count?: number | undefined;
 }
 
-export interface FindingsResponse {
+/**
+ * Canonical finding-list envelope (#3666). Every finding-list surface
+ * (`/v1/findings`, `/v1/compliance/hub/findings`, `/v1/governance/findings`)
+ * returns this shape, generic over the finding row type, so consumers learn
+ * one contract. Keyset `cursor` / `next_cursor` is the scale pagination path;
+ * `limit` / `offset` stay for backward compatibility.
+ */
+export interface FindingListEnvelope<T> {
   schema_version: string;
-  findings: UnifiedFinding[];
+  findings: T[];
   count: number;
   total: number;
   total_approximate?: boolean | undefined;
   limit: number;
   offset: number;
-  sort: string;
+  sort: string | null;
   scan_id?: string | null | undefined;
+  cursor: string;
+  next_cursor: string;
+  has_more: boolean;
   warnings: string[];
 }
+
+export type FindingsResponse = FindingListEnvelope<UnifiedFinding>;
 
 export interface BlastRadius {
   vulnerability_id: string;

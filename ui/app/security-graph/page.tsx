@@ -413,6 +413,7 @@ function SecurityGraphPageContent() {
         <ExposurePathCommandCenter
           path={selectedExposurePath}
           actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
+          scanId={selectedScanId || undefined}
         />
       ) : null}
 

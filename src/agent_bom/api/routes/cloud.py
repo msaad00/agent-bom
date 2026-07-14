@@ -26,11 +26,14 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, cast
+from urllib.parse import urlencode
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.rbac import require_authenticated_permission
 
 router = APIRouter(tags=["cloud"])
@@ -39,6 +42,33 @@ _logger = logging.getLogger(__name__)
 # Reuse the same RBAC gate the sibling scan/identity routes use. Cloud scanning is
 # a scan-class action, so it maps to the "scan" permission ({admin, analyst}).
 _SCAN_DEP = require_authenticated_permission("scan")
+# The per-account drill summary is a read-only aggregation over already-ingested
+# evidence — it never triggers a provider scan — so it maps to the "read" gate
+# (all authenticated roles), like /v1/overview.
+_READ_DEP = require_authenticated_permission("read")
+
+# Bound the per-account read so one account view can never walk an unbounded
+# number of rows on a huge tenant. Mirrors the intent of the findings-list
+# backpressure guard; a sargable account-scoped GROUP BY in the hub store is a
+# follow-up for million-row tenants (see PR notes).
+_ACCOUNT_SUMMARY_MAX_ROWS = 50_000
+
+# Asset-type buckets used to derive an honest identity/role count from the
+# account's finding assets (deeper IAM/grant enumeration is a follow-up).
+_IDENTITY_ASSET_TYPES = frozenset(
+    {"user", "service_account", "identity", "iam_user", "principal", "machine_identity", "nhi"}
+)
+_ROLE_ASSET_TYPES = frozenset({"role", "iam_role", "cloud_role"})
+
+# Provider -> the result keys (new + legacy) that carry a stored CIS benchmark
+# side block. Matches the mapping the graph builder reads (#3946).
+_CIS_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("aws", ("cis_benchmark", "cis_benchmark_data")),
+    ("azure", ("azure_cis_benchmark", "azure_cis_benchmark_data")),
+    ("gcp", ("gcp_cis_benchmark", "gcp_cis_benchmark_data")),
+    ("snowflake", ("snowflake_cis_benchmark", "snowflake_cis_benchmark_data")),
+    ("databricks", ("databricks_cis_benchmark", "databricks_cis_benchmark_data")),
+)
 
 _INVENTORY_PROVIDERS = ("aws", "azure", "gcp")
 _CIS_PROVIDERS = ("aws", "azure", "gcp")
@@ -292,3 +322,312 @@ async def cloud_cis_benchmark(
         # Full diagnostics to the server log only; client gets a generic message.
         _logger.exception("Cloud CIS benchmark failed")
         raise HTTPException(status_code=500, detail="Cloud CIS benchmark failed; see server logs.") from exc
+
+
+# ---------------------------------------------------------------------------
+# Per-account drill summary (issue #3931)
+#
+# "Show me this cloud account end-to-end" — a single read-only aggregation over
+# already-ingested findings + stored CIS benchmark blocks, scoped to one
+# provider+account. It composes the exact rollup + scope filters #3946 shipped
+# (never re-implements counting) and never triggers a live provider scan.
+# ---------------------------------------------------------------------------
+
+
+def _split_account_ref(raw: str | None) -> tuple[str, str, str]:
+    """Return ``(canonical_ref, provider, bare_account)`` for a path param.
+
+    Canonicalized (trimmed, provider lowercased) so ``AWS:1234`` and ``aws:1234``
+    collapse. A value with no ``<provider>:<account>`` shape yields an empty
+    provider/account so the endpoint returns an honest empty summary rather than
+    raising — the same never-raise contract the #3946 scope filters hold.
+    """
+    text = (raw or "").strip()
+    provider, sep, account = text.partition(":")
+    provider = provider.strip().lower()
+    account = account.strip()
+    if not sep or not provider or not account:
+        return "", "", ""
+    return f"{provider}:{account}", provider, account
+
+
+def _account_findings_href(account_ref: str, provider: str, *, domain: str | None = None) -> str:
+    """Build a /findings deep-link pre-filtered to this account (and domain)."""
+    params: dict[str, str] = {}
+    if provider:
+        params["provider"] = provider
+    if account_ref:
+        params["account"] = account_ref
+    if domain:
+        params["domain"] = domain
+    query = urlencode(params)
+    return f"/findings?{query}" if query else "/findings"
+
+
+def _cis_block_account_id(data: dict[str, Any]) -> str:
+    """Pull the account/subscription/project id out of a stored CIS block."""
+    for key in ("account_id", "subscription_id", "aws_account_id", "project_id"):
+        value = str(data.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _cis_counts(data: dict[str, Any]) -> tuple[int, int]:
+    """Return ``(passed, failed)`` for a CIS block, computing from checks if absent."""
+    passed = data.get("passed")
+    failed = data.get("failed")
+    if isinstance(passed, int) and isinstance(failed, int):
+        return passed, failed
+    p = f = 0
+    for check in data.get("checks", []) or []:
+        if not isinstance(check, dict):
+            continue
+        status = str(check.get("status", "")).upper()
+        if status == "PASS":
+            p += 1
+        elif status == "FAIL":
+            f += 1
+    return p, f
+
+
+def _compliance_for_account(
+    jobs_newest_first: list[Any], provider: str, wanted_ref: str
+) -> dict[str, Any]:
+    """Aggregate stored CIS pass-rate for the account (newest run per provider).
+
+    Only blocks whose normalized account matches ``wanted_ref`` are counted; a
+    block with no resolvable account id is admitted only when its provider equals
+    the requested account's provider (the view is provider-scoped anyway), so a
+    different account's run can never leak into this account's pass-rate. Honest
+    empty (``pass_rate: null``) when no benchmark run exists for the account.
+    """
+    from agent_bom.finding_scope import normalize_account_ref
+
+    benchmarks: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    total_passed = total_failed = 0
+
+    for job in jobs_newest_first:
+        result = cast(dict[str, Any], getattr(job, "result", None) or {})
+        for prov, keys in _CIS_SECTIONS:
+            if provider and prov != provider:
+                continue
+            data: dict[str, Any] | None = None
+            for key in keys:
+                candidate = result.get(key)
+                if isinstance(candidate, dict) and candidate:
+                    data = candidate
+                    break
+            if data is None:
+                continue
+            block_provider = str(data.get("provider") or data.get("cloud_provider") or prov).strip().lower() or prov
+            account_id = _cis_block_account_id(data)
+            block_ref = normalize_account_ref(block_provider, account_id) if account_id else ""
+            if block_ref:
+                if block_ref.lower() != wanted_ref:
+                    continue
+            elif not provider or block_provider != provider:
+                # No account id and no confident provider match — skip to stay honest.
+                continue
+            marker = f"{block_provider}:{block_ref or account_id or 'provider-scope'}"
+            if marker in seen:
+                continue  # newest run already recorded for this provider/account
+            seen.add(marker)
+            passed, failed = _cis_counts(data)
+            evaluated = passed + failed
+            total_passed += passed
+            total_failed += failed
+            benchmarks.append(
+                {
+                    "provider": block_provider,
+                    "benchmark": str(data.get("benchmark") or "CIS"),
+                    "passed": passed,
+                    "failed": failed,
+                    "evaluated": evaluated,
+                    "pass_rate": round(passed / evaluated * 100, 1) if evaluated else None,
+                }
+            )
+
+    evaluated = total_passed + total_failed
+    return {
+        "evaluated": evaluated,
+        "passed": total_passed,
+        "failed": total_failed,
+        "pass_rate": round(total_passed / evaluated * 100, 1) if evaluated else None,
+        "benchmarks": benchmarks,
+    }
+
+
+def _build_account_summary(tenant_id: str, raw_account_ref: str) -> dict[str, Any]:
+    """Compose the per-account drill payload from stored evidence (sync body).
+
+    Runs in a worker thread (see the route). Reuses the #3946 domain rollup
+    buckets, the #3946 scope filters, and the shared scan-store helpers so no
+    counting logic is re-implemented here.
+    """
+    from agent_bom.api.routes.overview import (
+        _ALL_SEVERITY_KEYS,
+        _COVERAGE_DOMAINS,
+        _COVERAGE_LABELS,
+        _bucket,
+        _empty_severity,
+        _row_domain,
+    )
+    from agent_bom.api.routes.scan import (
+        _bulk_ingested_findings_for_tenant,
+        _canonical_scope_filters,
+        _completed_jobs_for_tenant,
+        _finding_identity,
+        _row_matches_scope,
+    )
+
+    canonical_ref, provider, account = _split_account_ref(raw_account_ref)
+
+    lanes: dict[str, dict[str, int]] = {dom: _empty_severity() for dom in _COVERAGE_DOMAINS}
+    counts: dict[str, int] = {dom: 0 for dom in _COVERAGE_DOMAINS}
+    total_severity = _empty_severity()
+    regions: set[str] = set()
+    environments: set[str] = set()
+    asset_ids: set[str] = set()
+    identity_ids: set[str] = set()
+    role_ids: set[str] = set()
+    processed = 0
+    truncated = False
+
+    jobs = _completed_jobs_for_tenant(tenant_id)
+    jobs_newest_first = sorted(
+        jobs,
+        key=lambda job: (getattr(job, "completed_at", "") or "", getattr(job, "created_at", "") or "", job.job_id),
+        reverse=True,
+    )
+
+    if canonical_ref:
+        # Dedupe findings across re-scans (latest occurrence of each id wins),
+        # exactly like the findings-list default view, then fold bulk-ingested
+        # rows in under the same identity so a finding seen twice counts once.
+        filters = _canonical_scope_filters(None, canonical_ref, None, None)
+        deduped: dict[str, dict[str, Any]] = {}
+        for job in sorted(
+            jobs,
+            key=lambda job: (getattr(job, "completed_at", "") or "", getattr(job, "created_at", "") or "", job.job_id),
+        ):
+            for row in cast(dict[str, Any], getattr(job, "result", None) or {}).get("findings", []) or []:
+                if isinstance(row, dict):
+                    deduped[_finding_identity(row)] = row
+        for row in _bulk_ingested_findings_for_tenant(tenant_id):
+            if isinstance(row, dict):
+                deduped.setdefault(_finding_identity(row), row)
+
+        for row in deduped.values():
+            if not _row_matches_scope(row, filters):
+                continue
+            if processed >= _ACCOUNT_SUMMARY_MAX_ROWS:
+                truncated = True
+                break
+            processed += 1
+            dom = _row_domain(row)
+            bucket = _bucket(str(row.get("severity") or ""), lanes[dom])
+            lanes[dom][bucket] += 1
+            counts[dom] += 1
+            total_severity[bucket] += 1
+            region = str(row.get("region") or "").strip()
+            if region:
+                regions.add(region)
+            environment = str(row.get("environment") or "").strip()
+            if environment:
+                environments.add(environment)
+            raw_asset = row.get("asset")
+            asset: dict[str, Any] = raw_asset if isinstance(raw_asset, dict) else {}
+            identifier = str(asset.get("identifier") or asset.get("name") or "").strip()
+            asset_type = str(asset.get("asset_type") or "").strip().lower()
+            if identifier:
+                asset_ids.add(identifier)
+                if asset_type in _IDENTITY_ASSET_TYPES:
+                    identity_ids.add(identifier)
+                if asset_type in _ROLE_ASSET_TYPES:
+                    role_ids.add(identifier)
+
+    compliance = (
+        _compliance_for_account(jobs_newest_first, provider, canonical_ref)
+        if canonical_ref
+        else {"evaluated": 0, "passed": 0, "failed": 0, "pass_rate": None, "benchmarks": []}
+    )
+    compliance["href"] = _account_findings_href(canonical_ref, provider, domain="cspm")
+
+    findings_total = sum(counts.values())
+    domains = [
+        {
+            "domain": dom,
+            "label": _COVERAGE_LABELS[dom],
+            "count": counts[dom],
+            "severity": {key: lanes[dom][key] for key in _ALL_SEVERITY_KEYS},
+            "href": _account_findings_href(canonical_ref, provider, domain=dom),
+        }
+        for dom in _COVERAGE_DOMAINS
+    ]
+
+    return {
+        "schema_version": "cloud.account.summary.v1",
+        "tenant_id": tenant_id,
+        "account_ref": canonical_ref,
+        "provider": provider,
+        "account": account,
+        "regions": sorted(regions),
+        "environments": sorted(environments),
+        "findings_total": findings_total,
+        "severity": {key: total_severity[key] for key in _ALL_SEVERITY_KEYS},
+        "domains": domains,
+        "compliance": compliance,
+        "assets": {
+            "count": len(asset_ids),
+            "href": f"/inventory/assets?provider={provider}" if provider else "/inventory/assets",
+            "note": "Distinct assets referenced by findings in this account.",
+        },
+        "identities": {
+            "count": len(identity_ids),
+            "roles": len(role_ids),
+            "note": "Derived from finding assets; full IAM role/grant enumeration is a follow-up.",
+        },
+        "drill": {
+            "findings_href": _account_findings_href(canonical_ref, provider),
+            "graph_href": f"/graph?provider={provider}" if provider else "/graph",
+        },
+        "truncated": truncated,
+        "empty": findings_total == 0 and compliance["evaluated"] == 0,
+        "note": (
+            "Read-only aggregation over already-ingested findings and stored CIS benchmark runs, "
+            "scoped to this provider+account. No live provider scan is triggered."
+        ),
+    }
+
+
+@router.get("/cloud/accounts/{account_ref}/summary")
+async def cloud_account_summary(
+    request: Request,
+    account_ref: str,
+    _role: Any = _READ_DEP,
+) -> dict[str, Any]:
+    """Per-account, end-to-end posture drill for one cloud account (issue #3931).
+
+    Returns findings by security domain (each severity strip summing to its lane
+    count), stored CIS/compliance pass-rate, an asset count, and an
+    identity/role count — everything scoped to ``account_ref`` (e.g.
+    ``aws:123456789012``). Read-only: composes the #3946 rollup + scope filters
+    over already-ingested evidence and never triggers a provider scan.
+
+    Canonicalized + tenant-scoped; a malformed or unknown account returns an
+    honest empty summary (all five lanes at zero, ``pass_rate: null``) rather
+    than raising. The read runs off the event loop under the shared findings
+    backpressure guard so a burst of account views cannot starve ``/health``.
+    """
+    tenant_id = _tenant(request)
+    try:
+        async with adaptive_backpressure("findings"):
+            return await anyio.to_thread.run_sync(_build_account_summary, tenant_id, account_ref)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc

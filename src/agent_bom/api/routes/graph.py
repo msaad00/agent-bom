@@ -2362,6 +2362,99 @@ async def get_graph_node(
     }
 
 
+@router.get("/graph/node/{node_id}/neighbors", tags=["graph"])
+async def get_graph_node_neighbors(
+    request: Request,
+    node_id: str,
+    scan_id: Optional[str] = Query(None, description="Scan ID; latest if omitted"),
+    limit: int = Query(24, ge=1, le=100, description="Max neighbors returned per expand"),
+    direction: str = Query("both", description="out=dependencies, in=dependents, both=either"),
+) -> dict:
+    """Return a bounded set of a node's direct graph neighbors for inline expand.
+
+    This is the read side of the dashboard's progressive-disclosure attack-path
+    view: expanding one hop loads only that hop's direct neighbors instead of the
+    whole graph. It is deliberately lazy and bounded — fan-out is capped by
+    ``limit`` and a high-degree node reports an honest ``total_neighbors`` with
+    ``truncated`` set, so the UI can render a "+N more" affordance rather than
+    exploding the view. Neighbor node metadata (entity type, label, severity)
+    travels with the payload so the client never needs a second round trip per
+    neighbor id. An unknown node id returns an empty payload (200, ``found``
+    false) instead of raising, so a stale client id degrades quietly in-place.
+    """
+    normalized_direction = direction.strip().lower()
+    if normalized_direction not in {"out", "in", "both"}:
+        normalized_direction = "both"
+
+    tenant = _tenant(request)
+    store = _get_graph_store_or_503()
+    context = await _graph_store_call(
+        store.node_context,
+        scan_id=scan_id or "",
+        tenant_id=tenant,
+        node_id=node_id,
+    )
+    if context is None:
+        return {
+            "node_id": node_id,
+            "scan_id": scan_id or "",
+            "found": False,
+            "direction": normalized_direction,
+            "limit": limit,
+            "total_neighbors": 0,
+            "truncated": False,
+            "neighbors": [],
+            "edges": [],
+        }
+
+    selected_edges: list = []
+    if normalized_direction in {"out", "both"}:
+        selected_edges.extend(context["edges_out"])
+    if normalized_direction in {"in", "both"}:
+        selected_edges.extend(context["edges_in"])
+
+    # Deterministic, de-duplicated neighbor ordering keeps the cap stable across
+    # repeated expands (same class of pagination-drop guard used elsewhere).
+    edges_by_neighbor: dict[str, list] = {}
+    neighbor_ids: list[str] = []
+    seen: set[str] = set()
+    for edge in selected_edges:
+        neighbor_id = edge.target if edge.source == node_id else edge.source
+        if neighbor_id == node_id:
+            continue
+        edges_by_neighbor.setdefault(neighbor_id, []).append(edge)
+        if neighbor_id not in seen:
+            seen.add(neighbor_id)
+            neighbor_ids.append(neighbor_id)
+
+    neighbor_ids.sort()
+    total_neighbors = len(neighbor_ids)
+    bounded_ids = neighbor_ids[:limit]
+    truncated = total_neighbors > len(bounded_ids)
+
+    neighbor_nodes = await _graph_store_call(
+        store.nodes_by_ids,
+        scan_id=scan_id or "",
+        tenant_id=tenant,
+        node_ids=set(bounded_ids),
+    )
+    nodes_by_id = {node.id: node for node in neighbor_nodes}
+    ordered_nodes = [nodes_by_id[node_id_] for node_id_ in bounded_ids if node_id_ in nodes_by_id]
+    bounded_edges = [edge for node_id_ in bounded_ids for edge in edges_by_neighbor.get(node_id_, [])]
+
+    return {
+        "node_id": node_id,
+        "scan_id": scan_id or "",
+        "found": True,
+        "direction": normalized_direction,
+        "limit": limit,
+        "total_neighbors": total_neighbors,
+        "truncated": truncated,
+        "neighbors": [node.to_dict() for node in ordered_nodes],
+        "edges": [edge.to_dict() for edge in bounded_edges],
+    }
+
+
 @router.get("/graph/snapshots", tags=["graph"])
 async def get_graph_snapshots(
     request: Request,

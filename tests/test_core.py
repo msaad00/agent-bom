@@ -1952,7 +1952,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       NORMAL_VAR: "hello"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567
 """)
     agents, warnings = scan_github_actions(str(tmp_path))
     assert len(agents) == 1
@@ -1961,7 +1961,8 @@ jobs:
     server = agent.mcp_servers[0]
     assert server.has_credentials
     assert "OPENAI_API_KEY" in server.env
-    assert len(warnings) == 1
+    assert any("AI credentials exposed" in warning for warning in warnings)
+    assert any("missing top-level permissions" in warning for warning in warnings)
 
 
 def test_gha_no_ai_workflow_not_flagged(tmp_path):
@@ -1977,12 +1978,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567
       - run: pytest tests/
 """)
     agents, warnings = scan_github_actions(str(tmp_path))
     assert agents == []
-    assert warnings == []
+    assert warnings == [
+        "CI hardening in ci.yml: missing top-level permissions: policy; "
+        "declare least-privilege GITHUB_TOKEN permissions"
+    ]
 
 
 def test_gha_detects_ai_sdk_in_run_step(tmp_path):
@@ -2015,6 +2019,57 @@ def test_gha_no_workflows_dir(tmp_path):
     from agent_bom.github_actions import scan_github_actions
 
     agents, warnings = scan_github_actions(str(tmp_path))
+    assert agents == []
+    assert warnings == []
+
+
+def test_gha_flags_standard_pipeline_hardening_gaps(tmp_path):
+    """All workflows get general CI hardening checks, not only AI workflows."""
+    from agent_bom.github_actions import scan_github_actions
+
+    wf_dir = tmp_path / ".github" / "workflows"
+    wf_dir.mkdir(parents=True)
+    (wf_dir / "unsafe.yml").write_text("""
+name: Unsafe PR workflow
+on:
+  pull_request_target:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: org/reusable/.github/workflows/test.yml@main
+      - uses: ./local-action
+""")
+
+    agents, warnings = scan_github_actions(str(tmp_path))
+
+    assert agents == []
+    assert any("missing top-level permissions" in warning for warning in warnings)
+    assert any("pull_request_target" in warning for warning in warnings)
+    assert any("unpinned action actions/checkout@v4" in warning for warning in warnings)
+    assert any("unpinned action org/reusable/.github/workflows/test.yml@main" in warning for warning in warnings)
+    assert not any("local-action" in warning for warning in warnings)
+
+
+def test_gha_accepts_sha_pins_and_explicit_permissions(tmp_path):
+    from agent_bom.github_actions import scan_github_actions
+
+    wf_dir = tmp_path / ".github" / "workflows"
+    wf_dir.mkdir(parents=True)
+    (wf_dir / "safe.yml").write_text("""
+name: Safe workflow
+on: pull_request
+permissions: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567 # v4
+""")
+
+    agents, warnings = scan_github_actions(str(tmp_path))
+
     assert agents == []
     assert warnings == []
 

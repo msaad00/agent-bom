@@ -120,6 +120,41 @@ Used for unified findings outside the SCA / blast-radius path
 | `Asset` | Target of a finding (file, package, cloud resource, K8s resource, container image) |
 | `Finding` | The finding itself — `id`, `type`, `source`, `severity`, `title`, `description`, `asset`, `evidence`, `remediation`, `compliance_tags` |
 
+### Scope + taxonomy (issue #3946)
+
+Every `Finding` (and its `Asset`) carries explicit, optional/nullable **scope**
+so findings can be filtered by where they live, and a derived **security
+domain** so they roll up into exactly one posture lane:
+
+| Field | Meaning |
+|---|---|
+| `provider` | `aws` \| `azure` \| `gcp` \| `snowflake` \| … (None for local/package findings) |
+| `account_ref` | One normalized string: `aws:123456789012`, `azure:<sub-id>`, `gcp:<project-id>`, `snowflake:<account>` |
+| `region` | Cloud region (parsed from the ARN where available) |
+| `environment` | `prod` \| `staging` \| `dev` \| … when known |
+| `security_domain` (derived) | Exactly one of `cspm`, `vuln`, `appsec_sca`, `dspm`, `aispm` |
+
+Scope is populated at ingest by the cloud converters
+(`cloud_cis_check_to_finding`, `snowflake_governance_finding_to_finding`) and
+mirrored between the finding and its asset. `security_domain` is a pure function
+of source + finding type (+ evidence for the cloud data-vs-config split), living
+in `src/agent_bom/finding_scope.py`:
+
+| FindingSource / FindingType | Domain |
+|---|---|
+| `CLOUD_CIS` (CIS benchmark) | `cspm` |
+| `CLOUD_CIS` Snowflake governance (data access) | `dspm` |
+| CVE / malicious package / license (any source) | `vuln` |
+| `SAST`, secret/credential exposure | `appsec_sca` |
+| MCP / proxy / skill / prompt / graph + AI-native types | `aispm` |
+
+A **finding** is raw scanner output; an **issue** is a correlated/deduped
+grouping of findings for display. `GET /v1/findings` accepts optional
+`provider`, `account`, `environment`, and `domain` filters (canonicalized
+server-side, never rejected), and `GET /v1/overview` returns a `coverage` array
+of the five domain lanes whose per-lane severity histogram — including an
+`unrated` bucket for unknown-severity findings — sums to the lane count.
+
 ---
 
 ## 3. Graph taxonomy (`src/agent_bom/graph/types.py`)

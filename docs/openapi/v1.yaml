@@ -6757,6 +6757,42 @@ paths:
           default: false
           title: Approximate Total
           type: boolean
+      - in: query
+        name: provider
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Provider
+      - in: query
+        name: account
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Account
+      - in: query
+        name: environment
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Environment
+      - in: query
+        name: domain
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 32
+            type: string
+          - type: 'null'
+          title: Domain
       responses:
         '200':
           content:

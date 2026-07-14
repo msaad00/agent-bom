@@ -251,6 +251,83 @@ def client_get_overview() -> dict:
     return TestClient(app).get("/v1/overview", headers=_AUTH_HEADERS).json()
 
 
+def test_overview_severity_sum_equals_unique_cves_with_unknown_severity() -> None:
+    """The 39-CVEs / 0-severities bug: unknown-severity findings must not vanish.
+
+    A finding with a severity the histogram doesn't recognize lands in the
+    ``unrated`` bucket, and ``sum(severity.values()) == unique_cves`` holds.
+    """
+    _clear_jobs()
+    _add_done_job(
+        [
+            {"vulnerability_id": "CVE-A", "severity": "critical", "risk_score": 9},
+            {"vulnerability_id": "CVE-B", "severity": "unknown", "risk_score": 5},
+            {"vulnerability_id": "CVE-C", "severity": "", "risk_score": 4},
+        ]
+    )
+    data = client_get_overview()
+    vuln = data["domains"]["vuln"]
+    strip = vuln["detail"]["severity"]
+    assert strip["critical"] == 1
+    assert strip["unrated"] == 2
+    assert sum(strip.values()) == vuln["metric"]
+    assert vuln["metric"] == 3
+
+
+def test_overview_coverage_lanes_map_to_five_domains() -> None:
+    """Coverage lanes are the five security domains, non-overlapping, invariant-clean."""
+    _clear_jobs()
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    job = ScanJob(
+        job_id="dom-job",
+        tenant_id="default",
+        created_at="2026-02-22T10:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-02-22T10:05:00Z"
+    job.result = {
+        "agents": [],
+        "scan_sources": ["cloud"],
+        "findings": [
+            {"security_domain": "cspm", "severity": "high", "id": "c1"},
+            {"security_domain": "cspm", "severity": "unknown", "id": "c2"},
+            {"security_domain": "vuln", "severity": "critical", "id": "v1"},
+            {"security_domain": "aispm", "severity": "medium", "id": "a1"},
+        ],
+    }
+    _get_store().put(job)
+
+    data = client_get_overview()
+    coverage = {lane["domain"]: lane for lane in data["coverage"]}
+    assert set(coverage) == {"cspm", "vuln", "appsec_sca", "dspm", "aispm"}
+
+    cspm = coverage["cspm"]
+    assert cspm["count"] == 2
+    assert cspm["severity"]["high"] == 1
+    assert cspm["severity"]["unrated"] == 1
+    assert sum(cspm["severity"].values()) == cspm["count"]
+
+    assert coverage["vuln"]["count"] == 1
+    assert coverage["aispm"]["count"] == 1
+    assert coverage["dspm"]["count"] == 0
+    assert coverage["appsec_sca"]["count"] == 0
+    # CIS misconfig went to CSPM, not the vuln lane.
+    assert coverage["vuln"]["severity"]["critical"] == 1
+
+
+def test_overview_posture_blurb_not_no_vulns_when_counted() -> None:
+    """Posture summary must never claim no vulnerabilities when the count > 0."""
+    _clear_jobs()
+    _add_done_job(
+        [{"vulnerability_id": "CVE-X", "severity": "high", "risk_score": 7}],
+    )
+    data = client_get_overview()
+    blurb = str(data["posture"]["summary"]).lower()
+    assert "no vulnerabilit" not in blurb
+
+
 def test_overview_requires_auth(monkeypatch) -> None:
     """Endpoint is read-only but still behind the standard viewer gate."""
     _clear_jobs()

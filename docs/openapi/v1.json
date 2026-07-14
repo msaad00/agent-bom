@@ -18525,7 +18525,7 @@
     },
     "/v1/overview": {
       "get": {
-        "description": "Cross-domain posture snapshot for the unified landing page.\n\nRead-only. Composes existing stores and summary helpers into one payload\nkeyed by domain so the overview page can render a tile per domain plus a\nshared top-risks strip without fanning out to a dozen endpoints.",
+        "description": "Cross-domain posture snapshot for the unified landing page.\n\nRead-only. Composes existing stores and summary helpers into one payload\nkeyed by domain so the overview page can render a tile per domain plus a\nshared top-risks strip without fanning out to a dozen endpoints.\n\nThe store + DB work (job rollup, hub severity GROUP BY, cost/identity/fleet\nstores) is offloaded off the event loop under the adaptive backpressure\nguard so a burst of overview reads cannot starve ``/health`` (#3963).",
         "operationId": "get_overview_v1_overview_get",
         "parameters": [
           {

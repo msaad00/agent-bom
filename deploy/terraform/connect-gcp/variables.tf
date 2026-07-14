@@ -21,6 +21,36 @@ variable "service_account_display_name" {
   default     = "agent-bom read-only scanner"
 }
 
+# --- IAM binding scope (project / org / folder — the fleet-onboarding path) ---
+# The service account always lives in project_id; iam_binding_scope only decides
+# WHERE the two read-only roles are granted. "organization"/"folder" is the GCP
+# analogue of the AWS Organizations StackSet and the Azure management-group
+# scope: one apply covers every project the AGENT_BOM_GCP_ALL_PROJECTS fan-out
+# reaches, so onboarding is not per-project. Still strictly read-only.
+
+variable "iam_binding_scope" {
+  description = "Where to bind the read-only roles (roles/viewer + roles/iam.securityReviewer). \"project\" (default) binds at project_id only. \"organization\" binds org-wide via organization_id (covers every folder/project under the org). \"folder\" binds folder-wide via folder_id (covers every project under the folder). Org/folder is the fleet/mass-onboarding path for AGENT_BOM_GCP_ALL_PROJECTS — a single grant instead of a per-project apply."
+  type        = string
+  default     = "project"
+
+  validation {
+    condition     = contains(["project", "organization", "folder"], var.iam_binding_scope)
+    error_message = "iam_binding_scope must be one of project, organization, folder."
+  }
+}
+
+variable "organization_id" {
+  description = "Numeric GCP organization ID (e.g. \"123456789012\", no \"organizations/\" prefix). Required when iam_binding_scope = \"organization\". Binds the read-only roles org-wide so one apply covers every folder/project under the org (fleet onboarding). Empty is rejected at plan time when the org scope is selected."
+  type        = string
+  default     = ""
+}
+
+variable "folder_id" {
+  description = "GCP folder ID (e.g. \"folders/123456789012\" or \"123456789012\"). Required when iam_binding_scope = \"folder\". Binds the read-only roles folder-wide (covers every project under the folder) — a narrower blast radius than the org scope. Empty is rejected at plan time when the folder scope is selected."
+  type        = string
+  default     = ""
+}
+
 # --- Optional Workload Identity Federation (keyless) -------------------------
 # Many orgs disable SA key creation, so keyless federation is the default-safe
 # path. When enabled, an external identity (e.g. the agent-bom hosted scanner,

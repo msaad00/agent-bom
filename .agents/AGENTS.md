@@ -142,10 +142,10 @@ Minimum verification matrix:
 - Tool-credit prefixes in PR titles, commits, or CHANGELOG entries
   (`[claude]`, `[codex]`, `[copilot]`, `[cursor]`, etc.) — they ship into
   GitHub release notes.
-- Name competitor products in marketing, positioning, release notes, PR titles,
-  or benchmark claims. Talk about capability gaps and our own surfaces there.
-  Functional integration code and supported-upstream docs may name a service
-  when the exact product name is required for users to configure it.
+- Clutter marketing, positioning, release notes, PR titles, or benchmark claims
+  with comparisons to other products — describe our own capabilities and users'
+  needs. Integration code and supported-upstream docs may name a third-party
+  service when the exact name is required for users to configure it.
 - Release with broken imports, red tests, or unreleased `[Unreleased]`
   CHANGELOG entries left after tagging.
 - Claim a file, feature, or behavior exists without reading the code that

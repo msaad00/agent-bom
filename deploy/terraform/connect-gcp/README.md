@@ -6,16 +6,20 @@ same one-model connect pattern as
 `terraform apply` instead of hand-running `gcloud iam` commands.
 
 This is the **only** per-cloud difference in the connect flow: a service account
-with project IAM bindings **`roles/viewer`** + **`roles/iam.securityReviewer`** —
-both read-only predefined roles. No write permission is granted. The connector
-calls only `list`/`get` APIs.
+bound to **`roles/viewer`** + **`roles/iam.securityReviewer`** — both read-only
+predefined roles. No write permission is granted. The connector calls only
+`list`/`get` APIs. The roles bind at the **project** by default, or **org-wide /
+folder-wide** (`iam_binding_scope`) for fleet/mass onboarding — see
+[Fleet onboarding](#fleet-onboarding-orgfolder-scope) below.
 
 ## What it creates
 
 - A read-only **service account** with a **unique, non-guessable account_id**
   (`abom-readonly-<random hex>@<project>.iam…` by default).
-- Project IAM bindings: **`roles/viewer`** (inventory) and
-  **`roles/iam.securityReviewer`** (read-only IAM policy access for CIEM/posture).
+- IAM bindings for **`roles/viewer`** (inventory) and
+  **`roles/iam.securityReviewer`** (read-only IAM policy access for CIEM/posture),
+  at the **project** (default), **organization**, or **folder** scope
+  (`iam_binding_scope`).
 - **Optionally** (variable-gated) a **Workload Identity Federation** pool +
   OIDC provider, and an impersonation binding, so an external identity can
   assume the SA **keylessly** — no SA key is ever created.
@@ -75,10 +79,36 @@ module "agent_bom_connect" {
 }
 ```
 
+### Fleet onboarding (org/folder scope)
+
+For a fleet scan, bind the same two read-only roles once at the **organization**
+(or **folder**) instead of per project — the GCP analogue of the AWS
+Organizations StackSet and the Azure management-group scope. A single apply then
+covers every project the `AGENT_BOM_GCP_ALL_PROJECTS` fan-out reaches. The SA
+still lives in `project_id`; only the grant scope changes. Still strictly
+read-only.
+
+```hcl
+module "agent_bom_connect" {
+  source     = "github.com/<org>/agent-bom//deploy/terraform/connect-gcp"
+  project_id = "sa-host-project" # where the SA is created
+
+  iam_binding_scope = "organization"
+  organization_id   = "123456789012" # numeric org ID, no "organizations/" prefix
+}
+```
+
+Use `iam_binding_scope = "folder"` with `folder_id = "folders/123456789012"` for
+a narrower, folder-wide grant. Org/folder-level bindings need
+`roles/resourcemanager.organizationAdmin` (or folder admin) on whoever runs the
+apply — grant scope is set by the org, not by agent-bom. See
+[`docs/CLOUD_CONNECT.md`](../../../docs/CLOUD_CONNECT.md) §5 for the fan-out env.
+
 ## After apply
 
 ```bash
 export AGENT_BOM_GCP_INVENTORY=1          # opt-in, default-off
+export AGENT_BOM_GCP_ALL_PROJECTS=1       # fan out across org/folders/projects
 # Authenticate keylessly via WIF / SA impersonation using the SA email below,
 # or `gcloud auth application-default login`.
 agent-bom agents --preset enterprise --gcp
@@ -93,7 +123,10 @@ network I/O.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `project_id` | — | Project to scope the grant to. |
+| `project_id` | — | Project that hosts the service account (and the grant scope when `iam_binding_scope = "project"`). |
+| `iam_binding_scope` | `project` | Where to bind the read-only roles: `project`, `organization`, or `folder`. Org/folder is the fleet/mass-onboarding path. |
+| `organization_id` | `""` | Numeric org ID. **Required when `iam_binding_scope = "organization"`** (empty is rejected). |
+| `folder_id` | `""` | Folder ID (`folders/…` or numeric). **Required when `iam_binding_scope = "folder"`** (empty is rejected). |
 | `service_account_id` | `""` | Fixed account_id override. Empty → auto-generated unique account_id. |
 | `service_account_id_prefix` | `abom-readonly` | Prefix for the auto-generated unique account_id. |
 | `enable_workload_identity_federation` | `false` | Create a keyless WIF pool/provider. |
@@ -105,13 +138,14 @@ network I/O.
 
 ## Known coverage limitations
 
-- **Org-level CIS checks need org/folder scope.** This module binds IAM at the
-  **project** level. CIS benchmarks that assert org-wide posture (e.g.
-  org-policy and folder-level controls) require an organization or folder IAM
-  binding that is out of scope here; run those with an org/folder-scoped
-  principal or they surface as silently-empty at project scope.
+- **Org-level CIS checks need org/folder scope.** At the default **project**
+  scope, CIS benchmarks that assert org-wide posture (e.g. org-policy and
+  folder-level controls) read as silently-empty. Set
+  `iam_binding_scope = "organization"` (or `"folder"`) so the same read-only
+  roles bind org/folder-wide and those checks evaluate.
 
 ## Outputs
 
 `service_account_email`, `service_account_name`, `granted_roles`,
-`workload_identity_pool_name`, `workload_identity_provider_name`.
+`iam_binding_scope`, `workload_identity_pool_name`,
+`workload_identity_provider_name`.

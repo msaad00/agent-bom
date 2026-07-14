@@ -255,11 +255,20 @@ def default_graph_db_path() -> Path:
     Preference order:
     1. ``AGENT_BOM_GRAPH_DB`` explicit graph database path
     2. ``AGENT_BOM_DB`` shared SQLite database used by the API
-    3. ``~/.agent-bom/db/graph.db`` local default
+    3. ``AGENT_BOM_STATE_DIR`` per-process state dir (``<state>/db/graph.db``)
+    4. ``~/.agent-bom/db/graph.db`` local default
+
+    Honoring ``AGENT_BOM_STATE_DIR`` mirrors ``api.durable_store`` so the graph
+    snapshot lands in the same isolated state dir an operator (or the test
+    suite's conftest) redirects state to — instead of always writing the real
+    ``~/.agent-bom/db/graph.db`` and accumulating cross-run/test pollution.
     """
     configured = os.environ.get("AGENT_BOM_GRAPH_DB") or os.environ.get("AGENT_BOM_DB")
     if configured:
         return Path(configured).expanduser()
+    state_dir = os.environ.get("AGENT_BOM_STATE_DIR")
+    if state_dir:
+        return Path(state_dir).expanduser() / "db" / "graph.db"
     return Path.home() / ".agent-bom" / "db" / "graph.db"
 
 

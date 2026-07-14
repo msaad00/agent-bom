@@ -290,6 +290,14 @@ class PostgresComplianceHubStore:
                 "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_severity_cvss "
                 "ON compliance_hub_findings(tenant_id, origin, severity_rank, cvss_score DESC, ordinal)"
             )
+            # Back the severity GROUP BY (severity_breakdown) with a sargable
+            # tenant/severity index so the overview aggregate scans the column
+            # instead of decoding every payload (#3963). Partial on non-empty
+            # severity for the same planner-shadowing reason as SQLite.
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_severity_ci "
+                "ON compliance_hub_findings(tenant_id, LOWER(severity)) WHERE severity <> ''"
+            )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
             from agent_bom.api.finding_lifecycle import (
                 _CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES,
@@ -513,9 +521,12 @@ class PostgresComplianceHubStore:
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
         with _tenant_connection(self._pool) as conn:
+            # GROUP BY the materialised ``severity`` column (populated on ingest,
+            # backed by the tenant/severity index) instead of an unindexed per-row
+            # ``payload->>'severity'`` JSON decode (#3963).
             rows = conn.execute(
                 """
-                SELECT LOWER(COALESCE(payload->>'severity', 'unknown')) AS sev, COUNT(*)
+                SELECT LOWER(COALESCE(NULLIF(severity, ''), 'unknown')) AS sev, COUNT(*)
                 FROM compliance_hub_findings
                 WHERE tenant_id = %s
                 GROUP BY sev

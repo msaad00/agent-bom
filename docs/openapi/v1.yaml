@@ -12061,7 +12061,14 @@ paths:
 
         keyed by domain so the overview page can render a tile per domain plus a
 
-        shared top-risks strip without fanning out to a dozen endpoints.'
+        shared top-risks strip without fanning out to a dozen endpoints.
+
+
+        The store + DB work (job rollup, hub severity GROUP BY, cost/identity/fleet
+
+        stores) is offloaded off the event loop under the adaptive backpressure
+
+        guard so a burst of overview reads cannot starve ``/health`` (#3963).'
       operationId: get_overview_v1_overview_get
       parameters:
       - in: header

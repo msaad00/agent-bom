@@ -420,13 +420,18 @@ def _upsert_current_finding_sqlite(
     # every backend agrees and the read rides the (tenant_id, scan_id) index.
     scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")
     if has_ledger_col:
+        # Materialise the ledger ingest ordinal so ``sort=ordinal`` reads an
+        # index range scan instead of a per-row correlated subquery (#3984).
+        ledger_ordinal_val = resolve_current_ledger_ordinal_sqlite(
+            conn, tenant_id, ledger_finding_id or ""
+        )
         conn.execute(
             """
             INSERT INTO hub_findings_current
                 (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                  cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                 updated_at, payload, ledger_finding_id, origin, scan_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 updated_at, payload, ledger_finding_id, origin, scan_id, ledger_ordinal)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
                 first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
                 last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
@@ -442,7 +447,8 @@ def _upsert_current_finding_sqlite(
                 payload = excluded.payload,
                 ledger_finding_id = excluded.ledger_finding_id,
                 origin = excluded.origin,
-                scan_id = excluded.scan_id
+                scan_id = excluded.scan_id,
+                ledger_ordinal = excluded.ledger_ordinal
             """,
             (
                 tenant_id,
@@ -462,6 +468,7 @@ def _upsert_current_finding_sqlite(
                 ledger_finding_id or None,
                 origin_val,
                 scan_id_val,
+                ledger_ordinal_val,
             ),
         )
     else:
@@ -537,6 +544,45 @@ def _migrate_current_ledger_ref_sqlite(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE hub_findings_current ADD COLUMN ledger_finding_id TEXT")
 
 
+def _migrate_current_ledger_ordinal_sqlite(conn: sqlite3.Connection) -> None:
+    """Materialise the ledger ingest ``ordinal`` onto ``hub_findings_current``.
+
+    ``sort=ordinal`` used to resolve ingest order with a per-row correlated
+    subquery against the ledger (full scan + filesort at scale, #3984). This
+    promotes it to a stored column so the sort rides
+    ``idx_hub_findings_current_tenant_ordinal`` as an ordered range scan.
+
+    The guarded ALTER seeds every pre-existing row with the sort sentinel
+    (``MAX(bigint)``), then the one-shot backfill resolves the real ordinal for
+    rows that carry a ledger pointer — matching the old
+    ``COALESCE(subquery, 9223372036854775807)`` value exactly. Idempotent: the
+    ALTER+backfill only run while the column is absent, and empty tables update
+    zero rows. Requires ``ledger_finding_id`` to already exist.
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current)").fetchall()}
+    if "ledger_ordinal" not in cols:
+        conn.execute(
+            "ALTER TABLE hub_findings_current ADD COLUMN ledger_ordinal INTEGER NOT NULL "
+            f"DEFAULT {_LEDGER_ORDINAL_SENTINEL}"
+        )
+        conn.execute(
+            """
+            UPDATE hub_findings_current SET ledger_ordinal = COALESCE(
+                (
+                    SELECT f.ordinal
+                    FROM compliance_hub_findings f
+                    WHERE f.tenant_id = hub_findings_current.tenant_id
+                      AND f.finding_id = hub_findings_current.ledger_finding_id
+                    LIMIT 1
+                ),
+                ?
+            )
+            WHERE ledger_finding_id IS NOT NULL AND ledger_finding_id != ''
+            """,
+            (_LEDGER_ORDINAL_SENTINEL,),
+        )
+
+
 def _migrate_current_origin_col_sqlite(conn: sqlite3.Connection) -> None:
     """Promote ``origin`` to a real indexed column on ``hub_findings_current``.
 
@@ -610,10 +656,14 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
     # Materialise scan_id before its index so the partial index can build on
     # tables that predate the column (the default /v1/findings scan filter).
     _migrate_current_scan_id_col_sqlite(conn)
+    # Materialise the ledger pointer + its ingest ordinal before the sort
+    # indexes so the ``(tenant_id, ledger_ordinal, …)`` index can build on
+    # pre-existing tables that predate those columns (#3984).
+    _migrate_current_ledger_ref_sqlite(conn)
+    _migrate_current_ledger_ordinal_sqlite(conn)
     conn.executescript(_CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE)
     _ensure_current_scale_indexes_sqlite(conn)
     _migrate_lifecycle_observations_l2_sqlite(conn)
-    _migrate_current_ledger_ref_sqlite(conn)
     conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")
 
 
@@ -944,6 +994,33 @@ def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# Rows in ``hub_findings_current`` with no resolvable ledger ``ordinal`` sort
+# last under ``sort=ordinal``. ``9223372036854775807`` is ``MAX(int64)`` /
+# ``MAX(bigint)`` — the same sentinel the pre-materialisation ``COALESCE`` used,
+# so ordering is byte-for-byte unchanged after the column swap (#3984).
+_LEDGER_ORDINAL_SENTINEL = 9223372036854775807
+
+
+def resolve_current_ledger_ordinal_sqlite(
+    conn: sqlite3.Connection,
+    tenant_id: str,
+    ledger_finding_id: str,
+) -> int:
+    """Return the ledger ingest ``ordinal`` for a current-state row's pointer.
+
+    A point lookup on the ledger primary key ``(tenant_id, finding_id)`` — the
+    ledger row is always written (``add``) before the current batch upsert, so
+    the ordinal is present. Missing pointers fall back to the sort sentinel.
+    """
+    if not ledger_finding_id:
+        return _LEDGER_ORDINAL_SENTINEL
+    row = conn.execute(
+        "SELECT ordinal FROM compliance_hub_findings WHERE tenant_id = ? AND finding_id = ?",
+        (tenant_id, ledger_finding_id),
+    ).fetchone()
+    return int(row[0]) if row else _LEDGER_ORDINAL_SENTINEL
+
+
 def _sqlite_order_clause(sort: str) -> str:
     """ORDER BY clause for the SQLite backend, ordinal-tiebroken to match
     the in-memory backend's stable sort.
@@ -967,23 +1044,18 @@ def _sqlite_current_order_clause(sort: str) -> str:
     """ORDER BY for ``hub_findings_current``.
 
     Current-state rows keep a ``ledger_finding_id`` pointer to the durable
-    ingest row. For the legacy hub-list ``ordinal`` contract, preserve ingest
-    order by looking up that ledger ordinal; timestamp/canonical ordering is
-    only a fallback for rows without a ledger reference.
+    ingest row, and its ingest ``ordinal`` is materialised into the
+    ``ledger_ordinal`` column at upsert time (mirroring ``severity_rank`` /
+    ``cvss_score`` / ``scan_id``). The legacy hub-list ``ordinal`` contract
+    therefore orders by that column directly — an index range scan over
+    ``idx_hub_findings_current_tenant_ordinal`` — instead of the per-row
+    correlated ledger subquery that forced a full scan + filesort at scale
+    (#3984). Rows without a ledger reference carry the ``MAX(bigint)`` sentinel
+    (``_LEDGER_ORDINAL_SENTINEL``) so they still sort last, exactly as the old
+    ``COALESCE(..., 9223372036854775807)`` fallback did.
     """
     if sort == "ordinal":
-        return """
-        ORDER BY COALESCE(
-            (
-                SELECT f.ordinal
-                FROM compliance_hub_findings f
-                WHERE f.tenant_id = hub_findings_current.tenant_id
-                  AND f.finding_id = hub_findings_current.ledger_finding_id
-                LIMIT 1
-            ),
-            9223372036854775807
-        ) ASC, first_seen ASC, canonical_id ASC
-        """
+        return "ORDER BY ledger_ordinal ASC, first_seen ASC, canonical_id ASC"
     if sort == "cvss":
         # ``cvss_score`` is NOT NULL DEFAULT 0 (backfilled), so bare
         # ``cvss_score DESC`` rides ``idx_hub_findings_current_tenant[_origin]_cvss``

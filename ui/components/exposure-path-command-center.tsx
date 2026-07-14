@@ -32,7 +32,7 @@ const ROLE_META: Record<ExposureEntityRole, { label: string; icon: LucideIcon; t
   tool: { label: "Tool", icon: Wrench, tint: "border-purple-500/30 bg-purple-500/10 text-purple-200" },
   environment: { label: "Environment", icon: Database, tint: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200" },
   cluster: { label: "Cluster", icon: Database, tint: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200" },
-  unknown: { label: "Entity", icon: ShieldAlert, tint: "border-zinc-500/30 bg-zinc-500/10 text-zinc-200" },
+  unknown: { label: "Entity", icon: ShieldAlert, tint: "border-slate-500/30 bg-slate-500/10 text-slate-200" },
 };
 
 const GRAPH_ROLE_STYLE: Record<ExposureEntityRole, { fill: string; stroke: string; text: string; accent: string }> = {
@@ -44,7 +44,7 @@ const GRAPH_ROLE_STYLE: Record<ExposureEntityRole, { fill: string; stroke: strin
   tool: { fill: "#2e1065", stroke: "#a855f7", text: "#f3e8ff", accent: "#c084fc" },
   environment: { fill: "#164e63", stroke: "#06b6d4", text: "#cffafe", accent: "#22d3ee" },
   cluster: { fill: "#312e81", stroke: "#6366f1", text: "#e0e7ff", accent: "#818cf8" },
-  unknown: { fill: "#27272a", stroke: "#71717a", text: "#f4f4f5", accent: "#a1a1aa" },
+  unknown: { fill: "#1e293b", stroke: "#64748b", text: "#f1f5f9", accent: "#94a3b8" },
 };
 
 export function ExposurePathCommandCenter({
@@ -77,8 +77,9 @@ export function ExposurePathCommandCenter({
               <span className="rounded-full border border-red-500/35 bg-red-500/12 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-red-200">
                 {String(path.severity)} risk
               </span>
-              <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-0.5 font-mono text-[11px] text-[color:var(--foreground)]">
-                {path.riskScore.toFixed(1)}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-0.5 text-[11px] text-[color:var(--foreground)]">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Path risk</span>
+                <span className="font-mono">{path.riskScore.toFixed(1)}</span>
               </span>
               {evidence?.isKev ? (
                 <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200">
@@ -95,7 +96,7 @@ export function ExposurePathCommandCenter({
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-            <MetricPill label="Risk" value={path.riskScore.toFixed(1)} tone="red" />
+            <MetricPill label="Path risk" value={path.riskScore.toFixed(1)} tone="red" />
             <MetricPill label="Hops" value={String(hopCount)} />
             <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
             {fixLabel ? <MetricPill label="Fix" value={fixLabel} tone="green" /> : null}

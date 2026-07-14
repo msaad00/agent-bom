@@ -6,11 +6,14 @@ import {
   buildGraphInvestigationHref,
   buildSecurityGraphHref,
   decodeGraphInvestigationParams,
+  descriptiveAttackPathTitle,
   investigationRootForAttackPath,
   labelsForAttackPathType,
+  mapAttackPathChainType,
   mapAttackPathNodeType,
   matchesAttackPathFocus,
   moveAttackPathSelection,
+  rankedAttackPathRows,
   recommendedInteractionRiskActions,
   recommendedAttackPathActions,
   summarizeInteractionRisks,
@@ -100,11 +103,23 @@ describe("attack path helpers", () => {
     expect(mapAttackPathNodeType(EntityType.TOOL)).toBeNull();
   });
 
-  it("drops unknown hops and preserves severity for supported nodes", () => {
+  it("maps every entity type into a chain node type without dropping hops", () => {
+    expect(mapAttackPathChainType(EntityType.VULNERABILITY)).toBe("cve");
+    expect(mapAttackPathChainType(EntityType.PACKAGE)).toBe("package");
+    expect(mapAttackPathChainType(EntityType.CLOUD_RESOURCE)).toBe("server");
+    expect(mapAttackPathChainType(EntityType.AGENT)).toBe("agent");
+    expect(mapAttackPathChainType(EntityType.SERVICE_ACCOUNT)).toBe("identity");
+    expect(mapAttackPathChainType(EntityType.CREDENTIAL)).toBe("credential");
+    expect(mapAttackPathChainType(EntityType.TOOL)).toBe("tool");
+    expect(mapAttackPathChainType(EntityType.DATA_STORE)).toBe("data");
+    expect(mapAttackPathChainType(EntityType.ENVIRONMENT)).toBe("entity");
+  });
+
+  it("renders the full correlated chain — including tool and data-store hops the old mapping dropped", () => {
     const path: AttackPath = {
       source: "cve-1",
-      target: "agent-1",
-      hops: ["cve-1", "tool-1", "agent-1"],
+      target: "data-1",
+      hops: ["cve-1", "tool-1", "agent-1", "data-1"],
       edges: [],
       composite_risk: 7.8,
       summary: "mixed path",
@@ -177,12 +192,76 @@ describe("attack path helpers", () => {
           dimensions: {},
         },
       ],
+      [
+        "data-1",
+        {
+          id: "data-1",
+          entity_type: EntityType.DATA_STORE,
+          label: "customers-pii",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 8,
+          severity: "critical",
+          severity_id: 5,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
     ]);
 
     expect(toAttackCardNodes(path, nodes)).toEqual([
       { type: "cve", label: "CVE-2026-0002", severity: "critical" },
+      { type: "tool", label: "Run Shell", severity: "high" },
       { type: "agent", label: "Claude Desktop", severity: "high" },
+      { type: "data", label: "Customers Pii", severity: "critical" },
     ]);
+  });
+
+  it("keeps a descriptive backend title but replaces the generic 'Exposure path' with chain endpoints", () => {
+    const nodes = [
+      { type: "identity" as const, label: "billing-service-account" },
+      { type: "server" as const, label: "Postgres connector" },
+      { type: "data" as const, label: "customers-pii" },
+    ];
+    expect(descriptiveAttackPathTitle("CVE-2026-0002 via analyst-agent", nodes)).toBe(
+      "CVE-2026-0002 via analyst-agent",
+    );
+    expect(descriptiveAttackPathTitle("Exposure path", nodes)).toBe("billing-service-account → customers-pii");
+    expect(descriptiveAttackPathTitle("Exposure path via analyst-agent", nodes)).toBe(
+      "billing-service-account → customers-pii",
+    );
+    expect(descriptiveAttackPathTitle(undefined, [{ type: "data" as const, label: "customers-pii" }])).toBe(
+      "customers-pii",
+    );
+    expect(descriptiveAttackPathTitle(undefined, [])).toBe("Exposure path");
+  });
+
+  it("stamps unique 1..N ranks by sorted position even when path keys collide", () => {
+    const collidingPath = (composite: number): AttackPath => ({
+      source: "s",
+      target: "t",
+      hops: ["s", "t"],
+      edges: [],
+      composite_risk: composite,
+      summary: "same key different path",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: [],
+    });
+    const paths = [collidingPath(9.9), collidingPath(9.9), collidingPath(9.9)];
+    const cards = [{ rank: 6, title: "a" }, { rank: 2, title: "b" }, { rank: 6, title: "c" }];
+
+    const rows = rankedAttackPathRows(paths, cards);
+
+    expect(rows.map((row) => row.rank)).toEqual([1, 2, 3]);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(3);
+    expect(rows.map((row) => row.card?.title)).toEqual(["a", "b", "c"]);
   });
 
   it("builds a focused security-graph href from canonical context", () => {

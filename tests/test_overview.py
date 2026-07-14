@@ -323,6 +323,142 @@ def test_overview_coverage_lanes_map_to_five_domains() -> None:
     assert coverage["vuln"]["severity"]["critical"] == 1
 
 
+def test_overview_headline_reflects_noncve_spine_critical() -> None:
+    """A scan-produced non-CVE critical (malicious pkg) reaches headline + grade.
+
+    Regression for the exec-read divergence (#3961): the headline + grade read
+    the CVE-only ``blast_radius`` while the coverage lanes read the unified
+    ``findings`` spine. A malicious/blocklisted-package critical present in the
+    spine (and /v1/findings) but absent from blast_radius was invisible in the
+    headline critical/high and the grade. They must now agree.
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    get_compliance_hub_store().clear("default")
+    job = ScanJob(
+        job_id="spine-job",
+        tenant_id="default",
+        created_at="2026-02-22T10:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-02-22T10:05:00Z"
+    job.result = {
+        "agents": [],
+        "scan_sources": ["agent_discovery"],
+        # blast_radius carries only a lower-severity CVE — the old CVE-only basis.
+        "blast_radius": [
+            {"vulnerability_id": "CVE-2025-1000", "package": "libcve", "severity": "medium", "risk_score": 4},
+        ],
+        # The unified spine additionally carries a malicious-package CRITICAL that
+        # never becomes a blast_radius row (a non-CVE finding the pipeline adds).
+        "findings": [
+            {"id": "vuln-cve", "security_domain": "vuln", "severity": "medium", "cve_id": "CVE-2025-1000"},
+            {
+                "id": "mal-1",
+                "security_domain": "appsec_sca",
+                "severity": "critical",
+                "is_malicious": True,
+                "title": "malicious package foo",
+            },
+        ],
+    }
+    _get_store().put(job)
+
+    data = client_get_overview()
+    # The critical from the spine now reaches the headline (was invisible before).
+    assert data["headline"]["critical"] == 1
+    # Coverage (which always read the spine) and the headline now agree.
+    coverage = {lane["domain"]: lane for lane in data["coverage"]}
+    assert coverage["appsec_sca"]["severity"]["critical"] == 1
+    # The grade moves off a clean posture — a critical carries penalty.
+    assert data["posture"]["grade"] not in {"N/A", "A"}
+    crit_row = next(r for r in data["posture"]["breakdown"] if r["driver"] == "critical")
+    assert crit_row["count"] == 1
+    get_compliance_hub_store().clear("default")
+
+
+def test_overview_compliance_failing_moves_grade() -> None:
+    """A failing compliance framework feeds the exec grade (was hardcoded 0) (#3962)."""
+    _clear_jobs()
+    _reset_score_config()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    get_compliance_hub_store().clear("default")
+
+    def _put_job(frameworks: list[str]) -> None:
+        job = ScanJob(
+            job_id="cmp-job",
+            tenant_id="default",
+            created_at="2026-02-22T10:00:00Z",
+            request=ScanRequest(),
+        )
+        job.status = JobStatus.DONE
+        job.completed_at = "2026-02-22T10:05:00Z"
+        job.result = {
+            "agents": [],
+            "scan_sources": ["cloud"],
+            "findings": [
+                {"id": "f-crit", "security_domain": "cspm", "severity": "critical", "applicable_frameworks": frameworks},
+            ],
+        }
+        _get_store().put(job)
+
+    # Baseline: identical critical, no framework mapping — compliance driver == 0.
+    _put_job([])
+    base = client_get_overview()
+    base_cmp = next(r for r in base["posture"]["breakdown"] if r["driver"] == "compliance")
+    assert base_cmp["count"] == 0
+
+    # Same critical, now mapped to two failing frameworks — the grade drops further.
+    _clear_jobs()
+    _put_job(["soc2", "iso_27001"])
+    failing = client_get_overview()
+    cmp_row = next(r for r in failing["posture"]["breakdown"] if r["driver"] == "compliance")
+    assert cmp_row["count"] >= 1
+    assert cmp_row["contribution"] > 0
+    # The added compliance penalty pushes the score strictly below the no-framework case.
+    assert failing["posture"]["score"] < base["posture"]["score"]
+    _reset_score_config()
+    get_compliance_hub_store().clear("default")
+
+
+def test_overview_sheds_with_429_when_backpressure_opens(monkeypatch) -> None:
+    """/v1/overview offloads store work off the event loop and sheds under overload (#3963)."""
+    import time
+
+    from agent_bom.api.routes import overview as overview_routes
+    from agent_bom.backpressure import reset_backpressure_for_tests
+
+    _clear_jobs()
+    monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_OVERVIEW_P99_MS", "1")
+    monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_OVERVIEW_MIN_SAMPLES", "1")
+    monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_OVERVIEW_COOLDOWN_SECONDS", "30")
+    reset_backpressure_for_tests()
+
+    original = overview_routes._build_overview
+
+    def _slow(*args, **kwargs):
+        time.sleep(0.01)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(overview_routes, "_build_overview", _slow)
+    client = TestClient(app)
+    try:
+        warm = client.get("/v1/overview", headers=_AUTH_HEADERS)
+        assert warm.status_code == 200
+        shed = client.get("/v1/overview", headers=_AUTH_HEADERS)
+        assert shed.status_code == 429
+        body = shed.json()["detail"]
+        assert body["path"] == "overview"
+        assert int(shed.headers["Retry-After"]) >= 1
+    finally:
+        reset_backpressure_for_tests()
+
+
 def test_overview_posture_blurb_not_no_vulns_when_counted() -> None:
     """Posture summary must never claim no vulnerabilities when the count > 0."""
     _clear_jobs()

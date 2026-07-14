@@ -362,3 +362,32 @@ def test_sqlite_list_page_limit1_stays_fast_at_1m(tmp_path) -> None:
     # Generous ceiling — this guards against a catastrophic regression (filesort /
     # full-scan), not a tight latency SLA, so it stays green under CI load.
     assert elapsed < 2.0, f"limit=1 index read took {elapsed:.3f}s at {target} rows"
+
+
+def test_sqlite_severity_breakdown_groups_by_materialized_column(tmp_path: Any) -> None:
+    """``severity_breakdown`` must GROUP BY the indexed ``severity`` column (#3963).
+
+    The old query grouped by ``json_extract(payload, '$.severity')`` — an
+    unindexed per-row payload decode. The materialized ``severity`` column
+    (populated on ingest) is the sargable source of truth. Flipping the column
+    away from the payload proves the aggregate reads the column, not the payload.
+    """
+    store = SQLiteComplianceHubStore(str(tmp_path / "sev.db"))
+    store.add("t1", [{"finding_id": "a", "severity": "low", "title": "x"}])
+
+    # Divergence: mutate only the materialized column, leaving the payload as-is.
+    store._conn.execute("UPDATE compliance_hub_findings SET severity = 'critical' WHERE tenant_id = 't1'")
+    store._conn.commit()
+
+    counts = store.severity_breakdown("t1")
+    assert counts["critical"] == 1
+    assert counts["low"] == 0
+
+
+def test_sqlite_severity_breakdown_counts_empty_as_unknown(tmp_path: Any) -> None:
+    """A finding with no severity lands in the ``unknown`` bucket, not dropped."""
+    store = SQLiteComplianceHubStore(str(tmp_path / "sev2.db"))
+    store.add("t1", [{"finding_id": "a", "title": "no-sev"}, {"finding_id": "b", "severity": "high", "title": "y"}])
+    counts = store.severity_breakdown("t1")
+    assert counts["high"] == 1
+    assert counts["unknown"] == 1

@@ -5,13 +5,23 @@ powers the unified overview / command-center landing page. No new scan or
 ingestion logic lives here — every metric is read from a store or summary
 function that another route already exposes:
 
-    * Cloud / CNAPP + Ops + Findings  -> scan-job store (blast radius, sources)
+    * Cloud / CNAPP + Ops + Findings  -> scan-job store (unified findings spine)
     * Runtime                          -> deployment-context signals
     * LLM cost                         -> cost store summary
     * NHI / identity                   -> agent-identity store + fleet store
-    * Posture + headline               -> latest scan posture scorecard, folded
-      with compliance-hub current-state severity counts so findings ingested via
-      ``POST /v1/findings/bulk`` move the grade/headline (not scan jobs alone)
+    * Posture + headline               -> the SAME unified findings spine the
+      coverage lanes read, folded with compliance-hub current-state severity
+      counts so findings ingested via ``POST /v1/findings/bulk`` move the
+      grade/headline (not scan jobs alone)
+
+The exec headline severity counts, the five coverage lanes, and the risk grade
+are all built from one reconciled rollup over the unified ``findings`` stream
+(``_estate_rollup``) — never the CVE-only ``blast_radius``. That closes the
+divergence where a scan-produced non-CVE critical (malicious/blocklisted
+package, MCP/a2a auth, IaC) was visible in the coverage lanes and
+``/v1/findings`` but invisible in the headline critical/high and the grade
+(#3961). ``blast_radius`` / compact ``summary`` are used only as fallbacks when
+a completed scan carries no findings spine (e.g. post hot-cache compaction).
 
 Domain tiles (cloud / vuln / code / runtime / ...) remain scan-scoped by
 design; only the top-level posture + headline aggregate scan + ingested
@@ -27,11 +37,13 @@ import logging
 from typing import Any, cast
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request
+import anyio.to_thread
+from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import ExecScoreConfigUpdateRequest, JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.exec_score import compute_exec_score
 from agent_bom.rbac import require_authenticated_permission
 
@@ -202,9 +214,107 @@ def _rollup_from_summary(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
-    """Aggregate severity counts, sources, scans, and top-risk findings."""
+def _finding_top_risk(row: dict[str, Any]) -> dict[str, Any]:
+    """Build a top-risk strip entry from a unified findings-spine row."""
+    asset = row.get("asset") if isinstance(row.get("asset"), dict) else {}
+    risk = row.get("risk_score")
+    return {
+        "vulnerability_id": str(row.get("cve_id") or row.get("canonical_id") or row.get("id") or ""),
+        "package": row.get("package") or (asset or {}).get("name"),
+        "severity": (str(row.get("severity") or "").strip().lower() or "low"),
+        "risk_score": round(float(risk or 0), 1),
+        "is_kev": bool(row.get("is_kev") or row.get("cisa_kev")),
+        "cvss_score": row.get("cvss_score"),
+        "epss_score": row.get("epss_score"),
+        "affected_agents": list(row.get("affected_agents") or []),
+    }
+
+
+def _fold_findings(
+    findings: list[Any],
+    *,
+    severity: dict[str, int],
+    lanes: dict[str, dict[str, int]],
+    lane_counts: dict[str, int],
+    seen: set[str],
+    top_risks: list[dict[str, Any]],
+    failing_frameworks: set[str],
+) -> tuple[int, int, int]:
+    """Fold unified findings-spine rows into the shared estate accumulators.
+
+    Every row is counted into exactly one severity bucket AND its security
+    domain's coverage lane from the same pass, so the headline can never
+    disagree with the lanes. Returns ``(added, kev, credential_exposed)`` for
+    this batch. A finding whose severity is critical/high marks each of its
+    ``applicable_frameworks`` as failing (feeds the exec grade's compliance
+    driver, #3962).
+    """
+    from agent_bom.compliance_coverage import normalize_framework_slug
+
+    added = 0
+    kev = 0
+    credential_exposed = 0
+    for row in findings:
+        if not isinstance(row, dict):
+            continue
+        identity = str(row.get("id") or row.get("canonical_id") or row.get("cve_id") or id(row))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        bucket = _bucket(str(row.get("severity") or ""), severity)
+        severity[bucket] += 1
+        dom = _row_domain(row)
+        lanes[dom][bucket] += 1
+        lane_counts[dom] += 1
+        added += 1
+        if bool(row.get("is_kev") or row.get("cisa_kev")):
+            kev += 1
+        if row.get("exposed_credentials"):
+            credential_exposed += 1
+        if bucket in ("critical", "high"):
+            for slug in row.get("applicable_frameworks") or []:
+                if slug:
+                    failing_frameworks.add(normalize_framework_slug(str(slug)))
+        top_risks.append(_finding_top_risk(row))
+    return added, kev, credential_exposed
+
+
+def _job_package_count(result: dict[str, Any]) -> int:
+    """Count discovered packages across the scan's agents/servers."""
+    packages = 0
+    for agent in result.get("agents", []) or []:
+        for server in agent.get("mcp_servers", []) or []:
+            for pkg in server.get("packages", []) or []:
+                if pkg.get("name"):
+                    packages += 1
+    return packages
+
+
+def _estate_rollup(jobs: list[Any]) -> dict[str, Any]:
+    """Single reconciled rollup over the unified findings spine (#3961/#3962/#3963).
+
+    The exec headline severity counts, the five coverage lanes, the top-risk
+    strip, and the risk grade are all built from ONE pass over the same
+    ``findings`` stream so a scan-produced non-CVE critical can never be visible
+    in one surface and invisible in another. Per completed scan the richest
+    evidence available is folded in, in precedence order:
+
+      1. the unified ``findings`` spine (the superset — carries the non-CVE
+         findings the pipeline adds beyond ``blast_radius``),
+      2. else the CVE-only ``blast_radius`` (legacy / pre-spine results),
+      3. else the compact ``summary`` (after hot-cache compaction drops both).
+
+    Findings are deduped by id across re-scans (mirrors the coverage-lane
+    dedup). ``compliance_failing`` counts the distinct frameworks with at least
+    one critical/high finding — cheap because it is accumulated in this same
+    pass, not a second control-by-control evaluation.
+    """
     severity = _empty_severity()
+    lanes: dict[str, dict[str, int]] = {dom: _empty_severity() for dom in _COVERAGE_DOMAINS}
+    lane_counts: dict[str, int] = {dom: 0 for dom in _COVERAGE_DOMAINS}
+    seen: set[str] = set()
+    failing_frameworks: set[str] = set()
+    top_risks: list[dict[str, Any]] = []
     sources: set[str] = set()
     scan_count = 0
     done_count = 0
@@ -212,9 +322,8 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
     running_count = 0
     kev = 0
     credential_exposed = 0
-    unique_cves = 0
+    unique_findings = 0
     unique_packages = 0
-    top_risks: list[dict[str, Any]] = []
     latest_scan_at: str | None = None
 
     for job in jobs:
@@ -238,35 +347,64 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
             if src:
                 sources.add(str(src))
 
+        findings = result.get("findings")
         blast_radius = result.get("blast_radius") or []
-        if blast_radius:
+        if findings:
+            added, add_kev, add_cred = _fold_findings(
+                cast(list[Any], findings),
+                severity=severity,
+                lanes=lanes,
+                lane_counts=lane_counts,
+                seen=seen,
+                top_risks=top_risks,
+                failing_frameworks=failing_frameworks,
+            )
+            kev += add_kev
+            credential_exposed += add_cred
+            unique_findings += added
+            unique_packages += _job_package_count(result)
+        elif blast_radius:
+            # Fallback: no spine on this result — CVE-only blast_radius. Every
+            # entry is a dependency CVE, so it folds into the vuln lane.
             partial = _rollup_from_blast_radius(cast(list[dict[str, Any]], blast_radius))
             for key in _ALL_SEVERITY_KEYS:
                 severity[key] += partial["severity"][key]
+                lanes["vuln"][key] += partial["severity"][key]
+            lane_counts["vuln"] += partial["unique_cves"]
             kev += partial["kev"]
             credential_exposed += partial["credential_exposed"]
-            unique_cves += partial["unique_cves"]
+            unique_findings += partial["unique_cves"]
             top_risks.extend(partial["top_risks"])
-            for agent in result.get("agents", []) or []:
-                for server in agent.get("mcp_servers", []) or []:
-                    for pkg in server.get("packages", []) or []:
-                        name = pkg.get("name")
-                        if name:
-                            unique_packages += 1
+            unique_packages += _job_package_count(result)
         else:
+            # Fallback: compacted result — only the compact summary survives.
             partial = _rollup_from_summary(result)
             for key in _ALL_SEVERITY_KEYS:
                 severity[key] += partial["severity"][key]
-            kev += partial["kev"]
-            credential_exposed += partial["credential_exposed"]
-            unique_cves += partial["unique_cves"]
+                lanes["vuln"][key] += partial["severity"][key]
+            lane_counts["vuln"] += partial["unique_cves"]
+            unique_findings += partial["unique_cves"]
             unique_packages = max(unique_packages, partial["unique_packages"])
-            top_risks.extend(partial["top_risks"])
 
     top_risks.sort(key=lambda r: r["risk_score"], reverse=True)
+    coverage = [
+        {
+            "domain": dom,
+            "label": _COVERAGE_LABELS[dom],
+            "href": f"/findings?domain={dom}",
+            "count": lane_counts[dom],
+            "severity": lanes[dom],
+        }
+        for dom in _COVERAGE_DOMAINS
+    ]
 
     return {
+        # All-domain reconciled histogram — the headline + grade basis.
         "severity": severity,
+        "coverage": coverage,
+        # Vuln-lane specifics for the scan-scoped "Vuln / SCA" domain tile.
+        "vuln_severity": lanes["vuln"],
+        "unique_cves": lane_counts["vuln"],
         "sources": sorted(sources),
         "scan_count": scan_count,
         "done_count": done_count,
@@ -274,10 +412,11 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
         "running_count": running_count,
         "kev": kev,
         "credential_exposed": credential_exposed,
-        "unique_cves": unique_cves,
+        "unique_findings": unique_findings,
         "unique_packages": unique_packages,
         "top_risks": top_risks[:10],
         "latest_scan_at": latest_scan_at,
+        "compliance_failing": len(failing_frameworks),
     }
 
 
@@ -291,46 +430,6 @@ def _row_domain(row: dict[str, Any]) -> str:
     from agent_bom.finding_scope import domain_for_row
 
     return domain_for_row(row) or "vuln"
-
-
-def _domain_rollup(jobs: list[Any]) -> list[dict[str, Any]]:
-    """Group unified findings by security domain into the five coverage lanes.
-
-    Reads each completed scan's unified ``findings`` stream (deduped by finding
-    id across re-scans) and buckets it by ``security_domain``. Each lane carries
-    a severity strip whose values sum to the lane count, so the UI can never
-    render a count that contradicts its severity strip. Empty lanes are still
-    returned at zero so the coverage row is always the same five domains.
-    """
-    lanes: dict[str, dict[str, int]] = {dom: _empty_severity() for dom in _COVERAGE_DOMAINS}
-    counts: dict[str, int] = {dom: 0 for dom in _COVERAGE_DOMAINS}
-    seen: set[str] = set()
-
-    for job in jobs:
-        if getattr(job, "status", None) != JobStatus.DONE or not job.result:
-            continue
-        result = cast(dict[str, Any], job.result)
-        for row in result.get("findings", []) or []:
-            if not isinstance(row, dict):
-                continue
-            identity = str(row.get("id") or row.get("canonical_id") or row.get("cve_id") or id(row))
-            if identity in seen:
-                continue
-            seen.add(identity)
-            dom = _row_domain(row)
-            lanes[dom][_bucket(str(row.get("severity") or ""), lanes[dom])] += 1
-            counts[dom] += 1
-
-    return [
-        {
-            "domain": dom,
-            "label": _COVERAGE_LABELS[dom],
-            "href": f"/findings?domain={dom}",
-            "count": counts[dom],
-            "severity": lanes[dom],
-        }
-        for dom in _COVERAGE_DOMAINS
-    ]
 
 
 def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:
@@ -481,34 +580,36 @@ def _combined_severity(scan_severity: dict[str, int], hub_severity: dict[str, in
 def _exec_posture(
     request: Request,
     scan_posture: dict[str, Any],
-    scan: dict[str, Any],
+    estate: dict[str, Any],
     hub_severity: dict[str, int],
 ) -> dict[str, Any]:
     """Compute the configurable exec risk score from the honest estate counts.
 
-    The grade derives from the same reconciled severity buckets, KEV, and
-    credential/blast-radius exposure the overview already exposes — so it can
-    never contradict them (a non-zero counted total always carries penalty). An
-    authoritative scan scorecard is passed as a *floor*: the final score is the
-    worst of the count-derived score and that scorecard, so ingested/benign
-    evidence can only move the grade down, never launder a failing posture up.
-    Reads the tenant's persisted score-config (defaults < env < tenant override).
+    The grade derives from the same reconciled severity buckets (the unified
+    findings spine + hub-ingested evidence), KEV, credential exposure, and the
+    live count of failing compliance frameworks the overview already exposes —
+    so it can never contradict them (a non-zero counted total always carries
+    penalty). An authoritative scan scorecard is passed as a *floor*: the final
+    score is the worst of the count-derived score and that scorecard, so
+    ingested/benign evidence can only move the grade down, never launder a
+    failing posture up. Reads the tenant's persisted score-config
+    (defaults < env < tenant override).
     """
     from agent_bom.api.exec_score_config import resolve_exec_score_config
 
-    combined = _combined_severity(scan["severity"], hub_severity)
+    combined = _combined_severity(estate["severity"], hub_severity)
     floor: float | None = None
     if scan_posture.get("grade") not in (None, "N/A"):
         floor = float(scan_posture.get("score") or 0.0)
     config = resolve_exec_score_config(_tenant_id(request))
     return compute_exec_score(
         severity=combined,
-        kev=int(scan.get("kev", 0) or 0),
-        exposure=int(scan.get("credential_exposed", 0) or 0),
-        # Live compliance-failing count is a follow-up (#3940 notes) — wiring the
-        # full compliance aggregation into this hot exec endpoint is deferred so
-        # the snapshot stays cheap; the driver + weight ship ready in the model.
-        compliance_failing=0,
+        kev=int(estate.get("kev", 0) or 0),
+        exposure=int(estate.get("credential_exposed", 0) or 0),
+        # Live count of failing compliance frameworks, accumulated in the same
+        # estate rollup (#3962): a framework with a critical/high finding fails.
+        # Cheap — no second control-by-control evaluation on this hot endpoint.
+        compliance_failing=int(estate.get("compliance_failing", 0) or 0),
         config=config,
         floor_score=floor,
         floor_summary=str(scan_posture.get("summary") or "") or None,
@@ -553,53 +654,74 @@ async def get_overview(request: Request) -> dict[str, Any]:
     Read-only. Composes existing stores and summary helpers into one payload
     keyed by domain so the overview page can render a tile per domain plus a
     shared top-risks strip without fanning out to a dozen endpoints.
-    """
-    jobs = _get_store().list_all(tenant_id=_tenant_id(request))
 
-    scan = _scan_rollup(jobs)
-    coverage = _domain_rollup(jobs)
+    The store + DB work (job rollup, hub severity GROUP BY, cost/identity/fleet
+    stores) is offloaded off the event loop under the adaptive backpressure
+    guard so a burst of overview reads cannot starve ``/health`` (#3963).
+    """
+    try:
+        async with adaptive_backpressure("overview"):
+            return await anyio.to_thread.run_sync(_build_overview, request)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+
+def _build_overview(request: Request) -> dict[str, Any]:
+    """Synchronous overview composition (runs in a worker thread, #3963)."""
+    tenant_id = _tenant_id(request)
+    jobs = _get_store().list_all(tenant_id=tenant_id)
+
+    estate = _estate_rollup(jobs)
+    coverage = estate["coverage"]
     hub_severity = _hub_severity_snapshot(request)
-    posture = _exec_posture(request, _posture_snapshot(jobs), scan, hub_severity)
+    posture = _exec_posture(request, _posture_snapshot(jobs), estate, hub_severity)
     runtime = _runtime_snapshot(request, jobs)
     cost = _cost_snapshot(request)
     identity = _identity_snapshot(request)
 
     hub_findings = sum(int(hub_severity.get(k, 0) or 0) for k in _HUB_SEVERITY_KEYS)
-    headline_critical = scan["severity"]["critical"] + int(hub_severity.get("critical", 0) or 0)
-    headline_high = scan["severity"]["high"] + int(hub_severity.get("high", 0) or 0)
+    # Headline severity reads the SAME unified spine the coverage lanes read,
+    # folded with hub-ingested evidence — never the CVE-only blast_radius (#3961).
+    headline_critical = estate["severity"]["critical"] + int(hub_severity.get("critical", 0) or 0)
+    headline_high = estate["severity"]["high"] + int(hub_severity.get("high", 0) or 0)
     critical_high = headline_critical + headline_high
 
     cloud_accounts = _cloud_account_count(request)
     repo_scans = _repo_scan_count(jobs)
+    vuln_severity = estate["vuln_severity"]
 
     domains = {
         "cloud": {
             "label": "Cloud posture",
             "href": "/connections",
-            "graph_href": _cloud_graph_href(scan["severity"]),
+            "graph_href": _cloud_graph_href(estate["severity"]),
             "metric": cloud_accounts,
             "metric_label": "accounts connected",
             "status": "ok" if cloud_accounts > 0 else "idle",
             "detail": {
                 "accounts": cloud_accounts,
-                "sources": scan["sources"],
+                "sources": estate["sources"],
             },
         },
         "vuln": {
             "label": "Vuln / SCA",
             "href": "/findings?issue=vulnerability",
-            "graph_href": _cloud_graph_href(scan["severity"]),
-            "metric": scan["unique_cves"],
+            "graph_href": _cloud_graph_href(vuln_severity),
+            "metric": estate["unique_cves"],
             "metric_label": "open CVEs",
-            "status": _status_for(scan["severity"]["critical"], scan["severity"]["high"]),
+            "status": _status_for(vuln_severity["critical"], vuln_severity["high"]),
             "detail": {
-                "critical": scan["severity"]["critical"],
-                "high": scan["severity"]["high"],
-                "kev": scan["kev"],
-                "packages": scan["unique_packages"],
+                "critical": vuln_severity["critical"],
+                "high": vuln_severity["high"],
+                "kev": estate["kev"],
+                "packages": estate["unique_packages"],
                 # Full histogram (incl. ``unrated``) so the UI never renders a
                 # metric that contradicts its severity strip.
-                "severity": scan["severity"],
+                "severity": vuln_severity,
             },
         },
         "code": {
@@ -609,7 +731,7 @@ async def get_overview(request: Request) -> dict[str, Any]:
             "metric": repo_scans,
             "metric_label": "repo scans",
             "status": "ok" if repo_scans > 0 else "idle",
-            "detail": {"repo_scans": repo_scans, "packages": scan["unique_packages"]},
+            "detail": {"repo_scans": repo_scans, "packages": estate["unique_packages"]},
         },
         "runtime": {
             "label": "Runtime",
@@ -640,35 +762,35 @@ async def get_overview(request: Request) -> dict[str, Any]:
         "ops": {
             "label": "Ops",
             "href": "/jobs",
-            "metric": scan["scan_count"],
+            "metric": estate["scan_count"],
             "metric_label": "completed scans",
-            "status": "warn" if scan["failed_count"] > 0 else ("ok" if scan["scan_count"] > 0 else "idle"),
+            "status": "warn" if estate["failed_count"] > 0 else ("ok" if estate["scan_count"] > 0 else "idle"),
             "detail": {
-                "done": scan["done_count"],
-                "failed": scan["failed_count"],
-                "running": scan["running_count"],
-                "packages": scan["unique_packages"],
+                "done": estate["done_count"],
+                "failed": estate["failed_count"],
+                "running": estate["running_count"],
+                "packages": estate["unique_packages"],
             },
         },
     }
 
     return {
         "schema_version": "overview.v1",
-        "tenant_id": _tenant_id(request),
+        "tenant_id": tenant_id,
         "posture": posture,
         "headline": {
             "critical": headline_critical,
             "high": headline_high,
             "critical_high": critical_high,
-            "kev": scan["kev"],
-            "credential_exposed": scan["credential_exposed"],
-            "scans": scan["scan_count"],
-            "latest_scan_at": scan["latest_scan_at"],
+            "kev": estate["kev"],
+            "credential_exposed": estate["credential_exposed"],
+            "scans": estate["scan_count"],
+            "latest_scan_at": estate["latest_scan_at"],
             "hub_findings": hub_findings,
         },
         "domains": domains,
         "coverage": coverage,
-        "top_risks": scan["top_risks"],
+        "top_risks": estate["top_risks"],
     }
 
 

@@ -1411,9 +1411,12 @@ class SQLiteComplianceHubStore:
         return hydrate_finding_payloads_sqlite(self._conn, tenant_id, payloads), total
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
+        # GROUP BY the materialised ``severity`` column (populated on ingest and
+        # backed by ``idx_hub_findings_tenant_severity_ci``) instead of an
+        # unindexed per-row ``json_extract(payload, '$.severity')`` decode (#3963).
         rows = self._conn.execute(
             """
-            SELECT LOWER(COALESCE(json_extract(payload, '$.severity'), 'unknown')) AS sev, COUNT(*)
+            SELECT LOWER(COALESCE(NULLIF(severity, ''), 'unknown')) AS sev, COUNT(*)
             FROM compliance_hub_findings
             WHERE tenant_id = ?
             GROUP BY sev

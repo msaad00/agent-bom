@@ -2290,6 +2290,25 @@ export interface OverviewDomain {
   detail: Record<string, unknown>;
 }
 
+/** Per-domain severity histogram — includes the honest ``unrated`` bucket so
+ * ``sum(values) === count`` for the lane (issue #3946). */
+export interface CoverageSeverity {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  unrated: number;
+}
+
+/** One security-posture coverage lane (CSPM / Vuln mgmt / AppSec-SCA / DSPM / AISPM). */
+export interface OverviewCoverageLane {
+  domain: "cspm" | "vuln" | "appsec_sca" | "dspm" | "aispm";
+  label: string;
+  href: string;
+  count: number;
+  severity: CoverageSeverity;
+}
+
 export interface OverviewTopRisk {
   vulnerability_id: string;
   package: string | null;
@@ -2313,7 +2332,9 @@ export interface OverviewResponse {
     credential_exposed: number;
     scans: number;
     latest_scan_at: string | null;
+    hub_findings?: number;
   };
+  coverage?: OverviewCoverageLane[];
   domains: {
     cloud: OverviewDomain;
     vuln: OverviewDomain;

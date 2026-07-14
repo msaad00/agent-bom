@@ -183,6 +183,14 @@ class Asset:
     identifier: Optional[str] = None  # purl, ARN, image digest, etc.
     location: Optional[str] = None  # file path, URL, cloud region
 
+    # Explicit scope — where this asset lives. Optional/nullable so non-cloud
+    # assets (packages, files) serialize unchanged. ``account_ref`` is a single
+    # normalized string (e.g. ``aws:123456789012``) built by finding_scope.
+    provider: Optional[str] = None  # aws | azure | gcp | snowflake | ...
+    account_ref: Optional[str] = None  # normalized ``<provider>:<account>``
+    region: Optional[str] = None
+    environment: Optional[str] = None  # prod | staging | dev | ...
+
     @property
     def stable_id(self) -> str:
         """Deterministic UUID derived from asset content.
@@ -217,6 +225,14 @@ class Finding:
     source: FindingSource
     asset: Asset
     severity: str  # mirrors Severity enum value; str for forward-compat
+
+    # Explicit scope (issue #3946) — carried on the finding for query/filter
+    # convenience and mirrored onto the asset at ingest. All optional/nullable
+    # so existing findings serialize unchanged.
+    provider: Optional[str] = None  # aws | azure | gcp | snowflake | ...
+    account_ref: Optional[str] = None  # normalized ``<provider>:<account>``
+    region: Optional[str] = None
+    environment: Optional[str] = None  # prod | staging | dev | ...
 
     # Vendor severity (from source scanner) vs normalised CVSS severity
     vendor_severity: Optional[str] = None  # severity as reported by vendor/scanner
@@ -307,6 +323,17 @@ class Finding:
         from agent_bom.graph.severity import normalize_severity
 
         self.severity = normalize_severity(self.severity)
+        # Keep finding scope and asset scope consistent: mirror finding-level
+        # scope down to the asset when the asset does not already carry it (and
+        # lift asset scope up when only the asset was populated). Non-cloud
+        # findings leave every field None, so this is a no-op for them.
+        for _scope_field in ("provider", "account_ref", "region", "environment"):
+            finding_val = getattr(self, _scope_field)
+            asset_val = getattr(self.asset, _scope_field, None)
+            if finding_val is not None and asset_val is None:
+                setattr(self.asset, _scope_field, finding_val)
+            elif finding_val is None and asset_val is not None:
+                setattr(self, _scope_field, asset_val)
         if self.vendor_severity is not None:
             self.vendor_severity = normalize_severity(self.vendor_severity)
         if self.cvss_severity is not None:
@@ -401,6 +428,18 @@ class Finding:
         """Return the best severity value: vendor > cvss > base severity."""
         return self.vendor_severity or self.cvss_severity or self.severity
 
+    @property
+    def security_domain(self) -> str:
+        """Derived posture lane: one of cspm/vuln/appsec_sca/dspm/aispm.
+
+        A pure function of source + finding type (+ evidence for the cloud
+        data-vs-config split), so the overview and findings surfaces route each
+        finding to exactly one coverage lane without double counting.
+        """
+        from agent_bom.finding_scope import security_domain_for
+
+        return security_domain_for(self.source, self.finding_type, self.evidence)
+
     def to_dict(self) -> dict:
         """Return a JSON-serializable finding payload."""
         return {
@@ -417,7 +456,17 @@ class Finding:
                 "stable_id": self.asset.stable_id,
                 "canonical_id": self.asset.canonical_id,
                 "source_ids": self.asset.source_ids,
+                "provider": self.asset.provider,
+                "account_ref": self.asset.account_ref,
+                "region": self.asset.region,
+                "environment": self.asset.environment,
             },
+            # First-class scope + taxonomy (issue #3946)
+            "provider": self.provider,
+            "account_ref": self.account_ref,
+            "region": self.region,
+            "environment": self.environment,
+            "security_domain": self.security_domain,
             "severity": self.severity,
             "effective_severity": self.effective_severity(),
             "vendor_severity": self.vendor_severity,
@@ -731,6 +780,17 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
     attack = [str(t) for t in (check.get("attack_techniques") or []) if str(t).strip()]
     compliance = [f"CIS-{check_id}"] + [str(t) for t in (check.get("compliance_tags") or []) if str(t).strip()]
     cis_section = sanitize_text(str(check.get("cis_section", "") or ""), max_len=200)
+
+    # Explicit scope (issue #3946): the converter already knows the provider and
+    # the resource id/ARN — parse the account/region out of the ARN, prefer an
+    # explicit ``account_id`` on the check, and normalize into one account ref.
+    from agent_bom.finding_scope import account_ref_from_arn, normalize_account_ref, region_from_arn
+
+    raw_account = str(check.get("account_id") or "").strip() or account_ref_from_arn(primary)
+    account_ref = normalize_account_ref(provider, raw_account)
+    region = sanitize_text(str(check.get("region") or "" or region_from_arn(primary) or ""), max_len=64) or None
+    environment = sanitize_text(str(check.get("environment") or ""), max_len=64) or None
+
     finding = Finding(
         finding_type=FindingType.CIS_FAIL,
         source=FindingSource.CLOUD_CIS,
@@ -739,8 +799,16 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
             asset_type="cloud_resource",
             identifier=primary,
             location=provider,
+            provider=provider,
+            account_ref=account_ref,
+            region=region,
+            environment=environment,
         ),
         severity=severity,
+        provider=provider,
+        account_ref=account_ref,
+        region=region,
+        environment=environment,
         title=f"CIS {check_id}: {title}",
         description=evidence_text or f"CIS benchmark control {check_id} failed for {provider}.",
         remediation_guidance=recommendation or None,
@@ -781,6 +849,10 @@ def snowflake_governance_finding_to_finding(finding: dict, account: str) -> "Fin
     agent_or_role = sanitize_text(str(finding.get("agent_or_role", "") or ""), max_len=300)
     object_name = sanitize_text(str(finding.get("object_name", "") or ""), max_len=300)
     primary = object_name or agent_or_role or f"snowflake:{account or 'account'}"
+
+    from agent_bom.finding_scope import normalize_account_ref
+
+    account_ref = normalize_account_ref("snowflake", account)
     return Finding(
         finding_type=FindingType.CIS_FAIL,
         source=FindingSource.CLOUD_CIS,
@@ -789,8 +861,12 @@ def snowflake_governance_finding_to_finding(finding: dict, account: str) -> "Fin
             asset_type="cloud_resource",
             identifier=primary,
             location="snowflake",
+            provider="snowflake",
+            account_ref=account_ref,
         ),
         severity=severity,
+        provider="snowflake",
+        account_ref=account_ref,
         title=f"Snowflake governance: {title}",
         description=description or f"Snowflake governance risk ({category}) for {primary}.",
         compliance_tags=[f"SNOWFLAKE-GOVERNANCE-{category.upper()}"],

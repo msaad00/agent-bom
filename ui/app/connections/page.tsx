@@ -67,6 +67,12 @@ import {
 import { serviceEntry } from "@/lib/service-registry";
 import { RUN_SCAN_ACTION } from "@/lib/empty-state-actions";
 import { vendorLogo } from "@/lib/vendor-logos";
+import { FirstRunJourney } from "@/components/first-run-journey";
+import {
+  PermissionDeniedNotice,
+  RoleBadge,
+  RolePermissionsPanel,
+} from "@/components/role-access";
 
 // ── Provider catalog ──────────────────────────────────────────────────────────
 // Every option maps its wizard fields onto the connection's role_ref (plaintext
@@ -755,12 +761,24 @@ export default function ConnectionsPage() {
 
       {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
       {!canManage ? (
-        <p className="text-sm text-amber-300">
-          Your role can review connections but cannot create, scan, or delete them.
-        </p>
+        <PermissionDeniedNotice
+          session={session}
+          needed="analyst"
+          action="connect a cloud account, run a scan, or delete a connection"
+        />
       ) : null}
 
+      <FirstRunJourney
+        connectionsCount={connections.length}
+        scanCount={counts?.scan_count ?? 0}
+        findingsCount={counts?.total ?? 0}
+        canManage={canManage}
+        session={session}
+        onConnect={() => openWizard("aws")}
+      />
+
       <div className="flex flex-wrap items-center gap-2">
+        <RoleBadge session={session} />
         <ServiceStateChip
           serviceId="cloud_accounts"
           entry={cloudService}
@@ -890,6 +908,8 @@ export default function ConnectionsPage() {
           )}
         </div>
       </Card>
+
+      <RolePermissionsPanel session={session} />
 
       <ConnectionDetailDrawer
         connection={connections.find((c) => c.id === detailId) ?? null}
@@ -1751,6 +1771,31 @@ function AddConnectionWizard({
     [form.provider],
   );
 
+  // AWS is the only provider whose "secret" is an ExternalId that agent-bom
+  // mints (the customer bakes it into their role's trust policy). It must be
+  // generated exactly once and carried unchanged through Setup → Details so the
+  // value shown in the grant script the user copies is the value the connection
+  // stores. The other providers' secretField is a real credential the user
+  // pastes, so no generation happens there.
+  const isAws = provider.value === "aws";
+
+  // Generate the single AWS ExternalId once, the first time AWS is active.
+  useEffect(() => {
+    if (!isAws) return;
+    setGeneratedExternalId((current) => current || generateConnectionExternalId());
+  }, [isAws]);
+
+  // Keep the submitted external_id in lockstep with the carried ExternalId so
+  // Setup, Details, and the created connection can never diverge.
+  useEffect(() => {
+    if (!isAws || !generatedExternalId) return;
+    setForm((current) =>
+      current.external_id === generatedExternalId
+        ? current
+        : { ...current, external_id: generatedExternalId },
+    );
+  }, [isAws, generatedExternalId]);
+
   function update<K extends keyof WizardForm>(field: K, value: WizardForm[K]) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -1766,8 +1811,10 @@ function AddConnectionWizard({
     setForm((current) => {
       // Re-selecting the already-active provider must not wipe entered fields.
       if (current.provider === value) return current;
+      // Drop any carried ExternalId; the effect re-mints one iff the new
+      // provider is AWS. Reset provider-specific fields so a previous
+      // provider's params don't leak.
       setGeneratedExternalId("");
-      // Reset provider-specific fields so a previous provider's params don't leak.
       return {
         ...current,
         provider: value,
@@ -1780,25 +1827,23 @@ function AddConnectionWizard({
   }
 
   function goNext() {
-    if (step === 1 && generatedExternalId && !form.external_id.trim()) {
-      update("external_id", generatedExternalId);
-    }
     setStep((current) => (current + 1) as 0 | 1 | 2);
   }
 
-  function handleGenerateExternalId() {
+  // Explicit, deliberate re-mint. Updates the carried id and the submitted
+  // external_id together so they stay identical; the operator must re-copy the
+  // grant script and re-apply the trust policy after regenerating.
+  function handleRegenerateExternalId() {
     const value = generateConnectionExternalId();
     setGeneratedExternalId(value);
-    if (step === 2 || !form.external_id.trim()) {
-      update("external_id", value);
-    }
+    setForm((current) => ({ ...current, external_id: value }));
   }
 
   const providerMeta = cloudProviderMeta(provider.value);
   const deployScript = buildGrantScript(
     provider.value,
     grantMethod,
-    generatedExternalId || form.external_id || undefined,
+    isAws ? generatedExternalId || undefined : undefined,
   );
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -1988,31 +2033,40 @@ function AddConnectionWizard({
                       {deployScript || provider.cli}
                     </pre>
                   </div>
-                  {provider.value === "aws" ? (
+                  {isAws ? (
                     <div className="mt-4 rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-[11px] font-medium text-emerald-200">
                           External ID for trust policy
                         </p>
-                        <button
-                          type="button"
-                          onClick={handleGenerateExternalId}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-500"
-                        >
-                          <Fingerprint className="h-3 w-3" />
-                          Generate external ID
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {generatedExternalId ? (
+                            <CopyTextButton text={generatedExternalId} label="Copy ID" />
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={handleRegenerateExternalId}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-500"
+                          >
+                            <RefreshCcw className="h-3 w-3" />
+                            Regenerate
+                          </button>
+                        </div>
                       </div>
                       {generatedExternalId ? (
-                        <p className="mt-2 break-all font-mono text-[11px] text-[var(--foreground)]">
+                        <p
+                          data-testid="wizard-external-id"
+                          className="mt-2 break-all font-mono text-[11px] text-[var(--foreground)]"
+                        >
                           {generatedExternalId}
                         </p>
-                      ) : (
-                        <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">
-                          Generate a high-entropy ExternalId before applying the grant
-                          (CLI, CloudShell, or Terraform). It pre-fills the secret field on the next step.
-                        </p>
-                      )}
+                      ) : null}
+                      <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">
+                        This exact ID is embedded in the grant script above and is
+                        what the connection stores — apply it as the trust policy
+                        ExternalId. It carries to the next step unchanged; do not
+                        regenerate after you have applied the grant.
+                      </p>
                     </div>
                   ) : null}
                   <div className="mt-3 flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
@@ -2076,18 +2130,26 @@ function AddConnectionWizard({
                     <span className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                       {provider.secretField.label}
                     </span>
-                    {provider.value === "aws" ? (
-                      <button
-                        type="button"
-                        onClick={handleGenerateExternalId}
-                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-200 transition hover:border-emerald-500"
-                      >
-                        <Fingerprint className="h-3 w-3" />
-                        Generate
-                      </button>
+                    {isAws ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-300">
+                        <CheckCircle2 className="h-3 w-3" /> Carried from setup
+                      </span>
                     ) : null}
                   </span>
-                  {provider.secretField.multiline ? (
+                  {isAws ? (
+                    // AWS: the single generated ExternalId, read-only, identical
+                    // to the value in the Setup grant script. Never a fresh mint
+                    // here — that would not match the applied trust policy.
+                    <div className="flex items-center justify-between gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">
+                      <code
+                        data-testid="wizard-external-id-details"
+                        className="min-w-0 break-all font-mono text-sm text-[var(--foreground)]"
+                      >
+                        {form.external_id}
+                      </code>
+                      <CopyTextButton text={form.external_id} label="Copy" />
+                    </div>
+                  ) : provider.secretField.multiline ? (
                     <textarea
                       autoComplete="off"
                       rows={5}
@@ -2111,7 +2173,10 @@ function AddConnectionWizard({
                     />
                   )}
                   <span className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
-                    <Lock className="h-3 w-3" /> {provider.secretField.hint}
+                    <Lock className="h-3 w-3" />{" "}
+                    {isAws
+                      ? "Matches the ExternalId in your trust policy. Stored encrypted at rest; regenerate on the Setup step only if you have not applied the grant yet."
+                      : provider.secretField.hint}
                   </span>
                 </label>
                 {provider.usesRegions ? (

@@ -307,6 +307,20 @@ export interface GraphNodeDetailResponse {
   impact: GraphImpactResponse;
 }
 
+export type GraphNeighborDirection = "out" | "in" | "both";
+
+export interface GraphNodeNeighborsResponse {
+  node_id: string;
+  scan_id: string;
+  found: boolean;
+  direction: GraphNeighborDirection;
+  limit: number;
+  total_neighbors: number;
+  truncated: boolean;
+  neighbors: UnifiedNode[];
+  edges: UnifiedEdge[];
+}
+
 export interface GraphRollupAggregate {
   descendant_count: number;
   by_type: Record<string, number>;

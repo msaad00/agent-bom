@@ -317,6 +317,53 @@ def _should_auto_generate_dev_key(*, host: str, api_key: str | None, allow_insec
     return True
 
 
+def _maybe_seed_local_connection_key(*, host: str, allow_insecure_no_auth: bool) -> str | None:
+    """Auto-seed an at-rest connection encryption key for a local/no-auth stack.
+
+    Fail-closed by construction. Fires only when *all* of these hold:
+
+    - the deployment is clearly local: a loopback bind, or an explicit
+      ``--allow-insecure-no-auth`` local-demo override;
+    - the default ``env`` key provider is in effect (a managed provider owns its
+      own key material and must never be shadowed by a local file);
+    - no connection key is already configured (env, ``*_FILE``, or a prior seed);
+    - the ``AGENT_BOM_NO_AUTO_CONNECTIONS_KEY`` opt-out is unset.
+
+    Otherwise this is a no-op and connection creation keeps its existing
+    behaviour (a 503 until the operator provides ``AGENT_BOM_CONNECTIONS_KEY``).
+
+    The key is written to ``~/.agent-bom/connections.key`` so it survives
+    restarts and previously-stored ciphertext stays decryptable. On success the
+    process-local ``AGENT_BOM_CONNECTIONS_KEY_FILE`` is pointed at the file and
+    the resolver cache is reset. Any failure degrades silently to the prior
+    fail-closed behaviour rather than blocking boot.
+    """
+    if _env_truthy("AGENT_BOM_NO_AUTO_CONNECTIONS_KEY"):
+        return None
+    if not (_is_loopback_host(host) or allow_insecure_no_auth):
+        return None
+    from agent_bom.api.connection_crypto import (
+        CONNECTIONS_KEY_ENV,
+        CONNECTIONS_KEY_PROVIDER_ENV,
+        connections_key_configured,
+        reset_key_cache,
+        seed_local_connection_key,
+    )
+
+    provider = os.environ.get(CONNECTIONS_KEY_PROVIDER_ENV, "env").strip().lower() or "env"
+    if provider != "env":
+        return None
+    if connections_key_configured():
+        return None
+    try:
+        path = seed_local_connection_key(Path.home() / ".agent-bom")
+    except Exception:  # noqa: BLE001 - never block boot; stay fail-closed on connect
+        return None
+    os.environ[f"{CONNECTIONS_KEY_ENV}_FILE"] = str(path)
+    reset_key_cache()
+    return str(path)
+
+
 def _api_auth_summary(
     *,
     host: str,
@@ -544,6 +591,8 @@ def serve_cmd(
     _enforce_control_plane_listener_posture(host)
     tls_kwargs = _uvicorn_tls_kwargs()
 
+    seeded_connection_key = _maybe_seed_local_connection_key(host=host, allow_insecure_no_auth=allow_insecure_no_auth)
+
     # Zero-config loopback: when bound to loopback with no auth configured and no
     # opt-out, mint an ephemeral dev key so the dashboard loads without flags.
     # Non-loopback binds never reach here unauthenticated (see the gate above),
@@ -594,6 +643,12 @@ def serve_cmd(
         ),
     ]
     _emit_runtime_summary("agent-bom serve", rows)
+    if seeded_connection_key:
+        click.echo(
+            f"  Connection secrets: auto-sealed at rest with a locally generated key ({seeded_connection_key}).\n"
+            "  Set AGENT_BOM_CONNECTIONS_KEY / _FILE or a managed provider to bring your own; "
+            "AGENT_BOM_NO_AUTO_CONNECTIONS_KEY=1 disables auto-seeding.\n"
+        )
     if dev_api_key:
         click.secho(
             f"  Dev API key (loopback only): {dev_api_key}",
@@ -804,6 +859,8 @@ def api_cmd(
     _enforce_control_plane_listener_posture(host)
     tls_kwargs = _uvicorn_tls_kwargs()
 
+    seeded_connection_key = _maybe_seed_local_connection_key(host=host, allow_insecure_no_auth=allow_insecure_no_auth)
+
     origins = cors_origins.split(",") if cors_origins else None
     configure_api(
         cors_origins=origins,
@@ -848,6 +905,12 @@ def api_cmd(
         ),
     ]
     _emit_runtime_summary("agent-bom API", rows)
+    if seeded_connection_key:
+        click.echo(
+            f"  Connection secrets: auto-sealed at rest with a locally generated key ({seeded_connection_key}).\n"
+            "  Set AGENT_BOM_CONNECTIONS_KEY / _FILE or a managed provider to bring your own; "
+            "AGENT_BOM_NO_AUTO_CONNECTIONS_KEY=1 disables auto-seeding.\n"
+        )
 
     uvicorn.run(
         "agent_bom.api.server:app",

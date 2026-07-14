@@ -219,25 +219,46 @@ glibc-2.34-83.el9.x86_64
     assert "5.2.26" in bash.version
 
 
-def test_legacy_bdb_rpmdb_warns_and_does_not_fail(caplog):
-    """A legacy BerkeleyDB rpm db yields no fatal error, just a coverage warning."""
-    import logging
+def test_flattened_legacy_bdb_rpmdb_is_decoded_natively():
+    """The docker-export fallback decodes legacy RPM headers without warnings."""
+    import struct
 
     from agent_bom.image import _packages_from_tar
+    from agent_bom.oci_parser import (
+        _RPM_HDR_MAGIC,
+        _RPM_TYPE_STRING,
+        _RPMTAG_NAME,
+        _RPMTAG_RELEASE,
+        _RPMTAG_VERSION,
+    )
 
-    # A BerkeleyDB ``Packages`` file we cannot decode — arbitrary binary bytes.
-    bdb_blob = "\x00\x06\x15\x61 legacy berkeleydb rpm packages \x00\x00"
-    tar_bytes = _make_tar_with_file("var/lib/rpm/Packages", bdb_blob)
+    strings = {
+        _RPMTAG_NAME: b"bash\x00",
+        _RPMTAG_VERSION: b"4.4.20\x00",
+        _RPMTAG_RELEASE: b"5.el8\x00",
+    }
+    data = b""
+    offsets: dict[int, int] = {}
+    for tag, value in strings.items():
+        offsets[tag] = len(data)
+        data += value
+    header = _RPM_HDR_MAGIC + struct.pack(">II", len(strings), len(data))
+    for tag in strings:
+        header += struct.pack(">IIII", tag, _RPM_TYPE_STRING, offsets[tag], 1)
+    database = b"berkeley-page\x00" + header + data
+
+    buf = BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tf:
+        info = tarfile.TarInfo(name="var/lib/rpm/Packages")
+        info.size = len(database)
+        tf.addfile(info, BytesIO(database))
 
     with tempfile.NamedTemporaryFile(suffix=".tar") as tmp:
-        tmp.write(tar_bytes)
+        tmp.write(buf.getvalue())
         tmp.flush()
-        with caplog.at_level(logging.WARNING, logger="agent_bom.image"):
-            packages = _packages_from_tar(tmp.name)
+        packages = _packages_from_tar(tmp.name)
 
-    # No fatal error, and no phantom rpm packages invented from the binary db.
-    assert [p for p in packages if p.ecosystem == "rpm"] == []
-    assert any("legacy rpm database" in r.getMessage().lower() for r in caplog.records)
+    assert [(p.name, p.version) for p in packages if p.ecosystem == "rpm"] == [("bash", "4.4.20-5.el8")]
 
 
 def _make_tar_with_files(files: dict[str, str]) -> bytes:

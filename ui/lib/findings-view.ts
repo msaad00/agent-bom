@@ -128,3 +128,80 @@ export function uniqueStrings(items: Array<string | null | undefined>) {
 export function vulnRowKey(vuln: EnrichedVuln): string {
   return vuln.finding_id ?? vuln.id;
 }
+
+/**
+ * Placeholder package name used when a finding has no real package (CIS /
+ * misconfiguration rows carry the asset itself). Treated as "empty" so the
+ * Packages column can auto-hide when every row is just this stand-in.
+ */
+const PLACEHOLDER_PACKAGE = "asset";
+
+/**
+ * Secondary (grey) line for a findings row. Findings frequently set the summary
+ * to the same string as the title (`id`) — for CIS/misconfig rows the title and
+ * summary are identical, so the row printed the label twice. Return the summary
+ * only when it carries information the title doesn't; if it's the same string or
+ * a truncation of the title (or vice versa), return null so the echo is dropped.
+ */
+export function findingSecondaryText(vuln: EnrichedVuln): string | null {
+  const secondary = (vuln.summary ?? vuln.description ?? "").trim();
+  if (!secondary) return null;
+  const primary = (vuln.id ?? "").trim();
+  if (!primary) return secondary;
+  const p = primary.toLowerCase();
+  const s = secondary.toLowerCase();
+  if (p === s) return null;
+  // One is a truncated prefix of the other — still the same text, drop it.
+  if (p.startsWith(s) || s.startsWith(p)) return null;
+  return secondary;
+}
+
+export interface FindingColumnVisibility {
+  cvss: boolean;
+  epss: boolean;
+  packages: boolean;
+  agents: boolean;
+  fix: boolean;
+}
+
+/**
+ * Auto-hide columns that are entirely empty/N/A across the current (filtered)
+ * result set. CIS/misconfiguration findings leave CVSS, EPSS and Fix as "N/A"
+ * and only carry the placeholder "asset" package, so those columns are pure
+ * noise for posture-only scans. A column stays visible when at least one row
+ * carries a real value. Falls back to all-visible for an empty set so headers
+ * don't flicker between renders.
+ */
+export function computeFindingColumns(rows: EnrichedVuln[]): FindingColumnVisibility {
+  if (rows.length === 0) {
+    return { cvss: true, epss: true, packages: true, agents: true, fix: true };
+  }
+  const columns: FindingColumnVisibility = {
+    cvss: false,
+    epss: false,
+    packages: false,
+    agents: false,
+    fix: false,
+  };
+  for (const row of rows) {
+    if (!columns.cvss && typeof row.cvss_score === "number" && Number.isFinite(row.cvss_score)) {
+      columns.cvss = true;
+    }
+    if (!columns.epss && typeof row.epss_score === "number" && Number.isFinite(row.epss_score)) {
+      columns.epss = true;
+    }
+    if (!columns.packages && row.packages.some((p) => p.trim() && p.trim().toLowerCase() !== PLACEHOLDER_PACKAGE)) {
+      columns.packages = true;
+    }
+    if (!columns.agents && row.agents.some((a) => a.trim())) {
+      columns.agents = true;
+    }
+    if (!columns.fix && Boolean(row.fixed_version?.trim())) {
+      columns.fix = true;
+    }
+    if (columns.cvss && columns.epss && columns.packages && columns.agents && columns.fix) {
+      break;
+    }
+  }
+  return columns;
+}

@@ -3,13 +3,22 @@
 import { ChevronDown, ChevronRight, ChevronUp, ExternalLink, ShieldOff } from "lucide-react";
 
 import { severityColor, severityDot } from "@/lib/api";
-import type { EnrichedVuln, SortKey } from "@/lib/findings-view";
+import type { EnrichedVuln, FindingColumnVisibility, SortKey } from "@/lib/findings-view";
 import {
+  findingSecondaryText,
   findingStatusClass,
   findingStatusLabel,
   formatFindingTimestamp,
   vulnRowKey,
 } from "@/lib/findings-view";
+
+const ALL_COLUMNS_VISIBLE: FindingColumnVisibility = {
+  cvss: true,
+  epss: true,
+  packages: true,
+  agents: true,
+  fix: true,
+};
 
 function ReachabilityBadge({
   reachable,
@@ -111,6 +120,7 @@ export function FindingsQueueTable({
   selectedId,
   onSelect,
   showLifecycle = false,
+  columns = ALL_COLUMNS_VISIBLE,
 }: {
   vulns: EnrichedVuln[];
   sortKey: SortKey;
@@ -121,6 +131,7 @@ export function FindingsQueueTable({
   selectedId: string | null;
   onSelect: (vulnId: string | null) => void;
   showLifecycle?: boolean;
+  columns?: FindingColumnVisibility;
 }) {
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
@@ -139,15 +150,25 @@ export function FindingsQueueTable({
                 <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Last seen</th>
               </>
             ) : null}
-            <th className="text-left px-4 py-3">
-              <SortButton label="CVSS" field="cvss" current={sortKey} dir={sortDir} onClick={handleSort} />
-            </th>
-            <th className="text-left px-4 py-3">
-              <SortButton label="EPSS" field="epss" current={sortKey} dir={sortDir} onClick={handleSort} />
-            </th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Packages</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Agents</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Fix</th>
+            {columns.cvss ? (
+              <th className="text-left px-4 py-3">
+                <SortButton label="CVSS" field="cvss" current={sortKey} dir={sortDir} onClick={handleSort} />
+              </th>
+            ) : null}
+            {columns.epss ? (
+              <th className="text-left px-4 py-3">
+                <SortButton label="EPSS" field="epss" current={sortKey} dir={sortDir} onClick={handleSort} />
+              </th>
+            ) : null}
+            {columns.packages ? (
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Packages</th>
+            ) : null}
+            {columns.agents ? (
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Agents</th>
+            ) : null}
+            {columns.fix ? (
+              <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Fix</th>
+            ) : null}
             <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
@@ -155,6 +176,7 @@ export function FindingsQueueTable({
           {vulns?.map((v) => {
             const rowKey = vulnRowKey(v);
             const isSelected = selectedId === rowKey || selectedId === v.id;
+            const secondary = findingSecondaryText(v);
             return (
               <tr
                 key={rowKey}
@@ -203,9 +225,9 @@ export function FindingsQueueTable({
                             hops={v.graph_min_hop_distance}
                           />
                         </div>
-                        {(v.summary ?? v.description) && (
+                        {secondary && (
                           <p className="text-xs text-zinc-600 mt-0.5 ml-3.5 line-clamp-1 max-w-xs">
-                            {v.summary ?? v.description}
+                            {secondary}
                           </p>
                         )}
                       </div>
@@ -230,31 +252,41 @@ export function FindingsQueueTable({
                       </td>
                     </>
                   ) : null}
-                  <td className="px-4 py-3 text-xs font-mono text-zinc-400">
-                    {renderScoreValue(v.cvss_score, "CVSS not published by the current advisory")}
-                  </td>
-                  <td className="px-4 py-3 text-xs font-mono text-zinc-400">
-                    {renderPercentValue(v.epss_score, "EPSS not available for this advisory")}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {v.packages.slice(0, 3).map((p) => (
-                        <span key={p} className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-400">
-                          {p}
-                        </span>
-                      ))}
-                      {v.packages.length > 3 && (
-                        <span className="text-xs text-zinc-600">+{v.packages.length - 3}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-zinc-500">
-                    {v.agents.slice(0, 2).join(", ")}
-                    {v.agents.length > 2 && <span className="text-zinc-600"> +{v.agents.length - 2}</span>}
-                  </td>
-                  <td className="px-4 py-3 text-xs font-mono text-emerald-500">
-                    {v.fixed_version ?? "N/A"}
-                  </td>
+                  {columns.cvss ? (
+                    <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                      {renderScoreValue(v.cvss_score, "CVSS not published by the current advisory")}
+                    </td>
+                  ) : null}
+                  {columns.epss ? (
+                    <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                      {renderPercentValue(v.epss_score, "EPSS not available for this advisory")}
+                    </td>
+                  ) : null}
+                  {columns.packages ? (
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {v.packages.slice(0, 3).map((p) => (
+                          <span key={p} className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-400">
+                            {p}
+                          </span>
+                        ))}
+                        {v.packages.length > 3 && (
+                          <span className="text-xs text-zinc-600">+{v.packages.length - 3}</span>
+                        )}
+                      </div>
+                    </td>
+                  ) : null}
+                  {columns.agents ? (
+                    <td className="px-4 py-3 text-xs text-zinc-500">
+                      {v.agents.slice(0, 2).join(", ")}
+                      {v.agents.length > 2 && <span className="text-zinc-600"> +{v.agents.length - 2}</span>}
+                    </td>
+                  ) : null}
+                  {columns.fix ? (
+                    <td className="px-4 py-3 text-xs font-mono text-emerald-500">
+                      {v.fixed_version ?? "N/A"}
+                    </td>
+                  ) : null}
                   <td className="px-4 py-3">
                     {suppressed.has(v.id) ? (
                       <span className="text-xs font-medium px-2 py-0.5 rounded border bg-zinc-800 border-zinc-700 text-zinc-400">

@@ -171,11 +171,12 @@ def _is_number(value: object) -> bool:
 class PostureScorecard:
     """Enterprise posture scorecard result."""
 
-    grade: str  # A, B, C, D, F
+    grade: str  # A, B, C, D, F, or N/A
     score: float  # 0-100
     dimensions: dict[str, DimensionScore] = field(default_factory=dict)
     summary: str = ""
     policy_source: str = "default"
+    no_data: bool = False  # True when the scan examined no gradable artifacts
 
     def to_dict(self) -> dict:
         return {
@@ -183,6 +184,7 @@ class PostureScorecard:
             "score": self.score,
             "summary": self.summary,
             "policy_source": self.policy_source,
+            "no_data": self.no_data,
             "dimensions": {k: v.to_dict() for k, v in self.dimensions.items()},
         }
 
@@ -464,6 +466,25 @@ def compute_posture_scorecard(
         weight=float(w["configuration_quality"]),
         details=config_detail,
     )
+
+    # ── Did-we-scan guard ──
+    # A grade requires real evaluated inputs. When a scan examined ZERO gradable
+    # artifacts (no packages, no MCP servers, no active findings), every
+    # dimension above falls back to its empty default (100/50) and would produce
+    # a passing "B" — an honest-looking pass for a scan that evaluated nothing.
+    # Return an explicit no-data / N/A posture instead, mirroring the honest N/A
+    # treatment used elsewhere (overview tile, exec score). Dimensions and policy
+    # source are preserved for downstream plumbing; only the headline is honest.
+    examined_artifacts = total_vulns + total_servers + len(all_packages)
+    if examined_artifacts == 0:
+        return PostureScorecard(
+            grade="N/A",
+            score=0.0,
+            dimensions=dimensions,
+            summary="No artifacts scanned — posture grade unavailable. Connect a surface or run a scan to grade posture.",
+            policy_source=resolved.source,
+            no_data=True,
+        )
 
     # ── Final score ──
     total_score = sum(d.score * d.weight for d in dimensions.values())

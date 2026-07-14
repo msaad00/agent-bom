@@ -108,13 +108,24 @@ def _make_report(agents=None, blast_radii=None):
 
 class TestPostureScorecard:
     def test_clean_report_good_grade(self):
-        """Clean report (no vulns) should get a good grade (A or B)."""
+        """A report that actually scanned a clean package gets a good grade (A/B)."""
         from agent_bom.posture import compute_posture_scorecard
 
-        report = _make_report()
+        server = _make_server(packages=[_make_package()], registry_verified=True)
+        agent = _make_agent(servers=[server])
+        report = _make_report(agents=[agent])
         sc = compute_posture_scorecard(report)
         assert sc.grade in ("A", "B")
         assert sc.score >= 75
+        assert sc.no_data is False
+
+    def test_empty_scan_is_no_data_not_passing(self):
+        """A scan that examined zero artifacts is N/A, never a passing grade."""
+        from agent_bom.posture import compute_posture_scorecard
+
+        sc = compute_posture_scorecard(_make_report())
+        assert sc.grade == "N/A"
+        assert sc.no_data is True
 
     def test_critical_vulns_lower_score(self):
         """Critical vulnerabilities should significantly reduce score."""

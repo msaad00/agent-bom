@@ -152,6 +152,161 @@ def test_plain_trusts_edge_is_not_walked_as_assume():
     assert g.nodes["role:R"].attributes.get("can_escalate_privilege") is None
 
 
+_ALLOW_STAR = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}
+_ALLOW_IAM_SELF_ESCALATE = {
+    "Version": "2012-10-17",
+    "Statement": [{"Effect": "Allow", "Action": "iam:PutUserPolicy", "Resource": "*"}],
+}
+
+
+def test_benign_named_policy_with_wildcard_document_is_admin_via_evaluation():
+    # A policy whose NAME carries no admin keyword ("team-utility-policy") but whose
+    # DOCUMENT allows *:* is admin-equivalent. The keyword heuristic (name/label
+    # match) would MISS this; real IAM evaluation catches it.
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev"))
+    g.add_node(UnifiedNode(id="role:helper", entity_type=EntityType.ROLE, label="batch-helper-role"))
+    g.add_node(
+        UnifiedNode(
+            id="pol:custom",
+            entity_type=EntityType.POLICY,
+            label="team-utility-policy",
+            attributes={"policy_document": _ALLOW_STAR},
+        )
+    )
+    g.add_node(UnifiedNode(id="cloud:x", entity_type=EntityType.CLOUD_RESOURCE, label="x"))
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:helper", relationship=RelationshipType.ASSUMES))
+    g.add_edge(UnifiedEdge(source="role:helper", target="pol:custom", relationship=RelationshipType.ATTACHED))
+    g.add_edge(UnifiedEdge(source="role:helper", target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
+
+    stats = apply_effective_permissions(g)
+    assert g.nodes["role:helper"].attributes.get("admin_equivalent") is True
+    assert g.nodes["role:helper"].attributes.get("admin_equivalence_basis") == "policy_evaluation"
+    assert g.nodes["user:dev"].attributes.get("escalates_to_admin") is True
+    assert stats["admin_via_evaluation"] >= 1
+    esc = [r for r in g.interaction_risks if r.pattern == "privilege_escalation"]
+    assert esc and "admin-privileged" in esc[0].description
+
+
+def test_keyword_heuristic_alone_misses_benign_named_wildcard_policy():
+    # Control for the test above: the SAME benign-named policy with NO document is
+    # invisible to both the scanner classification and the evaluator, so only the
+    # name heuristic remains — and it does not fire (no admin keyword in the name).
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev"))
+    g.add_node(UnifiedNode(id="role:helper", entity_type=EntityType.ROLE, label="batch-helper-role"))
+    g.add_node(UnifiedNode(id="pol:custom", entity_type=EntityType.POLICY, label="team-utility-policy"))
+    g.add_node(UnifiedNode(id="cloud:x", entity_type=EntityType.CLOUD_RESOURCE, label="x"))
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:helper", relationship=RelationshipType.ASSUMES))
+    g.add_edge(UnifiedEdge(source="role:helper", target="pol:custom", relationship=RelationshipType.ATTACHED))
+    g.add_edge(UnifiedEdge(source="role:helper", target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
+
+    apply_effective_permissions(g)
+    assert g.nodes["role:helper"].attributes.get("admin_equivalent") is not True
+    assert g.nodes["user:dev"].attributes.get("escalates_to_admin") is not True
+
+
+def test_iam_self_escalation_action_is_admin_via_evaluation():
+    # iam:PutUserPolicy on * lets an identity grant itself any permission — an
+    # admin-equivalent escalation primitive with no "admin" substring anywhere.
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev"))
+    g.add_node(UnifiedNode(id="role:pipe", entity_type=EntityType.ROLE, label="data-pipeline"))
+    g.add_node(
+        UnifiedNode(
+            id="pol:pipe",
+            entity_type=EntityType.POLICY,
+            label="pipeline-permissions",
+            attributes={"policy_document": _ALLOW_IAM_SELF_ESCALATE},
+        )
+    )
+    g.add_node(UnifiedNode(id="cloud:x", entity_type=EntityType.CLOUD_RESOURCE, label="x"))
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:pipe", relationship=RelationshipType.ASSUMES))
+    g.add_edge(UnifiedEdge(source="role:pipe", target="pol:pipe", relationship=RelationshipType.ATTACHED))
+    g.add_edge(UnifiedEdge(source="role:pipe", target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
+
+    apply_effective_permissions(g)
+    assert g.nodes["role:pipe"].attributes.get("admin_equivalent") is True
+    assert g.nodes["user:dev"].attributes.get("escalates_to_admin") is True
+
+
+def test_resource_scoped_admin_action_is_not_flagged_admin():
+    # iam:PutUserPolicy scoped to ONE user ARN is not admin-equivalence; real
+    # evaluation (unlike a bare action/name match) respects resource scope.
+    scoped = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {"Effect": "Allow", "Action": "iam:PutUserPolicy", "Resource": "arn:aws:iam::111122223333:user/self-service"}
+        ],
+    }
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:scoped", entity_type=EntityType.ROLE, label="scoped-role"))
+    g.add_node(
+        UnifiedNode(id="pol:scoped", entity_type=EntityType.POLICY, label="scoped-policy", attributes={"policy_document": scoped})
+    )
+    g.add_edge(UnifiedEdge(source="role:scoped", target="pol:scoped", relationship=RelationshipType.ATTACHED))
+
+    apply_effective_permissions(g)
+    assert g.nodes["role:scoped"].attributes.get("admin_equivalent") is not True
+
+
+def test_explicit_deny_overrides_wildcard_allow_in_evaluation():
+    # Allow *:* with an explicit Deny *:* is NOT admin: explicit deny wins. A
+    # name/keyword match on such a policy would false-positive.
+    deny_over_allow = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {"Effect": "Allow", "Action": "*", "Resource": "*"},
+            {"Effect": "Deny", "Action": "*", "Resource": "*"},
+        ],
+    }
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:locked", entity_type=EntityType.ROLE, label="AdministratorAccess-lookalike"))
+    g.add_node(
+        UnifiedNode(
+            id="pol:locked", entity_type=EntityType.POLICY, label="locked", attributes={"policy_document": deny_over_allow}
+        )
+    )
+    g.add_edge(UnifiedEdge(source="role:locked", target="pol:locked", relationship=RelationshipType.ATTACHED))
+
+    apply_effective_permissions(g)
+    assert g.nodes["role:locked"].attributes.get("admin_equivalent") is not True
+    assert g.nodes["role:locked"].attributes.get("admin_equivalence_basis") == "policy_evaluation"
+
+
+def test_keyword_fallback_still_fires_when_no_document_available():
+    # No policy document anywhere: the overlay degrades to the prior name signal
+    # and notes the basis as heuristic (preserving pre-evaluator behavior).
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev"))
+    g.add_node(UnifiedNode(id="role:admin", entity_type=EntityType.ROLE, label="prod-admin-role"))
+    g.add_node(UnifiedNode(id="pol:admin", entity_type=EntityType.POLICY, label="AdministratorAccess"))
+    g.add_node(UnifiedNode(id="cloud:x", entity_type=EntityType.CLOUD_RESOURCE, label="x"))
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:admin", relationship=RelationshipType.ASSUMES))
+    g.add_edge(UnifiedEdge(source="role:admin", target="pol:admin", relationship=RelationshipType.ATTACHED))
+    g.add_edge(UnifiedEdge(source="role:admin", target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
+
+    stats = apply_effective_permissions(g)
+    assert g.nodes["user:dev"].attributes.get("escalates_to_admin") is True
+    assert g.nodes["role:admin"].attributes.get("admin_equivalence_basis") == "name_heuristic"
+    assert stats["admin_via_heuristic"] >= 1
+
+
+def test_scanner_privilege_level_admin_is_honored_without_document():
+    # The scanner's action-derived privilege_level == "admin" on an attached policy
+    # is a real signal (not a keyword) and is basis "scanner_actions".
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:svc", entity_type=EntityType.ROLE, label="svc-role"))
+    g.add_node(
+        UnifiedNode(id="pol:x", entity_type=EntityType.POLICY, label="custom-x", attributes={"privilege_level": "admin"})
+    )
+    g.add_edge(UnifiedEdge(source="role:svc", target="pol:x", relationship=RelationshipType.ATTACHED))
+
+    apply_effective_permissions(g)
+    assert g.nodes["role:svc"].attributes.get("admin_equivalent") is True
+    assert g.nodes["role:svc"].attributes.get("admin_equivalence_basis") == "scanner_actions"
+
+
 def test_capped_graph_surfaces_skipped_signal():
     # Past the principal cap, the overlay returns 0 escalations but must mark the
     # result 'skipped' so consumers do not read a large estate as 'genuinely none'.

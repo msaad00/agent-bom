@@ -16,6 +16,8 @@ import type {
   GraphQueryRequest,
   GraphQueryResponse,
   GraphNodeDetailResponse,
+  GraphNodeNeighborsResponse,
+  GraphNeighborDirection,
   GraphImpactResponse,
   GraphRollupResponse,
   GraphSearchResponse,
@@ -137,6 +139,8 @@ export type {
   GraphQueryResponse,
   GraphImpactResponse,
   GraphNodeDetailResponse,
+  GraphNodeNeighborsResponse,
+  GraphNeighborDirection,
   GraphSearchResponse,
   GraphSemanticClusterKind,
   GraphSemanticClusterExpansion,
@@ -729,6 +733,21 @@ export const api = {
     if (scanId) params.set("scan_id", scanId);
     const qs = params.toString();
     return get<GraphNodeDetailResponse>(`/v1/graph/node/${encodeURIComponent(nodeId)}${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Lazily load a bounded set of one node's direct graph neighbors for inline expand */
+  getGraphNodeNeighbors: (
+    nodeId: string,
+    options?: { scanId?: string | undefined; limit?: number | undefined; direction?: GraphNeighborDirection | undefined },
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.scanId) params.set("scan_id", options.scanId);
+    if (options?.limit != null) params.set("limit", String(options.limit));
+    if (options?.direction) params.set("direction", options.direction);
+    const qs = params.toString();
+    return get<GraphNodeNeighborsResponse>(
+      `/v1/graph/node/${encodeURIComponent(nodeId)}/neighbors${qs ? `?${qs}` : ""}`,
+    );
   },
 
   /** Compute the blast radius (reverse-BFS impact) of a node */

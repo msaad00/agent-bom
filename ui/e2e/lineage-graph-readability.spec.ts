@@ -215,7 +215,10 @@ async function routeGraphPage(page: Page) {
 async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "dark" | "light") {
   await expect(page.getByRole("heading", { name: "Lineage Graph" })).toBeVisible();
   await expect(page.getByText("Relevant paths", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("View controls", { exact: true })).toBeVisible();
+  // View controls, operator details, and the attack-path queue now live inside
+  // one collapsed-by-default "Advanced controls" shelf so the canvas owns the
+  // fold (#3932). The shelf summary stays visible; its contents open on demand.
+  await expect(page.getByText("Advanced controls", { exact: true })).toBeVisible();
   await expect(page.getByTestId("graph-compression-summary")).toContainText(/compressed|rendered/);
 
   const largeOverview = page.getByTestId("large-graph-overview");

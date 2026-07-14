@@ -21,22 +21,27 @@ import {
 } from "@/lib/api";
 import { useScanStream } from "@/lib/use-scan-stream";
 import {
+  describeWallClock,
   formatDurationMs,
+  formatStageDuration,
   mergePipelineSteps,
   parsePipelineStepsFromProgress,
   summarizePipeline,
   synthesizePipelineSteps,
 } from "@/lib/scan-pipeline-progress";
+import {
+  PIPELINE_GRAPH,
+  backendStepForNode,
+  type DomainLaneData,
+  type ScannerDomain,
+} from "@/lib/scan-pipeline-graph";
+import {
+  cloudIdentityCount,
+  cloudResourceCount,
+  domainFindingsForScan,
+} from "@/lib/scan-domain-findings";
 
-// ── Result-stat extraction (defensive; cloud fields arrive as `unknown`) ─────
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function asNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
+// ── Result-stat extraction ───────────────────────────────────────────────────
 
 interface ResultStat {
   key: string;
@@ -44,80 +49,37 @@ interface ResultStat {
   value: string;
 }
 
-function cloudResourceCount(inventory: unknown): number | null {
-  if (Array.isArray(inventory)) {
-    let total = 0;
-    let seen = false;
-    for (const item of inventory) {
-      if (!isRecord(item)) continue;
-      const n = asNumber(item.resource_count);
-      if (n != null) {
-        total += n;
-        seen = true;
-      }
-    }
-    return seen ? total : null;
-  }
-  if (isRecord(inventory)) return asNumber(inventory.resource_count);
-  return null;
+interface ResultView {
+  lanes: Record<ScannerDomain, DomainLaneData> | undefined;
+  stats: ResultStat[];
 }
 
-function cloudIdentityCount(inventory: unknown): number | null {
-  if (Array.isArray(inventory)) {
-    let total = 0;
-    let seen = false;
-    for (const item of inventory) {
-      if (!isRecord(item)) continue;
-      const n = asNumber(item.identity_count);
-      if (n != null) {
-        total += n;
-        seen = true;
-      }
-    }
-    return seen ? total : null;
-  }
-  if (isRecord(inventory)) return asNumber(inventory.identity_count);
-  return null;
-}
-
-function cisPassRate(benchmark: unknown): number | null {
-  if (!isRecord(benchmark)) return null;
-  const raw = asNumber(benchmark.pass_rate);
-  if (raw == null) return null;
-  // Backends emit either 0–1 or 0–100; normalize to a percentage.
-  return raw <= 1 ? raw * 100 : raw;
-}
-
-function deriveResultStats(
+/**
+ * Build the reconciled result chips + scanner-lane data. The headline
+ * "findings" count sums every domain that ran (CIS failures included), so it
+ * agrees with the domain lanes instead of the old "0 findings / 32% CIS pass"
+ * contradiction.
+ */
+function deriveResultView(
   job: ScanJob | null,
   fallback: Summary | undefined,
-): ResultStat[] {
-  const summary = job?.result?.summary ?? fallback;
-  const stats: ResultStat[] = [];
+  summarized: boolean,
+): ResultView {
+  const result = job?.result;
+  const summary = result?.summary ?? fallback;
+  const { lanes, reconciled, cis } = domainFindingsForScan({ result, summary, summarized });
 
-  if (summary) {
-    stats.push({
-      key: "findings",
-      label: "findings",
-      value: String(summary.total_vulnerabilities ?? 0),
-    });
-    if ((summary.critical_findings ?? 0) > 0) {
-      stats.push({
-        key: "critical",
-        label: "critical",
-        value: String(summary.critical_findings),
-      });
-    }
-    if ((summary.total_packages ?? 0) > 0) {
-      stats.push({
-        key: "packages",
-        label: "packages",
-        value: String(summary.total_packages),
-      });
-    }
+  const stats: ResultStat[] = [];
+  if (reconciled.domainsRun > 0) {
+    stats.push({ key: "findings", label: "findings", value: String(reconciled.total) });
+  }
+  if ((summary?.critical_findings ?? 0) > 0) {
+    stats.push({ key: "critical", label: "critical", value: String(summary!.critical_findings) });
+  }
+  if ((summary?.total_packages ?? 0) > 0) {
+    stats.push({ key: "packages", label: "packages", value: String(summary!.total_packages) });
   }
 
-  const result = job?.result;
   if (result) {
     const resources = cloudResourceCount(result.cloud_inventory);
     if (resources != null) {
@@ -127,18 +89,18 @@ function deriveResultStats(
     if (identities != null) {
       stats.push({ key: "identities", label: "identities", value: String(identities) });
     }
-    const passRate =
-      cisPassRate(result.cis_benchmark) ??
-      cisPassRate(result.azure_cis_benchmark) ??
-      cisPassRate(result.gcp_cis_benchmark) ??
-      cisPassRate(result.snowflake_cis_benchmark) ??
-      cisPassRate(result.databricks_cis_benchmark);
-    if (passRate != null) {
-      stats.push({ key: "cis", label: "CIS pass", value: `${passRate.toFixed(0)}%` });
+  }
+  if (cis) {
+    const failed = reconciled.byDomain.cis;
+    if (failed != null) {
+      stats.push({ key: "cis-fail", label: "CIS fail", value: String(failed) });
+    }
+    if (cis.passRate != null) {
+      stats.push({ key: "cis-pass", label: "CIS pass", value: `${cis.passRate.toFixed(0)}%` });
     }
   }
 
-  return stats;
+  return { lanes, stats };
 }
 
 // Which evidence surfaces are most relevant to drill into from a given stage.
@@ -284,9 +246,12 @@ export function JobPipelinePanel({
     [steps, createdAt, completedAt, job, status],
   );
 
-  const resultStats = useMemo(
-    () => (status === "done" ? deriveResultStats(job, listSummary) : []),
-    [status, job, listSummary],
+  const { lanes, stats: resultStats } = useMemo<ResultView>(
+    () =>
+      status === "done"
+        ? deriveResultView(job, listSummary, synthesized)
+        : { lanes: undefined, stats: [] },
+    [status, job, listSummary, synthesized],
   );
 
   const recentMessages = useMemo(() => {
@@ -304,9 +269,10 @@ export function JobPipelinePanel({
     return merged.slice(-4);
   }, [job?.progress, messages]);
 
-  const selectedStep = selectedStepId ? steps.get(selectedStepId) : undefined;
+  const selectedBackendStep = selectedStepId ? backendStepForNode(selectedStepId) : undefined;
+  const selectedStep = selectedBackendStep ? steps.get(selectedBackendStep) : undefined;
   const selectedMeta = selectedStepId
-    ? PIPELINE_STEPS.find((step) => step.id === selectedStepId)
+    ? PIPELINE_GRAPH.find((node) => node.id === selectedStepId)
     : undefined;
 
   return (
@@ -349,7 +315,10 @@ export function JobPipelinePanel({
           <span>
             Wall clock{" "}
             <span className="font-mono text-[var(--text-secondary)]">
-              {formatDurationMs(summary.wallClockMs)}
+              {describeWallClock(summary.wallClockMs, {
+                synthesized,
+                running: status === "running" || status === "pending",
+              })}
             </span>
           </span>
           <Link
@@ -374,10 +343,11 @@ export function JobPipelinePanel({
       <div className="mt-4 flex flex-col gap-3 lg:flex-row">
         <ScanPipeline
           steps={steps}
-          className="h-[220px] flex-1 rounded-lg border border-[var(--border-subtle)]"
+          lanes={lanes}
+          className="h-[300px] flex-1 rounded-lg border border-[var(--border-subtle)]"
           selectedStepId={selectedStepId}
-          onStepClick={(stepId) =>
-            setSelectedStepId((current) => (current === stepId ? null : stepId))
+          onStepClick={(nodeId) =>
+            setSelectedStepId((current) => (current === nodeId ? null : nodeId))
           }
         />
         {selectedStepId ? (
@@ -408,9 +378,9 @@ export function JobPipelinePanel({
                 {selectedStep.message}
               </p>
             ) : null}
-            {selectedStepId && summary.stepDurationsMs[selectedStepId] != null ? (
+            {selectedBackendStep && summary.stepDurationsMs[selectedBackendStep] != null ? (
               <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">
-                {formatDurationMs(summary.stepDurationsMs[selectedStepId])}
+                {formatDurationMs(summary.stepDurationsMs[selectedBackendStep])}
               </p>
             ) : null}
             {selectedStep?.stats && Object.keys(selectedStep.stats).length > 0 ? (
@@ -425,9 +395,9 @@ export function JobPipelinePanel({
                 ))}
               </div>
             ) : null}
-            {stageLinks(selectedStepId, jobId).length > 0 ? (
+            {selectedBackendStep && stageLinks(selectedBackendStep, jobId).length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {stageLinks(selectedStepId, jobId).map((link) => (
+                {stageLinks(selectedBackendStep, jobId).map((link) => (
                   <Link
                     key={link.label}
                     href={link.href}
@@ -475,13 +445,7 @@ export function JobPipelinePanel({
                     >
                       <dt className="text-[var(--text-secondary)]">{step.label}</dt>
                       <dd className="font-mono text-[var(--text-secondary)]">
-                        {duration != null
-                          ? formatDurationMs(duration)
-                          : stepStatus === "running"
-                            ? "running…"
-                            : stepStatus === "done"
-                              ? "done"
-                              : "—"}
+                        {formatStageDuration(duration, stepStatus, synthesized)}
                       </dd>
                     </div>
                   );

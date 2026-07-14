@@ -37,8 +37,10 @@ import {
   buildFindingsHref,
   buildGraphInvestigationHref,
   buildSecurityGraphHref,
+  descriptiveAttackPathTitle,
   investigationRootForAttackPath,
   matchesAttackPathFocus,
+  rankedAttackPathRows,
   recommendedAttackPathActions,
   moveAttackPathSelection,
   toAttackCardNodes,
@@ -609,38 +611,45 @@ function SecurityGraphPageContent() {
               onKeyDown={handleAttackPathQueueKeyDown}
               aria-label="Attack path queue"
             >
-              {visibleAttackPaths.map((path) => {
-                const key = attackPathKey(path);
-                const card = cardByPathKey.get(key);
+              {rankedAttackPathRows(visibleAttackPaths, fixFirstCards).map(({ path, card, rank, key }) => {
+                const selectionKey = attackPathKey(path);
                 const pathNodes = toAttackCardNodes(path, graphNodeById);
                 if (pathNodes.length === 0) return null;
-                const active = selectedAttackPath ? attackPathKey(selectedAttackPath) === key : false;
+                const active = selectedAttackPath ? attackPathKey(selectedAttackPath) === selectionKey : false;
+                const title = descriptiveAttackPathTitle(card?.title, pathNodes);
                 return (
                   <div
                     key={key}
                     className={`min-w-0 rounded-2xl border bg-[color:var(--surface-elevated)] p-3 transition ${
                       active
-                        ? "border-orange-400/70 ring-2 ring-orange-400/70 ring-offset-2 ring-offset-zinc-950"
+                        ? "border-orange-400/70 ring-2 ring-orange-400/70 ring-offset-2 ring-offset-[color:var(--surface)]"
                         : "border-[color:var(--border-subtle)]"
                     }`}
                   >
-                    {card && (
-                      <div className="mb-3 flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-orange-300">#{card.rank} fix first</div>
-                          <div className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)]">{card.title}</div>
-                        </div>
-                        <div className="rounded-full border border-red-900/60 bg-red-950/30 px-2 py-1 font-mono text-[11px] text-red-200">
-                          {card.attack_path.composite_risk.toFixed(1)}
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-orange-300">#{rank} fix first</div>
+                        <div
+                          title={title}
+                          className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)] [overflow-wrap:anywhere]"
+                        >
+                          {title}
                         </div>
                       </div>
-                    )}
+                      <div className="shrink-0 rounded-xl border border-red-900/60 bg-red-950/30 px-2.5 py-1 text-right">
+                        <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-red-300/80">Path risk</div>
+                        <div className="font-mono text-sm font-semibold leading-4 text-red-200">
+                          {path.composite_risk.toFixed(1)}
+                        </div>
+                      </div>
+                    </div>
                     <AttackPathCard
                       nodes={pathNodes}
                       riskScore={path.composite_risk}
                       captureMode={captureMode}
                       compact
-                      onClick={() => setSelectedAttackPathKey(key)}
+                      showRiskBadge={false}
+                      onClick={() => setSelectedAttackPathKey(selectionKey)}
                     />
                     {card && card.risk_reasons.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-1.5">

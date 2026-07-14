@@ -137,4 +137,41 @@ describe('AttackPathCard', () => {
     )
     expect(screen.getByText('ANTHROPIC_KEY')).toBeInTheDocument()
   })
+
+  it('renders the full correlated chain including data-store, tool, and identity hops', () => {
+    const chain = [
+      { type: 'identity' as const, label: 'billing-service-account' },
+      { type: 'server' as const, label: 'Postgres connector' },
+      { type: 'tool' as const, label: 'execute_sql' },
+      { type: 'data' as const, label: 'customers-pii' },
+    ]
+    const { getAllByText } = render(<AttackPathCard nodes={chain} riskScore={8.2} compact />)
+    expect(screen.getByText('billing-service-account')).toBeInTheDocument()
+    expect(screen.getByText('execute_sql')).toBeInTheDocument()
+    expect(screen.getByText('customers-pii')).toBeInTheDocument()
+    // 4 nodes → 3 chain connectors, so the whole path is visible, not a single node.
+    expect(getAllByText('→')).toHaveLength(3)
+  })
+
+  it('hides the internal risk badge when showRiskBadge is false', () => {
+    render(
+      <AttackPathCard nodes={[{ type: 'data' as const, label: 'customers-pii' }]} riskScore={4.6} compact showRiskBadge={false} />
+    )
+    expect(screen.queryByText('4.6')).not.toBeInTheDocument()
+  })
+
+  it('shows the internal risk badge in compact mode by default', () => {
+    render(
+      <AttackPathCard nodes={[{ type: 'data' as const, label: 'customers-pii' }]} riskScore={4.6} compact />
+    )
+    expect(screen.getByText('4.6')).toBeInTheDocument()
+  })
+
+  it('exposes the full entity name via a title tooltip instead of hard-truncating it', () => {
+    const longLabel = 'S3 Bucket: abom-demo-customers-pii-longbucketname'
+    render(<AttackPathCard nodes={[{ type: 'data' as const, label: longLabel }]} riskScore={7.0} compact />)
+    const labelEl = screen.getByText(longLabel)
+    expect(labelEl).toHaveAttribute('title', longLabel)
+    expect(labelEl.className).not.toContain('truncate')
+  })
 })

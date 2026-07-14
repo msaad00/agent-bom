@@ -14,10 +14,17 @@ import {
 } from "./exposure-path";
 
 export type AttackPathCardNode = {
-  type: "cve" | "package" | "server" | "agent" | "credential";
+  type: "cve" | "package" | "server" | "agent" | "credential" | "tool" | "data" | "identity" | "entity";
   label: string;
   severity?: string | undefined;
 };
+
+export interface RankedAttackPathRow<C> {
+  path: AttackPath;
+  card: C | undefined;
+  rank: number;
+  key: string;
+}
 
 export type AttackPathFocus = {
   cve?: string | undefined;
@@ -92,24 +99,99 @@ export function mapAttackPathNodeType(entityType: string): AttackPathCardNode["t
   }
 }
 
+/**
+ * Total mapping for chain rendering — unlike {@link mapAttackPathNodeType},
+ * this never returns null. Every hop on a correlated exposure path must render
+ * so the card shows the full `entry → … → sensitive data → finding` chain, not
+ * a single surviving node. Data stores, tools, identities, and gateways are the
+ * crown-jewel and blast-radius hops that made the older mapping collapse.
+ */
+export function mapAttackPathChainType(entityType: string): AttackPathCardNode["type"] {
+  switch (entityType) {
+    case EntityType.VULNERABILITY:
+    case EntityType.MISCONFIGURATION:
+      return "cve";
+    case EntityType.PACKAGE:
+      return "package";
+    case EntityType.SERVER:
+    case EntityType.CONTAINER:
+    case EntityType.CLOUD_RESOURCE:
+    case EntityType.API_GATEWAY:
+    case EntityType.APPLICATION:
+      return "server";
+    case EntityType.AGENT:
+      return "agent";
+    case EntityType.USER:
+    case EntityType.GROUP:
+    case EntityType.SERVICE_ACCOUNT:
+    case EntityType.SERVICE_PRINCIPAL:
+    case EntityType.ROLE:
+    case EntityType.FEDERATED_IDENTITY:
+    case EntityType.MANAGED_IDENTITY:
+    case EntityType.ACCOUNT:
+      return "identity";
+    case EntityType.CREDENTIAL:
+    case EntityType.CREDENTIAL_REF:
+      return "credential";
+    case EntityType.TOOL:
+    case EntityType.TOOL_CALL:
+      return "tool";
+    case EntityType.DATA_STORE:
+    case EntityType.DATASET:
+      return "data";
+    default:
+      return "entity";
+  }
+}
+
 export function toAttackCardNodes(path: AttackPath, nodeById: Map<string, UnifiedNode>): AttackPathCardNode[] {
   const nodes: AttackPathCardNode[] = [];
   for (const hop of path.hops) {
     const node = nodeById.get(hop);
     if (!node) continue;
-    const type = mapAttackPathNodeType(String(node.entity_type));
-    if (!type) continue;
+    const entityType = String(node.entity_type);
     nodes.push({
-      type,
-      label: formatExposureEntityTitle(
-        node.label,
-        type === "cve" ? "finding" : type,
-        node.attributes ?? {},
-      ),
+      type: mapAttackPathChainType(entityType),
+      label: formatExposureEntityTitle(node.label, exposureRoleForEntityType(entityType), node.attributes ?? {}),
       severity: node.severity,
     });
   }
   return nodes;
+}
+
+const GENERIC_PATH_TITLE = /^exposure path\b/i;
+
+/**
+ * Prefer a descriptive backend title, but when the API falls back to the
+ * generic "Exposure path" (a path with no finding id), synthesise a concrete
+ * "entry → crown-jewel" title from the correlated chain endpoints so every card
+ * reads differently and scannably.
+ */
+export function descriptiveAttackPathTitle(cardTitle: string | undefined, nodes: AttackPathCardNode[]): string {
+  const trimmed = (cardTitle ?? "").trim();
+  if (trimmed && !GENERIC_PATH_TITLE.test(trimmed)) return trimmed;
+  const labels = nodes.map((node) => node.label.trim()).filter(Boolean);
+  if (labels.length === 0) return trimmed || "Exposure path";
+  const first = labels[0]!;
+  const last = labels[labels.length - 1]!;
+  if (labels.length === 1 || first === last) return first;
+  return `${first} → ${last}`;
+}
+
+/**
+ * Pair each sorted path with its fix-first card by position and stamp a rank
+ * that equals the row's index in the sorted list. This is the single source of
+ * truth for rank so duplicate ranks (#6 three times) — caused by looking rank up
+ * through a lossy `source::target::hops` key that collides across distinct
+ * paths — can never happen. The composite `key` is guaranteed unique per row.
+ */
+export function rankedAttackPathRows<C>(paths: AttackPath[], cards: readonly C[] = []): RankedAttackPathRow<C>[] {
+  return paths.map((path, index) => ({
+    path,
+    card: cards[index],
+    rank: index + 1,
+    key: `${attackPathKey(path)}::${index}`,
+  }));
 }
 
 export function exposureRoleForEntityType(entityType: string): ExposureEntityRole {

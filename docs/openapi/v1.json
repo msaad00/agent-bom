@@ -17978,6 +17978,90 @@
         ]
       }
     },
+    "/v1/mitre/coverage": {
+      "get": {
+        "description": "Per-framework MITRE technique coverage for the current tenant.\n\nAggregates hub-ingested plus native scan findings and reports, for each of\nMITRE ATT&CK, MITRE ATLAS, and MAESTRO: the covered technique count and\nlist (techniques with >=1 finding of evidence), the total catalogue count,\nthe coverage percentage, and the covered techniques' finding references.\n\nHonest by construction: uncovered techniques mean \"no evidence\", not\n\"safe\". The store read runs off the event loop.",
+        "operationId": "mitre_coverage_v1_mitre_coverage_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Mitre Coverage V1 Mitre Coverage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mitre Coverage",
+        "tags": [
+          "mitre"
+        ]
+      }
+    },
     "/v1/observability/anomalies": {
       "get": {
         "description": "Detect cost and behavior anomalies (per-agent spend + per-session call-rate\nz-scores) for the active tenant. Proactive surfacing of runaway agents.",

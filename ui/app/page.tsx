@@ -26,13 +26,12 @@ import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { deploymentModeLabel, hasDeploymentSignals } from "@/lib/deployment-context";
 import { useCaptureMode } from "@/lib/use-capture-mode";
-import { buildSecurityGraphHref } from "@/lib/attack-paths";
 import { complianceFrameworkSummaries } from "@/lib/compliance-frameworks";
 import {
   aggregateSeverity,
-  blastAgents,
   blastCredentials,
   blastTools,
+  buildExposurePathView,
 } from "@/lib/dashboard-data";
 import { buildIssueSeverityMatrix } from "@/lib/finding-issue-type";
 import {
@@ -198,8 +197,17 @@ export default function Dashboard() {
     [effectiveJobs]
   );
 
+  // Tag each blast with its originating scan id (the graph snapshot scan_id is
+  // the job id) so the exec→graph drill can target the finding's own scan
+  // instead of falling back to the latest snapshot (#3966).
   const allBlast = useMemo(
-    () => doneJobs.flatMap((j) => (j.result as ScanResult)?.blast_radius ?? []),
+    () =>
+      doneJobs.flatMap((j) =>
+        ((j.result as ScanResult)?.blast_radius ?? []).map((blast) => ({
+          ...blast,
+          scanId: j.job_id,
+        })),
+      ),
     [doneJobs]
   );
 
@@ -233,52 +241,14 @@ export default function Dashboard() {
   );
   const topExposurePath = useMemo(() => {
     if (!topRisk) return null;
-    const agents = blastAgents(topRisk);
-    const credentials = blastCredentials(topRisk);
-    const nodes: ExposurePathView["nodes"] = [
-      { type: "cve", label: topRisk.vulnerability_id, severity: topRisk.severity?.toLowerCase() },
-    ];
-    if (topRisk.package) nodes.push({ type: "package", label: topRisk.package });
-    if (topRisk.affected_servers && topRisk.affected_servers.length > 0) nodes.push({ type: "server", label: topRisk.affected_servers[0]! });
-    if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
-    if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
-    return {
-      key: `${topRisk.vulnerability_id}:${topRisk.package ?? "unknown"}`,
-      nodes,
-      riskScore: topRisk.risk_score ?? topRisk.blast_score / 10,
-      href: buildSecurityGraphHref({
-        cve: topRisk.vulnerability_id,
-        packageName: topRisk.package,
-        agentName: agents[0],
-      }),
-    };
+    return buildExposurePathView(topRisk, topRisk.scanId);
   }, [topRisk]);
 
   const exposurePaths = useMemo<ExposurePathView[]>(() => {
     return [...allBlast]
       .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
       .slice(0, 5)
-      .map((blast, index) => {
-        const agents = blastAgents(blast);
-        const credentials = blastCredentials(blast);
-        const nodes: ExposurePathView["nodes"] = [
-          { type: "cve", label: blast.vulnerability_id, severity: blast.severity?.toLowerCase() },
-        ];
-        if (blast.package) nodes.push({ type: "package", label: blast.package });
-        if (blast.affected_servers && blast.affected_servers.length > 0) nodes.push({ type: "server", label: blast.affected_servers[0]! });
-        if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
-        if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
-        return {
-          key: `${blast.vulnerability_id}:${blast.package ?? "unknown"}:${index}`,
-          nodes,
-          riskScore: blast.risk_score ?? blast.blast_score / 10,
-          href: buildSecurityGraphHref({
-            cve: blast.vulnerability_id,
-            packageName: blast.package,
-            agentName: agents[0],
-          }),
-        };
-      });
+      .map((blast, index) => buildExposurePathView(blast, blast.scanId, index));
   }, [allBlast]);
 
   // Total packages scanned across all jobs

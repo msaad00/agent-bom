@@ -13,6 +13,8 @@ import type {
   EpssVsCvssPoint,
   TrendDataPoint,
 } from "@/components/charts";
+import type { ExposurePathView } from "@/components/overview-cockpit";
+import { buildSecurityGraphHref } from "@/lib/attack-paths";
 import { severityRank } from "@/lib/severity";
 
 // ─── Shared dashboard aggregation ───────────────────────────────────────────
@@ -233,6 +235,42 @@ export function blastCredentials(blast: BlastRadius): string[] {
 
 export function blastAgents(blast: BlastRadius): string[] {
   return blast.affected_agents ?? [];
+}
+
+/**
+ * Build the exec→graph exposure-path row for a finding. Threads the finding's
+ * own `scanId` into the security-graph drill so the drill lands on the scan
+ * that produced the finding — not whichever scan happens to be latest (#3966).
+ * `index` disambiguates the key within a shortlist; omit it for a single row.
+ */
+export function buildExposurePathView(
+  blast: BlastRadius,
+  scanId?: string,
+  index?: number,
+): ExposurePathView {
+  const agents = blastAgents(blast);
+  const credentials = blastCredentials(blast);
+  const nodes: ExposurePathView["nodes"] = [
+    { type: "cve", label: blast.vulnerability_id, severity: blast.severity?.toLowerCase() },
+  ];
+  if (blast.package) nodes.push({ type: "package", label: blast.package });
+  if (blast.affected_servers && blast.affected_servers.length > 0) {
+    nodes.push({ type: "server", label: blast.affected_servers[0]! });
+  }
+  if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
+  if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
+  const baseKey = `${blast.vulnerability_id}:${blast.package ?? "unknown"}`;
+  return {
+    key: index === undefined ? baseKey : `${baseKey}:${index}`,
+    nodes,
+    riskScore: blast.risk_score ?? blast.blast_score / 10,
+    href: buildSecurityGraphHref({
+      scanId,
+      cve: blast.vulnerability_id,
+      packageName: blast.package,
+      agentName: agents[0],
+    }),
+  };
 }
 
 export function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {

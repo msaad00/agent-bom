@@ -51,6 +51,7 @@ from agent_bom.api.models import (
     FindingFeedbackRequest,
     FindingTriageDecisionRequest,
     FindingTriageRequest,
+    FindingTriageVexIngestRequest,
     IssueStatusUpdateRequest,
     JiraTicketRequest,
     RotateKeyRequest,
@@ -2049,6 +2050,100 @@ async def export_finding_triage_vex(request: Request) -> dict:
             "signature_hex": signature.signature_hex,
             "key_id": signature.key_id,
         },
+    }
+
+
+@router.post("/findings/triage/vex/ingest", tags=["enterprise"], status_code=201)
+async def ingest_finding_triage_vex(request: Request, req: FindingTriageVexIngestRequest) -> dict:
+    """Ingest an OpenVEX document and apply its statements as triage suppressions.
+
+    ``not_affected`` statements become tenant-scoped triage decisions (round-tripping
+    with :func:`export_finding_triage_vex`); ``fixed`` statements are recorded as
+    ``fixed_verified`` suppressions. ``affected`` / ``under_investigation`` statements
+    carry no suppression and are skipped. Re-ingesting the same document updates the
+    matching entries in place (idempotent by vulnerability + product)."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.exception_store import ExceptionStatus, VulnException
+    from agent_bom.vex import VexStatus, parse_vex
+
+    tenant_id = require_request_tenant_id(request)
+    actor = _request_actor(request)
+    try:
+        doc = parse_vex(req.vex)
+    except ValueError as parse_err:
+        raise HTTPException(status_code=400, detail=f"Invalid VEX document: {sanitize_error(str(parse_err))}") from parse_err
+
+    store = _get_exception_store()
+    # Index existing tenant exceptions by (vuln_id, package) so re-ingest updates
+    # in place rather than accumulating duplicates.
+    existing: dict[tuple[str, str], Any] = {}
+    for exc in store.list_all(tenant_id=tenant_id):
+        existing[(exc.vuln_id, exc.package_name)] = exc
+
+    now = datetime.now(timezone.utc).isoformat()
+    applied = 0
+    skipped: list[dict[str, str]] = []
+
+    for stmt in doc.statements:
+        if not stmt.vulnerability_id:
+            continue
+        products = stmt.products or [""]
+        for product in products:
+            package = product or "*"
+            if stmt.status == VexStatus.NOT_AFFECTED:
+                if stmt.justification is None:
+                    skipped.append({"vulnerability_id": stmt.vulnerability_id, "reason": "missing_justification"})
+                    continue
+                reason = _triage_reason(
+                    {
+                        "queue_state": "decided",
+                        "decision": "not_affected",
+                        "justification": stmt.justification.value,
+                        "decision_reason": stmt.impact_statement or stmt.action_statement or "",
+                        "assignee": stmt.author or "",
+                        "reviewed_at": now,
+                        "source": "vex_ingest",
+                    }
+                )
+            elif stmt.status == VexStatus.FIXED:
+                reason = _feedback_reason("fixed_verified", stmt.impact_statement or stmt.action_statement or "")
+            else:
+                skipped.append({"vulnerability_id": stmt.vulnerability_id, "reason": f"status_{stmt.status.value}"})
+                continue
+
+            exc = existing.get((stmt.vulnerability_id, package))
+            if exc is None:
+                exc = VulnException(
+                    vuln_id=stmt.vulnerability_id,
+                    package_name=package,
+                    reason=reason,
+                    requested_by=actor,
+                    status=ExceptionStatus.ACTIVE,
+                    tenant_id=tenant_id,
+                )
+                existing[(stmt.vulnerability_id, package)] = exc
+            else:
+                exc.reason = reason
+            if stmt.status == VexStatus.NOT_AFFECTED:
+                exc.approved_by = stmt.author or actor
+                exc.approved_at = now
+            store.put(exc)
+            applied += 1
+
+    log_action(
+        "findings.triage_vex_ingested",
+        actor=actor,
+        resource=f"finding-triage/vex/{tenant_id}",
+        tenant_id=tenant_id,
+        applied=applied,
+        skipped=len(skipped),
+    )
+    return {
+        "schema_version": "findings.triage.vex-ingest.v1",
+        "tenant_id": tenant_id,
+        "statements": len(doc.statements),
+        "applied": applied,
+        "skipped": skipped,
     }
 
 

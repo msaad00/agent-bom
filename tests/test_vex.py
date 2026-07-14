@@ -27,6 +27,7 @@ from agent_bom.vex import (
     generate_vex,
     is_vex_suppressed,
     load_vex,
+    parse_vex,
     to_serializable,
 )
 
@@ -172,6 +173,32 @@ class TestVexLoad:
         assert doc.statements[0].products == ["pkg:npm/express@4.18.2"]
         assert doc.metadata["id"] == "urn:uuid:test-doc"
         assert doc.metadata["author"] == "test-author"
+
+    def test_parse_vex_from_dict_roundtrips_openvex(self):
+        """parse_vex ingests an already-decoded OpenVEX document (no file I/O)."""
+        exported = export_openvex(
+            VexDocument(
+                statements=[
+                    VexStatement(
+                        vulnerability_id="CVE-2026-9999",
+                        status=VexStatus.NOT_AFFECTED,
+                        justification=VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
+                        products=["pkg:pypi/flask@3.0.0"],
+                    )
+                ]
+            )
+        )
+        doc = parse_vex(exported)
+        assert len(doc.statements) == 1
+        stmt = doc.statements[0]
+        assert stmt.vulnerability_id == "CVE-2026-9999"
+        assert stmt.status == VexStatus.NOT_AFFECTED
+        assert stmt.justification == VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH
+        assert stmt.products == ["pkg:pypi/flask@3.0.0"]
+
+    def test_parse_vex_rejects_non_object(self):
+        with pytest.raises(ValueError):
+            parse_vex([])  # type: ignore[arg-type]
 
     def test_load_simplified_format(self, tmp_path):
         data = {

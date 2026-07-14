@@ -112,6 +112,11 @@
       "schema": "FindingTriageRequest.json"
     },
     {
+      "doc": "Request body for POST /v1/findings/triage/vex/ingest.",
+      "name": "FindingTriageVexIngestRequest",
+      "schema": "FindingTriageVexIngestRequest.json"
+    },
+    {
       "doc": "",
       "name": "FleetAgentUpdate",
       "schema": "FleetAgentUpdate.json"

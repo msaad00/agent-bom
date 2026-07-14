@@ -1722,6 +1722,23 @@
         "title": "FindingTriageRequest",
         "type": "object"
       },
+      "FindingTriageVexIngestRequest": {
+        "additionalProperties": false,
+        "description": "Request body for POST /v1/findings/triage/vex/ingest.\n\nAccepts an OpenVEX (or CycloneDX/CSAF) VEX document and applies its\n``not_affected`` / ``fixed`` statements as tenant-scoped triage suppressions.",
+        "properties": {
+          "vex": {
+            "additionalProperties": true,
+            "description": "A decoded VEX document (OpenVEX @context + statements).",
+            "title": "Vex",
+            "type": "object"
+          }
+        },
+        "required": [
+          "vex"
+        ],
+        "title": "FindingTriageVexIngestRequest",
+        "type": "object"
+      },
       "FleetAgentUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -11027,6 +11044,50 @@
           }
         },
         "summary": "Export Finding Triage Vex",
+        "tags": [
+          "enterprise"
+        ]
+      }
+    },
+    "/v1/findings/triage/vex/ingest": {
+      "post": {
+        "description": "Ingest an OpenVEX document and apply its statements as triage suppressions.\n\n``not_affected`` statements become tenant-scoped triage decisions (round-tripping\nwith :func:`export_finding_triage_vex`); ``fixed`` statements are recorded as\n``fixed_verified`` suppressions. ``affected`` / ``under_investigation`` statements\ncarry no suppression and are skipped. Re-ingesting the same document updates the\nmatching entries in place (idempotent by vulnerability + product).",
+        "operationId": "ingest_finding_triage_vex_v1_findings_triage_vex_ingest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingTriageVexIngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ingest Finding Triage Vex V1 Findings Triage Vex Ingest Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Finding Triage Vex",
         "tags": [
           "enterprise"
         ]

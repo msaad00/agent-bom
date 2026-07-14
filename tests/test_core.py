@@ -570,7 +570,7 @@ def test_json_output_includes_dependency_reachability_evidence(sample_report):
 def test_cyclonedx_output_structure(sample_report):
     data = to_cyclonedx(sample_report)
     assert data["bomFormat"] == "CycloneDX"
-    assert data["specVersion"] == "1.6"
+    assert data["specVersion"] == "1.7"
     assert len(data["components"]) > 0
     assert "vulnerabilities" in data
 

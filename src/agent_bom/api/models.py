@@ -870,6 +870,18 @@ class FindingTriageRequest(BaseModel):
     expires_at: str = Field("", max_length=64)
 
 
+class FindingTriageVexIngestRequest(BaseModel):
+    """Request body for POST /v1/findings/triage/vex/ingest.
+
+    Accepts an OpenVEX (or CycloneDX/CSAF) VEX document and applies its
+    ``not_affected`` / ``fixed`` statements as tenant-scoped triage suppressions.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vex: dict[str, Any] = Field(..., description="A decoded VEX document (OpenVEX @context + statements).")
+
+
 class FindingTriageDecisionRequest(BaseModel):
     """Request body for PUT /v1/findings/triage/{triage_id}/decision."""
 

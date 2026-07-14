@@ -18,6 +18,7 @@ from agent_bom.api.models import (
     FindingFeedbackRequest,
     FindingTriageDecisionRequest,
     FindingTriageRequest,
+    FindingTriageVexIngestRequest,
     IssueStatusUpdateRequest,
     JobStatus,
     RotateKeyRequest,
@@ -662,6 +663,108 @@ async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isol
     assert statement["justification"] == "vulnerable_code_not_in_execute_path"
     canonical = json.dumps(exported["vex"], sort_keys=True, separators=(",", ":")).encode("utf-8")
     assert verify_export_payload(canonical, exported["signature"]["signature_hex"])
+
+
+def _openvex_doc(statements: list[dict]) -> dict:
+    return {
+        "@context": "https://openvex.dev/ns/v0.2.0",
+        "@id": "urn:uuid:ingest-doc",
+        "author": "secops@example.com",
+        "timestamp": "2026-07-14T00:00:00Z",
+        "version": 1,
+        "statements": statements,
+    }
+
+
+@pytest.mark.asyncio
+async def test_ingest_finding_triage_vex_applies_and_roundtrips(isolated_exception_store, isolated_audit_log):
+    doc = _openvex_doc(
+        [
+            {
+                "vulnerability": {"name": "CVE-2026-7001"},
+                "status": "not_affected",
+                "justification": "vulnerable_code_not_in_execute_path",
+                "impact_statement": "not reachable",
+                "products": [{"@id": "pkg:pypi/requests@2.31.0"}],
+            },
+            {
+                "vulnerability": {"name": "CVE-2026-7002"},
+                "status": "fixed",
+                "products": [{"@id": "pkg:pypi/flask@3.0.0"}],
+            },
+            {
+                "vulnerability": {"name": "CVE-2026-7003"},
+                "status": "affected",
+                "products": [{"@id": "pkg:pypi/django@5.0.0"}],
+            },
+        ]
+    )
+    result = await enterprise.ingest_finding_triage_vex(
+        _request("tenant-alpha", "alice-admin"),
+        FindingTriageVexIngestRequest(vex=doc),
+    )
+    assert result["schema_version"] == "findings.triage.vex-ingest.v1"
+    assert result["applied"] == 2  # not_affected + fixed; affected skipped
+    assert any(s["reason"] == "status_affected" for s in result["skipped"])
+
+    # not_affected round-trips back through the VEX export
+    exported = await enterprise.export_finding_triage_vex(_request("tenant-alpha"))
+    assert exported["count"] == 1
+    assert exported["vex"]["statements"][0]["vulnerability"]["name"] == "CVE-2026-7001"
+
+    # tenant isolation: nothing leaks to another tenant
+    other = await enterprise.export_finding_triage_vex(_request("tenant-beta"))
+    assert other["count"] == 0
+
+    actions = [entry.action for entry in isolated_audit_log.list_entries()]
+    assert "findings.triage_vex_ingested" in actions
+
+
+@pytest.mark.asyncio
+async def test_ingest_finding_triage_vex_is_idempotent(isolated_exception_store):
+    doc = _openvex_doc(
+        [
+            {
+                "vulnerability": {"name": "CVE-2026-7100"},
+                "status": "not_affected",
+                "justification": "component_not_present",
+                "products": [{"@id": "pkg:pypi/requests@2.31.0"}],
+            }
+        ]
+    )
+    first = await enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
+    second = await enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
+    assert first["applied"] == 1
+    assert second["applied"] == 1
+    # Re-ingest updates in place — no duplicate exceptions accumulate.
+    assert len(isolated_exception_store.list_all(tenant_id="tenant-alpha")) == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_finding_triage_vex_skips_not_affected_without_justification(isolated_exception_store):
+    doc = _openvex_doc(
+        [
+            {
+                "vulnerability": {"name": "CVE-2026-7200"},
+                "status": "not_affected",
+                "products": [{"@id": "pkg:pypi/requests@2.31.0"}],
+            }
+        ]
+    )
+    result = await enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
+    assert result["applied"] == 0
+    assert result["skipped"][0]["reason"] == "missing_justification"
+    assert isolated_exception_store.list_all(tenant_id="tenant-alpha") == []
+
+
+@pytest.mark.asyncio
+async def test_ingest_finding_triage_vex_rejects_invalid_document(isolated_exception_store):
+    with pytest.raises(HTTPException) as error:
+        await enterprise.ingest_finding_triage_vex(
+            _request("tenant-alpha"),
+            FindingTriageVexIngestRequest(vex={"statements": [{"status": "banana"}]}),
+        )
+    assert error.value.status_code == 400
 
 
 @pytest.mark.asyncio

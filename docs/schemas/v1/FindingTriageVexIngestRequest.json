@@ -1,0 +1,17 @@
+{
+  "additionalProperties": false,
+  "description": "Request body for POST /v1/findings/triage/vex/ingest.\n\nAccepts an OpenVEX (or CycloneDX/CSAF) VEX document and applies its\n``not_affected`` / ``fixed`` statements as tenant-scoped triage suppressions.",
+  "properties": {
+    "vex": {
+      "additionalProperties": true,
+      "description": "A decoded VEX document (OpenVEX @context + statements).",
+      "title": "Vex",
+      "type": "object"
+    }
+  },
+  "required": [
+    "vex"
+  ],
+  "title": "FindingTriageVexIngestRequest",
+  "type": "object"
+}

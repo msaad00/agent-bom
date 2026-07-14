@@ -424,7 +424,7 @@ class TestToCyclonedx:
         report = _make_report()
         cdx = to_cyclonedx(report)
         assert cdx["bomFormat"] == "CycloneDX"
-        assert cdx["specVersion"] == "1.6"
+        assert cdx["specVersion"] == "1.7"
 
     def test_with_agents_and_vulns(self):
         pkg = _make_pkg()

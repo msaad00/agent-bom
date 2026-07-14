@@ -99,6 +99,7 @@ function JobsPageContent() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [workflowOpen, setWorkflowOpen] = useState(true);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
@@ -252,31 +253,49 @@ function JobsPageContent() {
                 </span>
               </div>
             </div>
-            <Link
-              href="/sources"
-              className="inline-flex items-center gap-1.5 self-start rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
-            >
-              Manage sources
-            </Link>
+            <div className="flex items-center gap-2 self-start">
+              <button
+                type="button"
+                onClick={() => setWorkflowOpen((open) => !open)}
+                aria-expanded={workflowOpen}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
+              >
+                {workflowOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+                {workflowOpen ? "Hide pipeline" : "Show pipeline"}
+              </button>
+              <Link
+                href="/sources"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
+              >
+                Manage sources
+              </Link>
+            </div>
           </div>
 
-          {featuredJob ? (
-            <JobPipelinePanel
-              jobId={featuredJob.job_id}
-              status={featuredJob.status}
-              createdAt={featuredJob.created_at}
-              completedAt={featuredJob.completed_at}
-            />
-          ) : (
-            <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/30 p-4">
-              <p className="text-sm text-zinc-400">
-                Run a scan to see the live six-stage pipeline DAG with per-step timing and activity.
-              </p>
-              <div className="mt-4">
-                <ScanPipeline steps={new Map()} className="h-[180px]" />
+          {workflowOpen ? (
+            featuredJob ? (
+              <JobPipelinePanel
+                jobId={featuredJob.job_id}
+                status={featuredJob.status}
+                createdAt={featuredJob.created_at}
+                completedAt={featuredJob.completed_at}
+                summary={featuredJob.summary}
+              />
+            ) : (
+              <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/30 p-4">
+                <p className="text-sm text-zinc-400">
+                  Run a scan to see the live six-stage pipeline DAG with per-step timing and activity.
+                </p>
+                <div className="mt-4">
+                  <ScanPipeline steps={new Map()} className="h-[180px]" />
+                </div>
               </div>
-            </div>
-          )}
+            )
+          ) : null}
         </section>
       )}
 
@@ -435,6 +454,7 @@ function JobsPageContent() {
                             status={job.status}
                             createdAt={job.created_at}
                             completedAt={job.completed_at}
+                            summary={job.summary}
                           />
                         </td>
                       </tr>

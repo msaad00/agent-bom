@@ -6,6 +6,7 @@ import {
   mergePipelineSteps,
   parsePipelineStepsFromProgress,
   summarizePipeline,
+  synthesizePipelineSteps,
 } from "@/lib/scan-pipeline-progress";
 
 describe("scan-pipeline-progress", () => {
@@ -98,5 +99,40 @@ describe("scan-pipeline-progress", () => {
       created_at: "2026-06-27T00:00:00Z",
       completed_at: "2026-06-27T00:00:30Z",
     })).toBe(30_000);
+  });
+
+  it("synthesizes all six stages as done for a finished job with no step events", () => {
+    const { steps, synthesized } = synthesizePipelineSteps(new Map(), "done");
+    expect(synthesized).toBe(true);
+    expect(steps.size).toBe(6);
+    for (const step of steps.values()) {
+      expect(step.status).toBe("done");
+    }
+
+    const summary = summarizePipeline(steps, {
+      created_at: "2026-06-27T00:00:00Z",
+      completed_at: "2026-06-27T00:00:05Z",
+      status: "done",
+    });
+    expect(summary.completedSteps).toBe(6);
+    expect(summary.currentStepLabel).toBeNull();
+  });
+
+  it("leaves real step events untouched and does not synthesize while running", () => {
+    const real = parsePipelineStepsFromProgress([
+      JSON.stringify({
+        type: "step",
+        step_id: "discovery",
+        status: "done",
+        message: "Found 3 agents",
+      }),
+    ]);
+    const done = synthesizePipelineSteps(real, "done");
+    expect(done.synthesized).toBe(false);
+    expect(done.steps.size).toBe(1);
+
+    const running = synthesizePipelineSteps(new Map(), "running");
+    expect(running.synthesized).toBe(false);
+    expect(running.steps.size).toBe(0);
   });
 });

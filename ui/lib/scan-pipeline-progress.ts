@@ -30,6 +30,36 @@ export function mergePipelineSteps(
   return merged;
 }
 
+/**
+ * Cloud-connection scans (and other non-pipeline jobs) finish without ever
+ * emitting the six-stage `step` events, which used to leave a completed job
+ * reading "0/6 stages complete" in an all-pending gray DAG. When a job has
+ * genuinely finished (`done`) but carries no per-stage events, mark all six
+ * stages as done so the DAG honestly reflects a completed run. Jobs that did
+ * stream real step events keep their true per-stage states untouched.
+ *
+ * Returns `synthesized: true` when the stages were inferred rather than
+ * observed, so callers can label the timeline as summarized.
+ */
+export function synthesizePipelineSteps(
+  steps: Map<string, StepEvent>,
+  status: JobStatus,
+): { steps: Map<string, StepEvent>; synthesized: boolean } {
+  if (steps.size > 0 || status !== "done") {
+    return { steps, synthesized: false };
+  }
+  const synthesized = new Map<string, StepEvent>();
+  for (const step of PIPELINE_STEPS) {
+    synthesized.set(step.id, {
+      type: "step",
+      step_id: step.id,
+      status: "done",
+      message: "Completed",
+    });
+  }
+  return { steps: synthesized, synthesized: true };
+}
+
 export function formatDurationMs(ms: number | null | undefined): string {
   if (ms == null || ms < 0 || Number.isNaN(ms)) return "—";
   if (ms < 1000) return `${Math.round(ms)}ms`;

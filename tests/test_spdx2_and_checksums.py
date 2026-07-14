@@ -150,7 +150,7 @@ def test_spdx2_tagvalue_emits_checksum_and_relationships():
 def test_spdx3_surfaces_verified_using_checksum():
     report, expected_hex = _report_with_checksummed_pkg()
     doc = to_spdx(report)
-    pkg_elements = [e for e in doc["elements"] if e.get("software_primaryPurpose") == "library"]
+    pkg_elements = [e for e in doc["@graph"] if e.get("software_primaryPurpose") == "library"]
     assert pkg_elements
     verified = pkg_elements[0]["verifiedUsing"]
     assert {"type": "Hash", "algorithm": "sha512", "hashValue": expected_hex} in verified

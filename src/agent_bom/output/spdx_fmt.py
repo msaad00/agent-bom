@@ -13,17 +13,32 @@ from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
 from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version
 
-SPDX_3_CONTEXT = "https://spdx.org/rdf/3.0.0/spdx-context.jsonl"
+# Canonical SPDX 3.0.1 JSON-LD context (media type application/spdx+json-ld,
+# ``.spdx.json`` / ``.jsonld`` extension). Every SPDX 3.0.1 document references
+# this global context at the top level.
+SPDX_3_CONTEXT = "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
+# Core/CreationInfo/specVersion is a SemVer token in 3.0 (the ``SPDX-<x.y>``
+# form was dropped after 2.x); ``3.0.1`` is the current canonical value.
+SPDX_3_SPEC_VERSION = "3.0.1"
+# Blank-node id shared by every element's ``creationInfo`` back-reference.
+_CREATION_INFO_ID = "_:creationinfo"
+# Profiles this document draws vocabulary from (namespaced ``software_``/
+# ``security_``/``ai_`` terms below).
+SPDX_3_PROFILE_CONFORMANCE = ("core", "software", "security", "ai")
 
 
 def to_spdx(report: AIBOMReport) -> dict:
-    """Build an SPDX 3.0 (JSON-LD) dict from report.
+    """Build a canonical SPDX 3.0.1 JSON-LD dict from report.
 
-    Follows the SPDX 3.0 AI BOM profile where applicable:
-    - Each agent becomes an /AI element
-    - Each package becomes a /Package element
-    - Vulnerabilities become security_VulnAssessmentRelationship elements
-    - Dependency edges become dependsOn relationships
+    Emits the canonical ``{"@context": ..., "@graph": [...]}`` serialization:
+    a ``CreationInfo`` blank node, a ``SpdxDocument`` root, and every element and
+    relationship as a flat node in ``@graph`` (each carrying a ``creationInfo``
+    back-reference). Follows the SPDX 3.0 AI BOM profile where applicable:
+    - Each agent / MCP server becomes a ``software_Package`` element
+    - Each dependency becomes a ``software_Package`` element
+    - Vulnerabilities become ``security_Vulnerability`` elements with
+      ``security_*VulnAssessmentRelationship`` edges
+    - Dependency edges become ``dependsOn`` relationships
     """
     spdx_id_counter = [0]
 
@@ -33,32 +48,43 @@ def to_spdx(report: AIBOMReport) -> dict:
 
     elements: list[dict[str, Any]] = []
     relationships: list[dict[str, Any]] = []
+    root_element_ids: list[str] = []
     document_id = _next_id("SPDXRef-DOCUMENT")
+    tool_id = "SPDXRef-Tool-agent-bom"
 
-    creation_info = {
-        "specVersion": "3.0.0",
-        "created": report.generated_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    created = (
+        report.generated_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if report.generated_at.tzinfo
-        else report.generated_at.strftime("%Y-%m-%dT%H:%M:%SZ") + "Z",
-        "createdBy": [
+        else report.generated_at.strftime("%Y-%m-%dT%H:%M:%SZ") + "Z"
+    )
+    creation_info = {
+        "@id": _CREATION_INFO_ID,
+        "type": "CreationInfo",
+        "specVersion": SPDX_3_SPEC_VERSION,
+        "created": created,
+        "createdBy": [tool_id],
+    }
+    tool_element: dict[str, Any] = {
+        "type": "Tool",
+        "spdxId": tool_id,
+        "creationInfo": _CREATION_INFO_ID,
+        "name": f"agent-bom {report.tool_version}",
+        "externalIdentifier": [
             {
-                "type": "Tool",
-                "name": f"agent-bom {report.tool_version}",
-                "externalIdentifier": [
-                    {
-                        "type": "PackageURL",
-                        "identifier": f"pkg:pypi/agent-bom@{report.tool_version}",
-                    }
-                ],
+                "type": "ExternalIdentifier",
+                "externalIdentifierType": "packageUrl",
+                "identifier": f"pkg:pypi/agent-bom@{report.tool_version}",
             }
         ],
     }
+    elements.append(tool_element)
 
     pkg_ref_map: dict[str, str] = {}
     vuln_compliance_tags = _finding_compliance_tags(report)
 
     for agent in report.agents:
         agent_id = _next_id("SPDXRef-Agent")
+        root_element_ids.append(agent_id)
 
         agent_element: dict[str, Any] = {
             "type": "software_Package",
@@ -165,7 +191,9 @@ def to_spdx(report: AIBOMReport) -> dict:
                     if verified_using:
                         pkg_element["verifiedUsing"] = verified_using
                     if pkg.purl:
-                        pkg_element["externalIdentifier"] = [{"type": "PackageURL", "identifier": pkg.purl}]
+                        pkg_element["externalIdentifier"] = [
+                            {"type": "ExternalIdentifier", "externalIdentifierType": "packageUrl", "identifier": pkg.purl}
+                        ]
                     if pkg.license_expression or pkg.license:
                         pkg_element["declaredLicense"] = pkg.license_expression or pkg.license
                     if pkg.supplier:
@@ -198,7 +226,11 @@ def to_spdx(report: AIBOMReport) -> dict:
                         "spdxId": vuln_element_id,
                         "name": vuln.id,
                         "description": vuln.summary or "",
-                        "externalIdentifier": [{"type": "cve", "identifier": vuln.id}] if vuln.id.startswith("CVE-") else [],
+                        "externalIdentifier": (
+                            [{"type": "ExternalIdentifier", "externalIdentifierType": "cve", "identifier": vuln.id}]
+                            if vuln.id.startswith("CVE-")
+                            else []
+                        ),
                     }
                     vuln_annotations = _vulnerability_annotations(
                         vuln,
@@ -238,15 +270,19 @@ def to_spdx(report: AIBOMReport) -> dict:
                         assessment["comment"] = "CISA KEV: actively exploited in the wild"
                     relationships.append(assessment)
 
-    return {
-        "@context": SPDX_3_CONTEXT,
-        "spdxVersion": "SPDX-3.0",
-        "dataLicense": "CC0-1.0",
-        "SPDXID": document_id,
+    # Stamp the shared CreationInfo back-reference on every element / relationship
+    # node (Relationships are Elements in SPDX 3.0 and require creationInfo too).
+    for node in (*elements, *relationships):
+        node.setdefault("creationInfo", _CREATION_INFO_ID)
+
+    spdx_document: dict[str, Any] = {
+        "type": "SpdxDocument",
+        "spdxId": document_id,
+        "creationInfo": _CREATION_INFO_ID,
         "name": f"agent-bom-{report.generated_at.strftime('%Y%m%d-%H%M%S')}",
-        "creationInfo": creation_info,
-        "elements": elements,
-        "relationships": relationships,
+        "dataLicense": "CC0-1.0",
+        "profileConformance": list(SPDX_3_PROFILE_CONFORMANCE),
+        "rootElement": root_element_ids,
         "comment": (
             f"Security scan generated by agent-bom {report.tool_version}. "
             f"Covers {report.total_agents} agent(s), {report.total_servers} MCP server(s), "
@@ -254,9 +290,17 @@ def to_spdx(report: AIBOMReport) -> dict:
         ),
     }
 
+    # Canonical JSON-LD: a single flat @graph holding the CreationInfo blank node,
+    # the SpdxDocument root, and every element + relationship.
+    graph: list[dict[str, Any]] = [creation_info, spdx_document, *elements, *relationships]
+    return {
+        "@context": SPDX_3_CONTEXT,
+        "@graph": graph,
+    }
+
 
 def export_spdx(report: AIBOMReport, output_path: str) -> None:
-    """Export report as SPDX 3.0 JSON-LD file."""
+    """Export report as a canonical SPDX 3.0.1 JSON-LD file."""
     data = to_spdx(report)
     Path(output_path).write_text(json.dumps(data, indent=2))
 

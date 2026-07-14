@@ -936,19 +936,22 @@ def test_spdx_output_structure(sample_report):
     from agent_bom.output import to_spdx
 
     data = to_spdx(sample_report)
-    assert data["spdxVersion"] == "SPDX-3.0"
-    assert data["dataLicense"] == "CC0-1.0"
-    assert "elements" in data
-    assert "relationships" in data
-    assert "creationInfo" in data
-    assert len(data["elements"]) > 0
+    # Canonical SPDX 3.0.1 JSON-LD: @context + @graph, no legacy top-level keys.
+    assert set(data) == {"@context", "@graph"}
+    assert data["@context"] == "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
+    graph = data["@graph"]
+    doc = next(n for n in graph if n["type"] == "SpdxDocument")
+    assert doc["dataLicense"] == "CC0-1.0"
+    ci = next(n for n in graph if n["type"] == "CreationInfo")
+    assert ci["specVersion"] == "3.0.1"
+    assert len(graph) > 0
 
 
 def test_spdx_has_vulnerability_elements(sample_report):
     from agent_bom.output import to_spdx
 
     data = to_spdx(sample_report)
-    vuln_elements = [e for e in data["elements"] if e.get("type") == "security_Vulnerability"]
+    vuln_elements = [e for e in data["@graph"] if e.get("type") == "security_Vulnerability"]
     assert len(vuln_elements) >= 1
     assert vuln_elements[0]["name"] == "CVE-2024-1234"
 
@@ -959,7 +962,8 @@ def test_spdx_export_file(sample_report, tmp_path):
     out = tmp_path / "test.spdx.json"
     export_spdx(sample_report, str(out))
     data = json.loads(out.read_text())
-    assert data["spdxVersion"] == "SPDX-3.0"
+    assert data["@context"] == "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
+    assert next(n for n in data["@graph"] if n["type"] == "CreationInfo")["specVersion"] == "3.0.1"
 
 
 def test_cli_scan_has_spdx_format():
@@ -4239,7 +4243,7 @@ def test_spdx_includes_declared_license():
     agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
     report = AIBOMReport(agents=[agent], blast_radii=[])
     spdx = to_spdx(report)
-    pkg_elements = [e for e in spdx["elements"] if e.get("declaredLicense")]
+    pkg_elements = [e for e in spdx["@graph"] if e.get("declaredLicense")]
     assert len(pkg_elements) >= 1
     assert pkg_elements[0]["declaredLicense"] == "BSD-3-Clause"
 

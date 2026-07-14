@@ -465,6 +465,30 @@ def compute_posture_scorecard(
         details=config_detail,
     )
 
+    # ── Did-we-scan guard ──
+    # A scorecard is only meaningful if the scan actually processed artifacts
+    # this scorecard measures (agents, MCP servers, packages, vulnerabilities).
+    # An empty report (no completed scan target, or a job that scanned zero
+    # artifacts) would otherwise take every "nothing found" branch and land at
+    # 87.5 / 'B' — an honest-looking grade for a scan that assessed nothing.
+    # Report grade "N/A" (matching the route's no-completed-scan sentinel) so a
+    # zero-artifact scan can never masquerade as a passing posture.
+    scanned_nothing = (
+        report.total_agents == 0
+        and report.total_servers == 0
+        and report.total_packages == 0
+        and not report.blast_radii
+        and not report.findings
+    )
+    if scanned_nothing:
+        return PostureScorecard(
+            grade="N/A",
+            score=0.0,
+            dimensions=dimensions,
+            summary="No artifacts scanned — posture cannot be assessed. Run a scan against a real target before reading a grade.",
+            policy_source=resolved.source,
+        )
+
     # ── Final score ──
     total_score = sum(d.score * d.weight for d in dimensions.values())
     total_score = round(min(100.0, max(0.0, total_score)), 1)

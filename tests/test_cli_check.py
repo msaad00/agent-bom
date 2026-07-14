@@ -30,6 +30,79 @@ def test_check_clean_exits_zero(monkeypatch):
     assert "No known vulnerabilities" in result.output
 
 
+def _patch_malicious_scan(monkeypatch, reason):
+    async def _scan_packages(pkgs, **_kwargs):
+        for pkg in pkgs:
+            pkg.vulnerabilities = []
+            pkg.is_malicious = True
+            pkg.malicious_reason = reason
+
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _scan_packages)
+    monkeypatch.setattr("agent_bom.parsers.os_parsers.enrich_os_package_context", lambda pkg: True)
+
+
+def test_check_malicious_package_exits_nonzero(monkeypatch):
+    """A typosquat/dep-confusion package produces no vuln rows but is_malicious;
+    it must NOT report clean/exit 0 (a pre-install gate has to block it)."""
+    _patch_malicious_scan(monkeypatch, "Possible typosquat of 'requests'")
+
+    result = CliRunner().invoke(main, ["check", "reqeusts@1.0.0", "--ecosystem", "pypi"])
+
+    assert result.exit_code == 1
+    assert "MALICIOUS" in result.output
+    assert "typosquat" in result.output
+    assert "No known vulnerabilities" not in result.output
+
+
+def test_check_malicious_json_verdict(monkeypatch):
+    _patch_malicious_scan(monkeypatch, "Possible dependency confusion")
+
+    result = CliRunner().invoke(
+        main,
+        ["check", "internal-lib@1.0.0", "--ecosystem", "npm", "--format", "json", "--quiet"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["verdict"] == "malicious"
+    assert payload["is_malicious"] is True
+    assert payload["malicious_reason"] == "Possible dependency confusion"
+
+
+def test_check_malicious_exit_zero_downgrades(monkeypatch):
+    """--exit-zero reports the malicious verdict without failing the gate."""
+    _patch_malicious_scan(monkeypatch, "Possible typosquat of 'flask'")
+
+    result = CliRunner().invoke(main, ["check", "falsk@1.0.0", "--ecosystem", "pypi", "--exit-zero"])
+
+    assert result.exit_code == 0
+    assert "MALICIOUS" in result.output
+
+
+def test_check_offline_coverage_gap_exits_incomplete(monkeypatch):
+    """Offline mode with no DB advisories for the ecosystem: a clean verdict is
+    untrustworthy, so exit 2 — symmetric with the deb/apk/rpm incomplete guard."""
+    _patch_check_scan(monkeypatch, [])
+    monkeypatch.setattr("agent_bom.scanners.offline_coverage_gap", lambda pkg: True)
+
+    result = CliRunner().invoke(main, ["check", "django@4.1.0", "--ecosystem", "pypi", "--offline"])
+
+    assert result.exit_code == 2
+    assert "Offline coverage gap" in result.output
+    assert "No known vulnerabilities" not in result.output
+
+
+def test_check_offline_with_coverage_still_clean(monkeypatch):
+    """Offline mode where the ecosystem IS covered: a clean result is real, exit 0."""
+    _patch_check_scan(monkeypatch, [])
+    monkeypatch.setattr("agent_bom.scanners.offline_coverage_gap", lambda pkg: False)
+
+    result = CliRunner().invoke(main, ["check", "django@4.1.0", "--ecosystem", "pypi", "--offline"])
+
+    assert result.exit_code == 0
+    assert "No known vulnerabilities" in result.output
+
+
 def test_check_vulns_exit_one_by_default(monkeypatch):
     _patch_check_scan(
         monkeypatch,

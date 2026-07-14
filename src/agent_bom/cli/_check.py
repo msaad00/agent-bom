@@ -352,6 +352,7 @@ def _check_result_payload(
     exit_zero: bool = False,
     fail_on_severity: str | None = None,
     fail_on_severity_count: int | None = None,
+    malicious_reason: str | None = None,
 ) -> dict:
     """Build machine-readable check output."""
     serialized_vulns = []
@@ -398,6 +399,8 @@ def _check_result_payload(
         "fail_on_severity": fail_on_severity,
         "fail_on_severity_count": fail_on_severity_count,
         "vulnerability_count": len(serialized_vulns),
+        "is_malicious": malicious_reason is not None,
+        "malicious_reason": malicious_reason,
         "scan_warnings": warnings or [],
         "vulnerabilities": serialized_vulns,
     }
@@ -715,7 +718,13 @@ def check(
         status_context = nullcontext()
 
     with status_context:
-        from agent_bom.scanners import IncompleteScanError, ScanOptions, consume_scan_warnings, scan_packages
+        from agent_bom.scanners import (
+            IncompleteScanError,
+            ScanOptions,
+            consume_scan_warnings,
+            offline_coverage_gap,
+            scan_packages,
+        )
 
         try:
             asyncio.run(scan_packages(pkgs, options=ScanOptions(offline=offline)))
@@ -766,6 +775,45 @@ def check(
             if not quiet and not structured_output:
                 console.print(f"  [yellow]⚠[/yellow] External enrichment skipped: {exc}")
 
+    # ── Malicious-package gate ──
+    # `scan_packages` flags typosquats, dependency-confusion, and MAL- advisories
+    # via `is_malicious` — but those signals (except MAL- rows) produce NO
+    # vulnerability rows, so a verdict derived only from `vulns` would report a
+    # known-malicious package as "clean" / exit 0. A pre-install gate must block
+    # it. Surface the malicious verdict before any clean/incomplete branch.
+    malicious_pkgs = [p for p in pkgs if getattr(p, "is_malicious", False)]
+    if malicious_pkgs:
+        reasons = sorted({p.malicious_reason for p in malicious_pkgs if p.malicious_reason})
+        reason_text = "; ".join(reasons) if reasons else "flagged as known-malicious"
+        message = f"{name}@{version} is flagged MALICIOUS: {reason_text}. Do not install."
+        mal_exit = 0 if exit_zero else 1
+        if structured_output:
+            _write_check_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=ecosystems,
+                    verdict="malicious",
+                    message=message,
+                    exit_code=mal_exit,
+                    vulnerabilities=vulns,
+                    warnings=scan_warnings,
+                    exit_zero=exit_zero,
+                    malicious_reason=reason_text,
+                ),
+                output_path,
+                agent_mode=agent_mode,
+                exit_code=mal_exit,
+                output_format=output_format,
+            )
+            sys.exit(mal_exit)
+        if quiet:
+            click.echo(f"{name}@{version}: MALICIOUS — {reason_text}")
+        else:
+            console.print(f"  [red bold]✗ MALICIOUS: {name}@{version} — {reason_text}[/red bold]")
+            console.print("  Flagged as known-malicious (typosquat / dependency-confusion / advisory). Do not install.\n")
+        sys.exit(mal_exit)
+
     if not vulns and matched_pkg.ecosystem in {"deb", "apk", "rpm"} and not os_context_complete:
         message = (
             f"Incomplete OS package context for {name}@{version}. "
@@ -795,6 +843,45 @@ def check(
             console.print(
                 "  Best-effort matching found no vulnerabilities, but source/distro metadata was "
                 "insufficient for a trustworthy clean verdict.\n"
+            )
+        sys.exit(2)
+
+    # ── Offline coverage-gap gate ──
+    # Symmetric with the deb/apk/rpm incomplete-context guard above: in offline
+    # mode, if the local DB holds zero advisories for this package's ecosystem,
+    # a "no vulnerabilities" result is not trustworthy (the DB has no data for
+    # that ecosystem), so exit 2 instead of a false-clean. deb/apk/rpm gaps are
+    # already handled by the OS-context branch; this closes the pypi/npm/etc. leg.
+    if not vulns and offline and pkgs and all(offline_coverage_gap(p) for p in pkgs):
+        message = (
+            f"Offline coverage gap for {name}@{version}: the local vulnerability DB has no "
+            f"advisories for this ecosystem, so a clean verdict is not trustworthy. "
+            f"Run `agent-bom db update` for full offline coverage."
+        )
+        if structured_output:
+            _write_check_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=ecosystems,
+                    verdict="incomplete",
+                    message=message,
+                    exit_code=2,
+                    warnings=scan_warnings,
+                ),
+                output_path,
+                agent_mode=agent_mode,
+                exit_code=2,
+                output_format=output_format,
+            )
+            sys.exit(2)
+        if quiet:
+            click.echo(f"{name}@{version}: incomplete offline coverage")
+        else:
+            console.print(f"  [yellow]⚠ Offline coverage gap for {name}@{version}[/yellow]")
+            console.print(
+                "  The local vulnerability DB has no advisories for this ecosystem; a clean "
+                "verdict is not trustworthy. Run `agent-bom db update` for full offline coverage.\n"
             )
         sys.exit(2)
 

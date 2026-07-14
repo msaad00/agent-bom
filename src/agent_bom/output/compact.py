@@ -53,6 +53,9 @@ def _posture_grade_badge(grade: str) -> str:
         style = "black on yellow"
     elif grade == "D":
         style = "white on dark_orange3"
+    elif grade in ("N/A", "?"):
+        # Neutral — "not assessed" is not a failing grade; do not paint it red.
+        style = "white on grey37"
     else:
         style = "white on red"
     return f"[bold {style}] {grade} [/bold {style}]"

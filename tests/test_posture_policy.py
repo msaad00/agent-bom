@@ -4,12 +4,35 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.models import AIBOMReport
+from agent_bom.models import Agent as AgentModel
+from agent_bom.models import AgentType, AIBOMReport, MCPServer, Package
 from agent_bom.posture import (
     DEFAULT_DIMENSION_WEIGHTS,
     compute_posture_scorecard,
     load_posture_policy,
 )
+
+
+def _report_with_one_package() -> AIBOMReport:
+    """A minimal report that actually scanned an artifact (one clean package)."""
+    server = MCPServer(name="srv", packages=[Package(name="django", version="4.1.0", ecosystem="pypi")])
+    agent = AgentModel(name="a", agent_type=AgentType.CUSTOM, config_path="/x", mcp_servers=[server])
+    return AIBOMReport(agents=[agent], blast_radii=[])
+
+
+def test_empty_scan_reports_na_grade_not_b() -> None:
+    """A scan that processed zero artifacts must not read as a passing 'B'."""
+    scorecard = compute_posture_scorecard(AIBOMReport(agents=[], blast_radii=[]))
+    assert scorecard.grade == "N/A"
+    assert scorecard.score == 0.0
+    assert "No artifacts scanned" in scorecard.summary
+
+
+def test_scanned_report_gets_letter_grade() -> None:
+    """A report that scanned a real (clean) package still gets a normal grade."""
+    scorecard = compute_posture_scorecard(_report_with_one_package())
+    assert scorecard.grade in {"A", "B", "C", "D", "F"}
+    assert scorecard.grade != "N/A"
 
 
 def test_default_policy_weights_sum_to_one() -> None:

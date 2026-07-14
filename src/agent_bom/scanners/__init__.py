@@ -334,6 +334,26 @@ def _db_covered_ecosystems() -> set[str]:
         return set()
 
 
+def offline_coverage_gap(pkg: Package) -> bool:
+    """Return True if an offline scan of *pkg* falls in a real DB coverage gap.
+
+    In offline mode the local advisory DB is the only source of truth. If the
+    DB holds zero advisories for the package's ecosystem, a "no vulnerabilities"
+    result is *not* trustworthy — the DB simply has no data for that ecosystem,
+    exactly as an incomplete OS-package context is untrustworthy for deb/apk/rpm.
+    Callers (e.g. the pre-install ``check`` gate) use this to exit non-zero on an
+    offline coverage gap instead of reporting a false-clean.
+
+    Returns False when the ecosystem *is* covered (a clean result is real) and
+    when the DB is entirely empty/missing (that case is surfaced separately as an
+    ``IncompleteScanError`` by the scan path, not as a per-ecosystem gap).
+    """
+    covered = _db_covered_ecosystems()
+    if not covered:
+        return False
+    return not any(eco in covered for eco in _db_ecosystems_for_package(pkg))
+
+
 # ── Scan cache (optional, lazy-initialised) ────────────────────────────────
 
 _scan_cache_instance: "ScanCache | object | None" = None

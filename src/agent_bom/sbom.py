@@ -313,7 +313,8 @@ def _spdx3_purl(elem: dict) -> str:
         if not identifier:
             continue
         id_type = str(entry.get("type") or "").lower()
-        if id_type in ("packageurl", "purl") or identifier.startswith("pkg:"):
+        ext_id_type = str(entry.get("externalIdentifierType") or "").lower()
+        if id_type in ("packageurl", "purl") or ext_id_type in ("packageurl", "purl") or identifier.startswith("pkg:"):
             return identifier
         if not fallback:
             fallback = identifier
@@ -445,13 +446,65 @@ def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
             )
 
 
+def _spdx3_graph(data: dict) -> list | None:
+    """Return the JSON-LD ``@graph`` node list if ``data`` is a canonical
+    SPDX 3.0 document, else ``None``."""
+    graph = data.get("@graph")
+    if not isinstance(graph, list):
+        return None
+    ctx = data.get("@context")
+    if isinstance(ctx, str) and "spdx.org/rdf/3." in ctx:
+        return graph
+    if isinstance(ctx, list) and any(isinstance(c, str) and "spdx.org/rdf/3." in c for c in ctx):
+        return graph
+    for node in graph:
+        if isinstance(node, dict) and node.get("type") == "CreationInfo" and str(node.get("specVersion") or "").startswith("3."):
+            return graph
+    return None
+
+
+def _normalize_spdx3_graph(data: dict) -> dict:
+    """Project a canonical ``@graph`` SPDX 3.0.1 document onto the flat
+    ``elements``/``relationships``/``spdxVersion`` shape the parser consumes.
+
+    Legacy flat SPDX 3.0 documents and non-SPDX-3 documents pass through
+    unchanged, so both serializations round-trip through the same reader.
+    """
+    graph = _spdx3_graph(data)
+    if graph is None:
+        return data
+    spec = ""
+    doc_id = ""
+    doc_name = ""
+    for node in graph:
+        if not isinstance(node, dict):
+            continue
+        ntype = node.get("type")
+        if ntype == "CreationInfo" and not spec:
+            spec = str(node.get("specVersion") or "")
+        elif ntype == "SpdxDocument":
+            doc_id = node.get("spdxId") or node.get("SPDXID") or doc_id
+            doc_name = node.get("name") or doc_name
+    relationships = [n for n in graph if isinstance(n, dict) and str(n.get("type") or "").endswith("Relationship")]
+    projected = dict(data)
+    projected["spdxVersion"] = f"SPDX-{spec}" if spec else "SPDX-3.0"
+    projected["elements"] = graph
+    projected["relationships"] = relationships
+    if doc_id:
+        projected["SPDXID"] = doc_id
+    if doc_name and not projected.get("name"):
+        projected["name"] = doc_name
+    return projected
+
+
 def parse_spdx(data: dict) -> list[Package]:
     """Parse an SPDX 2.x or 3.0 JSON document into Package objects.
 
     Handles both:
     - SPDX 2.x: top-level "packages" array with "name", "versionInfo", "externalRefs"
-    - SPDX 3.0: "elements" array with type "software/Package"
+    - SPDX 3.0: canonical ``@graph`` JSON-LD or a flat "elements" array
     """
+    data = _normalize_spdx3_graph(data)
     packages: list[Package] = []
 
     # SPDX 3.0: build direct dependency set from DEPENDS_ON relationships. These
@@ -596,6 +649,7 @@ def detect_sbom_resource_name(data: dict) -> str | None:
 
     Returns None if no meaningful name is found.
     """
+    data = _normalize_spdx3_graph(data)
     # CycloneDX
     if data.get("bomFormat") == "CycloneDX":
         comp = data.get("metadata", {}).get("component", {})
@@ -625,6 +679,7 @@ def parse_sbom_document(data: dict, source_name: str = "<memory>") -> tuple[list
     Returns ``(packages, format_name, resource_name)`` where ``resource_name``
     is auto-detected from SBOM metadata when available.
     """
+    data = _normalize_spdx3_graph(data)
     resource_name = detect_sbom_resource_name(data)
 
     if "bomFormat" in data and data["bomFormat"] == "CycloneDX":

@@ -74,11 +74,11 @@ def test_spdx3_flags_malicious_package():
     from agent_bom.output.spdx_fmt import to_spdx
 
     doc = to_spdx(_mal_report())
-    evil = next(e for e in doc["elements"] if e.get("name") == "evil-lib")
+    evil = next(e for e in doc["@graph"] if e.get("name") == "evil-lib")
     statements = {a["statement"] for a in evil.get("annotation", [])}
     assert any(s.startswith("agent-bom:malicious=true") for s in statements)
 
-    benign = next(e for e in doc["elements"] if e.get("name") == "requests")
+    benign = next(e for e in doc["@graph"] if e.get("name") == "requests")
     benign_statements = {a["statement"] for a in benign.get("annotation", [])}
     assert not any(s.startswith("agent-bom:malicious=true") for s in benign_statements)
 
@@ -102,26 +102,29 @@ def test_spdx3_uses_spdx3_vocabulary():
     from agent_bom.output.spdx_fmt import to_spdx
 
     doc = to_spdx(_mal_report())
-    assert doc["spdxVersion"] == "SPDX-3.0"
+    graph = doc["@graph"]
+    creation_info = next(n for n in graph if n["type"] == "CreationInfo")
+    assert creation_info["specVersion"] == "3.0.1"
 
-    element_types = {e.get("type") for e in doc["elements"]}
+    element_types = {e.get("type") for e in graph}
     assert "software_Package" in element_types
     assert "security_Vulnerability" in element_types
     # No SPDX-2.x element vocabulary leaked into a 3.0 document.
     assert not set(_SPDX2_TOKENS) & element_types
 
-    for elem in doc["elements"]:
+    for elem in graph:
         # 2.x used "primaryPurpose"; 3.0 namespaces it as "software_primaryPurpose".
         assert "primaryPurpose" not in elem
         # No ad-hoc CVSS score object on the vulnerability element.
         assert "score" not in elem
 
-    rel_types = {r.get("relationshipType") for r in doc["relationships"]}
+    relationships = [r for r in graph if str(r.get("type") or "").endswith("Relationship")]
+    rel_types = {r.get("relationshipType") for r in relationships}
     assert {"contains", "dependsOn", "affects"} <= rel_types
     assert not set(_SPDX2_REL_TYPES) & rel_types
 
     # CVSS is expressed as a security-profile assessment relationship.
-    cvss_rels = [r for r in doc["relationships"] if r.get("type") == "security_CvssV3VulnAssessmentRelationship"]
+    cvss_rels = [r for r in relationships if r.get("type") == "security_CvssV3VulnAssessmentRelationship"]
     assert cvss_rels
     assert cvss_rels[0]["security_score"] == 7.5
     assert cvss_rels[0]["relationshipType"] == "hasAssessmentFor"

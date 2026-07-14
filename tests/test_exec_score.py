@@ -45,11 +45,46 @@ def test_summary_never_claims_no_vulns_when_counted() -> None:
     assert "3 high" in result["summary"]
 
 
-def test_penalty_caps_score_floor_at_zero() -> None:
+def test_large_estate_grades_f_without_flooring_at_zero() -> None:
+    """A big critical estate is grade F with a very low — but non-zero — score.
+
+    The diminishing-returns curve approaches 0 asymptotically; it must never
+    round to a hard 0 for a finite estate (that is the saturation bug: 0 leaves
+    no room to distinguish a bad estate from a catastrophic one)."""
     result = compute_exec_score(severity=_sev(critical=50))
-    assert result["score"] == 0.0
     assert result["grade"] == "F"
-    assert result["penalty_total"] == 100.0
+    assert 0.0 < result["score"] < 15.0
+    # score + penalty_total reconcile to a full 100 points.
+    assert round(result["score"] + result["penalty_total"], 1) == 100.0
+
+
+def test_score_discriminates_across_estate_scale() -> None:
+    """The core #3967 fix: two estates with very different critical counts get
+    *different* failing scores — both bad, but distinguishable, not both F/0."""
+    small = compute_exec_score(severity=_sev(critical=20))
+    mid = compute_exec_score(severity=_sev(critical=200))
+    large = compute_exec_score(severity=_sev(critical=2000))
+    # All fail, but each is strictly worse than the last — no saturation.
+    assert small["grade"] == mid["grade"] == large["grade"] == "F"
+    assert small["score"] > mid["score"] > large["score"] > 0.0
+    # The 20-vs-2000 gap the audit called out is materially resolvable.
+    assert small["score"] - large["score"] > 5.0
+
+
+def test_more_criticals_never_raise_the_score() -> None:
+    """Monotonic invariant (#3949): adding findings only lowers the score."""
+    prev = compute_exec_score(severity=_sev(critical=1))["score"]
+    for n in range(2, 40):
+        cur = compute_exec_score(severity=_sev(critical=n))["score"]
+        assert cur < prev, f"critical={n} did not lower the score"
+        prev = cur
+
+
+def test_clean_estate_still_scores_a() -> None:
+    """A scanned estate with zero findings (floor present) still grades A."""
+    result = compute_exec_score(severity=_sev(), floor_score=100.0)
+    assert result["score"] == 100.0
+    assert result["grade"] == "A"
 
 
 def test_floor_never_launders_a_failing_scorecard_up() -> None:
@@ -63,8 +98,11 @@ def test_floor_never_launders_a_failing_scorecard_up() -> None:
 def test_floor_does_not_raise_a_worse_count() -> None:
     """When counts are worse than the floor, the worse count wins."""
     result = compute_exec_score(severity=_sev(critical=10), floor_score=95.0)
-    assert result["score"] == 0.0
+    # Count-derived score (10 critical) is well below the benign 95 floor, so the
+    # count wins and the floor is not applied.
     assert result["grade"] == "F"
+    assert result["score"] < 60.0
+    assert result["floored"] is False
 
 
 def test_kev_and_exposure_amplify() -> None:

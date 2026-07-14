@@ -489,7 +489,7 @@ class TestToSpdx:
     def test_empty_report(self):
         report = _make_report()
         spdx = to_spdx(report)
-        assert spdx["spdxVersion"] == "SPDX-3.0"
+        assert next(n for n in spdx["@graph"] if n["type"] == "CreationInfo")["specVersion"] == "3.0.1"
 
 
 def test_spdx_package_preserves_version_provenance_annotations():
@@ -500,7 +500,7 @@ def test_spdx_package_preserves_version_provenance_annotations():
     report = _make_report(agents=[agent])
 
     spdx = to_spdx(report)
-    pkg_element = next(element for element in spdx["elements"] if element.get("name") == pkg.name)
+    pkg_element = next(element for element in spdx["@graph"] if element.get("name") == pkg.name)
     statements = {annotation["statement"] for annotation in pkg_element["annotation"]}
 
     assert "agent-bom:version-provenance-source=lockfile" in statements
@@ -531,7 +531,7 @@ def test_json_output_redacts_server_launch_fields():
         br = _make_blast_radius(pkg=pkg, agents=[agent])
         report = _make_report(agents=[agent], blast_radii=[br])
         spdx = to_spdx(report)
-        assert len(spdx["elements"]) >= 1
+        assert len(spdx["@graph"]) >= 1
 
 
 class TestToJson:
@@ -1287,7 +1287,7 @@ def test_to_spdx_with_agent():
     agent = _make_agent_cov2(servers=[srv])
     report = _make_report_cov2(agents=[agent])
     result = to_spdx(report)
-    assert len(result.get("packages", result.get("elements", []))) >= 1
+    assert len(result["@graph"]) >= 1
 
 
 # ── to_sarif extras (from cov2) ─────────────────────────────────────────────

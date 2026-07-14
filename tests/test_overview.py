@@ -175,9 +175,10 @@ def test_overview_reads_compacted_scan_summary() -> None:
 
     # The configurable exec-score engine (#3940) recomputes the grade from the
     # honest estate counts and takes the *worst* of that and the scan scorecard
-    # floor (42.0). 3 critical + 12 high + 72 unrated caps the penalty, so the
-    # honest score is 0.0 — still an F, and the CVE/severity tiles are populated
-    # (the compaction-must-not-zero-tiles intent this test guards).
+    # floor (42.0). 3 critical + 12 high + 72 unrated is heavy pressure, so the
+    # diminishing-returns score lands well below the floor — still an F, and the
+    # CVE/severity tiles are populated (the compaction-must-not-zero-tiles intent
+    # this test guards).
     assert data["posture"]["grade"] == "F"
     assert data["posture"]["score"] <= 42.0
     assert data["headline"]["critical"] == 3

@@ -9,9 +9,9 @@ generates each format from one multi-entity report (agent -> MCP server -> tool
 
 * SARIF 2.1.0 / CycloneDX 1.6 / SPDX 2.3 validate against their vendored
   official JSON schemas (``jsonschema``);
-* SPDX 3.0 carries the 3.0 JSON-LD vocabulary (the 3.0.0 serialization agent-bom
-  emits predates the strict 3.0.1 ``@graph`` schema, so it is checked
-  structurally — see ``test_spdx_3_0_carries_spdx3_vocabulary``);
+* SPDX 3.0 is emitted as canonical SPDX 3.0.1 JSON-LD (``@context`` + ``@graph``
+  with a ``CreationInfo`` blank node and ``SpdxDocument`` root) and is checked
+  structurally + round-tripped — see ``test_spdx_3_0_is_canonical_jsonld``;
 * JSON package serializers surface ``is_malicious`` / ``malicious_reason``; and
 * two consecutive runs on identical input yield byte-identical bytes.
 
@@ -182,32 +182,57 @@ def test_spdx2_conforms_to_2_3_schema(report: AIBOMReport) -> None:
     _assert_schema_valid("SPDX 2.3", "spdx-2.3.schema.json", Draft201909Validator, to_spdx2(report))
 
 
-def test_spdx_3_0_carries_spdx3_vocabulary(report: AIBOMReport) -> None:
-    """SPDX 3.0 output uses the 3.0.0 JSON-LD serialization (fixed in #3779). The
-    strict 3.0.1 ``@graph`` schema does not model this shape, so conformance is
-    asserted against the required 3.0 vocabulary rather than rewriting the doc."""
+def test_spdx_3_0_is_canonical_jsonld(report: AIBOMReport) -> None:
+    """SPDX 3.0 output is canonical SPDX 3.0.1 JSON-LD (#3967): a top-level
+    ``@context`` + ``@graph``, a ``CreationInfo`` blank node with the semver
+    ``specVersion``, an ``SpdxDocument`` root, and namespaced 3.0 vocabulary."""
     doc = to_spdx(report)
-    assert doc["spdxVersion"] == "SPDX-3.0"
-    assert doc["@context"].startswith("https://spdx.org/rdf/3.0")
-    assert doc["creationInfo"]["specVersion"] == "3.0.0"
-    assert doc["SPDXID"].startswith("SPDXRef-")
+    # Canonical top level — exactly @context + @graph, no legacy flat keys.
+    assert set(doc) == {"@context", "@graph"}
+    assert doc["@context"] == "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
+    # Parses as JSON-LD (deserializes cleanly, @graph is a node list).
+    graph = json.loads(json.dumps(doc))["@graph"]
+    assert isinstance(graph, list) and graph
 
-    elements = doc["elements"]
-    assert elements, "expected at least one SPDX 3.0 element"
-    element_types = {e["type"] for e in elements}
+    creation_info = next(n for n in graph if n["type"] == "CreationInfo")
+    assert creation_info["@id"].startswith("_:")
+    assert creation_info["specVersion"] == "3.0.1"
+
+    spdx_document = next(n for n in graph if n["type"] == "SpdxDocument")
+    assert spdx_document["spdxId"].startswith("SPDXRef-")
+    assert spdx_document["creationInfo"] == creation_info["@id"]
+    assert "core" in spdx_document["profileConformance"]
+    assert spdx_document["rootElement"], "SpdxDocument must reference a root element"
+
+    element_types = {n["type"] for n in graph}
     # 3.0 profile-namespaced vocabulary — a 2.x-style bare "Package" is a regression.
     assert "software_Package" in element_types
     assert "security_Vulnerability" in element_types
-    for element in elements:
-        assert element.get("spdxId", "").startswith("SPDXRef-"), element
+
+    # Every graph node (bar the CreationInfo blank node itself) is a real Element:
+    # it carries a spdxId and a back-reference to the shared CreationInfo.
+    for node in graph:
+        if node["type"] == "CreationInfo":
+            continue
+        assert node.get("spdxId", "").startswith("SPDXRef-"), node
+        assert node.get("creationInfo") == creation_info["@id"], node
 
     valid_rel_types = {"contains", "dependsOn", "hasAssessmentFor", "affects", "describes", "generates"}
-    for rel in doc["relationships"]:
-        # Either the base Relationship or a 3.0 profile subtype (e.g.
+    relationships = [n for n in graph if str(n.get("type") or "").endswith("Relationship")]
+    assert relationships
+    for rel in relationships:
+        # Base Relationship or a 3.0 profile subtype (e.g.
         # security_CvssV3VulnAssessmentRelationship) — all end in "Relationship".
         assert rel["type"].endswith("Relationship"), rel
         assert rel["relationshipType"] in valid_rel_types, rel
         assert rel.get("from") and rel.get("to"), rel
+
+    # Round-trips back through the SBOM reader with packages + vuln intact.
+    from agent_bom.sbom import parse_sbom_document
+
+    packages, fmt, _name = parse_sbom_document(doc)
+    assert fmt == "spdx-3"
+    assert {p.name for p in packages}, "expected packages recovered from @graph"
 
 
 def test_json_packages_carry_is_malicious(report: AIBOMReport) -> None:

@@ -11,13 +11,24 @@ non-zero penalty, so the estate can't read as a clean "A / no vulnerabilities"
 while findings are open.
 
 Model shape (all penalty POINTS per unit of the driver's count, not fractions —
-this keeps each contribution legible: "3 critical × 12 = 36 points off"):
+this keeps each contribution legible: "3 critical × 12 = 36 points of pressure"):
 
     critical    12   high        6    medium      2    low        0.5
     unrated      1   kev         8    exposure    5    compliance 6
 
-``score = clamp(0, 100, 100 - min(100, Σ weight[d] × count[d]))`` and the letter
-grade comes from configurable thresholds (default A≥90, B≥80, C≥70, D≥60).
+The per-driver points sum to an unbounded ``pressure = Σ weight[d] × count[d]``
+which is then mapped to a 0–100 score through a **diminishing-returns curve**
+so the grade discriminates across the full estate size instead of saturating::
+
+    score = 100 × scale / (scale + pressure)      (scale = 70)
+
+This is monotonic (more findings only ever lower the score, never raise it),
+scores a genuinely clean estate a perfect 100 (grade A), and — unlike a
+``100 − min(100, pressure)`` cap that floors at 0 once ~9 criticals accumulate —
+keeps assigning *distinct* failing scores to a 20-critical vs a 2000-critical
+estate (both F, but distinguishable). Adopters steepen or soften the curve by
+scaling the weights: doubling every weight halves the effective ``scale``. The
+letter grade comes from configurable thresholds (default A≥90, B≥80, C≥70, D≥60).
 
 Adopters are not locked onto the defaults. Weights, grade thresholds, and the
 display format (``grade`` / ``percent`` / ``points``) can be overridden per
@@ -90,9 +101,12 @@ DEFAULT_DISPLAY_FORMAT = "percent"
 # A single driver weight is clamped into this range so a hostile / fat-fingered
 # override can neither invert the score (negative) nor overflow it.
 _MAX_WEIGHT = 100.0
-# Total penalty is capped so the score floors cleanly at 0 (grade F) instead of
-# going negative.
-_MAX_PENALTY = 100.0
+# Diminishing-returns scale for the pressure→score curve
+# ``score = 100 × scale / (scale + pressure)``. At ``scale = 70`` the historical
+# anchor holds exactly (2 critical + 1 high = 30 pressure → score 70 → grade C),
+# a clean estate scores 100, and the score decays toward — but never reaches — 0
+# so ever-larger estates keep earning distinct (still-failing) scores.
+_PENALTY_SCALE = 70.0
 
 
 @dataclass(frozen=True)
@@ -311,12 +325,12 @@ def compute_exec_score(
     finding_total = counts["critical"] + counts["high"] + counts["medium"] + counts["low"] + counts["unrated"]
 
     breakdown: list[dict[str, Any]] = []
-    raw_penalty = 0.0
+    pressure = 0.0
     for driver in DRIVER_ORDER:
         weight = float(weights.get(driver, 0.0))
         count = counts[driver]
         contribution = round(weight * count, 2)
-        raw_penalty += weight * count
+        pressure += weight * count
         breakdown.append(
             {
                 "driver": driver,
@@ -327,8 +341,12 @@ def compute_exec_score(
             }
         )
 
-    penalty = min(_MAX_PENALTY, raw_penalty)
-    count_score = max(0.0, round(100.0 - penalty, 1))
+    # Diminishing-returns curve: unbounded pressure maps to a (0, 100] score that
+    # never floors at 0, so a 20-critical and a 2000-critical estate stay
+    # distinguishable instead of both saturating to F/0. score(0) == 100.
+    count_score = max(0.0, round(100.0 * _PENALTY_SCALE / (_PENALTY_SCALE + pressure), 1))
+    # Effective points removed to reach the count score (score + penalty == 100).
+    penalty = round(100.0 - count_score, 1)
 
     has_evidence = floor_score is not None or finding_total > 0 or counts["kev"] > 0 or counts["exposure"] > 0 or counts["compliance"] > 0
 

@@ -28,7 +28,10 @@ const BUDGETS = {
   // and graph investigation. Total counts every emitted route chunk, including lazy-loaded views.
   // Includes the New Scan scope explainer, connected-account picker, and
   // repository-surface coverage cockpit shipped with the operator workflow.
-  totalClientJsBytes: 3_300_000,
+  // Raised for the light-theme tokenization — semantic token class names
+  // (`text-[color:var(--text-tertiary)]`) are longer string literals than the raw
+  // `zinc-*` utilities they replace, so the compiled className strings grow a few KiB.
+  totalClientJsBytes: 3_379_200,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

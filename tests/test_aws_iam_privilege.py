@@ -30,8 +30,8 @@ def test_policy_actions_from_document_allow_only():
 
 def test_aws_managed_policy_classified_by_name_without_fetch():
     iam = MagicMock()
-    level, actions = _policy_privilege(iam, "arn:aws:iam::aws:policy/AdministratorAccess", "AdministratorAccess", warnings=[])
-    assert level == "admin" and actions == []
+    level, actions, document = _policy_privilege(iam, "arn:aws:iam::aws:policy/AdministratorAccess", "AdministratorAccess", warnings=[])
+    assert level == "admin" and actions == [] and document is None
     iam.get_policy.assert_not_called()  # AWS-managed → no API call
 
 
@@ -41,17 +41,19 @@ def test_customer_managed_policy_fetched_and_classified():
     iam.get_policy_version.return_value = {
         "PolicyVersion": {"Document": {"Statement": [{"Effect": "Allow", "Action": ["dynamodb:DeleteTable"]}]}}
     }
-    level, actions = _policy_privilege(iam, "arn:aws:iam::123:policy/team-custom", "team-custom", warnings=[])
+    level, actions, document = _policy_privilege(iam, "arn:aws:iam::123:policy/team-custom", "team-custom", warnings=[])
     assert level == "write"
     assert "dynamodb:DeleteTable" in actions
+    # Customer-managed documents are retained for real policy evaluation.
+    assert document == {"Statement": [{"Effect": "Allow", "Action": ["dynamodb:DeleteTable"]}]}
 
 
 def test_policy_lookup_failure_degrades_gracefully():
     iam = MagicMock()
     iam.get_policy.side_effect = RuntimeError("AccessDenied")
     warnings: list[str] = []
-    level, actions = _policy_privilege(iam, "arn:aws:iam::123:policy/x", "x", warnings=warnings)
-    assert level == "unknown" and actions == []
+    level, actions, document = _policy_privilege(iam, "arn:aws:iam::123:policy/x", "x", warnings=warnings)
+    assert level == "unknown" and actions == [] and document is None
     assert warnings  # warning recorded, no raise
 
 

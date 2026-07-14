@@ -16,6 +16,7 @@ from typing import Any
 from agent_bom.api.tracing import get_tracer
 from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
 from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
+from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
@@ -1927,26 +1928,52 @@ def _first_cloud_scope_value(scope: dict[str, Any], *keys: str) -> tuple[str, st
     return "", ""
 
 
-def _policy_entries(principal: dict[str, Any]) -> list[dict[str, str]]:
+def _policy_entries(principal: dict[str, Any]) -> list[dict[str, Any]]:
     raw_policies = principal.get("policies") or principal.get("attached_policies") or principal.get("policy_ids") or []
     if isinstance(raw_policies, (str, bytes)):
         raw_policies = [raw_policies]
     if not isinstance(raw_policies, list):
         return []
 
-    policies: list[dict[str, str]] = []
+    policies: list[dict[str, Any]] = []
     for raw_policy in raw_policies:
         privilege_level = "unknown"
+        document: Any = None
         if isinstance(raw_policy, dict):
             policy_id = _clean_graph_part(raw_policy.get("policy_id")) or _clean_graph_part(raw_policy.get("arn"))
             policy_name = _clean_graph_part(raw_policy.get("policy_name")) or _clean_graph_part(raw_policy.get("name")) or policy_id
             privilege_level = str(raw_policy.get("privilege_level") or "unknown")
+            # Discovery may carry the raw IAM policy document (``policy_document``,
+            # or the AWS API ``PolicyDocument``); pass it through so the POLICY node
+            # can carry it and the effective-permissions overlay can evaluate it.
+            document = raw_policy.get("policy_document")
+            if document is None:
+                document = raw_policy.get("PolicyDocument")
         else:
             policy_id = _clean_graph_part(raw_policy)
             policy_name = policy_id
         if policy_id:
-            policies.append({"id": policy_id, "name": policy_name or policy_id, "privilege_level": privilege_level})
+            entry: dict[str, Any] = {"id": policy_id, "name": policy_name or policy_id, "privilege_level": privilege_level}
+            if isinstance(document, dict) and document:
+                entry["policy_document"] = document
+            policies.append(entry)
     return policies
+
+
+def _policy_document_attrs(policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Return ``{"policy_document": <doc>}`` for a parseable IAM policy, else ``{}``.
+
+    The raw document is what the effective-permissions overlay expects on the
+    POLICY node — it re-normalizes at evaluation time. We validate here with
+    ``normalize_iam_policy_document`` and only attach documents that parse to at
+    least one statement, so unparseable/empty payloads never bloat the graph.
+    """
+    document = policy.get("policy_document")
+    if not isinstance(document, Mapping) or not document:
+        return {}
+    if normalize_iam_policy_document(document).completeness is EvidenceCompleteness.UNAVAILABLE:
+        return {}
+    return {"policy_document": dict(document)}
 
 
 def _trust_entries(principal: dict[str, Any]) -> list[dict[str, str]]:
@@ -2269,6 +2296,7 @@ def _add_agent_cloud_lineage(
             policy_name=policy["name"],
             privilege_level=policy.get("privilege_level", "unknown"),
             cloud_provider=provider,
+            **_policy_document_attrs(policy),
         )
         _add_rel_edge(
             graph,
@@ -5577,6 +5605,7 @@ def _add_inventory_principal(
                     "policy_name": policy["name"],
                     "privilege_level": policy.get("privilege_level", "unknown"),
                     "cloud_provider": provider,
+                    **_policy_document_attrs(policy),
                 },
                 data_sources=data_sources,
                 dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
@@ -5706,6 +5735,7 @@ def _add_inventory_group(
             policy_name=policy["name"],
             privilege_level=policy.get("privilege_level", "unknown"),
             cloud_provider=provider,
+            **_policy_document_attrs(policy),
         )
         _add_rel_edge(
             graph, group_node_id, policy_node_id, RelationshipType.ATTACHED, {"source": "cloud-inventory", "principal_type": "group"}

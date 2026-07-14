@@ -1401,15 +1401,20 @@ def _attached_policies(iam: Any, principal_kind: str, principal_name: str, *, wa
                 policy_name = str(policy.get("PolicyName", "") or policy_arn)
                 if not (policy_arn or policy_name):
                     continue
-                policies.append(
-                    {
-                        "policy_id": policy_arn,
-                        "policy_name": policy_name,
-                        "attachment_type": "managed",
-                        "privilege_level": _policy_privilege(iam, policy_arn, policy_name, warnings=warnings),
-                        "source_field": f"ListAttached{principal_kind.capitalize()}Policies.AttachedPolicies",
-                    }
-                )
+                privilege_level, document = _policy_privilege_and_document(iam, policy_arn, policy_name, warnings=warnings)
+                entry: dict[str, Any] = {
+                    "policy_id": policy_arn,
+                    "policy_name": policy_name,
+                    "attachment_type": "managed",
+                    "privilege_level": privilege_level,
+                    "source_field": f"ListAttached{principal_kind.capitalize()}Policies.AttachedPolicies",
+                }
+                # Carry the raw document so the effective-permissions overlay can run
+                # REAL policy evaluation (customer-managed only; AWS-managed policies
+                # are name-classified without a fetch and have no document to attach).
+                if isinstance(document, dict):
+                    entry["policy_document"] = document
+                policies.append(entry)
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"IAM policy enumeration skipped for {principal_kind} {principal_name}: {sanitize_discovery_warning(exc)}")
     return policies
@@ -1436,21 +1441,26 @@ def _inline_policies(iam: Any, principal_kind: str, principal_name: str, *, warn
                 if not name:
                     continue
                 privilege = "unknown"
+                document: Any = None
                 try:
                     document = get_doc(**{kwarg: principal_name, "PolicyName": name}).get("PolicyDocument")
                     privilege = _classify_policy_actions(_policy_actions_from_document(document))
                 except Exception as exc:  # noqa: BLE001
                     short = sanitize_discovery_warning(exc)
                     warnings.append(f"IAM inline policy doc skipped for {principal_kind} {principal_name}/{name}: {short}")
-                policies.append(
-                    {
-                        "policy_id": f"{principal_name}/{name}",
-                        "policy_name": str(name),
-                        "attachment_type": "inline",
-                        "privilege_level": privilege,
-                        "source_field": f"List{principal_kind.capitalize()}Policies.PolicyNames",
-                    }
-                )
+                entry: dict[str, Any] = {
+                    "policy_id": f"{principal_name}/{name}",
+                    "policy_name": str(name),
+                    "attachment_type": "inline",
+                    "privilege_level": privilege,
+                    "source_field": f"List{principal_kind.capitalize()}Policies.PolicyNames",
+                }
+                # Inline documents are already read for classification; retain the raw
+                # document so the overlay can evaluate it (an inline "*:*" is a common
+                # benignly-named admin path the name heuristic cannot see).
+                if isinstance(document, dict):
+                    entry["policy_document"] = document
+                policies.append(entry)
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"IAM inline policy enumeration skipped for {principal_kind} {principal_name}: {sanitize_discovery_warning(exc)}")
     return policies
@@ -1468,28 +1478,32 @@ _AWS_MANAGED_PRIVILEGE: dict[str, str] = {
 }
 
 
-def _policy_privilege(iam: Any, policy_arn: str, policy_name: str, *, warnings: list[str]) -> str:
-    """Classify an attached policy as admin / write / read / unknown.
+def _policy_privilege_and_document(
+    iam: Any, policy_arn: str, policy_name: str, *, warnings: list[str]
+) -> tuple[str, dict[str, Any] | None]:
+    """Classify an attached policy and return its raw document when fetched.
 
-    AWS-managed policies are classified by canonical name (no API call).
-    Customer-managed policies are fetched and classified by their Allow actions.
-    Degrades to ``"unknown"`` on any error — never blocks enumeration.
+    AWS-managed policies are classified by canonical name (no API call), so no
+    document is returned for them (``None``). Customer-managed policies are
+    fetched and classified by their Allow actions, and the raw document is
+    returned so the effective-permissions overlay can evaluate it.
+    Degrades to ``("unknown", None)`` on any error — never blocks enumeration.
     """
     name_key = (policy_name or policy_arn).rsplit("/", 1)[-1].lower()
     if ":aws:policy/" in policy_arn and name_key in _AWS_MANAGED_PRIVILEGE:
-        return _AWS_MANAGED_PRIVILEGE[name_key]
+        return _AWS_MANAGED_PRIVILEGE[name_key], None
     if ":aws:policy/" in policy_arn:
         if "fullaccess" in name_key or "admin" in name_key:
-            return "admin"
+            return "admin", None
         if "readonly" in name_key or "viewonly" in name_key:
-            return "read"
+            return "read", None
     try:
         version_id = iam.get_policy(PolicyArn=policy_arn)["Policy"]["DefaultVersionId"]
         document = iam.get_policy_version(PolicyArn=policy_arn, VersionId=version_id)["PolicyVersion"]["Document"]
-        return _classify_policy_actions(_policy_actions_from_document(document))
+        return _classify_policy_actions(_policy_actions_from_document(document)), document if isinstance(document, dict) else None
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"IAM policy action lookup skipped for {policy_name or policy_arn}: {sanitize_discovery_warning(exc)}")
-        return "unknown"
+        return "unknown", None
 
 
 _PRIVILEGE_RANK = {"admin": 3, "write": 2, "read": 1, "unknown": 0}

@@ -2077,6 +2077,15 @@ async def list_inventory(
     total = len(agents)
     page = agents[offset : offset + limit]
     return {
+        # Scope marker so callers never conflate this population with live
+        # local-disk discovery at /v1/agents. This endpoint is the scanned
+        # estate: agents/packages aggregated from completed scan jobs.
+        "scope": "scanned_estate",
+        "source": (
+            "Agents and packages aggregated from completed scan jobs (the scanned "
+            "estate). For live local-disk discovery of AI-client configs on this "
+            "host, see /v1/agents."
+        ),
         "agents": page,
         "count": len(page),
         "total": total,

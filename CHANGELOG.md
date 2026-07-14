@@ -9,6 +9,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Honest scan verdicts** (#3965): the posture scorecard no longer reports a passing `B` / 87.5 for a scan that processed zero artifacts — an empty scan now returns grade `N/A` across CLI, JSON, and the `/posture` API. The pre-install `check` command now blocks known-malicious packages (typosquat / dependency-confusion carry no CVE rows, so they previously reported "no known vulnerabilities" / exit 0) with a `malicious` verdict and non-zero exit. Offline `check` of a package whose ecosystem has zero advisories in the local DB now exits 2 (untrustworthy clean), symmetric with the existing deb/apk/rpm incomplete-context guard.
+
 ## [0.95.0] - 2026-07-13
 
 Enterprise auth, cloud-connect, and interop release: browser OIDC SSO, actionable cloud connections, compliance honesty, refreshed dashboard/branding, and a large security-hardening batch on top of 0.94.2.

@@ -43,29 +43,30 @@
 <details>
 <summary><b>Persona lane detail</b></summary>
 
-- **AppSec / GRC** — SARIF, compliance packs, and audit-ready exports from the
-  same scan that powers the dashboard.
-- **Platform / SRE** — fleet sync, Helm deploy, CI gates, and SBOM output
-  without a separate scanner stack.
-- **Agent builders** — MCP inventory, Shield SDK, and optional runtime proxy or
-  gateway enforcement on the same graph.
-- **Security engineers** — findings queue, attack-path drilldown, and blast-radius
-  context in CLI, API, and UI.
+- **AppSec / GRC** — SARIF, compliance packs, and audit-ready exports from one scan.
+- **Platform / SRE** — fleet sync, Helm deploy, CI gates, SBOM — no separate scanner stack.
+- **Agent builders** — MCP inventory, Shield SDK, optional runtime proxy or gateway enforcement.
+- **Security engineers** — findings queue, attack-path drilldown, blast-radius context in CLI, API, and UI.
 
-Snowflake is a supported connector lane, not the product center.
+**MCP server mode**
 
-MCP server mode advertises 73 MCP tools, 6 resources, and 8 workflow prompts.
-Registry metadata is tracked through the committed Smithery manifest and Glama
-listing; install and liveness checks live in the integration docs.
+- Advertises 73 MCP tools, 6 resources, and 8 workflow prompts.
+- Registry metadata lives in the committed Smithery manifest and Glama listing; install and liveness checks are in the integration docs.
 
 </details>
 
 ## How It Works
 
-Four beats that match the commands and the sidebar: **connect** (read-only
-cloud, data, code, and agent sources) → **scan** (`agents` / CI) → **graph**
-(`ContextGraph` + blast radius) → **serve** (`agent-bom serve` — one pane of
-glass). The Findings page is a posture queue inside serve — not a product lane.
+Four beats that match the commands and the sidebar:
+
+```text
+connect → scan → graph → serve
+```
+
+- **connect** — read-only cloud, data, code, and agent sources.
+- **scan** — `agents` / CI.
+- **graph** — `ContextGraph` + blast radius.
+- **serve** — `agent-bom serve`, one pane of glass; the Findings page is a posture queue here, not a product lane.
 
 <p align="center">
   <picture>
@@ -105,19 +106,9 @@ package -> vulnerability finding -> MCP server -> tools + credential refs -> age
 <details>
 <summary><b>What it is</b> — scanner, ContextGraph, and blast radius</summary>
 
-`agent-bom` is a read-only scanner and self-hosted control plane for local
-projects, agent fleets, MCP runtimes, and cloud estates (AWS, Azure, GCP,
-Snowflake).
-
-**ContextGraph** is agent-bom's unified evidence graph across CLI, API, UI, MCP
-tools, reports, and gateway decisions. Findings, assets, packages, cloud
-resources, identities, agents, MCP servers, credentials, and runtime decisions
-all normalize into that graph so posture, blast radius, and enforcement read
-from the same evidence.
-
-Blast radius is the core idea: a vulnerable package is linked to the MCP server
-that loads it, the tools it exposes, reachable credential references, and the
-agents that can call it — not just a CVE row.
+- **Scanner + control plane** — read-only, self-hosted, over local projects, agent fleets, MCP runtimes, and cloud estates (AWS, Azure, GCP, Snowflake).
+- **ContextGraph** — the unified evidence graph across CLI, API, UI, MCP tools, reports, and gateway decisions. Findings, assets, packages, cloud resources, identities, agents, MCP servers, credentials, and runtime decisions all normalize into it, so posture, blast radius, and enforcement read from one evidence set.
+- **Blast radius** — the core idea: a vulnerable package links to the MCP server that loads it, the tools it exposes, reachable credential references, and the agents that can call it — not just a CVE row.
 
 Coverage depth and honest boundaries:
 [AI infrastructure scanning](docs/AI_INFRASTRUCTURE_SCANNING.md) ·

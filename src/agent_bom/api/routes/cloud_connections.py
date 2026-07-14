@@ -350,6 +350,29 @@ def _cis_summary(cis_dict: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _annotate_inventory_counts(inventory: Any) -> None:
+    """Add UI-facing count fields to a persisted raw inventory payload in place.
+
+    The persisted ``cloud_inventory`` keeps the raw provider resource lists the
+    graph builder ingests, but those carry no top-level counts. The Scan-jobs
+    pipeline panel and scan-result view read ``resource_count`` / ``identity_count``
+    (with a ``node_summary`` fallback), so without these a completed cloud-connection
+    scan surfaced empty resource/identity stats. Enrich the payload (non-destructive
+    — raw lists are preserved) with the same counts ``_summarize_inventory_payload``
+    computes so those stats populate honestly.
+    """
+    if not isinstance(inventory, dict):
+        return
+    if "resource_count" in inventory and "identity_count" in inventory:
+        return
+    from agent_bom.mcp_tools.posture import _summarize_inventory_payload
+
+    summary = _summarize_inventory_payload(str(inventory.get("provider") or ""), inventory)
+    inventory.setdefault("resource_count", summary["resource_count"])
+    inventory.setdefault("identity_count", summary["identity_count"])
+    inventory.setdefault("node_summary", summary["node_summary"])
+
+
 def _persist_connection_report(record: CloudConnectionRecord, tenant_id: str, report: Any) -> str:
     """Persist a brokered-scan report through the existing scan/graph stores.
 
@@ -363,6 +386,7 @@ def _persist_connection_report(record: CloudConnectionRecord, tenant_id: str, re
     from agent_bom.output import to_json
 
     report_json = to_json(report)
+    _annotate_inventory_counts(report_json.get("cloud_inventory"))
     now = _now()
     job = ScanJob(
         job_id=report.scan_id,

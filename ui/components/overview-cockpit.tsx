@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowRight, ChevronRight } from "lucide-react";
 
 import type { OverviewResponse } from "@/lib/api";
-import type { OverviewCoverageLane, ServiceEntry, ServiceId } from "@/lib/api-types";
+import type { ExecScoreDriver, OverviewCoverageLane, ServiceEntry, ServiceId } from "@/lib/api-types";
 import { Collapsible } from "@/components/collapsible";
 import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
@@ -39,8 +39,15 @@ export type OverviewComplianceSnapshot = {
   frameworks: OverviewComplianceFramework[];
 };
 
+/** Controls a framework actually scored (pass/warn/fail) — NOT its catalogue
+ *  size. A framework with 10 bundled controls but 0 mapped findings has
+ *  `total` 10 yet `evaluated` 0, and must never read as a green PASS (#3889). */
+function frameworkEvaluated(framework: OverviewComplianceFramework): number {
+  return framework.pass + framework.warn + framework.fail;
+}
+
 function hasEvaluatedCompliance(compliance: OverviewComplianceSnapshot | null | undefined): boolean {
-  return Boolean(compliance?.frameworks.some((framework) => framework.total > 0));
+  return Boolean(compliance?.frameworks.some((framework) => frameworkEvaluated(framework) > 0));
 }
 
 // Shared class for the collapsible section headers (Command center, Cross-lane
@@ -126,6 +133,10 @@ export interface OverviewCockpitProps {
   score?: number | undefined;
   /** Display-only score presentation. Defaults to a percentage. */
   scoreFormat?: PostureScoreFormat | undefined;
+  /** Weighted inputs behind the score, for the "what influences this" panel. */
+  scoreBreakdown?: ExecScoreDriver[] | null | undefined;
+  /** Called when the user picks a display format; parent persists it (#3940). */
+  onScoreFormatChange?: ((format: PostureScoreFormat) => void) | undefined;
   postureSummary?: string | undefined;
   critical: number;
   high: number;
@@ -160,6 +171,8 @@ export function OverviewCockpit({
   grade,
   score,
   scoreFormat = "percent",
+  scoreBreakdown = null,
+  onScoreFormatChange,
   postureSummary,
   critical,
   high,
@@ -204,6 +217,7 @@ export function OverviewCockpit({
               grade={grade}
               score={score}
               scoreFormat={scoreFormat}
+              onScoreFormatChange={onScoreFormatChange}
               summary={postureSummary}
               critical={critical}
               high={high}
@@ -221,6 +235,10 @@ export function OverviewCockpit({
               matrix={issueMatrix}
             />
           </div>
+
+          {/* 1b — What influences the score: read-only weighted-input breakdown
+              so the grade is legible, not opaque (#3940). */}
+          <ScoreExplainer breakdown={scoreBreakdown} grade={grade} />
 
           {/* 2 — Cross-lane coverage: the single canonical estate view */}
           <CrossLaneCoverage domains={domains} services={services} />
@@ -494,8 +512,17 @@ function ComplianceSnapshotPanel({
       {evidenceReady && frameworks.length > 0 ? (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {frameworks.map((framework) => {
+            const evaluated = frameworkEvaluated(framework);
+            // 0 evaluated controls is NOT a pass — surface a neutral
+            // "not evaluated" state so an unscored framework never reads green.
             const tone =
-              framework.fail > 0 ? "fail" : framework.warn > 0 ? "warn" : "pass";
+              evaluated === 0
+                ? "not_evaluated"
+                : framework.fail > 0
+                  ? "fail"
+                  : framework.warn > 0
+                    ? "warn"
+                    : "pass";
             return (
               <Link
                 key={framework.id}
@@ -508,8 +535,9 @@ function ComplianceSnapshotPanel({
                     {framework.label}
                   </p>
                   <p className="mt-0.5 truncate text-[10px] leading-tight text-[color:var(--text-tertiary)]">
-                    {framework.pass}/{framework.total} pass
-                    {framework.fail > 0 ? ` · ${framework.fail} fail` : ""}
+                    {evaluated === 0
+                      ? `Not evaluated · 0/${framework.total} controls`
+                      : `${framework.pass}/${evaluated} pass${framework.fail > 0 ? ` · ${framework.fail} fail` : ""}`}
                   </p>
                 </div>
                 <span
@@ -518,10 +546,12 @@ function ComplianceSnapshotPanel({
                       ? "bg-red-500/15 text-red-300"
                       : tone === "warn"
                         ? "bg-yellow-500/15 text-yellow-200"
-                        : "bg-emerald-500/15 text-emerald-300"
+                        : tone === "pass"
+                          ? "bg-emerald-500/15 text-emerald-300"
+                          : "border border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
                   }`}
                 >
-                  {tone}
+                  {tone === "not_evaluated" ? "n/a" : tone}
                 </span>
               </Link>
             );
@@ -720,10 +750,116 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
   );
 }
 
+/**
+ * Read-only "what influences this score" panel. Lists the weighted inputs
+ * (severity buckets, KEV, exposure, compliance, unrated) with each driver's
+ * count × weight = penalty contribution, so the grade is legible instead of an
+ * opaque number (#3940). Only drivers that actually moved the score are shown.
+ * A full weight/threshold editor is a documented follow-up.
+ */
+function ScoreExplainer({
+  breakdown,
+  grade,
+}: {
+  breakdown?: ExecScoreDriver[] | null | undefined;
+  grade: string;
+}) {
+  const ungraded = grade === "N/A" || grade === "—";
+  const rows = (breakdown ?? [])
+    .filter((row) => row.count > 0 || row.contribution > 0)
+    .sort((a, b) => b.contribution - a.contribution);
+  if (ungraded || rows.length === 0) return null;
+  const totalPenalty = rows.reduce((sum, row) => sum + row.contribution, 0);
+
+  return (
+    <Collapsible
+      bare
+      className="mt-4 border-t border-[color:var(--border-subtle)]"
+      title="What influences this score"
+      titleClassName={SECTION_TITLE_CLASS}
+      subtitle="Weighted risk inputs behind the grade · each shown as count × weight = points off 100"
+      defaultOpen={false}
+      data-testid="overview-score-explainer"
+    >
+      <div className="mt-2 space-y-1.5">
+        {rows.map((row) => {
+          const share = totalPenalty > 0 ? (row.contribution / totalPenalty) * 100 : 0;
+          return (
+            <div key={row.driver} className="flex items-center gap-3" data-testid={`score-driver-${row.driver}`}>
+              <span className="w-40 shrink-0 truncate text-[11px] text-[color:var(--text-secondary)]" title={row.label}>
+                {row.label}
+              </span>
+              <span className="w-24 shrink-0 text-right font-mono text-[11px] tabular-nums text-[color:var(--text-tertiary)]">
+                {row.count} × {row.weight}
+              </span>
+              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
+                <span
+                  className="block h-full rounded-full bg-[color:var(--severity-high)]"
+                  style={{ width: `${Math.min(100, share)}%` }}
+                />
+              </div>
+              <span className="w-14 shrink-0 text-right font-mono text-[11px] font-semibold tabular-nums text-[color:var(--foreground)]">
+                −{row.contribution.toFixed(1)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[10px] leading-tight text-[color:var(--text-tertiary)]">
+        Score = 100 − total points off (capped at 100). Weights, grade thresholds, and the display format are
+        configurable per tenant via the score-config API. A full in-UI weight editor is a follow-up.
+      </p>
+    </Collapsible>
+  );
+}
+
+const SCORE_FORMAT_OPTIONS: { value: PostureScoreFormat; label: string }[] = [
+  { value: "grade", label: "Grade" },
+  { value: "percent", label: "%" },
+  { value: "points", label: "Points" },
+];
+
+function ScoreFormatToggle({
+  value,
+  onChange,
+}: {
+  value: PostureScoreFormat;
+  onChange: (format: PostureScoreFormat) => void;
+}) {
+  return (
+    <div
+      className="inline-flex overflow-hidden rounded-md border border-[color:var(--border-subtle)]"
+      role="group"
+      aria-label="Score display format"
+      data-testid="score-format-toggle"
+    >
+      {SCORE_FORMAT_OPTIONS.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={active}
+            className={`px-1.5 py-0.5 text-[10px] font-semibold transition ${
+              active
+                ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                : "bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function PostureHero({
   grade,
   score,
   scoreFormat = "percent",
+  onScoreFormatChange,
   summary,
   critical,
   high,
@@ -733,6 +869,7 @@ function PostureHero({
   grade: string;
   score?: number | undefined;
   scoreFormat?: PostureScoreFormat | undefined;
+  onScoreFormatChange?: ((format: PostureScoreFormat) => void) | undefined;
   summary?: string | undefined;
   critical: number;
   high: number;
@@ -763,14 +900,25 @@ function PostureHero({
         ) : null}
       </div>
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-          Risk posture
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+            Risk posture
+          </p>
+          {graded && onScoreFormatChange ? (
+            <ScoreFormatToggle value={scoreFormat} onChange={onScoreFormatChange} />
+          ) : null}
+        </div>
         <p className="mt-1 flex items-baseline gap-2 text-lg font-semibold text-[color:var(--foreground)]">
           {graded ? (
             <>
+              {/* Always show BOTH the letter grade and the %/points, whatever the
+                  chosen primary format, so the number is never ambiguous. */}
               <span>{scoreDisplay}</span>
-              <span className="text-xs font-medium text-[color:var(--text-tertiary)]">Grade {grade}</span>
+              {scoreFormat !== "grade" ? (
+                <span className="text-xs font-medium text-[color:var(--text-tertiary)]">Grade {grade}</span>
+              ) : typeof score === "number" ? (
+                <span className="text-xs font-medium text-[color:var(--text-tertiary)]">{Math.round(score)}%</span>
+              ) : null}
             </>
           ) : (
             "Awaiting scan"

@@ -774,6 +774,21 @@ class TenantQuotaUpdateRequest(BaseModel):
     schedules: int | None = Field(default=None, ge=0)
 
 
+class ExecScoreConfigUpdateRequest(BaseModel):
+    """Body for PUT /v1/overview/score-config (issue #3940).
+
+    Deliberately lenient: unknown keys are ignored and values are canonicalized
+    / clamped server-side (see ``agent_bom.exec_score.canonicalize_config``) so
+    an ad-hoc override never raises — out-of-range weights are clamped, junk
+    keys dropped, an invalid display format falls back to the default.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+    weights: dict[str, Any] | None = None
+    grade_thresholds: dict[str, Any] | None = None
+    display_format: str | None = None
+
+
 class ExceptionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     vuln_id: str

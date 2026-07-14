@@ -87,6 +87,11 @@
       "schema": "ExceptionRequest.json"
     },
     {
+      "doc": "Body for PUT /v1/overview/score-config (issue #3940).",
+      "name": "ExecScoreConfigUpdateRequest",
+      "schema": "ExecScoreConfigUpdateRequest.json"
+    },
+    {
       "doc": "Request body for POST /v1/findings/false-positive.",
       "name": "FalsePositiveRequest",
       "schema": "FalsePositiveRequest.json"

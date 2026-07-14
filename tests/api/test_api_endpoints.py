@@ -922,3 +922,40 @@ def test_baseline_compare_requires_job_ids_without_404():
     client, _ = _fresh_client()
     resp = client.post("/v1/baseline/compare")
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# /v1/agents vs /v1/inventory scope labels (#3889)
+# ---------------------------------------------------------------------------
+
+
+def test_agents_endpoint_declares_local_discovery_scope():
+    """GET /v1/agents self-labels as local-disk discovery, distinct from the estate.
+
+    /v1/agents (live local-config discovery) and /v1/inventory (scanned-estate
+    roll-up) were disjoint with no marker telling clients which population each
+    represents. Each now declares a ``scope`` so the two never silently overlap.
+    """
+    client, _ = _fresh_client()
+    with patch("agent_bom.discovery.discover_all", return_value=[]):
+        from agent_bom.api.routes.discovery import _clear_agents_response_cache_for_tests
+
+        _clear_agents_response_cache_for_tests()
+        resp = client.get("/v1/agents")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["scope"] == "local_discovery"
+    assert body.get("source")
+    # Cross-reference the scanned-estate surface so consumers don't conflate them.
+    assert "/v1/inventory" in body["source"]
+
+
+def test_inventory_endpoint_declares_scanned_estate_scope():
+    """GET /v1/inventory self-labels as the scanned estate, distinct from discovery."""
+    client, _ = _fresh_client()
+    resp = client.get("/v1/inventory")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["scope"] == "scanned_estate"
+    assert body.get("source")
+    assert "/v1/agents" in body["source"]

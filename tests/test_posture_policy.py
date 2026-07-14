@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
+from agent_bom.models import (
+    Agent,
+    AgentType,
+    AIBOMReport,
+    BlastRadius,
+    MCPServer,
+    Package,
+    Severity,
+    Vulnerability,
+)
 from agent_bom.posture import (
     DEFAULT_DIMENSION_WEIGHTS,
     compute_posture_scorecard,
@@ -49,6 +58,35 @@ def test_scan_with_real_artifacts_gets_a_real_grade() -> None:
     )
     scorecard = compute_posture_scorecard(report)
     assert scorecard.grade in {"A", "B", "C", "D", "F"}
+    assert scorecard.no_data is False
+
+
+def test_filesystem_scan_with_critical_findings_gets_real_grade_not_na() -> None:
+    """A plain filesystem scan that surfaced critical findings must grade normally.
+
+    The did-we-scan guard returns N/A only for scans that examined ZERO gradable
+    artifacts. A findings-present scan — even one with no MCP servers, where the
+    vulnerabilities live only in ``blast_radii`` — has examined real artifacts and
+    must receive a real letter grade, never N/A.
+    """
+    pkg = Package(name="vulnerable-lib", version="1.0.0", ecosystem="pypi")
+    vuln = Vulnerability(id="CVE-2026-9001", summary="critical RCE", severity=Severity.CRITICAL)
+    report = AIBOMReport(
+        agents=[],
+        blast_radii=[
+            BlastRadius(
+                vulnerability=vuln,
+                package=pkg,
+                affected_servers=[],
+                affected_agents=[],
+                exposed_credentials=[],
+                exposed_tools=[],
+            )
+        ],
+    )
+    scorecard = compute_posture_scorecard(report)
+    assert scorecard.grade in {"A", "B", "C", "D", "F"}
+    assert scorecard.grade != "N/A"
     assert scorecard.no_data is False
 
 

@@ -654,6 +654,12 @@ def scan(
     if repo_url:
         if project:
             raise click.ClickException("--repo and --project/-p are mutually exclusive.")
+        if offline:
+            raise click.ClickException(
+                "--repo requires network access to clone the repository, so it cannot be "
+                "combined with --offline. Clone the repository yourself and scan the local "
+                "checkout with --project/-p (which honors --offline), or drop --offline."
+            )
         from contextlib import ExitStack
 
         from agent_bom.repo_scan import RepoScanError, clone_repository

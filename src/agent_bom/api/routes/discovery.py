@@ -446,6 +446,16 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
     observation_index = _observation_index(tenant_id)
 
     return {
+        # Scope marker so callers never conflate this population with the
+        # scanned-estate roll-up at /v1/inventory. This endpoint is live
+        # local-disk discovery of AI-client configs on this host (no CVE scan);
+        # /v1/inventory aggregates agents from completed scan jobs (the estate).
+        "scope": "local_discovery",
+        "source": (
+            "Live local-disk discovery of AI-client agent configs on this host "
+            "(no CVE scan). For scanned-estate agents aggregated from completed "
+            "scan jobs, see /v1/inventory."
+        ),
         "agents": [
             _serialize_agent(
                 a,

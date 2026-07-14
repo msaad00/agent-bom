@@ -15,7 +15,23 @@ email, ssn, credit_card, phone, ip_address, passport (US/UK/EU),
 iban, date_of_birth, nhs_number, medicare_id, medical_record_keyword,
 drivers_license (US)
 
-Issue: #984
+Deep classification (beyond tag/regex)
+--------------------------------------
+- ``credit_card`` — candidate PANs are **Luhn-checksum + IIN/length
+  validated** (Visa/Mastercard/Amex/Discover) so a bare ``\\d{16}`` sequence
+  that fails the checksum does not classify. This kills the dominant false
+  positive of naive card regexes.
+- ``secret:*`` — a curated set of high-signal credential detectors (AWS keys,
+  GitHub/GitLab/Slack tokens, JWTs, PEM private-key blocks, provider API keys)
+  reused from the runtime credential pattern library, surfaced as a data-class
+  so DSPM reports the same secrets the runtime proxy detects.
+
+Every finding carries a ``confidence`` tier: regex-only matches are ``low`` /
+``medium``; Luhn- or structurally-validated matches are ``high``. Matched card
+and secret values are never logged or echoed — findings carry a redacted
+marker only.
+
+Issues: #984, #3880
 """
 
 from __future__ import annotations
@@ -27,6 +43,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from agent_bom.runtime.patterns import CREDENTIAL_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +64,9 @@ _PII_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
         "ssn",
         "high",
     ),
-    # Credit / debit card numbers (Visa, Mastercard, Amex, Discover)
-    (
-        re.compile(
-            r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|"
-            r"3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b"
-        ),
-        "credit_card",
-        "high",
-    ),
+    # NOTE: credit / debit card numbers are handled by the Luhn-validated
+    # detector (_detect_payment_cards), NOT a bare regex — a raw IIN/length
+    # regex over-fires on any 16-digit sequence (order ids, timestamps).
     # US/Canada phone
     (
         re.compile(r"\b(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b"),
@@ -130,14 +142,17 @@ _MAX_FILE_SIZE = 10 * 1024 * 1024
 
 @dataclass
 class PiiFinding:
-    """A single PII match found in a dataset row."""
+    """A single PII / secret match found in a dataset row."""
 
     file_path: str
     row_index: int
     column: str
     pii_type: str
     severity: str
-    sample: str  # redacted snippet — never the raw value
+    sample: str  # redacted marker — never the raw value
+    # Detection confidence: "low"/"medium" for regex-only matches, "high" for
+    # Luhn-checksum (cards) or structurally-validated (prefixed secrets) hits.
+    confidence: str = "medium"
 
 
 @dataclass
@@ -164,6 +179,7 @@ class DatasetPiiResult:
                     "column": f.column,
                     "pii_type": f.pii_type,
                     "severity": f.severity,
+                    "confidence": f.confidence,
                     "sample": f.sample,
                 }
                 for f in self.top_findings
@@ -188,7 +204,11 @@ class DirectoryPiiResult:
     @property
     def high_severity_count(self) -> int:
         pii_types_high = {"ssn", "credit_card", "iban", "passport", "nhs_number"}
-        return sum(v for k, v in self.findings_by_type.items() if k in pii_types_high)
+        return sum(
+            v
+            for k, v in self.findings_by_type.items()
+            if k in pii_types_high or k.startswith("secret:")
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -220,8 +240,154 @@ def _redact(value: str, pii_type: str) -> str:
     return f"[{pii_type}:REDACTED]"
 
 
+# ─── Luhn-validated payment-card detection ────────────────────────────────────
+#
+# A bare ``\d{16}`` (or IIN-anchored) regex over-fires: order ids, epoch
+# timestamps, and phone/account digit runs all match. We instead extract
+# candidate digit runs, then require BOTH a recognized IIN/length pairing
+# (Visa/Mastercard/Amex/Discover) AND a valid Luhn checksum. Only a real card
+# number survives — the dominant false positive is eliminated.
+
+# Candidate PAN: 13–19 digits, optionally split by single spaces or hyphens.
+_PAN_CANDIDATE_RE = re.compile(r"(?<![0-9])(?:\d[ -]?){12,18}\d(?![0-9])")
+
+
+def _luhn_valid(digits: str) -> bool:
+    """Return True if ``digits`` (all-digit string) passes the Luhn checksum."""
+    if not digits.isdigit():
+        return False
+    total = 0
+    parity = len(digits) % 2
+    for i, ch in enumerate(digits):
+        d = int(ch)
+        if i % 2 == parity:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+def _card_brand(digits: str) -> str | None:
+    """Return the card network if ``digits`` matches a known IIN/length pairing.
+
+    Basic issuer-identification-number + length sanity so a valid-Luhn string
+    that isn't a real card format (e.g. a random 16-digit id that happens to
+    checksum) does not classify as a payment card.
+    """
+    if not digits.isdigit():
+        return None
+    n = len(digits)
+    # Visa: IIN 4, length 13/16/19.
+    if digits[0] == "4" and n in (13, 16, 19):
+        return "visa"
+    # Mastercard: IIN 51-55 or 2221-2720, length 16.
+    if n == 16:
+        two = int(digits[:2])
+        four = int(digits[:4])
+        if 51 <= two <= 55 or 2221 <= four <= 2720:
+            return "mastercard"
+    # Amex: IIN 34/37, length 15.
+    if n == 15 and digits[:2] in ("34", "37"):
+        return "amex"
+    # Discover: IIN 6011, 65, 644-649, 622126-622925, length 16.
+    if n == 16:
+        four = int(digits[:4])
+        six = int(digits[:6])
+        if (
+            digits.startswith("6011")
+            or digits[:2] == "65"
+            or 644 <= int(digits[:3]) <= 649
+            or 622126 <= six <= 622925
+        ):
+            return "discover"
+    return None
+
+
+def _detect_payment_cards(value: str, row_idx: int, col: str, file_path: str) -> list[PiiFinding]:
+    """Find Luhn- + IIN/length-validated payment card numbers in ``value``."""
+    findings: list[PiiFinding] = []
+    for match in _PAN_CANDIDATE_RE.finditer(value):
+        digits = match.group().replace(" ", "").replace("-", "")
+        if not (13 <= len(digits) <= 19):
+            continue
+        if _card_brand(digits) is None or not _luhn_valid(digits):
+            continue
+        findings.append(
+            PiiFinding(
+                file_path=file_path,
+                row_index=row_idx,
+                column=col,
+                pii_type="credit_card",
+                severity="high",
+                sample=_redact("", "credit_card"),
+                confidence="high",  # checksum + issuer validated
+            )
+        )
+        break  # one card finding per cell is enough
+    return findings
+
+
+# ─── Secret / credential detection (data-class) ───────────────────────────────
+#
+# DSPM surfaces the SAME credential detectors the runtime proxy uses — reused
+# from CREDENTIAL_PATTERNS rather than duplicated — as a ``secret:<type>``
+# data-class. Structurally distinctive detectors (fixed prefix + charset/length,
+# e.g. AKIA…, ghp_…, JWT, PEM blocks) are high confidence; context/generic
+# detectors (generic api-key/bearer, bare connection strings) are lower.
+
+# Credential names whose pattern is context- or shape-generic → lower confidence.
+_LOWER_CONFIDENCE_SECRETS: frozenset[str] = frozenset(
+    {
+        "AWS Secret Key",
+        "AWS Session Token",
+        "Generic Bearer Token",
+        "Generic API Key",
+        "Connection String",
+        "Mailgun API Key",
+        "Heroku API Key",
+        "Telegram Bot Token",
+        "Datadog API Key",
+        "Snowflake JWT",
+        "PagerDuty API Key",
+    }
+)
+
+
+def _secret_slug(name: str) -> str:
+    """Normalize a credential detector name to a ``secret:<slug>`` data-class."""
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return f"secret:{slug}"
+
+
+def _detect_secrets(value: str, row_idx: int, col: str, file_path: str) -> list[PiiFinding]:
+    """Detect hardcoded secrets/credentials in ``value`` (redacted output)."""
+    findings: list[PiiFinding] = []
+    seen: set[str] = set()
+    for name, pattern in CREDENTIAL_PATTERNS:
+        if not pattern.search(value):
+            continue
+        data_class = _secret_slug(name)
+        if data_class in seen:
+            continue
+        seen.add(data_class)
+        low = name in _LOWER_CONFIDENCE_SECRETS
+        findings.append(
+            PiiFinding(
+                file_path=file_path,
+                row_index=row_idx,
+                column=col,
+                pii_type=data_class,
+                severity="high" if not low else "medium",
+                sample=_redact("", data_class),
+                confidence="low" if low else "high",
+            )
+        )
+    return findings
+
+
 def _scan_cell(value: str, row_idx: int, col: str, file_path: str) -> list[PiiFinding]:
-    """Scan a single cell value against all PII patterns."""
+    """Scan a single cell value for PII, payment cards, and secrets."""
     findings: list[PiiFinding] = []
     seen_types: set[str] = set()
     for pattern, pii_type, severity in _PII_PATTERNS:
@@ -237,8 +403,15 @@ def _scan_cell(value: str, row_idx: int, col: str, file_path: str) -> list[PiiFi
                     pii_type=pii_type,
                     severity=severity,
                     sample=_redact(value, pii_type),
+                    confidence="medium",  # regex-only structural match
                 )
             )
+    for detector in (_detect_payment_cards, _detect_secrets):
+        for finding in detector(value, row_idx, col, file_path):
+            if finding.pii_type in seen_types:
+                continue
+            seen_types.add(finding.pii_type)
+            findings.append(finding)
     return findings
 
 

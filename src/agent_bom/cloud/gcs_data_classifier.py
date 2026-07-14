@@ -96,7 +96,11 @@ class GCSBucketClassification:
     def sensitivity_score(self) -> int:
         if not self.total_findings:
             return 0
-        high = sum(self.findings_by_type.get(kind, 0) for kind in {"ssn", "credit_card", "iban", "passport", "nhs_number"})
+        high = sum(
+            count
+            for kind, count in self.findings_by_type.items()
+            if kind in {"ssn", "credit_card", "iban", "passport", "nhs_number"} or kind.startswith("secret:")
+        )
         if high:
             return 90
         if any(kind in self.findings_by_type for kind in {"email", "phone", "date_of_birth", "drivers_license", "medical_record_keyword"}):

@@ -19,6 +19,7 @@ import {
   formatDate,
 } from "@/lib/api";
 import type { GovernanceReport, GovernanceFinding } from "@/lib/api";
+import { useChartTheme } from "@/lib/theme-colors";
 import { IntegrationRequiredState } from "@/components/integration-required-state";
 import {
   ResponsiveContainer,
@@ -32,6 +33,7 @@ import {
 } from "recharts";
 
 export default function GovernancePage() {
+  const chart = useChartTheme();
   const [report, setReport] = useState<GovernanceReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +154,7 @@ export default function GovernancePage() {
 
       {/* Findings severity bar chart */}
       {report.findings.length > 0 && (() => {
-        const sevColors: Record<string, string> = { critical: "#ef4444", high: "#f97316", medium: "#eab308", low: "#3b82f6" };
+        const sevColors: Record<string, string> = { critical: chart.severity.critical, high: chart.severity.high, medium: chart.severity.medium, low: chart.severity.low };
         const cats = ["access", "privilege", "data_classification", "agent_usage"];
         const chartData = cats?.map((cat) => {
           const fs = report.findings.filter((f) => f.category === cat);
@@ -172,13 +174,13 @@ export default function GovernancePage() {
             <div className="h-44">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                  <XAxis dataKey="category" tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={{ stroke: "#27272a" }} />
-                  <YAxis tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                  <XAxis dataKey="category" tick={{ fontSize: 10, fill: chart.text }} tickLine={false} axisLine={{ stroke: chart.border }} />
+                  <YAxis tick={{ fontSize: 10, fill: chart.text }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
                   <Tooltip
-                    contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 8, fontSize: 12 }}
-                    itemStyle={{ color: "#e4e4e7" }}
-                    labelStyle={{ color: "#71717a", marginBottom: 4 }}
+                    contentStyle={{ background: chart.tooltip.bg, border: `1px solid ${chart.tooltip.border}`, borderRadius: 8, fontSize: 12 }}
+                    itemStyle={{ color: chart.tooltip.text }}
+                    labelStyle={{ color: chart.text, marginBottom: 4 }}
                   />
                   {(["critical", "high", "medium", "low"] as const).map((sev) => (
                     <Bar key={sev} dataKey={sev} stackId="a" fill={sevColors[sev]} fillOpacity={0.8} radius={sev === "critical" ? [4, 4, 0, 0] : [0, 0, 0, 0]}>

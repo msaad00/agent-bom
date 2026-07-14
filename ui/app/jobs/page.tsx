@@ -291,7 +291,7 @@ function JobsPageContent() {
                   Run a scan to see the live six-stage pipeline DAG with per-step timing and activity.
                 </p>
                 <div className="mt-4">
-                  <ScanPipeline steps={new Map()} className="h-[180px]" />
+                  <ScanPipeline steps={new Map()} className="h-[260px]" />
                 </div>
               </div>
             )

@@ -1,4 +1,18 @@
-# agent-bom one-click AWS scan (CloudFormation)
+# agent-bom AWS onboarding (CloudFormation)
+
+Two onboarding models — pick per how you run agent-bom:
+
+- **Serverless self-scan** (`agent-bom-scan.yaml`, below) — deploy agent-bom *into*
+  the account via CodeBuild; it scans and publishes reports to S3. Best for a
+  standalone, agent-bom-free-of-a-control-plane scan.
+- **Connector role** (`agent-bom-readonly-role.yaml`, [jump ↓](#connector-role--control-plane-assume-role-1-click--org-stackset)) —
+  create a read-only role your **agent-bom control plane assumes** (short-lived
+  STS, no static keys). This is what the connection wizard uses; 1-click per
+  account or an **Organizations StackSet** for the whole org.
+
+---
+
+## Serverless self-scan
 
 Deploy a **read-only**, **serverless** agent-bom scan of your AWS account in one
 command. The stack provisions an AWS CodeBuild project (no EC2 instance — it runs
@@ -137,3 +151,88 @@ accidental stack delete; remove it manually when you no longer need them.
 
 The CodeBuild buildspec is inlined in the template (`ScanProject.Source.BuildSpec`).
 [`buildspec.yml`](./buildspec.yml) is a readable reference copy kept in sync.
+
+---
+
+## Connector role — control-plane assume-role (1-click + org StackSet)
+
+`agent-bom-readonly-role.yaml` creates the read-only IAM role the agent-bom
+**control plane assumes** (`sts:AssumeRole` + an ExternalId). It is the CloudFormation
+**grant-provisioning** counterpart to the Terraform `connect-aws` module and the
+org fan-out (`AGENT_BOM_AWS_ORG_INVENTORY`) — see
+[`docs/CLOUD_CONNECT.md`](../../docs/CLOUD_CONNECT.md) for the authoritative story
+of **how agent-bom authenticates, what it reads, and why it stays read-only /
+least-privilege / zero-trust** (not repeated here). This template just mints the
+role the wizard registers (Role ARN + ExternalId); no writes, short-lived STS only.
+
+### One account — 1-click Launch Stack
+
+The connection wizard generates a pre-filled CloudFormation console link (region,
+ExternalId, and control-plane principal filled in), so there's no CLI or
+trust-policy copy-paste:
+
+```
+https://console.aws.amazon.com/cloudformation/home?region=<REGION>#/stacks/quickcreate
+  ?templateURL=https://<hosted>/agent-bom-readonly-role.yaml
+  &stackName=agent-bom-readonly
+  &param_ExternalId=<EXTERNAL_ID>
+  &param_TrustedPrincipalArn=<CONTROL_PLANE_PRINCIPAL_ARN>
+```
+
+Review → **Create stack** → copy the **RoleArn** output into the wizard. Or from a
+shell / CloudShell:
+
+```bash
+aws cloudformation deploy \
+  --template-file deploy/cloudformation/agent-bom-readonly-role.yaml \
+  --stack-name agent-bom-readonly \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides ExternalId="$EXTERNAL_ID" TrustedPrincipalArn="$CONTROL_PLANE_PRINCIPAL_ARN"
+```
+
+`TrustedPrincipalArn` is the identity the control plane runs as (hosted: agent-bom's
+control-plane role ARN; self-hosted: the control-plane process's IAM role/user —
+or, for a same-account self-host, the account root ARN, since the ExternalId is
+the guard).
+
+### Whole org — Organizations StackSet (no account-by-account)
+
+Roll the read-only role to **every account in your AWS Organization** in one
+operation, with **auto-deploy** so new accounts enroll automatically. Run from the
+org management account (or a delegated admin) with StackSets trusted access on:
+
+```bash
+aws cloudformation create-stack-set \
+  --stack-set-name agent-bom-readonly \
+  --template-body file://deploy/cloudformation/agent-bom-readonly-role.yaml \
+  --permission-model SERVICE_MANAGED \
+  --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters ParameterKey=ExternalId,ParameterValue="$EXTERNAL_ID" \
+               ParameterKey=TrustedPrincipalArn,ParameterValue="$CONTROL_PLANE_PRINCIPAL_ARN"
+
+aws cloudformation create-stack-instances \
+  --stack-set-name agent-bom-readonly \
+  --deployment-targets OrganizationalUnitIds="$ROOT_OU_ID" \
+  --regions us-east-1 \
+  --operation-preferences MaxConcurrentPercentage=100,FailureTolerancePercentage=20
+```
+
+Every account gets an identically-named `agent-bom-readonly` role trusting the same
+control-plane principal + ExternalId, so the control plane can enumerate and scan
+the whole estate. New accounts added to the org/OU onboard automatically. **This
+is the org-scale path — never add accounts one by one.**
+
+### Parameters
+
+| Parameter             | Default                  | Purpose                                                        |
+| --------------------- | ------------------------ | -------------------------------------------------------------- |
+| `TrustedPrincipalArn` | *(required)*             | Control-plane principal allowed to assume the role.           |
+| `ExternalId`          | *(required, NoEcho)*     | Shared secret required on AssumeRole; paste into the wizard.  |
+| `RoleName`            | `agent-bom-readonly`     | Name of the created role.                                     |
+| `PermissionScope`     | `ReadOnlyAndSecurityAudit` | `ReadOnlyAndSecurityAudit` or `SecurityAuditOnly` (tighter). |
+
+Notes: host the template on a stable HTTPS/S3 URL for the Launch-Stack `templateURL`
+(production should pin a versioned S3 object). Azure (ARM/Bicep at management-group)
+and GCP (org-policy / Deployment Manager at folder) equivalents follow the same
+pattern.

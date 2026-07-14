@@ -22,6 +22,12 @@ type CollapsibleProps = {
   icon?: ElementType | undefined;
   /** Whether the panel starts open. Defaults to true. */
   defaultOpen?: boolean | undefined;
+  /**
+   * Override the header title classes. Lets a section opt into a larger,
+   * normal-case heading (e.g. Overview section headers) instead of the default
+   * tiny uppercase `bare` label or `text-sm` boxed label.
+   */
+  titleClassName?: string | undefined;
   /** Optional trailing content rendered on the right of the header. */
   actions?: ReactNode;
   /**
@@ -57,12 +63,18 @@ export function Collapsible({
   scrollMaxHeight,
   className,
   bodyClassName,
+  titleClassName,
   children,
   "data-testid": testId,
 }: CollapsibleProps) {
   const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
   const Chevron = open ? ChevronDown : ChevronRight;
+  const resolvedTitleClass =
+    titleClassName ??
+    (bare
+      ? "text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]"
+      : "text-sm");
 
   const scrollStyle: CSSProperties | undefined = scrollMaxHeight
     ? { maxHeight: scrollMaxHeight, overflowY: "auto" }
@@ -98,11 +110,7 @@ export function Collapsible({
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2">
               <span
-                className={`truncate font-semibold text-[color:var(--foreground)] ${
-                  bare
-                    ? "text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]"
-                    : "text-sm"
-                }`}
+                className={`truncate font-semibold text-[color:var(--foreground)] ${resolvedTitleClass}`}
               >
                 {title}
               </span>

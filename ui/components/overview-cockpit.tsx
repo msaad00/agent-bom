@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowRight, ChevronRight } from "lucide-react";
 
 import type { OverviewResponse } from "@/lib/api";
-import type { ServiceEntry, ServiceId } from "@/lib/api-types";
+import type { OverviewCoverageLane, ServiceEntry, ServiceId } from "@/lib/api-types";
 import { Collapsible } from "@/components/collapsible";
 import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
@@ -141,6 +141,9 @@ export interface OverviewCockpitProps {
   /** Severity × issue-type matrix (CVEs, misconfigs, secrets, identity). */
   issueMatrix?: IssueSeverityMatrix | null | undefined;
   domains: OverviewResponse["domains"] | null;
+  /** Five security-posture coverage lanes (CSPM / Vuln / AppSec-SCA / DSPM /
+   *  AISPM) with reconciled, non-overlapping counts (issue #3946). */
+  coverage?: OverviewCoverageLane[] | null | undefined;
   topPath: ExposurePathView | null;
   exposurePaths: ExposurePathView[];
   signals: {
@@ -170,6 +173,7 @@ export function OverviewCockpit({
   severity,
   issueMatrix = null,
   domains,
+  coverage = null,
   topPath,
   exposurePaths,
   compliance = null,
@@ -221,6 +225,10 @@ export function OverviewCockpit({
           {/* 2 — Cross-lane coverage: the single canonical estate view */}
           <CrossLaneCoverage domains={domains} services={services} />
 
+          {/* 2b — Security coverage lanes: the five posture domains 1:1, each
+              with a reconciled severity strip (sum === count, unrated shown). */}
+          <SecurityCoverageLanes coverage={coverage} />
+
           {/* 3 — Compliance: one honest strip, coverage after first scan */}
           <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
         </Collapsible>
@@ -238,6 +246,84 @@ export function OverviewCockpit({
           agentMeshHref={agents != null && agents > 0 ? "/agents/topology" : null}
         />
       </section>
+    </div>
+  );
+}
+
+// Severity bands shown in a coverage lane's strip, in descending order, plus
+// ``unrated`` for findings whose severity is unknown/unscored (issue #3946).
+const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; label: string; token: string }[] = [
+  { key: "critical", label: "Critical", token: "--severity-critical" },
+  { key: "high", label: "High", token: "--severity-high" },
+  { key: "medium", label: "Medium", token: "--severity-medium" },
+  { key: "low", label: "Low", token: "--severity-low" },
+  { key: "unrated", label: "Unrated", token: "--severity-unrated" },
+];
+
+/**
+ * The five security-posture coverage lanes rendered 1:1 (CSPM / Vuln mgmt /
+ * AppSec-SCA / DSPM / AISPM). Each lane's count is the sum of its severity
+ * strip, so the metric can never contradict the strip. An ``unrated`` chip is
+ * surfaced only when unknown-severity findings are present. All colors come from
+ * design tokens (no hardcoded palette) so light + dark both read correctly.
+ */
+function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
+  if (!coverage || coverage.length === 0) return null;
+  return (
+    <div className="mt-4" data-testid="overview-security-coverage">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">Security coverage</h3>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        {coverage.map((lane) => {
+          const total = COVERAGE_SEVERITY_BANDS.reduce((sum, band) => sum + (lane.severity[band.key] || 0), 0);
+          const bands = COVERAGE_SEVERITY_BANDS.filter((band) => (lane.severity[band.key] || 0) > 0);
+          return (
+            <Link
+              key={lane.domain}
+              href={lane.href}
+              data-testid={`coverage-lane-${lane.domain}`}
+              className="flex flex-col gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition-colors hover:border-[color:var(--border-strong)]"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs font-semibold text-[color:var(--foreground)]">{lane.label}</span>
+                <span className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">{lane.count}</span>
+              </div>
+              {/* Stacked severity strip — widths reflect share of the lane count. */}
+              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
+                {total > 0 &&
+                  bands.map((band) => (
+                    <span
+                      key={band.key}
+                      className="h-full"
+                      style={{
+                        width: `${((lane.severity[band.key] || 0) / total) * 100}%`,
+                        backgroundColor: `var(${band.token})`,
+                      }}
+                    />
+                  ))}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {total === 0 ? (
+                  <span className="text-[11px] text-[color:var(--text-tertiary)]">No findings</span>
+                ) : (
+                  bands.map((band) => (
+                    <span
+                      key={band.key}
+                      className="rounded px-1.5 py-0.5 text-[11px] font-medium tabular-nums"
+                      style={{
+                        color: `var(${band.token})`,
+                        backgroundColor: `var(${band.token}-bg)`,
+                        border: `1px solid var(${band.token}-border)`,
+                      }}
+                    >
+                      {band.label} {lane.severity[band.key]}
+                    </span>
+                  ))
+                )}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -1470,6 +1470,45 @@ _ALLOWED_FINDING_SEVERITIES = (
 )
 
 
+def _canonical_scope_filters(
+    provider: str | None,
+    account: str | None,
+    environment: str | None,
+    domain: str | None,
+) -> dict[str, str]:
+    """Normalize the optional scope/domain filters into an active-filter map.
+
+    Server-side canonicalization (issue #3946): values are lowercased/trimmed
+    and empty inputs dropped. Unknown values are kept (not rejected) so the
+    endpoint never raises on ad-hoc input — an unmatched value simply returns no
+    findings. ``account`` maps to the finding's ``account_ref``.
+    """
+    filters: dict[str, str] = {}
+    if provider and provider.strip():
+        filters["provider"] = provider.strip().lower()
+    if account and account.strip():
+        filters["account_ref"] = account.strip().lower()
+    if environment and environment.strip():
+        filters["environment"] = environment.strip().lower()
+    if domain and domain.strip():
+        filters["domain"] = domain.strip().lower()
+    return filters
+
+
+def _row_matches_scope(row: dict[str, Any], filters: dict[str, str]) -> bool:
+    """Return True when a finding row matches every active scope filter."""
+    from agent_bom.finding_scope import domain_for_row
+
+    for key in ("provider", "account_ref", "environment"):
+        wanted = filters.get(key)
+        if wanted is not None and str(row.get(key) or "").strip().lower() != wanted:
+            return False
+    wanted_domain = filters.get("domain")
+    if wanted_domain is not None and (domain_for_row(row) or "") != wanted_domain:
+        return False
+    return True
+
+
 def _resolve_bulk_findings_total(
     *,
     tenant_id: str,
@@ -1547,9 +1586,9 @@ def _merged_scan_bulk_page(
 ) -> list[dict[str, Any]]:
     """Merge pre-sorted scan findings with bulk hub pages without O(table) work.
 
-  Streams two sorted sources with a two-pointer walk so deep ``offset`` does
-  not require loading ``offset + limit`` bulk rows up front or re-sorting the
-  full combined window in memory.
+    Streams two sorted sources with a two-pointer walk so deep ``offset`` does
+    not require loading ``offset + limit`` bulk rows up front or re-sorting the
+    full combined window in memory.
     """
     scan_i = 0
     bulk_remote_offset = 0
@@ -1633,6 +1672,10 @@ async def list_findings(
     offset: Annotated[int, Query(ge=0)] = 0,
     cursor: Annotated[str | None, Query(max_length=512)] = None,
     approximate_total: bool = False,
+    provider: Annotated[str | None, Query(max_length=64)] = None,
+    account: Annotated[str | None, Query(max_length=256)] = None,
+    environment: Annotated[str | None, Query(max_length=64)] = None,
+    domain: Annotated[str | None, Query(max_length=32)] = None,
 ) -> dict:
     """List vulnerability findings aggregated from completed scan results.
 
@@ -1663,6 +1706,10 @@ async def list_findings(
                 offset,
                 cursor,
                 approximate_total,
+                provider,
+                account,
+                environment,
+                domain,
             )
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -1681,6 +1728,10 @@ def _list_findings_impl(
     offset: int,
     cursor: str | None,
     approximate_total: bool,
+    provider: str | None = None,
+    account: str | None = None,
+    environment: str | None = None,
+    domain: str | None = None,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
@@ -1739,9 +1790,7 @@ def _list_findings_impl(
         severity=severity,
         scan_id=scan_id,
     )
-    cached_bulk_total = get_cached_total(
-        cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest")
-    )
+    cached_bulk_total = get_cached_total(cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest"))
     if approximate_total or effective_approximate_total:
         # Explicit ``approximate_total=true`` (and the auto-threshold path) must
         # NOT force the O(table) exact COUNT — reuse the cached/approximate total
@@ -1776,6 +1825,9 @@ def _list_findings_impl(
     if severity:
         normalized = severity.lower()
         scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]
+    scope_filters = _canonical_scope_filters(provider, account, environment, domain)
+    if scope_filters:
+        scan_findings = [item for item in scan_findings if _row_matches_scope(item, scope_filters)]
     scan_findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
 
     store = get_compliance_hub_store()
@@ -1785,7 +1837,11 @@ def _list_findings_impl(
     warnings: list[str] = []
     if cursor and scan_findings:
         warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
-    if callable(bulk_list):
+    # When scope/domain filters are active, page over the fully-materialized
+    # combined list so ``total``/``count`` stay honest (the keyset store path
+    # does not carry the scope predicates). No scope filter -> unchanged fast
+    # path, so existing pagination behavior is byte-for-byte backward compatible.
+    if callable(bulk_list) and not scope_filters:
         if scan_findings and not cursor:
             bulk_result = bulk_list(
                 tenant_id,
@@ -1851,6 +1907,8 @@ def _list_findings_impl(
         if severity:
             normalized = severity.lower()
             bulk_findings = [item for item in bulk_findings if str(item.get("severity", "")).lower() == normalized]
+        if scope_filters:
+            bulk_findings = [item for item in bulk_findings if _row_matches_scope(item, scope_filters)]
         combined = scan_findings + bulk_findings
         combined.sort(key=lambda row: _finding_sort_key(row, sort_key))
         total = len(combined)

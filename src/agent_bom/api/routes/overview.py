@@ -38,7 +38,24 @@ router = APIRouter(dependencies=[cast(Any, require_authenticated_permission("rea
 _logger = logging.getLogger(__name__)
 
 _SEVERITY_KEYS = ("critical", "high", "medium", "low")
+# ``unrated`` is the honest home for findings whose severity the histogram does
+# not recognize (empty / "unknown" / vendor-specific). Without it those findings
+# incremented the CVE count but were dropped from the severity strip, producing
+# the "39 CVEs / 0 severities" mismatch. Every severity histogram in this module
+# now carries it so ``sum(severity.values())`` reconciles with the counted total.
+_UNRATED_KEY = "unrated"
+_ALL_SEVERITY_KEYS = (*_SEVERITY_KEYS, _UNRATED_KEY)
 _HUB_SEVERITY_KEYS = ("critical", "high", "medium", "low", "info", "unknown")
+
+# Coverage lanes — the five security domains, in display order (issue #3946).
+_COVERAGE_DOMAINS = ("cspm", "vuln", "appsec_sca", "dspm", "aispm")
+_COVERAGE_LABELS = {
+    "cspm": "CSPM",
+    "vuln": "Vuln mgmt",
+    "appsec_sca": "AppSec / SCA",
+    "dspm": "DSPM",
+    "aispm": "AISPM",
+}
 
 
 def _tenant_id(request: Request) -> str:
@@ -46,7 +63,17 @@ def _tenant_id(request: Request) -> str:
 
 
 def _empty_severity() -> dict[str, int]:
-    return {key: 0 for key in _SEVERITY_KEYS}
+    return {key: 0 for key in _ALL_SEVERITY_KEYS}
+
+
+def _bucket(sev: str | None, severity: dict[str, int]) -> str:
+    """Return the histogram bucket for ``sev`` — an exact match or ``unrated``.
+
+    The single choke point shared by every rollup so a finding is counted in one
+    and only one bucket and no unknown severity is silently dropped.
+    """
+    key = (sev or "").strip().lower()
+    return key if key in _SEVERITY_KEYS else _UNRATED_KEY
 
 
 def _graph_drill_href(
@@ -84,19 +111,25 @@ def _severity_from_summary(
 ) -> dict[str, int]:
     """Rebuild severity histogram from compact scan ``summary`` metadata."""
     severity = _empty_severity()
+    total = int(summary.get("total_vulnerabilities") or summary.get("total_findings") or 0)
     by_sev = (finding_summary or {}).get("by_severity") or {}
     if isinstance(by_sev, dict) and by_sev:
-        for key in _SEVERITY_KEYS:
-            severity[key] = int(by_sev.get(key) or 0)
+        for raw_key, raw_val in by_sev.items():
+            severity[_bucket(str(raw_key), severity)] += int(raw_val or 0)
+        counted = sum(severity.values())
+        # Reconcile with the scalar total so no finding is lost to a severity
+        # band the per-severity map omitted (info/unknown/vendor-specific).
+        if total > counted:
+            severity[_UNRATED_KEY] += total - counted
         return severity
-    severity["critical"] = int(
-        summary.get("critical_unified_findings") or summary.get("critical_findings") or 0
-    )
+    severity["critical"] = int(summary.get("critical_unified_findings") or summary.get("critical_findings") or 0)
     severity["high"] = int(summary.get("high_unified_findings") or 0)
-    total = int(summary.get("total_vulnerabilities") or summary.get("total_findings") or 0)
+    # The remainder are of unknown band (only critical/high are itemized in the
+    # compact summary) — record them as ``unrated`` rather than fabricating a
+    # ``medium`` count. This keeps ``sum(severity) == total``.
     remainder = max(0, total - severity["critical"] - severity["high"])
     if remainder:
-        severity["medium"] = remainder
+        severity[_UNRATED_KEY] = remainder
     return severity
 
 
@@ -114,8 +147,9 @@ def _rollup_from_blast_radius(blast_radius: list[dict[str, Any]]) -> dict[str, A
         if vid:
             seen_ids.add(vid)
         sev = (b.get("severity") or "").lower()
-        if sev in severity:
-            severity[sev] += 1
+        # Always count into exactly one bucket — unknown severities land in
+        # ``unrated`` instead of being dropped (the 39-CVEs / 0-severities bug).
+        severity[_bucket(sev, severity)] += 1
         is_kev = bool(b.get("cisa_kev") or b.get("is_kev"))
         if is_kev:
             kev += 1
@@ -139,11 +173,13 @@ def _rollup_from_blast_radius(blast_radius: list[dict[str, Any]]) -> dict[str, A
         )
 
     top_risks.sort(key=lambda r: r["risk_score"], reverse=True)
+    # One source of truth: the CVE count is the histogram total, so the severity
+    # strip and the headline number can never disagree.
     return {
         "severity": severity,
         "kev": kev,
         "credential_exposed": credential_exposed,
-        "unique_cves": len(seen_ids),
+        "unique_cves": sum(severity.values()),
         "top_risks": top_risks[:10],
     }
 
@@ -152,8 +188,9 @@ def _rollup_from_summary(result: dict[str, Any]) -> dict[str, Any]:
     summary = cast(dict[str, Any], result.get("summary") or {})
     finding_summary = cast(dict[str, Any], result.get("finding_summary") or {})
     severity = _severity_from_summary(summary, finding_summary)
-    total_vulns = int(summary.get("total_vulnerabilities") or summary.get("total_findings") or 0)
-    unique_cves = total_vulns if total_vulns else sum(severity.values())
+    # ``_severity_from_summary`` reconciles the histogram with the scalar total,
+    # so the histogram sum is the single source of truth for the CVE count.
+    unique_cves = sum(severity.values())
     return {
         "severity": severity,
         "kev": 0,
@@ -203,7 +240,7 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
         blast_radius = result.get("blast_radius") or []
         if blast_radius:
             partial = _rollup_from_blast_radius(cast(list[dict[str, Any]], blast_radius))
-            for key in _SEVERITY_KEYS:
+            for key in _ALL_SEVERITY_KEYS:
                 severity[key] += partial["severity"][key]
             kev += partial["kev"]
             credential_exposed += partial["credential_exposed"]
@@ -217,7 +254,7 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
                             unique_packages += 1
         else:
             partial = _rollup_from_summary(result)
-            for key in _SEVERITY_KEYS:
+            for key in _ALL_SEVERITY_KEYS:
                 severity[key] += partial["severity"][key]
             kev += partial["kev"]
             credential_exposed += partial["credential_exposed"]
@@ -243,6 +280,58 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
     }
 
 
+def _row_domain(row: dict[str, Any]) -> str:
+    """Return the security domain for a serialized finding row.
+
+    Prefers the first-class ``security_domain`` field (set by
+    ``Finding.to_dict``); falls back to the source/type mapping for legacy rows.
+    ``vuln`` is the safe default for legacy CVE rows that predate the taxonomy.
+    """
+    from agent_bom.finding_scope import domain_for_row
+
+    return domain_for_row(row) or "vuln"
+
+
+def _domain_rollup(jobs: list[Any]) -> list[dict[str, Any]]:
+    """Group unified findings by security domain into the five coverage lanes.
+
+    Reads each completed scan's unified ``findings`` stream (deduped by finding
+    id across re-scans) and buckets it by ``security_domain``. Each lane carries
+    a severity strip whose values sum to the lane count, so the UI can never
+    render a count that contradicts its severity strip. Empty lanes are still
+    returned at zero so the coverage row is always the same five domains.
+    """
+    lanes: dict[str, dict[str, int]] = {dom: _empty_severity() for dom in _COVERAGE_DOMAINS}
+    counts: dict[str, int] = {dom: 0 for dom in _COVERAGE_DOMAINS}
+    seen: set[str] = set()
+
+    for job in jobs:
+        if getattr(job, "status", None) != JobStatus.DONE or not job.result:
+            continue
+        result = cast(dict[str, Any], job.result)
+        for row in result.get("findings", []) or []:
+            if not isinstance(row, dict):
+                continue
+            identity = str(row.get("id") or row.get("canonical_id") or row.get("cve_id") or id(row))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            dom = _row_domain(row)
+            lanes[dom][_bucket(str(row.get("severity") or ""), lanes[dom])] += 1
+            counts[dom] += 1
+
+    return [
+        {
+            "domain": dom,
+            "label": _COVERAGE_LABELS[dom],
+            "href": f"/findings?domain={dom}",
+            "count": counts[dom],
+            "severity": lanes[dom],
+        }
+        for dom in _COVERAGE_DOMAINS
+    ]
+
+
 def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:
     """Letter grade + score from the latest completed scan (same as /v1/posture)."""
     for job in jobs:
@@ -257,14 +346,10 @@ def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:
                 "summary": scorecard.get("summary", ""),
             }
         summary = result.get("summary")
-        if isinstance(summary, dict) and (
-            summary.get("total_vulnerabilities") or summary.get("total_findings")
-        ):
+        if isinstance(summary, dict) and (summary.get("total_vulnerabilities") or summary.get("total_findings")):
             from agent_bom.posture import _score_to_grade
 
-            critical = int(
-                summary.get("critical_unified_findings") or summary.get("critical_findings") or 0
-            )
+            critical = int(summary.get("critical_unified_findings") or summary.get("critical_findings") or 0)
             high = int(summary.get("high_unified_findings") or 0)
             total = int(summary.get("total_vulnerabilities") or summary.get("total_findings") or 0)
             penalty = min(100.0, critical * 12.0 + high * 6.0 + max(0, total - critical - high) * 1.5)
@@ -391,29 +476,44 @@ def _blend_posture_with_hub(
     ingested evidence never launders a failing posture into a passing one.
     """
     hub_total = sum(int(hub_severity.get(k, 0) or 0) for k in _HUB_SEVERITY_KEYS)
-    if hub_total <= 0:
+    scan_total = sum(int(v) for v in scan_severity.values())
+    posture_is_na = posture.get("grade") in (None, "N/A")
+
+    # An existing scorecard/summary posture stays authoritative unless ingested
+    # evidence adds to it — never recompute a graded scan from severity counts
+    # (that would double-penalize and drift the published grade). Only synthesize
+    # a grade from counts when the posture is N/A but findings exist, so the
+    # blurb can never claim "no vulnerabilities" while the counted total > 0.
+    if hub_total <= 0 and not posture_is_na:
+        return posture
+    if hub_total <= 0 and scan_total <= 0:
         return posture
 
     from agent_bom.posture import _score_to_grade
 
     combined_critical = int(scan_severity["critical"]) + int(hub_severity.get("critical", 0) or 0)
     combined_high = int(scan_severity["high"]) + int(hub_severity.get("high", 0) or 0)
-    combined_total = sum(int(v) for v in scan_severity.values()) + hub_total
+    combined_total = scan_total + hub_total
     penalty = min(
         100.0,
         combined_critical * 12.0 + combined_high * 6.0 + max(0, combined_total - combined_critical - combined_high) * 1.5,
     )
     combined_score = max(0.0, round(100.0 - penalty, 1))
 
-    if posture.get("grade") in (None, "N/A"):
+    if posture_is_na:
         final_score = combined_score
     else:
         final_score = min(float(posture.get("score") or 0.0), combined_score)
 
+    if hub_total > 0:
+        summary = f"{combined_total} finding(s) across scans + ingested evidence"
+    else:
+        summary = f"{combined_total} finding(s) from completed scans"
+
     return {
         "grade": _score_to_grade(final_score),
         "score": final_score,
-        "summary": f"{combined_total} finding(s) across scans + ingested evidence",
+        "summary": summary,
     }
 
 
@@ -459,6 +559,7 @@ async def get_overview(request: Request) -> dict[str, Any]:
     jobs = _get_store().list_all(tenant_id=_tenant_id(request))
 
     scan = _scan_rollup(jobs)
+    coverage = _domain_rollup(jobs)
     hub_severity = _hub_severity_snapshot(request)
     posture = _blend_posture_with_hub(_posture_snapshot(jobs), scan["severity"], hub_severity)
     runtime = _runtime_snapshot(request, jobs)
@@ -498,6 +599,9 @@ async def get_overview(request: Request) -> dict[str, Any]:
                 "high": scan["severity"]["high"],
                 "kev": scan["kev"],
                 "packages": scan["unique_packages"],
+                # Full histogram (incl. ``unrated``) so the UI never renders a
+                # metric that contradicts its severity strip.
+                "severity": scan["severity"],
             },
         },
         "code": {
@@ -565,6 +669,7 @@ async def get_overview(request: Request) -> dict[str, Any]:
             "hub_findings": hub_findings,
         },
         "domains": domains,
+        "coverage": coverage,
         "top_risks": scan["top_risks"],
     }
 

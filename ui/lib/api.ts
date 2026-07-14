@@ -951,6 +951,12 @@ export const api = {
     limit?: number;
     offset?: number;
     approximateTotal?: boolean;
+    // First-class scope + taxonomy filters (issue #3946). All optional +
+    // backward compatible; the server canonicalizes and never rejects them.
+    provider?: string;
+    account?: string;
+    environment?: string;
+    domain?: string;
   }) => {
     const params = new URLSearchParams();
     if (filters?.scanId) params.set("scan_id", filters.scanId);
@@ -959,6 +965,10 @@ export const api = {
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.approximateTotal) params.set("approximate_total", "true");
+    if (filters?.provider) params.set("provider", filters.provider);
+    if (filters?.account) params.set("account", filters.account);
+    if (filters?.environment) params.set("environment", filters.environment);
+    if (filters?.domain) params.set("domain", filters.domain);
     const qs = params.toString();
     return get<FindingsResponse>(`/v1/findings${qs ? `?${qs}` : ""}`);
   },

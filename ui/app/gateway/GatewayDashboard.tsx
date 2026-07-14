@@ -39,6 +39,7 @@ import { GatewayFeedPanel } from "./GatewayFeedPanel";
 import { GatewayFeedKpiBar } from "@/components/gateway-feed-kpi-bar";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { useRuntimeEmbedded } from "@/components/runtime-embed-context";
+import { useChartTheme } from "@/lib/theme-colors";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ const RUNTIME_COLORS: Record<GatewayPolicyRuntimeSummary["rollout_mode"], string
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function GatewayPage() {
+  const chart = useChartTheme();
   const embedded = useRuntimeEmbedded();
   const { counts } = useDeploymentContext();
   const [kpiRefreshKey, setKpiRefreshKey] = useState(0);
@@ -457,13 +459,13 @@ export default function GatewayPage() {
                     <div className="h-44">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                          <XAxis dataKey="tool" tick={{ fontSize: 9, fill: "#71717a" }} tickLine={false} axisLine={{ stroke: "#27272a" }} />
-                          <YAxis tick={{ fontSize: 10, fill: "#71717a" }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
-                          <Tooltip contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#e4e4e7" }} labelStyle={{ color: "#71717a", marginBottom: 4 }} />
-                          <Bar dataKey="blocked" name="blocked" stackId="a" fill="#ef4444" fillOpacity={0.8} />
-                          <Bar dataKey="alerted" name="alerted" stackId="a" fill="#f97316" fillOpacity={0.8} />
-                          <Bar dataKey="allowed" name="allowed" stackId="a" fill="#22c55e" fillOpacity={0.5} radius={[4, 4, 0, 0]} />
+                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                          <XAxis dataKey="tool" tick={{ fontSize: 9, fill: chart.text }} tickLine={false} axisLine={{ stroke: chart.border }} />
+                          <YAxis tick={{ fontSize: 10, fill: chart.text }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
+                          <Tooltip contentStyle={{ background: chart.tooltip.bg, border: `1px solid ${chart.tooltip.border}`, borderRadius: 8, fontSize: 12 }} itemStyle={{ color: chart.tooltip.text }} labelStyle={{ color: chart.text, marginBottom: 4 }} />
+                          <Bar dataKey="blocked" name="blocked" stackId="a" fill={chart.severity.critical} fillOpacity={0.8} />
+                          <Bar dataKey="alerted" name="alerted" stackId="a" fill={chart.severity.high} fillOpacity={0.8} />
+                          <Bar dataKey="allowed" name="allowed" stackId="a" fill={chart.status.success} fillOpacity={0.5} radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>

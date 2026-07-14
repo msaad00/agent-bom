@@ -59,8 +59,15 @@ class ConnectionBrokerError(RuntimeError):
     """Raised when a connection cannot be brokered into a cloud session.
 
     Messages never embed the decrypted secret — only the failure mode — so they
-    are safe to surface in an error envelope or log.
+    are safe to log. For anything surfaced to the operator, callers must set an
+    explicit, curated ``remediation`` string (why + how to fix). The API layer
+    surfaces ONLY ``remediation`` — never the free-form message — so a stray
+    secret in a message can never reach the client (defense in depth).
     """
+
+    def __init__(self, message: str, *, remediation: str | None = None) -> None:
+        super().__init__(message)
+        self.remediation = remediation
 
 
 def _broker_aws(record: CloudConnectionRecord, *, session_name: str, duration_seconds: int) -> Any:
@@ -91,9 +98,36 @@ def _broker_aws(record: CloudConnectionRecord, *, session_name: str, duration_se
         )
     except Exception as exc:  # noqa: BLE001 - botocore ClientError et al.
         # Do not echo the exception text (it can carry the ARN/role detail); log
-        # only the connection id and a generic cause.
+        # only the connection id and a generic cause. The control plane's OWN
+        # (caller) identity performs the AssumeRole; if it has no base
+        # credentials, botocore raises NoCredentialsError before any role is
+        # assumed — a distinct, actionable failure from a mis-scoped role/trust.
+        # Match by class name so botocore need not be imported here.
+        if exc.__class__.__name__ == "NoCredentialsError":
+            logger.warning(
+                "AWS control plane has no base credentials to assume the role for connection %s",
+                record.id,
+            )
+            raise ConnectionBrokerError(
+                f"AWS control plane has no base credentials for connection {record.id}.",
+                remediation=(
+                    "Control plane has no AWS credentials to assume the role. In production the "
+                    "control plane runs with an EC2 instance profile or IRSA; for local use, "
+                    "configure AWS credentials for the control plane (AWS_PROFILE or the standard "
+                    "environment variables). The connection's read-only role is fine — this is the "
+                    "caller identity that performs sts:AssumeRole (which also needs sts:AssumeRole "
+                    "permission, and for same-account roles, on the base identity)."
+                ),
+            ) from exc
         logger.warning("AWS AssumeRole failed for connection %s", record.id)
-        raise ConnectionBrokerError(f"AssumeRole failed for connection {record.id}.") from exc
+        raise ConnectionBrokerError(
+            f"AssumeRole failed for connection {record.id}.",
+            remediation=(
+                "AssumeRole failed. Verify the role ARN, its trust policy, and that the "
+                "ExternalId matches the one embedded in the grant script. The control plane's "
+                "caller identity also needs sts:AssumeRole permission on that role."
+            ),
+        ) from exc
     finally:
         # Drop the plaintext reference as soon as the call returns.
         external_id = ""

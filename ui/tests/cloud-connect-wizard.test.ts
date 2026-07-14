@@ -44,6 +44,40 @@ describe("cloud-connect-wizard", () => {
     expect(buildCloudShellGrantScript("snowflake")).toContain("Snowsight");
   });
 
+  it("inlines the AWS read-only policy instead of a repo file:// path", () => {
+    // Bug: `--policy-document file://scripts/provision/aws_readonly_policy.json`
+    // fails with "No such file" in CloudShell (no repo checkout). The policy
+    // must be embedded via heredoc so the script is self-contained.
+    const awsCli = buildCliGrantScript("aws", "abc123");
+    expect(awsCli).not.toContain("file://scripts/");
+    expect(awsCli).not.toContain("file://" + "scripts/provision");
+    expect(awsCli).toContain("cat > /tmp/agent-bom-readonly.json <<'EOF'");
+    expect(awsCli).toContain("bedrock:ListAgents");
+    expect(awsCli).toContain("--policy-document file:///tmp/agent-bom-readonly.json");
+    // CloudShell variant must carry the same self-contained policy.
+    expect(buildCloudShellGrantScript("aws", "abc123")).toContain(
+      "cat > /tmp/agent-bom-readonly.json <<'EOF'",
+    );
+  });
+
+  it("makes the AWS grant idempotent (create-or-update on re-run)", () => {
+    // Bug: create-role / create-policy fail EntityAlreadyExists on re-run,
+    // leaving the trust/ExternalId un-applied. Guard with get + update paths.
+    const awsCli = buildCliGrantScript("aws", "abc123");
+    expect(awsCli).toContain("aws iam get-role --role-name agent-bom-readonly");
+    expect(awsCli).toContain("aws iam update-assume-role-policy");
+    expect(awsCli).toContain('aws iam get-policy --policy-arn "${POLICY_ARN}"');
+    expect(awsCli).toContain("aws iam create-policy-version");
+    expect(awsCli).toContain("--set-as-default");
+  });
+
+  it("makes the GCP service-account create idempotent", () => {
+    const gcpCli = buildCliGrantScript("gcp");
+    expect(gcpCli).toContain("gcloud iam service-accounts describe");
+    // The create is guarded so a re-run does not fail ALREADY_EXISTS.
+    expect(gcpCli).toContain('describe "${SA_EMAIL}" >/dev/null 2>&1 ||');
+  });
+
   it("routes buildGrantScript by method", () => {
     expect(buildGrantScript("aws", "terraform")).toContain("terraform -chdir=");
     expect(buildGrantScript("aws", "cli")).toContain("aws iam create-policy");

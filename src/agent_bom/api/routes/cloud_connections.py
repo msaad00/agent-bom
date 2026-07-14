@@ -338,6 +338,26 @@ def _mark_connection(
     get_connection_store().put(record)
 
 
+def _safe_connection_detail(exc: Exception) -> str:
+    """Actionable, secret-free detail for a failed connection test/scan.
+
+    Defense in depth: a broker's free-form message is never surfaced (it could,
+    in a regression, carry the secret). Only an explicitly-curated
+    ``remediation`` string (why + how to fix) is shown; discovery/import errors
+    carry static install guidance and are surfaced sanitized. Everything else
+    falls back to a fixed generic string — no raw traceback or SDK text leaks.
+    """
+    from agent_bom.cloud.base import CloudDiscoveryError
+    from agent_bom.cloud.connection_broker import ConnectionBrokerError
+
+    if isinstance(exc, ConnectionBrokerError) and exc.remediation:
+        return sanitize_error(exc.remediation, generic=False)
+    if isinstance(exc, CloudDiscoveryError):
+        # Static dependency/install guidance ("boto3 is required …") — safe.
+        return sanitize_error(exc, generic=False)
+    return sanitize_error(exc, generic=True)
+
+
 def _cis_summary(cis_dict: dict[str, Any]) -> dict[str, Any]:
     """Reduce a CIS report dict to the non-secret counts surfaced in the summary."""
     return {
@@ -735,7 +755,7 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
     try:
         _test_connection_broker(record)
     except Exception as exc:  # noqa: BLE001 - broker failure
-        detail = sanitize_error(exc, generic=True)
+        detail = _safe_connection_detail(exc)
         _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
         _logger.exception("Cloud connection test failed for connection %s", record.id)
         log_action(
@@ -746,7 +766,9 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
             provider=record.provider,
             outcome="failure",
         )
-        raise HTTPException(status_code=502, detail="Cloud connection test failed; see server logs.") from exc
+        # Surface the actionable, sanitized reason (why + how to fix) to the
+        # caller, not a "see server logs" dead end.
+        raise HTTPException(status_code=502, detail=detail) from exc
 
     _mark_connection(record, status=STATUS_ACTIVE, status_detail="")
     log_action(
@@ -793,9 +815,10 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
     try:
         summary = _run_connection_scan(record, tenant_id)
     except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
-        # Persist an error status with a sanitized, secret-free detail. Full
-        # diagnostics go to the server log only; the client gets a generic message.
-        detail = sanitize_error(exc, generic=True)
+        # Persist an actionable, secret-free detail (why + how to fix). Broker and
+        # discovery errors are curated safe strings; anything unexpected falls back
+        # to a fixed generic message. Full diagnostics go to the server log only.
+        detail = _safe_connection_detail(exc)
         _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
         _logger.exception("Cloud connection scan failed for connection %s", record.id)
         log_action(
@@ -806,7 +829,7 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
             provider=record.provider,
             outcome="failure",
         )
-        raise HTTPException(status_code=502, detail="Cloud connection scan failed; see server logs.") from exc
+        raise HTTPException(status_code=502, detail=detail) from exc
 
     scan_id = str(summary.get("scan_id") or "")
     _mark_connection(

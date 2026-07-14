@@ -90,28 +90,18 @@ export function PermissionDeniedNotice({
  * highlighted. Static ladder mirrors rbac.py; the live capability facts come
  * from the session's role_summary when present.
  */
-export function RolePermissionsPanel({ session }: { session: AuthMeResponse | null }) {
+export function RolePermissionsPanel({
+  session,
+  bare = false,
+}: {
+  session: AuthMeResponse | null;
+  /** Omit the panel's own header + card chrome when wrapped in a disclosure. */
+  bare?: boolean;
+}) {
   const roleId = activeRoleId(session);
-  return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
-      <div className="flex items-start gap-3">
-        <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
-          <Lock className="h-5 w-5 text-emerald-400" />
-        </span>
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-[var(--foreground)]">
-            Roles &amp; permissions
-          </h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            Three roles gate the control plane. Viewer reads; Contributor connects
-            and scans; Admin manages keys, policy, and fleet. Your role decides
-            which actions are enabled below.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
-        {ROLE_LADDER.map((entry) => {
+  const grid = (
+    <div className={`grid gap-3 md:grid-cols-3 ${bare ? "" : "mt-4"}`}>
+      {ROLE_LADDER.map((entry) => {
           const Icon = ROLE_ICON[entry.id];
           const active = entry.id === roleId;
           return (
@@ -156,7 +146,28 @@ export function RolePermissionsPanel({ session }: { session: AuthMeResponse | nu
             </div>
           );
         })}
+    </div>
+  );
+
+  if (bare) return grid;
+
+  return (
+    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
+      <div className="flex items-start gap-3">
+        <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
+          <Lock className="h-5 w-5 text-emerald-400" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-[var(--foreground)]">
+            Roles &amp; permissions
+          </h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            Three roles gate the control plane. Viewer reads; Contributor connects
+            and scans; Admin manages keys, policy, and fleet.
+          </p>
+        </div>
       </div>
+      {grid}
     </div>
   );
 }

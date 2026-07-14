@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   ShieldOff,
 } from "lucide-react";
+import { SsoSetupPresets } from "@/components/sso-setup-presets";
 
 function formatSeconds(value: number): string {
   if (value < 60) return `${value}s`;
@@ -879,6 +880,8 @@ export function KeyLifecyclePanel({
               />
             </div>
           </section>
+
+          <SsoSetupPresets />
 
           <section className="rounded-2xl border border-amber-900/40 bg-amber-950/10 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-amber-200/70">Revocation boundaries</p>

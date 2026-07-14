@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **OpenVEX ingest for finding triage** (#3985): new `POST /v1/findings/triage/vex/ingest` (and SDK `ingest_finding_triage_vex`) parses an OpenVEX/CycloneDX/CSAF document and applies its `not_affected`/`fixed` statements as tenant-scoped triage suppressions — round-tripping with the existing `GET /v1/findings/triage/vex` export and idempotent on re-ingest. A reusable `agent_bom.vex.parse_vex(dict)` core backs both file (`load_vex`) and in-memory ingest.
+- **REST-operation count gate** (#3985): `scripts/check-counts.py` now counts REST operations/paths (from the canonical `docs/openapi/v1.json`), route modules, and WebSocket routes, and gates the developer/agent docs that cite the REST surface so they cannot drift from the shipped contract.
+
+### Changed
+- **CycloneDX output upgraded to 1.7** (#3985): `cyclonedx_fmt.py` now emits `specVersion` 1.7 and is validated against the vendored official CycloneDX 1.7 JSON schema in the interop conformance gate.
+
 ### Fixed
 - **Snowflake CIS benchmark reachable over REST** (#3967): `GET /v1/cloud/snowflake/cis-benchmark` no longer 404s — it runs the real `snowflake_cis_benchmark` and, when the connector/credentials are absent, degrades to the shared HTTP-200 `unavailable` envelope like AWS/Azure/GCP, bringing the REST surface to parity with the CLI/MCP `cis-benchmark --provider snowflake`.
 - **In-memory compliance-hub sort ceiling guarded** (#3967): the process-local demo backend re-sorts a tenant's whole row list per paged read; past a documented ceiling it now warns once per tenant (steering operators to the SQLite/Postgres backend) instead of degrading silently. No behavior change to results.

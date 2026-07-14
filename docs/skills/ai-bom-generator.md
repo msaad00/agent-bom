@@ -144,7 +144,7 @@ agent-bom scan \
 Generate compliance-ready exports:
 
 ```bash
-# CycloneDX 1.6 (machine-readable, SBOM standard)
+# CycloneDX 1.7 (machine-readable, SBOM standard)
 agent-bom scan [your flags] -f cyclonedx -o ai-bom.cdx.json
 
 # SPDX 3.0 (ISO standard)
@@ -192,7 +192,7 @@ The AI-BOM JSON output includes:
 | Artifact | Format | Purpose |
 |----------|--------|---------|
 | `ai-bom-complete.json` | AI-BOM JSON | Machine-readable target-scoped inventory |
-| `ai-bom.cdx.json` | CycloneDX 1.6 | SBOM standard for compliance |
+| `ai-bom.cdx.json` | CycloneDX 1.7 | SBOM standard for compliance |
 | `ai-bom.spdx.json` | SPDX 3.0 | ISO standard for auditors |
 | `results.sarif` | SARIF | GitHub Security tab integration |
 | `report.html` | HTML | Interactive dashboard + graph |

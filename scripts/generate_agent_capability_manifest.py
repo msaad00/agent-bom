@@ -26,6 +26,25 @@ def _metric(metrics: list[dict], name: str) -> int | str:
     return "—"
 
 
+def _rest_surface() -> tuple[int, int, int]:
+    """Count REST operations, route modules, and WebSocket routes from the
+    committed OpenAPI contract and route source so this card never drifts."""
+    operations = 0
+    openapi = ROOT / "docs" / "openapi" / "v1.json"
+    if openapi.exists():
+        spec = json.loads(openapi.read_text(encoding="utf-8"))
+        methods = {"get", "post", "put", "patch", "delete", "head", "options"}
+        operations = sum(1 for item in spec.get("paths", {}).values() for m in item if m.lower() in methods)
+    routes_dir = ROOT / "src" / "agent_bom" / "api" / "routes"
+    route_modules = 0
+    ws_routes = 0
+    if routes_dir.exists():
+        route_modules = len([f for f in routes_dir.glob("*.py") if f.name != "__init__.py"])
+        for f in routes_dir.glob("*.py"):
+            ws_routes += len(re.findall(r"\.websocket\(", f.read_text(encoding="utf-8")))
+    return operations, route_modules, ws_routes
+
+
 def render(snapshot: dict) -> str:
     metrics = snapshot.get("metrics", [])
     version = snapshot.get("version") or _version()
@@ -34,6 +53,7 @@ def render(snapshot: dict) -> str:
     mcp_prompts = _metric(metrics, "MCP prompts")
     ecosystems = _metric(metrics, "Supported package ecosystems")
     proxy_detectors = _metric(metrics, "Proxy inline detectors")
+    rest_operations, rest_route_modules, rest_ws_routes = _rest_surface()
 
     return f"""# agent-bom — agent capability manifest
 
@@ -54,7 +74,7 @@ attack paths, compliance tags, and runtime audit chain.
 | Area | Shipped today |
 |---|---|
 | MCP security tools | {mcp_tools} tools, {mcp_resources} resources, {mcp_prompts} workflow prompts |
-| REST API | 283 operations across 32 route modules (+ 2 WebSocket routes) — see `docs/openapi/v1.json` |
+| REST API | {rest_operations} operations across {rest_route_modules} route modules (+ {rest_ws_routes} WebSocket routes) — see `docs/openapi/v1.json` |
 | Package / SCA | {ecosystems} ecosystems, SARIF, CycloneDX, SPDX, HTML |
 | Graph / blast radius | UnifiedGraph, attack paths, hop counts, remediation handoff |
 | Runtime proxy | stdio/local MCP inline enforcement ({proxy_detectors} detectors) |

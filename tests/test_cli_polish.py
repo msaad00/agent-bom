@@ -277,7 +277,7 @@ def test_cyclonedx_formulation():
     report = _make_report()
     cdx = to_cyclonedx(report)
 
-    # CDX 1.6 defines formulation as a top-level BOM array, not a metadata field.
+    # CDX 1.7 defines formulation as a top-level BOM array, not a metadata field.
     assert "formulation" in cdx, "CycloneDX must include top-level 'formulation'"
     assert "formulation" not in cdx.get("metadata", {}), "formulation must not live under metadata"
 

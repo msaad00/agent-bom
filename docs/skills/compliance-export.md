@@ -4,7 +4,7 @@
 
 ## Goal
 
-Produce compliance-ready artifacts for auditors, regulators, and security teams: standardized SBOM formats (CycloneDX 1.6, SPDX 3.0), SARIF for GitHub Security, threat framework coverage reports, and an interactive HTML dashboard.
+Produce compliance-ready artifacts for auditors, regulators, and security teams: standardized SBOM formats (CycloneDX 1.7, SPDX 3.0), SARIF for GitHub Security, threat framework coverage reports, and an interactive HTML dashboard.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ Key flags for compliance:
 - `--enrich` — adds NVD CVSS scores, EPSS probabilities, CISA KEV status
 - `--verify-integrity` — checks SHA256/SRI hashes and SLSA provenance against registries
 
-### 2. CycloneDX 1.6 Export
+### 2. CycloneDX 1.7 Export
 
 The industry standard SBOM format for AI supply chain:
 
@@ -45,7 +45,7 @@ Includes:
 - Vulnerability list with CVSS + references
 - Dependency relationships
 - License information
-- CycloneDX 1.6 `formulation` for AI components
+- CycloneDX 1.7 `formulation` for AI components
 
 ### 3. SPDX 3.0 Export
 
@@ -193,7 +193,7 @@ agent-bom scan [your flags] --enrich --otel-endpoint http://collector:4318
 
 | Artifact | Format | Audience |
 |----------|--------|----------|
-| `ai-bom.cdx.json` | CycloneDX 1.6 | SBOM consumers, compliance tools |
+| `ai-bom.cdx.json` | CycloneDX 1.7 | SBOM consumers, compliance tools |
 | `ai-bom.spdx.json` | SPDX 3.0 | ISO auditors |
 | `results.sarif` | SARIF | GitHub Security, SAST tools |
 | `report.json` | AI-BOM JSON | Programmatic analysis |

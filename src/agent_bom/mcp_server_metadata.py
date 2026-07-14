@@ -520,7 +520,7 @@ def build_server_card() -> dict[str, Any]:
         "prompts": _SERVER_CARD_PROMPTS,
         "capabilities": {
             "frameworks": ["OWASP LLM Top 10", "OWASP MCP Top 10", "MITRE ATLAS", "NIST AI RMF"],
-            "sbom_formats": ["CycloneDX 1.6", "SPDX 3.0", "SARIF 2.1.0"],
+            "sbom_formats": ["CycloneDX 1.7", "SPDX 3.0", "SARIF 2.1.0"],
             "data_sources": ["OSV.dev", "NVD", "EPSS", "CISA KEV", "Snyk", "MCP Registry", "Smithery"],
             "discovery_sources": [
                 "Local MCP configs",

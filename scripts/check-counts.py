@@ -8,6 +8,7 @@ Exit 0 = all consistent. Exit 1 = drift detected.
 from __future__ import annotations
 
 import ast
+import json
 import re
 import sys
 from pathlib import Path
@@ -103,12 +104,38 @@ output_formats = (
     else 0
 )
 
+# REST API surface — the committed OpenAPI contract is the source of truth. It is
+# gated to the live app by `scripts/export_openapi.py --check`, so counting from
+# it keeps docs that cite the REST surface honest without importing the app.
+_openapi = ROOT / "docs/openapi/v1.json"
+rest_operations = 0
+rest_paths = 0
+if _openapi.exists():
+    _spec = json.loads(_openapi.read_text())
+    _spec_paths = _spec.get("paths", {}) if isinstance(_spec, dict) else {}
+    _http_methods = {"get", "post", "put", "patch", "delete", "head", "options"}
+    rest_paths = len(_spec_paths)
+    rest_operations = sum(1 for item in _spec_paths.values() for m in item if str(m).lower() in _http_methods)
+
+# Route modules (files under api/routes) + WebSocket routes (absent from OpenAPI).
+_routes_dir = ROOT / "src/agent_bom/api/routes"
+route_modules = 0
+ws_routes = 0
+if _routes_dir.exists():
+    route_modules = len([f for f in _routes_dir.glob("*.py") if f.name != "__init__.py"])
+    for _route_file in _routes_dir.glob("*.py"):
+        ws_routes += len(re.findall(r"\.websocket\(", _route_file.read_text()))
+
 print("Source of truth from code:")
 print(f"  MCP tools:       {mcp_tool_count}")
 print(f"  Detectors:       {detector_classes}")
 print(f"  Dashboard pages: {pages}")
 print(f"  IaC rules:       {iac_rules}")
 print(f"  Output formats:  {output_formats}")
+print(f"  REST operations: {rest_operations}")
+print(f"  REST paths:      {rest_paths}")
+print(f"  Route modules:   {route_modules}")
+print(f"  WebSocket routes:{ws_routes}")
 print()
 
 # ── Check surfaces ─────────────────────────────────────────────────────────
@@ -136,6 +163,21 @@ _check(
 
 # Check dashboard pages
 _check("Pages", str(pages), SURFACES, r"\d+-page")
+
+# ── REST API surface consistency ───────────────────────────────────────────
+
+# Docs that cite the REST contract. Kept separate from SURFACES because these
+# numbers live in the developer/agent-facing docs, not the marketing READMEs.
+REST_SURFACES = [
+    "docs/AGENT_CAPABILITY.md",
+    "docs/ARCHITECTURE.md",
+    "docs/START_HERE.md",
+    "docs/README.md",
+]
+_check("REST operations", str(rest_operations), REST_SURFACES, r"\d+ (?:REST )?operations")
+_check("REST paths", str(rest_paths), REST_SURFACES, r"\d+ paths /")
+_check("Route modules", str(route_modules), REST_SURFACES, r"\d+ route modules")
+_check("WebSocket routes", str(ws_routes), REST_SURFACES, r"\d+ WebSocket routes")
 
 # ── Version consistency ────────────────────────────────────────────────────
 

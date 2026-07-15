@@ -21,9 +21,14 @@ def teardown_module() -> None:
 
 
 def _clear_jobs() -> None:
+    from agent_bom.api.routes.overview import _reset_overview_cache
     from agent_bom.api.server import set_job_store
 
     set_job_store(InMemoryJobStore())
+    # The overview payload is cached per-tenant keyed by a job/hub fingerprint;
+    # tests reuse a fixed job_id + timestamp, so the process-global cache must be
+    # dropped alongside the job store (same discipline as backpressure resets).
+    _reset_overview_cache()
 
 
 def _add_done_job(

@@ -12,6 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -24,6 +25,7 @@ from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store, _get_policy_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_fleet_agents_quota, tenant_quota_guard
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_command_args, sanitize_error, sanitize_security_warnings, sanitize_text, sanitize_url
@@ -33,6 +35,19 @@ router = APIRouter()
 
 def _dep(permission: str) -> Any:
     return cast(Any, require_authenticated_permission(permission))
+
+
+async def _store_call(fn, /, *args, **kwargs):
+    """Run a sync fleet-store method off the event loop under graph backpressure."""
+    try:
+        async with adaptive_backpressure("graph"):
+            return await asyncio.to_thread(fn, *args, **kwargs)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
 
 def _quarantine_policy_name(agent_name: str) -> str:
@@ -118,7 +133,8 @@ async def list_fleet(
     result = None
     query_by_tenant = getattr(store, "query_by_tenant", None)
     if callable(query_by_tenant):
-        result = query_by_tenant(
+        result = await _store_call(
+            query_by_tenant,
             tenant_id,
             state=state,
             environment=environment,
@@ -132,7 +148,7 @@ async def list_fleet(
         page, total = result
     else:
         page, total = _query_fleet_fallback(
-            store.list_by_tenant(tenant_id),
+            await _store_call(store.list_by_tenant, tenant_id),
             state=state,
             environment=environment,
             min_trust=min_trust_value,
@@ -155,7 +171,7 @@ async def list_fleet(
 async def fleet_stats(request: Request):
     """Fleet-wide statistics."""
     tenant_id = require_request_tenant_id(request)
-    agents = _get_fleet_store().list_by_tenant(tenant_id)
+    agents = await _store_call(_get_fleet_store().list_by_tenant, tenant_id)
     by_state: dict[str, int] = {}
     by_env: dict[str, int] = {}
     trust_scores: list[float] = []
@@ -178,7 +194,7 @@ async def fleet_stats(request: Request):
 async def get_fleet_agent(request: Request, agent_id: str):
     """Get a single fleet agent with trust score breakdown."""
     tenant_id = require_request_tenant_id(request)
-    agent = _get_fleet_store().get(agent_id, tenant_id=tenant_id)
+    agent = await _store_call(_get_fleet_store().get, agent_id, tenant_id=tenant_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     return agent.model_dump()

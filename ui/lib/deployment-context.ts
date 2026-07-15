@@ -99,7 +99,7 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
     isAvailable: (counts) => bool(counts?.has_mesh),
     requirement: "Completed scans with agent and runtime relationship context",
     command: "agent-bom scan --introspect --preset enterprise",
-    actionHref: "/scan",
+    actionHref: "/scan?preset=enterprise",
     actionLabel: "Run introspection scan",
     capabilities: [
       "Shared infrastructure across agents, tools, packages, and findings",
@@ -115,7 +115,7 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
     isAvailable: (counts) => bool(counts?.has_mcp_context),
     requirement: "MCP and agent context from completed scans",
     command: "agent-bom scan --introspect --preset enterprise",
-    actionHref: "/scan",
+    actionHref: "/scan?preset=enterprise",
     actionLabel: "Run introspection scan",
     capabilities: [
       "Lateral path analysis across agents, credentials, tools, and servers",

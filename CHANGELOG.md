@@ -9,6 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.96.2] - 2026-07-15
+
+### Fixed
+- Release pipeline: widened the container, self-scan, and published-image gate job timeouts so the release vulnerability scans complete and every publish step runs (no functional change to the product).
+
 ## [0.96.1] - 2026-07-15
 
 ### Fixed
@@ -2327,7 +2332,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.2...HEAD
+[0.96.2]: https://github.com/msaad00/agent-bom/compare/v0.96.1...v0.96.2
 [0.96.1]: https://github.com/msaad00/agent-bom/compare/v0.96.0...v0.96.1
 [0.96.0]: https://github.com/msaad00/agent-bom/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/msaad00/agent-bom/compare/v0.94.2...v0.95.0

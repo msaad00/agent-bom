@@ -57,5 +57,5 @@ attack paths, compliance tags, and runtime audit chain.
 
 ## Version
 
-`0.96.1` — regenerate metrics with `python scripts/product_metrics_snapshot.py --write` and this file with `python scripts/generate_agent_capability_manifest.py --write`.
+`0.96.2` — regenerate metrics with `python scripts/product_metrics_snapshot.py --write` and this file with `python scripts/generate_agent_capability_manifest.py --write`.
 

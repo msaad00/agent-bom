@@ -27,9 +27,16 @@ from agent_bom.api.agent_identity_store import (
     set_conditional_policy_status,
 )
 from agent_bom.api.audit_log import log_action
+from agent_bom.api.delegation_token import (
+    DelegationTokenError,
+    issue_delegation_token,
+    propagate_delegation_token,
+    verify_delegation_token,
+)
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.webhook_store import emit_governance_event
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.security import sanitize_error
 
 router = APIRouter(tags=["identity"])
 
@@ -465,6 +472,9 @@ async def create_conditional_access_policy(request: Request, body: dict) -> dict
         allowed_hours_utc=_int_list(body, "allowed_hours_utc", lo=0, hi=23),
         allowed_weekdays=_int_list(body, "allowed_weekdays", lo=0, hi=6),
         allowed_source_cidrs=cidrs,
+        allowed_devices=_str_list(body, "allowed_devices", max_len=200),
+        allowed_groups=_str_list(body, "allowed_groups", max_len=120),
+        allowed_clients=_str_list(body, "allowed_clients", max_len=200),
         description=str(body.get("description", "") or ""),
     )
     log_action(
@@ -539,6 +549,159 @@ async def get_conditional_access_policy(request: Request, policy_id: str) -> dic
     """Return one conditional-access policy."""
     policy = _conditional_policy_for_tenant(request, policy_id)
     return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
+
+
+# ── Scoped delegation tokens (multi-agent handoff) ──────────────────────────────
+
+
+def _delegation_scopes(body: dict) -> list[str]:
+    raw = body.get("scopes", [])
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(status_code=400, detail="'scopes' must be a non-empty list of capability strings")
+    scopes = [str(v).strip()[:200] for v in raw if str(v).strip()][:100]
+    if not scopes:
+        raise HTTPException(status_code=400, detail="'scopes' must contain at least one non-empty capability")
+    return scopes
+
+
+@router.post("/identities/{identity_id}/delegations", status_code=201, dependencies=[_dep("config")])
+async def issue_agent_delegation(request: Request, identity_id: str, body: dict) -> dict[str, object]:
+    """Issue a scoped, expiring delegation token from this identity to a delegatee.
+
+    The token is signed (HMAC), carries an explicit capability scope, and expires.
+    The delegatee (receiver) validates it via ``POST /v1/delegations/verify``; it
+    is propagated across further handoffs via ``POST /v1/delegations/propagate``.
+    """
+    identity = _identity_for_tenant(request, identity_id)
+    delegatee = str(body.get("delegatee", "") or "").strip()[:200]
+    if not delegatee:
+        raise HTTPException(status_code=400, detail="'delegatee' is required")
+    scopes = _delegation_scopes(body)
+    ttl_seconds = _ttl_seconds(body, default=900, max_seconds=3600)
+    chain = _str_list(body, "chain", max_len=200)
+    try:
+        token, claims = issue_delegation_token(
+            tenant_id=identity.tenant_id,
+            delegator=identity.agent_id or identity.identity_id,
+            delegatee=delegatee,
+            scopes=scopes,
+            ttl_seconds=ttl_seconds,
+            chain=chain,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid delegation request") from exc
+    log_action(
+        "agent_identity.delegation_issued",
+        actor=_actor(request),
+        resource=f"delegations/{claims.jti}",
+        tenant_id=identity.tenant_id,
+        delegator=claims.delegator,
+        delegatee=claims.delegatee,
+        scopes=claims.scopes,
+    )
+    _emit(
+        "identity.delegation_issued",
+        tenant_id=identity.tenant_id,
+        subject_id=identity.identity_id,
+        jti=claims.jti,
+        delegatee=claims.delegatee,
+        scopes=claims.scopes,
+        expires_at=claims.exp,
+    )
+    return {
+        "schema_version": "agent.identity.delegation.v1",
+        "token": token,
+        "delegation": {
+            "jti": claims.jti,
+            "tenant_id": claims.tenant_id,
+            "delegator": claims.delegator,
+            "delegatee": claims.delegatee,
+            "scopes": claims.scopes,
+            "chain": claims.chain,
+            "remaining_depth": claims.remaining_depth,
+            "issued_at": claims.iat,
+            "expires_at": claims.exp,
+        },
+    }
+
+
+@router.post("/delegations/verify", dependencies=[_dep("read")])
+async def verify_agent_delegation(request: Request, body: dict) -> dict[str, object]:
+    """Validate a delegation token for the active tenant (receiver side).
+
+    Returns ``{valid: true, delegation: {...}}`` for a well-formed, unexpired,
+    in-scope token; ``{valid: false, reason}`` otherwise (fail-closed). When
+    ``required_scope`` is supplied, an over-scoped call (capability outside the
+    token's scope) is rejected.
+    """
+    token = str(body.get("token", "") or "")
+    required_scope = body.get("required_scope")
+    required_scope = str(required_scope).strip() if required_scope not in (None, "") else None
+    try:
+        claims = verify_delegation_token(token, tenant_id=_tenant(request), required_scope=required_scope)
+    except DelegationTokenError as exc:
+        return {"schema_version": "agent.identity.delegation.v1", "valid": False, "reason": sanitize_error(exc)}
+    return {
+        "schema_version": "agent.identity.delegation.v1",
+        "valid": True,
+        "delegation": {
+            "jti": claims.jti,
+            "tenant_id": claims.tenant_id,
+            "delegator": claims.delegator,
+            "delegatee": claims.delegatee,
+            "scopes": claims.scopes,
+            "chain": claims.chain,
+            "remaining_depth": claims.remaining_depth,
+            "issued_at": claims.iat,
+            "expires_at": claims.exp,
+        },
+    }
+
+
+@router.post("/delegations/propagate", status_code=201, dependencies=[_dep("config")])
+async def propagate_agent_delegation(request: Request, body: dict) -> dict[str, object]:
+    """Propagate a delegation token to the next hop, narrowing scope only.
+
+    The child token inherits the parent's expiry (never extended), may only carry
+    a subset of the parent's scopes, and decrements the delegation-depth budget.
+    """
+    token = str(body.get("token", "") or "")
+    next_delegatee = str(body.get("next_delegatee", "") or "").strip()[:200]
+    if not next_delegatee:
+        raise HTTPException(status_code=400, detail="'next_delegatee' is required")
+    scopes = None
+    if "scopes" in body:
+        scopes = _delegation_scopes(body)
+    try:
+        child_token, claims = propagate_delegation_token(
+            token, next_delegatee=next_delegatee, scopes=scopes, tenant_id=_tenant(request)
+        )
+    except DelegationTokenError as exc:
+        raise HTTPException(status_code=400, detail=f"Delegation cannot be propagated: {sanitize_error(exc)}") from exc
+    log_action(
+        "agent_identity.delegation_propagated",
+        actor=_actor(request),
+        resource=f"delegations/{claims.jti}",
+        tenant_id=claims.tenant_id,
+        delegator=claims.delegator,
+        delegatee=claims.delegatee,
+        scopes=claims.scopes,
+    )
+    return {
+        "schema_version": "agent.identity.delegation.v1",
+        "token": child_token,
+        "delegation": {
+            "jti": claims.jti,
+            "tenant_id": claims.tenant_id,
+            "delegator": claims.delegator,
+            "delegatee": claims.delegatee,
+            "scopes": claims.scopes,
+            "chain": claims.chain,
+            "remaining_depth": claims.remaining_depth,
+            "issued_at": claims.iat,
+            "expires_at": claims.exp,
+        },
+    }
 
 
 @router.post("/identities/discover", dependencies=[_dep("read")])

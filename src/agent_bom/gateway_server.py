@@ -496,6 +496,44 @@ def _request_context_attributes(request: Request) -> dict[str, str]:
     return attributes
 
 
+def _request_device_id(request: Request) -> str:
+    """Resolve the caller device/workstation id for device ABAC conditions.
+
+    Read from the ``x-agent-device-id`` header (set by the endpoint agent / MDM
+    posture broker). Empty when unset, in which case a device condition simply
+    fails closed for policies that require one.
+    """
+    return (request.headers.get("x-agent-device-id", "") or "").strip()[:200]
+
+
+def _request_groups(request: Request) -> list[str]:
+    """Resolve the caller's directory groups for group ABAC conditions.
+
+    Groups arrive comma-separated in the ``x-agent-groups`` header (asserted by
+    the IdP / trust proxy after authentication). Bounded and de-duplicated.
+    """
+    raw = (request.headers.get("x-agent-groups", "") or "").strip()
+    if not raw:
+        return []
+    seen: list[str] = []
+    for part in raw.split(","):
+        value = part.strip()[:120]
+        if value and value not in seen:
+            seen.append(value)
+        if len(seen) >= 64:
+            break
+    return seen
+
+
+def _request_client_id(request: Request) -> str:
+    """Resolve the MCP client application id for client ABAC conditions.
+
+    Read from the ``x-agent-client-id`` header (the client app making the call).
+    Empty when unset; a client condition fails closed for policies requiring one.
+    """
+    return (request.headers.get("x-agent-client-id", "") or "").strip()[:200]
+
+
 def _request_cost_center(request: Request, message: dict[str, Any]) -> str:
     """Resolve the chargeback cost-center this call is allocated to.
 
@@ -2103,6 +2141,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         tool_name=tool_name,
                         environment=_request_environment(request),
                         source_ip=_request_source_ip(request),
+                        device_id=_request_device_id(request),
+                        groups=_request_groups(request),
+                        client_id=_request_client_id(request),
                     )
                     cond_allowed, cond_reason, cond_policy_id = evaluate_conditional_access_for_request(
                         get_agent_identity_store(),
@@ -2247,6 +2288,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     risk_score=_request_risk_score(request),
                     environment=_request_environment(request),
                     source_ip=_request_source_ip(request),
+                    device_id=_request_device_id(request),
+                    groups=_request_groups(request),
+                    client_id=_request_client_id(request),
                     attributes=_request_context_attributes(request),
                 )
                 try:

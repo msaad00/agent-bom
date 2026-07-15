@@ -65,3 +65,49 @@ agent-bom proxy \
   --metrics-port 8422 \
   -- <server-command>
 ```
+
+## Governance: ABAC conditions, delegation tokens, and served MCP-client-config
+
+### Conditional-access (ABAC) attributes
+
+Conditional-access policies (`/v1/conditional-access-policies`) gate a call on
+request-time context. Alongside the existing environment / time-window /
+weekday / source-CIDR conditions, policies also match on **device**, **group**,
+and **client** attributes:
+
+| Condition | Matches against | Request header |
+|-----------|-----------------|----------------|
+| `allowed_devices` | calling workstation / device id (exact) | `x-agent-device-id` |
+| `allowed_groups` | caller's directory groups (membership) | `x-agent-groups` (comma-separated) |
+| `allowed_clients` | MCP client application id (exact) | `x-agent-client-id` |
+
+All conditions are **fail-closed**: a policy that requires a device / group /
+client denies the call when the request cannot prove the attribute. The same
+conditions are enforced at both the gateway and the proxy decision points.
+
+### Scoped delegation tokens
+
+Multi-agent handoffs carry a **scoped, verifiable, expiring** delegation token
+(`POST /v1/identities/{id}/delegations`). The token is HMAC-signed, lists the
+explicit delegated capabilities (`scopes`), and expires. A receiver validates it
+with `POST /v1/delegations/verify` (an over-scoped or expired token is
+rejected); further hops re-issue via `POST /v1/delegations/propagate`, which can
+only **narrow** scope and never extends the expiry or the delegation-depth
+budget.
+
+Set `AGENT_BOM_DELEGATION_SIGNING_KEY` (file via `*_FILE`, or env) so tokens
+survive process restarts and verify consistently across replicas. When unset, a
+per-process ephemeral key is used (tokens become invalid after restart).
+
+### Served MCP-client-config distribution
+
+Assigning a profile composes chosen connectors + a runtime role blueprint into
+ONE distributable, **read-only**, tenant-scoped `.mcp.json` document:
+
+- `POST /v1/mcp-config/assignments` — assign a profile + connectors → returns a
+  `config_url`.
+- `GET /v1/mcp-config/{config_id}/mcp.json` — the served `mcpServers` document.
+
+The served config references each connector's credential env-vars as `${VAR}`
+placeholders and each cloud connection by opaque handle — it **never embeds
+secret material**. Access is RBAC-gated; a cross-tenant fetch is a 404.

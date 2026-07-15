@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
-from agent_bom.deploy_profiles import build_helm_profile_command, helm_chart_dir, helm_validation_profiles
+from agent_bom.deploy_profiles import (
+    build_helm_profile_command,
+    helm_chart_dir,
+    helm_validation_profiles,
+    ingress_hosts_missing_paths,
+)
 
 
 def test_helm_validation_profiles_reference_existing_chart_assets():
@@ -112,6 +119,70 @@ def test_enterprise_demo_profile_layers_pilot_with_aws_inventory_overlay():
     overlay = yaml.safe_load((example_dir / "eks-enterprise-demo-overlay.yaml").read_text())
     assert overlay["scanner"]["cloud"]["enabled"] is True
     assert overlay["scanner"]["cloud"]["aws"]["inventory"] is True
+
+
+def test_ingress_hosts_missing_paths_flags_empty_rule():
+    rendered = (
+        "apiVersion: networking.k8s.io/v1\n"
+        "kind: Ingress\n"
+        "spec:\n"
+        "  rules:\n"
+        "    -\n"
+        '      host: "agent-bom.internal.example.com"\n'
+        "      http:\n"
+        "        paths:\n"
+        "  tls:\n"
+        "    - hosts:\n"
+        "      - agent-bom.internal.example.com\n"
+    )
+    assert ingress_hosts_missing_paths(rendered) == ["agent-bom.internal.example.com"]
+
+
+def test_ingress_hosts_missing_paths_accepts_populated_rule():
+    rendered = (
+        "apiVersion: networking.k8s.io/v1\n"
+        "kind: Ingress\n"
+        "spec:\n"
+        "  rules:\n"
+        "    -\n"
+        '      host: "agent-bom.internal.example.com"\n'
+        "      http:\n"
+        "        paths:\n"
+        '          - path: "/v1"\n'
+        "            pathType: Prefix\n"
+        '          - path: "/"\n'
+        "            pathType: Prefix\n"
+    )
+    assert ingress_hosts_missing_paths(rendered) == []
+
+
+def test_ingress_hosts_missing_paths_ignores_non_ingress_docs():
+    rendered = "kind: Service\nspec:\n  ports:\n    - port: 80\n"
+    assert ingress_hosts_missing_paths(rendered) == []
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm binary not available")
+def test_production_profile_renders_ingress_with_real_paths():
+    repo_root = Path(__file__).resolve().parent.parent
+    chart_dir = helm_chart_dir(repo_root)
+    values = repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "eks-production-values.yaml"
+    result = subprocess.run(
+        ["helm", "template", "agent-bom-production", str(chart_dir), "-f", str(values)],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert ingress_hosts_missing_paths(result.stdout) == []
+    ingress = [
+        doc
+        for doc in yaml.safe_load_all(result.stdout)
+        if isinstance(doc, dict) and doc.get("kind") == "Ingress"
+    ]
+    assert ingress, "production profile should render a control-plane Ingress"
+    for manifest in ingress:
+        for rule in manifest["spec"]["rules"]:
+            assert rule["http"]["paths"], f"host {rule.get('host')} has no ingress paths"
 
 
 def test_install_helm_profile_script_prints_packaged_command():

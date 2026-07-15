@@ -2524,8 +2524,42 @@ def scan(
                     f"\n  [green]✓[/green] Runtime correlation: "
                     f"no vulnerable tools were called ({_corr_report.unique_tools_called} tools in audit log)"
                 )
-        except Exception as e:
-            con.print(f"\n  [yellow]⚠[/yellow] Runtime correlation failed: {e}")
+
+            # Observe→enforce: propose gateway block rules for tools that are BOTH
+            # confirmed-vulnerable and actively invoked. Default = propose only
+            # (audit-mode policy = advisory warn); an enforce-mode policy is emitted
+            # only under the explicit AGENT_BOM_ENFORCE_CORRELATED_BLOCKS opt-in.
+            import os as _os
+
+            from agent_bom.observe_enforce import propose_block_rules
+
+            _enforce_optin = _os.environ.get("AGENT_BOM_ENFORCE_CORRELATED_BLOCKS", "").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
+            )
+            _oe = propose_block_rules(_corr_report, enforce=_enforce_optin)
+            if isinstance(report.runtime_correlation, dict):
+                report.runtime_correlation["observe_enforce"] = _oe.to_dict()
+            if _oe.proposals:
+                _mode_label = "ENFORCE (opt-in)" if _oe.enforced else "propose-only (audit)"
+                con.print(
+                    f"\n  [yellow]⚑[/yellow] Observe→enforce: {len(_oe.proposals)} gateway block-rule "
+                    f"proposal(s) [{_mode_label}]"
+                )
+                for _p in _oe.proposals[:5]:
+                    con.print(
+                        f"    [yellow]▸[/yellow] block tool:{_p.tool_name} — "
+                        f"{', '.join(_p.vulnerability_ids)} (called {_p.call_count}x)"
+                    )
+                if not _oe.enforced:
+                    con.print(
+                        "    [dim]Advisory only. Set AGENT_BOM_ENFORCE_CORRELATED_BLOCKS=1 to emit an "
+                        "enforce-mode policy for review before import.[/dim]"
+                    )
+        except Exception as exc:  # noqa: BLE001
+            con.print(f"\n  [yellow]⚠[/yellow] Runtime correlation failed: {type(exc).__name__}")
 
     # Apply ignore/allowlist file (.agent-bom-ignore.yaml or --ignore-file)
     from agent_bom.ignores import apply_ignores, load_ignore_file

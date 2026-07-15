@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from agent_bom.red_team import run_red_team
+from agent_bom.security_eval_scorecard import build_security_eval_scorecard
 
 _SCHEMA_VERSION = "accuracy-baseline/v1"
 
@@ -14,6 +15,9 @@ def build_accuracy_baseline() -> dict[str, Any]:
     red_team = run_red_team()
     return {
         "schema_version": _SCHEMA_VERSION,
+        # Security-eval scorecard sits alongside the accuracy/quality evidence:
+        # catalog coverage %, FP rate, and per-category pass/fail from the same run.
+        "security_eval_scorecard": build_security_eval_scorecard(),
         "scope": {
             "release_gate": True,
             "claims": [

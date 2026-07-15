@@ -18,6 +18,9 @@ This page is the canonical runtime surface map. The detail docs:
 - [`RUNTIME_PROXY_AUDIT_JSONL.md`](RUNTIME_PROXY_AUDIT_JSONL.md) — the proxy
   audit JSONL record format for SIEM forwarding and release evidence
 - `docs/POLICY_PRECEDENCE.md` — policy-layer ordering inside a single tool-call
+- [`design/OBSERVE_ENFORCE.md`](design/OBSERVE_ENFORCE.md) — security-eval
+  scorecard + the observe→enforce bridge that turns runtime↔scan correlation
+  into audit-mode gateway block-rule proposals (enforce only on explicit opt-in)
 
 ## Which surface owns which decision
 

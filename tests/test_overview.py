@@ -455,6 +455,58 @@ def test_overview_headline_reflects_noncve_spine_critical() -> None:
     get_compliance_hub_store().clear("default")
 
 
+def test_posture_counts_reconcile_with_overview_headline() -> None:
+    """/v1/posture/counts and the /v1/overview headline read one source (#3961).
+
+    The nav-badge endpoint used to count the CVE-only ``blast_radius`` while the
+    overview headline reads the unified findings spine, so the two exec surfaces
+    disagreed on the same estate. They must now derive from the same reconciled
+    counts. Here the spine carries a non-CVE critical that ``blast_radius`` never
+    materialises — the exact divergence — and both surfaces must still agree.
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    get_compliance_hub_store().clear("default")
+    job = ScanJob(
+        job_id="reconcile-job",
+        tenant_id="default",
+        created_at="2026-02-22T10:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-02-22T10:05:00Z"
+    job.result = {
+        "agents": [],
+        "scan_sources": ["agent_discovery"],
+        "blast_radius": [
+            {"vulnerability_id": "CVE-2025-1000", "package": "libcve", "severity": "medium", "risk_score": 4},
+        ],
+        "findings": [
+            {"id": "vuln-cve", "security_domain": "vuln", "severity": "medium", "cve_id": "CVE-2025-1000"},
+            {"id": "mal-1", "security_domain": "aspm", "severity": "critical", "is_malicious": True},
+            {"id": "high-1", "security_domain": "aspm", "severity": "high"},
+            {"id": "weird-1", "security_domain": "aspm", "severity": "tuesday"},
+        ],
+    }
+    _get_store().put(job)
+
+    client = TestClient(app)
+    headline = client.get("/v1/overview", headers=_AUTH_HEADERS).json()["headline"]
+    counts = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+
+    assert counts["critical"] == headline["critical"] == 1, (counts, headline)
+    assert counts["high"] == headline["high"] == 1, (counts, headline)
+    assert counts["kev"] == headline["kev"], (counts, headline)
+    # The unrecognized "tuesday" severity is not dropped — it lands in unrated,
+    # and the buckets sum to total.
+    assert counts["unrated"] == 1, counts
+    bucketed = sum(counts[b] for b in ("critical", "high", "medium", "low", "unrated"))
+    assert bucketed == counts["total"], counts
+    get_compliance_hub_store().clear("default")
+
+
 def test_overview_compliance_failing_moves_grade() -> None:
     """A failing compliance framework feeds the exec grade (was hardcoded 0) (#3962)."""
     _clear_jobs()

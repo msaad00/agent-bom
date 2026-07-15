@@ -28,7 +28,7 @@ from agent_bom.api.drift_incident_store import DriftIncident, InMemoryDriftIncid
 def test_promote_creates_pending_version_not_approved():
     store = InMemoryBlueprintStore()
     seed_blueprints_from_archetypes(store, tenant_id="t1")
-    bp = next(b for b in store.iter_all_blueprints() if b.seeded_from == "developer")
+    bp = next(b for b in store.iter_tenant_blueprints("t1") if b.seeded_from == "developer")
     assert bp.current_version == 1 and bp.approval_status == STATUS_APPROVED
 
     version = promote_drift_to_draft_version(
@@ -98,7 +98,7 @@ def client():
 
 
 def _seed_bid(bp_store: InMemoryBlueprintStore) -> str:
-    return next(b for b in bp_store.iter_all_blueprints() if b.seeded_from == "developer").blueprint_id
+    return next(b for b in bp_store.iter_tenant_blueprints("default") if b.seeded_from == "developer").blueprint_id
 
 
 def test_accept_drift_emits_pending_version(client):

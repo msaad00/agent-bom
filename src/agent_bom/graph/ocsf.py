@@ -59,6 +59,8 @@ ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     EntityType.API_GATEWAY: {"category_uid": 5, "class_uid": 4001},
     # ASPM application root (Category 5 — inventory)
     EntityType.APPLICATION: {"category_uid": 5, "class_uid": 4001},
+    # Governance blueprint — persisted, approved AI-system composition (Category 5 — inventory)
+    EntityType.BLUEPRINT: {"category_uid": 5, "class_uid": 4001},
     # Organizational (virtual)
     EntityType.PROVIDER: {"category_uid": 0, "class_uid": 0},
     EntityType.ENVIRONMENT: {"category_uid": 0, "class_uid": 0},

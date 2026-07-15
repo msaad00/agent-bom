@@ -201,12 +201,12 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
   },
   "blueprint": {
     "label": "Blueprint",
-    "color": "#6b7280",
-    "shape": "circle",
-    "layer": "asset",
-    "icon": "circle",
-    "category_uid": 0,
-    "class_uid": 0
+    "color": "#818cf8",
+    "shape": "square",
+    "layer": "orchestration",
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "ci_job": {
     "label": "CI/CD Job",

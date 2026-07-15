@@ -53,7 +53,7 @@ is wired into the docs site so drift produces a visible regression.
 | `config/schemas/inventory.schema.json` | `Agent.agent_type` enum values | 30 |
 | `config/schemas/inventory.schema.json` | `Package.ecosystem` enum values | 9 |
 | `config/schemas/inventory.schema.json` | `MCPServer.transport` enum values | 3 |
-| `docs/openapi/v1.json` | paths | 270 |
+| `docs/openapi/v1.json` | paths | 273 |
 | `docs/openapi/v1.json` | component schemas | 72 |
 
 <!-- DATA_MODEL_ATLAS:END -->
@@ -193,7 +193,7 @@ of the five overlapping lanes.
 The unified graph projects the canonical model into a node/edge form
 used for blast-radius traversal, dashboards, and OCSF export.
 
-### Entity types (41)
+### Entity types (42)
 
 `AGENT`, `SERVER`, `PACKAGE`, `TOOL`, `TOOL_CALL`, `MODEL`, `DATASET`,
 `FRAMEWORK`, `CONTAINER`, `CLOUD_RESOURCE`, `RESOURCE`, `SOURCE_FILE`, `CODE_MODULE`,
@@ -202,7 +202,7 @@ used for blast-radius traversal, dashboards, and OCSF export.
 `USER`, `GROUP`, `ROLE`, `POLICY`, `SERVICE_ACCOUNT`, `SERVICE_PRINCIPAL`,
 `FEDERATED_IDENTITY`, `MANAGED_IDENTITY`, `ACCESS_GRANT`, `ACCESS_POLICY`,
 `DRIFT_INCIDENT`, `DATA_STORE`, `API_GATEWAY`, `APPLICATION`, `PROVIDER`,
-`ENVIRONMENT`, `FLEET`, `CLUSTER`.
+`ENVIRONMENT`, `FLEET`, `CLUSTER`, `BLUEPRINT`.
 
 `FRAMEWORK` is a first-class AI-stack BOM entity for orchestration and
 observability libraries (LangChain, LangGraph, CrewAI, Langfuse-class imports).

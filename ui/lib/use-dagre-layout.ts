@@ -33,6 +33,9 @@ function optionsKey(options: LayoutOptions): string {
     nodeHeight: options.nodeHeight ?? 60,
     rankSep: options.rankSep ?? 80,
     nodeSep: options.nodeSep ?? 30,
+    // Kept in the key so the min-separation guarantee survives the JSON
+    // round-trip into both the sync layout and the web worker.
+    minSeparation: options.minSeparation ?? null,
   });
 }
 

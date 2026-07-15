@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { api, type Agent, type JobListItem, type ScanJob } from "@/lib/api";
 import { useGraphLayout } from "@/lib/use-graph-layout";
+import { readableLineageDagreLr } from "@/lib/graph-node-dimensions";
 import {
   lineageNodeTypes,
   type LineageNodeData,
@@ -393,12 +394,7 @@ export default function ContextPage() {
   }, [focusedPath, graphData, selectedAgent]);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
-    dagreLr: {
-      nodeWidth: 260,
-      nodeHeight: 96,
-      rankSep: 160,
-      nodeSep: 48,
-    },
+    dagreLr: readableLineageDagreLr(),
   });
 
   // Search highlighting

@@ -79,6 +79,65 @@ describe("AuthGate", () => {
     expect(screen.queryByText("protected surface")).not.toBeInTheDocument();
   });
 
+  it("recovers silently from a single aborted probe without flashing the fatal state", async () => {
+    const abortError = Object.assign(new Error("Fetch is aborted"), { name: "AbortError" });
+    global.fetch = vi
+      .fn()
+      .mockRejectedValueOnce(abortError)
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: () =>
+          Promise.resolve({
+            authenticated: false,
+            auth_required: false,
+            configured_modes: [],
+            recommended_ui_mode: "no_auth",
+            auth_method: null,
+            subject: null,
+            role: null,
+            tenant_id: "default",
+            role_summary: null,
+            memberships: [],
+            request_id: null,
+            trace_id: null,
+            span_id: null,
+          }),
+      }) as typeof fetch;
+
+    render(
+      <AuthProvider>
+        <AuthGate>
+          <div>protected surface</div>
+        </AuthGate>
+      </AuthProvider>,
+    );
+
+    // The retry lands on the second attempt; the fatal screen never renders.
+    await waitFor(() => expect(screen.getByText("protected surface")).toBeInTheDocument());
+    expect(screen.queryByText("Control plane unreachable")).not.toBeInTheDocument();
+  });
+
+  it("shows the fatal control-plane state after the probe keeps aborting", async () => {
+    const abortError = Object.assign(new Error("Fetch is aborted"), { name: "AbortError" });
+    global.fetch = vi.fn().mockRejectedValue(abortError) as typeof fetch;
+
+    render(
+      <AuthProvider>
+        <AuthGate>
+          <div>protected surface</div>
+        </AuthGate>
+      </AuthProvider>,
+    );
+
+    await waitFor(
+      () => expect(screen.getByText("Control plane unreachable")).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
+    expect(screen.queryByText("protected surface")).not.toBeInTheDocument();
+  });
+
   it("blocks protected content when auth discovery gets a server error", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,

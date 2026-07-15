@@ -113,6 +113,14 @@ describe('Nav', () => {
     expect(screen.getByText('AI inventory')).toBeInTheDocument()
   })
 
+  it('uses a plain "AI" monogram (not a busy circuit icon) for the AI inventory group', () => {
+    renderExpandedNav()
+    const aiGroup = screen.getByRole('button', { name: /ai inventory/i })
+    // The monogram is its own element whose full text is exactly "AI"; the
+    // "AI inventory" label span reads differently and is not matched.
+    expect(within(aiGroup).getByText('AI', { exact: true })).toBeInTheDocument()
+  })
+
   it('renders the Cloud & Data nav group', () => {
     renderExpandedNav()
     expect(screen.getByText('Cloud & Data')).toBeInTheDocument()

@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
   MiniMap,
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -69,6 +71,76 @@ const INVESTIGATION_LAYERS = {
   sourceFile: false,
   configFile: false,
 } as const;
+
+/**
+ * ReactFlow subtree with an imperative re-fit. ReactFlow's `fitView` prop only
+ * runs once, at first mount — but the dagre layout positions nodes on a later
+ * tick, and lens/focus/snapshot switches swap in an entirely new node set. When
+ * the one-shot fit ran against the pre-layout (0,0) positions the canvas ended
+ * up zoomed/panned off its content and rendered blank. Re-fitting whenever the
+ * laid-out node set changes keeps the bounding box in view every time.
+ */
+function InvestigationFlow({
+  nodes,
+  edges,
+  viewportInput,
+  onNodeSelect,
+}: {
+  nodes: Node<LineageNodeData>[];
+  edges: Edge[];
+  viewportInput: {
+    nodeCount: number;
+    edgeCount: number;
+    selectedNode: boolean;
+    mode: "lineage";
+  };
+  onNodeSelect: (id: string) => void;
+}) {
+  const { fitView } = useReactFlow();
+  const fitOptions = useMemo(() => graphFitViewOptions(viewportInput), [viewportInput]);
+  const fitOptionsRef = useRef(fitOptions);
+  fitOptionsRef.current = fitOptions;
+
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    // Fit on the next frame so ReactFlow has measured the freshly laid-out
+    // nodes before we fit to their bounds. Keyed on the node reference, which
+    // changes on mount, layout settle, lens switch, focus toggle, and snapshot
+    // change — every case where the previous viewport can be stale.
+    const raf = requestAnimationFrame(() => {
+      void fitView(fitOptionsRef.current);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [fitView, nodes]);
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      nodeTypes={lineageNodeTypes}
+      fitView
+      fitViewOptions={fitOptions}
+      minZoom={0.2}
+      maxZoom={1.8}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable
+      onNodeClick={(_, node) => onNodeSelect(node.id)}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+      <Controls className={CONTROLS_CLASS} showInteractive={false} />
+      {shouldShowGraphMiniMap(viewportInput) && (
+        <MiniMap
+          className={MINIMAP_CLASS}
+          style={{ background: MINIMAP_BG }}
+          maskColor={MINIMAP_MASK}
+          nodeColor={minimapNodeColor}
+        />
+      )}
+    </ReactFlow>
+  );
+}
 
 export function SecurityGraphInvestigation({
   graph,
@@ -190,31 +262,14 @@ export function SecurityGraphInvestigation({
             No graph nodes matched this path. Run a fresh scan or clear focus to inspect the full snapshot.
           </div>
         ) : (
-          <ReactFlow
-            nodes={layout.nodes}
-            edges={displayEdges}
-            nodeTypes={lineageNodeTypes}
-            fitView
-            fitViewOptions={graphFitViewOptions(viewportInput)}
-            minZoom={0.2}
-            maxZoom={1.8}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable
-            onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
-            <Controls className={CONTROLS_CLASS} showInteractive={false} />
-            {shouldShowGraphMiniMap(viewportInput) && (
-              <MiniMap
-                className={MINIMAP_CLASS}
-                style={{ background: MINIMAP_BG }}
-                maskColor={MINIMAP_MASK}
-                nodeColor={minimapNodeColor}
-              />
-            )}
-          </ReactFlow>
+          <ReactFlowProvider>
+            <InvestigationFlow
+              nodes={layout.nodes as Node<LineageNodeData>[]}
+              edges={displayEdges}
+              viewportInput={viewportInput}
+              onNodeSelect={setSelectedNodeId}
+            />
+          </ReactFlowProvider>
         )}
 
         <div className="pointer-events-none absolute left-3 top-3 max-w-[min(24rem,calc(100vw-2rem))]">

@@ -23,7 +23,6 @@ import {
   PanelLeftClose,
   PanelLeft,
   Search,
-  BrainCircuit,
   LayoutDashboard,
   Wrench,
   RefreshCw,
@@ -111,6 +110,23 @@ function activeGroupForPath(path: string | null): string {
   return matched?.label ?? NAV_GROUPS[0]!.label;
 }
 
+/**
+ * Plain "AI" text monogram used as the AI-inventory group glyph. A literal
+ * mark reads unambiguously at rail size where a busy circuit icon did not, and
+ * it satisfies the `icon: React.ElementType` contract by accepting the same
+ * sizing/colour className the Lucide group icons receive.
+ */
+function AiMark({ className = "" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex items-center justify-center text-[0.6rem] font-bold leading-none tracking-[-0.02em] ${className}`}
+    >
+      AI
+    </span>
+  );
+}
+
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Posture",
@@ -129,7 +145,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "AI inventory",
-    icon: BrainCircuit,
+    icon: AiMark,
     links: [
       { href: "/agents", label: "Agents", icon: Bot },
       { href: "/manifest", label: "AI BOM", icon: ClipboardList },

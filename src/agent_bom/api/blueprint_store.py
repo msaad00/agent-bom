@@ -50,8 +50,11 @@ VALID_STATUSES = (STATUS_DRAFT, STATUS_PENDING, STATUS_APPROVED, STATUS_REJECTED
 # Actor recorded as the approver for system-seeded archetype versions. Seeded
 # blueprints are pre-approved so a fresh tenant starts from the canonical role
 # archetypes without a manual approval round-trip; the accountable-approver
-# invariant is still satisfied by this explicit system principal.
-SEED_APPROVER = "system:blueprint-seed"
+# invariant is still satisfied by this explicit system principal. The seed
+# author/submitter is a distinct principal from the approver so the pre-approval
+# still honours separation of duties (four-eyes) rather than bypassing it.
+SEED_APPROVER = "system:blueprint-seed-approver"
+SEED_SUBMITTER = "system:blueprint-seed-author"
 
 
 def _now_iso() -> str:
@@ -191,7 +194,7 @@ class BlueprintStore(Protocol):
 
     def list_blueprints(self, tenant_id: str, *, limit: int = 50, offset: int = 0) -> BlueprintPage: ...
 
-    def iter_all_blueprints(self, *, limit: int = 10000) -> list[Blueprint]: ...
+    def iter_tenant_blueprints(self, tenant_id: str, *, limit: int = 10000) -> list[Blueprint]: ...
 
     def put_version(self, version: BlueprintVersion) -> None: ...
 
@@ -232,9 +235,9 @@ class InMemoryBlueprintStore:
         next_offset = offset + limit if offset + limit < len(rows) else None
         return BlueprintPage(blueprints=window, next_offset=next_offset)
 
-    def iter_all_blueprints(self, *, limit: int = 10000) -> list[Blueprint]:
+    def iter_tenant_blueprints(self, tenant_id: str, *, limit: int = 10000) -> list[Blueprint]:
         with self._lock:
-            rows = [b for tenant in self._blueprints.values() for b in tenant.values()]
+            rows = list(self._blueprints.get(tenant_id, {}).values())
         return rows[:limit]
 
     def put_version(self, version: BlueprintVersion) -> None:
@@ -337,9 +340,10 @@ class SQLiteBlueprintStore:
         next_offset = offset + limit if len(rows) > limit else None
         return BlueprintPage(blueprints=blueprints, next_offset=next_offset)
 
-    def iter_all_blueprints(self, *, limit: int = 10000) -> list[Blueprint]:
+    def iter_tenant_blueprints(self, tenant_id: str, *, limit: int = 10000) -> list[Blueprint]:
         rows = self._conn.execute(
-            "SELECT data FROM ai_system_blueprints ORDER BY updated_at ASC LIMIT ?", (limit,)
+            "SELECT data FROM ai_system_blueprints WHERE tenant_id = ? ORDER BY updated_at ASC LIMIT ?",
+            (tenant_id, limit),
         ).fetchall()
         return [Blueprint.from_dict(json.loads(r[0])) for r in rows]
 
@@ -384,6 +388,15 @@ class BlueprintApprovalError(ValueError):
     Mapped to an HTTP 400 by the API layer. Covers a missing accountable
     approver, an out-of-order state transition, and an attempt to mutate an
     immutable (approved) version.
+    """
+
+
+class BlueprintSelfApprovalError(BlueprintApprovalError):
+    """Raised when a version's author/submitter tries to approve their own work.
+
+    Enforces separation of duties (four-eyes): the accountable approver must be
+    a different principal from whoever authored or submitted the version. Mapped
+    to an HTTP 403 by the API layer.
     """
 
 
@@ -551,8 +564,10 @@ def approve_version(
 
     An approval requires an accountable approver — an empty ``approver`` raises
     ``BlueprintApprovalError`` so an approved (immutable, in-effect) version can
-    never be orphaned. RBAC (who is *allowed* to approve) is enforced separately
-    at the API boundary.
+    never be orphaned. Separation of duties (four-eyes) is enforced: the approver
+    must be a different principal from the version's author/submitter, otherwise a
+    ``BlueprintSelfApprovalError`` is raised. RBAC (who is *allowed* to approve) is
+    enforced separately at the API boundary.
     """
     if not approver or not approver.strip():
         raise BlueprintApprovalError("an approval requires an accountable approver")
@@ -563,8 +578,15 @@ def approve_version(
         raise BlueprintApprovalError("version is already approved and immutable")
     if record.status != STATUS_PENDING:
         raise BlueprintApprovalError(f"only a pending version can be approved (current status: {record.status})")
+    approver_id = approver.strip()
+    authored_or_submitted = {p.strip() for p in (record.created_by, record.submitted_by) if p and p.strip()}
+    if approver_id in authored_or_submitted:
+        raise BlueprintSelfApprovalError(
+            "separation of duties: the author or submitter of a version cannot approve it — "
+            "a different approver is required"
+        )
     record.status = STATUS_APPROVED
-    record.approver = approver.strip()[:200]
+    record.approver = approver_id[:200]
     record.decision_note = note.strip()[:1000]
     record.decided_at = _now_iso()
     store.put_version(record)
@@ -668,8 +690,8 @@ def find_blueprint_by_seed(store: BlueprintStore, tenant_id: str, seeded_from: s
     seed = (seeded_from or "").strip()
     if not seed:
         return None
-    for bp in store.iter_all_blueprints(limit=10000):
-        if bp.tenant_id == tenant_id and bp.seeded_from == seed:
+    for bp in store.iter_tenant_blueprints(tenant_id, limit=10000):
+        if bp.seeded_from == seed:
             return bp
     return None
 
@@ -685,7 +707,7 @@ def build_agent_owner_index(store: BlueprintStore, tenant_id: str) -> dict[str, 
     """
     index: dict[str, tuple[str, str]] = {}
     blueprints = sorted(
-        (b for b in store.iter_all_blueprints(limit=10000) if b.tenant_id == tenant_id),
+        store.iter_tenant_blueprints(tenant_id, limit=10000),
         key=lambda b: b.blueprint_id,
     )
     for bp in blueprints:
@@ -772,7 +794,7 @@ def seed_blueprints_from_archetypes(
         from agent_bom.runtime_blueprints import runtime_role_blueprints
 
         archetypes = runtime_role_blueprints()
-    existing = {b.seeded_from for b in store.iter_all_blueprints(limit=10000) if b.tenant_id == tenant_id and b.seeded_from}
+    existing = {b.seeded_from for b in store.iter_tenant_blueprints(tenant_id, limit=10000) if b.seeded_from}
     created: list[Blueprint] = []
     for archetype in archetypes:
         archetype_id = str(archetype.get("blueprint_id") or "").strip()
@@ -788,14 +810,20 @@ def seed_blueprints_from_archetypes(
             owner_type="role_archetype",
             description=str(archetype.get("description") or ""),
             composition=composition,
-            created_by=actor,
+            created_by=SEED_SUBMITTER,
             seeded_from=archetype_id,
             blueprint_id=f"bp_seed_{archetype_id}",
         )
         # A seeded archetype ships pre-approved: submit + approve in one pass so a
-        # new tenant starts from the canonical, in-effect blueprints.
+        # new tenant starts from the canonical, in-effect blueprints. The author/
+        # submitter is a distinct system principal from the approver so this
+        # pre-approval honours four-eyes rather than bypassing it.
         submit_version_for_approval(
-            store, tenant_id=tenant_id, blueprint_id=blueprint.blueprint_id, version=version.version, submitted_by=actor
+            store,
+            tenant_id=tenant_id,
+            blueprint_id=blueprint.blueprint_id,
+            version=version.version,
+            submitted_by=SEED_SUBMITTER,
         )
         approve_version(
             store,
@@ -847,6 +875,7 @@ def set_blueprint_store(store: BlueprintStore | None) -> None:
 
 __all__ = [
     "SEED_APPROVER",
+    "SEED_SUBMITTER",
     "STATUS_APPROVED",
     "STATUS_DRAFT",
     "STATUS_PENDING",
@@ -856,6 +885,7 @@ __all__ = [
     "BlueprintApprovalError",
     "BlueprintComposition",
     "BlueprintPage",
+    "BlueprintSelfApprovalError",
     "BlueprintStore",
     "BlueprintVersion",
     "InMemoryBlueprintStore",

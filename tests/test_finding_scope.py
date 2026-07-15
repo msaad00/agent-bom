@@ -12,9 +12,11 @@ from agent_bom.finding import (
 )
 from agent_bom.finding_scope import (
     account_ref_from_arn,
+    lenses_for_row,
     normalize_account_ref,
     region_from_arn,
     security_domain_for,
+    security_lenses_for,
 )
 
 # ---------------------------------------------------------------------------
@@ -97,6 +99,68 @@ def test_legacy_appsec_sca_domain_resolves_to_aspm() -> None:
     assert canonical_domain("aspm") == "aspm"
     assert canonical_domain("bogus") is None
     assert domain_for_row({"security_domain": "appsec_sca"}) == "aspm"
+
+
+# ---------------------------------------------------------------------------
+# Overlapping coverage lenses (a finding may belong to several)
+# ---------------------------------------------------------------------------
+
+
+def test_repo_dependency_cve_is_both_vuln_and_aspm() -> None:
+    """A repo/project dependency CVE is both a Vuln-mgmt and an ASPM concern."""
+    assert security_lenses_for(FindingSource.SBOM, FindingType.CVE) == {"vuln", "aspm"}
+    assert security_lenses_for(FindingSource.FILESYSTEM, FindingType.CVE) == {"vuln", "aspm"}
+
+
+def test_container_and_external_cve_is_vuln_only() -> None:
+    """Image / external-registry CVEs are vuln-management, not application-layer."""
+    assert security_lenses_for(FindingSource.CONTAINER, FindingType.CVE) == {"vuln"}
+    assert security_lenses_for(FindingSource.EXTERNAL, FindingType.CVE) == {"vuln"}
+
+
+def test_sast_and_secret_lenses_are_aspm_only() -> None:
+    assert security_lenses_for(FindingSource.SAST, FindingType.SAST) == {"aspm"}
+    assert security_lenses_for(FindingSource.SECRET_SCAN, FindingType.CREDENTIAL_EXPOSURE) == {"aspm"}
+
+
+def test_cloud_cis_lens_is_cspm_only() -> None:
+    assert security_lenses_for(FindingSource.CLOUD_CIS, FindingType.CIS_FAIL, {"benchmark": "CIS"}) == {"cspm"}
+
+
+def test_iac_misconfig_lens_adds_aspm() -> None:
+    """An IaC-template misconfig is application-layer as well as cloud config."""
+    ev = {"benchmark": "CIS", "iac": True, "resource_type": "terraform"}
+    assert security_lenses_for(FindingSource.CLOUD_CIS, FindingType.CIS_FAIL, ev) == {"cspm", "aspm"}
+
+
+def test_ai_signal_lens_is_aispm_only() -> None:
+    assert security_lenses_for(FindingSource.MCP_SCAN, FindingType.TOOL_DRIFT) == {"aispm"}
+
+
+def test_snowflake_governance_lens_is_dspm_only() -> None:
+    ev = {"provider": "snowflake", "category": "sensitive-data-access"}
+    assert security_lenses_for(FindingSource.CLOUD_CIS, FindingType.CIS_FAIL, ev) == {"dspm"}
+
+
+def test_every_lens_set_includes_the_primary_domain() -> None:
+    for source in FindingSource:
+        for ftype in FindingType:
+            primary = security_domain_for(source, ftype)
+            lenses = security_lenses_for(source, ftype)
+            assert primary in lenses
+            assert lenses <= {"cspm", "vuln", "aspm", "dspm", "aispm"}
+
+
+def test_lenses_for_row_unions_stored_domain_source_type_and_cve_id() -> None:
+    # A serialized repo dependency CVE row: parseable source/type + a CVE id.
+    row = {"security_domain": "vuln", "source": "SBOM", "finding_type": "CVE", "cve_id": "CVE-2025-1"}
+    assert lenses_for_row(row) == {"vuln", "aspm"}
+    # A row carrying only the stored primary stays single-lane.
+    assert lenses_for_row({"security_domain": "aispm"}) == {"aispm"}
+    # Legacy stored key still resolves into the ASPM lens.
+    assert lenses_for_row({"security_domain": "appsec_sca"}) == {"aspm"}
+    # A bare CVE id with no parseable source/type still counts under vuln.
+    assert lenses_for_row({"cve_id": "CVE-2025-2"}) == {"vuln"}
 
 
 # ---------------------------------------------------------------------------

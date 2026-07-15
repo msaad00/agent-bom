@@ -148,12 +148,43 @@ in `src/agent_bom/finding_scope.py`:
 | `SAST`, secret/credential exposure | `aspm` |
 | MCP / proxy / skill / prompt / graph + AI-native types | `aispm` |
 
+### Coverage lanes are overlapping posture lenses
+
+`security_domain` above is the single **primary** lane a finding is stored and
+displayed under. The five coverage lanes on the overview, however, are
+**overlapping posture disciplines** applied to the one unified finding model —
+not a strict one-lane-per-finding partition. A finding can count under more than
+one lane. `security_lenses_for()` (in `finding_scope.py`) returns the full lens
+set, derived from the same `(source, finding_type, evidence)` inputs — no schema
+migration:
+
+| Lens | A finding is counted here when… |
+|---|---|
+| `vuln` | it is a CVE / carries a CVE id / is a dependency or package vulnerability (container, SBOM, external, or filesystem dependency) — the vulnerability-management discipline |
+| `aspm` | it originates from the application / code / repo layer — SAST, secret or credential scanning, a repo/project-checkout dependency graph (SBOM or filesystem), or IaC-template misconfiguration |
+| `cspm` | cloud configuration / CIS benchmark |
+| `dspm` | data-access governance |
+| `aispm` | AI / agent / MCP / prompt / proxy / skill signals |
+
+So a **repo dependency CVE is in both `vuln` and `aspm`**, while a
+container-image CVE is `vuln` only and a SAST weakness is `aspm` only.
+
+Consequences:
+
+* The **sum of lane counts is NOT the total finding count** — lanes overlap.
+* Each **lane's own count still equals the sum of its severity strip**
+  (including the `unrated` bucket for unknown-severity findings), so a lane's
+  metric never contradicts its own strip.
+* The exec **headline / grade histogram is computed independently, once per
+  finding**, over the unified findings spine — never by summing the lanes.
+
 A **finding** is raw scanner output; an **issue** is a correlated/deduped
 grouping of findings for display. `GET /v1/findings` accepts optional
 `provider`, `account`, `environment`, and `domain` filters (canonicalized
-server-side, never rejected), and `GET /v1/overview` returns a `coverage` array
-of the five domain lanes whose per-lane severity histogram — including an
-`unrated` bucket for unknown-severity findings — sums to the lane count.
+server-side, never rejected); the `domain` facet matches a finding's **lens
+set**, so `domain=aspm` returns SAST + secrets + repo dependencies + IaC and
+`domain=vuln` returns every CVE. `GET /v1/overview` returns a `coverage` array
+of the five overlapping lanes.
 
 ---
 

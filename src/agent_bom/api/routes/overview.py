@@ -244,12 +244,15 @@ def _fold_findings(
 ) -> tuple[int, int, int]:
     """Fold unified findings-spine rows into the shared estate accumulators.
 
-    Every row is counted into exactly one severity bucket AND its security
-    domain's coverage lane from the same pass, so the headline can never
-    disagree with the lanes. Returns ``(added, kev, credential_exposed)`` for
-    this batch. A finding whose severity is critical/high marks each of its
-    ``applicable_frameworks`` as failing (feeds the exec grade's compliance
-    driver, #3962).
+    Every row is counted once into exactly one bucket of the all-domain severity
+    histogram (the headline/grade basis) AND into EVERY coverage lens it belongs
+    to (the coverage lanes are overlapping posture disciplines, not a partition —
+    a repo dependency CVE counts under both ``vuln`` and ``aspm``). Because lanes
+    overlap, the sum of lane counts is not the total; the histogram is the
+    single source of truth for the headline. Returns
+    ``(added, kev, credential_exposed)`` for this batch. A finding whose severity
+    is critical/high marks each of its ``applicable_frameworks`` as failing
+    (feeds the exec grade's compliance driver, #3962).
     """
     from agent_bom.compliance_coverage import normalize_framework_slug
 
@@ -264,10 +267,12 @@ def _fold_findings(
             continue
         seen.add(identity)
         bucket = _bucket(str(row.get("severity") or ""), severity)
+        # All-domain histogram: once per finding (the headline/grade basis).
         severity[bucket] += 1
-        dom = _row_domain(row)
-        lanes[dom][bucket] += 1
-        lane_counts[dom] += 1
+        # Coverage lanes: increment EVERY applicable lens (lanes overlap).
+        for dom in _row_lenses(row):
+            lanes[dom][bucket] += 1
+            lane_counts[dom] += 1
         added += 1
         if bool(row.get("is_kev") or row.get("cisa_kev")):
             kev += 1
@@ -432,6 +437,22 @@ def _row_domain(row: dict[str, Any]) -> str:
     from agent_bom.finding_scope import domain_for_row
 
     return domain_for_row(row) or "vuln"
+
+
+def _row_lenses(row: dict[str, Any]) -> set[str]:
+    """Overlapping coverage lenses for a row, guaranteeing the primary lane.
+
+    The coverage lanes are posture lenses, not a partition — a repo dependency
+    CVE counts under both ``vuln`` and ``aspm``. The primary lane (or the
+    ``vuln`` default for legacy rows) is always included so every finding lands
+    in at least one lane, while the all-domain histogram is still counted once
+    per finding.
+    """
+    from agent_bom.finding_scope import lenses_for_row
+
+    lenses = set(lenses_for_row(row))
+    lenses.add(_row_domain(row))
+    return {dom for dom in lenses if dom in _COVERAGE_DOMAINS}
 
 
 def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:

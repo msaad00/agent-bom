@@ -214,7 +214,7 @@ const NAV_LINK_ICON_CLASS: Record<string, string> = {
   "/traces": "text-violet-400",
   "/compliance": "text-emerald-400",
   "/governance": "text-amber-400",
-  "/audit": "text-stone-400",
+  "/audit": "text-teal-400",
   "/registry": "text-amber-400",
   "/cost": "text-yellow-400",
   "/jobs": "text-orange-400",

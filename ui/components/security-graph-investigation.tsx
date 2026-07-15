@@ -229,7 +229,7 @@ export function SecurityGraphInvestigation({
             onClick={() => onFocusModeChange(!focusMode)}
             className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
               focusMode
-                ? "border-emerald-600/50 bg-emerald-500/10 text-emerald-200"
+                ? "border-emerald-600/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
                 : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]"
             }`}
           >

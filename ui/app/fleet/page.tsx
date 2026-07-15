@@ -537,7 +537,7 @@ export default function FleetPage() {
                           }}
                           disabled={quarantiningId === agent.agent_id}
                           title="Quarantine this agent and enforce a gateway DENY policy for its identity"
-                          className="flex items-center gap-1.5 rounded-md border border-red-800 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-900/40 disabled:opacity-50"
+                          className="flex items-center gap-1.5 rounded-md border border-red-500/30 dark:border-red-800 bg-red-500/10 dark:bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 transition-colors hover:bg-red-500/10 dark:hover:bg-red-900/40 disabled:opacity-50"
                           data-testid="fleet-quarantine-deny"
                         >
                           {quarantiningId === agent.agent_id ? (

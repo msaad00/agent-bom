@@ -70,7 +70,7 @@ export function PermissionDeniedNotice({
       <p className="mt-1.5 text-[13px] leading-6 text-amber-100/90">
         To {action} you need the {neededLabel} role or higher.
       </p>
-      <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-amber-200/90">
+      <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-200/90">
         {guidance.title}
       </p>
       <ul className="mt-1.5 space-y-1 text-[13px] leading-6 text-amber-100/90">
@@ -121,7 +121,7 @@ export function RolePermissionsPanel({
                   {entry.label}
                 </span>
                 {active ? (
-                  <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-200">
+                  <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200">
                     You
                   </span>
                 ) : null}

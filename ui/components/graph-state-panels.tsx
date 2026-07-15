@@ -110,7 +110,7 @@ export function GraphFindingsFallback({
               <button
                 type="button"
                 onClick={onExpandScope}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-400 transition-colors"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-400 transition-colors"
               >
                 Show expanded topology
               </button>
@@ -219,9 +219,9 @@ function FindingRow({
   const osvUrl = getOsvVulnerabilityUrl(data.label);
   const severityClass =
     data.severity === "critical"
-      ? "border-red-500/25 bg-red-500/10 text-red-200"
+      ? "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-200"
       : data.severity === "high"
-        ? "border-orange-500/25 bg-orange-500/10 text-orange-200"
+        ? "border-orange-500/25 bg-orange-500/10 text-orange-700 dark:text-orange-200"
         : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)]";
 
   return (
@@ -232,7 +232,7 @@ function FindingRow({
             {severity}
           </span>
           {data.isKev && (
-            <span className="rounded-lg border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium tracking-[0.14em] text-red-200">
+            <span className="rounded-lg border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium tracking-[0.14em] text-red-700 dark:text-red-200">
               KEV
             </span>
           )}
@@ -256,7 +256,7 @@ function FindingRow({
         </button>
         <Link
           href={buildFindingsHref({ scanId, cve: data.label })}
-          className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70"
+          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 dark:border-emerald-800 bg-emerald-500/10 dark:bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-500/10 dark:hover:bg-emerald-950/70"
         >
           <Route className="h-3 w-3" />
           Findings

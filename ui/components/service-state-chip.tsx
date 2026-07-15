@@ -8,8 +8,8 @@ import {
 
 const STATE_STYLE: Record<ServiceEntry["state"], string> = {
   locked: "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]",
-  connected: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-  live: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+  connected: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200",
+  live: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
 };
 
 export function ServiceStateChip({

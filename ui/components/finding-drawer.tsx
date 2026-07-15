@@ -490,7 +490,7 @@ function TriageTab({
         </a>
         <Link
           href={`/findings?cve=${vuln.id}`}
-          className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70"
+          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 dark:border-emerald-800 bg-emerald-500/10 dark:bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-500/10 dark:hover:bg-emerald-950/70"
         >
           Keep this CVE scoped
         </Link>
@@ -506,7 +506,7 @@ function ReachBadges({ vuln }: { vuln: EnrichedVuln }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {vuln.effective_reach_band ? (
-        <span className="rounded border border-amber-800/60 bg-amber-950/40 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-300">
+        <span className="rounded border border-amber-500/30 dark:border-amber-800/60 bg-amber-500/10 dark:bg-amber-950/40 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
           Reach {vuln.effective_reach_band}
           {typeof vuln.effective_reach_score === "number" ? ` (${vuln.effective_reach_score.toFixed(0)})` : ""}
         </span>
@@ -515,8 +515,8 @@ function ReachBadges({ vuln }: { vuln: EnrichedVuln }) {
         <span
           className={`rounded border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
             vuln.runtime_evidence.state === "blocked"
-              ? "border-rose-800/60 bg-rose-950/40 text-rose-300"
-              : "border-sky-800/60 bg-sky-950/40 text-sky-300"
+              ? "border-rose-500/30 dark:border-rose-800/60 bg-rose-500/10 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
+              : "border-sky-500/30 dark:border-sky-800/60 bg-sky-500/10 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300"
           }`}
         >
           Runtime {vuln.runtime_evidence.state}
@@ -571,7 +571,7 @@ function TriageButton({
 }) {
   const classes =
     tone === "green"
-      ? "border-emerald-800 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70"
+      ? "border-emerald-500/30 dark:border-emerald-800 bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 dark:hover:bg-emerald-950/70"
       : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]";
   return (
     <button

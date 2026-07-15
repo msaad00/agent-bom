@@ -124,7 +124,7 @@ export function FirstRunJourney({
                   {step.status === "done" ? (
                     <CheckCircle2 className="h-5 w-5 text-emerald-400" />
                   ) : isCurrent ? (
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 text-[11px] font-semibold text-emerald-300">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
                       {index + 1}
                     </span>
                   ) : (
@@ -136,7 +136,7 @@ export function FirstRunJourney({
                     <Icon className="h-4 w-4 text-emerald-400" />
                     {step.title}
                     {step.status === "done" ? (
-                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-200">
+                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200">
                         Done
                       </span>
                     ) : null}
@@ -212,7 +212,7 @@ function JourneyAction({
   if (step === "scan") {
     return (
       <div className="mt-3 flex flex-wrap gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200">
           <ScanSearch className="h-3.5 w-3.5" />
           Use “Run scan” on your connection below
         </span>

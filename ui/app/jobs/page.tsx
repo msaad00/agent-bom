@@ -293,7 +293,7 @@ function JobsPageContent() {
                   </p>
                   <Link
                     href="/scan"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
                   >
                     <ShieldAlert className="h-3.5 w-3.5" />
                     Run a scan

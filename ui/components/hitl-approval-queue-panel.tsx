@@ -56,7 +56,7 @@ export function HitlApprovalQueuePanel() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+      <div className="rounded-2xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/30 px-4 py-3 text-sm text-red-700 dark:text-red-300">
         {error}
       </div>
     );
@@ -152,7 +152,7 @@ export function HitlApprovalQueuePanel() {
                         type="button"
                         disabled={busyId === item.item_id}
                         onClick={() => void decide(item.item_id, "approve")}
-                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/50 px-2.5 py-1.5 text-xs text-emerald-300 hover:bg-emerald-900/40 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 dark:border-emerald-800 bg-emerald-500/10 dark:bg-emerald-950/50 px-2.5 py-1.5 text-xs text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 dark:hover:bg-emerald-900/40 disabled:opacity-50"
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Approve
@@ -161,7 +161,7 @@ export function HitlApprovalQueuePanel() {
                         type="button"
                         disabled={busyId === item.item_id}
                         onClick={() => void decide(item.item_id, "deny")}
-                        className="inline-flex items-center gap-1 rounded-lg border border-rose-800 bg-rose-950/50 px-2.5 py-1.5 text-xs text-rose-300 hover:bg-rose-900/40 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 dark:border-rose-800 bg-rose-500/10 dark:bg-rose-950/50 px-2.5 py-1.5 text-xs text-rose-700 dark:text-rose-300 hover:bg-rose-500/10 dark:hover:bg-rose-900/40 disabled:opacity-50"
                       >
                         <XCircle className="h-3.5 w-3.5" />
                         Deny

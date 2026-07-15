@@ -87,7 +87,7 @@ function BudgetPanel({ budget }: { budget: CostReport["budget"] }) {
         </div>
         No spend budget configured. Set one via{" "}
         <code className="rounded bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-xs text-[color:var(--text-secondary)]">
-          POST /v1/observability/costs/budget
+          PUT /v1/observability/costs/budget
         </code>{" "}
         to enable owner-scoped, pre-invocation enforcement at the gateway.
       </div>

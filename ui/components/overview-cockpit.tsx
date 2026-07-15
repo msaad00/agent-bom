@@ -603,11 +603,11 @@ function ComplianceSnapshotPanel({
                 <span
                   className={`justify-self-end rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
                     tone === "fail"
-                      ? "bg-red-500/15 text-red-300"
+                      ? "bg-red-500/15 text-red-700 dark:text-red-300"
                       : tone === "warn"
-                        ? "bg-yellow-500/15 text-yellow-200"
+                        ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-200"
                         : tone === "pass"
-                          ? "bg-emerald-500/15 text-emerald-300"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                           : "border border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
                   }`}
                 >
@@ -723,7 +723,7 @@ function TopRisksPanel({
         </Link>
         <Link
           href="/compliance"
-          className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-200"
+          className="rounded-lg border border-emerald-700/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200"
         >
           Compliance evidence
         </Link>
@@ -751,10 +751,10 @@ const RISK_NODE_ORDER: ExposurePathView["nodes"][number]["type"][] = [
 ];
 
 function riskScoreTone(score: number): string {
-  if (score >= 9) return "border-red-500/45 bg-red-500/10 text-red-300";
-  if (score >= 7) return "border-orange-500/45 bg-orange-500/10 text-orange-300";
-  if (score >= 4) return "border-yellow-500/45 bg-yellow-500/10 text-yellow-200";
-  return "border-sky-500/45 bg-sky-500/10 text-sky-300";
+  if (score >= 9) return "border-red-500/45 bg-red-500/10 text-red-700 dark:text-red-300";
+  if (score >= 7) return "border-orange-500/45 bg-orange-500/10 text-orange-700 dark:text-orange-300";
+  if (score >= 4) return "border-yellow-500/45 bg-yellow-500/10 text-yellow-700 dark:text-yellow-200";
+  return "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-300";
 }
 
 function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) {
@@ -801,7 +801,7 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
         ))}
       </div>
       {hasCredential ? (
-        <span className="hidden shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200 sm:inline">
+        <span className="hidden shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-200 sm:inline">
           credential
         </span>
       ) : null}

@@ -14,9 +14,9 @@ import {
 function fieldTone(kind: SsoProviderPreset["fields"][number]["kind"]): string {
   switch (kind) {
     case "secret":
-      return "border-amber-900/50 bg-amber-950/20 text-amber-200";
+      return "border-amber-500/30 dark:border-amber-900/50 bg-amber-500/10 dark:bg-amber-950/20 text-amber-700 dark:text-amber-200";
     case "tenant":
-      return "border-sky-900/50 bg-sky-950/20 text-sky-200";
+      return "border-sky-500/30 dark:border-sky-900/50 bg-sky-500/10 dark:bg-sky-950/20 text-sky-700 dark:text-sky-200";
     case "config":
     default:
       return "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)]";

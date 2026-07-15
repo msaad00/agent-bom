@@ -23,7 +23,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Search,
-  LayoutGrid,
+  BrainCircuit,
   LayoutDashboard,
   Wrench,
   RefreshCw,
@@ -129,7 +129,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "AI inventory",
-    icon: LayoutGrid,
+    icon: BrainCircuit,
     links: [
       { href: "/agents", label: "Agents", icon: Bot },
       { href: "/manifest", label: "AI BOM", icon: ClipboardList },

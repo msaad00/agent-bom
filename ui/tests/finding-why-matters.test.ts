@@ -50,7 +50,8 @@ describe("buildWhyItMatters", () => {
     expect(narrative?.paragraphs.join(" ")).toMatch(/Reachability is high/);
     expect(narrative?.paragraphs.join(" ")).toMatch(/Runtime enforcement already blocked/);
     expect(narrative?.paragraphs.join(" ")).toMatch(/Blast radius spans/);
-    expect(narrative?.paragraphs.join(" ")).toMatch(/compliance control tag/);
+    // Compliance mapping is now scannable chip data, not a run-on paragraph.
+    expect(narrative?.complianceTags).toEqual(["owasp_llm:llm06", "mitre_atlas:exfiltration"]);
     expect(narrative?.links.map((link) => link.href)).toEqual(
       expect.arrayContaining(["/security-graph", "/traces", "/compliance"]),
     );

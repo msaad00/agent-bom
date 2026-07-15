@@ -2314,9 +2314,9 @@ export interface CoverageSeverity {
   unrated: number;
 }
 
-/** One security-posture coverage lane (CSPM / Vuln mgmt / AppSec-SCA / DSPM / AISPM). */
+/** One security-posture coverage lane (CSPM / Vuln mgmt / ASPM / DSPM / AISPM). */
 export interface OverviewCoverageLane {
-  domain: "cspm" | "vuln" | "appsec_sca" | "dspm" | "aispm";
+  domain: "cspm" | "vuln" | "aspm" | "dspm" | "aispm";
   label: string;
   href: string;
   count: number;
@@ -2426,7 +2426,7 @@ export interface OverviewResponse {
 /** One security-domain lane on the per-account drill summary (#3931). Its
  * severity strip sums to ``count`` (same honest invariant as the overview). */
 export interface AccountSummaryDomain {
-  domain: "cspm" | "vuln" | "appsec_sca" | "dspm" | "aispm";
+  domain: "cspm" | "vuln" | "aspm" | "dspm" | "aispm";
   label: string;
   count: number;
   severity: CoverageSeverity;

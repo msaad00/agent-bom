@@ -8,6 +8,9 @@ export interface WhyItMattersLink {
 export interface WhyItMattersNarrative {
   headline: string;
   paragraphs: string[];
+  /** Compliance control tags this finding maps to — rendered as scannable
+   *  chips + a count rather than a run-on sentence. */
+  complianceTags: string[];
   links: WhyItMattersLink[];
 }
 
@@ -62,23 +65,18 @@ function exposureSentence(vuln: EnrichedVuln): string | null {
   return sentence;
 }
 
-function complianceSentence(vuln: EnrichedVuln): string | null {
-  const tags = vuln.framework_tags?.filter(Boolean) ?? [];
-  if (tags.length === 0) return null;
-  const preview = tags.slice(0, 3).join(", ");
-  const suffix = tags.length > 3 ? ` and ${tags.length - 3} more` : "";
-  return `Maps to ${tags.length} compliance control tag${tags.length === 1 ? "" : "s"} (${preview}${suffix}) for exportable evidence packs.`;
-}
-
 export function buildWhyItMatters(vuln: EnrichedVuln): WhyItMattersNarrative | null {
   const paragraphs = [
     reachSentence(vuln),
     runtimeSentence(vuln),
     exposureSentence(vuln),
-    complianceSentence(vuln),
   ].filter((line): line is string => Boolean(line));
 
-  if (paragraphs.length === 0) {
+  // Compliance mapping is surfaced as scannable chips + a count (not a run-on
+  // sentence), so it no longer gates the narrative on its own.
+  const complianceTags = vuln.framework_tags?.filter(Boolean) ?? [];
+
+  if (paragraphs.length === 0 && complianceTags.length === 0) {
     return null;
   }
 
@@ -100,5 +98,5 @@ export function buildWhyItMatters(vuln: EnrichedVuln): WhyItMattersNarrative | n
       ? "Prioritize remediation — reachable exposure with governance impact"
       : "Why this finding is ranked in your queue";
 
-  return { headline, paragraphs, links };
+  return { headline, paragraphs, complianceTags, links };
 }

@@ -27,7 +27,7 @@ function summary(overrides: Partial<AccountSummaryResponse> = {}): AccountSummar
     domains: [
       { domain: "cspm", label: "CSPM", count: 1, severity: { ...emptySeverity(), high: 1 }, href: "/findings?provider=aws&account=aws%3A111111111111&domain=cspm" },
       { domain: "vuln", label: "Vuln mgmt", count: 1, severity: { ...emptySeverity(), critical: 1 }, href: "/findings?provider=aws&account=aws%3A111111111111&domain=vuln" },
-      { domain: "appsec_sca", label: "AppSec / SCA", count: 0, severity: emptySeverity(), href: "/findings?provider=aws&account=aws%3A111111111111&domain=appsec_sca" },
+      { domain: "aspm", label: "ASPM", count: 0, severity: emptySeverity(), href: "/findings?provider=aws&account=aws%3A111111111111&domain=aspm" },
       { domain: "dspm", label: "DSPM", count: 0, severity: emptySeverity(), href: "/findings?provider=aws&account=aws%3A111111111111&domain=dspm" },
       { domain: "aispm", label: "AISPM", count: 1, severity: { ...emptySeverity(), medium: 1 }, href: "/findings?provider=aws&account=aws%3A111111111111&domain=aispm" },
     ],
@@ -58,7 +58,7 @@ describe("AccountDrillPage", () => {
       expect(screen.getByRole("heading", { name: /AWS · 111111111111/i })).toBeInTheDocument();
     });
     // Five domain lanes, each drill-linked and pre-filtered by account.
-    for (const label of ["CSPM", "Vuln mgmt", "AppSec / SCA", "DSPM", "AISPM"]) {
+    for (const label of ["CSPM", "Vuln mgmt", "ASPM", "DSPM", "AISPM"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
     const cspmLane = screen.getByTestId("account-lane-cspm");

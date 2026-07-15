@@ -61,11 +61,13 @@ _ALL_SEVERITY_KEYS = (*_SEVERITY_KEYS, _UNRATED_KEY)
 _HUB_SEVERITY_KEYS = ("critical", "high", "medium", "low", "info", "unknown")
 
 # Coverage lanes — the five security domains, in display order (issue #3946).
-_COVERAGE_DOMAINS = ("cspm", "vuln", "appsec_sca", "dspm", "aispm")
+# Symmetric posture-management family: CSPM · ASPM · DSPM · AISPM, plus Vuln
+# mgmt as the cross-surface CVE lane.
+_COVERAGE_DOMAINS = ("cspm", "vuln", "aspm", "dspm", "aispm")
 _COVERAGE_LABELS = {
     "cspm": "CSPM",
     "vuln": "Vuln mgmt",
-    "appsec_sca": "AppSec / SCA",
+    "aspm": "ASPM",
     "dspm": "DSPM",
     "aispm": "AISPM",
 }

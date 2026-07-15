@@ -132,7 +132,7 @@ domain** so they roll up into exactly one posture lane:
 | `account_ref` | One normalized string: `aws:123456789012`, `azure:<sub-id>`, `gcp:<project-id>`, `snowflake:<account>` |
 | `region` | Cloud region (parsed from the ARN where available) |
 | `environment` | `prod` \| `staging` \| `dev` \| … when known |
-| `security_domain` (derived) | Exactly one of `cspm`, `vuln`, `appsec_sca`, `dspm`, `aispm` |
+| `security_domain` (derived) | Exactly one of `cspm`, `vuln`, `aspm`, `dspm`, `aispm` |
 
 Scope is populated at ingest by the cloud converters
 (`cloud_cis_check_to_finding`, `snowflake_governance_finding_to_finding`) and
@@ -145,7 +145,7 @@ in `src/agent_bom/finding_scope.py`:
 | `CLOUD_CIS` (CIS benchmark) | `cspm` |
 | `CLOUD_CIS` Snowflake governance (data access) | `dspm` |
 | CVE / malicious package / license (any source) | `vuln` |
-| `SAST`, secret/credential exposure | `appsec_sca` |
+| `SAST`, secret/credential exposure | `aspm` |
 | MCP / proxy / skill / prompt / graph + AI-native types | `aispm` |
 
 A **finding** is raw scanner output; an **issue** is a correlated/deduped

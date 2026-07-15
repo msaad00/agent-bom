@@ -126,7 +126,7 @@ def test_summary_domains_are_five_lanes_each_reconciled() -> None:
     body = client.get("/v1/cloud/accounts/aws:111111111111/summary", headers=_AUTH).json()
 
     lanes = {lane["domain"]: lane for lane in body["domains"]}
-    assert set(lanes) == {"cspm", "vuln", "appsec_sca", "dspm", "aispm"}
+    assert set(lanes) == {"cspm", "vuln", "aspm", "dspm", "aispm"}
     assert lanes["cspm"]["count"] == 1
     assert lanes["vuln"]["count"] == 1
     assert lanes["aispm"]["count"] == 1

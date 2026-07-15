@@ -430,7 +430,7 @@ class Finding:
 
     @property
     def security_domain(self) -> str:
-        """Derived posture lane: one of cspm/vuln/appsec_sca/dspm/aispm.
+        """Derived posture lane: one of cspm/vuln/aspm/dspm/aispm.
 
         A pure function of source + finding type (+ evidence for the cloud
         data-vs-config split), so the overview and findings surfaces route each

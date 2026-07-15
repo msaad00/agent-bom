@@ -111,17 +111,26 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
   const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
   const fixCandidates = vuln.remediation_items.filter((item) => item.fixed_version || item.command || item.verify_command);
 
+  // Severity is already the header badge — the stat row leads with exploit
+  // signal (CVSS / EPSS) plus one KEV-or-risk tile, never re-showing severity.
+  const stats: { label: string; value: string }[] = [
+    { label: "CVSS", value: typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Not published" },
+    { label: "EPSS", value: typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Not available" },
+  ];
+  if (vuln.is_kev) stats.push({ label: "KEV", value: "Known-exploited" });
+  else if (typeof vuln.risk_score === "number") stats.push({ label: "Risk", value: vuln.risk_score.toFixed(1) });
+
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <DetailStat label="Severity" value={vuln.severity} accent={severityColor(vuln.severity)} />
-        <DetailStat label="CVSS" value={typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Not published"} />
-        <DetailStat label="EPSS" value={typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Not available"} />
+    <div className="space-y-3">
+      <div className={`grid gap-2 ${stats.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+        {stats.map((stat) => (
+          <DetailStat key={stat.label} label={stat.label} value={stat.value} />
+        ))}
       </div>
 
       <ReachBadges vuln={vuln} />
 
-      <Panel title="Attack summary">
+      <Section title="Attack summary">
         <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{summary}</p>
         {cweMatches.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-1">
@@ -130,31 +139,50 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
             ))}
           </div>
         ) : null}
-      </Panel>
+      </Section>
 
       {whyItMatters ? (
-        <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-4">
-          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-400/90">Why it matters</h4>
-          <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">{whyItMatters.headline}</p>
-          <div className="mt-2 space-y-2 text-sm leading-6 text-[color:var(--text-secondary)]">
-            {whyItMatters.paragraphs.map((paragraph) => (
-              <p key={paragraph}>{paragraph}</p>
-            ))}
-          </div>
+        <Section title="Why it matters" accent>
+          <p className="text-sm font-medium text-[color:var(--foreground)]">{whyItMatters.headline}</p>
+          {whyItMatters.paragraphs.length > 0 ? (
+            <div className="mt-1.5 space-y-1.5 text-sm leading-6 text-[color:var(--text-secondary)]">
+              {whyItMatters.paragraphs.map((paragraph) => (
+                <p key={paragraph}>{paragraph}</p>
+              ))}
+            </div>
+          ) : null}
+          {whyItMatters.complianceTags.length > 0 ? (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-medium text-[color:var(--text-tertiary)]">
+                {whyItMatters.complianceTags.length} compliance control{whyItMatters.complianceTags.length === 1 ? "" : "s"}
+              </span>
+              {whyItMatters.complianceTags.slice(0, 3).map((tag) => (
+                <Chip key={tag} mono>{tag}</Chip>
+              ))}
+              {whyItMatters.complianceTags.length > 3 ? (
+                <span className="text-[11px] text-[color:var(--text-tertiary)]">
+                  +{whyItMatters.complianceTags.length - 3} more
+                </span>
+              ) : null}
+              <Link href="/compliance" className="text-xs text-[color:var(--accent-mint)] hover:underline">
+                View evidence
+              </Link>
+            </div>
+          ) : null}
           {whyItMatters.links.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-3">
+            <div className="mt-2.5 flex flex-wrap gap-3">
               {whyItMatters.links.map((link) => (
-                <Link key={link.href} href={link.href} className="text-xs text-emerald-300 hover:underline">
+                <Link key={link.href} href={link.href} className="text-xs text-[color:var(--accent-mint)] hover:underline">
                   {link.label}
                 </Link>
               ))}
             </div>
           ) : null}
-        </div>
+        </Section>
       ) : null}
 
-      <Panel title="Fix context">
-        <div className="grid gap-2 text-sm text-[color:var(--text-secondary)] sm:grid-cols-2">
+      <Section title="Fix context">
+        <div className="grid gap-x-4 gap-y-1.5 text-sm text-[color:var(--text-secondary)] sm:grid-cols-2">
           <KeyVal label="Fix" value={vuln.fixed_version ?? "No published fix"} />
           {published ? <KeyVal label="Published" value={new Date(published).toLocaleDateString()} /> : null}
           {vuln.modified_at ? <KeyVal label="Modified" value={new Date(vuln.modified_at).toLocaleDateString()} /> : null}
@@ -162,16 +190,16 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
           {vuln.severity_source ? <KeyVal label="Severity source" value={vuln.severity_source} /> : null}
         </div>
         {fixCandidates.length > 0 ? (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 divide-y divide-[color:var(--border-subtle)] overflow-hidden rounded-lg border border-[color:var(--border-subtle)]">
             {fixCandidates.slice(0, 2).map((item) => (
-              <div key={`${item.package}:${item.current_version}`} className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
+              <div key={`${item.package}:${item.current_version}`} className="p-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-medium text-[color:var(--foreground)]">{item.package}</span>
-                  <span className="text-[11px] font-mono text-emerald-400">
+                  <span className="font-mono text-[11px] text-[color:var(--accent-mint)]">
                     {item.current_version} → {item.fixed_version ?? "monitor"}
                   </span>
                 </div>
-                {item.action ? <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">{item.action}</p> : null}
+                {item.action ? <p className="mt-1.5 text-xs text-[color:var(--text-tertiary)]">{item.action}</p> : null}
                 {item.command ? <CodeLine label="Apply" value={item.command} /> : null}
                 {item.verify_command ? <CodeLine label="Verify" value={item.verify_command} /> : null}
               </div>
@@ -181,8 +209,32 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
         {vuln.remediation_items[0]?.risk_narrative ? (
           <p className="mt-3 text-xs leading-5 text-[color:var(--text-tertiary)]">{vuln.remediation_items[0].risk_narrative}</p>
         ) : null}
-      </Panel>
+      </Section>
     </div>
+  );
+}
+
+// Flat section with a subtle top divider (and an optional left accent) — used
+// in the Overview tab so related content reads as tighter sections instead of
+// chunky cards-within-cards.
+function Section({
+  title,
+  children,
+  accent = false,
+}: {
+  title: string;
+  children: ReactNode;
+  accent?: boolean;
+}) {
+  return (
+    <section
+      className={`border-t border-[color:var(--border-subtle)] pt-3 ${
+        accent ? "border-l-2 border-l-[color:var(--accent-mint)] pl-3" : ""
+      }`}
+    >
+      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">{title}</h4>
+      <div className="mt-2">{children}</div>
+    </section>
   );
 }
 
@@ -534,11 +586,11 @@ function TriageButton({
   );
 }
 
-function DetailStat({ label, value, accent }: { label: string; value: string; accent?: string }) {
+function DetailStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
+    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5">
       <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">{label}</div>
-      <div className={`mt-2 text-sm font-medium text-[color:var(--foreground)] ${accent ?? ""}`}>{value}</div>
+      <div className="mt-1.5 text-sm font-semibold text-[color:var(--foreground)]">{value}</div>
     </div>
   );
 }
@@ -591,7 +643,7 @@ function CodeLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="mt-2">
       <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">{label}</div>
-      <code className="mt-1 block overflow-x-auto rounded bg-black/30 px-2 py-1.5 text-[11px] text-emerald-300">{value}</code>
+      <code className="mt-1 block overflow-x-auto rounded bg-[color:var(--surface)] px-2 py-1.5 text-[11px] text-[color:var(--foreground)]">{value}</code>
     </div>
   );
 }

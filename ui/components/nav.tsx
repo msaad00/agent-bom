@@ -182,11 +182,12 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Operations",
     icon: Cog,
-    desc: "Spend, jobs, and activity",
+    desc: "Spend, jobs, and integrations",
     links: [
       { href: "/cost", label: "AI Spend", icon: DollarSign },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
       { href: "/activity", label: "Activity", icon: Activity },
+      { href: "/integrations", label: "Integrations", icon: Plug, desc: "Webhooks, SIEM, threat intel, and report exports" },
     ],
   },
 ];
@@ -219,6 +220,7 @@ const NAV_LINK_ICON_CLASS: Record<string, string> = {
   "/cost": "text-yellow-400",
   "/jobs": "text-orange-400",
   "/activity": "text-lime-400",
+  "/integrations": "text-teal-400",
 };
 
 const NAV_GROUP_ICON_CLASS: Record<string, string> = {

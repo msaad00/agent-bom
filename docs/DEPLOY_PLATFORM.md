@@ -54,24 +54,27 @@ pointing back to it; in the self-hosted tiers both sides live in your account.
 
 ## Tier 1 — Self-hosted anywhere (laptop / VM, fastest)
 
-One command brings up API + UI + Postgres with Docker Compose. Best for trying
-the full product, a single-team pilot, or an air-gapped VM.
+API + UI + Postgres with Docker Compose. Best for trying the full product, a
+single-team pilot, or an air-gapped VM.
+
+**Step 1 — generate the mounted secret files first.** `docker compose up`
+hard-fails with a bare "secret file not found" if you skip this:
 
 ```bash
-cp .env.example .env
-mkdir -p deploy/secrets
-printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
-printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
-printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/api_key
-printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/audit_hmac_key
-printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/browser_session_signing_key
-printf '%s' "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" \
-  > deploy/secrets/connections_key
-chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
-  deploy/secrets/api_key deploy/secrets/audit_hmac_key \
-  deploy/secrets/browser_session_signing_key deploy/secrets/connections_key
-docker compose -f deploy/docker-compose.fullstack.yml up
+make secrets            # writes deploy/secrets/* (idempotent)
+# equivalent: python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose
 ```
+
+**Step 2 — bring the stack up:**
+
+```bash
+cp .env.example .env    # ports / non-secret URL only
+make fullstack-up       # == docker compose -f deploy/docker-compose.fullstack.yml up --build -d
+```
+
+Prefer to write the secret files by hand? Generate all six with `openssl` /
+Fernet as documented in [`deploy/secrets/README.md`](../deploy/secrets/README.md),
+`chmod 0400` them, then run the compose command above.
 
 Postgres and control-plane secrets are Docker secret files only — never `.env`
 or compose env. The API connects as `agent_bom_app` (DML-only), not the image

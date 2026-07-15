@@ -23,6 +23,7 @@ from agent_bom.asset_provenance import (
 from agent_bom.checksums import cyclonedx_hashes
 from agent_bom.models import AIBOMReport
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
+from agent_bom.vex import vex_justification_to_cdx
 
 
 def _sanitize_bom_ref(raw: str) -> str:
@@ -484,7 +485,9 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                             "state": _cdx_state_map.get(vuln.vex_status, "in_triage"),
                         }
                         if vuln.vex_justification:
-                            analysis_dict["justification"] = vuln.vex_justification
+                            cdx_justification = vex_justification_to_cdx(vuln.vex_justification)
+                            if cdx_justification:
+                                analysis_dict["justification"] = cdx_justification
                         vuln_entry["analysis"] = analysis_dict
                     vulnerabilities_cdx.append(vuln_entry)
 

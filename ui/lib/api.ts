@@ -123,7 +123,22 @@ import type {
   BlueprintDetailResponse,
   BlueprintVersionResponse,
   BlueprintSeedResponse,
-  BlueprintCreateRequest
+  BlueprintCreateRequest,
+  WebhookSubscriptionsResponse,
+  WebhookCreateRequest,
+  WebhookCreateResponse,
+  WebhookMutationResponse,
+  WebhookOutboxResponse,
+  SiemConnectorsResponse,
+  SiemFormatsResponse,
+  SiemTestResponse,
+  IntelSourcesResponse,
+  IntelAdvisoryResponse,
+  IntelMatchPackageInput,
+  IntelMatchResponse,
+  IntelDailyBriefResponse,
+  ReportJobRecord,
+  ReportCreateRequest
 } from "./api-types";
 export type {
   AccountSummaryResponse,
@@ -335,6 +350,27 @@ export type {
   BlueprintVersionResponse,
   BlueprintSeedResponse,
   BlueprintCreateRequest,
+  WebhookSubscription,
+  WebhookSubscriptionsResponse,
+  WebhookCreateRequest,
+  WebhookCreateResponse,
+  WebhookMutationResponse,
+  WebhookOutboxResponse,
+  SiemConnectorsResponse,
+  SiemFormatsResponse,
+  SiemTestResponse,
+  IntelFeedRun,
+  IntelSource,
+  IntelSourcesResponse,
+  IntelAdvisory,
+  IntelAdvisoryResponse,
+  IntelMatchPackageInput,
+  IntelMatchItem,
+  IntelMatchResponse,
+  IntelDailyBriefResponse,
+  ReportSort,
+  ReportJobRecord,
+  ReportCreateRequest,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 
@@ -503,10 +539,10 @@ async function del(path: string): Promise<void> {
   _runInvalidations(path);
 }
 
-async function getBlob(path: string): Promise<Blob> {
+async function getBlob(path: string, headers: Record<string, string> = {}): Promise<Blob> {
   const res = await _doFetch(path, {
     credentials: "include",
-    headers: getSessionAuthHeaders(),
+    headers: { ...getSessionAuthHeaders(), ...headers },
     signal: withTimeout(),
   }, "GET");
   return res.blob();
@@ -1390,6 +1426,74 @@ export const api = {
     get<DriftIncidentsResponse>(`/v1/runtime/drift/incidents?include_resolved=${includeResolved}&limit=${limit}`),
   resolveDriftIncident: (incidentId: string, note?: string) =>
     post<{ resolved: boolean }>(`/v1/runtime/drift/incidents/${encodeURIComponent(incidentId)}/resolve`, { note: note ?? "" }),
+
+  // ── Operations & Integrations: webhook subscriptions ──
+  /** List governance webhook subscriptions for the active tenant. */
+  listWebhookSubscriptions: (includeDisabled = true, limit = 200) =>
+    get<WebhookSubscriptionsResponse>(
+      `/v1/webhooks?include_disabled=${includeDisabled}&limit=${limit}`,
+      { ttlMs: 0 },
+    ),
+  /** Register a governance webhook destination. Returns the signing secret once. */
+  createWebhookSubscription: (body: WebhookCreateRequest) =>
+    post<WebhookCreateResponse>("/v1/webhooks", body),
+  /** Enable a disabled subscription. */
+  enableWebhookSubscription: (id: string) =>
+    post<WebhookMutationResponse>(`/v1/webhooks/${encodeURIComponent(id)}/enable`, {}),
+  /** Disable a subscription without deleting it. */
+  disableWebhookSubscription: (id: string) =>
+    post<WebhookMutationResponse>(`/v1/webhooks/${encodeURIComponent(id)}/disable`, {}),
+  /** Delete a subscription. */
+  deleteWebhookSubscription: (id: string) => del(`/v1/webhooks/${encodeURIComponent(id)}`),
+  /** Enqueue a synthetic test delivery to this destination. */
+  testWebhookSubscription: (id: string) =>
+    post<WebhookMutationResponse>(`/v1/webhooks/${encodeURIComponent(id)}/test`, {}),
+  /** Recent webhook outbox deliveries (observability of the shipped outbox). */
+  listWebhookOutbox: (status?: "pending" | "delivered" | "dead_letter", limit = 50) =>
+    get<WebhookOutboxResponse>(
+      `/v1/posture/webhooks/outbox?limit=${limit}${status ? `&status=${status}` : ""}`,
+      { ttlMs: 0 },
+    ),
+
+  // ── Operations & Integrations: SIEM connectors ──
+  /** List available SIEM connector types. */
+  listSiemConnectors: () => get<SiemConnectorsResponse>("/v1/siem/connectors"),
+  /** List supported SIEM event formats. */
+  listSiemFormats: () => get<SiemFormatsResponse>("/v1/siem/formats"),
+  /** Test SIEM connectivity. The token (if any) is sent via header, never persisted. */
+  testSiemConnection: (siemType: string, url: string, token?: string) =>
+    post<SiemTestResponse>(
+      `/v1/siem/test?siem_type=${encodeURIComponent(siemType)}&url=${encodeURIComponent(url)}`,
+      {},
+      token ? { "X-Siem-Token": token } : {},
+    ),
+
+  // ── Operations & Integrations: threat intel ──
+  /** Canonical threat-intel source and feed-run metadata. */
+  getIntelSources: () => get<IntelSourcesResponse>("/v1/intel/sources", { ttlMs: 0 }),
+  /** Look up one CVE/GHSA/OSV advisory from local intel. */
+  getIntelAdvisory: (advisoryId: string) =>
+    get<IntelAdvisoryResponse>(`/v1/intel/advisories/${encodeURIComponent(advisoryId)}`, { ttlMs: 0 }),
+  /** Match inventory package coordinates to local advisory intel. */
+  matchIntelPackages: (packages: IntelMatchPackageInput[], limit = 100) =>
+    post<IntelMatchResponse>("/v1/intel/match", { packages, limit }),
+  /** Local analyst threat brief from governed intel sources. */
+  getIntelDailyBrief: (body: Record<string, unknown> = {}) =>
+    post<IntelDailyBriefResponse>("/v1/intel/daily-brief", body),
+
+  // ── Operations & Integrations: async reports ──
+  /** Enqueue an async findings export (gzipped NDJSON). */
+  createReportJob: (body: ReportCreateRequest = {}) =>
+    post<ReportJobRecord>("/v1/reports", body),
+  /** Poll async report job status and download metadata. */
+  getReportJob: (jobId: string) =>
+    get<ReportJobRecord>(`/v1/reports/${encodeURIComponent(jobId)}`, { ttlMs: 0 }),
+  /** Download a completed report artifact. The job-scoped token is sent via
+   *  header (kept out of logs/history), never in the URL. */
+  downloadReportArtifact: (jobId: string, token: string) =>
+    getBlob(`/v1/reports/${encodeURIComponent(jobId)}/download`, {
+      "X-Agent-Bom-Download-Token": token,
+    }),
 };
 
 // ─── Threat Framework Catalogs ────────────────────────────────────────────────

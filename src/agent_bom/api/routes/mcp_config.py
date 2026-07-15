@@ -47,7 +47,9 @@ def _tenant(request: Request) -> str:
 
 
 def _actor(request: Request) -> str:
-    return getattr(getattr(request, "state", None), "actor", None) or "api"
+    return getattr(getattr(request, "state", None), "actor", None) or getattr(
+        getattr(request, "state", None), "api_key_name", None
+    ) or "api"
 
 
 def _str_list(body: dict, key: str, *, max_items: int = 200, max_len: int = 200) -> list[str]:

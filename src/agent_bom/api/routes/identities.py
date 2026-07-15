@@ -639,8 +639,12 @@ async def verify_agent_delegation(request: Request, body: dict) -> dict[str, obj
     required_scope = str(required_scope).strip() if required_scope not in (None, "") else None
     try:
         claims = verify_delegation_token(token, tenant_id=_tenant(request), required_scope=required_scope)
-    except DelegationTokenError as exc:
-        return {"schema_version": "agent.identity.delegation.v1", "valid": False, "reason": sanitize_error(exc)}
+    except DelegationTokenError:
+        return {
+            "schema_version": "agent.identity.delegation.v1",
+            "valid": False,
+            "reason": sanitize_error("delegation token verification failed", generic=True),
+        }
     return {
         "schema_version": "agent.identity.delegation.v1",
         "valid": True,

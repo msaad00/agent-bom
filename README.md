@@ -161,7 +161,7 @@ for ingest lanes, auth boundaries, and surface detail.
 | Non-human identity posture | `agent-bom identity credential-expiry` |
 | Advisory remediation plan | `agent-bom remediate -p .` |
 | Gated-capability readiness | `agent-bom capabilities` |
-| CI gate | `uses: msaad00/agent-bom@v0.95.0` |
+| CI gate | `uses: msaad00/agent-bom@v0.96.0` |
 
 Full command map: [docs/CLI_MAP.md](docs/CLI_MAP.md) · role routing:
 [docs/START_HERE.md](docs/START_HERE.md) · repo layout:

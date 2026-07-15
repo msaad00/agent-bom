@@ -39,7 +39,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: agentbom/agent-bom:0.95.0
+    image: agentbom/agent-bom:0.96.0
     container_name: agent-bom-api
     restart: unless-stopped
     command: api --host 0.0.0.0 --port 8422
@@ -98,7 +98,7 @@ services:
     build:
       context: ../ui/
       dockerfile: Dockerfile
-    image: agentbom/agent-bom-ui:0.95.0
+    image: agentbom/agent-bom-ui:0.96.0
     container_name: agent-bom-ui
     restart: unless-stopped
     environment:

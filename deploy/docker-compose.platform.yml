@@ -1,5 +1,3 @@
-version: "3.8"
-
 # ── Profile: PRODUCTION-SHAPED ──────────────────────────────────────────────
 # Production-like platform deployment: self-hosted `agent-bom` control plane
 # with PostgreSQL, using one product split across two images:
@@ -29,10 +27,12 @@ version: "3.8"
 #     Placeholders live at deploy/secrets/*.example for documentation only.
 #
 # Usage:
-#   cp .env.example .env                     # non-secret URL / OIDC issuer only
-#   python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose
-#   # or write files manually — see deploy/secrets/README.md
-#   docker compose -f deploy/docker-compose.platform.yml up --build
+#   # 1. Generate the mounted secret files FIRST — `up` hard-fails without them:
+#   make secrets
+#   #    (equivalent: python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose;
+#   #     or write files manually — see deploy/secrets/README.md)
+#   # 2. cp .env.example .env                  # non-secret URL / OIDC issuer only
+#   # 3. docker compose -f deploy/docker-compose.platform.yml up --build   (or: make platform-up)
 
 services:
   postgres:
@@ -134,7 +134,10 @@ services:
     ports:
       - "${AGENT_BOM_UI_BIND_HOST:-127.0.0.1}:${UI_PORT:-3000}:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8422}
+      # The browser same-origins to this UI; the UI's Node server proxies
+      # /v1,/health,/ws to NEXT_PUBLIC_API_URL, which must be the API
+      # container's in-network DNS name — not the browser's localhost.
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://api:8422}
     depends_on:
       api:
         condition: service_healthy

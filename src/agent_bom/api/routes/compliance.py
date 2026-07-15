@@ -307,13 +307,16 @@ def _evaluated_control_status(sev_breakdown: dict[str, int]) -> str:
 
     Mirror of ``compliance_narrative._control_status`` so ``/v1/compliance``, the
     narrative, and the CLI export agree: critical/high → fail, medium/low →
-    warning, otherwise pass. Keep in sync with that function.
+    warning. The caller only reaches this with findings > 0, so an all-zero
+    breakdown means the mapped findings are all unrated-severity — evidence
+    exists but severity is ungraded, which is ``not_evaluated``, never a silent
+    pass (a false pass inflated overall_score). Keep in sync with that function.
     """
     if sev_breakdown.get("critical", 0) > 0 or sev_breakdown.get("high", 0) > 0:
         return "fail"
     if sev_breakdown.get("medium", 0) > 0 or sev_breakdown.get("low", 0) > 0:
         return "warning"
-    return "pass"
+    return "not_evaluated"
 
 
 @router.get("/compliance", tags=["compliance"])

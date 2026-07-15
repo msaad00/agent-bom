@@ -144,11 +144,18 @@ def _severity_order(sev: str) -> int:
 
 
 def _control_status(sev_breakdown: dict[str, int]) -> str:
+    """Status of a control that HAS mapped findings, by worst severity.
+
+    Mirror of ``routes/compliance._evaluated_control_status``. Callers only reach
+    this with findings > 0, so an all-zero breakdown means every mapped finding
+    is unrated-severity — evidence exists but severity is ungraded, which is
+    ``not_evaluated``, never a silent pass. Keep in sync with that function.
+    """
     if sev_breakdown.get("critical", 0) > 0 or sev_breakdown.get("high", 0) > 0:
         return "fail"
     if sev_breakdown.get("medium", 0) > 0 or sev_breakdown.get("low", 0) > 0:
         return "warning"
-    return "pass"
+    return "not_evaluated"
 
 
 def _control_narrative(
@@ -347,8 +354,14 @@ def _build_framework_narrative(
         # evidence, so they are not-evaluated — never counted as a silent pass.
         if data["findings"] == 0:
             continue
-        evaluated_count += 1
         status = _control_status(data["severity_breakdown"])
+        if status == "not_evaluated":
+            # Findings map here but all are unrated-severity: evidence exists but
+            # severity is ungraded, so it is not an evaluated pass/warn/fail — it
+            # must not inflate the denominator or read as a silent pass. Mirrors
+            # the API excluding not_evaluated controls from evaluated_controls.
+            continue
+        evaluated_count += 1
         pkgs = sorted(data["affected_pkgs"])
         agents = sorted(data["affected_agents"])
 

@@ -101,13 +101,121 @@ def test_cloud_inventory_all_providers() -> None:
     resp = client.get("/v1/cloud/all/inventory", headers=_proxy_headers())
     assert resp.status_code == 200
     providers = [p["provider"] for p in resp.json()["providers"]]
-    assert providers == ["aws", "azure", "gcp"]
+    assert providers == ["aws", "azure", "gcp", "snowflake"]
 
 
-def test_cloud_inventory_unknown_provider_404() -> None:
+def test_cloud_inventory_unknown_provider_404_lists_snowflake() -> None:
     client = TestClient(app)
     resp = client.get("/v1/cloud/bogus/inventory", headers=_proxy_headers())
     assert resp.status_code == 404
+    # The 404 detail enumerates every supported provider, including snowflake.
+    assert "snowflake" in resp.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# Snowflake inventory over REST (closes #3967) — was a 404 before it was wired.
+# --------------------------------------------------------------------------- #
+
+
+def _canonical_summary_keys() -> set[str]:
+    return {"provider", "status", "account", "region", "resource_count", "identity_count", "node_summary", "warnings"}
+
+
+def test_cloud_inventory_snowflake_not_404() -> None:
+    # The route exists now; it must not 404 the way it did before #3967.
+    client = TestClient(app)
+    resp = client.get("/v1/cloud/snowflake/inventory", headers=_proxy_headers())
+    assert resp.status_code == 200
+
+
+def test_cloud_inventory_snowflake_disabled_by_default(monkeypatch) -> None:
+    # Gate off (default): a clean "disabled" summary, zero resources, never a 500.
+    monkeypatch.delenv("AGENT_BOM_SNOWFLAKE_INVENTORY", raising=False)
+    client = TestClient(app)
+    resp = client.get("/v1/cloud/snowflake/inventory", headers=_proxy_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["schema_version"] == "cloud.inventory.summary.v1"
+    sf = body["providers"][0]
+    assert sf["provider"] == "snowflake"
+    assert sf["status"] == "disabled"
+    assert sf["resource_count"] == 0
+    assert set(sf) == _canonical_summary_keys()
+
+
+def test_cloud_inventory_snowflake_not_configured_when_enabled_without_creds(monkeypatch) -> None:
+    # Gate on but no account/creds and no connector -> "not configured" 200, not 500.
+    from agent_bom.cloud import CloudDiscoveryError, snowflake
+
+    monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_INVENTORY", "1")
+    monkeypatch.delenv("SNOWFLAKE_ACCOUNT", raising=False)
+
+    def _no_connector(*_a, **_k):
+        raise CloudDiscoveryError("snowflake-connector-python is required")
+
+    monkeypatch.setattr(snowflake, "discover", _no_connector)
+
+    client = TestClient(app)
+    resp = client.get("/v1/cloud/snowflake/inventory", headers=_proxy_headers())
+    assert resp.status_code == 200
+    sf = resp.json()["providers"][0]
+    assert sf["status"] == "no_credentials"
+    assert sf["resource_count"] == 0
+
+
+def test_cloud_inventory_snowflake_returns_canonical_shape_with_data(monkeypatch) -> None:
+    # Gate on + discovery yields resources -> "ok" with the canonical summary.
+    from agent_bom.cloud import snowflake
+    from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
+    from agent_bom.models import Agent, AgentType
+
+    monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_INVENTORY", "1")
+    monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "myorg-acct")
+
+    def _fake_discover(*_a, **_k):
+        agents = [
+            Agent(name="cortex:analyst", agent_type=AgentType.CUSTOM, config_path="snowflake://myorg-acct/a", source="snowflake-cortex"),
+            Agent(name="mcp-server:data", agent_type=AgentType.CUSTOM, config_path="snowflake://myorg-acct/m", source="snowflake-mcp"),
+        ]
+        attach_envelope_to_agents(
+            agents,
+            scan_mode=ScanMode.SAAS_READ_ONLY,
+            discovery_scope=("snowflake:account/myorg-acct",),
+            permissions_used=("INFORMATION_SCHEMA.AGENTS:SELECT",),
+            redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+        )
+        return agents, []
+
+    monkeypatch.setattr(snowflake, "discover", _fake_discover)
+
+    client = TestClient(app)
+    resp = client.get("/v1/cloud/snowflake/inventory", headers=_proxy_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    sf = body["providers"][0]
+    assert set(sf) == _canonical_summary_keys()
+    assert sf["provider"] == "snowflake"
+    assert sf["status"] == "ok"
+    assert sf["resource_count"] == 2
+    assert sf["identity_count"] == 0
+    assert sf["node_summary"] == {"buckets": 0, "instances": 0, "security_groups": 0, "roles": 0, "users": 0}
+    assert body["total_resources"] == 2
+    # The discovery envelope is rolled into the read-only audit block.
+    assert "INFORMATION_SCHEMA.AGENTS:SELECT" in body["audit_metadata"]["permissions_used"]
+    assert "snowflake:account/myorg-acct" in body["audit_metadata"]["discovery_scope"]
+
+
+def test_cloud_inventory_snowflake_shape_matches_other_providers(monkeypatch) -> None:
+    # Snowflake's per-provider summary must carry the exact same field set as aws.
+    from agent_bom.cloud import snowflake
+
+    monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_INVENTORY", "1")
+    monkeypatch.setattr(snowflake, "discover", lambda *a, **k: ([], []))
+
+    client = TestClient(app)
+    body = client.get("/v1/cloud/all/inventory", headers=_proxy_headers()).json()
+    by_provider = {p["provider"]: p for p in body["providers"]}
+    assert set(by_provider["snowflake"]) == set(by_provider["aws"])
 
 
 def test_cloud_inventory_bad_region_400() -> None:

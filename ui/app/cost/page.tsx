@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DollarSign,
   Activity,
@@ -12,7 +12,6 @@ import {
   Gauge,
   Flame,
   CalendarClock,
-  Building2,
   UserCheck,
 } from "lucide-react";
 import {
@@ -47,6 +46,11 @@ import { PageLaneHeader } from "@/components/page-lane";
 import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { serviceEntry } from "@/lib/service-registry";
+import { StatStrip, type StatStripItem } from "@/components/stat-strip";
+import { DataTable, type DataTableColumn, type SortDirection } from "@/components/data-table";
+import { Collapsible } from "@/components/collapsible";
+import { Drawer } from "@/components/drawer";
+import { useChartTheme } from "@/lib/theme-colors";
 
 function classifyApiErrorKind(err: unknown): ApiOfflineKind {
   if (err instanceof ApiAuthError) return "auth";
@@ -60,148 +64,98 @@ const fmtUsd = (n: number) =>
     : `$${n.toFixed(4)}`;
 const fmtInt = (n: number) => n.toLocaleString();
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  color: string;
-}) {
-  return (
-    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
-      <div className="mb-1 flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${color}`} />
-        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
-      </div>
-      <p className="text-2xl font-bold text-[var(--foreground)]">{value}</p>
-    </div>
-  );
+// ─── Budget (owner-scoped) ───────────────────────────────────────────────────
+
+function budgetScopeLabel(budget: CostReport["budget"]): string {
+  if (budget.owner) {
+    return budget.workflow
+      ? `owner ${budget.owner} · ${budget.workflow}`
+      : `owner ${budget.owner}`;
+  }
+  if (budget.agent) return `agent ${budget.agent}`;
+  if (budget.cost_center) return `cost-center ${budget.cost_center}`;
+  return "tenant-wide";
 }
 
-function BudgetBanner({ budget }: { budget: CostReport["budget"] }) {
+function BudgetPanel({ budget }: { budget: CostReport["budget"] }) {
   if (!budget?.configured) {
     return (
-      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-4 text-sm text-[var(--text-secondary)]">
-        No spend budget configured for this tenant. Set one via{" "}
-        <code className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
+      <div className="flex h-full flex-col justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 text-sm text-[color:var(--text-secondary)] elev-1">
+        <div className="mb-1 flex items-center gap-2 text-[color:var(--text-tertiary)]">
+          <Gauge className="h-4 w-4" />
+          <span className="text-[11px] font-medium uppercase tracking-[0.1em]">Budget</span>
+        </div>
+        No spend budget configured. Set one via{" "}
+        <code className="rounded bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-xs text-[color:var(--text-secondary)]">
           POST /v1/observability/costs/budget
         </code>{" "}
-        to enable pre-invocation enforcement at the gateway.
+        to enable owner-scoped, pre-invocation enforcement at the gateway.
       </div>
     );
   }
   const util = budget.utilization ?? 0;
   const pct = Math.min(100, Math.round(util * 100));
   const enforce = budget.mode === "enforce";
-  const barColor = budget.exceeded
-    ? "bg-red-500"
-    : pct >= 80
-      ? "bg-amber-500"
-      : "bg-emerald-500";
+  const tone = budget.exceeded ? "danger" : pct >= 80 ? "warn" : "success";
+  const barVar =
+    tone === "danger"
+      ? "var(--status-danger)"
+      : tone === "warn"
+        ? "var(--status-warn)"
+        : "var(--status-success)";
   return (
     <div
-      className={`rounded-xl border p-4 ${
+      className={`rounded-xl border p-4 elev-1 ${
         budget.exceeded
-          ? "border-red-800/60 bg-red-950/20"
-          : "border-[var(--border-subtle)] bg-[var(--surface)]/40"
+          ? "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)]"
+          : "border-[color:var(--border-subtle)] bg-[color:var(--surface)]"
       }`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Gauge
-            className={`h-4 w-4 ${budget.exceeded ? "text-red-400" : "text-emerald-400"}`}
+            className="h-4 w-4"
+            style={{ color: budget.exceeded ? "var(--status-danger)" : "var(--status-success)" }}
           />
-          <span className="text-sm font-medium text-[var(--foreground)]">
-            Budget {budget.agent ? `· agent ${budget.agent}` : "· tenant-wide"}
+          <span className="text-sm font-medium text-[color:var(--foreground)]">
+            Budget · {budgetScopeLabel(budget)}
           </span>
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               enforce
-                ? "bg-emerald-900/60 text-emerald-300"
-                : "bg-[var(--surface-elevated)] text-[var(--text-secondary)]"
+                ? "border border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success)]"
+                : "border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]"
             }`}
           >
             {enforce ? "enforce" : "report-only"}
           </span>
           {budget.exceeded && (
-            <span className="rounded-full bg-red-900/60 px-2 py-0.5 text-xs font-medium text-red-300">
+            <span className="rounded-full border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-2 py-0.5 text-xs font-medium text-[color:var(--status-danger)]">
               exceeded
             </span>
           )}
         </div>
-        <span className="text-sm text-[var(--text-secondary)]">
+        <span className="text-sm text-[color:var(--text-secondary)]">
           {fmtUsd(budget.spend_usd)}{" "}
           {budget.limit_usd != null && <>/ {fmtUsd(budget.limit_usd)}</>}
           {budget.remaining_usd != null && (
-            <span className="ml-2 text-[var(--text-tertiary)]">
+            <span className="ml-2 text-[color:var(--text-tertiary)]">
               ({fmtUsd(Math.max(0, budget.remaining_usd))} left)
             </span>
           )}
         </span>
       </div>
-      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[var(--surface-elevated)]">
+      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
         <div
-          className={`h-full ${barColor} transition-all duration-700`}
-          style={{ width: `${pct}%` }}
+          className="h-full transition-all duration-700"
+          style={{ width: `${pct}%`, backgroundColor: barVar }}
         />
       </div>
     </div>
   );
 }
 
-function BreakdownTable({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: CostBreakdownRow[];
-}) {
-  const top = [...rows].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 12);
-  return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
-      <h3 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">{title}</h3>
-      {top.length === 0 ? (
-        <p className="text-sm text-[var(--text-tertiary)]">No cost records yet.</p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
-              <th className="pb-2 font-medium">Name</th>
-              <th className="pb-2 text-right font-medium">Calls</th>
-              <th className="pb-2 text-right font-medium">Tokens (in/out)</th>
-              <th className="pb-2 text-right font-medium">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {top.map((r) => (
-              <tr
-                key={r.key}
-                className="border-b border-[var(--border-subtle)] last:border-0"
-              >
-                <td className="py-2 font-mono text-xs text-[var(--text-secondary)]">
-                  {r.key || "—"}
-                </td>
-                <td className="py-2 text-right text-[var(--text-secondary)]">
-                  {fmtInt(r.calls)}
-                </td>
-                <td className="py-2 text-right text-[var(--text-tertiary)]">
-                  {fmtInt(r.input_tokens)} / {fmtInt(r.output_tokens)}
-                </td>
-                <td className="py-2 text-right font-medium text-[var(--foreground)]">
-                  {fmtUsd(r.cost_usd)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
+// ─── Forecast & runway ───────────────────────────────────────────────────────
 
 const FORECAST_STATUS: Record<
   string,
@@ -220,18 +174,25 @@ function fmtDays(n: number): string {
   return `${(n * 24).toFixed(1)}h`;
 }
 
+function toneChipClass(tone: "ok" | "warn" | "danger" | "muted"): string {
+  switch (tone) {
+    case "ok":
+      return "border border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success)]";
+    case "warn":
+      return "border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-[color:var(--status-warn)]";
+    case "danger":
+      return "border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--status-danger)]";
+    default:
+      return "border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]";
+  }
+}
+
 function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
   const status = forecast?.status ?? "insufficient_history";
   const meta = FORECAST_STATUS[status] ?? {
     label: status.replace(/_/g, " "),
     tone: "muted" as const,
   };
-  const toneClass = {
-    ok: "bg-emerald-900/60 text-emerald-300",
-    warn: "bg-amber-900/60 text-amber-300",
-    danger: "bg-red-900/60 text-red-300",
-    muted: "bg-[var(--surface-elevated)] text-[var(--text-secondary)]",
-  }[meta.tone];
 
   const hasRate = forecast?.burn_rate_usd_per_day != null;
   const hasRunway = forecast?.days_remaining != null;
@@ -242,20 +203,22 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
     forecast.days_remaining <= 14;
 
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
       <div className="mb-3 flex items-center gap-2">
-        <CalendarClock className="h-4 w-4 text-sky-400" />
-        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+        <CalendarClock className="h-4 w-4 text-[color:var(--accent)]" />
+        <h3 className="text-sm font-semibold text-[color:var(--foreground)]">
           Forecast &amp; runway
         </h3>
         <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${atRisk ? "bg-amber-900/60 text-amber-300" : toneClass}`}
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+            atRisk ? toneChipClass("warn") : toneChipClass(meta.tone)
+          }`}
         >
           {atRisk ? "at risk" : meta.label}
         </span>
       </div>
       {!hasRate && !hasRunway ? (
-        <p className="text-sm text-[var(--text-tertiary)]">
+        <p className="text-sm text-[color:var(--text-tertiary)]">
           {status === "insufficient_history"
             ? "Not enough timestamped spend yet to project a burn rate. A forecast appears once at least two priced LLM calls are recorded."
             : status === "no_budget"
@@ -266,65 +229,50 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
-              <div className="mb-1 flex items-center gap-1.5">
-                <Flame className="h-3.5 w-3.5 text-orange-400" />
-                <span className="text-xs text-[var(--text-tertiary)]">Burn / day</span>
-              </div>
-              <p className="text-lg font-bold text-[var(--foreground)]">
-                {forecast?.burn_rate_usd_per_day != null
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <ForecastStat
+              icon={Flame}
+              label="Burn / day"
+              value={
+                forecast?.burn_rate_usd_per_day != null
                   ? fmtUsd(forecast.burn_rate_usd_per_day)
-                  : "—"}
-              </p>
-              {forecast?.burn_rate_basis && (
-                <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
-                  {forecast.burn_rate_basis.replace(/_/g, " ")}
-                </p>
-              )}
-            </div>
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
-              <div className="mb-1 flex items-center gap-1.5">
-                <Gauge className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
-                <span className="text-xs text-[var(--text-tertiary)]">Runway</span>
-              </div>
-              <p
-                className={`text-lg font-bold ${atRisk ? "text-amber-300" : "text-[var(--foreground)]"}`}
-              >
-                {forecast?.days_remaining != null
-                  ? fmtDays(forecast.days_remaining)
-                  : "—"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
-              <div className="mb-1 flex items-center gap-1.5">
-                <CalendarClock className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
-                <span className="text-xs text-[var(--text-tertiary)]">Exhaustion</span>
-              </div>
-              <p className="text-sm font-medium text-[var(--foreground)]">
-                {forecast?.projected_exhaustion_at
+                  : "—"
+              }
+              hint={forecast?.burn_rate_basis?.replace(/_/g, " ")}
+            />
+            <ForecastStat
+              icon={Gauge}
+              label="Runway"
+              value={
+                forecast?.days_remaining != null ? fmtDays(forecast.days_remaining) : "—"
+              }
+              valueClass={atRisk ? "text-[color:var(--status-warn)]" : undefined}
+            />
+            <ForecastStat
+              icon={CalendarClock}
+              label="Exhaustion"
+              value={
+                forecast?.projected_exhaustion_at
                   ? formatDate(forecast.projected_exhaustion_at)
-                  : "—"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
-              <div className="mb-1 flex items-center gap-1.5">
-                <TrendingUp className="h-3.5 w-3.5 text-[var(--text-secondary)]" />
-                <span className="text-xs text-[var(--text-tertiary)]">Projected period</span>
-              </div>
-              <p className="text-sm font-medium text-[var(--foreground)]">
-                {forecast?.projected_period_spend_usd != null
+                  : "—"
+              }
+            />
+            <ForecastStat
+              icon={TrendingUp}
+              label="Projected period"
+              value={
+                forecast?.projected_period_spend_usd != null
                   ? fmtUsd(forecast.projected_period_spend_usd)
-                  : "—"}
-              </p>
-              {forecast?.budget_limit_usd != null && (
-                <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
-                  of {fmtUsd(forecast.budget_limit_usd)} cap
-                </p>
-              )}
-            </div>
+                  : "—"
+              }
+              hint={
+                forecast?.budget_limit_usd != null
+                  ? `of ${fmtUsd(forecast.budget_limit_usd)} cap`
+                  : undefined
+              }
+            />
           </div>
-          <p className="mt-3 text-[11px] text-[var(--text-tertiary)]">
+          <p className="mt-3 text-[11px] text-[color:var(--text-tertiary)]">
             Reference only — a forecast never blocks a call; enforcement stays at
             the gateway.
           </p>
@@ -334,122 +282,268 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
   );
 }
 
-function ChargebackPanel({ rows }: { rows: CostBreakdownRow[] }) {
-  const top = [...rows].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 12);
-  const total = rows.reduce((sum, r) => sum + r.cost_usd, 0);
+function ForecastStat({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  valueClass,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  hint?: string | undefined;
+  valueClass?: string | undefined;
+}) {
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <Building2 className="h-4 w-4 text-violet-400" />
-        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
-          Chargeback by cost-center
-        </h3>
+    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
+      <div className="mb-1 flex items-center gap-1.5">
+        <Icon className="h-3.5 w-3.5 text-[color:var(--text-tertiary)]" />
+        <span className="text-[11px] text-[color:var(--text-tertiary)]">{label}</span>
       </div>
-      {top.length === 0 ? (
-        <p className="text-sm text-[var(--text-tertiary)]">
-          No chargeback allocation recorded. Tag GenAI spans with{" "}
-          <code className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
-            agent.cost_center
-          </code>{" "}
-          (or <code className="text-[var(--text-secondary)]">allocation.tag.*</code>) to attribute
-          spend to a budget unit.
-        </p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
-              <th className="pb-2 font-medium">Cost center</th>
-              <th className="pb-2 text-right font-medium">Calls</th>
-              <th className="pb-2 text-right font-medium">Share</th>
-              <th className="pb-2 text-right font-medium">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {top.map((r) => {
-              const share = total > 0 ? r.cost_usd / total : 0;
-              return (
-                <tr
-                  key={r.key}
-                  className="border-b border-[var(--border-subtle)] last:border-0"
-                >
-                  <td className="py-2 font-mono text-xs text-[var(--text-secondary)]">
-                    {r.key || "unallocated"}
-                  </td>
-                  <td className="py-2 text-right text-[var(--text-secondary)]">
-                    {fmtInt(r.calls)}
-                  </td>
-                  <td className="py-2 text-right text-[var(--text-tertiary)]">
-                    {(share * 100).toFixed(1)}%
-                  </td>
-                  <td className="py-2 text-right font-medium text-[var(--foreground)]">
-                    {fmtUsd(r.cost_usd)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      <p className={`text-lg font-bold ${valueClass ?? "text-[color:var(--foreground)]"}`}>
+        {value}
+      </p>
+      {hint ? <p className="mt-0.5 text-[11px] text-[color:var(--text-tertiary)]">{hint}</p> : null}
     </div>
   );
 }
 
-function OwnerPanel({ rows }: { rows: CostBreakdownRow[] }) {
-  const top = [...rows].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 12);
-  const total = rows.reduce((sum, r) => sum + r.cost_usd, 0);
+// ─── Breakdown (unified, dimension-switched) ─────────────────────────────────
+
+type BreakdownDim = {
+  key: string;
+  label: string;
+  noun: string;
+  rows: CostBreakdownRow[];
+  emptyKey: string;
+  emptyHint: string;
+};
+
+type SortKey = "cost_usd" | "calls" | "key";
+
+function BreakdownExplorer({ report }: { report: CostReport }) {
+  const dims = useMemo<BreakdownDim[]>(
+    () => [
+      { key: "agent", label: "Agent", noun: "agent", rows: report.by_agent, emptyKey: "—", emptyHint: "" },
+      { key: "model", label: "Model", noun: "model", rows: report.by_model, emptyKey: "—", emptyHint: "" },
+      { key: "provider", label: "Provider", noun: "provider", rows: report.by_provider, emptyKey: "—", emptyHint: "" },
+      {
+        key: "owner",
+        label: "Owner",
+        noun: "accountable owner",
+        rows: report.by_owner ?? [],
+        emptyKey: "unattributed",
+        emptyHint:
+          "Approve a governance blueprint listing an agent to attribute its spend to the accountable owner.",
+      },
+      {
+        key: "cost_center",
+        label: "Cost center",
+        noun: "cost-center",
+        rows: report.by_cost_center ?? [],
+        emptyKey: "unallocated",
+        emptyHint:
+          "Tag GenAI spans with agent.cost_center (or allocation.tag.*) to attribute spend to a budget unit.",
+      },
+    ],
+    [report],
+  );
+
+  const [activeKey, setActiveKey] = useState("agent");
+  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
+    key: "cost_usd",
+    direction: "desc",
+  });
+  const [selected, setSelected] = useState<CostBreakdownRow | null>(null);
+
+  const active = dims.find((d) => d.key === activeKey) ?? dims[0]!;
+  const total = useMemo(
+    () => active.rows.reduce((sum, r) => sum + r.cost_usd, 0),
+    [active],
+  );
+
+  const sortedRows = useMemo(() => {
+    const rows = [...active.rows];
+    rows.sort((a, b) => {
+      const dir = sort.direction === "asc" ? 1 : -1;
+      if (sort.key === "key") return dir * a.key.localeCompare(b.key);
+      return dir * (a[sort.key] - b[sort.key]);
+    });
+    return rows;
+  }, [active, sort]);
+
+  const cycleSort = (key: string) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key: key as SortKey, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { key: key as SortKey, direction: key === "key" ? "asc" : "desc" },
+    );
+  };
+
+  const columns: DataTableColumn<CostBreakdownRow>[] = [
+    {
+      key: "key",
+      header: active.label,
+      sortable: true,
+      cell: (r) => (
+        <span className="font-mono text-xs text-[color:var(--text-secondary)]">
+          {r.key || active.emptyKey}
+        </span>
+      ),
+    },
+    {
+      key: "calls",
+      header: "Calls",
+      align: "right",
+      sortable: true,
+      cell: (r) => fmtInt(r.calls),
+    },
+    {
+      key: "tokens",
+      header: "Tokens (in/out)",
+      align: "right",
+      cell: (r) => (
+        <span className="text-[color:var(--text-tertiary)]">
+          {fmtInt(r.input_tokens)} / {fmtInt(r.output_tokens)}
+        </span>
+      ),
+    },
+    {
+      key: "share",
+      header: "Share",
+      align: "right",
+      cell: (r) => (
+        <span className="text-[color:var(--text-tertiary)]">
+          {(total > 0 ? (r.cost_usd / total) * 100 : 0).toFixed(1)}%
+        </span>
+      ),
+    },
+    {
+      key: "cost_usd",
+      header: "Cost",
+      align: "right",
+      sortable: true,
+      cell: (r) => (
+        <span className="font-medium text-[color:var(--foreground)]">{fmtUsd(r.cost_usd)}</span>
+      ),
+    },
+  ];
+
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <UserCheck className="h-4 w-4 text-emerald-400" />
-        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
-          Spend by accountable owner
-        </h3>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-[color:var(--foreground)]">Cost breakdown</h3>
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5">
+          {dims.map((dim) => (
+            <button
+              key={dim.key}
+              type="button"
+              onClick={() => {
+                setActiveKey(dim.key);
+                setSelected(null);
+              }}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                dim.key === activeKey
+                  ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                  : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
+              }`}
+            >
+              {dim.label}
+            </button>
+          ))}
+        </div>
       </div>
-      {top.length === 0 ? (
-        <p className="text-sm text-[var(--text-tertiary)]">
-          No owner attribution yet. Approve a governance blueprint whose
-          composition lists an agent to attribute that agent&apos;s spend to its
-          accountable owner.
-        </p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
-              <th className="pb-2 font-medium">Owner</th>
-              <th className="pb-2 text-right font-medium">Calls</th>
-              <th className="pb-2 text-right font-medium">Share</th>
-              <th className="pb-2 text-right font-medium">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {top.map((r) => {
-              const share = total > 0 ? r.cost_usd / total : 0;
-              return (
-                <tr
-                  key={r.key}
-                  className="border-b border-[var(--border-subtle)] last:border-0"
-                >
-                  <td className="py-2 font-mono text-xs text-[var(--text-secondary)]">
-                    {r.key || "unattributed"}
-                  </td>
-                  <td className="py-2 text-right text-[var(--text-secondary)]">
-                    {fmtInt(r.calls)}
-                  </td>
-                  <td className="py-2 text-right text-[var(--text-tertiary)]">
-                    {(share * 100).toFixed(1)}%
-                  </td>
-                  <td className="py-2 text-right font-medium text-[var(--foreground)]">
-                    {fmtUsd(r.cost_usd)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+
+      <DataTable
+        rows={sortedRows}
+        rowKey={(r) => r.key || active.emptyKey}
+        columns={columns}
+        selectedKey={selected ? selected.key || active.emptyKey : undefined}
+        onRowClick={setSelected}
+        sort={sort}
+        onSortChange={cycleSort}
+        maxHeight="26rem"
+        caption={`Spend by ${active.noun}`}
+        empty={
+          active.emptyHint || `No spend recorded by ${active.noun} yet.`
+        }
+        data-testid="cost-breakdown-table"
+      />
+
+      <Drawer
+        open={selected != null}
+        onClose={() => setSelected(null)}
+        eyebrow={`Spend by ${active.label}`}
+        title={selected?.key || active.emptyKey}
+        size="lg"
+        ariaLabel="Cost breakdown detail"
+      >
+        {selected ? (
+          <div className="space-y-4">
+            <StatStrip
+              items={[
+                { label: "Cost", value: fmtUsd(selected.cost_usd), accent: "success" },
+                {
+                  label: "Share",
+                  value: `${(total > 0 ? (selected.cost_usd / total) * 100 : 0).toFixed(1)}%`,
+                },
+                { label: "Calls", value: fmtInt(selected.calls) },
+              ]}
+            />
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <DetailStat label="Input tokens" value={fmtInt(selected.input_tokens)} />
+              <DetailStat label="Output tokens" value={fmtInt(selected.output_tokens)} />
+              <DetailStat
+                label="Unpriced calls"
+                value={fmtInt(selected.unpriced_calls)}
+                warn={selected.unpriced_calls > 0}
+              />
+              <DetailStat
+                label="Avg cost / call"
+                value={fmtUsd(selected.calls > 0 ? selected.cost_usd / selected.calls : 0)}
+              />
+            </dl>
+            {selected.unpriced_calls > 0 ? (
+              <p className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+                {fmtInt(selected.unpriced_calls)} call
+                {selected.unpriced_calls === 1 ? "" : "s"} lacked a captured price model, so real
+                spend for this {active.noun} may be higher.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </Drawer>
     </div>
   );
 }
+
+function DetailStat({
+  label,
+  value,
+  warn,
+}: {
+  label: string;
+  value: string;
+  warn?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
+      <dt className="text-[11px] uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
+        {label}
+      </dt>
+      <dd
+        className={`mt-1 font-mono text-base font-semibold ${
+          warn ? "text-[color:var(--status-warn)]" : "text-[color:var(--foreground)]"
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+// ─── Anomalies ───────────────────────────────────────────────────────────────
 
 function AnomalyRow({ a }: { a: CostAnomaly }) {
   const high = a.severity === "high";
@@ -457,27 +551,28 @@ function AnomalyRow({ a }: { a: CostAnomaly }) {
     <div
       className={`rounded-lg border p-3 ${
         high
-          ? "border-red-800/50 bg-red-950/20"
-          : "border-amber-800/40 bg-amber-950/10"
+          ? "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)]"
+          : "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)]"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ShieldAlert
-            className={`h-4 w-4 ${high ? "text-red-400" : "text-amber-400"}`}
+            className="h-4 w-4"
+            style={{ color: high ? "var(--status-danger)" : "var(--status-warn)" }}
           />
-          <span className="text-sm font-medium text-[var(--foreground)]">
+          <span className="text-sm font-medium text-[color:var(--foreground)]">
             {a.type.replace(/_/g, " ")}
           </span>
-          <span className="font-mono text-xs text-[var(--text-tertiary)]">
+          <span className="font-mono text-xs text-[color:var(--text-tertiary)]">
             {a.agent ?? a.session_id ?? ""}
           </span>
         </div>
-        <span className="font-mono text-xs text-[var(--text-secondary)]">
+        <span className="font-mono text-xs text-[color:var(--text-secondary)]">
           z={a.z_score.toFixed(1)}
         </span>
       </div>
-      <p className="mt-1 text-xs text-[var(--text-secondary)]">
+      <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
         {a.metric} ={" "}
         {typeof a.value === "number" ? a.value.toLocaleString() : a.value} vs
         baseline {a.baseline_median.toLocaleString()} — {a.recommendation}
@@ -486,9 +581,12 @@ function AnomalyRow({ a }: { a: CostAnomaly }) {
   );
 }
 
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 export default function CostPage() {
   const { counts } = useDeploymentContext();
   const aiSpendService = serviceEntry(counts?.services, "ai_spend");
+  const chart = useChartTheme();
   const [report, setReport] = useState<CostReport | null>(null);
   const [anomalies, setAnomalies] = useState<AnomaliesReport | null>(null);
   const [forecast, setForecast] = useState<CostForecast | null>(null);
@@ -552,8 +650,23 @@ export default function CostPage() {
     .map((r) => ({ name: r.key || "—", cost: Number(r.cost_usd.toFixed(4)) }));
   const anomalyCount = anomalies?.anomaly_count ?? 0;
 
+  const kpis: StatStripItem[] = [
+    { label: "Total spend", value: fmtUsd(report.total_cost_usd), icon: DollarSign, accent: "success" },
+    { label: "LLM calls", value: fmtInt(report.total_calls), icon: Activity },
+    { label: "Input tokens", value: fmtInt(report.total_input_tokens), icon: ArrowDownToLine },
+    { label: "Output tokens", value: fmtInt(report.total_output_tokens), icon: ArrowUpFromLine },
+    {
+      label: "Unpriced calls",
+      value: fmtInt(report.unpriced_calls),
+      icon: AlertTriangle,
+      accent: "warn",
+      accentThreshold: 0,
+      hint: report.unpriced_calls > 0 ? "spend may be understated" : undefined,
+    },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageLaneHeader
         lane="operations"
         title="AI Spend"
@@ -573,117 +686,67 @@ export default function CostPage() {
         registry={counts?.services}
       />
 
-      <BudgetBanner budget={report.budget} />
+      <StatStrip items={kpis} data-testid="cost-kpi-strip" />
 
-      <ForecastPanel forecast={forecast} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <BudgetPanel budget={report.budget} />
+        <ForecastPanel forecast={forecast} />
+      </div>
 
       {!hasData ? (
         <PageEmptyState
           title="No cost telemetry yet"
           detail="Cost records appear once agents make priced LLM calls through the proxy or report usage to the cost store."
           icon={DollarSign}
+          data-testid="cost-empty-state"
         />
       ) : (
-        <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            <StatCard
-              icon={DollarSign}
-              label="Total spend"
-              value={fmtUsd(report.total_cost_usd)}
-              color="text-emerald-400"
-            />
-            <StatCard
-              icon={Activity}
-              label="LLM calls"
-              value={fmtInt(report.total_calls)}
-              color="text-blue-400"
-            />
-            <StatCard
-              icon={ArrowDownToLine}
-              label="Input tokens"
-              value={fmtInt(report.total_input_tokens)}
-              color="text-[var(--text-secondary)]"
-            />
-            <StatCard
-              icon={ArrowUpFromLine}
-              label="Output tokens"
-              value={fmtInt(report.total_output_tokens)}
-              color="text-[var(--text-secondary)]"
-            />
-            <StatCard
-              icon={AlertTriangle}
-              label="Unpriced calls"
-              value={fmtInt(report.unpriced_calls)}
-              color={
-                report.unpriced_calls > 0 ? "text-amber-400" : "text-[var(--text-secondary)]"
-              }
-            />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
+            <BreakdownExplorer report={report} />
           </div>
-
-          <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
             <div className="mb-3 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-emerald-400" />
-              <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+              <TrendingUp className="h-4 w-4 text-[color:var(--accent)]" />
+              <h3 className="text-sm font-semibold text-[color:var(--foreground)]">
                 Spend by agent (top 10)
               </h3>
             </div>
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={300}>
               <BarChart
                 data={agentChart}
                 margin={{ top: 8, right: 8, bottom: 8, left: 8 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                <XAxis
-                  dataKey="name"
-                  stroke="#71717a"
-                  tick={{ fontSize: 11 }}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                <XAxis dataKey="name" stroke={chart.text} tick={{ fontSize: 11 }} />
                 <YAxis
-                  stroke="#71717a"
+                  stroke={chart.text}
                   tick={{ fontSize: 11 }}
                   tickFormatter={(v) => `$${v}`}
                 />
-                <Tooltip
-                  content={<ChartTooltip />}
-                  cursor={{ fill: "#ffffff08" }}
-                />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--surface-muted)" }} />
                 <Bar dataKey="cost" radius={[6, 6, 0, 0]}>
                   {agentChart.map((_, i) => (
-                    <Cell key={i} fill="#34d399" />
+                    <Cell key={i} fill={chart.accent} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <BreakdownTable title="By model" rows={report.by_model} />
-            <BreakdownTable title="By provider" rows={report.by_provider} />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ChargebackPanel rows={report.by_cost_center ?? []} />
-            <OwnerPanel rows={report.by_owner ?? []} />
-          </div>
-        </>
+        </div>
       )}
 
-      <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <ShieldAlert className="h-4 w-4 text-amber-400" />
-          <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
-            Cost & behavior anomalies
-          </h3>
-          {anomalyCount > 0 && (
-            <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-xs font-medium text-amber-300">
-              {anomalyCount}
-            </span>
-          )}
-        </div>
+      <Collapsible
+        title="Cost & behavior anomalies"
+        subtitle="Statistical outliers across cost and call-rate baselines"
+        icon={ShieldAlert}
+        count={anomalyCount}
+        defaultOpen={anomalyCount > 0}
+        data-testid="cost-anomalies"
+      >
         {anomalyCount === 0 ? (
-          <p className="text-sm text-[var(--text-tertiary)]">
-            No statistical anomalies detected across cost or call-rate
-            baselines.
+          <p className="text-sm text-[color:var(--text-tertiary)]">
+            No statistical anomalies detected across cost or call-rate baselines.
           </p>
         ) : (
           <div className="space-y-2">
@@ -695,7 +758,14 @@ export default function CostPage() {
             ))}
           </div>
         )}
-      </div>
+      </Collapsible>
+
+      {hasData && report.by_owner && report.by_owner.length > 0 ? (
+        <p className="flex items-center gap-1.5 text-[11px] text-[color:var(--text-tertiary)]">
+          <UserCheck className="h-3.5 w-3.5" />
+          Owner rollup attributes each agent&apos;s spend to the accountable owner from its governing blueprint. Switch the breakdown to <span className="font-medium text-[color:var(--text-secondary)]">Owner</span> to review chargeback.
+        </p>
+      ) : null}
     </div>
   );
 }

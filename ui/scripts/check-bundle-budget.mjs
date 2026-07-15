@@ -33,7 +33,11 @@ const BUDGETS = {
   // `zinc-*` utilities they replace, so the compiled className strings grow a few KiB.
   // Allows 4 KiB for the measured Linux/macOS output variance after adding the
   // blueprint route; both builds remain at roughly 3.3 MiB of emitted client JS.
-  totalClientJsBytes: 3_383_296,
+  // Raised ~8 KiB for the premium design-system foundation: the elevation,
+  // hover, focus-visible, and interactive-state token classes now baked into the
+  // widely-imported shared shells (Collapsible, Drawer, PageState, cards) add a
+  // few KiB of compiled className string literals across every route chunk.
+  totalClientJsBytes: 3_391_488,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

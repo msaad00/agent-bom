@@ -3,17 +3,25 @@
 :root {
   color-scheme: dark;
   /*
-   * Enterprise-console hierarchy (dark-first):
-   * page < card (--surface) < inset/elevated — each one step brighter,
-   * with borders and secondary text strong enough to read at a glance.
-   * Mint stays the brand accent; severity/status hues are sharpened below.
+   * Enterprise-console hierarchy (dark-first). Four layered surfaces, each one
+   * step brighter, sit on a deep — not pure-black — canvas with a very subtle
+   * radial depth wash:
+   *
+   *   --background        app canvas (deepest)
+   *   --surface-panel     page panels / wells that group cards
+   *   --surface           card (the default content surface)
+   *   --surface-elevated  inset / raised chips, popovers, hovered rows
+   *
+   * Mint/emerald stays the single brand accent (with a small interactive
+   * scale); severity/status hues are semantic and kept separate from it.
    */
-  --background: #181a22;
+  --background: #14161d;
   --foreground: #f4f5f8;
+  --surface-panel: #1b1e27;
   --surface: #22262f;
   --surface-elevated: #2c3140;
   --surface-muted: rgba(72, 78, 94, 0.58);
-  --border-subtle: rgba(110, 118, 138, 0.78);
+  --border-subtle: rgba(110, 118, 138, 0.72);
   --border-strong: rgba(140, 148, 168, 0.92);
   --text-secondary: #d0d4dc;
   --text-tertiary: #a8aebc;
@@ -23,13 +31,40 @@
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 60px;
 
-  /* Mint brand accent */
-  --accent-mint: #34d399;
+  /* Subtle canvas depth — a soft dual spotlight, never a loud gradient. */
+  --app-bg-image:
+    radial-gradient(1200px 620px at 50% -12%, rgba(52, 211, 153, 0.055), transparent 62%),
+    radial-gradient(1000px 560px at 100% 0%, rgba(99, 163, 255, 0.045), transparent 58%);
 
-  /* Text that sits on a bright accent fill (emerald/sky buttons). Near-black
-   * in both themes because the fill stays bright — replaces hardcoded
-   * text-zinc-950 so light theme keeps the same legible contrast (#3966). */
-  --on-accent: #0b0d10;
+  /* Elevation — layered depth so panels read as physical, not flat outlines. */
+  --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --elevation-2: 0 6px 18px -6px rgba(0, 0, 0, 0.46);
+  --elevation-3: 0 18px 44px -12px rgba(0, 0, 0, 0.56);
+
+  /* Radii — one scale for the whole system. */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+
+  /* Motion — durations + easing shared by every transition/animation. */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 280ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Brand accent scale (mint/emerald) — interactive + selected states. */
+  --accent: #34d399;
+  --accent-strong: #10b981;
+  --accent-soft: rgba(52, 211, 153, 0.14);
+  --accent-soft-hover: rgba(52, 211, 153, 0.22);
+  --accent-border: rgba(52, 211, 153, 0.42);
+  --accent-ring: rgba(52, 211, 153, 0.55);
+  --accent-contrast: #04150f;
+  /* Back-compat alias — existing consumers read --accent-mint. */
+  --accent-mint: var(--accent);
+  --focus-ring: var(--accent-ring);
 
   /* Severity — badges, charts, dots (hex aligned with ui/lib/theme-colors.ts) */
   --severity-critical: #ff6b6b;
@@ -44,11 +79,7 @@
   --severity-low: #6ba3ff;
   --severity-low-bg: rgba(107, 163, 255, 0.15);
   --severity-low-border: rgba(107, 163, 255, 0.48);
-  /* Unrated — findings whose severity is unknown/unscored (issue #3946). Neutral
-   * grey so it never reads as a severity band but is still visibly counted. */
-  --severity-unrated: #9aa3b8;
-  --severity-unrated-bg: rgba(154, 163, 184, 0.14);
-  --severity-unrated-border: rgba(154, 163, 184, 0.46);
+  --severity-none: #8b93a7;
 
   /* Status — success / warn / danger */
   --status-success: #34d399;
@@ -71,21 +102,38 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  /* Cool gray canvas — white cards sit clearly above the page */
-  --background: #e4e9f2;
+  /* Cool gray canvas — white cards sit clearly above panels and the page. */
+  --background: #e6eaf1;
   --foreground: #12141a;
+  --surface-panel: #eef2f8;
   --surface: #ffffff;
-  --surface-elevated: #eef2f8;
-  --surface-muted: rgba(190, 198, 212, 0.55);
-  --border-subtle: rgba(130, 145, 168, 0.62);
-  --border-strong: rgba(90, 105, 128, 0.8);
+  --surface-elevated: #f4f7fb;
+  --surface-muted: rgba(190, 198, 212, 0.5);
+  --border-subtle: rgba(130, 145, 168, 0.5);
+  --border-strong: rgba(90, 105, 128, 0.72);
   --text-secondary: #374151;
-  --text-tertiary: #4b5563;
-  --shadow-color: rgba(15, 23, 42, 0.11);
+  --text-tertiary: #55627a;
+  --shadow-color: rgba(15, 23, 42, 0.1);
   --scrollbar-thumb: #9aa3b2;
   --scrollbar-thumb-hover: #7b8596;
 
-  --accent-mint: #059669;
+  --app-bg-image:
+    radial-gradient(1200px 620px at 50% -12%, rgba(5, 150, 105, 0.05), transparent 62%),
+    radial-gradient(1000px 560px at 100% 0%, rgba(37, 99, 235, 0.04), transparent 58%);
+
+  --elevation-1: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --elevation-2: 0 6px 16px -6px rgba(15, 23, 42, 0.12);
+  --elevation-3: 0 18px 40px -12px rgba(15, 23, 42, 0.16);
+
+  --accent: #059669;
+  --accent-strong: #047857;
+  --accent-soft: rgba(5, 150, 105, 0.1);
+  --accent-soft-hover: rgba(5, 150, 105, 0.16);
+  --accent-border: rgba(5, 150, 105, 0.4);
+  --accent-ring: rgba(5, 150, 105, 0.45);
+  --accent-contrast: #ffffff;
+  --accent-mint: var(--accent);
+  --focus-ring: var(--accent-ring);
 
   --severity-critical: #dc2626;
   --severity-critical-bg: rgba(220, 38, 38, 0.1);
@@ -99,9 +147,7 @@
   --severity-low: #2563eb;
   --severity-low-bg: rgba(37, 99, 235, 0.1);
   --severity-low-border: rgba(37, 99, 235, 0.38);
-  --severity-unrated: #64748b;
-  --severity-unrated-bg: rgba(100, 116, 139, 0.1);
-  --severity-unrated-border: rgba(100, 116, 139, 0.36);
+  --severity-none: #64748b;
 
   --status-success: #059669;
   --status-success-bg: rgba(5, 150, 105, 0.1);
@@ -117,13 +163,39 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-accent: var(--accent);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
+  background-image: var(--app-bg-image);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Numeric-heavy console: tabular figures keep tables/metrics from jittering. */
+.tabular-figures {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Consistent keyboard focus for interactive elements. `:where()` keeps the
+ * specificity at 0 so any component-level `focus-visible:` utility still wins,
+ * while un-styled controls get a themed ring that follows their border radius.
+ */
+:where(a, button, [role="button"], summary, input, select, textarea):focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px var(--focus-ring);
 }
 
 /* Smooth scrollbar */
@@ -151,18 +223,29 @@ body {
   border-radius: 2px;
 }
 
+/* Elevation utilities — pair with a surface + border for physical depth. */
+.elev-1 {
+  box-shadow: var(--elevation-1);
+}
+.elev-2 {
+  box-shadow: var(--elevation-2);
+}
+.elev-3 {
+  box-shadow: var(--elevation-3);
+}
+
 /* Mobile sidebar slide-in animation */
 @keyframes slide-in-left {
   from { transform: translateX(-100%); }
   to { transform: translateX(0); }
 }
 .animate-slide-in {
-  animation: slide-in-left 0.2s ease-out;
+  animation: slide-in-left var(--motion-base) var(--ease-out);
 }
 
 /* React Flow edge animation refinement */
 .react-flow__edge-path {
-  transition: stroke-opacity 0.2s ease;
+  transition: stroke-opacity var(--motion-base) var(--ease-standard);
 }
 
 /* Fullscreen mode styles */
@@ -181,13 +264,32 @@ body {
   display: none;
 }
 
-/* Card hover effects */
+/* Card hover effect — lifts the border + a hairline ring on hover. */
 .card-hover {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
 }
 .card-hover:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-strong) 35%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--border-strong) 35%, transparent),
+    var(--elevation-2);
+}
+
+/* Interactive row — dense list/table rows that respond to hover + selection. */
+.interactive-row {
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.interactive-row:hover {
+  background-color: var(--surface-elevated);
+}
+.interactive-row[data-selected="true"] {
+  background-color: var(--accent-soft);
+  box-shadow: inset 2px 0 0 0 var(--accent);
 }
 
 /* Stat card gradient backgrounds — driven by severity/status tokens */
@@ -222,12 +324,24 @@ body {
 
 /* Smooth page transitions */
 main > div {
-  animation: fade-in 0.15s ease-out;
+  animation: fade-in var(--motion-base) var(--ease-out);
 }
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Respect users who prefer reduced motion — kill transforms/animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Drift lens (#3192) — snapshot change-kind rings painted on React Flow node

@@ -85,7 +85,7 @@ export function Collapsible({
       className={
         bare
           ? `${className ?? ""}`
-          : `rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] ${className ?? ""}`
+          : `rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] elev-1 ${className ?? ""}`
       }
       data-testid={testId}
     >
@@ -95,10 +95,10 @@ export function Collapsible({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-controls={panelId}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="group flex min-w-0 flex-1 items-center gap-2 rounded-md text-left transition-colors"
         >
           <Chevron
-            className={`${ICON_SIZE.sm} shrink-0 text-[color:var(--text-tertiary)] transition-transform`}
+            className={`${ICON_SIZE.sm} shrink-0 text-[color:var(--text-tertiary)] transition-colors group-hover:text-[color:var(--text-secondary)]`}
             aria-hidden="true"
           />
           {Icon ? (
@@ -110,7 +110,7 @@ export function Collapsible({
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2">
               <span
-                className={`truncate font-semibold text-[color:var(--foreground)] ${resolvedTitleClass}`}
+                className={`truncate font-semibold text-[color:var(--foreground)] transition-colors ${resolvedTitleClass}`}
               >
                 {title}
               </span>

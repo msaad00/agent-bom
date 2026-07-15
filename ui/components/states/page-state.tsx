@@ -25,10 +25,14 @@ type PageStateProps = {
 };
 
 const TONE_CLASS: Record<NonNullable<PageStateProps["tone"]>, string> = {
-  neutral: "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-secondary)]",
-  warning: "border-amber-500/25 bg-amber-500/10 text-amber-100",
-  danger: "border-red-500/25 bg-red-500/10 text-red-100",
-  success: "border-emerald-500/25 bg-emerald-500/10 text-emerald-100",
+  neutral:
+    "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-secondary)]",
+  warning:
+    "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-[color:var(--text-secondary)]",
+  danger:
+    "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--text-secondary)]",
+  success:
+    "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--text-secondary)]",
 };
 
 export function PageState({
@@ -47,7 +51,7 @@ export function PageState({
 
   return (
     <div className="flex min-h-[18rem] items-center justify-center px-4 py-10" data-testid={testId}>
-      <div className={`w-full max-w-2xl rounded-2xl border p-6 shadow-lg ${TONE_CLASS[tone]}`}>
+      <div className={`w-full max-w-2xl rounded-2xl border p-6 elev-2 ${TONE_CLASS[tone]}`}>
         <div className="flex items-start gap-3">
           <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2">
             <Icon className="h-5 w-5 text-[color:var(--text-secondary)]" />
@@ -97,7 +101,7 @@ function PageStateActionButton({ action }: { action: PageStateAction }) {
   const className =
     action.variant === "secondary"
       ? "inline-flex items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-      : "inline-flex items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20";
+      : "inline-flex items-center justify-center rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-sm font-medium text-[color:var(--accent)] transition hover:bg-[color:var(--accent-soft-hover)]";
 
   if (action.href) {
     return (
@@ -133,7 +137,7 @@ export function PageLoadingState({
 }) {
   return (
     <div className="flex min-h-[18rem] items-center justify-center px-4 py-10" data-testid={testId}>
-      <div className="w-full max-w-3xl rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg">
+      <div className="w-full max-w-3xl rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 elev-2">
         <div className="flex items-start gap-3">
           <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2">
             <Loader2 className="h-5 w-5 animate-spin text-[color:var(--text-secondary)]" />

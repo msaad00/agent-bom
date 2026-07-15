@@ -272,6 +272,44 @@ def test_demo_estate_graph_snapshots_support_drift_lens(demo_estate_client: Test
     assert body.get("nodes_changed"), "expected at least one changed node in the showcase drift story"
 
 
+def test_demo_estate_exec_severity_counts_reconcile_across_surfaces(
+    demo_estate_client: TestClient,
+) -> None:
+    """Exec-facing severity counts agree across surfaces on one estate (#3961).
+
+    Regression for the exec-read honesty bug: ``/v1/posture/counts`` read the
+    CVE-only ``blast_radius`` while ``/v1/overview`` read the unified findings
+    spine, so a leader saw different critical/high on the same estate (2/10 vs
+    3/12 on the demo estate). Both exec surfaces must now derive from the one
+    reconciled source of truth. The graph snapshot ``risk_summary`` is a
+    *different* metric (graph nodes at risk, per scan) and is explicitly tagged
+    as such so it is never mistaken for the exec headline.
+    """
+    counts = demo_estate_client.get("/v1/posture/counts").json()
+    overview = demo_estate_client.get("/v1/overview").json()
+    headline = overview["headline"]
+
+    # 1. The exec headline and the nav-badge counts are the same number.
+    assert counts["critical"] == headline["critical"], (counts, headline)
+    assert counts["high"] == headline["high"], (counts, headline)
+    assert counts["kev"] == headline["kev"], (counts, headline)
+    # The demo estate carries the non-CVE critical/high that blast_radius missed.
+    assert counts["critical"] >= 3 and counts["high"] >= 12, counts
+
+    # 2. Honest histogram: unrated is an explicit bucket and the buckets sum to
+    #    total — no severity is silently dropped.
+    assert "unrated" in counts, counts
+    bucketed = sum(counts[band] for band in ("critical", "high", "medium", "low", "unrated"))
+    assert bucketed == counts["total"], counts
+
+    # 3. The graph snapshot risk_summary is a distinctly-labeled metric
+    #    (graph-node severity), NOT the reconciled exec headline.
+    snapshots = demo_estate_client.get("/v1/graph/snapshots").json()
+    assert snapshots, "expected persisted demo snapshots"
+    for snapshot in snapshots:
+        assert snapshot.get("severity_basis") == "graph_nodes", snapshot
+
+
 def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: TestClient) -> None:
     """Showcase graph carries org→account containment and a bastion→PII exposure edge."""
     payload = demo_estate_client.get("/v1/graph", headers=ADMIN).json()

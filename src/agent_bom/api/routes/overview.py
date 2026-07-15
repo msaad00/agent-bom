@@ -600,6 +600,40 @@ def _combined_severity(scan_severity: dict[str, int], hub_severity: dict[str, in
     return merged
 
 
+def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]) -> dict[str, int]:
+    """The single exec-facing severity source of truth (#3961).
+
+    Both the ``/v1/overview`` headline and ``/v1/posture/counts`` derive their
+    critical/high/… from THIS reconciliation of the unified findings spine
+    (``_estate_rollup``) with hub-ingested evidence, so the two exec surfaces
+    can never report a different open-severity count for the same estate. The
+    honest ``unrated`` bucket is carried through and the buckets sum to
+    ``total`` (no silent drop).
+    """
+    combined = _combined_severity(estate["severity"], hub_severity)
+    return {
+        "critical": combined["critical"],
+        "high": combined["high"],
+        "medium": combined["medium"],
+        "low": combined["low"],
+        "unrated": combined[_UNRATED_KEY],
+        "total": sum(combined.values()),
+        "kev": int(estate.get("kev", 0) or 0),
+        "credential_exposed": int(estate.get("credential_exposed", 0) or 0),
+    }
+
+
+def exec_severity_counts(request: Request, jobs: list[Any]) -> dict[str, int]:
+    """Reconciled exec severity counts for ``jobs`` (unified spine + hub).
+
+    Public entry point shared with ``/v1/posture/counts`` so nav badges and the
+    overview headline read one number. Recomputes the estate rollup and hub
+    snapshot; a caller that already holds them should use
+    ``_reconciled_exec_counts`` directly to avoid a second pass.
+    """
+    return _reconciled_exec_counts(_estate_rollup(jobs), _hub_severity_snapshot(request))
+
+
 def _exec_posture(
     request: Request,
     scan_posture: dict[str, Any],
@@ -707,10 +741,13 @@ def _build_overview(request: Request) -> dict[str, Any]:
     identity = _identity_snapshot(request)
 
     hub_findings = sum(int(hub_severity.get(k, 0) or 0) for k in _HUB_SEVERITY_KEYS)
-    # Headline severity reads the SAME unified spine the coverage lanes read,
-    # folded with hub-ingested evidence — never the CVE-only blast_radius (#3961).
-    headline_critical = estate["severity"]["critical"] + int(hub_severity.get("critical", 0) or 0)
-    headline_high = estate["severity"]["high"] + int(hub_severity.get("high", 0) or 0)
+    # Headline severity reads the SAME reconciled source of truth that
+    # /v1/posture/counts reads — the unified spine folded with hub-ingested
+    # evidence — never the CVE-only blast_radius (#3961). Both exec surfaces
+    # route through ``_reconciled_exec_counts`` so they can never disagree.
+    exec_counts = _reconciled_exec_counts(estate, hub_severity)
+    headline_critical = exec_counts["critical"]
+    headline_high = exec_counts["high"]
     critical_high = headline_critical + headline_high
 
     cloud_accounts = _cloud_account_count(request)

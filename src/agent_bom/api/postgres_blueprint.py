@@ -26,7 +26,6 @@ from agent_bom.api.postgres_common import (
     _ensure_tenant_rls,
     _get_pool,
     _tenant_connection,
-    bypass_tenant_rls,
 )
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -115,10 +114,11 @@ class PostgresBlueprintStore:
         next_offset = offset + limit if len(rows) > limit else None
         return BlueprintPage(blueprints=blueprints, next_offset=next_offset)
 
-    def iter_all_blueprints(self, *, limit: int = 10000) -> list[Blueprint]:
-        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+    def iter_tenant_blueprints(self, tenant_id: str, *, limit: int = 10000) -> list[Blueprint]:
+        with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                "SELECT data FROM ai_system_blueprints ORDER BY updated_at ASC LIMIT %s", (limit,)
+                "SELECT data FROM ai_system_blueprints WHERE tenant_id = %s ORDER BY updated_at ASC LIMIT %s",
+                (tenant_id, limit),
             ).fetchall()
         return [Blueprint.from_dict(json.loads(r[0])) for r in rows]
 

@@ -6,14 +6,12 @@ import {
   Activity,
   ArrowRight,
   CalendarClock,
-  Cloud,
   FileCheck2,
   Plus,
   Radio,
   RefreshCcw,
   ServerCog,
   Shield,
-  ShieldCheck,
   Workflow,
 } from "lucide-react";
 
@@ -33,6 +31,11 @@ import { useDemoMode } from "@/hooks/use-demo-mode";
 import { ServiceStateBanner, ServiceStateChip } from "@/components/service-state-chip";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { serviceEntry } from "@/lib/service-registry";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { StatStrip } from "@/components/stat-strip";
+import { Collapsible } from "@/components/collapsible";
+import { Drawer } from "@/components/drawer";
+import { PageEmptyState } from "@/components/states/page-state";
 
 type IngestMode = "Direct scan" | "Read-only connector" | "Pushed ingest" | "Runtime" | "Imported artifact";
 
@@ -49,12 +52,6 @@ interface FormState {
   description: string;
   owner: string;
   connector_name: string;
-}
-
-interface ScheduleFormState {
-  source_id: string;
-  name: string;
-  cron_expression: string;
 }
 
 const SOURCE_KIND_OPTIONS: KindOption[] = [
@@ -152,11 +149,16 @@ const DEFAULT_FORM_STATE: FormState = {
   connector_name: "",
 };
 
-const DEFAULT_SCHEDULE_FORM_STATE: ScheduleFormState = {
-  source_id: "",
-  name: "",
-  cron_expression: "0 * * * *",
-};
+const SCHEDULABLE_KINDS = new Set<SourceKind>([
+  "scan.repo",
+  "scan.image",
+  "scan.iac",
+  "scan.cloud",
+  "scan.mcp_config",
+  "connector.cloud_read_only",
+  "connector.registry",
+  "connector.warehouse",
+]);
 
 const OPERATING_SURFACES = [
   {
@@ -202,32 +204,51 @@ function formatShortId(value: string, head = 10, tail = 6): string {
 
 const PROVIDER_SCAN_MODE_PREVIEW = 3;
 
-function toneForMode(mode: IngestMode): string {
-  switch (mode) {
-    case "Direct scan":
-      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-400";
-    case "Read-only connector":
-      return "border-sky-900/60 bg-sky-950/30 text-sky-400";
-    case "Pushed ingest":
-      return "border-amber-900/60 bg-amber-950/30 text-amber-400";
-    case "Runtime":
-      return "border-violet-900/60 bg-violet-950/30 text-violet-400";
-    case "Imported artifact":
-      return "border-fuchsia-900/60 bg-fuchsia-950/30 text-fuchsia-400";
-  }
+/** Mode dot colors — token-only so both themes track. */
+const MODE_DOT: Record<IngestMode, string> = {
+  "Direct scan": "var(--status-success)",
+  "Read-only connector": "var(--severity-low)",
+  "Pushed ingest": "var(--status-warn)",
+  Runtime: "var(--severity-high)",
+  "Imported artifact": "var(--text-tertiary)",
+};
+
+const STATUS_TONE: Record<string, string> = {
+  healthy: "var(--status-success)",
+  done: "var(--status-success)",
+  active: "var(--status-success)",
+  degraded: "var(--status-warn)",
+  paused: "var(--status-warn)",
+  pending: "var(--status-warn)",
+  disabled: "var(--text-tertiary)",
+  error: "var(--status-danger)",
+  failed: "var(--status-danger)",
+};
+
+function statusTone(status: string): string {
+  return STATUS_TONE[status.toLowerCase()] ?? "var(--accent)";
 }
 
-function toneForStatus(status: string): string {
-  switch (status) {
-    case "healthy":
-      return "text-emerald-400";
-    case "degraded":
-      return "text-amber-400";
-    case "disabled":
-      return "text-[var(--text-secondary)]";
-    default:
-      return "text-sky-400";
-  }
+function ModeChip({ mode }: { mode: IngestMode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: MODE_DOT[mode] }} aria-hidden="true" />
+      {mode}
+    </span>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const tone = statusTone(status);
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.1em]"
+      style={{ color: tone }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tone }} aria-hidden="true" />
+      {status}
+    </span>
+  );
 }
 
 function formatMode(value: string): string {
@@ -265,12 +286,14 @@ export default function SourcesPage() {
   const [syncingFleet, setSyncingFleet] = useState(false);
   const [fleetSyncSummary, setFleetSyncSummary] = useState<string | null>(null);
   const [formState, setFormState] = useState<FormState>(DEFAULT_FORM_STATE);
-  const [scheduleForm, setScheduleForm] = useState<ScheduleFormState>(DEFAULT_SCHEDULE_FORM_STATE);
   const [submitting, setSubmitting] = useState(false);
   const [submittingSchedule, setSubmittingSchedule] = useState(false);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [busySourceId, setBusySourceId] = useState<string | null>(null);
   const [busyScheduleId, setBusyScheduleId] = useState<string | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [scheduleName, setScheduleName] = useState("");
+  const [scheduleCron, setScheduleCron] = useState("0 * * * *");
 
   const connectorNames = useMemo(
     () => connectorHealth.map((connector) => connector.connector).sort((left, right) => left.localeCompare(right)),
@@ -287,23 +310,25 @@ export default function SourcesPage() {
   );
   const providerSummary = useMemo(() => summarizeProviders(providerContracts), [providerContracts]);
   const sourceIndex = useMemo(() => new Map(sources.map((source) => [source.source_id, source])), [sources]);
-  const schedulableSources = useMemo(
-    () =>
-      sources.filter((source) =>
-        ["scan.repo", "scan.image", "scan.iac", "scan.cloud", "scan.mcp_config", "connector.cloud_read_only", "connector.registry", "connector.warehouse"].includes(
-          source.kind
-        )
-      ),
-    [sources]
-  );
   const scheduleCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+    const map = new Map<string, number>();
     for (const schedule of schedules) {
       const linkedSourceId = typeof schedule.scan_config?.source_id === "string" ? String(schedule.scan_config.source_id) : "";
       if (!linkedSourceId) continue;
-      counts.set(linkedSourceId, (counts.get(linkedSourceId) ?? 0) + 1);
+      map.set(linkedSourceId, (map.get(linkedSourceId) ?? 0) + 1);
     }
-    return counts;
+    return map;
+  }, [schedules]);
+  const schedulesBySource = useMemo(() => {
+    const map = new Map<string, ScanSchedule[]>();
+    for (const schedule of schedules) {
+      const linkedSourceId = typeof schedule.scan_config?.source_id === "string" ? String(schedule.scan_config.source_id) : "";
+      if (!linkedSourceId) continue;
+      const list = map.get(linkedSourceId) ?? [];
+      list.push(schedule);
+      map.set(linkedSourceId, list);
+    }
+    return map;
   }, [schedules]);
   const roleSummary = session?.role_summary ?? null;
   const roleLabel = roleSummary?.display_name ?? session?.role ?? "Unknown";
@@ -311,12 +336,10 @@ export default function SourcesPage() {
   const canRunScans = hasCapability("scan.run");
   const canManageFleet = hasCapability("fleet.manage");
 
+  const selectedSource = selectedSourceId ? sourceIndex.get(selectedSourceId) ?? null : null;
+
   function updateForm<K extends keyof FormState>(field: K, value: FormState[K]) {
     setFormState((current) => ({ ...current, [field]: value }));
-  }
-
-  function updateScheduleForm<K extends keyof ScheduleFormState>(field: K, value: ScheduleFormState[K]) {
-    setScheduleForm((current) => ({ ...current, [field]: value }));
   }
 
   async function refreshControlPlane() {
@@ -452,6 +475,7 @@ export default function SourcesPage() {
       } else {
         await api.deleteSource(sourceId);
         setFormMessage("Source deleted.");
+        setSelectedSourceId(null);
       }
       await refreshControlPlane();
     } catch (err) {
@@ -461,36 +485,26 @@ export default function SourcesPage() {
     }
   }
 
-  async function handleCreateSchedule(event: React.FormEvent<HTMLFormElement>) {
+  async function handleCreateSchedule(event: React.FormEvent<HTMLFormElement>, source: SourceRecord) {
     event.preventDefault();
     setFormMessage(null);
 
-    const source = sourceIndex.get(scheduleForm.source_id);
-    if (!source) {
-      setFormMessage("Choose a source to schedule.");
-      return;
-    }
-
-    if (!scheduleForm.cron_expression.trim()) {
+    if (!scheduleCron.trim()) {
       setFormMessage("Cron expression is required.");
       return;
     }
 
-    const name = scheduleForm.name.trim() || `${source.display_name} recurring run`;
+    const name = scheduleName.trim() || `${source.display_name} recurring run`;
     setSubmittingSchedule(true);
     try {
       await api.createSchedule({
         name,
-        cron_expression: scheduleForm.cron_expression.trim(),
+        cron_expression: scheduleCron.trim(),
         enabled: true,
         scan_config: { source_id: source.source_id },
       });
       setFormMessage(`Created schedule ${name}.`);
-      setScheduleForm({
-        source_id: source.source_id,
-        name: "",
-        cron_expression: scheduleForm.cron_expression,
-      });
+      setScheduleName("");
       await refreshControlPlane();
     } catch (err) {
       setFormMessage(err instanceof Error ? err.message : "Failed to create schedule.");
@@ -518,12 +532,59 @@ export default function SourcesPage() {
     }
   }
 
+  const columns: DataTableColumn<SourceRecord>[] = [
+    {
+      key: "name",
+      header: "Name",
+      cell: (source) => {
+        const option = SOURCE_KIND_OPTIONS.find((entry) => entry.value === source.kind);
+        return (
+          <div className="min-w-0">
+            <div className="truncate font-medium text-[color:var(--foreground)]">{source.display_name}</div>
+            <div className="truncate text-xs text-[color:var(--text-tertiary)]">{option?.label ?? source.kind}</div>
+          </div>
+        );
+      },
+    },
+    {
+      key: "kind",
+      header: "Kind",
+      cell: (source) => {
+        const option = SOURCE_KIND_OPTIONS.find((entry) => entry.value === source.kind);
+        return <ModeChip mode={option?.mode ?? "Direct scan"} />;
+      },
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (source) => <StatusPill status={source.status} />,
+    },
+    {
+      key: "last_run",
+      header: "Last run",
+      cell: (source) => <span className="text-xs">{formatWhen(source.last_run_at)}</span>,
+    },
+    {
+      key: "schedule",
+      header: "Schedule",
+      align: "right",
+      cell: (source) => <span className="tabular-nums">{scheduleCounts.get(source.source_id) ?? 0}</span>,
+    },
+    {
+      key: "connector",
+      header: "Connector",
+      cell: (source) => (
+        <span className="truncate text-xs text-[color:var(--text-secondary)]">{source.connector_name || "—"}</span>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Data sources</h1>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+          <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Data sources</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
             Register scan targets, review connector health, and manage schedules.
           </p>
           <div className="mt-2">
@@ -538,7 +599,7 @@ export default function SourcesPage() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => refreshControlPlane()}
-            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
           >
             <RefreshCcw className="h-4 w-4" />
             Refresh
@@ -547,7 +608,7 @@ export default function SourcesPage() {
             <button
               onClick={handleFleetSync}
               disabled={syncingFleet || !canManageFleet}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--accent)] px-3 py-2 text-sm font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Activity className="h-4 w-4" />
               {syncingFleet ? "Syncing…" : "Fleet sync"}
@@ -558,272 +619,104 @@ export default function SourcesPage() {
 
       {isDemoMode && <DemoConnectCard />}
 
-      <ServiceStateBanner
-        serviceId="data_sources"
-        entry={dataSourcesService}
-        registry={counts?.services}
+      <ServiceStateBanner serviceId="data_sources" entry={dataSourcesService} registry={counts?.services} />
+
+      <StatStrip
+        data-testid="sources-kpis"
+        items={[
+          {
+            label: "Auth mode",
+            value: session?.auth_method ?? (authLoading ? "…" : "Unknown"),
+            hint: session ? `${roleLabel} · ${session.tenant_id}` : "Control plane owns auth",
+          },
+          {
+            label: "Registered sources",
+            value: loading ? "…" : sourceCount,
+          },
+          {
+            label: "Connector health",
+            value: loading ? "…" : `${healthyConnectors}/${connectorHealth.length || 0}`,
+            accent: connectorHealth.length > 0 && healthyConnectors === connectorHealth.length ? "success" : "neutral",
+          },
+          {
+            label: "Schedules",
+            value: loading ? "…" : schedules.length,
+            hint: schedules[0]?.next_run ? `Next ${formatWhen(schedules[0].next_run)}` : "None yet",
+          },
+        ]}
       />
 
-      <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            icon={ShieldCheck}
-            label="Auth mode"
-            value={session?.auth_method ?? (authLoading ? "Loading…" : "Unknown")}
-            detail={
-              session
-                ? `${roleLabel} · tenant ${session.tenant_id} · ${session.recommended_ui_mode}`
-                : "API/control plane owns auth and tenant scope"
-            }
-          />
-          <MetricCard
+      {(fleetSyncSummary || formMessage || error) && (
+        <div className="space-y-1 text-sm">
+          {fleetSyncSummary ? <p className="text-[color:var(--status-success)]">{fleetSyncSummary}</p> : null}
+          {formMessage ? <p className="text-[color:var(--accent)]">{formMessage}</p> : null}
+          {error ? <p className="text-[color:var(--status-danger)]">{error}</p> : null}
+        </div>
+      )}
+
+      {!loading && sources.length === 0 ? (
+        isDemoMode ? (
+          <PageEmptyState
+            title="No demo sources registered"
+            detail="Explore New Scan or Scan Jobs with sample data to see how registered sources drive evidence."
             icon={ServerCog}
-            label="Registered sources"
-            value={loading ? "Loading…" : String(sourceCount)}
-            detail={sources[0]?.updated_at ? `Last update ${formatWhen(sources[0].updated_at)}` : "No source registry records yet"}
+            actions={[
+              { label: "New Scan", href: "/scan" },
+              { label: "Scan Jobs", href: "/jobs", variant: "secondary" },
+            ]}
           />
-          <MetricCard
-            icon={Cloud}
-            label="Connector health"
-            value={loading ? "Loading…" : `${healthyConnectors}/${connectorHealth.length || 0}`}
-            detail="Read-only integrations checked through backend health routes"
+        ) : (
+          <PageEmptyState
+            title="No registered sources yet"
+            detail="Register a scan target or connector-backed source to test, run, and schedule it from the control plane."
+            icon={ServerCog}
           />
-          <MetricCard
-            icon={CalendarClock}
-            label="Schedules"
-            value={loading ? "Loading…" : String(schedules.length)}
-            detail={schedules[0]?.next_run ? `Next run ${formatWhen(schedules[0].next_run)}` : "No persisted schedules yet"}
-          />
-        </div>
-
-        {fleetSyncSummary ? <p className="mt-4 text-sm text-emerald-400">{fleetSyncSummary}</p> : null}
-        {formMessage ? <p className="mt-2 text-sm text-emerald-400">{formMessage}</p> : null}
-        {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
-      </section>
-
-      {roleSummary && !isDemoMode ? (
-        <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
-          <div className="flex items-start gap-3">
-            <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
-              <Shield className="h-5 w-5 text-emerald-400" />
-            </span>
-            <div>
-              <h2 className="text-base font-semibold text-[var(--foreground)]">{roleSummary.display_name} access in this tenant</h2>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">{roleSummary.description}</p>
-            </div>
+        )
+      ) : (
+        <section className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-base font-semibold text-[color:var(--foreground)]">Source registry</h2>
+            <p className="text-xs text-[color:var(--text-tertiary)]">Row → detail, evidence, and actions</p>
           </div>
-
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            <AccessList title="Can see" items={roleSummary.can_see} tone="text-sky-300" />
-            <AccessList title="Can do" items={roleSummary.can_do} tone="text-emerald-300" />
-            <AccessList title="Blocked from" items={roleSummary.cannot_do} tone="text-amber-300" />
-          </div>
+          <DataTable<SourceRecord>
+            data-testid="sources-table"
+            columns={columns}
+            rows={sources}
+            rowKey={(source) => source.source_id}
+            onRowClick={(source) => setSelectedSourceId(source.source_id)}
+            selectedKey={selectedSourceId ?? undefined}
+            loading={loading}
+            maxHeight="32rem"
+            caption="Registered data sources with status, last run, schedule count, and connector"
+          />
         </section>
-      ) : null}
+      )}
 
-      <details className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
-          Provider trust contracts
-          {providerContracts ? (
-            <span className="ml-2 text-xs font-normal text-[var(--text-tertiary)]">
-              {providerSummary.total} providers · v{providerContracts.contract_version}
-            </span>
-          ) : null}
-        </summary>
-        <div className="space-y-4 border-t border-[color:var(--border-subtle)] p-4">
-          <p className="text-sm text-[var(--text-secondary)]">
-            Backend provider registry: scan modes, declared permissions, and read-only guarantees.
-          </p>
-
-          <div className="grid gap-3 md:grid-cols-4">
-            <ContractStat label="Providers" value={loading ? "Loading…" : String(providerSummary.total)} />
-            <ContractStat label="Read-only" value={loading ? "Loading…" : `${providerSummary.readOnly}/${providerSummary.total}`} />
-            <ContractStat label="Scope-zero modes" value={loading ? "Loading…" : String(providerSummary.scopeZero)} />
-            <ContractStat label="Declared permissions" value={loading ? "Loading…" : String(providerSummary.permissionCount)} />
-          </div>
-
-          {providerContracts?.warnings?.length ? (
-            <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-200">
-              {providerContracts.warnings.slice(0, 2).join(" · ")}
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-            {!providerContracts && !loading ? (
-              <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
-                Provider contracts are unavailable from the API.
-              </div>
-            ) : (
-              (providerContracts?.providers ?? []).slice(0, 12).map((provider) => (
-                <ProviderContractCard key={provider.name} provider={provider} />
-              ))
-            )}
-          </div>
-        </div>
-      </details>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-          <h2 className="text-base font-semibold text-[var(--foreground)]">Source registry</h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">Persisted sources with status, last run, and evidence links.</p>
-
-          <div className="mt-4 space-y-3">
-            {sources.length === 0 && !loading ? (
-              <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
-                {isDemoMode ? (
-                  <>
-                    No demo sources registered. Explore{" "}
-                    <Link href="/scan" className="text-emerald-400 hover:text-emerald-300">New Scan</Link>
-                    {" "}or{" "}
-                    <Link href="/jobs" className="text-emerald-400 hover:text-emerald-300">Scan Jobs</Link>
-                    {" "}with sample data.
-                  </>
-                ) : (
-                  "No registered sources yet. Create one to test and run from the control plane."
-                )}
-              </div>
-            ) : (
-              sources.map((source) => {
-                const option = SOURCE_KIND_OPTIONS.find((entry) => entry.value === source.kind);
-                const isBusy = busySourceId === source.source_id;
-                return (
-                  <div
-                    key={source.source_id}
-                    data-testid={`source-workflow-${source.source_id}`}
-                    className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${toneForMode(option?.mode ?? "Direct scan")}`}>
-                          {option?.mode ?? source.kind}
-                        </div>
-                        <h3 className="mt-3 text-sm font-semibold text-[var(--foreground)]">{source.display_name}</h3>
-                        <p className="mt-1 text-xs text-[var(--text-secondary)]">{option?.label ?? source.kind}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-[11px] uppercase tracking-[0.18em] ${toneForStatus(source.status)}`}>{source.status}</p>
-                        <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">{source.enabled ? "Enabled" : "Disabled"}</p>
-                      </div>
-                    </div>
-
-                    {source.description ? <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">{source.description}</p> : null}
-
-                    <div className="mt-3 grid gap-2 text-xs text-[var(--text-secondary)] sm:grid-cols-2">
-                      <span>Owner: {source.owner || "Unassigned"}</span>
-                      <span>Credential mode: {source.credential_mode}</span>
-                      <span>Connector: {source.connector_name || "—"}</span>
-                      <span>Last tested: {formatWhen(source.last_tested_at)}</span>
-                      <span>Last run: {formatWhen(source.last_run_at)}</span>
-                      <span className="min-w-0 sm:col-span-2">
-                        Last job:{" "}
-                        {source.last_job_id ? (
-                          <Link
-                            href={`/scan?id=${encodeURIComponent(source.last_job_id)}`}
-                            className="inline-block max-w-full truncate font-mono text-emerald-300 hover:text-emerald-200"
-                            title={source.last_job_id}
-                          >
-                            {formatShortId(source.last_job_id)}
-                          </Link>
-                        ) : (
-                          "—"
-                        )}
-                      </span>
-                      <span>Schedules: {scheduleCounts.get(source.source_id) ?? 0}</span>
-                    </div>
-
-                    {source.last_test_message ? (
-                      <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">{source.last_test_message}</p>
-                    ) : null}
-
-                    <div className="mt-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
-                      <div className="flex items-start gap-2">
-                        <FileCheck2 className="mt-0.5 h-4 w-4 text-emerald-400" />
-                        <div>
-                          <p className="text-xs font-semibold text-[var(--foreground)]">Evidence workflow</p>
-                          <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
-                            {source.last_job_id
-                              ? "Open the completed job surfaces created from this source."
-                              : "Run this source to create findings, graph, and compliance evidence."}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {[
-                          { target: "jobs" as const, label: "Jobs" },
-                          { target: "findings" as const, label: "Findings" },
-                          { target: "graph" as const, label: "Graph" },
-                          { target: "compliance" as const, label: "Compliance" },
-                        ].map((link) => (
-                          <Link
-                            key={link.target}
-                            href={sourceEvidenceHref(source, link.target)}
-                            aria-disabled={link.target !== "jobs" && !source.last_job_id}
-                            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition ${
-                              link.target !== "jobs" && !source.last_job_id
-                                ? "pointer-events-none border-[color:var(--border-subtle)] text-[var(--text-tertiary)] opacity-60"
-                                : "border-[color:var(--border-subtle)] text-[var(--foreground)] hover:border-[color:var(--border-strong)]"
-                            }`}
-                          >
-                            {link.label}
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        onClick={() => runSourceAction(source.source_id, "test")}
-                        disabled={isBusy || !canManageSources}
-                        className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isBusy ? "Working…" : "Test"}
-                      </button>
-                      <button
-                        onClick={() => runSourceAction(source.source_id, "run")}
-                        disabled={isBusy || !source.enabled || !canRunScans}
-                        className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Run now
-                      </button>
-                      <button
-                        onClick={() => runSourceAction(source.source_id, "delete")}
-                        disabled={isBusy || !canManageSources}
-                        className="rounded-xl border border-red-900/60 bg-red-950/20 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
-
-        <div className="space-y-5">
-          {!isDemoMode && (
-          <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <h2 className="text-base font-semibold text-[var(--foreground)]">Create source</h2>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">Register a new scan target or connector-backed source.</p>
-
-            <form className="mt-4 space-y-4" onSubmit={handleCreateSource}>
+      {!isDemoMode && (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Collapsible title="Create source" icon={Plus} defaultOpen={sources.length === 0}>
+            <form className="space-y-4" onSubmit={handleCreateSource}>
               <label className="block">
-                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Display name</span>
+                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                  Display name
+                </span>
                 <input
                   value={formState.display_name}
                   onChange={(event) => updateForm("display_name", event.target.value)}
-                  className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                  className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
                   placeholder="AWS production account"
                 />
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block">
-                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Kind</span>
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                    Kind
+                  </span>
                   <select
                     value={formState.kind}
                     onChange={(event) => updateForm("kind", event.target.value as SourceKind)}
-                    className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
                   >
                     {SOURCE_KIND_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -834,11 +727,13 @@ export default function SourcesPage() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Owner</span>
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                    Owner
+                  </span>
                   <input
                     value={formState.owner}
                     onChange={(event) => updateForm("owner", event.target.value)}
-                    className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
                     placeholder="platform-security"
                   />
                 </label>
@@ -846,11 +741,13 @@ export default function SourcesPage() {
 
               {selectedKind.mode === "Read-only connector" ? (
                 <label className="block">
-                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Connector name</span>
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                    Connector name
+                  </span>
                   <select
                     value={formState.connector_name}
                     onChange={(event) => updateForm("connector_name", event.target.value)}
-                    className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
                   >
                     <option value="">Choose connector…</option>
                     {connectorNames.map((connector) => (
@@ -863,243 +760,421 @@ export default function SourcesPage() {
               ) : null}
 
               <label className="block">
-                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Description</span>
+                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                  Description
+                </span>
                 <textarea
                   value={formState.description}
                   onChange={(event) => updateForm("description", event.target.value)}
-                  rows={3}
-                  className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                  rows={2}
+                  className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
                   placeholder={selectedKind.detail}
                 />
               </label>
 
-              <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-xs leading-5 text-[var(--text-secondary)]">
-                <div className={`inline-flex rounded-full border px-2.5 py-1 font-medium ${toneForMode(selectedKind.mode)}`}>{selectedKind.mode}</div>
-                <p className="mt-3">{selectedKind.detail}</p>
+              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]">
+                <ModeChip mode={selectedKind.mode} />
+                <p className="mt-2">{selectedKind.detail}</p>
               </div>
 
               <button
                 type="submit"
                 disabled={submitting || !canManageSources}
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Plus className="h-4 w-4" />
                 {submitting ? "Creating…" : "Create source"}
               </button>
             </form>
-          </section>
-          )}
+          </Collapsible>
 
-          {!isDemoMode && (
-          <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <h2 className="text-base font-semibold text-[var(--foreground)]">Connector health</h2>
-            <div className="mt-4 space-y-3">
-              {connectorHealth.length === 0 && !loading ? (
-                <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
-                  No connector health state loaded yet.
-                </div>
-              ) : (
-                connectorHealth.map((connector) => (
-                  <div key={connector.connector} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+          <Collapsible
+            title="Connector health"
+            count={connectorHealth.length}
+            defaultOpen={false}
+            scrollMaxHeight="20rem"
+          >
+            {connectorHealth.length === 0 && !loading ? (
+              <p className="text-sm text-[color:var(--text-secondary)]">No connector health state loaded yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {connectorHealth.map((connector) => (
+                  <div
+                    key={connector.connector}
+                    className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3"
+                  >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--foreground)]">{connector.connector}</h3>
-                        <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{connector.message}</p>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold text-[color:var(--foreground)]">{connector.connector}</h3>
+                        <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{connector.message}</p>
                       </div>
-                      <span className={`text-[11px] uppercase tracking-[0.18em] ${toneForStatus(connector.state)}`}>{connector.state}</span>
+                      <StatusPill status={connector.state} />
                     </div>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+            )}
+          </Collapsible>
+        </div>
+      )}
+
+      <Collapsible
+        title="Provider trust contracts"
+        subtitle={
+          providerContracts ? `${providerSummary.total} providers · v${providerContracts.contract_version}` : undefined
+        }
+        defaultOpen={false}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[color:var(--text-secondary)]">
+            Backend provider registry: scan modes, declared permissions, and read-only guarantees.
+          </p>
+
+          <StatStrip
+            items={[
+              { label: "Providers", value: loading ? "…" : providerSummary.total },
+              { label: "Read-only", value: loading ? "…" : `${providerSummary.readOnly}/${providerSummary.total}` },
+              { label: "Scope-zero modes", value: loading ? "…" : providerSummary.scopeZero },
+              { label: "Declared permissions", value: loading ? "…" : providerSummary.permissionCount },
+            ]}
+          />
+
+          {providerContracts?.warnings?.length ? (
+            <div className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]">
+              {providerContracts.warnings.slice(0, 2).join(" · ")}
             </div>
-          </section>
-          )}
+          ) : null}
 
-          {!isDemoMode && (
-          <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <h2 className="text-base font-semibold text-[var(--foreground)]">Schedules</h2>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">Recurring scans bound to registered sources.</p>
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            {!providerContracts && !loading ? (
+              <div className="rounded-lg border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[color:var(--text-secondary)]">
+                Provider contracts are unavailable from the API.
+              </div>
+            ) : (
+              (providerContracts?.providers ?? []).slice(0, 12).map((provider) => (
+                <ProviderContractCard key={provider.name} provider={provider} />
+              ))
+            )}
+          </div>
+        </div>
+      </Collapsible>
 
-            <div className="mt-4 space-y-3">
-              <form className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4" onSubmit={handleCreateSchedule}>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <label className="block">
-                    <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Source</span>
-                    <select
-                      aria-label="Schedule source"
-                      value={scheduleForm.source_id}
-                      onChange={(event) => updateScheduleForm("source_id", event.target.value)}
-                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
-                    >
-                      <option value="">Choose source…</option>
-                      {schedulableSources.map((source) => (
-                        <option key={source.source_id} value={source.source_id}>
-                          {source.display_name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Name</span>
-                    <input
-                      aria-label="Schedule name"
-                      value={scheduleForm.name}
-                      onChange={(event) => updateScheduleForm("name", event.target.value)}
-                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
-                      placeholder="Nightly cloud posture"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Cron</span>
-                    <input
-                      aria-label="Schedule cron"
-                      value={scheduleForm.cron_expression}
-                      onChange={(event) => updateScheduleForm("cron_expression", event.target.value)}
-                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 font-mono text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
-                      placeholder="0 * * * *"
-                    />
-                  </label>
-                </div>
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <p className="min-w-0 flex-1 text-xs leading-5 text-[var(--text-secondary)]">
-                    Schedules persist in the control plane and run queued scans with the linked <code>source_id</code>, not browser state.
-                  </p>
-                  <button
-                    type="submit"
-                    disabled={submittingSchedule || schedulableSources.length === 0 || !canManageSources}
-                    className="inline-flex shrink-0 items-center gap-2 self-start rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
-                  >
-                    <CalendarClock className="h-4 w-4" />
-                    {submittingSchedule ? "Creating…" : "Create schedule"}
-                  </button>
-                </div>
-              </form>
+      {roleSummary && !isDemoMode ? (
+        <Collapsible title={`${roleSummary.display_name} access in this tenant`} icon={Shield} defaultOpen={false}>
+          <p className="text-sm text-[color:var(--text-secondary)]">{roleSummary.description}</p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <AccessList title="Can see" items={roleSummary.can_see} />
+            <AccessList title="Can do" items={roleSummary.can_do} />
+            <AccessList title="Blocked from" items={roleSummary.cannot_do} />
+          </div>
+        </Collapsible>
+      ) : null}
 
-              {schedules.length === 0 && !loading ? (
-                <div className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
-                  <p className="text-sm text-[var(--text-secondary)]">No scan schedules yet.</p>
-                  <Link href="/scan" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-emerald-400">
-                    Open New Scan
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              ) : (
-                schedules.map((schedule) => {
-                  const linkedSourceId = typeof schedule.scan_config?.source_id === "string" ? String(schedule.scan_config.source_id) : "";
-                  const linkedSource = linkedSourceId ? sourceIndex.get(linkedSourceId) : null;
-                  const isBusy = busyScheduleId === schedule.schedule_id;
-                  return (
-                  <div key={schedule.schedule_id} className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+      {!isDemoMode && (
+        <Collapsible title="Related operating surfaces" defaultOpen={false}>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {OPERATING_SURFACES.map((surface) => {
+              const Icon = surface.icon;
+              return (
+                <Link key={surface.title} href={surface.href}>
+                  <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 transition-colors hover:border-[color:var(--border-strong)]">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--foreground)]">{schedule.name}</h3>
-                        <p className="mt-1 font-mono text-xs text-[var(--text-secondary)]">{schedule.cron_expression}</p>
-                        <p className="mt-2 text-xs text-[var(--text-secondary)]">
-                          Source: {linkedSource?.display_name ?? (linkedSourceId || "Unlinked control-plane schedule")}
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2">
+                          <Icon className="h-4 w-4 text-[color:var(--accent)]" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-[color:var(--foreground)]">{surface.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{surface.summary}</p>
+                        </div>
+                      </div>
+                      <ArrowRight className="mt-1 h-4 w-4 text-[color:var(--text-tertiary)]" />
+                    </div>
+                    <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                      {surface.status}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </Collapsible>
+      )}
+
+      <SourceDrawer
+        source={selectedSource}
+        open={selectedSource != null}
+        onClose={() => setSelectedSourceId(null)}
+        schedules={selectedSource ? schedulesBySource.get(selectedSource.source_id) ?? [] : []}
+        busySourceId={busySourceId}
+        busyScheduleId={busyScheduleId}
+        canManageSources={canManageSources}
+        canRunScans={canRunScans}
+        onSourceAction={runSourceAction}
+        onScheduleAction={runScheduleAction}
+        onCreateSchedule={handleCreateSchedule}
+        submittingSchedule={submittingSchedule}
+        scheduleName={scheduleName}
+        scheduleCron={scheduleCron}
+        onScheduleNameChange={setScheduleName}
+        onScheduleCronChange={setScheduleCron}
+      />
+    </div>
+  );
+}
+
+function SourceDrawer({
+  source,
+  open,
+  onClose,
+  schedules,
+  busySourceId,
+  busyScheduleId,
+  canManageSources,
+  canRunScans,
+  onSourceAction,
+  onScheduleAction,
+  onCreateSchedule,
+  submittingSchedule,
+  scheduleName,
+  scheduleCron,
+  onScheduleNameChange,
+  onScheduleCronChange,
+}: {
+  source: SourceRecord | null;
+  open: boolean;
+  onClose: () => void;
+  schedules: ScanSchedule[];
+  busySourceId: string | null;
+  busyScheduleId: string | null;
+  canManageSources: boolean;
+  canRunScans: boolean;
+  onSourceAction: (sourceId: string, action: "test" | "run" | "delete") => void;
+  onScheduleAction: (scheduleId: string, action: "toggle" | "delete") => void;
+  onCreateSchedule: (event: React.FormEvent<HTMLFormElement>, source: SourceRecord) => void;
+  submittingSchedule: boolean;
+  scheduleName: string;
+  scheduleCron: string;
+  onScheduleNameChange: (value: string) => void;
+  onScheduleCronChange: (value: string) => void;
+}) {
+  if (!source) return null;
+  const option = SOURCE_KIND_OPTIONS.find((entry) => entry.value === source.kind);
+  const mode = option?.mode ?? "Direct scan";
+  const isBusy = busySourceId === source.source_id;
+  const schedulable = SCHEDULABLE_KINDS.has(source.kind);
+
+  const meta: [string, React.ReactNode][] = [
+    ["Owner", source.owner || "Unassigned"],
+    ["Credential mode", source.credential_mode],
+    ["Connector", source.connector_name || "—"],
+    ["Enabled", source.enabled ? "Enabled" : "Disabled"],
+    ["Last tested", formatWhen(source.last_tested_at)],
+    ["Last run", formatWhen(source.last_run_at)],
+  ];
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      eyebrow={mode}
+      title={source.display_name}
+      subtitle={option?.label ?? source.kind}
+      headerAside={<StatusPill status={source.status} />}
+      size="2xl"
+      ariaLabel={`Source ${source.display_name}`}
+      footer={
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => onSourceAction(source.source_id, "test")}
+            disabled={isBusy || !canManageSources}
+            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isBusy ? "Working…" : "Test"}
+          </button>
+          <button
+            onClick={() => onSourceAction(source.source_id, "run")}
+            disabled={isBusy || !source.enabled || !canRunScans}
+            className="rounded-lg bg-[color:var(--accent)] px-3 py-2 text-xs font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Run now
+          </button>
+          <button
+            onClick={() => onSourceAction(source.source_id, "delete")}
+            disabled={isBusy || !canManageSources}
+            className="rounded-lg border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-danger)] transition hover:border-[color:var(--status-danger)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Delete
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-5" data-testid={`source-detail-${source.source_id}`}>
+        {source.description ? (
+          <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{source.description}</p>
+        ) : null}
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+          {meta.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</dt>
+              <dd className="mt-0.5 truncate text-[color:var(--text-secondary)]">{value}</dd>
+            </div>
+          ))}
+          <div className="col-span-2 min-w-0">
+            <dt className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Last job</dt>
+            <dd className="mt-0.5">
+              {source.last_job_id ? (
+                <Link
+                  href={`/scan?id=${encodeURIComponent(source.last_job_id)}`}
+                  className="inline-block max-w-full truncate font-mono text-[color:var(--accent)] hover:underline"
+                  title={source.last_job_id}
+                >
+                  {formatShortId(source.last_job_id)}
+                </Link>
+              ) : (
+                <span className="text-[color:var(--text-secondary)]">—</span>
+              )}
+            </dd>
+          </div>
+        </dl>
+
+        {source.last_test_message ? (
+          <p className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]">
+            {source.last_test_message}
+          </p>
+        ) : null}
+
+        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+          <div className="flex items-start gap-2">
+            <FileCheck2 className="mt-0.5 h-4 w-4 text-[color:var(--accent)]" />
+            <div>
+              <p className="text-xs font-semibold text-[color:var(--foreground)]">Evidence workflow</p>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+                {source.last_job_id
+                  ? "Open the completed job surfaces created from this source."
+                  : "Run this source to create findings, graph, and compliance evidence."}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[
+              { target: "jobs" as const, label: "Jobs" },
+              { target: "findings" as const, label: "Findings" },
+              { target: "graph" as const, label: "Graph" },
+              { target: "compliance" as const, label: "Compliance" },
+            ].map((link) => {
+              const disabled = link.target !== "jobs" && !source.last_job_id;
+              return (
+                <Link
+                  key={link.target}
+                  href={sourceEvidenceHref(source, link.target)}
+                  aria-disabled={disabled}
+                  className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition ${
+                    disabled
+                      ? "pointer-events-none border-[color:var(--border-subtle)] text-[color:var(--text-tertiary)] opacity-60"
+                      : "border-[color:var(--border-subtle)] text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-[color:var(--foreground)]">Schedules</h3>
+          <div className="mt-3 space-y-2">
+            {schedules.length === 0 ? (
+              <p className="text-xs text-[color:var(--text-secondary)]">No schedules bound to this source yet.</p>
+            ) : (
+              schedules.map((schedule) => {
+                const isScheduleBusy = busyScheduleId === schedule.schedule_id;
+                return (
+                  <div
+                    key={schedule.schedule_id}
+                    className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[color:var(--foreground)]">{schedule.name}</p>
+                        <p className="mt-0.5 font-mono text-xs text-[color:var(--text-secondary)]">
+                          {schedule.cron_expression}
                         </p>
                       </div>
-                      <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                        {schedule.enabled ? "Enabled" : "Paused"}
-                      </span>
+                      <StatusPill status={schedule.enabled ? "active" : "paused"} />
                     </div>
-                    <div className="mt-3 grid gap-2 text-xs text-[var(--text-secondary)] sm:grid-cols-2">
-                      <span>Next run: {formatWhen(schedule.next_run)}</span>
-                      <span>Last run: {formatWhen(schedule.last_run)}</span>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-[color:var(--text-secondary)]">
+                      <span>Next: {formatWhen(schedule.next_run)}</span>
+                      <span>Last: {formatWhen(schedule.last_run)}</span>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        onClick={() => runScheduleAction(schedule.schedule_id, "toggle")}
-                        disabled={isBusy || !canManageSources}
-                        className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => onScheduleAction(schedule.schedule_id, "toggle")}
+                        disabled={isScheduleBusy || !canManageSources}
+                        className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {isBusy ? "Working…" : schedule.enabled ? "Pause" : "Enable"}
+                        {isScheduleBusy ? "Working…" : schedule.enabled ? "Pause" : "Enable"}
                       </button>
                       <button
-                        onClick={() => runScheduleAction(schedule.schedule_id, "delete")}
-                        disabled={isBusy || !canManageSources}
-                        className="rounded-xl border border-red-900/60 bg-red-950/20 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => onScheduleAction(schedule.schedule_id, "delete")}
+                        disabled={isScheduleBusy || !canManageSources}
+                        className="rounded-lg border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-3 py-1.5 text-xs font-medium text-[color:var(--status-danger)] transition hover:border-[color:var(--status-danger)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Delete
                       </button>
                     </div>
                   </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
-          )}
-        </div>
-      </div>
+                );
+              })
+            )}
 
-      {!isDemoMode && (
-      <details className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
-          Related operating surfaces
-        </summary>
-        <div className="grid gap-3 border-t border-[color:var(--border-subtle)] p-4 xl:grid-cols-2">
-          {OPERATING_SURFACES.map((surface) => {
-            const Icon = surface.icon;
-            return (
-              <Link key={surface.title} href={surface.href}>
-                <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 transition-colors hover:border-[color:var(--border-strong)]">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2">
-                        <Icon className="h-4 w-4 text-emerald-400" />
-                      </span>
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--foreground)]">{surface.title}</p>
-                        <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{surface.summary}</p>
-                      </div>
-                    </div>
-                    <ArrowRight className="mt-1 h-4 w-4 text-[var(--text-tertiary)]" />
-                  </div>
-                  <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{surface.status}</div>
+            {schedulable ? (
+              <form
+                className="rounded-lg border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3"
+                onSubmit={(event) => onCreateSchedule(event, source)}
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+                      Name
+                    </span>
+                    <input
+                      aria-label="Schedule name"
+                      value={scheduleName}
+                      onChange={(event) => onScheduleNameChange(event.target.value)}
+                      className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                      placeholder="Nightly posture"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+                      Cron
+                    </span>
+                    <input
+                      aria-label="Schedule cron"
+                      value={scheduleCron}
+                      onChange={(event) => onScheduleCronChange(event.target.value)}
+                      className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 font-mono text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                      placeholder="0 * * * *"
+                    />
+                  </label>
                 </div>
-              </Link>
-            );
-          })}
-        </div>
-      </details>
-      )}
-    </div>
-  );
-}
-
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
-      <div className="flex items-center gap-3">
-        <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2">
-          <Icon className="h-4 w-4 text-emerald-400" />
-        </span>
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{label}</p>
-          <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">{value}</p>
+                <button
+                  type="submit"
+                  disabled={submittingSchedule || !canManageSources}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <CalendarClock className="h-4 w-4" />
+                  {submittingSchedule ? "Creating…" : "Create schedule"}
+                </button>
+              </form>
+            ) : null}
+          </div>
         </div>
       </div>
-      <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">{detail}</p>
-    </div>
-  );
-}
-
-function ContractStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">{value}</p>
-    </div>
+    </Drawer>
   );
 }
 
@@ -1113,18 +1188,27 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
   const extraModeCount = scanModes.length - previewModes.length;
 
   return (
-    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">{provider.name}</h3>
-          <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">{provider.source}</p>
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-semibold text-[color:var(--foreground)]">{provider.name}</h3>
+          <p className="mt-1 truncate font-mono text-[11px] text-[color:var(--text-tertiary)]">{provider.source}</p>
         </div>
         <span
-          className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+          className="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium"
+          style={
             trust.supports_scope_zero
-              ? "border-emerald-900 bg-emerald-950/40 text-emerald-300"
-              : "border-[var(--border-subtle)] bg-[var(--background)]/60 text-[var(--text-secondary)]"
-          }`}
+              ? {
+                  borderColor: "var(--status-success-border)",
+                  backgroundColor: "var(--status-success-bg)",
+                  color: "var(--status-success)",
+                }
+              : {
+                  borderColor: "var(--border-subtle)",
+                  backgroundColor: "var(--surface)",
+                  color: "var(--text-secondary)",
+                }
+          }
         >
           {trust.supports_scope_zero ? "scope-zero" : "direct pull"}
         </span>
@@ -1132,13 +1216,16 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
 
       <div className="mt-3 flex max-h-14 flex-wrap gap-1.5 overflow-hidden">
         {previewModes.map((mode) => (
-          <span key={mode} className="rounded border border-sky-900/60 bg-sky-950/30 px-2 py-0.5 text-[10px] font-mono text-sky-300">
+          <span
+            key={mode}
+            className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] font-mono text-[color:var(--text-secondary)]"
+          >
             {formatMode(mode)}
           </span>
         ))}
         {extraModeCount > 0 ? (
           <span
-            className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)]"
+            className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--text-tertiary)]"
             title={scanModes.slice(PROVIDER_SCAN_MODE_PREVIEW).map(formatMode).join(", ")}
           >
             +{extraModeCount} mode{extraModeCount === 1 ? "" : "s"}
@@ -1146,27 +1233,27 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
         ) : null}
       </div>
 
-      <div className="mt-4 grid gap-2 text-xs text-[var(--text-secondary)] sm:grid-cols-2">
+      <div className="mt-4 grid gap-2 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
         <span>Read-only: {trust.read_only ? "yes" : "no"}</span>
         <span>Agentless: {trust.agentless ? "yes" : "no"}</span>
         <span>Redaction: {formatMode(trust.redaction_status)}</span>
         <span>Residency: {formatMode(trust.data_residency)}</span>
       </div>
 
-      <div className="mt-4 space-y-2 text-xs text-[var(--text-secondary)]">
+      <div className="mt-4 space-y-2 text-xs text-[color:var(--text-secondary)]">
         <div>
-          <span className="text-[var(--text-tertiary)]">Permissions used: </span>
-          <span className="text-[var(--foreground)]">{permissions.length}</span>
+          <span className="text-[color:var(--text-tertiary)]">Permissions used: </span>
+          <span className="text-[color:var(--foreground)]">{permissions.length}</span>
           {permissions.length > 0 ? (
-            <span className="ml-1 font-mono text-[11px] text-[var(--text-secondary)]">
+            <span className="ml-1 font-mono text-[11px] text-[color:var(--text-secondary)]">
               {permissions.slice(0, 3).join(", ")}
               {permissions.length > 3 ? ` +${permissions.length - 3}` : ""}
             </span>
           ) : null}
         </div>
         <div>
-          <span className="text-[var(--text-tertiary)]">Network: </span>
-          <span className="font-mono text-[11px] text-[var(--text-secondary)]">
+          <span className="text-[color:var(--text-tertiary)]">Network: </span>
+          <span className="font-mono text-[11px] text-[color:var(--text-secondary)]">
             {destinations.length ? destinations.slice(0, 3).join(", ") : "none"}
             {destinations.length > 3 ? ` +${destinations.length - 3}` : ""}
           </span>
@@ -1176,14 +1263,14 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
   );
 }
 
-function AccessList({ title, items, tone }: { title: string; items: string[]; tone: string }) {
+function AccessList({ title, items }: { title: string; items: string[] }) {
   return (
-    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
-      <p className={`text-xs uppercase tracking-[0.18em] ${tone}`}>{title}</p>
+    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+      <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">{title}</p>
       {items.length === 0 ? (
-        <p className="mt-3 text-sm text-[var(--text-secondary)]">No additional access in this category.</p>
+        <p className="mt-3 text-sm text-[color:var(--text-secondary)]">No additional access in this category.</p>
       ) : (
-        <ul className="mt-3 space-y-2 text-sm text-[var(--text-secondary)]">
+        <ul className="mt-3 space-y-2 text-sm text-[color:var(--text-secondary)]">
           {items.map((item) => (
             <li key={item}>{item}</li>
           ))}

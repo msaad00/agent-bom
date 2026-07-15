@@ -31,21 +31,30 @@ import {
   Loader2,
 } from "lucide-react";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
-import { ComplianceControlRow } from "@/components/compliance-control-row";
-import { isNotEvaluated, postureLabel, statusColor } from "@/components/compliance-status";
+import {
+  isNotEvaluated,
+  postureLabel,
+  statusColor,
+  StatusIcon,
+} from "@/components/compliance-status";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
-import { FrameworkCoveragePanel, type FrameworkCoverageItem } from "@/components/framework-coverage-panel";
 import { FrameworkIcon } from "@/components/framework-icon";
 import {
   complianceFrameworkSummaries,
+  compliancePassRate,
   controlMatchesQuery,
+  type ComplianceFrameworkSummary,
 } from "@/lib/compliance-frameworks";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { FIRST_EVIDENCE_ACTIONS } from "@/lib/empty-state-actions";
+import { StatStrip, type StatStripItem, type StatAccent } from "@/components/stat-strip";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { SplitLayout } from "@/components/split-layout";
+import { Collapsible } from "@/components/collapsible";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -62,52 +71,50 @@ function downloadBlobToFile(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-// ─── Score Ring ──────────────────────────────────────────────────────────────
+const CONTROL_STATUS_LABEL: Record<string, string> = {
+  pass: "Pass",
+  warning: "Warn",
+  fail: "Fail",
+};
 
-function ScoreRing({ score, status }: { score: number; status: string }) {
-  const r = 54;
-  const circ = 2 * Math.PI * r;
-  // A no-evidence scan has nothing to score. Render a neutral, empty ring with
-  // a "Not evaluated" label rather than a red 0% that reads as "failing".
-  const notEvaluated = isNotEvaluated(status);
-  const offset = notEvaluated ? circ : circ - (score / 100) * circ;
-  const color = notEvaluated
-    ? "var(--text-tertiary)"
-    : status === "pass"
-      ? "#34d399"
-      : status === "warning"
-        ? "#facc15"
-        : "#f87171";
+function statusToAccent(status: string): StatAccent {
+  if (isNotEvaluated(status)) return "neutral";
+  if (status === "pass") return "success";
+  if (status === "warning") return "warn";
+  if (status === "fail") return "critical";
+  return "neutral";
+}
 
+/** Compact three-segment pass/warn/fail bar, token-styled for both themes. */
+function CoverageBar({
+  pass,
+  warn,
+  fail,
+  total,
+}: Pick<ComplianceFrameworkSummary, "pass" | "warn" | "fail" | "total">) {
+  const seg = (n: number) => (total > 0 ? (n / total) * 100 : 0);
   return (
-    <div className="relative w-32 h-32">
-      <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--border-strong)" strokeWidth="8" />
-        <circle
-          cx="60" cy="60" r={r} fill="none"
-          stroke={color} strokeWidth="8"
-          strokeDasharray={circ} strokeDashoffset={offset}
-          strokeLinecap="round"
-          className="transition-all duration-1000"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        {notEvaluated ? (
-          <>
-            <span className="text-lg font-bold text-[color:var(--text-secondary)]">—</span>
-            <span className="px-1 text-center text-[9px] leading-tight text-[color:var(--text-tertiary)] uppercase tracking-wider">
-              Not evaluated
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="text-2xl font-bold text-[color:var(--foreground)]">{Math.round(score)}%</span>
-            <span className="text-[10px] text-[color:var(--text-tertiary)] uppercase tracking-wider">Score</span>
-          </>
-        )}
-      </div>
+    <div className="flex h-1.5 w-full min-w-[72px] max-w-[140px] overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
+      {pass > 0 ? (
+        <div style={{ width: `${seg(pass)}%`, backgroundColor: "var(--status-success)" }} />
+      ) : null}
+      {warn > 0 ? (
+        <div style={{ width: `${seg(warn)}%`, backgroundColor: "var(--status-warn)" }} />
+      ) : null}
+      {fail > 0 ? (
+        <div style={{ width: `${seg(fail)}%`, backgroundColor: "var(--status-danger)" }} />
+      ) : null}
     </div>
   );
+}
+
+type CategoryFilter = "all" | "ai" | "governance" | "cloud";
+
+function categoryFor(id: string): "ai" | "governance" | "cloud" {
+  if (id === "cis" || id === "cmmc") return "cloud";
+  if (id === "eu-ai-act" || id === "nist-csf" || id === "iso27001" || id === "soc2")
+    return "governance";
+  return "ai";
 }
 
 // ─── Page ───────────────────────────────────────────────────────────────────
@@ -126,6 +133,7 @@ function CompliancePageContent() {
   // "Cannot connect to the agent-bom API".
   const [errorKind, setErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [viewMode, setViewMode] = useState<"detail" | "heatmap" | "matrix">("detail");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [controlQuery, setControlQuery] = useState(queryParam);
   const [statusFilter, setStatusFilter] = useState<"all" | "pass" | "warning" | "fail">("all");
   const [exporting, setExporting] = useState(false);
@@ -238,27 +246,20 @@ function CompliancePageContent() {
     [data, hasMcp],
   );
 
-  const frameworkCoverageItems = useMemo((): FrameworkCoverageItem[] => {
-    const categoryFor = (id: string): FrameworkCoverageItem["category"] => {
-      if (id === "cis" || id === "cmmc") return "cloud";
-      if (id === "eu-ai-act" || id === "nist-csf" || id === "iso27001" || id === "soc2") return "governance";
-      return "ai";
-    };
-    return frameworks.map((framework) => ({
-      id: framework.id,
-      label: framework.label,
-      pass: framework.pass,
-      warn: framework.warn,
-      fail: framework.fail,
-      total: framework.total,
-      category: categoryFor(framework.id),
-    }));
-  }, [frameworks]);
+  const visibleFrameworks = useMemo(
+    () =>
+      categoryFilter === "all"
+        ? frameworks
+        : frameworks.filter((framework) => categoryFor(framework.id) === categoryFilter),
+    [frameworks, categoryFilter],
+  );
 
   const selectedSection = useMemo(
     () => detailSections.find((section) => section.id === selectedFrameworkId) ?? detailSections[0],
     [detailSections, selectedFrameworkId],
   );
+
+  const sectionCatalog = selectedSection?.catalog;
 
   const visibleControls = useMemo(() => {
     if (!selectedSection) return [];
@@ -342,226 +343,354 @@ function CompliancePageContent() {
 
   if (!data) return null;
 
-  return (
-    <div className="space-y-5">
-      {/* ── Trust center header ─────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-5">
-            <ScoreRing score={data.overall_score} status={data.overall_status} />
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
-                Trust center
-              </p>
-              <h1 className={`text-2xl font-bold ${statusColor(data.overall_status)}`}>
-                {postureLabel(data.overall_status)}
-              </h1>
-              <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-                AI supply-chain frameworks plus cloud CIS posture when accounts are connected — not a full CNAPP claim.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-4 text-xs text-[color:var(--text-tertiary)]">
-                <span>
-                  {data.scan_count} scan{data.scan_count !== 1 ? "s" : ""} analyzed
-                </span>
-                {data.latest_scan ? <span>Latest {formatDate(data.latest_scan)}</span> : null}
-                <span>
-                  {frameworks.reduce((total, framework) => total + framework.fail, 0)} failing controls
-                </span>
-              </div>
-            </div>
+  const totalPass = frameworks.reduce((sum, f) => sum + f.pass, 0);
+  const totalWarn = frameworks.reduce((sum, f) => sum + f.warn, 0);
+  const totalFail = frameworks.reduce((sum, f) => sum + f.fail, 0);
+  const evaluatedFrameworks = frameworks.filter((f) => !f.disabled).length;
+  const overallNotEvaluated = isNotEvaluated(data.overall_status);
+
+  const kpis: StatStripItem[] = [
+    {
+      label: "Overall",
+      value: overallNotEvaluated ? "—" : `${Math.round(data.overall_score)}%`,
+      accent: statusToAccent(data.overall_status),
+      hint: postureLabel(data.overall_status),
+    },
+    {
+      label: "Frameworks",
+      value: evaluatedFrameworks,
+      hint: `${frameworks.length} tracked`,
+    },
+    { label: "Passing", value: totalPass, accent: "success" },
+    { label: "Attention", value: totalWarn, accent: "warn", accentThreshold: 0 },
+    { label: "Failing", value: totalFail, accent: "critical", accentThreshold: 0 },
+  ];
+
+  // ── Frameworks master table ────────────────────────────────────────────────
+  const frameworkColumns: DataTableColumn<ComplianceFrameworkSummary>[] = [
+    {
+      key: "label",
+      header: "Framework",
+      cell: (f) => (
+        <div className="flex items-center gap-2">
+          <FrameworkIcon frameworkId={f.id} size={18} />
+          <div className="min-w-0">
+            <div className="truncate font-medium text-[color:var(--foreground)]">{f.shortLabel}</div>
+            <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">{f.label}</div>
           </div>
+        </div>
+      ),
+    },
+    {
+      key: "coverage",
+      header: "Coverage",
+      cell: (f) =>
+        f.disabled ? (
+          <span className="text-[11px] text-[color:var(--text-tertiary)]">
+            {f.disabledReason ?? "Not evaluated"}
+          </span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <CoverageBar pass={f.pass} warn={f.warn} fail={f.fail} total={f.total} />
+            <span className="tabular-nums text-[11px] text-[color:var(--text-tertiary)]">
+              {compliancePassRate(f)}%
+            </span>
+          </div>
+        ),
+    },
+    {
+      key: "fail",
+      header: "Fail",
+      align: "right",
+      sortable: true,
+      width: "4rem",
+      cell: (f) => (
+        <span
+          className={
+            f.fail > 0 ? "font-semibold text-[color:var(--status-danger)]" : "text-[color:var(--text-tertiary)]"
+          }
+        >
+          {f.fail}
+        </span>
+      ),
+    },
+  ];
+
+  const master = (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5">
+        {(["all", "ai", "governance", "cloud"] as const).map((value) => (
           <button
-            onClick={() => void handleExportPack()}
-            disabled={exporting}
-            title="Download a signed evidence pack covering every framework"
-            className="flex items-center gap-1.5 self-start rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
-            data-testid="compliance-export-pack"
+            key={value}
+            type="button"
+            onClick={() => setCategoryFilter(value)}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+              categoryFilter === value
+                ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
+            }`}
           >
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {exporting ? "Exporting…" : "Export pack"}
+            {value === "ai" ? "AI" : value}
           </button>
-        </div>
-        {exportError ? (
-          <p className="mt-2 text-right text-xs text-red-400">{exportError}</p>
-        ) : null}
-
-        <FrameworkCoveragePanel
-          items={frameworkCoverageItems}
-          onFocusFramework={(frameworkId) => {
-            setSelectedFrameworkId(frameworkId);
-            setViewMode("detail");
-          }}
-        />
-
-        {(hubPosture && hubPosture.totals.combined > 0) || mitreCatalog || atlasCatalog ? (
-          <details className="mt-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3">
-            <summary className="cursor-pointer text-xs font-medium text-[color:var(--text-secondary)]">
-              Operator & catalog context
-            </summary>
-            <div className="mt-3 space-y-3 text-xs text-[color:var(--text-tertiary)]">
-              {hubPosture && hubPosture.totals.combined > 0 ? (
-                <p>
-                  Compliance hub: {hubPosture.totals.combined.toLocaleString()} findings (
-                  {hubPosture.totals.native.toLocaleString()} native ·{" "}
-                  {hubPosture.totals.hub.toLocaleString()} ingested). Import via{" "}
-                  <code className="rounded bg-[color:var(--surface)] px-1 py-0.5">
-                    POST /v1/compliance/ingest
-                  </code>
-                  .
-                </p>
-              ) : null}
-              {mitreCatalog ? (
-                <p>
-                  MITRE ATT&CK {mitreCatalog.attack_version || "catalog"} ·{" "}
-                  {mitreCatalog.technique_count} techniques · refresh with{" "}
-                  <code className="rounded bg-[color:var(--surface)] px-1 py-0.5">
-                    agent-bom db update-frameworks
-                  </code>
-                  .
-                </p>
-              ) : null}
-              {atlasCatalog ? (
-                <p>
-                  MITRE ATLAS {atlasCatalog.atlas_version || "catalog"} ·{" "}
-                  {atlasCatalog.technique_count} techniques · refresh with{" "}
-                  <code className="rounded bg-[color:var(--surface)] px-1 py-0.5">
-                    agent-bom db update-frameworks --framework atlas
-                  </code>
-                  .
-                </p>
-              ) : null}
-            </div>
-          </details>
-        ) : null}
+        ))}
       </div>
+      <DataTable
+        rows={visibleFrameworks}
+        rowKey={(f) => f.id}
+        columns={frameworkColumns}
+        selectedKey={selectedSection?.id}
+        onRowClick={(f) => {
+          if (f.disabled) return;
+          setSelectedFrameworkId(f.id);
+        }}
+        maxHeight="calc(100vh - 22rem)"
+        caption="Framework coverage"
+        empty="No frameworks in this category."
+        data-testid="compliance-frameworks-table"
+      />
+    </div>
+  );
 
-      {/* ── View Toggle ────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setViewMode("detail")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            viewMode === "detail"
-              ? "bg-emerald-600 text-white"
-              : "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] border border-[color:var(--border-strong)]"
-          }`}
-        >
-          <List className="w-3.5 h-3.5" />
-          Detail
-        </button>
-        <button
-          onClick={() => setViewMode("heatmap")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            viewMode === "heatmap"
-              ? "bg-emerald-600 text-white"
-              : "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] border border-[color:var(--border-strong)]"
-          }`}
-        >
-          <Grid3X3 className="w-3.5 h-3.5" />
-          Heatmap
-        </button>
-        <button
-          onClick={() => setViewMode("matrix")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            viewMode === "matrix"
-              ? "bg-emerald-600 text-white"
-              : "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] border border-[color:var(--border-strong)]"
-          }`}
-        >
-          <Scan className="w-3.5 h-3.5" />
-          Matrix
-        </button>
-      </div>
-
-      {/* ── Heatmap View ──────────────────────────────────────────────── */}
-      {viewMode === "heatmap" && <ComplianceHeatmap data={data} />}
-
-      {/* ── Matrix View ───────────────────────────────────────────────── */}
-      {viewMode === "matrix" && <ComplianceMatrix data={data} />}
-
-      {viewMode === "detail" && selectedSection ? (
-      <>
-      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <FrameworkIcon frameworkId={selectedSection.id} size={24} />
-              <h2 className="text-base font-semibold text-[color:var(--foreground)]">
-                {selectedSection.title}
-              </h2>
-            </div>
-            {selectedSection.subtitle ? (
-              <p className="mt-0.5 text-xs text-[color:var(--text-tertiary)]">{selectedSection.subtitle}</p>
-            ) : null}
-            <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-              {visibleControls.length} of {selectedSection.controls.length} controls shown · click a row for evidence
-            </p>
+  // ── Controls detail table ──────────────────────────────────────────────────
+  const controlColumns: DataTableColumn<ComplianceControl>[] = [
+    {
+      key: "code",
+      header: "Control",
+      cell: (c) => (
+        <div className="min-w-0">
+          <div className="font-mono text-xs font-medium text-[color:var(--foreground)]">{c.code}</div>
+          <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">
+            {sectionCatalog?.[c.code] ?? c.name}
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative min-w-[220px]">
-              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
-              <input
-                type="text"
-                value={controlQuery}
-                onChange={(e) => setControlQuery(e.target.value)}
-                placeholder="Search control, package, agent"
-                className="w-full rounded-lg border border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
-              />
-            </div>
-            <div className="flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] p-0.5">
-              {(["all", "fail", "warning", "pass"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setStatusFilter(value)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                    statusFilter === value
-                      ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                      : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
-                  }`}
-                >
-                  {value === "all" ? "All" : value === "pass" ? "Pass" : value === "warning" ? "Warn" : "Fail"}
-                </button>
-              ))}
-            </div>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "6rem",
+      cell: (c) => (
+        <span className="inline-flex items-center gap-1.5">
+          <StatusIcon status={c.status} className="h-3.5 w-3.5" />
+          <span className={`text-xs font-medium ${statusColor(c.status)}`}>
+            {CONTROL_STATUS_LABEL[c.status] ?? c.status}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "findings",
+      header: "Findings",
+      align: "right",
+      width: "5rem",
+      cell: (c) => (
+        <span
+          className={
+            c.findings > 0 ? "font-semibold text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]"
+          }
+        >
+          {c.findings}
+        </span>
+      ),
+    },
+  ];
+
+  const detail = selectedSection ? (
+    <div className="flex h-full min-h-0 flex-col rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] elev-1">
+      <div className="border-b border-[color:var(--border-subtle)] p-4">
+        <div className="flex items-center gap-2">
+          <FrameworkIcon frameworkId={selectedSection.id} size={22} />
+          <h2 className="text-base font-semibold text-[color:var(--foreground)]">
+            {selectedSection.title}
+          </h2>
+        </div>
+        {selectedSection.subtitle ? (
+          <p className="mt-0.5 text-xs text-[color:var(--text-tertiary)]">{selectedSection.subtitle}</p>
+        ) : null}
+        <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+          {visibleControls.length} of {selectedSection.controls.length} controls shown · click a row for evidence
+        </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
+            <input
+              type="text"
+              value={controlQuery}
+              onChange={(e) => setControlQuery(e.target.value)}
+              placeholder="Search control, package, agent"
+              className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5">
+            {(["all", "fail", "warning", "pass"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setStatusFilter(value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  statusFilter === value
+                    ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                    : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
+                }`}
+              >
+                {value === "all" ? "All" : value === "pass" ? "Pass" : value === "warning" ? "Warn" : "Fail"}
+              </button>
+            ))}
           </div>
         </div>
       </div>
-
-      <section className="space-y-2">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {selectedSection.controls.length === 0 && selectedSection.emptyMessage ? (
           <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
             {selectedSection.emptyMessage}
           </div>
-        ) : visibleControls.length === 0 ? (
-          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
-            No controls match the current filters.
-          </div>
         ) : (
-          visibleControls.map((control) => (
-            <ComplianceControlRow
-              key={control.code}
-              control={control}
-              catalogName={selectedSection.catalog?.[control.code] ?? control.name}
-              onOpen={() =>
-                setSelectedControl({
-                  control,
-                  frameworkLabel: selectedSection.title,
-                  catalog: selectedSection.catalog,
-                })
-              }
-            />
-          ))
+          <DataTable
+            rows={visibleControls}
+            rowKey={(c) => c.code}
+            columns={controlColumns}
+            onRowClick={(control) =>
+              setSelectedControl({
+                control,
+                frameworkLabel: selectedSection.title,
+                catalog: selectedSection.catalog,
+              })
+            }
+            selectedKey={selectedControl?.control.code}
+            caption={`${selectedSection.title} controls`}
+            empty="No controls match the current filters."
+          />
         )}
-      </section>
+      </div>
+    </div>
+  ) : null;
 
-      <details className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
-        <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-[color:var(--foreground)]">
-          Cloud CIS benchmark drill-down (AWS / Azure / GCP / Snowflake / Databricks)
-        </summary>
-        <div className="border-t border-[color:var(--border-subtle)] px-2 pb-2">
-          <CISBenchmarkDetail />
+  return (
+    <div className="space-y-5">
+      {/* ── Trust center header ─────────────────────────────────────────── */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
+            Trust center
+          </p>
+          <h1 className={`text-xl font-bold ${statusColor(data.overall_status)}`}>
+            {postureLabel(data.overall_status)}
+          </h1>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--text-tertiary)]">
+            <span>
+              {data.scan_count} scan{data.scan_count !== 1 ? "s" : ""} analyzed
+            </span>
+            {data.latest_scan ? <span>Latest {formatDate(data.latest_scan)}</span> : null}
+            <span>{totalFail} failing controls</span>
+            <span>
+              AI supply-chain frameworks + cloud CIS posture when accounts are connected — not a full CNAPP claim.
+            </span>
+          </div>
         </div>
-      </details>
+        <button
+          onClick={() => void handleExportPack()}
+          disabled={exporting}
+          title="Download a signed evidence pack covering every framework"
+          className="flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-sm font-medium text-[color:var(--accent)] transition-colors hover:bg-[color:var(--accent-soft-hover)] disabled:opacity-50"
+          data-testid="compliance-export-pack"
+        >
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {exporting ? "Exporting…" : "Export pack"}
+        </button>
+      </div>
+      {exportError ? (
+        <p className="text-right text-xs text-[color:var(--status-danger)]">{exportError}</p>
+      ) : null}
+
+      <StatStrip items={kpis} data-testid="compliance-kpi-strip" />
+
+      {/* ── View Toggle ────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5 self-start w-fit">
+        {(
+          [
+            { key: "detail", label: "Detail", icon: List },
+            { key: "heatmap", label: "Heatmap", icon: Grid3X3 },
+            { key: "matrix", label: "Matrix", icon: Scan },
+          ] as const
+        ).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setViewMode(key)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === key
+                ? "bg-[color:var(--accent-soft)] text-[color:var(--accent)]"
+                : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {viewMode === "heatmap" && <ComplianceHeatmap data={data} />}
+      {viewMode === "matrix" && <ComplianceMatrix data={data} />}
+
+      {viewMode === "detail" ? (
+        <>
+          <SplitLayout
+            masterWidth="24rem"
+            height="calc(100vh - 20rem)"
+            master={master}
+            detail={detail}
+            placeholder="Select a framework to review its controls and evidence."
+            data-testid="compliance-split"
+          />
+
+          <Collapsible
+            title="Cloud CIS benchmark drill-down"
+            subtitle="AWS / Azure / GCP / Snowflake / Databricks"
+            icon={Scan}
+            defaultOpen={false}
+          >
+            <CISBenchmarkDetail />
+          </Collapsible>
+
+          {(hubPosture && hubPosture.totals.combined > 0) || mitreCatalog || atlasCatalog ? (
+            <Collapsible title="Operator & catalog context" defaultOpen={false}>
+              <div className="space-y-3 text-xs text-[color:var(--text-tertiary)]">
+                {hubPosture && hubPosture.totals.combined > 0 ? (
+                  <p>
+                    Compliance hub: {hubPosture.totals.combined.toLocaleString()} findings (
+                    {hubPosture.totals.native.toLocaleString()} native ·{" "}
+                    {hubPosture.totals.hub.toLocaleString()} ingested). Import via{" "}
+                    <code className="rounded bg-[color:var(--surface-muted)] px-1 py-0.5">
+                      POST /v1/compliance/ingest
+                    </code>
+                    .
+                  </p>
+                ) : null}
+                {mitreCatalog ? (
+                  <p>
+                    MITRE ATT&CK {mitreCatalog.attack_version || "catalog"} ·{" "}
+                    {mitreCatalog.technique_count} techniques · refresh with{" "}
+                    <code className="rounded bg-[color:var(--surface-muted)] px-1 py-0.5">
+                      agent-bom db update-frameworks
+                    </code>
+                    .
+                  </p>
+                ) : null}
+                {atlasCatalog ? (
+                  <p>
+                    MITRE ATLAS {atlasCatalog.atlas_version || "catalog"} ·{" "}
+                    {atlasCatalog.technique_count} techniques · refresh with{" "}
+                    <code className="rounded bg-[color:var(--surface-muted)] px-1 py-0.5">
+                      agent-bom db update-frameworks --framework atlas
+                    </code>
+                    .
+                  </p>
+                ) : null}
+              </div>
+            </Collapsible>
+          ) : null}
+        </>
+      ) : null}
 
       {selectedControl ? (
         <ComplianceControlDrawer
@@ -570,8 +699,6 @@ function CompliancePageContent() {
           catalogName={selectedControl.catalog?.[selectedControl.control.code]}
           onClose={() => setSelectedControl(null)}
         />
-      ) : null}
-      </>
       ) : null}
 
       {/* ── Empty state ───────────────────────────────────────────────── */}

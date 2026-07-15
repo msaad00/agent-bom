@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -60,6 +59,10 @@ import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/s
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { FIRST_SCAN_ACTIONS } from "@/lib/empty-state-actions";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { StatStrip } from "@/components/stat-strip";
+import { Collapsible } from "@/components/collapsible";
+import { Drawer } from "@/components/drawer";
 
 // ─── Agents List Helpers ────────────────────────────────────────────────────
 
@@ -194,17 +197,41 @@ function safeDisplayText(value: string): string {
 
 // ─── Agents List View ───────────────────────────────────────────────────────
 
+const CRED_ENV_RE = /key|token|secret|password|credential|auth/i;
+
+function serverCredentialCount(srv: Agent["mcp_servers"][number]): number {
+  if (srv.credential_env_vars?.length) return srv.credential_env_vars.length;
+  return srv.env ? Object.keys(srv.env).filter((k) => CRED_ENV_RE.test(k)).length : 0;
+}
+
+function agentPackageCount(agent: Agent): number {
+  return agent.mcp_servers.reduce((sum, srv) => sum + srv.packages.length, 0);
+}
+
+function agentCredentialCount(agent: Agent): number {
+  return agent.mcp_servers.reduce((sum, srv) => sum + serverCredentialCount(srv), 0);
+}
+
+function ConfiguredPill() {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.1em]"
+      style={{ color: "var(--status-success)" }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--status-success)" }} aria-hidden="true" />
+      configured
+    </span>
+  );
+}
+
 function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [hintDismissed, setHintDismissed] = useState(false);
   const { counts } = useDeploymentContext();
-
-  function toggleCollapse(agentName: string) {
-    setExpandedAgent((current) => (current === agentName ? null : agentName));
-  }
 
   useEffect(() => {
     api.listAgents()
@@ -223,90 +250,187 @@ function AgentsList() {
     !search || a.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Row virtualization for the configured-agents list. Enterprise estates
-  // can carry thousands of configured agents; rendering every card flat
-  // produced ~30s page loads and dropped scroll FPS. The virtualizer
-  // mounts only the visible (+ a small overscan) rows and measures each
-  // one so expanded cards still grow naturally. Tracks #1955.
-  const configuredScrollRef = useRef<HTMLDivElement | null>(null);
-  const configuredVirtualizer = useVirtualizer({
-    count: filteredConfigured.length,
-    getScrollElement: () => configuredScrollRef.current,
-    estimateSize: () => 80,
-    overscan: 8,
-    measureElement: (el) => el?.getBoundingClientRect().height ?? 80,
-  });
-  const configuredVirtualItems = configuredVirtualizer.getVirtualItems();
-  const installedScrollRef = useRef<HTMLDivElement | null>(null);
-  const installedVirtualizer = useVirtualizer({
-    count: installedOnly.length,
-    getScrollElement: () => installedScrollRef.current,
-    estimateSize: () => 96,
-    overscan: 8,
-  });
-  const installedVirtualItems = installedVirtualizer.getVirtualItems();
+  const activeAgent = selectedAgent
+    ? configured.find((a) => a.name === selectedAgent) ?? null
+    : null;
+
+  const ecosystemHint =
+    Object.entries(ecosystems)
+      .map(([eco, count]) => `${eco}: ${count}`)
+      .join(", ") || undefined;
+
+  const configuredColumns: DataTableColumn<Agent>[] = [
+    {
+      key: "name",
+      header: "Name",
+      cell: (agent) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium text-[color:var(--foreground)]">{agent.name}</div>
+          {agent.source ? (
+            <div className="truncate text-xs text-[color:var(--text-tertiary)]">{agent.source}</div>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      cell: (agent) => (
+        <span className="font-mono text-xs text-[color:var(--text-secondary)]">{agent.agent_type}</span>
+      ),
+    },
+    {
+      key: "servers",
+      header: "Servers",
+      align: "right",
+      cell: (agent) => <span className="tabular-nums">{agent.mcp_servers.length}</span>,
+    },
+    {
+      key: "packages",
+      header: "Packages",
+      align: "right",
+      cell: (agent) => <span className="tabular-nums">{agentPackageCount(agent)}</span>,
+    },
+    {
+      key: "credentials",
+      header: "Credentials",
+      align: "right",
+      cell: (agent) => {
+        const count = agentCredentialCount(agent);
+        return (
+          <span
+            className="tabular-nums"
+            style={count > 0 ? { color: "var(--status-warn)" } : undefined}
+          >
+            {count}
+          </span>
+        );
+      },
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: () => <ConfiguredPill />,
+    },
+  ];
+
+  const installedColumns: DataTableColumn<Agent>[] = [
+    {
+      key: "name",
+      header: "Name",
+      cell: (agent) => (
+        <span className="font-medium text-[color:var(--text-secondary)]">{agent.name}</span>
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      cell: (agent) => (
+        <span className="font-mono text-xs text-[color:var(--text-tertiary)]">{agent.agent_type}</span>
+      ),
+    },
+    {
+      key: "config",
+      header: "Config path",
+      cell: (agent) => (
+        <span className="truncate font-mono text-xs text-[color:var(--text-tertiary)]">
+          {agent.config_path || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: () => (
+        <span
+          className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.1em]"
+          style={{ color: "var(--status-warn)" }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--status-warn)" }} aria-hidden="true" />
+          not configured
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-          <p className="text-[color:var(--text-secondary)] text-sm mt-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Agents</h1>
+          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
             Discovered AI clients/hosts and background agents, with their MCP servers
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/agents/topology"
-            className="flex items-center gap-2 px-3 py-2 bg-[color:var(--surface-elevated)] hover:bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded-lg text-sm text-[color:var(--text-secondary)] transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)]"
           >
-            <Network className="w-4 h-4" />
+            <Network className="h-4 w-4" />
             Agent mesh
           </Link>
           <Link
             href="/mesh"
-            className="flex items-center gap-2 px-3 py-2 bg-[color:var(--surface-elevated)] hover:bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded-lg text-sm text-[color:var(--text-secondary)] transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)]"
           >
-            <GitBranch className="w-4 h-4" />
+            <GitBranch className="h-4 w-4" />
             Mesh View
           </Link>
         </div>
       </div>
 
-      {!loading && agents.length > 0 && (
-        <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-1">
-              <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first value</p>
-              <h2 className="text-base font-semibold text-[color:var(--foreground)]">See MCP surface area before you deploy proxy</h2>
-              <p className="text-sm leading-6 text-[color:var(--text-secondary)] max-w-3xl">
-                This page is useful on discovery alone. It shows which MCP servers are configured, what transport they use,
-                how many tools they expose, and whether they carry env-backed credentials or risky server state. Proxy and gateway
-                add runtime enforcement later; they are not required for inventory visibility.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs lg:min-w-[280px]">
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
-                <div className="text-[color:var(--text-tertiary)]">Remote MCPs</div>
-                <div className="mt-1 text-sm font-semibold text-blue-400">{remoteServers}</div>
-              </div>
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
-                <div className="text-[color:var(--text-tertiary)]">Servers with credentials</div>
-                <div className="mt-1 text-sm font-semibold text-yellow-400">{serversWithCredentials}</div>
-              </div>
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
-                <div className="text-[color:var(--text-tertiary)]">Blocked or risky</div>
-                <div className="mt-1 text-sm font-semibold text-rose-400">{blockedServers}</div>
-              </div>
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
-                <div className="text-[color:var(--text-tertiary)]">AI clients · background</div>
-                <div className="mt-1 text-sm font-semibold text-emerald-400">
-                  {agentClasses.client} · {agentClasses.background}
-                </div>
-              </div>
-            </div>
-          </div>
+      {!loading && agents.length > 0 && !hintDismissed && (
+        <div className="flex items-start gap-2 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]">
+          <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[color:var(--accent)]" />
+          <p className="min-w-0 flex-1">
+            <span className="font-semibold text-[color:var(--foreground)]">Inventory-first:</span> this page is useful on
+            discovery alone — MCP servers, transport, tools, and env-backed credentials. Proxy and gateway add runtime
+            enforcement later; they are not required for visibility.
+          </p>
+          <button
+            type="button"
+            onClick={() => setHintDismissed(true)}
+            aria-label="Dismiss hint"
+            className="shrink-0 rounded p-0.5 text-[color:var(--text-tertiary)] transition-colors hover:text-[color:var(--foreground)]"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
+      )}
+
+      {!loading && agents.length > 0 && (
+        <StatStrip
+          data-testid="agents-kpis"
+          items={[
+            {
+              label: "Agents",
+              value: agents.length,
+              icon: Shield,
+              hint: `${configured.length} configured${installedOnly.length > 0 ? ` · ${installedOnly.length} not` : ""}`,
+            },
+            { label: "Servers", value: totalServers, icon: Server, hint: `${remoteServers} remote` },
+            { label: "Packages", value: totalPackages, icon: Package, hint: ecosystemHint },
+            {
+              label: "Credentials",
+              value: totalCredentials,
+              icon: Key,
+              accent: "warn",
+              hint: `${serversWithCredentials} servers`,
+            },
+            {
+              label: "Blocked / risky",
+              value: blockedServers,
+              icon: AlertCircle,
+              accent: "critical",
+            },
+            {
+              label: "Clients · background",
+              value: `${agentClasses.client} · ${agentClasses.background}`,
+              icon: Network,
+            },
+          ]}
+        />
       )}
 
       {!loading && agents.length > 0 && (
@@ -318,7 +442,7 @@ function AgentsList() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search agents or agent type"
-              className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:outline-none focus:border-[color:var(--border-strong)]"
+              className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
             />
           </div>
           <p className="text-xs text-[color:var(--text-tertiary)]">
@@ -347,48 +471,6 @@ function AgentsList() {
         />
       )}
 
-      {/* Summary stats bar */}
-      {!loading && agents.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)] text-xs mb-1">
-              <Shield className="w-3 h-3" /> Agents
-            </div>
-            <div className="text-lg font-semibold text-[color:var(--foreground)]">{agents.length}</div>
-            <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5">
-              {configured.length} configured{installedOnly.length > 0 ? `, ${installedOnly.length} not configured` : ""}
-            </div>
-          </div>
-          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)] text-xs mb-1">
-              <Server className="w-3 h-3" /> Servers
-            </div>
-            <div className="text-lg font-semibold text-[color:var(--foreground)]">{totalServers}</div>
-            <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5">MCP server instances</div>
-          </div>
-          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)] text-xs mb-1">
-              <Package className="w-3 h-3" /> Packages
-            </div>
-            <div className="text-lg font-semibold text-[color:var(--foreground)]">{totalPackages}</div>
-            <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5">
-              {Object.entries(ecosystems).map(([eco, count]) => `${eco}: ${count}`).join(", ") || "\u2014"}
-            </div>
-          </div>
-          <div className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-[color:var(--text-secondary)] text-xs mb-1">
-              <Key className="w-3 h-3" /> Credentials
-            </div>
-            <div className={`text-lg font-semibold ${totalCredentials > 0 ? "text-orange-400" : "text-[color:var(--foreground)]"}`}>
-              {totalCredentials}
-            </div>
-            <div className="text-[10px] text-[color:var(--text-tertiary)] mt-0.5">
-              {totalCredentials > 0 ? "Exposed env vars" : "None detected"}
-            </div>
-          </div>
-        </div>
-      )}
-
       {!loading && !error && agents.length === 0 &&
         (counts && !isDeploymentSurfaceAvailable("agents", counts) ? (
           <DeploymentSurfaceRequiredState surface="agents" counts={counts} detail={error || null} />
@@ -408,245 +490,256 @@ function AgentsList() {
           />
         ))}
 
-      {/* Configured agents — row-virtualized for large estates */}
-      <div
-        ref={configuredScrollRef}
-        data-testid="agents-configured-virtualized"
-        className="max-h-[80vh] overflow-y-auto"
-      >
-        <div
-          style={{ height: `${configuredVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}
-        >
-        {configuredVirtualItems.map((virtualRow) => {
-          const agent = filteredConfigured[virtualRow.index];
-          if (!agent) return null;
-          const isExpanded = expandedAgent === agent.name;
-          return (
-          <div
-            key={agent.name}
-            data-index={virtualRow.index}
-            ref={configuredVirtualizer.measureElement}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              transform: `translateY(${virtualRow.start}px)`,
-              paddingBottom: "16px",
-            }}
-            className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl p-5"
-          >
-            <button
-              type="button"
-              onClick={() => toggleCollapse(agent.name)}
-              className="w-full flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-[color:var(--text-tertiary)]" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-[color:var(--text-tertiary)]" />
-                )}
-                <h2 className="font-semibold text-[color:var(--foreground)]">{agent.name}</h2>
-                <span className="text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-400 rounded px-1.5 py-0.5">
-                  configured
-                </span>
-                <span className="text-xs font-mono text-[color:var(--text-tertiary)]">{agent.agent_type}</span>
-                {agent.source && (
-                  <span className="text-xs text-[color:var(--text-tertiary)]">{agent.source}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded px-2 py-1 text-[color:var(--text-secondary)]">
-                  {agent.mcp_servers.length} server{agent.mcp_servers.length !== 1 ? "s" : ""}
-                </span>
-                <Link
-                  href={`/agents?name=${encodeURIComponent(agent.name)}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-[color:var(--text-tertiary)] hover:text-emerald-400 transition-colors"
-                  title="View agent detail"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </div>
-            </button>
-
-            {isExpanded ? (
-              <div className="space-y-2 mt-4">
-                {agent.discovery_provenance ? (
-                  <div className="rounded-lg border border-sky-900/60 bg-sky-950/20 p-3">
-                    <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-300">
-                      <Shield className="h-3.5 w-3.5" />
-                      Asset discovery provenance
-                    </div>
-                    <DiscoveryProvenanceTags provenance={agent.discovery_provenance} />
-                    <div className="mt-2 grid gap-2 text-[11px] text-[color:var(--text-secondary)] sm:grid-cols-2">
-                      {agent.discovery_provenance.source && <span>Source: <span className="text-[color:var(--text-secondary)]">{agent.discovery_provenance.source}</span></span>}
-                      {agent.discovery_provenance.resource_name && (
-                        <span>Resource: <span className="text-[color:var(--text-secondary)]">{agent.discovery_provenance.resource_name}</span></span>
-                      )}
-                      {agent.discovery_provenance.location && <span>Location: <span className="text-[color:var(--text-secondary)]">{agent.discovery_provenance.location}</span></span>}
-                      {agent.discovery_provenance.resource_id && (
-                        <span className="min-w-0 truncate">ID: <span className="font-mono text-[color:var(--text-secondary)]">{agent.discovery_provenance.resource_id}</span></span>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-                {agent.discovery_envelope ? (
-                  <DiscoveryEnvelopeCard envelope={agent.discovery_envelope} />
-                ) : null}
-                {agent.mcp_servers?.map((srv, j) => (
-                  <div key={j} className="bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-semibold text-[color:var(--foreground)]">{srv.name}</span>
-                        {srv.security_blocked && (
-                          <span className="rounded border border-rose-800 bg-rose-950 px-1.5 py-0.5 text-[10px] font-mono text-rose-300">
-                            blocked
-                          </span>
-                        )}
-                        {(srv.credential_env_vars?.length ?? 0) > 0 && (
-                          <span className="rounded border border-yellow-800 bg-yellow-950 px-1.5 py-0.5 text-[10px] font-mono text-yellow-300">
-                            creds
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {srv.transport && (
-                          <span className="text-xs text-[color:var(--text-tertiary)] font-mono">{srv.transport}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <DiscoveryProvenanceTags provenance={srv.discovery_provenance} />
-
-                    {srv.command && (
-                      <div className="text-xs font-mono text-[color:var(--text-tertiary)] mb-2">
-                        $ {srv.command} {srv.env ? Object.keys(srv.env).length > 0 ? `[${Object.keys(srv.env).length} env vars]` : "" : ""}
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-3 text-xs text-[color:var(--text-tertiary)]">
-                      {srv.packages.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Package className="w-3 h-3" />
-                          {srv.packages.length} package{srv.packages.length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {srv.tools && srv.tools.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Wrench className="w-3 h-3" />
-                          {srv.tools.length} tool{srv.tools.length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {srv.env && Object.keys(srv.env).length > 0 && (
-                        <span className="flex items-center gap-1 text-orange-400">
-                          <Key className="w-3 h-3" />
-                          {Object.keys(srv.env).length} credential{Object.keys(srv.env).length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {srv.security_blocked && (
-                        <span className="flex items-center gap-1 text-rose-400">
-                          <AlertCircle className="w-3 h-3" />
-                          blocked or policy risky
-                        </span>
-                      )}
-                    </div>
-                    {(srv.credential_env_vars?.length ?? 0) > 0 && (
-                      <div className="mt-3">
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow-400">
-                          Credential-backed env vars
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {srv.credential_env_vars?.map((envVar) => (
-                            <span key={envVar} className="rounded border border-yellow-800 bg-yellow-950 px-2 py-0.5 text-[11px] font-mono text-yellow-300">
-                              {envVar}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : null}
+      {/* Configured agents — dense table, row → detail drawer */}
+      {!loading && configured.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-base font-semibold text-[color:var(--foreground)]">Configured agents</h2>
+            <p className="text-xs text-[color:var(--text-tertiary)]">Row → servers, tools, and credentials</p>
           </div>
-        )})}
+          <DataTable<Agent>
+            data-testid="agents-configured-table"
+            columns={configuredColumns}
+            rows={filteredConfigured}
+            rowKey={(agent) => agent.name}
+            onRowClick={(agent) => setSelectedAgent(agent.name)}
+            selectedKey={selectedAgent ?? undefined}
+            maxHeight="34rem"
+            caption="Configured agents with server, package, and credential counts"
+            empty={
+              search
+                ? "No configured agents match the current search."
+                : "No configured agents in this inventory."
+            }
+          />
+        </section>
+      )}
+
+      {/* Installed but not configured */}
+      {!loading && installedOnly.length > 0 && (
+        <Collapsible
+          title="Installed but not configured"
+          icon={AlertCircle}
+          count={installedOnly.length}
+          defaultOpen={false}
+        >
+          <p className="mb-3 text-xs text-[color:var(--text-secondary)]">
+            Binaries detected on PATH. Run setup to configure MCP servers.
+          </p>
+          <DataTable<Agent>
+            data-testid="agents-installed-table"
+            columns={installedColumns}
+            rows={installedOnly}
+            rowKey={(agent, index) => `${agent.name}-${index}`}
+            maxHeight="24rem"
+            caption="Installed but unconfigured agents"
+          />
+        </Collapsible>
+      )}
+
+      <AgentDetailDrawer agent={activeAgent} open={activeAgent != null} onClose={() => setSelectedAgent(null)} />
+    </div>
+  );
+}
+
+function AgentDetailDrawer({
+  agent,
+  open,
+  onClose,
+}: {
+  agent: Agent | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!agent) return null;
+  const packages = agentPackageCount(agent);
+  const credentials = agentCredentialCount(agent);
+  const tools = agent.mcp_servers.reduce((sum, srv) => sum + (srv.tools?.length ?? 0), 0);
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      eyebrow={agent.agent_type}
+      title={agent.name}
+      subtitle={agent.source ?? agent.config_path}
+      headerAside={<ConfiguredPill />}
+      size="2xl"
+      ariaLabel={`Agent ${agent.name}`}
+      footer={
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/agents?name=${encodeURIComponent(agent.name)}`}
+            className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--accent)] px-3 py-2 text-xs font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)]"
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+            Full detail
+          </Link>
+          <Link
+            href={`/agents?name=${encodeURIComponent(agent.name)}&view=lifecycle`}
+            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+          >
+            <GitBranch className="h-3.5 w-3.5" />
+            Lifecycle graph
+          </Link>
         </div>
-      </div>
-      {!loading && filteredConfigured.length === 0 && configured.length > 0 && (
-        <PageEmptyState
-          title="No configured agents match"
-          detail="The current search filtered out every configured agent in this inventory."
-          icon={Search}
-          suggestions={[
-            "Clear the search to return to the full configured list.",
-            "Search by exact agent name, source, or agent type.",
+      }
+    >
+      <div className="space-y-4" data-testid={`agent-detail-${agent.name}`}>
+        <StatStrip
+          items={[
+            { label: "Servers", value: agent.mcp_servers.length },
+            { label: "Packages", value: packages },
+            { label: "Tools", value: tools },
+            { label: "Credentials", value: credentials, accent: "warn" },
           ]}
         />
-      )}
 
-      {/* Installed but not configured — virtualized for parity with the configured list */}
-      {installedOnly.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-widest flex items-center gap-2">
-            <AlertCircle className="w-3.5 h-3.5 text-yellow-500" />
-            Installed but not configured
-          </h2>
-          <div
-            ref={installedScrollRef}
-            data-testid="agents-installed-virtualized"
-            className="max-h-[40vh] overflow-y-auto"
-          >
-            <div
-              style={{ height: `${installedVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}
-            >
-            {installedVirtualItems.map((virtualRow) => {
-              const agent = installedOnly[virtualRow.index];
-              if (!agent) return null;
-              return (
-                <div
-                  key={`${agent.name}-${virtualRow.index}`}
-                  data-index={virtualRow.index}
-                  ref={installedVirtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    transform: `translateY(${virtualRow.start}px)`,
-                    paddingBottom: "12px",
-                  }}
-                  className="bg-[color:var(--surface-muted)]/50 border border-dashed border-[color:var(--border-subtle)] rounded-xl p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-[color:var(--text-secondary)]">{agent.name}</h3>
-                        <span className="text-[10px] font-mono bg-yellow-950 border border-yellow-800 text-yellow-400 rounded px-1.5 py-0.5">
-                          not configured
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs font-mono text-[color:var(--text-tertiary)]">{agent.agent_type}</span>
-                        {agent.config_path && (
-                          <span className="text-xs text-[color:var(--text-tertiary)] font-mono">{agent.config_path}</span>
-                        )}
-                      </div>
-                    </div>
-                    <span className="text-xs text-[color:var(--text-tertiary)]">0 servers</span>
-                  </div>
-                  <p className="text-xs text-[color:var(--text-tertiary)] mt-2">
-                    Binary detected on PATH. Run setup to configure MCP servers.
-                  </p>
-                </div>
-              );
-            })}
+        {agent.discovery_provenance ? (
+          <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+              <Shield className="h-3.5 w-3.5" />
+              Asset discovery provenance
             </div>
+            <DiscoveryProvenanceTags provenance={agent.discovery_provenance} />
           </div>
+        ) : null}
+
+        {agent.discovery_envelope ? <DiscoveryEnvelopeCard envelope={agent.discovery_envelope} /> : null}
+
+        <div className="space-y-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
+            <Server className="h-4 w-4 text-[color:var(--text-secondary)]" />
+            MCP servers
+            <span className="text-xs font-normal text-[color:var(--text-tertiary)]">({agent.mcp_servers.length})</span>
+          </h3>
+          {agent.mcp_servers.map((srv, index) => {
+            const credEnv = srv.credential_env_vars ?? [];
+            return (
+              <div
+                key={`${srv.name}-${index}`}
+                className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-[color:var(--foreground)]">{srv.name}</span>
+                    {srv.security_blocked && (
+                      <span
+                        className="rounded border px-1.5 py-0.5 text-[10px] font-mono"
+                        style={{
+                          borderColor: "var(--status-danger-border)",
+                          backgroundColor: "var(--status-danger-bg)",
+                          color: "var(--status-danger)",
+                        }}
+                      >
+                        blocked
+                      </span>
+                    )}
+                    {credEnv.length > 0 && (
+                      <span
+                        className="rounded border px-1.5 py-0.5 text-[10px] font-mono"
+                        style={{
+                          borderColor: "var(--status-warn-border)",
+                          backgroundColor: "var(--status-warn-bg)",
+                          color: "var(--status-warn)",
+                        }}
+                      >
+                        creds
+                      </span>
+                    )}
+                  </div>
+                  {srv.transport && (
+                    <span className="font-mono text-xs text-[color:var(--text-tertiary)]">{srv.transport}</span>
+                  )}
+                </div>
+
+                <div className="mt-2">
+                  <DiscoveryProvenanceTags provenance={srv.discovery_provenance} />
+                </div>
+
+                {srv.command && (
+                  <div className="mt-2 flex items-start gap-1.5 font-mono text-xs text-[color:var(--text-tertiary)]">
+                    <TerminalSquare className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="break-all">{safeCommandLine(srv.command, srv.args)}</span>
+                  </div>
+                )}
+                {srv.url && (
+                  <div className="mt-2 flex items-start gap-1.5 font-mono text-xs text-[color:var(--text-tertiary)]">
+                    <Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="break-all">{safeDisplayUrl(srv.url)}</span>
+                  </div>
+                )}
+
+                <div className="mt-2 flex flex-wrap gap-3 text-xs text-[color:var(--text-tertiary)]">
+                  {srv.packages.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Package className="h-3 w-3" />
+                      {srv.packages.length} package{srv.packages.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {srv.tools && srv.tools.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Wrench className="h-3 w-3" />
+                      {srv.tools.length} tool{srv.tools.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {credEnv.length > 0 && (
+                    <span className="flex items-center gap-1" style={{ color: "var(--status-warn)" }}>
+                      <Key className="h-3 w-3" />
+                      {credEnv.length} credential{credEnv.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+
+                {credEnv.length > 0 && (
+                  <div className="mt-3">
+                    <p
+                      className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em]"
+                      style={{ color: "var(--status-warn)" }}
+                    >
+                      Credential-backed env vars
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {credEnv.map((envVar) => (
+                        <span
+                          key={envVar}
+                          className="rounded border px-2 py-0.5 text-[11px] font-mono"
+                          style={{
+                            borderColor: "var(--status-warn-border)",
+                            backgroundColor: "var(--status-warn-bg)",
+                            color: "var(--status-warn)",
+                          }}
+                        >
+                          {envVar}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {srv.tools && srv.tools.length > 0 && (
+                  <div className="mt-3">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                      Tools
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {srv.tools.map((tool) => (
+                        <span
+                          key={tool.name}
+                          className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)]"
+                        >
+                          {tool.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
-    </div>
+      </div>
+    </Drawer>
   );
 }
 

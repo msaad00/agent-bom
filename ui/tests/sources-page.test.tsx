@@ -242,25 +242,40 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+async function openSourceDrawer(displayName: string) {
+  await waitFor(() => expect(screen.getByTestId("sources-table")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText(displayName)).toBeInTheDocument());
+  fireEvent.click(screen.getByText(displayName));
+}
+
 describe("SourcesPage", () => {
-  it("renders linked schedule state from the control plane", async () => {
+  it("renders sources in a dense table and expands the provider-contracts collapsible", async () => {
     render(<SourcesPage />);
 
-    await waitFor(() => expect(screen.getByText("Nightly cloud posture")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("sources-table")).toBeInTheDocument());
+    const table = within(screen.getByTestId("sources-table"));
+    expect(table.getByText("AWS production account")).toBeInTheDocument();
+    expect(table.getByText("Jira inventory")).toBeInTheDocument();
+
     expect(apiMock.listDiscoveryProviders).toHaveBeenCalled();
     fireEvent.click(screen.getByText("Provider trust contracts"));
     expect(screen.getAllByText("aws").length).toBeGreaterThan(0);
     expect(screen.getByText("scope-zero")).toBeInTheDocument();
     expect(screen.getAllByText("snowflake").length).toBeGreaterThan(0);
-    expect(screen.getByText("Nightly cloud posture")).toBeInTheDocument();
-    expect(screen.getByText("Source: AWS production account")).toBeInTheDocument();
-    expect(screen.getByText("Schedules: 1")).toBeInTheDocument();
-    const workflow = within(screen.getByTestId("source-workflow-src-1"));
-    expect(workflow.getByText("Evidence workflow")).toBeInTheDocument();
-    expect(workflow.getByRole("link", { name: "Jobs" })).toHaveAttribute("href", "/jobs?q=src-1");
-    expect(workflow.getByRole("link", { name: "Findings" })).toHaveAttribute("href", "/findings?scan=job-prod-cloud");
-    expect(workflow.getByRole("link", { name: "Graph" })).toHaveAttribute("href", "/security-graph?scan=job-prod-cloud");
-    expect(workflow.getByRole("link", { name: "Compliance" })).toHaveAttribute("href", "/compliance?scan=job-prod-cloud");
+  });
+
+  it("opens a source drawer with evidence links and its bound schedule", async () => {
+    render(<SourcesPage />);
+
+    await openSourceDrawer("AWS production account");
+
+    const detail = within(screen.getByTestId("source-detail-src-1"));
+    expect(detail.getByText("Evidence workflow")).toBeInTheDocument();
+    expect(detail.getByRole("link", { name: "Jobs" })).toHaveAttribute("href", "/jobs?q=src-1");
+    expect(detail.getByRole("link", { name: "Findings" })).toHaveAttribute("href", "/findings?scan=job-prod-cloud");
+    expect(detail.getByRole("link", { name: "Graph" })).toHaveAttribute("href", "/security-graph?scan=job-prod-cloud");
+    expect(detail.getByRole("link", { name: "Compliance" })).toHaveAttribute("href", "/compliance?scan=job-prod-cloud");
+    expect(detail.getByText("Nightly cloud posture")).toBeInTheDocument();
   });
 
   it("shortens long last_job_id links and keeps the full id in title", async () => {
@@ -295,13 +310,14 @@ describe("SourcesPage", () => {
 
     render(<SourcesPage />);
 
-    await waitFor(() => expect(screen.getByTestId("source-workflow-src-long")).toBeInTheDocument());
-    const jobLink = within(screen.getByTestId("source-workflow-src-long")).getByRole("link", { name: /…/ });
+    await openSourceDrawer("Long job source");
+    const detail = within(screen.getByTestId("source-detail-src-long"));
+    const jobLink = detail.getByRole("link", { name: /…/ });
     expect(jobLink).toHaveAttribute("title", longJobId);
     expect(jobLink.textContent).not.toBe(longJobId);
   });
 
-  it("creates a schedule bound to a source_id", async () => {
+  it("creates a schedule bound to a source_id from the drawer", async () => {
     apiMock.createSchedule.mockResolvedValue({
       schedule_id: "sched-2",
       name: "Recurring AWS run",
@@ -318,9 +334,8 @@ describe("SourcesPage", () => {
 
     render(<SourcesPage />);
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Schedules" })).toBeInTheDocument());
+    await openSourceDrawer("AWS production account");
 
-    fireEvent.change(screen.getByLabelText("Schedule source"), { target: { value: "src-1" } });
     fireEvent.change(screen.getByLabelText("Schedule name"), { target: { value: "Recurring AWS run" } });
     fireEvent.change(screen.getByLabelText("Schedule cron"), { target: { value: "15 * * * *" } });
     fireEvent.click(screen.getByRole("button", { name: "Create schedule" }));
@@ -335,7 +350,7 @@ describe("SourcesPage", () => {
     );
   });
 
-  it("toggles and deletes schedules through the backend API", async () => {
+  it("toggles and deletes schedules through the backend API from the drawer", async () => {
     apiMock.toggleSchedule.mockResolvedValue({
       schedule_id: "sched-1",
       name: "Nightly cloud posture",
@@ -353,16 +368,13 @@ describe("SourcesPage", () => {
 
     render(<SourcesPage />);
 
-    await waitFor(() => expect(screen.getByText("Nightly cloud posture")).toBeInTheDocument());
+    await openSourceDrawer("AWS production account");
+    const detail = within(screen.getByTestId("source-detail-src-1"));
 
-    const scheduleCard = screen.getByText("Nightly cloud posture").closest("div.rounded-2xl");
-    expect(scheduleCard).not.toBeNull();
-    const scheduleActions = within(scheduleCard as HTMLElement);
-
-    fireEvent.click(scheduleActions.getByRole("button", { name: "Pause" }));
+    fireEvent.click(detail.getByRole("button", { name: "Pause" }));
     await waitFor(() => expect(apiMock.toggleSchedule).toHaveBeenCalledWith("sched-1"));
 
-    fireEvent.click(scheduleActions.getByRole("button", { name: "Delete" }));
+    fireEvent.click(detail.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(apiMock.deleteSchedule).toHaveBeenCalledWith("sched-1"));
   });
 });

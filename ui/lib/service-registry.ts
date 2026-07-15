@@ -11,7 +11,7 @@ export const SERVICE_META: Record<
   },
   data_sources: {
     label: "Data sources",
-    unlockHref: "/sources",
+    unlockHref: "/connections?tab=sources",
     unlockLabel: "Add data source",
   },
   local_agents: {

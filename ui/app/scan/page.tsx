@@ -21,7 +21,12 @@ function ScanRouter() {
   if (id && view === "attack-flow") return <AttackFlowView id={id} />;
   if (id && view === "mesh") return <ScanMeshView id={id} />;
   if (id) return <ScanResultView id={id} />;
-  return <ScanForm initialConnectionId={searchParams.get("connection") || undefined} />;
+  return (
+    <ScanForm
+      initialConnectionId={searchParams.get("connection") || undefined}
+      initialPreset={searchParams.get("preset") || undefined}
+    />
+  );
 }
 
 export default function ScanPage() {

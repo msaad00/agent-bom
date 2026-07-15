@@ -39,7 +39,21 @@ import { REPO_SCAN_SURFACES, repoScanLanguageSummary } from "@/lib/repo-scan-sur
 
 type ScanFormProps = {
   initialConnectionId?: string | undefined;
+  /**
+   * Optional preset carried in the URL (``/scan?preset=enterprise``) by the
+   * in-product "Run introspection scan" actions. It pre-fills the form to the
+   * equivalent of the ``agent-bom scan --introspect --preset enterprise`` CLI:
+   * an ad-hoc workstation introspection scan with enrichment on. Absent or
+   * unknown values leave the normal defaults untouched.
+   */
+  initialPreset?: string | undefined;
 };
+
+/** ``enterprise`` mirrors ``--introspect --preset enterprise``: an ad-hoc
+ * workstation introspection scan with CVSS/EPSS/KEV enrichment enabled. */
+function isEnterprisePreset(preset: string | undefined): boolean {
+  return preset === "enterprise";
+}
 
 /** Client-side guard: accept only well-formed ``http(s)://<host>`` repo URLs
  * before enabling submit. Server-side validation remains authoritative. */
@@ -56,12 +70,19 @@ function isHttpRepoUrl(value: string): boolean {
   return Boolean(parsed.hostname) && parsed.hostname.includes(".");
 }
 
-export function ScanForm({ initialConnectionId }: ScanFormProps) {
+export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) {
   const router = useRouter();
   const { counts } = useDeploymentContext();
   const deploymentMode = counts?.deployment_mode ?? "local";
+  const enterprisePreset = isEnterprisePreset(initialPreset);
   const [scanMode, setScanMode] = useState<ScanMode>(
-    initialConnectionId ? "connected" : deploymentMode === "local" ? "adhoc" : "connected",
+    initialConnectionId
+      ? "connected"
+      : enterprisePreset
+        ? "adhoc"
+        : deploymentMode === "local"
+          ? "adhoc"
+          : "connected",
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -76,7 +97,7 @@ export function ScanForm({ initialConnectionId }: ScanFormProps) {
     deploymentMode === "local" ? "workstation" : "workstation",
   );
   const [form, setForm] = useState<ScanRequest>({
-    enrich: false,
+    enrich: enterprisePreset,
     k8s: false,
     images: [],
     tf_dirs: [],

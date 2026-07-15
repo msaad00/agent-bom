@@ -36,7 +36,7 @@ describe("DeploymentSurfaceRequiredState", () => {
       has_mesh: false,
       deployment_mode: "local",
     } as never);
-    expect(state.actionHref).toBe("/scan");
+    expect(state.actionHref).toBe("/scan?preset=enterprise");
 
     render(
       <DeploymentSurfaceRequiredState
@@ -47,7 +47,7 @@ describe("DeploymentSurfaceRequiredState", () => {
 
     expect(screen.getByRole("link", { name: /Run introspection scan/ })).toHaveAttribute(
       "href",
-      "/scan",
+      "/scan?preset=enterprise",
     );
     expect(
       screen.getByText("agent-bom scan --introspect --preset enterprise"),

@@ -80,6 +80,36 @@ describe("ScanForm", () => {
     expect(screen.getByText("Prod AWS")).toBeInTheDocument();
   });
 
+  it("pre-fills the enterprise introspection preset from the URL", async () => {
+    render(<ScanForm initialPreset="enterprise" />);
+
+    // Enterprise preset lands on the ad-hoc workstation introspection scan…
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Ad-hoc" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+    expect(screen.getByRole("tab", { name: /Workstation/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // …with enrichment turned on, mirroring `--preset enterprise`.
+    expect(
+      screen.getByRole("checkbox", { name: /Enrich with CVSS/i }),
+    ).toBeChecked();
+  });
+
+  it("leaves enrichment off when no preset is present", async () => {
+    const user = userEvent.setup();
+    render(<ScanForm />);
+
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    expect(
+      screen.getByRole("checkbox", { name: /Enrich with CVSS/i }),
+    ).not.toBeChecked();
+  });
+
   it("shows ad-hoc scope chips and starts a direct scan job", async () => {
     const user = userEvent.setup();
     const startScan = vi.spyOn(api, "startScan").mockResolvedValue({

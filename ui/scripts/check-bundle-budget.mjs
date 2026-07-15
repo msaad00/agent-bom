@@ -38,6 +38,7 @@ const BUDGETS = {
   // premium design-system foundation's shared-shell token classes): the near-term
   // queue of UI PRs is legitimate feature work, not bloat, and needs room.
   // The first-class AI/ML scan surface stays within that measured phase allowance.
+  // Audit evidence, deploy-gate, and exposure-path parity also remain within it.
   totalClientJsBytes: 3_538_944,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,

@@ -31,7 +31,9 @@ const BUDGETS = {
   // Raised for the light-theme tokenization — semantic token class names
   // (`text-[color:var(--text-tertiary)]`) are longer string literals than the raw
   // `zinc-*` utilities they replace, so the compiled className strings grow a few KiB.
-  totalClientJsBytes: 3_379_200,
+  // Allows 4 KiB for the measured Linux/macOS output variance after adding the
+  // blueprint route; both builds remain at roughly 3.3 MiB of emitted client JS.
+  totalClientJsBytes: 3_383_296,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

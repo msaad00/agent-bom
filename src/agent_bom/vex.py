@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from agent_bom.security import sanitize_text
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -111,9 +113,7 @@ _CSAF_FLAG_TO_VEX: dict[str, VexJustification] = {
     "component_not_present": VexJustification.COMPONENT_NOT_PRESENT,
     "vulnerable_code_not_present": VexJustification.VULNERABLE_CODE_NOT_PRESENT,
     "vulnerable_code_not_in_execute_path": VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
-    "vulnerable_code_cannot_be_controlled_by_adversary": (
-        VexJustification.VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY
-    ),
+    "vulnerable_code_cannot_be_controlled_by_adversary": (VexJustification.VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY),
     "inline_mitigations_already_exist": VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST,
 }
 
@@ -166,12 +166,10 @@ def _parse_cyclonedx_vex(data: dict) -> VexDocument:
         if just_raw:
             justification = _CDX_JUSTIFICATION_TO_VEX.get(str(just_raw).lower())
             if justification is None:
-                logger.warning("Unknown CycloneDX VEX justification value: %s", just_raw)
+                logger.warning("Unknown CycloneDX VEX justification value: %s", sanitize_text(just_raw, max_len=200))
 
         products = [
-            _extract_cdx_product_ref(aff.get("ref", ""))
-            for aff in entry.get("affects", [])
-            if isinstance(aff, dict) and aff.get("ref")
+            _extract_cdx_product_ref(aff.get("ref", "")) for aff in entry.get("affects", []) if isinstance(aff, dict) and aff.get("ref")
         ]
         detail = analysis.get("detail")
         response = analysis.get("response")
@@ -296,7 +294,7 @@ def _parse_csaf_vex(data: dict) -> VexDocument:
                 continue
             status = _CSAF_STATUS_TO_VEX.get(str(status_key).lower())
             if status is None:
-                logger.warning("Unknown CSAF product_status key: %s", status_key)
+                logger.warning("Unknown CSAF product_status key: %s", sanitize_text(status_key, max_len=200))
                 continue
             justification = _csaf_justification(entry, product_ids)
             if status == VexStatus.NOT_AFFECTED and justification is None:
@@ -345,7 +343,7 @@ def _parse_openvex(data: dict) -> VexDocument:
             try:
                 justification = VexJustification(just_str)
             except ValueError:
-                logger.warning("Unknown VEX justification value: %s", just_str)
+                logger.warning("Unknown VEX justification value: %s", sanitize_text(just_str, max_len=200))
 
         products = stmt_data.get("products", [])
         if isinstance(products, list) and products and isinstance(products[0], dict):

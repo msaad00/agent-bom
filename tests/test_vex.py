@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 
@@ -145,6 +146,54 @@ class TestVexStatus:
 
 
 class TestVexLoad:
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {
+                "bomFormat": "CycloneDX",
+                "vulnerabilities": [
+                    {
+                        "id": "CVE-2024-0001",
+                        "analysis": {
+                            "state": "not_affected",
+                            "justification": "unknown\r\nforged https://user:supersecretvalue123@example.invalid/db",
+                        },
+                    }
+                ],
+            },
+            {
+                "document": {"category": "csaf_vex"},
+                "vulnerabilities": [
+                    {
+                        "cve": "CVE-2024-0001",
+                        "product_status": {"unknown\nforged\tstatus": ["product-1"]},
+                    }
+                ],
+            },
+            {
+                "@context": "https://openvex.dev/ns/v0.2.0",
+                "statements": [
+                    {
+                        "vulnerability": "CVE-2024-0001",
+                        "status": "not_affected",
+                        "justification": "unknown\x1b[31m\nforged",
+                    }
+                ],
+            },
+        ],
+    )
+    def test_unknown_vex_values_are_sanitized_before_logging(self, payload, caplog):
+        with caplog.at_level(logging.WARNING, logger="agent_bom.vex"):
+            parse_vex(payload)
+
+        assert len(caplog.messages) == 1
+        message = caplog.messages[0]
+        assert "\r" not in message
+        assert "\n" not in message
+        assert "\t" not in message
+        assert "\x1b" not in message
+        assert "supersecretvalue123" not in message
+
     def test_load_openvex_format(self, tmp_path):
         data = {
             "@context": "https://openvex.dev/ns/v0.2.0",
@@ -297,11 +346,7 @@ class TestVexLoad:
                         "response": ["will_not_fix", "update"],
                         "detail": "The vulnerable function is not called",
                     },
-                    "affects": [
-                        {
-                            "ref": "urn:cdx:3e671687-395b-41f5-a30f-a58921a69b79/1#pkg:golang/github.com/aws/aws-sdk-go@1.44.234"
-                        }
-                    ],
+                    "affects": [{"ref": "urn:cdx:3e671687-395b-41f5-a30f-a58921a69b79/1#pkg:golang/github.com/aws/aws-sdk-go@1.44.234"}],
                 }
             ],
         }

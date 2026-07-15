@@ -10,16 +10,30 @@ from typing import Any
 
 import pytest
 
+from agent_bom import security as _security
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, MCPTool, Package, Severity, Vulnerability
 from agent_bom.otel_ingest import parse_otel_traces
 from agent_bom.runtime_correlation import correlate_spans_to_attack_paths
 from agent_bom.trace_connectors import (
     TraceConnectorError,
+    TraceConnectorValidationError,
     fetch_langfuse_traces,
     fetch_langsmith_traces,
     fetch_traces,
     list_trace_connectors,
 )
+
+# Real SSRF guard, captured before the autouse stub replaces it. The mapping
+# tests below use placeholder hosts that don't resolve, so the network-dependent
+# URL validation is stubbed for them; the dedicated SSRF tests restore the real
+# guard to prove unsafe hosts are rejected before any request.
+_REAL_VALIDATE_URL = _security.validate_url
+
+
+@pytest.fixture(autouse=True)
+def _stub_url_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No-op the URL guard so placeholder-host mapping tests stay hermetic."""
+    monkeypatch.setattr("agent_bom.security.validate_url", lambda *a, **k: None)
 
 
 class _FakeResponse:
@@ -111,3 +125,56 @@ def test_missing_credentials_and_http_error_raise() -> None:
         fetch_langsmith_traces(api_key="k", client=_FakeClient({}, status_code=401))
     with pytest.raises(TraceConnectorError):
         fetch_traces("unknown-provider", {"api_key": "k"})
+
+
+# ─── SSRF hardening ──────────────────────────────────────────────────────────
+# The connector host is caller-supplied; without a guard a runtime_ingest caller
+# could make the control plane fetch internal services or cloud metadata (SSRF).
+# These tests restore the real ``validate_url`` guard. Every rejected host is
+# refused on scheme (non-HTTPS) or IP-literal grounds — i.e. before any DNS
+# lookup — so they run offline with no network.
+
+_SSRF_HOSTS = [
+    "http://169.254.169.254/latest/meta-data",  # cloud metadata (link-local)
+    "http://localhost",  # loopback
+    "http://10.0.0.1",  # private RFC1918
+    "http://",  # malformed / no host
+    "https://10.0.0.1",  # private even over https
+]
+
+
+@pytest.mark.parametrize("host", _SSRF_HOSTS)
+def test_langfuse_rejects_unsafe_host_before_any_request(monkeypatch: pytest.MonkeyPatch, host: str) -> None:
+    monkeypatch.setattr("agent_bom.security.validate_url", _REAL_VALIDATE_URL)
+    client = _FakeClient({"data": []})
+    with pytest.raises(TraceConnectorValidationError) as excinfo:
+        fetch_langfuse_traces(host=host, public_key="pk", secret_key="sk", client=client)
+    # Rejected before the HTTP client was ever touched (no network / port scan).
+    assert client.calls == []
+    # The rejection is a bad-request-shaped error and never echoes the raw URL.
+    assert isinstance(excinfo.value, TraceConnectorError)
+    message = str(excinfo.value)
+    assert host not in message
+    assert "169.254" not in message and "10.0.0.1" not in message and "localhost" not in message
+
+
+@pytest.mark.parametrize("api_url", _SSRF_HOSTS)
+def test_langsmith_rejects_unsafe_api_url_before_any_request(monkeypatch: pytest.MonkeyPatch, api_url: str) -> None:
+    monkeypatch.setattr("agent_bom.security.validate_url", _REAL_VALIDATE_URL)
+    client = _FakeClient({"runs": []})
+    with pytest.raises(TraceConnectorValidationError) as excinfo:
+        fetch_langsmith_traces(api_key="ls-key", api_url=api_url, client=client)
+    assert client.calls == []
+    message = str(excinfo.value)
+    assert api_url not in message
+    assert "169.254" not in message and "10.0.0.1" not in message
+
+
+def test_valid_public_https_host_passes_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A public IPv4 literal validates offline (numeric resolution, no DNS) and
+    # lets the (mocked) fetch proceed — behavior is unchanged for safe hosts.
+    monkeypatch.setattr("agent_bom.security.validate_url", _REAL_VALIDATE_URL)
+    client = _FakeClient({"data": [{"id": "o", "traceId": "t", "name": "run_shell"}]})
+    otlp = fetch_langfuse_traces(host="https://93.184.216.34", public_key="pk", secret_key="sk", client=client)
+    assert client.calls, "valid public host must proceed to the HTTP fetch"
+    assert parse_otel_traces(otlp)[0].tool_name == "run_shell"

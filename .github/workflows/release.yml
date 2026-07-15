@@ -748,7 +748,7 @@ jobs:
     name: Container release gate
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:

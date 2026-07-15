@@ -121,9 +121,9 @@ describe('Nav', () => {
     expect(within(aiGroup).getByText('AI', { exact: true })).toBeInTheDocument()
   })
 
-  it('renders the Cloud & Data nav group', () => {
+  it('renders the Connect nav group', () => {
     renderExpandedNav()
-    expect(screen.getByText('Cloud & Data')).toBeInTheDocument()
+    expect(screen.getByText('Connect')).toBeInTheDocument()
   })
 
   it('renders the Runtime nav group', () => {
@@ -144,18 +144,19 @@ describe('Nav', () => {
     expect(links.length).toBeGreaterThan(0)
   })
 
-  it('contains link to New Scan (/scan) under Cloud & Data', () => {
+  it('contains link to New Scan (/scan) under Connect', () => {
     renderExpandedNav()
-    fireEvent.click(screen.getByRole('button', { name: /cloud & data/i }))
+    fireEvent.click(screen.getByRole('button', { name: /connect/i }))
     const links = screen.getAllByRole('link', { name: /new scan/i })
     expect(links.some((l) => l.getAttribute('href') === '/scan')).toBe(true)
   })
 
-  it('contains link to Data Sources (/sources)', () => {
+  it('groups Connections and Data Sources together under Connect', () => {
     renderExpandedNav()
-    fireEvent.click(screen.getByRole('button', { name: /cloud & data/i }))
-    const links = screen.getAllByRole('link', { name: /data sources/i })
-    expect(links.some((l) => l.getAttribute('href') === '/sources')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: /connect/i }))
+    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/connections')
+    expect(hrefs).toContain('/sources')
   })
 
   it('contains link to Scan Jobs (/jobs) under Operations', () => {
@@ -261,12 +262,18 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/cost')).toBe(true)
   })
 
-  it('keeps identity and drift under Cloud & Data', () => {
+  it('moves Identity into Runtime', () => {
     renderExpandedNav()
-    fireEvent.click(screen.getByRole('button', { name: /cloud & data/i }))
-    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
-    expect(hrefs).toContain('/identity')
-    expect(hrefs).toContain('/drift')
+    fireEvent.click(screen.getByRole('button', { name: /^runtime/i }))
+    const links = screen.getAllByRole('link', { name: /^identity$/i })
+    expect(links.some((l) => l.getAttribute('href') === '/identity')).toBe(true)
+  })
+
+  it('moves Drift into Governance', () => {
+    renderExpandedNav()
+    fireEvent.click(screen.getByRole('button', { name: /governance/i }))
+    const links = screen.getAllByRole('link', { name: /^drift$/i })
+    expect(links.some((l) => l.getAttribute('href') === '/drift')).toBe(true)
   })
 
   it('moves the Audit Log into the Governance group', () => {
@@ -300,7 +307,7 @@ describe('Nav', () => {
 
   it('renders all 7 nav group labels', () => {
     renderExpandedNav()
-    const groups = ['Posture', 'AI inventory', 'Cloud & Data', 'Runtime', 'Governance', 'Reference', 'Operations']
+    const groups = ['Posture', 'AI inventory', 'Governance', 'Connect', 'Runtime', 'Reference', 'Operations']
     for (const group of groups) {
       expect(screen.getAllByText(group).length).toBeGreaterThan(0)
     }
@@ -315,9 +322,9 @@ describe('Nav', () => {
   it('shows page counts for expanded nav groups', async () => {
     renderExpandedNav()
     expect(screen.getAllByText('3').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: /cloud & data/i }))
+    fireEvent.click(screen.getByRole('button', { name: /governance/i }))
     await waitFor(() => {
-      expect(screen.getAllByText('5').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('6').length).toBeGreaterThan(0)
     })
   })
 
@@ -326,9 +333,9 @@ describe('Nav', () => {
     const expectedByGroup: Record<string, string[]> = {
       Posture: ['/', '/findings', '/security-graph', '/remediation'],
       'AI inventory': ['/agents', '/manifest', '/fleet'],
-      'Cloud & Data': ['/connections', '/sources', '/scan', '/identity', '/drift'],
-      Runtime: ['/runtime', '/traces'],
-      Governance: ['/compliance', '/findings?lens=trust', '/governance', '/audit'],
+      Governance: ['/compliance', '/blueprints', '/findings?lens=trust', '/governance', '/drift', '/audit'],
+      Connect: ['/connections', '/sources', '/scan'],
+      Runtime: ['/runtime', '/traces', '/identity'],
       Reference: ['/registry'],
       Operations: ['/cost', '/jobs', '/activity'],
     }

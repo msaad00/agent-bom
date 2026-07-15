@@ -59,28 +59,6 @@ import {
 } from "@/lib/deployment-context";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 
-// A clean, symmetric cloud mark (the lucide `Cloud` glyph reads lopsided at
-// sidebar sizes). Uses `currentColor` so the per-group tint classes apply, and
-// mirrors lucide's 24×24 stroke conventions so it sizes with `h-*`/`w-*`.
-function CloudGlyph({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={24}
-      height={24}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.9}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M5 18a3.5 3.5 0 0 1 1.2-6.6a5 5 0 0 1 11.6 0a3.5 3.5 0 0 1 1.2 6.6Z" />
-    </svg>
-  );
-}
-
 // ─── Navigation Structure ──────────────────────────────────────────────────
 
 interface NavLink {
@@ -88,12 +66,16 @@ interface NavLink {
   label: string;
   icon: React.ElementType;
   capability?: string;
+  /** One-line "what is this" descriptor, surfaced as a hover tooltip. */
+  desc?: string;
 }
 
 interface NavGroup {
   label: string;
   icon: React.ElementType;
   links: NavLink[];
+  /** One-line descriptor so a newcomer knows what the group is for. */
+  desc?: string;
   /**
    * Graph lens destinations grouped under Posture with an explicit subheader
    * (not a generic "More" bucket).
@@ -127,10 +109,15 @@ function AiMark({ className = "" }: { className?: string }) {
   );
 }
 
+// Ordered top-to-bottom as the product pipeline: understand posture → inventory
+// your AI → govern it → connect sources → watch runtime → operate. One job per
+// group, with descriptors on the groups and on the easily-confused destinations
+// (Connections vs Data Sources) so nothing reads as ambiguous.
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Posture",
     icon: Gauge,
+    desc: "Risk, findings, and fixes",
     links: [
       { href: "/", label: "Overview", icon: LayoutDashboard },
       { href: "/findings", label: "Findings", icon: Bug },
@@ -146,6 +133,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "AI inventory",
     icon: AiMark,
+    desc: "Agents, AI BOM, and fleet",
     links: [
       { href: "/agents", label: "Agents", icon: Bot },
       { href: "/manifest", label: "AI BOM", icon: ClipboardList },
@@ -153,43 +141,48 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Cloud & Data",
-    icon: CloudGlyph,
+    label: "Governance",
+    icon: Scale,
+    desc: "Compliance, policy, and audit",
     links: [
-      { href: "/connections", label: "Connections", icon: Plug, capability: "inventory.read" },
-      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
+      { href: "/compliance", label: "Compliance", icon: FileCheck },
+      { href: "/blueprints", label: "Blueprints", icon: Boxes },
+      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
+      { href: "/findings?lens=trust", label: "Findings triage", icon: ListChecks },
+      { href: "/drift", label: "Drift", icon: Radar, desc: "Config drift from approved baselines" },
+      { href: "/audit", label: "Audit Log", icon: FileText },
+    ],
+  },
+  {
+    label: "Connect",
+    icon: Plug,
+    desc: "Add sources, then scan",
+    links: [
+      { href: "/connections", label: "Connections", icon: Plug, capability: "inventory.read", desc: "Link cloud, repo, and MCP systems" },
+      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage", desc: "Registered scan targets and status" },
       { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
-      { href: "/identity", label: "Identity", icon: Fingerprint },
-      { href: "/drift", label: "Drift", icon: Radar },
     ],
   },
   {
     label: "Runtime",
     icon: Cpu,
+    desc: "Live enforcement and identity",
     links: [
       { href: "/runtime", label: "Runtime", icon: Shield },
       { href: "/traces", label: "Traces", icon: Radio },
-    ],
-  },
-  {
-    label: "Governance",
-    icon: Scale,
-    links: [
-      { href: "/compliance", label: "Compliance", icon: FileCheck },
-      { href: "/blueprints", label: "Blueprints", icon: Boxes },
-      { href: "/findings?lens=trust", label: "Findings triage", icon: ListChecks },
-      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
-      { href: "/audit", label: "Audit Log", icon: FileText },
+      { href: "/identity", label: "Identity", icon: Fingerprint, desc: "Non-human identities and creds" },
     ],
   },
   {
     label: "Reference",
     icon: Library,
+    desc: "Catalogs and lookups",
     links: [{ href: "/registry", label: "MCP Catalog", icon: Boxes }],
   },
   {
     label: "Operations",
     icon: Cog,
+    desc: "Spend, jobs, and activity",
     links: [
       { href: "/cost", label: "AI Spend", icon: DollarSign },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
@@ -231,9 +224,9 @@ const NAV_LINK_ICON_CLASS: Record<string, string> = {
 const NAV_GROUP_ICON_CLASS: Record<string, string> = {
   Posture: "text-sky-400",
   "AI inventory": "text-emerald-400",
-  "Cloud & Data": "text-purple-400",
-  Runtime: "text-pink-400",
   Governance: "text-emerald-400",
+  Connect: "text-purple-400",
+  Runtime: "text-pink-400",
   Reference: "text-amber-400",
   Operations: "text-orange-400",
 };
@@ -557,6 +550,7 @@ export function Nav() {
                 }`}
                 aria-expanded={isCollapsed ? collapsedFlyoutGroup === group.label : isExpanded}
                 aria-label={isCollapsed ? group.label : undefined}
+                title={group.desc}
               >
                 <GroupIcon
                   className={`${isCollapsed ? "h-[18px] w-[18px]" : "h-4 w-4"} shrink-0 ${navGroupIconClass(group.label, hasActiveChild)}`}
@@ -583,7 +577,7 @@ export function Nav() {
               {/* Group Links */}
               {isExpanded && !isCollapsed && (
                 <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-[color:var(--border-subtle)] pl-2">
-                  {group.visibleLinks.map(({ href, label, icon: Icon }) => {
+                  {group.visibleLinks.map(({ href, label, icon: Icon, desc }) => {
                     const hrefPath = href.split("?")[0] ?? href;
                     const active =
                       hrefPath === "/"
@@ -599,6 +593,7 @@ export function Nav() {
                       <Link
                         key={href}
                         href={href}
+                        title={desc}
                         className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all group relative ${
                           active
                             ? "border-l-2 border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)] ml-0 pl-2.5"
@@ -657,12 +652,13 @@ export function Nav() {
                         Graph lenses
                       </p>
                       <div className="space-y-0.5">
-                        {group.secondaryLinks.map(({ href, label, icon: Icon }) => {
+                        {group.secondaryLinks.map(({ href, label, icon: Icon, desc }) => {
                           const active = path.startsWith(href);
                           return (
                             <Link
                               key={href}
                               href={href}
+                              title={desc}
                               className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
                                 active
                                   ? "border-l-2 border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)] ml-0 pl-2.5 font-medium"
@@ -701,7 +697,7 @@ export function Nav() {
                       </div>
                     </div>
                     <div className="space-y-0.5">
-                      {group.visibleLinks.map(({ href, label, icon: Icon }) => {
+                      {group.visibleLinks.map(({ href, label, icon: Icon, desc }) => {
                         const hrefPath = href.split("?")[0] ?? href;
                         const active =
                           hrefPath === "/"
@@ -713,6 +709,7 @@ export function Nav() {
                           <Link
                             key={href}
                             href={href}
+                            title={desc}
                             className={`group/link flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 transition-colors ${
                               active
                                 ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
@@ -734,12 +731,13 @@ export function Nav() {
                           Graph lenses
                         </p>
                       )}
-                      {group.secondaryLinks.map(({ href, label, icon: Icon }) => {
+                      {group.secondaryLinks.map(({ href, label, icon: Icon, desc }) => {
                         const active = path.startsWith(href);
                         return (
                           <Link
                             key={href}
                             href={href}
+                            title={desc}
                             className={`group/link flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 transition-colors ${
                               active
                                 ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"

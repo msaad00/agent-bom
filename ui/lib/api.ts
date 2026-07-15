@@ -513,6 +513,92 @@ export {
 } from "./api-errors";
 export { invalidate as invalidateApiCache, clearCache as _clearApiCacheForTests } from "./api-cache";
 
+// ─── Surface-parity types (#4014) ─────────────────────────────────────────────
+// Human UIs for three flagship API/MCP-only surfaces: signed audit export/verify
+// (P1-2), the "should I deploy" gate, and the ExposurePath lens (P1-3). Response
+// shapes mirror the backend contracts in api/routes/enterprise.py + routes/graph.py.
+
+/** Signed audit evidence packet: JSON body + its detached HMAC signature header. */
+export interface AuditExportPacket {
+  /** The export body returned by GET /v1/audit/export. */
+  payload: unknown;
+  /** X-Agent-Bom-Audit-Export-Signature header value (empty if the server omitted it). */
+  signature: string;
+}
+
+/** Result of POST /v1/audit/export/verify — tamper-evident PASS/FAIL, no key material. */
+export interface AuditExportVerifyResult {
+  valid: boolean;
+  payload_bytes: number;
+}
+
+export interface GraphExposureEntityRef {
+  id: string;
+  label: string;
+  role: string;
+  severity?: string | undefined;
+  riskScore?: number | undefined;
+}
+
+export interface GraphExposureRelationshipRef {
+  id: string;
+  source: string;
+  target: string;
+  relationship: string;
+  confidence?: number | undefined;
+}
+
+/** One ranked ExposurePath as returned by the MCP-compatible REST surface. */
+export interface GraphExposurePath {
+  id: string;
+  rank?: number | undefined;
+  label: string;
+  summary?: string | undefined;
+  riskScore: number;
+  severity: string;
+  source: GraphExposureEntityRef;
+  target: GraphExposureEntityRef;
+  hops: GraphExposureEntityRef[];
+  relationships: GraphExposureRelationshipRef[];
+  nodeIds: string[];
+  edgeIds: string[];
+  findings: string[];
+  reachableTools: string[];
+  exposedCredentials: string[];
+  provenance?: { source: string; scanId?: string | undefined } | undefined;
+}
+
+export interface GraphExposurePathsResponse {
+  schema_version: string;
+  tool: string;
+  tenant_id: string;
+  scan_id: string;
+  created_at?: string | null | undefined;
+  count: number;
+  total: number;
+  filters: { limit: number; min_risk: number };
+  paths: GraphExposurePath[];
+  message?: string | undefined;
+}
+
+export type DeployDecision = "allow" | "warn" | "block";
+
+/** allow/warn/block deploy gate decision from POST /v1/graph/should-i-deploy. */
+export interface GraphDeployDecisionResponse {
+  schema_version: string;
+  tool: string;
+  tenant_id: string;
+  scan_id: string;
+  candidate: { value: string };
+  decision: DeployDecision;
+  maxRisk: number;
+  thresholds: { warnRisk: number; blockRisk: number };
+  reasons: string[];
+  matchedPathCount: number;
+  matchedPaths: GraphExposurePath[];
+  provenance?: { source: string; basis: string } | undefined;
+}
+
 // ─── API functions ────────────────────────────────────────────────────────────
 
 export const api = {
@@ -678,6 +764,36 @@ export const api = {
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     const qs = params.toString();
     return get<UnifiedGraphResponse>(`/v1/graph/attack-paths${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Ranked ExposurePath queue (agent-native lens) over REST — GET /v1/graph/exposure-paths */
+  getGraphExposurePaths: (filters?: {
+    scanId?: string | undefined;
+    limit?: number | undefined;
+    minRisk?: number | undefined;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.minRisk != null) params.set("min_risk", String(filters.minRisk));
+    const qs = params.toString();
+    return get<GraphExposurePathsResponse>(`/v1/graph/exposure-paths${qs ? `?${qs}` : ""}`);
+  },
+
+  /** "Should I deploy" gate — POST /v1/graph/should-i-deploy → GO/REVIEW/BLOCK decision */
+  graphShouldIDeploy: (body: {
+    candidate: string;
+    scanId?: string | undefined;
+    limit?: number | undefined;
+    warnRisk?: number | undefined;
+    blockRisk?: number | undefined;
+  }) => {
+    const payload: Record<string, unknown> = { candidate: body.candidate };
+    if (body.scanId) payload.scan_id = body.scanId;
+    if (body.limit != null) payload.limit = body.limit;
+    if (body.warnRisk != null) payload.warnRisk = body.warnRisk;
+    if (body.blockRisk != null) payload.blockRisk = body.blockRisk;
+    return post<GraphDeployDecisionResponse>("/v1/graph/should-i-deploy", payload);
   },
 
   /** Run a bounded root-centered graph traversal */
@@ -1141,6 +1257,39 @@ export const api = {
   },
   getAuditIntegrity: (limit = 1000) => get<AuditIntegrityResponse>(`/v1/audit/integrity?limit=${limit}`),
   getAuditLog: (limit?: number) => get<{ entries: AuditEntry[] }>(`/v1/audit?limit=${limit ?? 10}`),
+
+  /**
+   * Download a signed audit evidence packet (GET /v1/audit/export). Returns the
+   * JSON body together with its detached HMAC signature (response header) so the
+   * caller can persist a self-contained, tamper-evident evidence file.
+   */
+  exportAuditPacket: async (filters?: {
+    action?: string | undefined;
+    resource?: string | undefined;
+    since?: string | undefined;
+    limit?: number | undefined;
+    offset?: number | undefined;
+  }): Promise<AuditExportPacket> => {
+    const params = new URLSearchParams();
+    params.set("format", "json");
+    if (filters?.action) params.set("action", filters.action);
+    if (filters?.resource) params.set("resource", filters.resource);
+    if (filters?.since) params.set("since", filters.since);
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    const res = await _doFetch(
+      `/v1/audit/export?${params.toString()}`,
+      { credentials: "include", headers: getSessionAuthHeaders(), signal: withTimeout() },
+      "GET",
+    );
+    const signature = res.headers.get("X-Agent-Bom-Audit-Export-Signature") ?? "";
+    const payload = (await res.json()) as unknown;
+    return { payload, signature };
+  },
+
+  /** Verify a signed audit export packet without returning HMAC key material. */
+  verifyAuditPacket: (payload: unknown, signature: string) =>
+    post<AuditExportVerifyResult>("/v1/audit/export/verify", { payload, signature }),
 
   // ── Cost / FinOps cockpit ──
   getCostReport: (filters?: { agent?: string; costCenter?: string; tag?: string }) => {

@@ -37,7 +37,12 @@ const BUDGETS = {
   // hover, focus-visible, and interactive-state token classes now baked into the
   // widely-imported shared shells (Collapsible, Drawer, PageState, cards) add a
   // few KiB of compiled className string literals across every route chunk.
-  totalClientJsBytes: 3_391_488,
+  // Raised ~9 KiB for the Phase-2 surface-parity human UIs (#4014): the audit
+  // export/verify evidence panel, the "should I deploy" gate, and the
+  // ExposurePath lens add their own route-chunk code to the audit and
+  // security-graph pages. Measured client JS ~3331 KiB; headroom kept for CI
+  // Linux/macOS output variance while staying well under the ~3456 KiB ceiling.
+  totalClientJsBytes: 3_420_160,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

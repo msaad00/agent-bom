@@ -7,6 +7,7 @@ import {
   ArrowRight,
   GitBranch,
   Loader2,
+  Route,
 } from "lucide-react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -22,6 +23,9 @@ import { RankedPathList, type RankedPathRow } from "@/components/ranked-path-lis
 import { ExposurePathCommandCenter, type ExposurePathView } from "@/components/exposure-path-command-center";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
+import { DeployGatePanel } from "@/components/deploy-gate-panel";
+import { ExposurePathLens } from "@/components/exposure-path-lens";
+import { Collapsible } from "@/components/collapsible";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import {
   api,
@@ -445,6 +449,17 @@ function SecurityGraphPageContent() {
       />
 
       <GraphLensSwitcher variant="compact" />
+
+      <DeployGatePanel scanId={selectedScanId || undefined} />
+
+      <Collapsible
+        title="Exposure paths"
+        subtitle="Agent-native exposure-path lens over persisted graph evidence."
+        icon={Route}
+        defaultOpen={false}
+      >
+        <ExposurePathLens scanId={selectedScanId || undefined} />
+      </Collapsible>
 
       {selectedExposurePath ? (
         <ExposurePathCommandCenter

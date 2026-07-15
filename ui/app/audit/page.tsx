@@ -24,6 +24,7 @@ import {
 import { useAuthState } from "@/components/auth-provider";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { KeyLifecyclePanel } from "@/components/key-lifecycle-panel";
+import { AuditEvidencePanel } from "@/components/audit-evidence-panel";
 import { PageLaneHeader } from "@/components/page-lane";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -204,6 +205,9 @@ export default function AuditLogPage() {
           </div>
         </div>
       )}
+
+      {/* Signed evidence export + tamper-evident verification */}
+      <AuditEvidencePanel />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">

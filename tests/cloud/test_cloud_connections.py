@@ -53,12 +53,21 @@ def _connection_env() -> Iterator[None]:
         connection_crypto.CONNECTIONS_KEY_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_ENV),
         connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV),
         connection_crypto.CONNECTIONS_KEY_REF_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_REF_ENV),
+        # ``*_FILE`` variants win over their env-var counterparts in resolve_secret,
+        # so an earlier test leaking one (e.g. AGENT_BOM_CONNECTIONS_KEY_FILE) would
+        # otherwise override the fail-closed setup below under randomized/xdist order.
+        f"{connection_crypto.CONNECTIONS_KEY_ENV}_FILE": os.environ.get(f"{connection_crypto.CONNECTIONS_KEY_ENV}_FILE"),
+        f"{connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV}_FILE": os.environ.get(f"{connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV}_FILE"),
+        f"{connection_crypto.CONNECTIONS_KEY_REF_ENV}_FILE": os.environ.get(f"{connection_crypto.CONNECTIONS_KEY_REF_ENV}_FILE"),
     }
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = _TEST_KEY
     os.environ.pop(connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV, None)
     os.environ.pop(connection_crypto.CONNECTIONS_KEY_REF_ENV, None)
+    os.environ.pop(f"{connection_crypto.CONNECTIONS_KEY_ENV}_FILE", None)
+    os.environ.pop(f"{connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV}_FILE", None)
+    os.environ.pop(f"{connection_crypto.CONNECTIONS_KEY_REF_ENV}_FILE", None)
     connection_crypto.reset_key_cache()
     set_connection_store(InMemoryConnectionStore())
     try:

@@ -488,6 +488,7 @@ export default function MeshPage() {
             "Open the full graph after the scan persists graph evidence.",
           ]}
           command="agent-bom agents --demo --offline"
+          actions={[{ label: "Run a scan", href: "/scan" }]}
         />
       </div>
     );

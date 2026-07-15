@@ -287,9 +287,18 @@ function JobsPageContent() {
               />
             ) : (
               <div className="rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface)]/30 p-4">
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Run a scan to see the live six-stage pipeline DAG with per-step timing and activity.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Run a scan to see the live six-stage pipeline DAG with per-step timing and activity.
+                  </p>
+                  <Link
+                    href="/scan"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                    Run a scan
+                  </Link>
+                </div>
                 <div className="mt-4">
                   <ScanPipeline steps={new Map()} className="h-[260px]" />
                 </div>

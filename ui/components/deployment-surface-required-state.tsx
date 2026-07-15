@@ -29,6 +29,11 @@ export function DeploymentSurfaceRequiredState({
       capabilities={state.capabilities}
       detail={state.detail}
       onRetry={onRetry}
+      primaryAction={
+        state.actionHref && state.actionLabel
+          ? { label: state.actionLabel, href: state.actionHref }
+          : undefined
+      }
     />
   );
 }

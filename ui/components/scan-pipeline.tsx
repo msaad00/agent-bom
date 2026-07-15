@@ -38,6 +38,7 @@ import {
   XCircle,
   Clock,
   SkipForward,
+  Move,
 } from "lucide-react";
 import { useGraphLayout } from "@/lib/use-graph-layout";
 import type { StepStatus, StepEvent } from "@/lib/api";
@@ -282,13 +283,16 @@ function ScanPipelineInner({
   );
 
   return (
-    <div className={`h-[180px] ${className ?? ""}`}>
+    <div className={`relative h-[180px] ${className ?? ""}`}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.16 }}
+        // Re-fit whenever the node set changes so a live pipeline that grows
+        // scanner lanes mid-run always frames the whole DAG in the container
+        // instead of clipping the tail off-screen.
+        fitViewOptions={{ padding: 0.16, maxZoom: 1 }}
         minZoom={0.25}
         maxZoom={1.5}
         panOnDrag={interactive}
@@ -307,6 +311,12 @@ function ScanPipelineInner({
           />
         ) : null}
       </ReactFlow>
+      {interactive ? (
+        <div className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-2.5 py-1 text-[10px] font-medium text-[var(--text-tertiary)] backdrop-blur">
+          <Move className="h-3 w-3" aria-hidden="true" />
+          Drag to pan · scroll to zoom · click a stage
+        </div>
+      ) : null}
     </div>
   );
 }

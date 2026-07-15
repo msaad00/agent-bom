@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { ExposurePathCommandCenter } from "@/components/exposure-path-command-center";
 import type { ExposurePath } from "@/lib/exposure-path";
@@ -81,5 +81,50 @@ describe("ExposurePathCommandCenter", () => {
     expect(screen.getByText("Evidence & relationships")).toBeInTheDocument();
     expect(screen.queryByText("Evidence drawer")).not.toBeVisible();
     expect(screen.getByText("Validate the lead finding")).toBeInTheDocument();
+  });
+
+  it("shows one representation at a time and defaults to the path view", () => {
+    render(<ExposurePathCommandCenter path={basePath} />);
+
+    // Path view: the selected-path DAG is rendered; the neighbor list and the
+    // interactive-graph hint are not stacked underneath it.
+    expect(
+      screen.getByRole("img", { name: /Selected exposure path graph for/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Expand path neighbors")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Interactive graph opens below/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("switches to the neighbor list and the interactive-graph hint via the toggle", () => {
+    const onViewChange = vi.fn();
+    render(
+      <ExposurePathCommandCenter
+        path={basePath}
+        view="list"
+        onViewChange={onViewChange}
+      />,
+    );
+
+    // Controlled "list" view swaps the DAG for the neighbor explorer.
+    expect(screen.getByText("Expand path neighbors")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: /Selected exposure path graph for/ }),
+    ).not.toBeInTheDocument();
+
+    // The toggle reports view changes so the page can render the interactive
+    // graph on demand.
+    fireEvent.click(screen.getByRole("button", { name: /Graph/ }));
+    expect(onViewChange).toHaveBeenCalledWith("graph");
+  });
+
+  it("renders the interactive-graph hint instead of a reserved blank canvas in graph view", () => {
+    render(<ExposurePathCommandCenter path={basePath} view="graph" onViewChange={vi.fn()} />);
+
+    expect(screen.getByText(/Interactive graph opens below/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: /Selected exposure path graph for/ }),
+    ).not.toBeInTheDocument();
   });
 });

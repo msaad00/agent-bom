@@ -298,17 +298,24 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
 ];
 
 /**
- * The five security-posture coverage lanes rendered 1:1 (CSPM / Vuln mgmt /
- * ASPM / DSPM / AISPM). Each lane's count is the sum of its severity
- * strip, so the metric can never contradict the strip. An ``unrated`` chip is
- * surfaced only when unknown-severity findings are present. All colors come from
- * design tokens (no hardcoded palette) so light + dark both read correctly.
+ * The security-posture coverage lanes rendered 1:1 (CSPM / Vuln mgmt / ASPM /
+ * DSPM / AISPM). These are overlapping posture *disciplines* (lenses), not a
+ * partition: one finding can count in several lanes (a repo CVE is both Vuln
+ * mgmt and ASPM; an IaC misconfig is both CSPM and ASPM), so the lanes are not
+ * additive — the caption above says so, and nothing here presents a lane total.
+ * Each lane's count is the sum of its own severity strip, so the metric can
+ * never contradict the strip. An ``unrated`` chip is surfaced only when
+ * unknown-severity findings are present. All colors come from design tokens (no
+ * hardcoded palette) so light + dark both read correctly.
  */
 function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
   if (!coverage || coverage.length === 0) return null;
   return (
     <div className="mt-4" data-testid="overview-security-coverage">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">Security coverage</h3>
+      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">Security coverage</h3>
+      <p className="mb-2 text-[11px] leading-4 text-[color:var(--text-tertiary)]">
+        Coverage by discipline — lenses can overlap, so a repo CVE counts under both Vuln mgmt and ASPM. Lanes are not additive.
+      </p>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         {coverage.map((lane) => {
           const total = COVERAGE_SEVERITY_BANDS.reduce((sum, band) => sum + (lane.severity[band.key] || 0), 0);

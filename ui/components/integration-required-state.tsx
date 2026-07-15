@@ -1,6 +1,7 @@
 "use client";
 
-import { Database, RefreshCw, Settings2 } from "lucide-react";
+import Link from "next/link";
+import { Database, Play, RefreshCw, Settings2 } from "lucide-react";
 
 interface IntegrationRequiredStateProps {
   title: string;
@@ -10,6 +11,12 @@ interface IntegrationRequiredStateProps {
   capabilities: string[];
   detail?: string | null | undefined;
   onRetry?: (() => void) | undefined;
+  /**
+   * Optional in-product enablement action rendered as a first-class button
+   * beside the headless CLI command. The command always stays visible so
+   * agent/headless operators keep their equivalent path.
+   */
+  primaryAction?: { label: string; href: string } | undefined;
 }
 
 export function IntegrationRequiredState({
@@ -20,6 +27,7 @@ export function IntegrationRequiredState({
   capabilities,
   detail,
   onRetry,
+  primaryAction,
 }: IntegrationRequiredStateProps) {
   return (
     <div className="py-8">
@@ -37,7 +45,19 @@ export function IntegrationRequiredState({
             </div>
             <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Enable this surface</div>
-              <code className="mt-2 block whitespace-pre-wrap font-mono text-sm leading-7 text-emerald-300">
+              {primaryAction ? (
+                <Link
+                  href={primaryAction.href}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
+                >
+                  <Play className="h-4 w-4" />
+                  {primaryAction.label}
+                </Link>
+              ) : null}
+              <div className="mt-3 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                {primaryAction ? "Headless / agent equivalent" : "First command"}
+              </div>
+              <code className="mt-1 block whitespace-pre-wrap font-mono text-sm leading-7 text-emerald-300">
                 {command}
               </code>
             </div>

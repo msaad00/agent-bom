@@ -18,6 +18,14 @@ interface DeploymentSurfaceDefinition {
   command: string;
   capabilities: string[];
   summary: (mode: string) => string;
+  /**
+   * Optional in-product enablement action. For scan-driven surfaces this points
+   * at the same New-Scan flow the operator would reach from the nav, so the
+   * empty state offers a first-class UI path alongside the headless CLI/API
+   * command (never instead of it).
+   */
+  actionHref?: string;
+  actionLabel?: string;
 }
 
 function bool(value: boolean | undefined): boolean {
@@ -61,6 +69,8 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
     isAvailable: (counts) => bool(counts?.has_local_scan),
     requirement: "Local agent discovery or workstation scan evidence",
     command: "agent-bom agents --push-url https://<control-plane>/v1/fleet/sync",
+    actionHref: "/scan",
+    actionLabel: "Run a scan",
     capabilities: [
       "Local MCP config-file discovery from developer workstations",
       "Configured agent inventory with attached MCP servers",
@@ -89,6 +99,8 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
     isAvailable: (counts) => bool(counts?.has_mesh),
     requirement: "Completed scans with agent and runtime relationship context",
     command: "agent-bom scan --introspect --preset enterprise",
+    actionHref: "/scan",
+    actionLabel: "Run introspection scan",
     capabilities: [
       "Shared infrastructure across agents, tools, packages, and findings",
       "Highest-risk agent defaults and mesh-wide overlap analysis",
@@ -103,6 +115,8 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
     isAvailable: (counts) => bool(counts?.has_mcp_context),
     requirement: "MCP and agent context from completed scans",
     command: "agent-bom scan --introspect --preset enterprise",
+    actionHref: "/scan",
+    actionLabel: "Run introspection scan",
     capabilities: [
       "Lateral path analysis across agents, credentials, tools, and servers",
       "Context graph stats for shared credentials and shared servers",
@@ -224,6 +238,8 @@ export function getDeploymentSurfaceState(
     requirement: definition.requirement,
     command: definition.command,
     capabilities: definition.capabilities,
+    actionHref: definition.actionHref,
+    actionLabel: definition.actionLabel,
     detail,
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
@@ -8,7 +9,10 @@ import {
   CheckCircle2,
   ChevronDown,
   Database,
+  GitBranch,
   KeyRound,
+  List,
+  Network,
   Package,
   Server,
   ShieldAlert,
@@ -23,6 +27,55 @@ export interface ExposurePathCommandAction {
   title: string;
   detail: string;
   href: string;
+}
+
+/**
+ * Which single representation of the selected path is shown. The command center
+ * used to stack the path DAG, the neighbor list, and a full interactive graph
+ * all at once; the toggle collapses that to one view at a time.
+ */
+export type ExposurePathView = "path" | "graph" | "list";
+
+const PATH_VIEW_ITEMS: { key: ExposurePathView; label: string; icon: LucideIcon }[] = [
+  { key: "path", label: "Path", icon: GitBranch },
+  { key: "graph", label: "Graph", icon: Network },
+  { key: "list", label: "List", icon: List },
+];
+
+function PathViewToggle({
+  view,
+  onChange,
+}: {
+  view: ExposurePathView;
+  onChange: (next: ExposurePathView) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Exposure path view"
+      className="inline-flex items-center overflow-hidden rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]"
+    >
+      {PATH_VIEW_ITEMS.map(({ key, label, icon: Icon }) => {
+        const active = view === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onChange(key)}
+            aria-pressed={active}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium transition ${
+              active
+                ? "bg-emerald-600 text-white"
+                : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const ROLE_META: Record<ExposureEntityRole, { label: string; icon: LucideIcon; tint: string }> = {
@@ -41,11 +94,27 @@ export function ExposurePathCommandCenter({
   path,
   actions = [],
   scanId,
+  view: controlledView,
+  onViewChange,
 }: {
   path: ExposurePath;
   actions?: ExposurePathCommandAction[] | undefined;
   scanId?: string | undefined;
+  /** Controlled active view. When omitted the component owns the state. */
+  view?: ExposurePathView | undefined;
+  /**
+   * Notified when the operator switches views. The page wires this to render
+   * the interactive investigation graph on demand in "graph" view instead of
+   * reserving a full screen-height of blank canvas underneath.
+   */
+  onViewChange?: ((next: ExposurePathView) => void) | undefined;
 }) {
+  const [internalView, setInternalView] = useState<ExposurePathView>("path");
+  const view = controlledView ?? internalView;
+  const setView = (next: ExposurePathView) => {
+    if (!controlledView) setInternalView(next);
+    onViewChange?.(next);
+  };
   const fixLabel = pathFixLabel(path);
   const evidence = path.evidence;
   const primaryAction = actions[0];
@@ -93,11 +162,31 @@ export function ExposurePathCommandCenter({
           </div>
         </div>
 
-        <section aria-label="Selected exposure path graph" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[#05070b] p-1">
-          <ExposurePathGraph path={path} />
-        </section>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+            {view === "path"
+              ? "Attack path"
+              : view === "graph"
+                ? "Interactive graph"
+                : "Path neighbors"}
+          </div>
+          <PathViewToggle view={view} onChange={setView} />
+        </div>
 
-        <ExposurePathNeighborExplorer path={path} scanId={scanId} />
+        {view === "path" ? (
+          <section aria-label="Selected exposure path graph" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[#05070b] p-1">
+            <ExposurePathGraph path={path} />
+          </section>
+        ) : view === "list" ? (
+          <ExposurePathNeighborExplorer path={path} scanId={scanId} />
+        ) : (
+          <section
+            aria-label="Interactive graph hint"
+            className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/60 px-4 py-6 text-center text-xs text-[color:var(--text-secondary)]"
+          >
+            Interactive graph opens below — pan, zoom, and click nodes to inspect the persisted subgraph.
+          </section>
+        )}
 
         <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">

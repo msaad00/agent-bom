@@ -282,7 +282,9 @@ def test_overview_severity_sum_equals_unique_cves_with_unknown_severity() -> Non
 
 
 def test_overview_coverage_lanes_map_to_five_domains() -> None:
-    """Coverage lanes are the five security domains, non-overlapping, invariant-clean."""
+    """Coverage lanes are the five security domains; each lane's per-lane severity
+    strip still sums to its own count (rows with a single stored primary and no
+    parseable source/type map to exactly one lane)."""
     _clear_jobs()
     from agent_bom.api.server import ScanJob, ScanRequest
 
@@ -322,6 +324,78 @@ def test_overview_coverage_lanes_map_to_five_domains() -> None:
     assert coverage["aspm"]["count"] == 0
     # CIS misconfig went to CSPM, not the vuln lane.
     assert coverage["vuln"]["severity"]["critical"] == 1
+
+
+def test_overview_coverage_lanes_overlap_for_repo_dependency_cve() -> None:
+    """Coverage lanes are overlapping posture lenses, not a partition.
+
+    A repo/project dependency CVE counts under BOTH the Vuln-mgmt and the ASPM
+    lane, so the sum of lane counts exceeds the total finding count. The
+    all-domain headline histogram is still computed once per finding and is NOT
+    the sum of the lanes.
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.server import ScanJob, ScanRequest
+
+    get_compliance_hub_store().clear("default")
+    job = ScanJob(
+        job_id="overlap-job",
+        tenant_id="default",
+        created_at="2026-02-22T10:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-02-22T10:05:00Z"
+    job.result = {
+        "agents": [],
+        "scan_sources": ["project"],
+        "findings": [
+            # Repo dependency CVE — lens set {vuln, aspm}.
+            {
+                "id": "dep-1",
+                "security_domain": "vuln",
+                "source": "SBOM",
+                "finding_type": "CVE",
+                "cve_id": "CVE-2025-9000",
+                "severity": "high",
+            },
+            # A SAST code weakness — ASPM only.
+            {
+                "id": "sast-1",
+                "security_domain": "aspm",
+                "source": "SAST",
+                "finding_type": "SAST",
+                "severity": "medium",
+            },
+        ],
+    }
+    _get_store().put(job)
+
+    data = client_get_overview()
+    coverage = {lane["domain"]: lane for lane in data["coverage"]}
+
+    # The dependency CVE appears in vuln AND aspm; the SAST finding in aspm.
+    assert coverage["vuln"]["count"] == 1
+    assert coverage["vuln"]["severity"]["high"] == 1
+    assert coverage["aspm"]["count"] == 2
+    assert coverage["aspm"]["severity"]["high"] == 1
+    assert coverage["aspm"]["severity"]["medium"] == 1
+
+    # Lanes overlap: their counts sum to more than the 2 real findings.
+    lane_total = sum(lane["count"] for lane in data["coverage"])
+    assert lane_total == 3
+    assert lane_total > 2
+
+    # Per-lane invariant still holds: each lane count == sum of its own strip.
+    for lane in data["coverage"]:
+        assert sum(v for v in lane["severity"].values()) == lane["count"]
+
+    # The exec headline histogram is computed once per finding, NOT by summing
+    # lanes: 1 high (the CVE) + 1 medium (the SAST) — not the doubled lane total.
+    assert data["headline"]["high"] == 1
+    assert data["headline"]["critical"] == 0
+    get_compliance_hub_store().clear("default")
 
 
 def test_overview_headline_reflects_noncve_spine_critical() -> None:

@@ -184,3 +184,124 @@ def domain_for_row(row: dict) -> Optional[str]:
         return None
     evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else None
     return security_domain_for(source, ftype, evidence)
+
+
+# ---------------------------------------------------------------------------
+# Coverage lenses (overlapping posture disciplines)
+# ---------------------------------------------------------------------------
+#
+# ``security_domain_for`` picks the single PRIMARY lane a finding is stored and
+# displayed under. The coverage lanes on the overview, however, are *overlapping
+# posture lenses*, not a strict one-lane-per-finding partition: a single repo
+# dependency CVE is both a vulnerability-management concern (``vuln``) and an
+# application-security-posture concern (``aspm``). ``security_lenses_for``
+# returns the SET of lenses a finding belongs to. It derives entirely from the
+# same ``(source, finding_type, evidence)`` inputs the primary mapping uses — no
+# schema migration. The primary is always a member of the set.
+#
+# Because lanes overlap, the sum of lane counts is NOT the total finding count.
+# The exec headline / grade histogram is computed independently over the unified
+# findings spine (once per finding), never by summing lenses.
+
+
+def _is_iac_misconfig(source: "FindingSource", ftype: "FindingType", ev: dict) -> bool:
+    """True when a misconfiguration finding describes infrastructure-as-code.
+
+    IaC template scanning (Terraform / CloudFormation / K8s manifests in a repo)
+    is an application/code-layer concern, so such misconfigs also belong to the
+    ``aspm`` lens even though their primary cloud-config lane is ``cspm``.
+    Detected from evidence markers only — absent a marker this never fires, so
+    live-cloud CIS findings stay purely ``cspm``.
+    """
+    from agent_bom.finding import FindingType
+
+    if ftype != FindingType.CIS_FAIL:
+        return False
+    if ev.get("iac"):
+        return True
+    marker = " ".join(
+        str(ev.get(key) or "") for key in ("category", "scan_type", "framework", "resource_type", "source_kind")
+    ).lower()
+    return any(token in marker for token in ("iac", "terraform", "cloudformation", "k8s manifest", "kubernetes manifest"))
+
+
+def security_lenses_for(
+    source: "FindingSource",
+    finding_type: "FindingType",
+    evidence: Optional[dict] = None,
+) -> frozenset[str]:
+    """Return the SET of overlapping coverage lenses a finding belongs to.
+
+    Predicates (all derived from the primary mapping's inputs):
+
+      * ``vuln`` — the vulnerability-management discipline: a CVE, malicious
+        package, or license finding, or any dependency/package scanner output
+        (container / SBOM / external / filesystem) that is not itself a
+        code/secret finding.
+      * ``aspm`` — the application/code/repo layer: SAST, secret/credential
+        scanning, a repo/project-checkout dependency graph (SBOM / filesystem),
+        and IaC misconfiguration. So a repo dependency CVE is in {vuln, aspm}.
+      * ``cspm`` / ``dspm`` / ``aispm`` — carried by the primary mapping
+        (cloud config, data governance, and AI/agent signals respectively).
+
+    The primary lane is always included.
+    """
+    from agent_bom.finding import FindingSource, FindingType
+
+    ev = evidence or {}
+    lenses: set[str] = {security_domain_for(source, finding_type, evidence)}
+
+    is_code_or_secret = finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE) or source in (
+        FindingSource.SAST,
+        FindingSource.SECRET_SCAN,
+    )
+
+    # Vulnerability-management lens.
+    if finding_type in (FindingType.CVE, FindingType.MALICIOUS_PACKAGE, FindingType.LICENSE):
+        lenses.add("vuln")
+    if not is_code_or_secret and source in (
+        FindingSource.CONTAINER,
+        FindingSource.SBOM,
+        FindingSource.EXTERNAL,
+        FindingSource.FILESYSTEM,
+    ):
+        lenses.add("vuln")
+
+    # Application-security-posture lens.
+    if is_code_or_secret:
+        lenses.add("aspm")
+    # A repo / project checkout dependency graph is application-layer, so its
+    # dependency findings are ASPM as well as vuln.
+    if source in (FindingSource.SBOM, FindingSource.FILESYSTEM):
+        lenses.add("aspm")
+    if _is_iac_misconfig(source, finding_type, ev):
+        lenses.add("aspm")
+
+    return frozenset(lenses)
+
+
+def lenses_for_row(row: dict) -> frozenset[str]:
+    """Return the overlapping coverage-lens set for a serialized finding row.
+
+    Mirrors :func:`domain_for_row`: the stored ``security_domain`` (canonical,
+    legacy-aliased) is always in the set, and — when the row carries a parseable
+    source/type — the full derived lens set is unioned in. A row bearing a CVE id
+    always counts under ``vuln``. Returns an empty set only when nothing is
+    resolvable, so callers can fall back to a default lane.
+    """
+    lenses: set[str] = set()
+    primary = canonical_domain(row.get("security_domain"))
+    if primary is not None:
+        lenses.add(primary)
+    if str(row.get("cve_id") or "").strip():
+        lenses.add("vuln")
+
+    from agent_bom.finding import FindingSource, FindingType
+
+    try:
+        source = FindingSource(str(row.get("source") or "").upper())
+        ftype = FindingType(str(row.get("finding_type") or "").upper())
+    except ValueError:
+        return frozenset(lenses)
+    evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else None
+    return frozenset(lenses | security_lenses_for(source, ftype, evidence))

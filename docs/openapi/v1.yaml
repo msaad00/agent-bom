@@ -4804,17 +4804,22 @@ paths:
       description: 'Estate-wide cloud asset inventory summary for a provider (or ``all``).
 
 
-        Calls the same ``discover_inventory`` functions the CLI and MCP ``cloud_inventory``
+        Calls the same ``discover_inventory`` / ``discover`` functions the CLI and
+        MCP
 
-        tool use and reduces each provider payload to the identical non-secret count
+        ``cloud_inventory`` tool use and reduces each provider payload to the identical
 
-        shape (``_summarize_inventory_payload``). Each provider self-gates on its
-        own
+        non-secret count shape. ``aws`` | ``azure`` | ``gcp`` | ``snowflake`` (and
 
-        ``AGENT_BOM_*_INVENTORY`` env flag + credentials; a disabled provider returns
-        a
+        ``all``) are supported; Snowflake''s AI-resource discovery is projected onto
+        the
 
-        clear ``status`` and contributes zero nodes.'
+        same summary fields (see ``_snowflake_inventory``). Each provider self-gates
+        on
+
+        its own ``AGENT_BOM_*_INVENTORY`` env flag + credentials; a disabled provider
+
+        returns a clear ``status`` and contributes zero nodes.'
       operationId: cloud_inventory_v1_cloud__provider__inventory_get
       parameters:
       - in: path

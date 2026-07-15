@@ -7287,7 +7287,7 @@
     },
     "/v1/cloud/{provider}/inventory": {
       "get": {
-        "description": "Estate-wide cloud asset inventory summary for a provider (or ``all``).\n\nCalls the same ``discover_inventory`` functions the CLI and MCP ``cloud_inventory``\ntool use and reduces each provider payload to the identical non-secret count\nshape (``_summarize_inventory_payload``). Each provider self-gates on its own\n``AGENT_BOM_*_INVENTORY`` env flag + credentials; a disabled provider returns a\nclear ``status`` and contributes zero nodes.",
+        "description": "Estate-wide cloud asset inventory summary for a provider (or ``all``).\n\nCalls the same ``discover_inventory`` / ``discover`` functions the CLI and MCP\n``cloud_inventory`` tool use and reduces each provider payload to the identical\nnon-secret count shape. ``aws`` | ``azure`` | ``gcp`` | ``snowflake`` (and\n``all``) are supported; Snowflake's AI-resource discovery is projected onto the\nsame summary fields (see ``_snowflake_inventory``). Each provider self-gates on\nits own ``AGENT_BOM_*_INVENTORY`` env flag + credentials; a disabled provider\nreturns a clear ``status`` and contributes zero nodes.",
         "operationId": "cloud_inventory_v1_cloud__provider__inventory_get",
         "parameters": [
           {

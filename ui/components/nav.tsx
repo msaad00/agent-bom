@@ -368,7 +368,7 @@ export function Nav() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [setCollapsed]);
 
   // Filter nav links by search
   const filteredGroups = searchQuery

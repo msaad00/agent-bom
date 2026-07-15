@@ -357,8 +357,9 @@ export function FullscreenButton() {
       onClick={toggle}
       className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] transition-colors backdrop-blur-sm"
       title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+      aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
     >
-      {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+      {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" aria-hidden="true" /> : <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />}
     </button>
   );
 }

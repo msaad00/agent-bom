@@ -159,6 +159,7 @@ repo yet.
 - **Helm / Kubernetes** — cluster-native chart → [chart](deploy/helm/agent-bom)
 - **EKS** — opinionated Terraform module → [module](deploy/terraform/platform-eks)
 - **CloudFormation** — one-click AWS stack → [templates](deploy/cloudformation)
+- **Snowflake (SPCS native app)** — host entirely inside your own Snowflake account → [install guide](docs/snowflake-native-app/INSTALL.md)
 
 <details>
 <summary><b>Local bring-up</b> — Docker Compose in two commands</summary>
@@ -298,10 +299,12 @@ CI. agent-bom authenticates through the Python connector — no `snowsql` sessio
 needed. Setup and grants: [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md)
 
 **Deploy.** Run in your own boundary — the [Run It Anywhere](#run-it-anywhere)
-ladders above cover Compose, Helm, EKS, and CloudFormation. Full deploy guides:
+ladders above cover Compose, Helm, EKS, CloudFormation, and the Snowflake SPCS
+native app. Full deploy guides:
 [Deploy anywhere](docs/DEPLOY_PLATFORM.md) · [Hosted POC](docs/HOSTED_POC.md) ·
 [Helm](deploy/helm/agent-bom) · [EKS module](deploy/terraform/platform-eks) ·
 [CloudFormation](deploy/cloudformation) ·
+[Snowflake native app](docs/snowflake-native-app/INSTALL.md) ·
 [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom)
 
 **Trust.**

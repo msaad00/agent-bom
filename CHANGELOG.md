@@ -12,7 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [0.96.2] - 2026-07-15
 
 ### Fixed
-- Release pipeline: raised the container-gate job timeout so the release image vulnerability scan completes and publish steps run (no functional change to the product).
+- Release pipeline: widened the container, self-scan, and published-image gate job timeouts so the release vulnerability scans complete and every publish step runs (no functional change to the product).
 
 ## [0.96.1] - 2026-07-15
 

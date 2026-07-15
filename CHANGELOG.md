@@ -9,16 +9,38 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-07-15
+
+Operator-cockpit release: a premium both-theme design system with every heavy page restyled dense and side-by-side, first-class UIs that bring agents and humans to surface parity, deeper observability→governance correlation, and a governance/security-hardening batch on top of 0.95.0.
+
 ### Added
+- **One canonical finding-list envelope** across every list surface — API, CLI, and MCP now return findings through a single shared shape so pagination, faceting, and totals are identical everywhere (#3993, #3666).
+- **Coverage lenses as overlapping posture disciplines** — CSPM · ASPM · DSPM · AISPM and vulnerability management render as overlapping lenses over one evidence layer rather than siloed products (#3994, #3996).
+- **Snowflake estate inventory over REST** — brokered Snowflake connections sweep accounts/warehouses/databases/roles/users and serve them through the inventory REST surface at parity with AWS/Azure/GCP (#3998).
+- **Per-span trace→attack-path correlation** with opt-in content screening and trace connectors — observability spans map onto graph attack paths (#4000).
+- **Security-eval scorecard + observe→enforce block-rule proposals** — runtime observations surface as a scorecard and propose enforcement rules before you turn them on (#4002).
+- **Persisted, versioned governance blueprints with an approval workflow** (#3999); drift-resolve promotes blueprint versions and owner-scoped FinOps budgets (#4003); ABAC device/group/client attributes, scoped delegation tokens, and a served MCP-client-config URL (#4011).
+- **First-class UIs for AI/ML supply-chain scans, audit export/verify, and the should-I-deploy gate** — agent-only surfaces now have human parity in the dashboard (#4025).
+- **Operations & Integrations settings** — webhooks, SIEM, threat-intel, and reports management UIs, again at human↔agent parity (#4026).
 - **OpenVEX ingest for finding triage** (#3985): new `POST /v1/findings/triage/vex/ingest` (and SDK `ingest_finding_triage_vex`) parses an OpenVEX/CycloneDX/CSAF document and applies its `not_affected`/`fixed` statements as tenant-scoped triage suppressions — round-tripping with the existing `GET /v1/findings/triage/vex` export and idempotent on re-ingest. A reusable `agent_bom.vex.parse_vex(dict)` core backs both file (`load_vex`) and in-memory ingest.
 - **REST-operation count gate** (#3985): `scripts/check-counts.py` now counts REST operations/paths (from the canonical `docs/openapi/v1.json`), route modules, and WebSocket routes, and gates the developer/agent docs that cite the REST surface so they cannot drift from the shipped contract.
 
 ### Changed
+- **Premium design-system foundation** — layered surfaces, both-theme tokens, and dense `DataTable`/`SplitLayout`/`StatStrip` primitives, with every heavy page restyled dense and side-by-side instead of big-card/long-vertical (#4017, #4024). Closes the dashboard-UX and platform-UX epics.
+- **Flow-ordered, de-duplicated navigation IA** (#4013).
+- **Graph & DAG canvas scale pass** with in-product actions (#3997); brand/README parity, scan-preset pre-fill, and light-theme token polish (#4001, #3966).
 - **CycloneDX output upgraded to 1.7** (#3985): `cyclonedx_fmt.py` now emits `specVersion` 1.7 and is validated against the vendored official CycloneDX 1.7 JSON schema in the interop conformance gate.
 
 ### Fixed
+- **Exec severity counts reconcile to one honest source of truth** across posture, overview, and graph (#4023).
+- **Honest 501 for unsupported Neptune operations** instead of silent/incorrect results (#4018).
 - **Snowflake CIS benchmark reachable over REST** (#3967): `GET /v1/cloud/snowflake/cis-benchmark` no longer 404s — it runs the real `snowflake_cis_benchmark` and, when the connector/credentials are absent, degrades to the shared HTTP-200 `unavailable` envelope like AWS/Azure/GCP, bringing the REST surface to parity with the CLI/MCP `cis-benchmark --provider snowflake`.
 - **In-memory compliance-hub sort ceiling guarded** (#3967): the process-local demo backend re-sorts a tenant's whole row list per paged read; past a documented ceiling it now warns once per tenant (steering operators to the SQLite/Postgres backend) instead of degrading silently. No behavior change to results.
+
+### Security
+- **Trace-connector URL validation** — SSRF guard on outbound trace-connector targets (#4012).
+- **Blueprint approval four-eyes, tenant-scoped listing, and a Postgres-durable governance audit chain** (#4023, #4018).
+- **Untrusted VEX log-value sanitization** (#3995).
 
 ## [0.95.0] - 2026-07-13
 
@@ -2297,7 +2319,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.95.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.0...HEAD
+[0.96.0]: https://github.com/msaad00/agent-bom/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/msaad00/agent-bom/compare/v0.94.2...v0.95.0
 [0.94.2]: https://github.com/msaad00/agent-bom/compare/v0.94.1...v0.94.2
 [0.94.1]: https://github.com/msaad00/agent-bom/compare/v0.94.0...v0.94.1

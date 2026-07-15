@@ -63,7 +63,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 | **Local AI BOM** | `agent-bom agents --demo --offline` | terminal findings and graph-ready inventory |
 | **Repository scan** | `agent-bom agents -p . -f html -o agent-bom-report.html` | local HTML review plus exportable evidence |
 | **Cloud posture gate** | `agent-bom iac infra/ && agent-bom cloud aws --cis` | pre-cloud IaC findings plus point-in-time or scheduled posture evidence |
-| **CI evidence** | `uses: msaad00/agent-bom@v0.95.0` | SARIF, pull-request summary, optional code scanning |
+| **CI evidence** | `uses: msaad00/agent-bom@v0.96.0` | SARIF, pull-request summary, optional code scanning |
 | **Assistant tools** | `agent-bom mcp server` | read-mostly security tools for MCP clients |
 | **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your infrastructure |
 

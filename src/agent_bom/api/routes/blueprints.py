@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from agent_bom.api.blueprint_store import (
     BlueprintApprovalError,
     BlueprintComposition,
+    BlueprintSelfApprovalError,
     approve_version,
     create_blueprint,
     create_draft_version,
@@ -248,6 +249,8 @@ async def approve_version_route(request: Request, blueprint_id: str, version: in
             approver=_actor(request),
             note=note,
         )
+    except BlueprintSelfApprovalError as exc:
+        raise HTTPException(status_code=403, detail=sanitize_error(exc)) from exc
     except BlueprintApprovalError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
     if record is None:

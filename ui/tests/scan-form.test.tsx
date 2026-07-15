@@ -217,6 +217,16 @@ describe("ScanForm", () => {
     expect(screen.getByRole("button", { name: /Scan repo/i })).toBeDisabled();
   });
 
+  it("surfaces the AI/ML supply-chain scan panel from its own tab", async () => {
+    const user = userEvent.setup();
+    render(<ScanForm />);
+
+    await user.click(screen.getByRole("tab", { name: /AI \/ ML/i }));
+    expect(screen.getByTestId("ai-scan-panel")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Dataset cards/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Prompt scan/i })).toBeInTheDocument();
+  });
+
   it("explains kubernetes namespace scope in plain language", async () => {
     const user = userEvent.setup();
     render(<ScanForm />);

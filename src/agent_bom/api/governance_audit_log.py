@@ -307,9 +307,11 @@ def make_governance_audit_record(
 def get_governance_audit_log() -> GovernanceAuditLog:
     """Return the process governance audit log, durable by default.
 
-    Selection mirrors the agent-identity store: Postgres is not yet a backend
-    here (a future PR adds the shared-replica chain), so the durable tier is
-    SQLite and the ephemeral opt-out is in-memory.
+    Selection mirrors the agent-identity store: Postgres (multi-replica, tenant
+    RLS) when configured, node-local durable SQLite otherwise, and in-memory only
+    on an explicit ephemeral opt-out. On a clustered Postgres deployment this
+    keeps the tamper-evident chain a single durable per-tenant chain shared
+    across every replica rather than splitting per-node.
     """
     global _GOVERNANCE_AUDIT_LOG
     if _GOVERNANCE_AUDIT_LOG is not None:
@@ -319,9 +321,11 @@ def get_governance_audit_log() -> GovernanceAuditLog:
     backend = select_backend()
     if backend == "memory":
         _GOVERNANCE_AUDIT_LOG = InMemoryGovernanceAuditLog()
+    elif backend == "postgres":
+        from agent_bom.api.postgres_governance_audit import PostgresGovernanceAuditLog
+
+        _GOVERNANCE_AUDIT_LOG = PostgresGovernanceAuditLog()
     else:
-        # Postgres backend has no dedicated chain table yet; fall back to the
-        # node-local durable SQLite chain rather than dropping the audit trail.
         _GOVERNANCE_AUDIT_LOG = SQLiteGovernanceAuditLog(sqlite_path())
     return _GOVERNANCE_AUDIT_LOG
 

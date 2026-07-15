@@ -34,9 +34,11 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api import inventory_service
 from agent_bom.api.inventory_service import MAX_PAGE_LIMIT, InventoryError
+from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationError
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -53,6 +55,11 @@ async def _store_call(fn, /, *args, **kwargs):
             detail=exc.to_dict(),
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+    except NeptuneGraphStoreUnsupportedOperationError as exc:
+        # The experimental Neptune backend implements only a partial
+        # GraphStoreProtocol surface; surface an honest 501 (not a generic 500)
+        # naming the unsupported operation and steering to SQLite/Postgres.
+        raise HTTPException(status_code=501, detail=sanitize_error(exc)) from exc
 
 
 def _tenant(request: Request) -> str:

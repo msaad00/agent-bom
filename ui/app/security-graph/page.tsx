@@ -53,6 +53,7 @@ import {
 } from "@/lib/attack-paths";
 import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
+import { tonedChipClass } from "@/lib/toned-chip";
 
 const ATTACK_PATH_QUEUE_LIMIT = 75;
 const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
@@ -536,7 +537,7 @@ function SecurityGraphPageContent() {
                         onClick={() => setSelectedScanId(snapshot.scan_id)}
                         className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
                           selected
-                            ? "border-emerald-700 bg-emerald-950/40 text-emerald-200"
+                            ? "border-emerald-700 bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200"
                             : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                         }`}
                       >
@@ -596,7 +597,7 @@ function SecurityGraphPageContent() {
           <div className="mt-4 flex flex-wrap gap-3 border-t border-red-900/40 pt-4">
             <Link
               href={fullGraphHref}
-              className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-3 py-1.5 text-xs text-red-200 transition hover:border-red-700"
+              className="inline-flex items-center gap-2 rounded-full border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/30 px-3 py-1.5 text-xs text-red-700 dark:text-red-200 transition hover:border-red-700"
             >
               Retry in full graph
               <GitBranch className="h-3.5 w-3.5" />
@@ -604,7 +605,7 @@ function SecurityGraphPageContent() {
             {hasFocusContext && (
               <Link
                 href={resetFocusHref}
-                className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-3 py-1.5 text-xs text-red-200 transition hover:border-red-700"
+                className="inline-flex items-center gap-2 rounded-full border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/30 px-3 py-1.5 text-xs text-red-700 dark:text-red-200 transition hover:border-red-700"
               >
                 Clear focus
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -714,9 +715,9 @@ function QuickStat({
 }) {
   const tones = {
     zinc: "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]",
-    red: "border-red-900/60 bg-red-950/20 text-red-200",
-    amber: "border-amber-900/60 bg-amber-950/20 text-amber-200",
-    blue: "border-sky-900/60 bg-sky-950/20 text-sky-200",
+    red: tonedChipClass("danger"),
+    amber: tonedChipClass("warn"),
+    blue: tonedChipClass("low"),
   };
   return (
     <div className={`rounded-2xl border px-4 py-3 ${tones[tone]}`}>

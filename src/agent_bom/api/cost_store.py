@@ -10,10 +10,12 @@ accountability layer commercial agent-runtime products charge for, kept open.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
@@ -215,14 +217,34 @@ COST_STORAGE_SCHEMA = StorageSchema(
 )
 
 
+def budget_window_start(now: datetime | None = None) -> str | None:
+    """Return the ISO cutoff for budget spend SUMs, or ``None`` for all-history.
+
+    ``AGENT_BOM_BUDGET_WINDOW_DAYS`` bounds the budget-check spend SUM to a
+    rolling window so the aggregate does not scan a tenant's entire cost ledger
+    on every enforced call. Unset (the default) preserves all-history semantics.
+    """
+    raw = os.environ.get("AGENT_BOM_BUDGET_WINDOW_DAYS")
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        days = int(raw)
+    except ValueError:
+        return None
+    if days <= 0:
+        return None
+    ref = now or datetime.now(timezone.utc)
+    return (ref - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 class CostStore(Protocol):
     def record_cost(self, record: LLMCostRecord) -> None: ...
 
     def list_records(self, tenant_id: str, *, limit: int = 1000) -> list[LLMCostRecord]: ...
 
-    def total_spend(self, tenant_id: str, *, agent: str | None = None) -> float: ...
+    def total_spend(self, tenant_id: str, *, agent: str | None = None, since: str | None = None) -> float: ...
 
-    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float: ...
+    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str, *, since: str | None = None) -> float: ...
 
     def set_budget(self, budget: CostBudget) -> None: ...
 
@@ -366,17 +388,25 @@ class InMemoryCostStore:
         with self._lock:
             return list(self._records.get(tenant_id, []))[-limit:]
 
-    def total_spend(self, tenant_id: str, *, agent: str | None = None) -> float:
+    def total_spend(self, tenant_id: str, *, agent: str | None = None, since: str | None = None) -> float:
         with self._lock:
             return round(
-                sum(r.cost_usd for r in self._records.get(tenant_id, []) if agent in (None, "", r.agent) or r.agent == agent),
+                sum(
+                    r.cost_usd
+                    for r in self._records.get(tenant_id, [])
+                    if (agent in (None, "", r.agent) or r.agent == agent) and (since is None or r.observed_at >= since)
+                ),
                 6,
             )
 
-    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float:
+    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str, *, since: str | None = None) -> float:
         with self._lock:
             return round(
-                sum(r.cost_usd for r in self._records.get(tenant_id, []) if (r.cost_center or "") == cost_center),
+                sum(
+                    r.cost_usd
+                    for r in self._records.get(tenant_id, [])
+                    if (r.cost_center or "") == cost_center and (since is None or r.observed_at >= since)
+                ),
                 6,
             )
 
@@ -486,6 +516,11 @@ class SQLiteCostStore:
             self._conn.execute("ALTER TABLE llm_costs ADD COLUMN allocation_tags TEXT NOT NULL DEFAULT '{}'")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_agent ON llm_costs(tenant_id, agent)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_cost_center ON llm_costs(tenant_id, cost_center)")
+        # Supports the windowed budget-check SUM (WHERE tenant_id=? [AND agent=?]
+        # AND observed_at >= ?) so a rolling-window aggregate stays a bounded
+        # range scan instead of folding the tenant's whole cost history.
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_agent_observed ON llm_costs(tenant_id, agent, observed_at)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_observed ON llm_costs(tenant_id, observed_at)")
         self._conn.commit()
 
     def record_cost(self, record: LLMCostRecord) -> None:
@@ -540,20 +575,25 @@ class SQLiteCostStore:
             for r in rows
         ]
 
-    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float:
-        row = self._conn.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = ? AND cost_center = ?",
-            (tenant_id, cost_center),
-        ).fetchone()
+    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str, *, since: str | None = None) -> float:
+        sql = "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = ? AND cost_center = ?"
+        params: list[Any] = [tenant_id, cost_center]
+        if since is not None:
+            sql += " AND observed_at >= ?"
+            params.append(since)
+        row = self._conn.execute(sql, params).fetchone()
         return round(float(row[0]), 6)
 
-    def total_spend(self, tenant_id: str, *, agent: str | None = None) -> float:
+    def total_spend(self, tenant_id: str, *, agent: str | None = None, since: str | None = None) -> float:
+        sql = "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = ?"
+        params: list[Any] = [tenant_id]
         if agent:
-            row = self._conn.execute(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = ? AND agent = ?", (tenant_id, agent)
-            ).fetchone()
-        else:
-            row = self._conn.execute("SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = ?", (tenant_id,)).fetchone()
+            sql += " AND agent = ?"
+            params.append(agent)
+        if since is not None:
+            sql += " AND observed_at >= ?"
+            params.append(since)
+        row = self._conn.execute(sql, params).fetchone()
         return round(float(row[0]), 6)
 
     def set_budget(self, budget: CostBudget) -> None:
@@ -603,13 +643,14 @@ def check_budget_enforcement(store: CostStore, tenant_id: str, agent: str) -> tu
     otherwise the tenant-wide enforce budget applies. Report-mode budgets and
     missing budgets never block.
     """
+    window = budget_window_start()
     budget = store.get_budget(tenant_id, agent) if agent else None
-    spend = store.total_spend(tenant_id, agent=agent or None)
+    spend = store.total_spend(tenant_id, agent=agent or None, since=window)
     if budget is None or budget.mode != "enforce":
         tenant_budget = store.get_budget(tenant_id, "")
         if tenant_budget is not None and tenant_budget.mode == "enforce":
             budget = tenant_budget
-            spend = store.total_spend(tenant_id, agent=None)
+            spend = store.total_spend(tenant_id, agent=None, since=window)
         elif budget is None or budget.mode != "enforce":
             return False, budget, spend
     blocked = budget is not None and budget.mode == "enforce" and spend >= budget.limit_usd
@@ -626,7 +667,7 @@ def check_cost_center_budget_enforcement(store: CostStore, tenant_id: str, cost_
     if not cost_center:
         return False, None, 0.0
     budget = store.get_budget(tenant_id, "", cost_center=cost_center)
-    spend = store.total_spend_by_cost_center(tenant_id, cost_center)
+    spend = store.total_spend_by_cost_center(tenant_id, cost_center, since=budget_window_start())
     if budget is None or budget.mode != "enforce":
         return False, budget, spend
     return spend >= budget.limit_usd, budget, spend

@@ -155,7 +155,7 @@ function DiscoveryProvenanceTags({ provenance }: { provenance: DiscoveryProvenan
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((tag) => (
-        <span key={tag} className="rounded border border-sky-900/60 bg-sky-950/30 px-1.5 py-0.5 text-[10px] font-mono text-sky-300">
+        <span key={tag} className="rounded border border-sky-500/30 dark:border-sky-900/60 bg-sky-500/10 dark:bg-sky-950/30 px-1.5 py-0.5 text-[10px] font-mono text-sky-700 dark:text-sky-300">
           {tag}
         </span>
       ))}

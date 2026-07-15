@@ -2357,7 +2357,7 @@ function GraphPageInner() {
               </span>
             )}
             {loadingGraph && (
-              <span className="flex items-center gap-1 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-200">
+              <span className="flex items-center gap-1 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 refreshing
               </span>
@@ -2669,7 +2669,7 @@ function GraphPageInner() {
               </div>
             </summary>
             {diffError ? (
-              <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
                 {diffError}
               </div>
             ) : loadingDiff && !graphDiff ? (
@@ -3153,11 +3153,11 @@ function MetricCard({
 }) {
   const accentClass =
     accent === "red"
-      ? "border-red-500/20 bg-red-500/10 text-red-200"
+      ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
       : accent === "orange"
-        ? "border-orange-500/20 bg-orange-500/10 text-orange-200"
+        ? "border-orange-500/20 bg-orange-500/10 text-orange-700 dark:text-orange-200"
         : accent === "blue"
-          ? "border-sky-500/20 bg-sky-500/10 text-sky-200"
+          ? "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200"
           : "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]";
 
   return (
@@ -3485,11 +3485,11 @@ function PathStat({
 }) {
   const toneClass =
     tone === "red"
-      ? "border-red-500/20 bg-red-500/10 text-red-200"
+      ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200"
       : tone === "amber"
-        ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
+        ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-200"
         : tone === "blue"
-          ? "border-sky-500/20 bg-sky-500/10 text-sky-200"
+          ? "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200"
           : "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]";
 
   return (
@@ -3543,10 +3543,10 @@ function DiffMetric({
 }) {
   const toneClass =
     tone === "green"
-      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
       : tone === "amber"
-        ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
-        : "border-sky-500/20 bg-sky-500/10 text-sky-200";
+        ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-200"
+        : "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200";
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>

@@ -200,7 +200,7 @@ export function LoginPanel({
             </button>
 
             {shownError ? (
-              <div className="mt-4 rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-2.5 text-sm text-red-300">
+              <div className="mt-4 rounded-xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/20 px-4 py-2.5 text-sm text-red-700 dark:text-red-300">
                 {shownError}
               </div>
             ) : null}
@@ -238,7 +238,7 @@ export function LoginPanel({
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
-      <div className="max-w-xl rounded-2xl border border-red-900/50 bg-red-950/20 p-6 text-sm text-red-300">
+      <div className="max-w-xl rounded-2xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/20 p-6 text-sm text-red-700 dark:text-red-300">
         {userFacingApiErrorMessage(error, "Failed to load auth session")}
       </div>
     </div>

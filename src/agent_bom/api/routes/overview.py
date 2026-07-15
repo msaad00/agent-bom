@@ -33,7 +33,11 @@ Endpoints:
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
+import threading
+import time
 from typing import Any, cast
 from urllib.parse import urlencode
 
@@ -49,6 +53,81 @@ from agent_bom.rbac import require_authenticated_permission
 
 router = APIRouter(dependencies=[cast(Any, require_authenticated_permission("read"))])
 _logger = logging.getLogger(__name__)
+
+# Per-tenant overview cache (#3963 follow-up). ``_build_overview`` folds every
+# finding of every completed scan (O(estate)); a burst of landing-page reads
+# would refold the whole estate each time. We cache the composed payload keyed by
+# a cheap job-metadata fingerprint so a re-read within the TTL that sees no new
+# scan data skips the fold. The fingerprint (job id/status/timestamp — never the
+# folded findings) invalidates the cache the instant new evidence lands, so the
+# numbers can never go stale relative to the spine.
+_OVERVIEW_CACHE_TTL_SECONDS_DEFAULT = 15.0
+_overview_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
+_overview_cache_lock = threading.Lock()
+
+
+def _overview_cache_ttl() -> float:
+    raw = os.environ.get("AGENT_BOM_OVERVIEW_CACHE_TTL_SECONDS")
+    if raw is None:
+        return _OVERVIEW_CACHE_TTL_SECONDS_DEFAULT
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return _OVERVIEW_CACHE_TTL_SECONDS_DEFAULT
+
+
+def _overview_fingerprint(jobs: list[Any], hub_severity: dict[str, int]) -> str:
+    """Cheap change-detector over job metadata + hub current-state — no fold.
+
+    Captures job identity, status and the freshest per-job timestamp so a new
+    scan, a status transition, or a re-run all change the fingerprint. It also
+    folds in the hub severity histogram (a cheap indexed GROUP BY) so findings
+    ingested via ``POST /v1/findings/bulk`` — which never touch a scan job —
+    still invalidate the cache. Neither input pays the O(estate) rollup cost, so
+    the headline can never go stale relative to the reconciled spine.
+    """
+    parts = []
+    for job in jobs:
+        stamp = (
+            getattr(job, "completed_at", None)
+            or getattr(job, "updated_at", None)
+            or getattr(job, "created_at", None)
+            or ""
+        )
+        status = getattr(job, "status", "")
+        parts.append(f"{getattr(job, 'job_id', '')}|{getattr(status, 'value', status)}|{stamp}")
+    parts.sort()
+    hub_part = "|".join(f"{k}={int(hub_severity.get(k, 0) or 0)}" for k in sorted(hub_severity))
+    digest = hashlib.sha256(("\x1e".join(parts) + "\x1d" + hub_part).encode("utf-8")).hexdigest()
+    return f"{len(jobs)}:{digest}"
+
+
+def _overview_cache_get(tenant_id: str, fingerprint: str) -> dict[str, Any] | None:
+    ttl = _overview_cache_ttl()
+    if ttl <= 0:
+        return None
+    now = time.monotonic()
+    with _overview_cache_lock:
+        entry = _overview_cache.get(tenant_id)
+        if entry is None:
+            return None
+        cached_at, cached_fp, payload = entry
+        if cached_fp != fingerprint or (now - cached_at) > ttl:
+            return None
+        return payload
+
+
+def _overview_cache_put(tenant_id: str, fingerprint: str, payload: dict[str, Any]) -> None:
+    if _overview_cache_ttl() <= 0:
+        return
+    with _overview_cache_lock:
+        _overview_cache[tenant_id] = (time.monotonic(), fingerprint, payload)
+
+
+def _reset_overview_cache() -> None:
+    """Test hook: drop all cached overview payloads."""
+    with _overview_cache_lock:
+        _overview_cache.clear()
 
 _SEVERITY_KEYS = ("critical", "high", "medium", "low")
 # ``unrated`` is the honest home for findings whose severity the histogram does
@@ -728,13 +807,31 @@ async def get_overview(request: Request) -> dict[str, Any]:
 
 
 def _build_overview(request: Request) -> dict[str, Any]:
-    """Synchronous overview composition (runs in a worker thread, #3963)."""
+    """Synchronous overview composition (runs in a worker thread, #3963).
+
+    Serves a cached payload when the tenant's job-metadata fingerprint is
+    unchanged within the TTL, so repeated landing-page reads don't refold the
+    whole estate (#3963 follow-up). Cache misses (new/changed scan data or an
+    expired entry) recompute and refresh the cache.
+    """
     tenant_id = _tenant_id(request)
     jobs = _get_store().list_all(tenant_id=tenant_id)
+    hub_severity = _hub_severity_snapshot(request)
 
+    fingerprint = _overview_fingerprint(jobs, hub_severity)
+    cached = _overview_cache_get(tenant_id, fingerprint)
+    if cached is not None:
+        return cached
+
+    payload = _compose_overview(request, tenant_id, jobs, hub_severity)
+    _overview_cache_put(tenant_id, fingerprint, payload)
+    return payload
+
+
+def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_severity: dict[str, int]) -> dict[str, Any]:
+    """Fold the estate into the overview payload (the O(estate) hot path)."""
     estate = _estate_rollup(jobs)
     coverage = estate["coverage"]
-    hub_severity = _hub_severity_snapshot(request)
     posture = _exec_posture(request, _posture_snapshot(jobs), estate, hub_severity)
     runtime = _runtime_snapshot(request, jobs)
     cost = _cost_snapshot(request)

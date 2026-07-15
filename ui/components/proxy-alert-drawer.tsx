@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 
+import { useEscToClose } from "@/hooks/use-esc-to-close";
 import type { ProxyAlert } from "@/lib/api";
 import { formatDate } from "@/lib/api";
 import { proxyAlertDetailEntries, proxyAlertSummary } from "@/lib/proxy-alerts";
@@ -21,6 +22,7 @@ export function ProxyAlertDrawer({
   alert: ProxyAlert;
   onClose: () => void;
 }) {
+  useEscToClose(true, onClose);
   const rows = proxyAlertDetailEntries(alert);
 
   return (

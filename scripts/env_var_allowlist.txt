@@ -77,6 +77,8 @@ AGENT_BOM_BROWSER_SESSION_SIGNING_KEY
 AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED
 AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_MAX_AGE_DAYS
 AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_ROTATION_DAYS
+# Rolling-window (days) that bounds the budget-check spend SUM; unset = all-history. Read at call time so tests can vary it.
+AGENT_BOM_BUDGET_WINDOW_DAYS
 AGENT_BOM_CLICKHOUSE_BUFFERED
 AGENT_BOM_CLICKHOUSE_FLUSH_INTERVAL
 AGENT_BOM_CLICKHOUSE_MAX_BATCH
@@ -95,6 +97,8 @@ AGENT_BOM_DSPM_DB_SAMPLING
 AGENT_BOM_ICEBERG_CREDENTIAL
 # Iceberg REST catalog bearer token; secret material stays env/KMS-only and out of generated config docs.
 AGENT_BOM_ICEBERG_TOKEN
+# TTL (hours) for pruning stale SQLite idempotency keys on write; read at call time in api/idempotency_store.py.
+AGENT_BOM_IDEMPOTENCY_TTL_HOURS
 # base64 Fernet key for at-rest encryption of cloud-connection secrets (ExternalId); secret, env/KMS-only, never in config.py or ENV_VARS.md. With provider=aws-kms it holds the base64 KMS-wrapped data key instead. Accepts a comma-separated list of keys for MultiFernet rotation (first key = primary/encrypt, any key decrypts).
 AGENT_BOM_CONNECTIONS_KEY
 # Selects how the connection encryption key is resolved: env (default) | aws-secrets | aws-kms | vault; read at key-load time in api/connection_crypto.py.
@@ -276,6 +280,8 @@ AGENT_BOM_OCI_MAX_DECOMPRESSION_RATIO
 AGENT_BOM_OCI_MAX_JAR_UNCOMPRESSED_BYTES
 AGENT_BOM_OCI_MAX_LAYER_UNCOMPRESSED_BYTES
 AGENT_BOM_OFFLINE
+# TTL (seconds) for the per-tenant /v1/overview payload cache; read at call time so tests can vary it. 0 disables.
+AGENT_BOM_OVERVIEW_CACHE_TTL_SECONDS
 AGENT_BOM_SKIP_UPDATE_CHECK
 AGENT_BOM_OIDC_ALLOWED_JWKS_URIS
 AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT

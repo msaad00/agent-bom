@@ -109,12 +109,12 @@ const RUNTIME_EVIDENCE_CHIP: Record<
   runtime_observed: {
     label: "Observed",
     className:
-      "border-sky-800/70 bg-sky-950/50 text-sky-300",
+      "border-sky-500/30 dark:border-sky-800/70 bg-sky-500/10 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300",
   },
   runtime_blocked: {
     label: "Blocked",
     className:
-      "border-rose-800/70 bg-rose-950/50 text-rose-300",
+      "border-rose-500/30 dark:border-rose-800/70 bg-rose-500/10 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300",
   },
 };
 

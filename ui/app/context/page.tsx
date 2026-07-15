@@ -263,7 +263,7 @@ function LateralPanel({
                   {r.description}
                 </p>
                 {r.owasp_agentic_tag && (
-                  <span className="inline-block mt-1 text-[9px] bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">
+                  <span className="inline-block mt-1 text-[9px] bg-purple-500/10 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded">
                     {r.owasp_agentic_tag}
                   </span>
                 )}

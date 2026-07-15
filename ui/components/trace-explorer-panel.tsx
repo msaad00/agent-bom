@@ -60,7 +60,7 @@ export function TraceExplorerPanel() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+      <div className="rounded-2xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/30 px-4 py-3 text-sm text-red-700 dark:text-red-300">
         {error}
       </div>
     );

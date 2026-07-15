@@ -44,7 +44,7 @@ export function RepoScanOverviewPanel({
         </div>
         <Link
           href={repoGraphHref(scanId)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:border-emerald-500/50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/40 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 hover:border-emerald-500/50"
         >
           <GitBranch className="h-3.5 w-3.5" />
           Open folder graph

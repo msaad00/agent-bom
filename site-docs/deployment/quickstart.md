@@ -23,9 +23,10 @@ audit flow into one graph — no mandatory vendor SaaS.
 ## Ten-minute proof path
 
 ```bash
+# Step 1: generate the mounted secret files FIRST — the production-shaped
+# stack hard-fails with "secret file not found" without them.
+make secrets   # == python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose
 cp .env.example .env
-# Generate the mounted files in deploy/secrets/ as documented in
-# deploy/secrets/README.md before starting the production-shaped stack.
 scripts/deploy/install.sh platform-docker
 scripts/deploy/install.sh connect aws       # or azure | gcp | snowflake
 scripts/deploy/install.sh onboard \

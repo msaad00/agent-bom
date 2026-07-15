@@ -19,11 +19,11 @@ import { Collapsible } from "@/components/collapsible";
 function statusTone(status: string): string {
   switch (status) {
     case "approved":
-      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
+      return "border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300";
     case "pending":
-      return "border-amber-900/60 bg-amber-950/30 text-amber-300";
+      return "border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300";
     case "rejected":
-      return "border-red-900/60 bg-red-950/30 text-red-300";
+      return "border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/30 text-red-700 dark:text-red-300";
     default:
       return "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]";
   }
@@ -278,7 +278,7 @@ function BlueprintDrawer({
       headerAside={blueprint ? <StatusPill status={blueprint.approval_status} /> : undefined}
     >
       {error ? (
-        <div className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">{error}</div>
+        <div className="rounded-lg border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/30 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div>
       ) : null}
       {!detail ? (
         <div className="text-sm text-[color:var(--text-secondary)]">Loading blueprint…</div>
@@ -356,7 +356,7 @@ function BlueprintDrawer({
                         <button
                           onClick={() => onAction("reject", version.blueprint_id, version.version)}
                           disabled={!canApprove || busy}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/30 px-3 py-1.5 text-xs text-red-700 dark:text-red-300 transition hover:bg-red-500/10 dark:hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Reject
                         </button>

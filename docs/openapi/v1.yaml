@@ -15104,15 +15104,13 @@ paths:
       - observability
   /v1/runtime/trace-explorer:
     get:
-      description: 'Langfuse-style trace explorer joined to findings and policy decisions
-        (#3608).
-
-
-        Fuses gateway/proxy feed events and persisted runtime observations into
-
-        session-grouped spans. Each span carries correlated findings (CVE, reach
-
-        band, compliance controls) and blocked/observed verdict metadata.'
+      description: "Langfuse-style trace explorer joined to findings and policy decisions\
+        \ (#3608).\n\nFuses gateway/proxy feed events and persisted runtime observations\
+        \ into\nsession-grouped spans. Each span carries correlated findings (CVE,\
+        \ reach\nband, compliance controls) and blocked/observed verdict metadata.\n\
+        \nThe whole assembly \u2014 unbounded findings iteration, synchronous psycopg\n\
+        session/observation reads, and CPU-bound serialization \u2014 is offloaded\
+        \ via\n``asyncio.to_thread`` so it never blocks the event loop under scale."
       operationId: trace_explorer_v1_runtime_trace_explorer_get
       parameters:
       - in: query

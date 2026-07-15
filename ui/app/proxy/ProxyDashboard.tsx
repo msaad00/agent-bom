@@ -292,7 +292,7 @@ export default function ProxyDashboard() {
             <SetupCard
               title="Hosted runtime feed"
               body="Forward proxy events or audit logs into the API when running agent-bom behind a central service."
-              command="POST /v1/proxy/events or /ws/proxy/metrics"
+              command="POST /v1/proxy/audit or /ws/proxy/metrics"
             />
           </div>
         </div>
@@ -479,7 +479,7 @@ export default function ProxyDashboard() {
                 {status.detectors_active?.map((d) => (
                   <span
                     key={d}
-                    className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-950/50 text-emerald-300 border border-emerald-800/50 font-mono"
+                    className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/10 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 dark:border-emerald-800/50 font-mono"
                   >
                     {d}
                   </span>

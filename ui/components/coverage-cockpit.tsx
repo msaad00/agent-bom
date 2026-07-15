@@ -220,7 +220,7 @@ function CoverageCard({
           {actionHref && actionLabel ? (
             <Link
               href={actionHref}
-              className="inline-flex items-center gap-1 rounded-lg border border-emerald-800/50 bg-emerald-950/20 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition hover:border-emerald-600"
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 dark:border-emerald-800/50 bg-emerald-500/10 dark:bg-emerald-950/20 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 transition hover:border-emerald-600"
             >
               {actionLabel}
               <ArrowRight className="h-3 w-3" />

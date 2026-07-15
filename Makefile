@@ -1,4 +1,4 @@
-.PHONY: help install test lint preflight preflight-fix docker-build docker-run scan clean build-ui analytics dev check-dupes clean-dupes
+.PHONY: help install test lint preflight preflight-fix docker-build docker-run scan clean build-ui analytics dev check-dupes clean-dupes secrets platform-up fullstack-up
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -76,6 +76,15 @@ docker-compose-up:  ## Start Docker Compose services
 
 docker-compose-down:  ## Stop Docker Compose services
 	docker-compose -f deploy/docker-compose.yml down -v
+
+secrets:  ## Generate the mounted Docker secret files (idempotent; run before platform/fullstack up)
+	python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose
+
+platform-up: secrets  ## Bring up the production-shaped platform stack (generates secrets first)
+	docker compose -f deploy/docker-compose.platform.yml up --build -d
+
+fullstack-up: secrets  ## Bring up the dev full-stack (API + UI + Postgres); generates secrets first
+	docker compose -f deploy/docker-compose.fullstack.yml up --build -d
 
 build-ui:  ## Build Next.js dashboard and bundle into package
 	bash scripts/build-ui.sh

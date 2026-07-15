@@ -72,13 +72,13 @@ function statusBadge(status: string): { label: string; className: string; Icon: 
 function severityClass(severity: string): string {
   switch (severity) {
     case "critical":
-      return "text-red-300 border-red-500/40 bg-red-500/10";
+      return "text-red-700 dark:text-red-300 border-red-500/40 bg-red-500/10";
     case "high":
-      return "text-orange-300 border-orange-500/40 bg-orange-500/10";
+      return "text-orange-700 dark:text-orange-300 border-orange-500/40 bg-orange-500/10";
     case "medium":
-      return "text-yellow-300 border-yellow-500/40 bg-yellow-500/10";
+      return "text-yellow-700 dark:text-yellow-300 border-yellow-500/40 bg-yellow-500/10";
     case "low":
-      return "text-sky-300 border-sky-500/40 bg-sky-500/10";
+      return "text-sky-700 dark:text-sky-300 border-sky-500/40 bg-sky-500/10";
     default:
       return "text-[color:var(--text-secondary)] border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]/40";
   }
@@ -121,7 +121,7 @@ function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
         <span>Fix (CLI)</span>
         {check.requires_human_review ? (
           <span
-            className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-300"
+            className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
             data-testid="human-review-badge"
           >
             <ShieldAlert className="h-3 w-3" />
@@ -148,7 +148,7 @@ function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
           }
           className={`mt-0.5 inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-xs transition-colors ${
             check.requires_human_review
-              ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+              ? "border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
               : "border-[color:var(--border-strong)] text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)]"
           }`}
         >
@@ -194,7 +194,7 @@ function CheckCard({ check }: { check: CISBenchmarkCheck }) {
               {priorityLabel(check.priority)}
             </span>
             {check.requires_human_review ? (
-              <span className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-300">
+              <span className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
                 <ShieldAlert className="h-3 w-3" />
                 Review
               </span>
@@ -202,7 +202,7 @@ function CheckCard({ check }: { check: CISBenchmarkCheck }) {
             {check.guardrails.map((g) => (
               <span
                 key={g}
-                className="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[11px] font-medium text-cyan-300"
+                className="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-300"
               >
                 {g}
               </span>

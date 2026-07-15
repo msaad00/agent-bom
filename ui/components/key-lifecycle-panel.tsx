@@ -42,13 +42,13 @@ function toIsoOrNull(value: string): string | null {
 function keyStateTone(state: ApiKeyRecord["state"]): string {
   switch (state) {
     case "active":
-      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
+      return "border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300";
     case "rotation_overlap":
-      return "border-sky-900/60 bg-sky-950/30 text-sky-300";
+      return "border-sky-500/30 dark:border-sky-900/60 bg-sky-500/10 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300";
     case "rotated":
-      return "border-amber-900/60 bg-amber-950/30 text-amber-300";
+      return "border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300";
     case "revoked":
-      return "border-red-900/60 bg-red-950/30 text-red-300";
+      return "border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/30 text-red-700 dark:text-red-300";
     case "expired":
     default:
       return "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)]";
@@ -97,13 +97,13 @@ function modeTone(value: string): string {
   switch (value) {
     case "reverse_proxy_oidc":
     case "trusted_proxy":
-      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
+      return "border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300";
     case "oidc_bearer":
     case "saml_sso":
-      return "border-sky-900/60 bg-sky-950/30 text-sky-300";
+      return "border-sky-500/30 dark:border-sky-900/60 bg-sky-500/10 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300";
     case "session_api_key":
     case "api_key":
-      return "border-amber-900/60 bg-amber-950/30 text-amber-300";
+      return "border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300";
     case "no_auth":
     default:
       return "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)]";
@@ -117,11 +117,11 @@ function quotaInputValue(value: number | null | undefined): string {
 function quotaStatusTone(status: string): string {
   switch (status) {
     case "ok":
-      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
+      return "border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300";
     case "near_limit":
-      return "border-amber-900/60 bg-amber-950/30 text-amber-300";
+      return "border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300";
     case "at_limit":
-      return "border-red-900/60 bg-red-950/30 text-red-300";
+      return "border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/30 text-red-700 dark:text-red-300";
     case "unlimited":
     default:
       return "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)]";
@@ -392,7 +392,7 @@ export function KeyLifecyclePanel({
               setCreateOpen((value) => !value);
               setFormError(null);
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-900/60 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300 transition hover:bg-emerald-950/50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300 transition hover:bg-emerald-500/10 dark:hover:bg-emerald-950/50"
           >
             <Plus className="h-4 w-4" />
             New key
@@ -430,7 +430,7 @@ export function KeyLifecyclePanel({
       ) : null}
 
       {formError ? (
-        <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">{formError}</div>
+        <div className="rounded-xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">{formError}</div>
       ) : null}
 
       {createOpen ? (
@@ -970,7 +970,7 @@ export function KeyLifecyclePanel({
                                 setRotationTarget(key);
                               }}
                               disabled={!canRotate || busyKeyId === key.key_id}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-900/60 bg-sky-950/20 px-3 py-1.5 text-xs text-sky-300 transition hover:bg-sky-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 dark:border-sky-900/60 bg-sky-500/10 dark:bg-sky-950/20 px-3 py-1.5 text-xs text-sky-700 dark:text-sky-300 transition hover:bg-sky-500/10 dark:hover:bg-sky-950/40 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {busyAction === "rotate" && busyKeyId === key.key_id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -982,7 +982,7 @@ export function KeyLifecyclePanel({
                             <button
                               onClick={() => void handleRevoke(key)}
                               disabled={!canRevoke || busyKeyId === key.key_id}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/60 bg-red-950/20 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/20 px-3 py-1.5 text-xs text-red-700 dark:text-red-300 transition hover:bg-red-500/10 dark:hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {busyAction === "revoke" && busyKeyId === key.key_id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

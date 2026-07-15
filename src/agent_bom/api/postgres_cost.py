@@ -11,6 +11,7 @@ via :class:`PostgresRateLimitStore`; cost governance must match).
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from agent_bom.api.cost_store import CostBudget, LLMCostRecord, _decode_tags
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
@@ -145,26 +146,27 @@ class PostgresCostStore:
             for r in rows
         ]
 
-    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float:
+    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str, *, since: str | None = None) -> float:
+        sql = "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = %s AND cost_center = %s"
+        params: list[Any] = [tenant_id, cost_center]
+        if since is not None:
+            sql += " AND observed_at >= %s"
+            params.append(since)
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = %s AND cost_center = %s",
-                (tenant_id, cost_center),
-            ).fetchone()
+            row = conn.execute(sql, params).fetchone()
         return round(float(row[0]), 6) if row else 0.0
 
-    def total_spend(self, tenant_id: str, *, agent: str | None = None) -> float:
+    def total_spend(self, tenant_id: str, *, agent: str | None = None, since: str | None = None) -> float:
+        sql = "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = %s"
+        params: list[Any] = [tenant_id]
+        if agent:
+            sql += " AND agent = %s"
+            params.append(agent)
+        if since is not None:
+            sql += " AND observed_at >= %s"
+            params.append(since)
         with _tenant_connection(self._pool) as conn:
-            if agent:
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = %s AND agent = %s",
-                    (tenant_id, agent),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = %s",
-                    (tenant_id,),
-                ).fetchone()
+            row = conn.execute(sql, params).fetchone()
         return round(float(row[0]), 6) if row else 0.0
 
     def set_budget(self, budget: CostBudget) -> None:

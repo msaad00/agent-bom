@@ -333,7 +333,7 @@ export default function Dashboard() {
         title="Overview"
         subtitle="Exec briefing: posture, open issues, compliance evidence, and live surfaces. Use Findings, Security graph, and Agent mesh for engineer drill-down."
         scopeChip={
-          <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-200">
+          <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-200">
             {deploymentModeLabel(counts?.deployment_mode)} · {countActiveServices(counts?.services)} services live
           </span>
         }

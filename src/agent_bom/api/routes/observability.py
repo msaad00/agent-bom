@@ -772,7 +772,11 @@ async def pull_trace_connector(request: Request, provider: str, body: dict) -> d
     """
     from agent_bom.otel_ingest import parse_otel_traces
     from agent_bom.runtime_correlation import correlate_spans_to_attack_paths
-    from agent_bom.trace_connectors import TraceConnectorError, fetch_traces
+    from agent_bom.trace_connectors import (
+        TraceConnectorError,
+        TraceConnectorValidationError,
+        fetch_traces,
+    )
 
     tenant_id = _tenant_id(request)
     credentials = body.get("credentials") if isinstance(body.get("credentials"), dict) else {}
@@ -786,6 +790,9 @@ async def pull_trace_connector(request: Request, provider: str, body: dict) -> d
 
     try:
         otlp = fetch_traces(provider, credentials, limit=limit, include_content=screen_content)
+    except TraceConnectorValidationError as exc:
+        # Invalid/unsafe caller input (e.g. SSRF-blocked host) — a client error.
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
     except TraceConnectorError as exc:
         # sanitize_error keeps credentials out of the response/logs.
         raise HTTPException(status_code=502, detail=sanitize_error(exc)) from exc

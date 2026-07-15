@@ -117,3 +117,14 @@ def test_list_trace_connectors_route() -> None:
     assert resp.status_code == 200, resp.text
     names = {c["name"] for c in resp.json()["connectors"]}
     assert {"langfuse", "langsmith"} <= names
+
+
+def test_pull_connector_rejects_ssrf_host_with_400() -> None:
+    # A runtime_ingest caller must not be able to point the control plane at a
+    # cloud-metadata endpoint (SSRF). The guard rejects it as a client error
+    # (400), not a 500/502, and never echoes the raw URL back.
+    client = TestClient(app)
+    body = {"credentials": {"host": "http://169.254.169.254/latest/meta-data", "public_key": "pk", "secret_key": "sk"}}
+    resp = client.post("/v1/traces/connectors/langfuse/pull", json=body, headers=proxy_headers(role="admin"))
+    assert resp.status_code == 400, resp.text
+    assert "169.254.169.254" not in resp.text

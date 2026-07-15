@@ -39,6 +39,33 @@ class TraceConnectorError(RuntimeError):
     """Raised when a trace connector cannot authenticate or reach its API."""
 
 
+class TraceConnectorValidationError(TraceConnectorError):
+    """Raised when caller-supplied connector input is invalid (bad request).
+
+    Distinct from the base error so the API layer can map it to a 4xx (client
+    error) rather than a 5xx: an unsafe or malformed connector URL is the
+    caller's fault, not an upstream failure.
+    """
+
+
+def _validate_pull_url(url: str) -> None:
+    """Reject unsafe connector base URLs before any server-side request.
+
+    The connector host is caller-supplied, so an unvalidated fetch lets a
+    ``runtime_ingest`` caller point the control plane at internal services or
+    cloud-metadata endpoints (SSRF). ``validate_url`` enforces HTTPS and blocks
+    private / loopback / link-local / reserved / metadata targets (incl. DNS
+    rebinding). The rejection message is static — the raw URL is never echoed —
+    so no caller-controlled value leaks back into the response or logs.
+    """
+    from agent_bom.security import SecurityError, validate_url
+
+    try:
+        validate_url(url, allow_private=False)
+    except SecurityError as exc:
+        raise TraceConnectorValidationError("connector host failed URL validation (must be a public HTTPS endpoint)") from exc
+
+
 class _HttpResponse(Protocol):
     status_code: int
 
@@ -139,6 +166,7 @@ def fetch_langfuse_traces(
     if not host or not public_key or not secret_key:
         raise TraceConnectorError("langfuse connector requires host, public_key and secret_key")
     base = host.rstrip("/")
+    _validate_pull_url(base)
     url = f"{base}/api/public/observations"
     resolved, owns = _client_or_default(client)
     try:
@@ -209,6 +237,7 @@ def fetch_langsmith_traces(
     if not api_key:
         raise TraceConnectorError("langsmith connector requires api_key")
     base = (api_url or "https://api.smith.langchain.com").rstrip("/")
+    _validate_pull_url(base)
     body: dict[str, Any] = {"limit": _bounded_limit(limit), "run_type": "tool"}
     if project:
         body["project_name"] = project
@@ -274,6 +303,7 @@ __all__ = [
     "LANGFUSE",
     "LANGSMITH",
     "TraceConnectorError",
+    "TraceConnectorValidationError",
     "fetch_langfuse_traces",
     "fetch_langsmith_traces",
     "fetch_traces",

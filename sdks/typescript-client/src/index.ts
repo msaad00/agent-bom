@@ -497,6 +497,47 @@ export class AgentBomClient {
     );
   }
 
+  /** Resolve each traced tool-call span to its exact attack path (#3898). */
+  correlateTraceAttackPaths(
+    trace: Record<string, JsonValue>,
+    query: { spanId?: string } = {},
+  ): Promise<Record<string, JsonValue>> {
+    const search = new URLSearchParams();
+    if (query.spanId) {
+      search.set("span_id", query.spanId);
+    }
+    return this.request<Record<string, JsonValue>>(
+      "POST",
+      `/v1/traces/attack-paths${formatSearch(search)}`,
+      trace,
+    );
+  }
+
+  /** List native trace-pull connectors (Langfuse, LangSmith) (#3899). */
+  listTraceConnectors(): Promise<Record<string, JsonValue>> {
+    return this.request<Record<string, JsonValue>>("GET", "/v1/traces/connectors");
+  }
+
+  /** Pull traces from an LLM-observability platform and correlate them (#3899). */
+  pullTraceConnector(
+    provider: string,
+    request: {
+      credentials: Record<string, JsonValue>;
+      limit?: number;
+      screenContent?: boolean;
+    },
+  ): Promise<Record<string, JsonValue>> {
+    return this.request<Record<string, JsonValue>>(
+      "POST",
+      `/v1/traces/connectors/${encodeURIComponent(provider)}/pull`,
+      {
+        credentials: request.credentials,
+        limit: request.limit,
+        screen_content: request.screenContent,
+      },
+    );
+  }
+
   intelLookup(advisoryId: string): Promise<Record<string, JsonValue>> {
     return this.request<Record<string, JsonValue>>(
       "GET",

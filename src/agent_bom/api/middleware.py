@@ -826,6 +826,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/graph/query", "viewer"),
         ("POST", "/v1/graph/should-i-deploy", "viewer"),
         ("POST", "/v1/audit/export/verify", "viewer"),
+        # Per-span attack-path correlation is a read-only join over a submitted
+        # trace (returns no key material, stores nothing) — keep it viewer even
+        # though the /v1/traces ingest prefix below is analyst.
+        ("POST", "/v1/traces/attack-paths", "viewer"),
         ("GET", "/v1/audit", "analyst"),
         ("GET", "/v1/audit/", "analyst"),
         ("GET", "/scim/v2", "admin"),

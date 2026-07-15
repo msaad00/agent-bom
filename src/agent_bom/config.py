@@ -703,6 +703,24 @@ MCP_MAX_REQUEST_TRACES = _int("AGENT_BOM_MCP_MAX_REQUEST_TRACES", 256)
 SHIELD_ASYNC_BRIDGE_MAX_WORKERS = _int("AGENT_BOM_SHIELD_ASYNC_BRIDGE_MAX_WORKERS", 4)
 
 
+# ── Trace-content screening (opt-in, privacy-safe) ───────────────────────
+# The trace-ingest path parses span *metadata* only and never stores content by
+# default. Set this to run Shield.check_response over ingested trace *content*
+# (tool output / model completions) to surface injection / PII / credential-leak
+# findings on production traces. Off by default; raw content is screened
+# in-memory and never persisted — only redacted detection metadata is surfaced.
+
+TRACE_CONTENT_SCREENING_ENABLED = _bool("AGENT_BOM_TRACE_CONTENT_SCREENING", False)
+
+
+def trace_content_screening_enabled() -> bool:
+    """Whether opt-in trace-content Shield screening is enabled by default.
+
+    Read at call time so tests and per-request overrides observe env changes.
+    """
+    return _bool("AGENT_BOM_TRACE_CONTENT_SCREENING", False)
+
+
 # ── Public-repo clone-and-scan bounds ────────────────────────────────────
 # Cloning untrusted public repositories by URL is bounded to keep the
 # operation safe and predictable: shallow single-branch clones only, with a

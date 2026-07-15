@@ -15282,8 +15282,28 @@ paths:
 
         Cross-references tool calls against completed scan results to flag
 
-        any calls that touch packages with known CVEs.'
+        any calls that touch packages with known CVEs.
+
+
+        Span *metadata* is parsed by default; content is never read or stored.
+
+        Pass ``screen_content=true`` (opt-in; default follows
+
+        ``AGENT_BOM_TRACE_CONTENT_SCREENING``) to additionally run Shield over trace
+
+        content and surface injection / PII / credential-leak findings. Raw content
+
+        is screened in-memory and never persisted.'
       operationId: ingest_traces_v1_traces_post
+      parameters:
+      - in: query
+        name: screen_content
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Screen Content
       requestBody:
         content:
           application/json:
@@ -15310,6 +15330,205 @@ paths:
       summary: Ingest Traces
       tags:
       - observability
+  /v1/traces/attack-paths:
+    post:
+      description: 'Resolve each traced tool-call span to its exact attack path (#3898).
+
+
+        Accepts an OTLP JSON trace and correlates every vulnerable tool-call span
+
+        against the tenant''s scan blast radii, returning per-span the exact reachable
+
+        CVE, exposed credentials, resolved non-human identities, and blast radius.
+
+        Correlation is in-memory; raw span content is never stored. Pass ``span_id``
+
+        to scope the answer to a single span.'
+      operationId: correlate_trace_attack_paths_v1_traces_attack_paths_post
+      parameters:
+      - in: query
+        name: span_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Span Id
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              title: Body
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Correlate Trace Attack Paths V1 Traces Attack Paths
+                  Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Correlate Trace Attack Paths
+      tags:
+      - observability
+  /v1/traces/connectors:
+    get:
+      description: List native trace-pull connectors (Langfuse, LangSmith).
+      operationId: list_trace_connectors_route_v1_traces_connectors_get
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response List Trace Connectors Route V1 Traces Connectors Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: List Trace Connectors Route
+      tags:
+      - observability
+      - connectors
+  /v1/traces/connectors/{provider}/pull:
+    post:
+      description: 'Pull traces from an LLM-observability platform and correlate them
+        (#3899).
+
+
+        Body: ``{"credentials": {...}, "limit": int, "screen_content": bool}``. The
+
+        provider''s credentials (Langfuse public/secret key or LangSmith API key)
+        are
+
+        used for auth only and never logged. Pulled traces feed the same parser +
+
+        per-span correlation pipeline as pushed OTLP. ``screen_content`` opts in to
+
+        Shield content screening (off by default; raw content is never stored).'
+      operationId: pull_trace_connector_v1_traces_connectors__provider__pull_post
+      parameters:
+      - in: path
+        name: provider
+        required: true
+        schema:
+          title: Provider
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              title: Body
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Pull Trace Connector V1 Traces Connectors  Provider  Pull
+                  Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Pull Trace Connector
+      tags:
+      - observability
+      - connectors
   /v1/trends:
     get:
       description: "Get historical trend data \u2014 posture score and vuln counts\

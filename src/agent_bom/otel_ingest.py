@@ -377,6 +377,145 @@ def parse_ml_api_spans(trace_data: dict) -> list[LLMAPICall]:
     return calls
 
 
+@dataclass
+class SpanContent:
+    """Free-text content carried by a span (tool output, model completion, …).
+
+    Content extraction is deliberately *separate* from ``parse_otel_traces`` /
+    ``parse_ml_api_spans`` (which read metadata only for privacy). It is opt-in
+    and only invoked when trace-content screening is explicitly enabled.
+    """
+
+    trace_id: str
+    span_id: str
+    tool_name: str
+    channel: str  # "output" | "input" | "prompt" | "completion"
+    content: str
+
+
+# Attribute keys that carry free-text span content, grouped by channel. Response
+# channels ("output"/"completion") are what Shield.check_response screens for
+# credential leak / PII / injection / cloaking on production traces.
+_CONTENT_ATTR_KEYS: dict[str, tuple[str, ...]] = {
+    "output": (
+        "tool.output",
+        "tool.result",
+        "mcp.tool.result",
+        "output.value",
+        "llm.output",
+        "traceloop.entity.output",
+    ),
+    "completion": (
+        "gen_ai.completion",
+        "gen_ai.response.content",
+        "gen_ai.completion.0.content",
+        "llm.completions",
+    ),
+    "prompt": (
+        "gen_ai.prompt",
+        "gen_ai.prompt.0.content",
+        "llm.prompts",
+    ),
+    "input": (
+        "tool.input",
+        "input.value",
+        "traceloop.entity.input",
+    ),
+}
+
+# Response-side channels — the ones Shield.check_response is meaningful over.
+RESPONSE_CONTENT_CHANNELS: frozenset[str] = frozenset({"output", "completion"})
+
+# Cap per-span content so an adversarial trace can't drive Shield OOM.
+_MAX_CONTENT_CHARS = 200_000
+
+
+def _span_content_tool_name(span: dict) -> str:
+    name = span.get("name", "")
+    m = _ADK_TOOL_RE.match(name)
+    if m:
+        return m.group(1)
+    for attr in span.get("attributes", []):
+        if attr.get("key") == "tool.name":
+            return attr.get("value", {}).get("stringValue", "") or name
+    return name
+
+
+def extract_span_content(
+    trace_data: dict,
+    *,
+    channels: frozenset[str] | set[str] | None = None,
+) -> list[SpanContent]:
+    """Extract free-text span content for opt-in trace-content screening.
+
+    Reuses the same OTLP span walk as ``parse_otel_traces`` but reads
+    content-bearing attributes (and ``gen_ai`` content span events) instead of
+    metadata. Off the default ingest path — callers gate this behind an explicit
+    opt-in so the metadata-only privacy posture is preserved by default.
+
+    Args:
+        trace_data: OTLP JSON (resourceSpans or flat spans).
+        channels: Restrict to these content channels; defaults to response-side
+            channels (``output``/``completion``) that Shield screens.
+    """
+    validate_otel_schema(trace_data)
+    wanted = frozenset(channels) if channels else RESPONSE_CONTENT_CHANNELS
+
+    spans: list[dict] = []
+    for rs in trace_data.get("resourceSpans", []):
+        for ss in rs.get("scopeSpans", []):
+            spans.extend(ss.get("spans", []))
+    if not spans:
+        spans = trace_data.get("spans", [])
+
+    contents: list[SpanContent] = []
+    for span in spans:
+        if not isinstance(span, dict):
+            continue
+        attrs = span.get("attributes", [])
+        trace_id = span.get("traceId", "")
+        span_id = span.get("spanId", "")
+        tool_name = _span_content_tool_name(span)
+        for channel, keys in _CONTENT_ATTR_KEYS.items():
+            if channel not in wanted:
+                continue
+            for key in keys:
+                value = _extract_attr(attrs, key)
+                if value:
+                    contents.append(
+                        SpanContent(
+                            trace_id=trace_id,
+                            span_id=span_id,
+                            tool_name=tool_name,
+                            channel=channel,
+                            content=value[:_MAX_CONTENT_CHARS],
+                        )
+                    )
+        # OTel GenAI content is also emitted as span events with a body attr.
+        if "completion" in wanted or "prompt" in wanted:
+            for event in span.get("events", []) or []:
+                if not isinstance(event, dict):
+                    continue
+                ev_name = str(event.get("name", ""))
+                channel = "completion" if "completion" in ev_name else "prompt" if "prompt" in ev_name else ""
+                if channel not in wanted:
+                    continue
+                body = _extract_attr(event.get("attributes", []), "content") or _extract_attr(
+                    event.get("attributes", []), "gen_ai.event.content"
+                )
+                if body:
+                    contents.append(
+                        SpanContent(
+                            trace_id=trace_id,
+                            span_id=span_id,
+                            tool_name=tool_name,
+                            channel=channel,
+                            content=body[:_MAX_CONTENT_CHARS],
+                        )
+                    )
+    return contents
+
+
 def flag_deprecated_models(calls: list[LLMAPICall]) -> list[FlaggedMLCall]:
     """Flag ML API calls that use deprecated or end-of-life model versions.
 

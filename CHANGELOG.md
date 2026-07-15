@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.96.1] - 2026-07-15
+
+### Fixed
+- Governance NHI audit chain is tenant-scoped across in-memory/SQLite/Postgres backends — cross-tenant actions no longer collide or drop rows, and chain integrity is verified per tenant (#4035).
+- Helm EKS ingress examples render valid API/UI paths; a structural guard now covers every shipped profile (#4034).
+- UI accessibility — accessible labels, unique element ids, semantic error-page headings — plus redirects for legacy deep links (#4036).
+- `/accounts/[ref]` now builds under Next.js static export; added an export-build parity gate to UI CI so release-only build breaks are caught in PRs (#4037).
+
 ## [0.96.0] - 2026-07-15
 
 Operator-cockpit release: a premium both-theme design system with every heavy page restyled dense and side-by-side, first-class UIs that bring agents and humans to surface parity, deeper observability→governance correlation, and a governance/security-hardening batch on top of 0.95.0.
@@ -2319,7 +2327,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.1...HEAD
+[0.96.1]: https://github.com/msaad00/agent-bom/compare/v0.96.0...v0.96.1
 [0.96.0]: https://github.com/msaad00/agent-bom/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/msaad00/agent-bom/compare/v0.94.2...v0.95.0
 [0.94.2]: https://github.com/msaad00/agent-bom/compare/v0.94.1...v0.94.2

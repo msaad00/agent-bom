@@ -346,7 +346,11 @@ class TestVexLoad:
                         "response": ["will_not_fix", "update"],
                         "detail": "The vulnerable function is not called",
                     },
-                    "affects": [{"ref": "urn:cdx:3e671687-395b-41f5-a30f-a58921a69b79/1#pkg:golang/github.com/aws/aws-sdk-go@1.44.234"}],
+                    "affects": [
+                        {
+                            "ref": "urn:cdx:3e671687-395b-41f5-a30f-a58921a69b79/1#pkg:golang/github.com/aws/aws-sdk-go@1.44.234"
+                        }
+                    ],
                 }
             ],
         }

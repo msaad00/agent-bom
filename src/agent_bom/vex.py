@@ -113,7 +113,9 @@ _CSAF_FLAG_TO_VEX: dict[str, VexJustification] = {
     "component_not_present": VexJustification.COMPONENT_NOT_PRESENT,
     "vulnerable_code_not_present": VexJustification.VULNERABLE_CODE_NOT_PRESENT,
     "vulnerable_code_not_in_execute_path": VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
-    "vulnerable_code_cannot_be_controlled_by_adversary": (VexJustification.VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY),
+    "vulnerable_code_cannot_be_controlled_by_adversary": (
+        VexJustification.VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY
+    ),
     "inline_mitigations_already_exist": VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST,
 }
 
@@ -169,7 +171,9 @@ def _parse_cyclonedx_vex(data: dict) -> VexDocument:
                 logger.warning("Unknown CycloneDX VEX justification value: %s", sanitize_text(just_raw, max_len=200))
 
         products = [
-            _extract_cdx_product_ref(aff.get("ref", "")) for aff in entry.get("affects", []) if isinstance(aff, dict) and aff.get("ref")
+            _extract_cdx_product_ref(aff.get("ref", ""))
+            for aff in entry.get("affects", [])
+            if isinstance(aff, dict) and aff.get("ref")
         ]
         detail = analysis.get("detail")
         response = analysis.get("response")

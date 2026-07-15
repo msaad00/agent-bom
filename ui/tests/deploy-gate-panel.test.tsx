@@ -100,6 +100,23 @@ describe("DeployGatePanel", () => {
     expect(verdict).toHaveTextContent("CVE-2024-1");
   });
 
+  it("renders INSUFFICIENT EVIDENCE instead of GO for an empty graph result", async () => {
+    const response = decisionResponse("allow", 0);
+    response.matchedPathCount = 0;
+    response.matchedPaths = [];
+    response.reasons = [];
+    apiMock.graphShouldIDeploy.mockResolvedValue(response);
+    render(<DeployGatePanel scanId="scan-1" />);
+
+    fireEvent.change(screen.getByLabelText("Deploy candidate"), { target: { value: "svc:x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run gate" }));
+
+    const verdict = await screen.findByTestId("deploy-gate-verdict");
+    expect(verdict).toHaveAttribute("data-decision", "insufficient-evidence");
+    expect(verdict).toHaveTextContent("INSUFFICIENT EVIDENCE");
+    expect(verdict).not.toHaveTextContent("safe to ship");
+  });
+
   it("does not call the endpoint with an empty candidate", () => {
     render(<DeployGatePanel />);
     expect(screen.getByRole("button", { name: "Run gate" })).toBeDisabled();

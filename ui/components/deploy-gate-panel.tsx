@@ -22,7 +22,9 @@ type Verdict = {
   accent: string;
 };
 
-const VERDICTS: Record<DeployDecision, Verdict> = {
+type DisplayDecision = DeployDecision | "insufficient-evidence";
+
+const VERDICTS: Record<DisplayDecision, Verdict> = {
   allow: {
     label: "GO",
     detail: "No blocking exposure path reaches this candidate — safe to ship.",
@@ -51,6 +53,15 @@ const VERDICTS: Record<DeployDecision, Verdict> = {
     badge:
       "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--status-danger)]",
     accent: "text-[color:var(--status-danger)]",
+  },
+  "insufficient-evidence": {
+    label: "INSUFFICIENT EVIDENCE",
+    detail: "No matching exposure evidence was returned — gather or refresh graph data before shipping.",
+    icon: ShieldQuestion,
+    container: "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)]",
+    badge:
+      "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-[color:var(--status-warn)]",
+    accent: "text-[color:var(--status-warn)]",
   },
 };
 
@@ -94,7 +105,12 @@ export function DeployGatePanel({ scanId }: { scanId?: string | undefined }) {
     }
   }
 
-  const verdict = result ? VERDICTS[result.decision] : null;
+  const displayDecision: DisplayDecision | null = result
+    ? result.matchedPathCount === 0 && result.matchedPaths.length === 0
+      ? "insufficient-evidence"
+      : result.decision
+    : null;
+  const verdict = displayDecision ? VERDICTS[displayDecision] : null;
   const VerdictIcon = verdict?.icon ?? Rocket;
 
   return (
@@ -157,7 +173,7 @@ export function DeployGatePanel({ scanId }: { scanId?: string | undefined }) {
       {result && verdict && (
         <div
           data-testid="deploy-gate-verdict"
-          data-decision={result.decision}
+          data-decision={displayDecision}
           className={`mt-4 rounded-2xl border p-4 ${verdict.container}`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -177,7 +193,7 @@ export function DeployGatePanel({ scanId }: { scanId?: string | undefined }) {
                 Max path risk
               </div>
               <div className={`font-mono text-2xl font-semibold ${verdict.accent}`}>
-                {result.maxRisk.toFixed(1)}
+                {displayDecision === "insufficient-evidence" ? "—" : result.maxRisk.toFixed(1)}
               </div>
               <div className="text-[10px] text-[color:var(--text-tertiary)]">
                 warn ≥ {result.thresholds.warnRisk} · block ≥ {result.thresholds.blockRisk}
@@ -202,7 +218,7 @@ export function DeployGatePanel({ scanId }: { scanId?: string | undefined }) {
             </div>
             {result.matchedPaths.length === 0 ? (
               <p className="mt-2 text-xs text-[color:var(--text-secondary)]">
-                No exposure path in this snapshot reaches the candidate.
+                No matching path evidence is available for this candidate.
               </p>
             ) : (
               <ul className="mt-2 space-y-2">

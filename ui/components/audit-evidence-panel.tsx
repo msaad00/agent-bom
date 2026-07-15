@@ -20,7 +20,16 @@ type VerifyState = {
   result: AuditExportVerifyResult;
   /** Round-trip verification of a freshly-exported packet vs. a pasted one. */
   source: "export" | "paste";
+  tamperedEntries: number;
 };
+
+function reportedTamperedEntries(payload: unknown): number {
+  if (!payload || typeof payload !== "object") return 0;
+  const integrity = (payload as { integrity?: unknown }).integrity;
+  if (!integrity || typeof integrity !== "object") return 0;
+  const value = (integrity as { tampered?: unknown }).tampered;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
 
 function downloadPacket(packet: AuditExportPacket): void {
   if (typeof window === "undefined" || typeof URL.createObjectURL !== "function") {
@@ -90,7 +99,11 @@ export function AuditEvidencePanel() {
       downloadPacket(packet);
       // Round-trip: prove the freshly-signed packet verifies clean.
       const result = await api.verifyAuditPacket(packet.payload, packet.signature);
-      setVerifyState({ result, source: "export" });
+      setVerifyState({
+        result,
+        source: "export",
+        tamperedEntries: reportedTamperedEntries(packet.payload),
+      });
       setVerifyError(null);
     } catch (err) {
       setExportError(userFacingApiErrorMessage(err, "Audit export failed"));
@@ -110,7 +123,11 @@ export function AuditEvidencePanel() {
     setVerifyError(null);
     try {
       const result = await api.verifyAuditPacket(packet.payload, packet.signature);
-      setVerifyState({ result, source: "paste" });
+      setVerifyState({
+        result,
+        source: "paste",
+        tamperedEntries: reportedTamperedEntries(packet.payload),
+      });
     } catch (err) {
       setVerifyState(null);
       setVerifyError(userFacingApiErrorMessage(err, "Audit verification failed"));
@@ -237,17 +254,19 @@ export function AuditEvidencePanel() {
           </p>
         )}
 
-        {verifyState && !verifyError && (
+        {verifyState && !verifyError && (() => {
+          const verifiedIntact = verifyState.result.valid && verifyState.tamperedEntries === 0;
+          return (
           <div
             data-testid="audit-verify-result"
-            data-valid={verifyState.result.valid ? "true" : "false"}
+            data-valid={verifiedIntact ? "true" : "false"}
             className={`mt-3 flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
-              verifyState.result.valid
+              verifiedIntact
                 ? "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)]"
                 : "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)]"
             }`}
           >
-            {verifyState.result.valid ? (
+            {verifiedIntact ? (
               <ShieldCheck
                 className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--status-success)]"
                 aria-hidden="true"
@@ -261,17 +280,19 @@ export function AuditEvidencePanel() {
             <div className="min-w-0">
               <div
                 className={`text-sm font-bold tracking-[0.12em] ${
-                  verifyState.result.valid
+                  verifiedIntact
                     ? "text-[color:var(--status-success)]"
                     : "text-[color:var(--status-danger)]"
                 }`}
               >
-                {verifyState.result.valid ? "PASS" : "FAIL"}
+                {verifiedIntact ? "PASS" : "FAIL"}
               </div>
               <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                {verifyState.result.valid
+                {verifiedIntact
                   ? "Signature matches — the exported log is intact and tamper-evident."
-                  : "Signature mismatch — the packet has been altered or the signature is wrong."}
+                  : verifyState.result.valid
+                    ? `Signature matches, but the payload reports tampered entries (${verifyState.tamperedEntries}).`
+                    : "Signature mismatch — the packet has been altered or the signature is wrong."}
                 {verifyState.source === "export" ? " (fresh export round-trip)" : ""}
               </p>
               <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
@@ -279,7 +300,8 @@ export function AuditEvidencePanel() {
               </p>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </section>
   );

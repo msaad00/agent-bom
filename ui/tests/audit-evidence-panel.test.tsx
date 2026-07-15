@@ -63,6 +63,25 @@ describe("AuditEvidencePanel", () => {
     expect(result).toHaveTextContent("FAIL");
   });
 
+  it("renders FAIL when a valid signature covers an audit payload that reports tampering", async () => {
+    apiMock.verifyAuditPacket.mockResolvedValue({ valid: true, payload_bytes: 96 });
+
+    render(<AuditEvidencePanel />);
+    const wrapper = JSON.stringify({
+      payload: { entries: [], integrity: { verified: 3, tampered: 1 } },
+      signature: SIGNATURE,
+    });
+    fireEvent.change(screen.getByLabelText("Exported audit packet"), {
+      target: { value: wrapper },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+
+    const result = await screen.findByTestId("audit-verify-result");
+    expect(result).toHaveAttribute("data-valid", "false");
+    expect(result).toHaveTextContent("FAIL");
+    expect(result).toHaveTextContent("reports tampered entries");
+  });
+
   it("rejects an empty verify without calling the endpoint", async () => {
     render(<AuditEvidencePanel />);
     fireEvent.click(screen.getByRole("button", { name: "Verify" }));

@@ -37,7 +37,12 @@ const BUDGETS = {
   // hover, focus-visible, and interactive-state token classes now baked into the
   // widely-imported shared shells (Collapsible, Drawer, PageState, cards) add a
   // few KiB of compiled className string literals across every route chunk.
-  totalClientJsBytes: 3_391_488,
+  // Raised ~29 KiB for the first-class AI/ML supply-chain scan surface on the
+  // Scan page: the six-scan selector, per-type input panels, and dense result
+  // tables (dataset cards, training pipelines, browser extensions, model
+  // provenance, prompt scan, model files) that give human operators the same
+  // reach as the MCP tools / CLI flags.
+  totalClientJsBytes: 3_440_640,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

@@ -359,6 +359,20 @@ export const PIPELINE_STEPS = [
 
 import { ApiNetworkError, classifyApiResponse } from "./api-errors";
 import { cachedGet, invalidate as _invalidate, type CacheOptions } from "./api-cache";
+import type {
+  DatasetCardsRequest,
+  DatasetCardsResponse,
+  TrainingPipelinesRequest,
+  TrainingPipelinesResponse,
+  BrowserExtensionsRequest,
+  BrowserExtensionsResponse,
+  ModelProvenanceRequest,
+  ModelProvenanceResponse,
+  PromptScanRequest,
+  PromptScanResponse,
+  ModelFilesRequest,
+  ModelFilesResponse,
+} from "./ai-scan";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const BOOTSTRAP_TIMEOUT_MS = 5_000;
@@ -550,6 +564,26 @@ export const api = {
 
   /** Delete a job record */
   deleteScan: (jobId: string) => del(`/v1/scan/${jobId}`),
+
+  // ── AI / ML supply-chain scans (synchronous; results returned inline) ──
+  /** Scan directories for HuggingFace dataset cards, DVC files, and lineage. */
+  scanDatasetCards: (body: DatasetCardsRequest) =>
+    post<DatasetCardsResponse>("/v1/scan/dataset-cards", body),
+  /** Scan directories for MLflow / W&B / Kubeflow training + serving artifacts. */
+  scanTrainingPipelines: (body: TrainingPipelinesRequest) =>
+    post<TrainingPipelinesResponse>("/v1/scan/training-pipelines", body),
+  /** Scan installed browser extensions for dangerous permissions + AI host access. */
+  scanBrowserExtensions: (body: BrowserExtensionsRequest) =>
+    post<BrowserExtensionsResponse>("/v1/scan/browser-extensions", body),
+  /** Check HuggingFace / Ollama model provenance (format, digest, gating, card). */
+  scanModelProvenance: (body: ModelProvenanceRequest) =>
+    post<ModelProvenanceResponse>("/v1/scan/model-provenance", body),
+  /** Scan prompt files for injection, hardcoded secrets, and unsafe instructions. */
+  scanPrompts: (body: PromptScanRequest) =>
+    post<PromptScanResponse>("/v1/scan/prompt-scan", body),
+  /** Scan directories for model files and assess serialization safety. */
+  scanModelFiles: (body: ModelFilesRequest) =>
+    post<ModelFilesResponse>("/v1/scan/model-files", body),
 
   /** List all jobs */
   listJobs: (options?: { includeDetails?: boolean; limit?: number; offset?: number }) => {

@@ -173,6 +173,14 @@ class AccessContext:
     tool_name: str = ""
     environment: str = ""
     source_ip: str = ""
+    # Device / group / client attributes (ABAC): the calling workstation or
+    # service identity (``device_id``), the caller's directory groups
+    # (``groups``), and the MCP client application making the call
+    # (``client_id``). Empty means "not supplied" — a policy that constrains one
+    # of these fails closed when the request cannot prove it.
+    device_id: str = ""
+    groups: list[str] = field(default_factory=list)
+    client_id: str = ""
     at: datetime | None = None
 
 
@@ -205,6 +213,12 @@ class ConditionalAccessPolicy:
     allowed_hours_utc: list[int] = field(default_factory=list)  # 0..23 UTC
     allowed_weekdays: list[int] = field(default_factory=list)  # 0=Mon .. 6=Sun
     allowed_source_cidrs: list[str] = field(default_factory=list)
+    # Device / group / client conditions (ABAC). Empty list = unconstrained; a
+    # populated list requires the request context to match (membership for
+    # groups, exact for device/client) or the condition fails closed.
+    allowed_devices: list[str] = field(default_factory=list)
+    allowed_groups: list[str] = field(default_factory=list)
+    allowed_clients: list[str] = field(default_factory=list)
     updated_at: str = ""
     description: str = ""
 
@@ -237,6 +251,17 @@ class ConditionalAccessPolicy:
         if self.allowed_weekdays and now.weekday() not in set(self.allowed_weekdays):
             return False
         if self.allowed_source_cidrs and not _ip_in_any_cidr(ctx.source_ip, self.allowed_source_cidrs):
+            return False
+        # Device: exact match against an allow-list. A request that supplies no
+        # device id cannot satisfy a device condition — fail closed.
+        if self.allowed_devices and (not ctx.device_id or ctx.device_id not in set(self.allowed_devices)):
+            return False
+        # Group: membership. The caller must belong to at least one allowed
+        # group; no groups supplied fails closed.
+        if self.allowed_groups and not (set(ctx.groups) & set(self.allowed_groups)):
+            return False
+        # Client: exact match against the allowed MCP client applications.
+        if self.allowed_clients and (not ctx.client_id or ctx.client_id not in set(self.allowed_clients)):
             return False
         return True
 
@@ -1302,6 +1327,9 @@ def create_conditional_policy(
     allowed_hours_utc: list[int] | None = None,
     allowed_weekdays: list[int] | None = None,
     allowed_source_cidrs: list[str] | None = None,
+    allowed_devices: list[str] | None = None,
+    allowed_groups: list[str] | None = None,
+    allowed_clients: list[str] | None = None,
     description: str = "",
 ) -> ConditionalAccessPolicy:
     """Create an active conditional-access policy for ``tenant_id``."""
@@ -1323,6 +1351,9 @@ def create_conditional_policy(
         allowed_hours_utc=sorted({h for h in (allowed_hours_utc or []) if 0 <= int(h) <= 23}),
         allowed_weekdays=sorted({d for d in (allowed_weekdays or []) if 0 <= int(d) <= 6}),
         allowed_source_cidrs=list(allowed_source_cidrs or []),
+        allowed_devices=list(allowed_devices or []),
+        allowed_groups=list(allowed_groups or []),
+        allowed_clients=list(allowed_clients or []),
         updated_at=now,
         description=description[:1000],
     )

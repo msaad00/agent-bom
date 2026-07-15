@@ -429,6 +429,11 @@ class DecisionContext:
     minute_of_day: int | None = None  # 0..1439 (UTC)
     environment: str = ""
     source_ip: str = ""
+    # Device / group / client ABAC attributes (empty = not supplied → a policy
+    # that constrains one fails closed).
+    device_id: str = ""
+    groups: tuple[str, ...] = ()
+    client_id: str = ""
     attributes: dict[str, str] = field(default_factory=dict)
 
 
@@ -441,6 +446,9 @@ def context_from_now(
     risk_score: float | None = None,
     environment: str = "",
     source_ip: str = "",
+    device_id: str = "",
+    groups: tuple[str, ...] | list[str] | None = None,
+    client_id: str = "",
     attributes: dict[str, str] | None = None,
 ) -> DecisionContext:
     """Build a :class:`DecisionContext`, deriving weekday / minute-of-day from
@@ -458,6 +466,9 @@ def context_from_now(
         minute_of_day=moment.hour * 60 + moment.minute,
         environment=environment,
         source_ip=source_ip,
+        device_id=device_id,
+        groups=tuple(groups or ()),
+        client_id=client_id,
         attributes=dict(attributes or {}),
     )
 
@@ -496,6 +507,12 @@ def evaluate_conditions(conditions: dict[str, Any], ctx: DecisionContext) -> tup
     * ``min_risk_score`` / ``max_risk_score``: numeric bounds on ``risk_score``.
     * ``required_attributes``: ``{key: expected}`` — every key must match
       ``ctx.attributes`` (string-compared).
+    * ``allowed_devices`` / ``allowed_groups`` / ``allowed_clients``: ABAC
+      allow-lists on the calling device, the caller's directory groups
+      (membership), and the MCP client application. A request that does not
+      supply the constrained attribute fails closed (the condition is not met),
+      so a device/group/client guardrail denies rather than waving the call
+      through.
 
     An empty / non-dict block is satisfied (no constraint), preserving the
     behaviour of rules that carry no conditions.
@@ -534,6 +551,21 @@ def evaluate_conditions(conditions: dict[str, Any], ctx: DecisionContext) -> tup
         for key, expected in required.items():
             if str(ctx.attributes.get(str(key), "")) != str(expected):
                 return False, f"required context attribute '{key}' not satisfied"
+
+    allowed_devices = conditions.get("allowed_devices")
+    if isinstance(allowed_devices, list) and allowed_devices:
+        if not ctx.device_id or ctx.device_id not in {str(d) for d in allowed_devices}:
+            return False, "request device is not in the permitted device allow-list"
+
+    allowed_groups = conditions.get("allowed_groups")
+    if isinstance(allowed_groups, list) and allowed_groups:
+        if not (set(ctx.groups) & {str(g) for g in allowed_groups}):
+            return False, "caller is not a member of a permitted group"
+
+    allowed_clients = conditions.get("allowed_clients")
+    if isinstance(allowed_clients, list) and allowed_clients:
+        if not ctx.client_id or ctx.client_id not in {str(c) for c in allowed_clients}:
+            return False, "request client application is not in the permitted client allow-list"
 
     return True, ""
 

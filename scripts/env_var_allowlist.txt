@@ -147,6 +147,7 @@ AGENT_BOM_DELIVERY_DB  # optional SQLite path for the outbound delivery foundati
 AGENT_BOM_DB_PATH
 AGENT_BOM_DB_SOURCES
 AGENT_BOM_DEFAULT_ROLE
+AGENT_BOM_DELEGATION_SIGNING_KEY  # secret: signs scoped agent-to-agent delegation tokens (HMAC); resolved via secret_source in delegation_token.py
 AGENT_BOM_DISABLE_DOCS
 AGENT_BOM_DISTRIBUTED_SCANS
 AGENT_BOM_ENABLE_LOCAL_PATH_SCANS

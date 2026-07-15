@@ -17,9 +17,12 @@ Design (mirrors :class:`agent_bom.api.postgres_audit.PostgresAuditLog`):
 * **Tenant isolation via FORCE ROW LEVEL SECURITY.** Reads and the head lookup
   run under the record's tenant session, so a cross-tenant ``get`` returns
   ``None`` even for a valid ``action_id`` from another tenant.
-* **Idempotent append.** The ``action_id`` is ``UNIQUE``; a second append of the
-  same deterministic action is a no-op (``ON CONFLICT DO NOTHING``) and returns
-  the already-stored canonical record, even across replicas.
+* **Idempotent append.** ``(tenant_id, action_id)`` is ``UNIQUE``; a second
+  append of the same deterministic action is a no-op (``ON CONFLICT (tenant_id,
+  action_id) DO NOTHING``) and returns the already-stored canonical record, even
+  across replicas. The composite (rather than a global ``UNIQUE(action_id)``)
+  means two tenants' independent actions can never collide, so no tenant's row is
+  silently dropped.
 
 This store never holds secret material — only identity ids, statuses, reasons.
 """
@@ -32,8 +35,9 @@ from typing import Any
 
 from agent_bom.api.governance_audit_log import (
     GovernanceAuditRecord,
+    _combined_head,
     _seal_record,
-    _verify_rows,
+    _verify_rows_grouped,
 )
 from agent_bom.api.postgres_common import (
     ConnectionPool,
@@ -59,7 +63,7 @@ class PostgresGovernanceAuditLog:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS governance_audit_log (
                     seq         BIGSERIAL PRIMARY KEY,
-                    action_id   TEXT NOT NULL UNIQUE,
+                    action_id   TEXT NOT NULL,
                     tenant_id   TEXT NOT NULL,
                     action      TEXT NOT NULL,
                     observed_at TEXT NOT NULL,
@@ -67,6 +71,20 @@ class PostgresGovernanceAuditLog:
                     data        TEXT NOT NULL
                 )
             """)
+            # Migrate away the old GLOBAL UNIQUE(action_id) if a pre-tenant-scope
+            # table exists (Postgres auto-names an inline column unique
+            # <table>_<column>_key); idempotent no-op on fresh installs.
+            conn.execute(
+                "ALTER TABLE governance_audit_log "
+                "DROP CONSTRAINT IF EXISTS governance_audit_log_action_id_key"
+            )
+            # Tenant-scoped uniqueness — the ON CONFLICT arbiter and the
+            # defense-in-depth against a caller crossing tenants with a pre-built
+            # id. Idempotent for both fresh and migrated tables.
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_audit_tenant_action "
+                "ON governance_audit_log(tenant_id, action_id)"
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_governance_audit_tenant "
                 "ON governance_audit_log(tenant_id, seq)"
@@ -101,7 +119,7 @@ class PostgresGovernanceAuditLog:
                     "INSERT INTO governance_audit_log "
                     "(action_id, tenant_id, action, observed_at, record_hash, data) "
                     "VALUES (%s, %s, %s, %s, %s, %s) "
-                    "ON CONFLICT (action_id) DO NOTHING",
+                    "ON CONFLICT (tenant_id, action_id) DO NOTHING",
                     (
                         sealed.action_id,
                         sealed.tenant_id,
@@ -147,34 +165,54 @@ class PostgresGovernanceAuditLog:
                 ).fetchall()
         return [GovernanceAuditRecord(**json.loads(r[0])) for r in rows]
 
-    def head_hash(self) -> str:
-        with _tenant_connection(self._pool) as conn:
-            row = conn.execute(
-                "SELECT record_hash FROM governance_audit_log "
-                "WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
-                (_current_tenant.get(),),
-            ).fetchone()
-        return str(row[0]) if row else ""
-
-    def verify_chain(self, *, max_rows: int = 50_000) -> dict[str, Any]:
-        # Full-estate integrity sweep: read every tenant's rows (trusted bypass),
-        # then verify each tenant's chain independently — a tenant's records link
-        # only to that tenant's prior record, so mixing tenants would false-flag.
+    def head_hash(self, tenant_id: str | None = None) -> str:
+        if tenant_id is not None:
+            token = _current_tenant.set(tenant_id)
+            try:
+                with _tenant_connection(self._pool) as conn:
+                    row = conn.execute(
+                        "SELECT record_hash FROM governance_audit_log "
+                        "WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
+                        (tenant_id,),
+                    ).fetchone()
+            finally:
+                _current_tenant.reset(token)
+            return str(row[0]) if row else ""
+        # No tenant → a combined fingerprint over every tenant's head, so callers
+        # can cheaply detect "did any chain move" without conflating tenants
+        # (trusted control-plane read via the audited RLS bypass).
         with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                "SELECT data FROM governance_audit_log ORDER BY tenant_id ASC, seq ASC LIMIT %s",
-                (max_rows,),
+                "SELECT g.tenant_id, g.record_hash FROM governance_audit_log g "
+                "JOIN (SELECT tenant_id, MAX(seq) AS m FROM governance_audit_log GROUP BY tenant_id) t "
+                "ON g.tenant_id = t.tenant_id AND g.seq = t.m"
             ).fetchall()
-        by_tenant: dict[str, list[GovernanceAuditRecord]] = {}
-        for r in rows:
-            record = GovernanceAuditRecord(**json.loads(r[0]))
-            by_tenant.setdefault(record.tenant_id, []).append(record)
-        verified = tampered = 0
-        for chain in by_tenant.values():
-            result = _verify_rows(chain)
-            verified += result["verified"]
-            tampered += result["tampered"]
-        return {"verified": verified, "tampered": tampered, "checked": verified + tampered}
+        return _combined_head({str(r[0]): str(r[1]) for r in rows})
+
+    def verify_chain(self, *, tenant_id: str | None = None, max_rows: int = 50_000) -> dict[str, Any]:
+        # A tenant's records link only to that tenant's prior record, so each
+        # chain is verified in isolation; mixing tenants would false-flag.
+        if tenant_id is not None:
+            token = _current_tenant.set(tenant_id)
+            try:
+                with _tenant_connection(self._pool) as conn:
+                    rows = conn.execute(
+                        "SELECT data FROM governance_audit_log WHERE tenant_id = %s "
+                        "ORDER BY seq ASC LIMIT %s",
+                        (tenant_id, max_rows),
+                    ).fetchall()
+            finally:
+                _current_tenant.reset(token)
+        else:
+            # Full-estate sweep: read every tenant's rows under the audited bypass,
+            # ordered so each tenant's rows stay in seq order for the grouped walk.
+            with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+                rows = conn.execute(
+                    "SELECT data FROM governance_audit_log ORDER BY tenant_id ASC, seq ASC LIMIT %s",
+                    (max_rows,),
+                ).fetchall()
+        records = [GovernanceAuditRecord(**json.loads(r[0])) for r in rows]
+        return _verify_rows_grouped(records, tenant_id=tenant_id)
 
 
 __all__ = ["PostgresGovernanceAuditLog"]

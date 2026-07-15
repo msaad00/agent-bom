@@ -160,6 +160,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Scale,
     links: [
       { href: "/compliance", label: "Compliance", icon: FileCheck },
+      { href: "/blueprints", label: "Blueprints", icon: Boxes },
       { href: "/findings?lens=trust", label: "Findings triage", icon: ListChecks },
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
       { href: "/audit", label: "Audit Log", icon: FileText },

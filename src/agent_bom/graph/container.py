@@ -922,6 +922,7 @@ ENTITY_LEGEND: list[LegendEntry] = [
     LegendEntry(key="data_store", label="Data Store", color="#0284c7", shape="square", layer=GraphSemanticLayer.ASSET.value),
     LegendEntry(key="application", label="Application", color="#7c3aed", shape="circle", layer=GraphSemanticLayer.APP.value),
     LegendEntry(key="api_gateway", label="API Gateway", color="#2563eb", shape="diamond", layer=GraphSemanticLayer.API_GATEWAY.value),
+    LegendEntry(key="blueprint", label="Blueprint", color="#818cf8", shape="square", layer=GraphSemanticLayer.ORCHESTRATION.value),
 ]
 
 RELATIONSHIP_LEGEND: list[LegendEntry] = [

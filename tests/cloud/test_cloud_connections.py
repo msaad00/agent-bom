@@ -231,6 +231,10 @@ def test_missing_key_refuses_to_encrypt() -> None:
 
 def test_invalid_key_raises_clear_error() -> None:
     os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = "not-a-valid-fernet-key"
+    # Other autouse fixtures may resolve the valid fixture key before this test
+    # body runs. Clear the documented in-process cache so this assertion always
+    # exercises the invalid material installed above, independent of fixture order.
+    connection_crypto.reset_key_cache()
     with pytest.raises(connection_crypto.ConnectionSecretError):
         connection_crypto.encrypt_secret("x")
 

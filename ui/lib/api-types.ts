@@ -3251,3 +3251,92 @@ export interface TraceConnectorPullResponse {
   attack_paths: TraceSpanAttackPath[];
   content_findings: TraceContentFinding[];
 }
+
+// ── Governance: persisted AI-system blueprints (versioning + approval) ────────
+
+/** The approved entities a blueprint version composes. */
+export interface BlueprintComposition {
+  agents: string[];
+  models: string[];
+  tools: string[];
+  datasets: string[];
+  identities: string[];
+  owners: string[];
+  guardrails: string[];
+}
+
+/** One immutable-once-approved blueprint version and its approval state. */
+export interface BlueprintVersion {
+  version_id: string;
+  blueprint_id: string;
+  tenant_id: string;
+  version: number;
+  status: "draft" | "pending" | "approved" | "rejected" | string;
+  composition: BlueprintComposition;
+  created_at: string;
+  created_by: string;
+  submitted_at: string;
+  submitted_by: string;
+  decided_at: string;
+  approver: string;
+  decision_note: string;
+  seeded_from: string;
+}
+
+/** A persisted AI-system blueprint header. */
+export interface BlueprintRecord {
+  blueprint_id: string;
+  tenant_id: string;
+  name: string;
+  owner: string;
+  owner_type: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+  current_version: number;
+  latest_version: number;
+  approval_status: "draft" | "pending" | "approved" | "rejected" | string;
+  seeded_from: string;
+}
+
+/** Response from `GET /v1/governance/blueprints`. */
+export interface BlueprintListResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  next_offset: number | null;
+  blueprints: BlueprintRecord[];
+}
+
+/** Response from `GET /v1/governance/blueprints/{id}`. */
+export interface BlueprintDetailResponse {
+  schema_version: string;
+  tenant_id: string;
+  blueprint: BlueprintRecord;
+  versions: BlueprintVersion[];
+}
+
+/** Response from a blueprint create / approval-workflow action. */
+export interface BlueprintVersionResponse {
+  schema_version: string;
+  tenant_id: string;
+  blueprint?: BlueprintRecord;
+  version: BlueprintVersion;
+}
+
+/** Response from `POST /v1/governance/blueprints/seed`. */
+export interface BlueprintSeedResponse {
+  schema_version: string;
+  tenant_id: string;
+  seeded_count: number;
+  blueprints: BlueprintRecord[];
+}
+
+/** Request body for `POST /v1/governance/blueprints`. */
+export interface BlueprintCreateRequest {
+  name: string;
+  owner: string;
+  owner_type?: string;
+  description?: string;
+  composition?: Partial<BlueprintComposition>;
+}

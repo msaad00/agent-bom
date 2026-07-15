@@ -538,6 +538,71 @@ class AgentBomClient:
 
         return self._request("POST", f"/v1/cloud/connections/{_quote_path(connection_id)}/scan")
 
+    # ── Governance blueprints (persisted AI-system blueprints + approval) ──────
+
+    def list_blueprints(self, *, limit: int | None = None, offset: int | None = None) -> JsonObject:
+        """List persisted AI-system blueprints for the active tenant (paginated)."""
+
+        params = _strip_query_none({"limit": limit, "offset": offset})
+        return self._request("GET", "/v1/governance/blueprints", params=params)
+
+    def get_blueprint(self, blueprint_id: str) -> JsonObject:
+        """Fetch one blueprint plus its version history and approval state."""
+
+        return self._request("GET", f"/v1/governance/blueprints/{_quote_path(blueprint_id)}")
+
+    def create_blueprint(
+        self,
+        *,
+        name: str,
+        owner: str,
+        owner_type: str | None = None,
+        description: str | None = None,
+        composition: Mapping[str, JsonValue] | None = None,
+    ) -> JsonObject:
+        """Create a blueprint with an initial draft version 1."""
+
+        body = _strip_none(
+            {
+                "name": name,
+                "owner": owner,
+                "owner_type": owner_type,
+                "description": description,
+                "composition": dict(composition) if composition is not None else None,
+            }
+        )
+        return self._request("POST", "/v1/governance/blueprints", json=body)
+
+    def seed_blueprints(self) -> JsonObject:
+        """Seed the tenant's blueprints from the canonical role archetypes (idempotent)."""
+
+        return self._request("POST", "/v1/governance/blueprints/seed")
+
+    def submit_blueprint_version(self, blueprint_id: str, version: int) -> JsonObject:
+        """Submit a draft blueprint version for approval (draft → pending)."""
+
+        return self._request(
+            "POST", f"/v1/governance/blueprints/{_quote_path(blueprint_id)}/versions/{int(version)}/submit"
+        )
+
+    def approve_blueprint_version(self, blueprint_id: str, version: int, *, note: str | None = None) -> JsonObject:
+        """Approve a pending blueprint version (requires the admin/governance role)."""
+
+        return self._request(
+            "POST",
+            f"/v1/governance/blueprints/{_quote_path(blueprint_id)}/versions/{int(version)}/approve",
+            json=_strip_none({"note": note}),
+        )
+
+    def reject_blueprint_version(self, blueprint_id: str, version: int, *, note: str | None = None) -> JsonObject:
+        """Reject a pending blueprint version (requires the admin/governance role)."""
+
+        return self._request(
+            "POST",
+            f"/v1/governance/blueprints/{_quote_path(blueprint_id)}/versions/{int(version)}/reject",
+            json=_strip_none({"note": note}),
+        )
+
     def _request(
         self,
         method: str,

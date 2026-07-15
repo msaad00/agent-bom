@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import {
   api,
@@ -15,6 +16,7 @@ import {
   ChevronUp,
   Loader2,
   Ticket,
+  ArrowRight,
 } from "lucide-react";
 import { severityRank } from "@/lib/severity";
 
@@ -317,8 +319,15 @@ function NarrativeRow({
   );
 }
 
-// ─── Jira modal ───────────────────────────────────────────────────────────────
+// ─── Ticketing action modal ───────────────────────────────────────────────────
 
+// Pre-freeze hardening: this modal used to collect a Jira URL / email / static
+// API token / project key inline and POST them per action. Pasting a static
+// credential into an action form violates the no-creds-in-forms rule, so the
+// token entry is removed. The scoped ITSM connector — credentials brokered in
+// Connections, never typed into an action modal — is tracked in #4004. The
+// backend endpoint (api.createJiraTicket) is intentionally left in place for
+// that connector rework; only the plaintext-token UI flow is retired here.
 function JiraModal({
   item,
   onClose,
@@ -326,45 +335,6 @@ function JiraModal({
   item: RemediationItem;
   onClose: () => void;
 }) {
-  const [jiraUrl, setJiraUrl] = useState("");
-  const [email, setEmail] = useState("");
-  const [apiToken, setApiToken] = useState("");
-  const [projectKey, setProjectKey] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [error, setError] = useState("");
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError("");
-    try {
-      const res = await api.createJiraTicket({
-        jira_url: jiraUrl,
-        email,
-        api_token: apiToken,
-        project_key: projectKey,
-        finding: {
-          package: item.package,
-          current_version: item.current_version,
-          fixed_version: item.fixed_version,
-          severity: item.severity,
-          impact_score: item.impact_score,
-          affected_agents: item.affected_agents,
-          exposed_credentials: item.exposed_credentials,
-          risk_narrative: item.risk_narrative,
-          owasp_tags: item.owasp_tags,
-          atlas_tags: item.atlas_tags,
-        },
-      });
-      setResult(res.ticket_key);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create ticket");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
@@ -374,97 +344,38 @@ function JiraModal({
       <div className="relative w-full max-w-md bg-[var(--surface)] border border-[var(--border-subtle)]/60 rounded-xl shadow-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-[var(--border-subtle)]">
           <h2 className="text-sm font-semibold text-[var(--foreground)]">
-            Create Jira Ticket
+            Create a ticket
           </h2>
           <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
             {item.package} {item.current_version}
           </p>
         </div>
 
-        {result ? (
-          <div className="px-5 py-6 text-center">
-            <p className="text-sm text-emerald-400 font-medium">
-              Ticket created: {result}
-            </p>
+        <div className="px-5 py-5 space-y-4">
+          <p className="text-sm leading-6 text-[var(--text-secondary)]">
+            Ticketing runs through a managed integration configured in{" "}
+            <span className="font-medium text-[var(--foreground)]">Connections</span>{" "}
+            — credentials are brokered there, never entered per action. Direct
+            ticket creation from this row is coming soon.
+          </p>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
             <button
+              type="button"
               onClick={onClose}
-              className="mt-4 px-4 py-2 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm rounded-lg transition-colors"
+              className="px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
             >
               Close
             </button>
+            <Link
+              href="/connections"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              Open Connections
+              <ArrowRight className="w-3 h-3" />
+            </Link>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
-            {[
-              {
-                id: "jiraUrl",
-                label: "Jira URL",
-                val: jiraUrl,
-                set: setJiraUrl,
-                type: "url",
-                placeholder: "https://yourorg.atlassian.net",
-              },
-              {
-                id: "email",
-                label: "Email",
-                val: email,
-                set: setEmail,
-                type: "email",
-                placeholder: "you@example.com",
-              },
-              {
-                id: "apiToken",
-                label: "API Token",
-                val: apiToken,
-                set: setApiToken,
-                type: "password",
-                placeholder: "••••••••",
-              },
-              {
-                id: "projectKey",
-                label: "Project Key",
-                val: projectKey,
-                set: setProjectKey,
-                type: "text",
-                placeholder: "SEC",
-              },
-            ].map(({ id, label, val, set, type, placeholder }) => (
-              <div key={id}>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">
-                  {label}
-                </label>
-                <input
-                  type={type}
-                  value={val}
-                  onChange={(e) => set(e.target.value)}
-                  placeholder={placeholder}
-                  required
-                  className="w-full bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--border-strong)]"
-                />
-              </div>
-            ))}
-
-            {error && <p className="text-xs text-red-400">{error}</p>}
-
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-              >
-                {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-                Create Ticket
-              </button>
-            </div>
-          </form>
-        )}
+        </div>
       </div>
     </div>
   );

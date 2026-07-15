@@ -119,10 +119,31 @@ describe("ExposurePathCommandCenter", () => {
     expect(onViewChange).toHaveBeenCalledWith("graph");
   });
 
-  it("renders the interactive-graph hint instead of a reserved blank canvas in graph view", () => {
+  it("renders a hint instead of a reserved blank canvas when no graph slot is supplied", () => {
     render(<ExposurePathCommandCenter path={basePath} view="graph" onViewChange={vi.fn()} />);
 
-    expect(screen.getByText(/Interactive graph opens below/)).toBeInTheDocument();
+    expect(screen.getByText(/Interactive graph loads here/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: /Selected exposure path graph for/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the interactive graph inline in graph view instead of an 'opens below' placeholder", () => {
+    render(
+      <ExposurePathCommandCenter
+        path={basePath}
+        view="graph"
+        onViewChange={vi.fn()}
+        graphSlot={<div data-testid="inline-investigation-graph">live graph</div>}
+      />,
+    );
+
+    // The graph is shown right here, in the Graph slot — not a placeholder
+    // pointing at a separate panel further down the page.
+    expect(screen.getByTestId("inline-investigation-graph")).toBeInTheDocument();
+    expect(screen.queryByText(/Interactive graph loads here/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/opens below/)).not.toBeInTheDocument();
+    // Only the graph slot renders — the path DAG is not stacked underneath.
     expect(
       screen.queryByRole("img", { name: /Selected exposure path graph for/ }),
     ).not.toBeInTheDocument();

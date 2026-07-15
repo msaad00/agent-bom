@@ -18,7 +18,7 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
   return "network";
 }
 import { PageLaneHeader } from "@/components/page-lane";
-import { AttackPathCard } from "@/components/attack-path-card";
+import { RankedPathList, type RankedPathRow } from "@/components/ranked-path-list";
 import { ExposurePathCommandCenter, type ExposurePathView } from "@/components/exposure-path-command-center";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
@@ -39,6 +39,7 @@ import {
   buildSecurityGraphHref,
   descriptiveAttackPathTitle,
   investigationRootForAttackPath,
+  labelsForAttackPathType,
   matchesAttackPathFocus,
   rankedAttackPathRows,
   recommendedAttackPathActions,
@@ -48,11 +49,11 @@ import {
 } from "@/lib/attack-paths";
 import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
-import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const ATTACK_PATH_QUEUE_LIMIT = 75;
 const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
 const FIX_FIRST_CARD_LIMIT = 12;
+const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
 
 function SecurityGraphPageContent() {
   const searchParams = useSearchParams();
@@ -72,7 +73,6 @@ function SecurityGraphPageContent() {
   const [visibleAttackPathCount, setVisibleAttackPathCount] = useState(ATTACK_PATH_QUEUE_PAGE_SIZE);
   const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
   const [pathView, setPathView] = useState<ExposurePathView>("path");
-  const captureMode = useCaptureMode();
 
   const focus = useMemo(
     () => ({
@@ -182,18 +182,22 @@ function SecurityGraphPageContent() {
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
     [snapshots, selectedScanId],
   );
-  // Stale/empty snapshots (0 persisted nodes) pile up in a long-lived graph
-  // store and drown the real ones in the chip row. Default to the populated
-  // snapshots (plus whatever is currently selected); "show all" reveals the
-  // empty and older ones on demand.
+  // Stale/empty snapshots (0 persisted nodes) and unrelated older scans pile up
+  // in a long-lived graph store and drown the real ones in the chip row.
+  // Default to the current scan plus at most a couple of recent populated
+  // snapshots; "show all" reveals every empty and older one on demand.
   const activeSnapshots = useMemo(
     () => snapshots.filter((snapshot) => snapshot.node_count > 0 || snapshot.scan_id === selectedScanId),
     [snapshots, selectedScanId],
   );
-  const displayedSnapshots = useMemo(
-    () => (showAllSnapshots ? snapshots : activeSnapshots.slice(0, 8)),
-    [activeSnapshots, showAllSnapshots, snapshots],
-  );
+  const displayedSnapshots = useMemo(() => {
+    if (showAllSnapshots) return snapshots;
+    // Current scan first, then the most recent populated snapshots — never the
+    // empty/unrelated ones up front.
+    const current = activeSnapshots.filter((snapshot) => snapshot.scan_id === selectedScanId);
+    const rest = activeSnapshots.filter((snapshot) => snapshot.scan_id !== selectedScanId);
+    return [...current, ...rest].slice(0, DEFAULT_SNAPSHOT_CHIP_COUNT);
+  }, [activeSnapshots, showAllSnapshots, selectedScanId, snapshots]);
   const hiddenSnapshotCount = Math.max(0, snapshots.length - displayedSnapshots.length);
 
   const fixFirstCards = useMemo(() => fixFirstView?.cards ?? [], [fixFirstView?.cards]);
@@ -230,6 +234,27 @@ function SecurityGraphPageContent() {
     [attackPaths, visibleAttackPathCount],
   );
   const hiddenAttackPathCount = Math.max(0, attackPaths.length - visibleAttackPaths.length);
+
+  const rankedRows = useMemo<RankedPathRow[]>(
+    () =>
+      rankedAttackPathRows(visibleAttackPaths, fixFirstCards)
+        .map(({ path, card, rank, key }) => {
+          const pathNodes = toAttackCardNodes(path, graphNodeById);
+          if (pathNodes.length === 0) return null;
+          return {
+            key,
+            selectionKey: attackPathKey(path),
+            rank,
+            title: descriptiveAttackPathTitle(card?.title, pathNodes),
+            cve: path.vuln_ids[0] ?? null,
+            riskScore: path.composite_risk,
+            hops: Math.max(0, path.hops.length - 1),
+            agents: labelsForAttackPathType(path, graphNodeById, "agent").length,
+          } satisfies RankedPathRow;
+        })
+        .filter((row): row is RankedPathRow => row !== null),
+    [fixFirstCards, graphNodeById, visibleAttackPaths],
+  );
 
   const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName);
   const selectedAttackPath = useMemo(
@@ -428,19 +453,20 @@ function SecurityGraphPageContent() {
           scanId={selectedScanId || undefined}
           view={pathView}
           onViewChange={setPathView}
+          graphSlot={
+            graphData && selectedAttackPath ? (
+              <SecurityGraphInvestigation
+                graph={graphData as UnifiedGraphData}
+                attackPath={selectedAttackPath}
+                focusMode={investigationFocusMode}
+                onFocusModeChange={setInvestigationFocusMode}
+                fullGraphHref={fullGraphHref}
+                loading={loadingGraph}
+              />
+            ) : null
+          }
         />
       ) : null}
-
-      {pathView === "graph" && graphData && selectedAttackPath && (
-        <SecurityGraphInvestigation
-          graph={graphData as UnifiedGraphData}
-          attackPath={selectedAttackPath}
-          focusMode={investigationFocusMode}
-          onFocusModeChange={setInvestigationFocusMode}
-          fullGraphHref={fullGraphHref}
-          loading={loadingGraph}
-        />
-      )}
 
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -613,6 +639,9 @@ function SecurityGraphPageContent() {
                 <h2 className="text-base font-semibold text-[color:var(--foreground)]">
                   {attackPaths.length} ranked path{attackPaths.length !== 1 ? "s" : ""}
                 </h2>
+                <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+                  Select a path to open its graph and evidence above.
+                </p>
                 {focusLabel && (
                   <p className="mt-1 text-xs text-emerald-300">Focused: {focusLabel}</p>
                 )}
@@ -620,69 +649,12 @@ function SecurityGraphPageContent() {
               <div className="font-mono text-lg text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
             </div>
 
-            <div
-              className="mt-4 grid max-h-[28rem] max-w-full grid-cols-1 gap-2 overflow-y-auto pr-1 outline-none md:grid-cols-2 xl:grid-cols-3"
-              tabIndex={0}
+            <RankedPathList
+              rows={rankedRows}
+              selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
+              onSelect={setSelectedAttackPathKey}
               onKeyDown={handleAttackPathQueueKeyDown}
-              aria-label="Attack path queue"
-            >
-              {rankedAttackPathRows(visibleAttackPaths, fixFirstCards).map(({ path, card, rank, key }) => {
-                const selectionKey = attackPathKey(path);
-                const pathNodes = toAttackCardNodes(path, graphNodeById);
-                if (pathNodes.length === 0) return null;
-                const active = selectedAttackPath ? attackPathKey(selectedAttackPath) === selectionKey : false;
-                const title = descriptiveAttackPathTitle(card?.title, pathNodes);
-                return (
-                  <div
-                    key={key}
-                    className={`min-w-0 rounded-2xl border bg-[color:var(--surface-elevated)] p-3 transition ${
-                      active
-                        ? "border-orange-400/70 ring-2 ring-orange-400/70 ring-offset-2 ring-offset-[color:var(--surface)]"
-                        : "border-[color:var(--border-subtle)]"
-                    }`}
-                  >
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[11px] uppercase tracking-[0.18em] text-orange-300">#{rank} fix first</div>
-                        <div
-                          title={title}
-                          className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)] [overflow-wrap:anywhere]"
-                        >
-                          {title}
-                        </div>
-                      </div>
-                      <div className="shrink-0 rounded-xl border border-red-900/60 bg-red-950/30 px-2.5 py-1 text-right">
-                        <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-red-300/80">Path risk</div>
-                        <div className="font-mono text-sm font-semibold leading-4 text-red-200">
-                          {path.composite_risk.toFixed(1)}
-                        </div>
-                      </div>
-                    </div>
-                    <AttackPathCard
-                      nodes={pathNodes}
-                      riskScore={path.composite_risk}
-                      captureMode={captureMode}
-                      compact
-                      showRiskBadge={false}
-                      onClick={() => setSelectedAttackPathKey(selectionKey)}
-                    />
-                    {card && card.risk_reasons.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {card.risk_reasons.slice(0, 3).map((reason) => (
-                          <span
-                            key={`${card.id}-${reason.kind}`}
-                            title={reason.detail}
-                            className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)]"
-                          >
-                            {reason.label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            />
             {hiddenAttackPathCount > 0 && (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3">
                 <p className="text-xs text-[color:var(--text-tertiary)]">

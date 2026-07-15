@@ -96,6 +96,7 @@ export function ExposurePathCommandCenter({
   scanId,
   view: controlledView,
   onViewChange,
+  graphSlot,
 }: {
   path: ExposurePath;
   actions?: ExposurePathCommandAction[] | undefined;
@@ -108,6 +109,13 @@ export function ExposurePathCommandCenter({
    * reserving a full screen-height of blank canvas underneath.
    */
   onViewChange?: ((next: ExposurePathView) => void) | undefined;
+  /**
+   * Interactive graph rendered inline in "graph" view. Consolidating the graph
+   * here means selecting "Graph" shows the live investigation immediately in
+   * one place — no dashed "opens below" placeholder pointing at a separate,
+   * disconnected panel further down the page.
+   */
+  graphSlot?: React.ReactNode | undefined;
 }) {
   const [internalView, setInternalView] = useState<ExposurePathView>("path");
   const view = controlledView ?? internalView;
@@ -117,6 +125,9 @@ export function ExposurePathCommandCenter({
   };
   const fixLabel = pathFixLabel(path);
   const evidence = path.evidence;
+  const pathSummary =
+    path.summary ||
+    "A reachable package or service on this path inherits downstream credential and tool exposure from the agent runtime.";
   const primaryAction = actions[0];
   const hopCount = Math.max(0, path.hops.length - 1);
   const severityTone =
@@ -136,10 +147,6 @@ export function ExposurePathCommandCenter({
               <span className="rounded-full border border-red-500/35 bg-red-500/12 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-red-200">
                 {String(path.severity)} risk
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-0.5 text-[11px] text-[color:var(--foreground)]">
-                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Path risk</span>
-                <span className="font-mono">{path.riskScore.toFixed(1)}</span>
-              </span>
               {evidence?.isKev ? (
                 <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200">
                   CISA KEV
@@ -149,9 +156,11 @@ export function ExposurePathCommandCenter({
             <h2 className="text-xl font-semibold leading-8 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
               {pathDisplayTitle(path)}
             </h2>
-            <p className="max-w-3xl text-sm leading-6 text-[color:var(--text-secondary)]">
-              {path.summary ||
-                "A reachable package or service on this path inherits downstream credential and tool exposure from the agent runtime."}
+            <p
+              title={pathSummary}
+              className="max-w-3xl truncate text-sm leading-6 text-[color:var(--text-secondary)]"
+            >
+              {pathSummary}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
@@ -179,12 +188,14 @@ export function ExposurePathCommandCenter({
           </section>
         ) : view === "list" ? (
           <ExposurePathNeighborExplorer path={path} scanId={scanId} />
+        ) : graphSlot ? (
+          <section aria-label="Interactive graph">{graphSlot}</section>
         ) : (
           <section
             aria-label="Interactive graph hint"
             className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/60 px-4 py-6 text-center text-xs text-[color:var(--text-secondary)]"
           >
-            Interactive graph opens below — pan, zoom, and click nodes to inspect the persisted subgraph.
+            Interactive graph loads here once graph evidence is available for this snapshot.
           </section>
         )}
 

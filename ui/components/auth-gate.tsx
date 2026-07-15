@@ -29,7 +29,7 @@ function isApiReachabilityFailure(message: string): boolean {
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { session, loading, error } = useAuthState();
+  const { session, loading, error, reconnecting } = useAuthState();
 
   const needsAuth =
     !loading &&
@@ -44,8 +44,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
+      <div className="flex min-h-[calc(100vh-5rem)] flex-col items-center justify-center gap-3">
         <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
+        {reconnecting ? (
+          <p className="text-xs text-[var(--text-tertiary)]">Reconnecting to the control plane…</p>
+        ) : null}
       </div>
     );
   }

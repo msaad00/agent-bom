@@ -25,6 +25,7 @@ from agent_bom.ast_models import (
     _CSharpToolRegistration,
 )
 from agent_bom.ast_signal_utils import _balanced_segment, _line_number_from_index
+from agent_bom.ast_source_mask import mask_line_comments_and_strings
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_nuget_package
 
 if TYPE_CHECKING:
@@ -136,6 +137,7 @@ def _csharp_local_bindings(body: str, import_bindings: Mapping[str, str]) -> dic
 
 
 def _csharp_call_sites(body: str, *, line_offset: int) -> list[_CSharpCallSite]:
+    body = mask_line_comments_and_strings(body)
     sites: list[_CSharpCallSite] = []
     for match in _CS_CALL_RE.finditer(body):
         name = match.group("name")

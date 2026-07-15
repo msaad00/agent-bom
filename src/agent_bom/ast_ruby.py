@@ -25,6 +25,7 @@ from agent_bom.ast_models import (
     _RubyToolRegistration,
 )
 from agent_bom.ast_signal_utils import _balanced_segment, _line_number_from_index
+from agent_bom.ast_source_mask import mask_line_comments_and_strings
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_ruby_gem
 
 if TYPE_CHECKING:
@@ -127,6 +128,7 @@ def _ruby_local_bindings(body: str, import_bindings: Mapping[str, str]) -> dict[
 
 
 def _ruby_call_sites(body: str, *, line_offset: int) -> list[_RubyCallSite]:
+    body = mask_line_comments_and_strings(body, hash_comments=True)
     sites: list[_RubyCallSite] = []
     for match in _RUBY_CALL_RE.finditer(body):
         name = match.group("name")

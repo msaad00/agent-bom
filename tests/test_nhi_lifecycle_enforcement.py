@@ -213,11 +213,14 @@ def test_set_and_read_quota(store):
 
 
 def test_action_id_deterministic():
-    a = derive_action_id(target_id="jit_1", action="jit_grant_expired", window_key="2026-01-01T00:00:00")
-    b = derive_action_id(target_id="jit_1", action="jit_grant_expired", window_key="2026-01-01T00:00:00")
-    c = derive_action_id(target_id="jit_1", action="jit_grant_expired", window_key="2026-02-01T00:00:00")
+    a = derive_action_id(tenant_id="t1", target_id="jit_1", action="jit_grant_expired", window_key="2026-01-01T00:00:00")
+    b = derive_action_id(tenant_id="t1", target_id="jit_1", action="jit_grant_expired", window_key="2026-01-01T00:00:00")
+    c = derive_action_id(tenant_id="t1", target_id="jit_1", action="jit_grant_expired", window_key="2026-02-01T00:00:00")
+    # Same inputs but a different tenant derives a different id (no collision).
+    d = derive_action_id(tenant_id="t2", target_id="jit_1", action="jit_grant_expired", window_key="2026-01-01T00:00:00")
     assert a == b
     assert a != c
+    assert a != d
     assert a.startswith("gov_")
 
 

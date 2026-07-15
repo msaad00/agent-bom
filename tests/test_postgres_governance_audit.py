@@ -75,8 +75,9 @@ class _FakeConnection:
         if s.startswith("insert into governance_audit_log"):
             action_id, tenant_id, action, observed_at, record_hash, data = params
             rows = self._state["rows"]
-            if any(r["action_id"] == action_id for r in rows):
-                return _FakeCursor()  # ON CONFLICT DO NOTHING
+            # ON CONFLICT (tenant_id, action_id) DO NOTHING — composite arbiter.
+            if any(r["action_id"] == action_id and r["tenant_id"] == tenant_id for r in rows):
+                return _FakeCursor()
             self._state["seq"] += 1
             rows.append(
                 {
@@ -104,12 +105,20 @@ class _FakeConnection:
             return _FakeCursor([(rows[0]["record_hash"],)] if rows else [])
 
         if "select data from governance_audit_log where tenant_id" in s:
+            # list() reads DESC; verify_chain(tenant_id=...) reads ASC.
             rows = sorted(
                 (r for r in self._visible() if r["tenant_id"] == params[0]),
                 key=lambda r: r["seq"],
-                reverse=True,
+                reverse="desc" in s,
             )[: params[1]]
             return _FakeCursor([(r["data"],) for r in rows])
+
+        if "group by tenant_id" in s and "max(seq)" in s:
+            # Combined head: the last record_hash per tenant (head_hash() no-arg).
+            latest: dict[str, str] = {}
+            for r in sorted(self._visible(), key=lambda r: r["seq"]):
+                latest[r["tenant_id"]] = r["record_hash"]
+            return _FakeCursor([(t, h) for t, h in latest.items()])
 
         if "order by tenant_id asc, seq asc" in s:
             rows = sorted(self._visible(), key=lambda r: (r["tenant_id"], r["seq"]))[: params[0]]
@@ -222,6 +231,49 @@ def test_per_tenant_chains_both_verify():
     result = store.verify_chain()
     assert result["tampered"] == 0
     assert result["verified"] == 3
+
+
+def test_cross_tenant_same_action_both_persist():
+    """Two tenants, identical (action, target_id, window_key): neither dropped.
+
+    Pre-fix a global UNIQUE(action_id) + tenant-blind derive collapsed these to
+    one id, silently dropping the second tenant's row while verify_chain still
+    reported healthy. Tenant-folded ids + composite unique keep both.
+    """
+    store = PostgresGovernanceAuditLog(pool=_FakePool())
+    acme = store.append(_rec("acme", "id-shared", "w1"))
+    globex = store.append(_rec("globex", "id-shared", "w1"))
+
+    assert acme.action_id != globex.action_id
+    assert [r.tenant_id for r in store.list(tenant_id="acme")] == ["acme"]
+    assert [r.tenant_id for r in store.list(tenant_id="globex")] == ["globex"]
+    # Each tenant is a genesis chain of its own.
+    assert acme.prev_hash == ""
+    assert globex.prev_hash == ""
+    result = store.verify_chain()
+    assert result["verified"] == 2
+    assert result["tampered"] == 0
+
+
+def test_verify_chain_and_head_hash_are_tenant_scoped():
+    store = PostgresGovernanceAuditLog(pool=_FakePool())
+    store.append(_rec("acme", "id-a1", "w1"))
+    a2 = store.append(_rec("acme", "id-a2", "w2"))
+    store.append(_rec("globex", "id-b1", "w1"))
+
+    # Per-tenant verify sees only that tenant's rows.
+    assert store.verify_chain(tenant_id="acme") == {"verified": 2, "tampered": 0, "checked": 2}
+    assert store.verify_chain(tenant_id="globex") == {"verified": 1, "tampered": 0, "checked": 1}
+
+    # Per-tenant head is that tenant's latest record_hash; tenants differ.
+    assert store.head_hash("acme") == a2.record_hash
+    assert store.head_hash("acme") != store.head_hash("globex")
+
+    # No-arg head fingerprints all chains and is stable across a no-op append.
+    combined = store.head_hash()
+    assert combined
+    store.append(_rec("acme", "id-a2", "w2"))  # idempotent duplicate
+    assert store.head_hash() == combined
 
 
 def test_shared_pool_is_cluster_consistent():

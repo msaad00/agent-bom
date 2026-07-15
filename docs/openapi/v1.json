@@ -16522,7 +16522,7 @@
     },
     "/v1/graph/snapshots": {
       "get": {
-        "description": "List persisted scan snapshots ordered by creation time.",
+        "description": "List persisted scan snapshots ordered by creation time.\n\nA snapshot's ``risk_summary`` is a per-scan count of *graph nodes* carrying\neach severity \u2014 a distinct metric from the exec open-finding headline\n(``/v1/overview`` / ``/v1/posture/counts``), which counts deduped findings\nacross the estate. Each row is tagged ``severity_basis: \"graph_nodes\"`` so a\nconsumer never mistakes the graph-node tally for the reconciled exec\nseverity count (#3961).",
         "operationId": "get_graph_snapshots_v1_graph_snapshots_get",
         "parameters": [
           {
@@ -21253,7 +21253,7 @@
     },
     "/v1/posture/counts": {
       "get": {
-        "description": "Aggregate vulnerability counts across all completed scans.\n\nLightweight endpoint used by the dashboard nav to show Critical/High\nbadges without loading full scan payloads.\n\nReturns:\n    {critical, high, medium, low, total, kev, compound_issues}",
+        "description": "Aggregate open-finding severity counts across all completed scans.\n\nLightweight endpoint used by the dashboard nav to show Critical/High\nbadges. Reads the SAME reconciled source of truth as the ``/v1/overview``\nexec headline \u2014 the unified findings spine folded with hub-ingested\nevidence (#3961) \u2014 so the nav badges can never disagree with the overview's\ncritical/high. The CVE-only ``blast_radius`` is used only for the\ncorrelation-based ``compound_issues`` metric, where reachability/exposure\nlives. ``unrated`` is an explicit bucket so the histogram sums to ``total``.\n\nReturns:\n    {critical, high, medium, low, unrated, total, kev, compound_issues, \u2026}",
         "operationId": "get_posture_counts_v1_posture_counts_get",
         "parameters": [
           {

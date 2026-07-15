@@ -2460,8 +2460,20 @@ async def get_graph_snapshots(
     request: Request,
     limit: int = Query(50, ge=1, le=500, description="Max snapshots"),
 ) -> list[dict]:
-    """List persisted scan snapshots ordered by creation time."""
-    return await _graph_store_call(_get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit)
+    """List persisted scan snapshots ordered by creation time.
+
+    A snapshot's ``risk_summary`` is a per-scan count of *graph nodes* carrying
+    each severity — a distinct metric from the exec open-finding headline
+    (``/v1/overview`` / ``/v1/posture/counts``), which counts deduped findings
+    across the estate. Each row is tagged ``severity_basis: "graph_nodes"`` so a
+    consumer never mistakes the graph-node tally for the reconciled exec
+    severity count (#3961).
+    """
+    snapshots = await _graph_store_call(_get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit)
+    for snapshot in snapshots:
+        if isinstance(snapshot, dict) and "risk_summary" in snapshot:
+            snapshot["severity_basis"] = "graph_nodes"
+    return snapshots
 
 
 @router.get("/graph/history", tags=["graph"])

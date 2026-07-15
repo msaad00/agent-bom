@@ -1760,49 +1760,61 @@ async def get_backpressure_posture() -> dict:
     return describe_backpressure_posture()
 
 
-@router.get("/posture/counts", tags=["compliance"])
-async def get_posture_counts(request: Request) -> dict:
-    """Aggregate vulnerability counts across all completed scans.
+def _compound_issue_count(tenant_jobs: list[Any]) -> int:
+    """Count high-priority compound issues from blast-radius correlation.
 
-    Lightweight endpoint used by the dashboard nav to show Critical/High
-    badges without loading full scan payloads.
-
-    Returns:
-        {critical, high, medium, low, total, kev, compound_issues}
+    A compound issue is a KEV vuln that is also reachable or exposes a
+    credential, or a high-CVSS + high-EPSS vuln — the reachability/exposure
+    correlation that lives in ``blast_radius`` (not a raw severity count).
+    Deduped by vulnerability id across scans.
     """
-    counts: dict[str, Any] = {
-        "critical": 0,
-        "high": 0,
-        "medium": 0,
-        "low": 0,
-        "total": 0,
-        "kev": 0,
-        "compound_issues": 0,
-    }
     seen_ids: set[str] = set()
-    tenant_jobs = _tenant_jobs(request)
-
+    compound = 0
     for job in tenant_jobs:
         if job.status != JobStatus.DONE or not job.result:
             continue
-
-        blast_list = job.result.get("blast_radius", [])
-        for b in blast_list:
+        for b in job.result.get("blast_radius", []):
             vid = b.get("vulnerability_id", "")
             if vid in seen_ids:
                 continue
             seen_ids.add(vid)
-            sev = (b.get("severity") or "").lower()
-            if sev in counts:
-                counts[sev] += 1
-            counts["total"] += 1
-            if b.get("cisa_kev") or b.get("is_kev"):
-                counts["kev"] += 1
-            # Compound issue: KEV + reachable tool, or KEV + exposed cred
-            if (b.get("cisa_kev") or b.get("is_kev")) and (b.get("reachable_tools") or b.get("exposed_credentials")):
-                counts["compound_issues"] += 1
+            is_kev = bool(b.get("cisa_kev") or b.get("is_kev"))
+            if is_kev and (b.get("reachable_tools") or b.get("exposed_credentials")):
+                compound += 1
             elif (b.get("epss_score") or 0) >= 0.3 and (b.get("cvss_score") or 0) >= 7:
-                counts["compound_issues"] += 1
+                compound += 1
+    return compound
+
+
+@router.get("/posture/counts", tags=["compliance"])
+async def get_posture_counts(request: Request) -> dict:
+    """Aggregate open-finding severity counts across all completed scans.
+
+    Lightweight endpoint used by the dashboard nav to show Critical/High
+    badges. Reads the SAME reconciled source of truth as the ``/v1/overview``
+    exec headline — the unified findings spine folded with hub-ingested
+    evidence (#3961) — so the nav badges can never disagree with the overview's
+    critical/high. The CVE-only ``blast_radius`` is used only for the
+    correlation-based ``compound_issues`` metric, where reachability/exposure
+    lives. ``unrated`` is an explicit bucket so the histogram sums to ``total``.
+
+    Returns:
+        {critical, high, medium, low, unrated, total, kev, compound_issues, …}
+    """
+    from agent_bom.api.routes.overview import exec_severity_counts
+
+    tenant_jobs = _tenant_jobs(request)
+    reconciled = exec_severity_counts(request, tenant_jobs)
+    counts: dict[str, Any] = {
+        "critical": reconciled["critical"],
+        "high": reconciled["high"],
+        "medium": reconciled["medium"],
+        "low": reconciled["low"],
+        "unrated": reconciled["unrated"],
+        "total": reconciled["total"],
+        "kev": reconciled["kev"],
+        "compound_issues": _compound_issue_count(tenant_jobs),
+    }
 
     counts.update(_derive_deployment_context(request, tenant_jobs))
     tenant_id = require_request_tenant_id(request)

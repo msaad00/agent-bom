@@ -61,6 +61,7 @@ class EntityType(str, Enum):
     MANAGED_IDENTITY = "managed_identity"  # an agent-bom-issued agent identity
     ACCESS_GRANT = "access_grant"  # a time-bound JIT access grant
     ACCESS_POLICY = "access_policy"  # a conditional/context-aware access policy
+    BLUEPRINT = "blueprint"  # a persisted, approved AI-system blueprint (versioned)
 
     # Behavioral drift (OCSF Category 2 — detection finding)
     DRIFT_INCIDENT = "drift_incident"

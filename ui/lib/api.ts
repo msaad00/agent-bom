@@ -118,7 +118,12 @@ import type {
   CloudConnectionCreateRequest,
   CloudConnectionUpdateRequest,
   CloudConnectionTestResponse,
-  CloudConnectionScanResponse
+  CloudConnectionScanResponse,
+  BlueprintListResponse,
+  BlueprintDetailResponse,
+  BlueprintVersionResponse,
+  BlueprintSeedResponse,
+  BlueprintCreateRequest
 } from "./api-types";
 export type {
   AccountSummaryResponse,
@@ -322,6 +327,14 @@ export type {
   CloudConnectionScanCis,
   CloudConnectionTestResponse,
   CloudConnectionScanResponse,
+  BlueprintRecord,
+  BlueprintVersion,
+  BlueprintComposition,
+  BlueprintListResponse,
+  BlueprintDetailResponse,
+  BlueprintVersionResponse,
+  BlueprintSeedResponse,
+  BlueprintCreateRequest,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 
@@ -958,6 +971,30 @@ export const api = {
       `/v1/governance/findings?${params}`
     );
   },
+
+  // Governance blueprints (persisted AI-system blueprints + versioning + approval)
+  listBlueprints: (limit = 50, offset = 0) =>
+    get<BlueprintListResponse>(`/v1/governance/blueprints?limit=${limit}&offset=${offset}`),
+  getBlueprint: (blueprintId: string) =>
+    get<BlueprintDetailResponse>(`/v1/governance/blueprints/${encodeURIComponent(blueprintId)}`),
+  createBlueprint: (body: BlueprintCreateRequest) =>
+    post<BlueprintVersionResponse>("/v1/governance/blueprints", body),
+  seedBlueprints: () => post<BlueprintSeedResponse>("/v1/governance/blueprints/seed", {}),
+  submitBlueprintVersion: (blueprintId: string, version: number) =>
+    post<BlueprintVersionResponse>(
+      `/v1/governance/blueprints/${encodeURIComponent(blueprintId)}/versions/${version}/submit`,
+      {}
+    ),
+  approveBlueprintVersion: (blueprintId: string, version: number, note = "") =>
+    post<BlueprintVersionResponse>(
+      `/v1/governance/blueprints/${encodeURIComponent(blueprintId)}/versions/${version}/approve`,
+      { note }
+    ),
+  rejectBlueprintVersion: (blueprintId: string, version: number, note = "") =>
+    post<BlueprintVersionResponse>(
+      `/v1/governance/blueprints/${encodeURIComponent(blueprintId)}/versions/${version}/reject`,
+      { note }
+    ),
 
   // Activity Timeline
   getActivity: (days = 30) => get<ActivityTimeline>(`/v1/activity?days=${days}`),

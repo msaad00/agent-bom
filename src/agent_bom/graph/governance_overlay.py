@@ -205,6 +205,43 @@ def apply_governance_overlay(
             if tool_name != "*":
                 link_tool(pid, tool_name, RelationshipType.GOVERNS)
 
+    # ── Persisted AI-system blueprints ──
+    # Emit the stored, approved blueprints so the snapshot references a durable
+    # blueprint entity (by id) rather than a code constant — drift incidents then
+    # tie back to the persisted blueprint they derive from. Best-effort: a store
+    # failure degrades to no blueprint nodes.
+    blueprint_node_by_seed: dict[str, str] = {}
+    blueprint_node_by_id: dict[str, str] = {}
+    try:
+        from agent_bom.api.blueprint_store import get_blueprint_store
+
+        blueprints = get_blueprint_store().list_blueprints(tenant_id, limit=200).blueprints
+    except Exception:  # noqa: BLE001
+        blueprints = []
+    for blueprint in blueprints:
+        bnid = f"blueprint:{blueprint.blueprint_id}"
+        blueprint_node_by_id[blueprint.blueprint_id] = bnid
+        if blueprint.seeded_from:
+            blueprint_node_by_seed[blueprint.seeded_from] = bnid
+        add_node(
+            _gnode(
+                bnid,
+                EntityType.BLUEPRINT,
+                blueprint.name or blueprint.blueprint_id,
+                attributes={
+                    "blueprint_id": blueprint.blueprint_id,
+                    "owner": blueprint.owner,
+                    "approval_status": blueprint.approval_status,
+                    "current_version": blueprint.current_version,
+                    "latest_version": blueprint.latest_version,
+                    "seeded_from": blueprint.seeded_from,
+                },
+            )
+        )
+        for owner_name in {blueprint.owner}:
+            for agent_id in agents_by_label.get(owner_name.strip().lower(), []):
+                add_edge(_gedge(bnid, agent_id, RelationshipType.GOVERNS))
+
     # ── Drift incidents (open) ──
     try:
         incidents = drift_store.list(tenant_id, include_resolved=False, limit=500)
@@ -233,6 +270,12 @@ def apply_governance_overlay(
         )
         for agent_id in agents_by_label.get((incident.blueprint_id or "").strip().lower(), []):
             add_edge(_gedge(agent_id, did, RelationshipType.EXHIBITS_DRIFT, direction="bidirectional", weight=5.0))
+        # Tie the incident to the persisted blueprint it drifted from (matched by
+        # the archetype the blueprint was seeded from, else a direct id match) so
+        # the graph references the stored blueprint, not just the code constant.
+        blueprint_node = blueprint_node_by_seed.get(incident.blueprint_id) or blueprint_node_by_id.get(incident.blueprint_id)
+        if blueprint_node:
+            add_edge(_gedge(blueprint_node, did, RelationshipType.GOVERNS, weight=5.0))
         for violation in getattr(incident, "top_violations", []) or []:
             tool_name = str(violation.get("tool_name", "")) if isinstance(violation, dict) else ""
             if tool_name:

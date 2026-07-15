@@ -651,6 +651,98 @@
         "title": "ComplianceThreatModel",
         "type": "object"
       },
+      "CompositionModel": {
+        "properties": {
+          "agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "datasets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Datasets",
+            "type": "array"
+          },
+          "guardrails": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Guardrails",
+            "type": "array"
+          },
+          "identities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Identities",
+            "type": "array"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "owners": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Owners",
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "title": "CompositionModel",
+        "type": "object"
+      },
+      "CreateBlueprintBody": {
+        "properties": {
+          "composition": {
+            "$ref": "#/components/schemas/CompositionModel"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "owner_type": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Owner Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "owner"
+        ],
+        "title": "CreateBlueprintBody",
+        "type": "object"
+      },
       "CreateKeyRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1108,6 +1200,27 @@
           }
         },
         "title": "DatasetVersionCreate",
+        "type": "object"
+      },
+      "DecisionBody": {
+        "properties": {
+          "note": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "DecisionBody",
+        "type": "object"
+      },
+      "DraftVersionBody": {
+        "properties": {
+          "composition": {
+            "$ref": "#/components/schemas/CompositionModel"
+          }
+        },
+        "title": "DraftVersionBody",
         "type": "object"
       },
       "EntitlementHealth": {
@@ -12825,6 +12938,1136 @@
           }
         },
         "summary": "Governance Report",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints": {
+      "get": {
+        "description": "List persisted AI-system blueprints for the active tenant (paginated).",
+        "operationId": "list_blueprints_v1_governance_blueprints_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Blueprints V1 Governance Blueprints Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Blueprints",
+        "tags": [
+          "governance"
+        ]
+      },
+      "post": {
+        "description": "Create a new AI-system blueprint with an initial draft version 1.",
+        "operationId": "create_blueprint_route_v1_governance_blueprints_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBlueprintBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Blueprint Route V1 Governance Blueprints Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Blueprint Route",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints/seed": {
+      "post": {
+        "description": "Seed the tenant's blueprints from the canonical role archetypes (idempotent).",
+        "operationId": "seed_blueprints_route_v1_governance_blueprints_seed_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Seed Blueprints Route V1 Governance Blueprints Seed Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seed Blueprints Route",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints/{blueprint_id}": {
+      "get": {
+        "description": "Return one blueprint plus its full version history and approval state.",
+        "operationId": "get_blueprint_route_v1_governance_blueprints__blueprint_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Blueprint Route V1 Governance Blueprints  Blueprint Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Blueprint Route",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints/{blueprint_id}/diff": {
+      "get": {
+        "description": "Diff two versions' compositions (added / removed / persistent per axis).",
+        "operationId": "diff_versions_route_v1_governance_blueprints__blueprint_id__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_version",
+            "required": true,
+            "schema": {
+              "title": "From Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version",
+            "required": true,
+            "schema": {
+              "title": "To Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Diff Versions Route V1 Governance Blueprints  Blueprint Id  Diff Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diff Versions Route",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints/{blueprint_id}/versions": {
+      "get": {
+        "description": "List a blueprint's immutable versions, newest first.",
+        "operationId": "list_versions_route_v1_governance_blueprints__blueprint_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Versions Route V1 Governance Blueprints  Blueprint Id  Versions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Versions Route",
+        "tags": [
+          "governance"
+        ]
+      },
+      "post": {
+        "description": "Open a new draft version from an edited composition (approved versions are immutable).",
+        "operationId": "create_draft_version_route_v1_governance_blueprints__blueprint_id__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftVersionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Draft Version Route V1 Governance Blueprints  Blueprint Id  Versions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Draft Version Route",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints/{blueprint_id}/versions/{version}": {
+      "get": {
+        "description": "Return one blueprint version (its composition snapshot + approval state).",
+        "operationId": "get_version_route_v1_governance_blueprints__blueprint_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Version Route V1 Governance Blueprints  Blueprint Id  Versions  Version  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Version Route",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints/{blueprint_id}/versions/{version}/approve": {
+      "post": {
+        "description": "Approve a pending version (admin only). Records the accountable approver.",
+        "operationId": "approve_version_route_v1_governance_blueprints__blueprint_id__versions__version__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DecisionBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Approve Version Route V1 Governance Blueprints  Blueprint Id  Versions  Version  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Version Route",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints/{blueprint_id}/versions/{version}/reject": {
+      "post": {
+        "description": "Reject a pending version (admin only). Records the accountable reviewer.",
+        "operationId": "reject_version_route_v1_governance_blueprints__blueprint_id__versions__version__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DecisionBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reject Version Route V1 Governance Blueprints  Blueprint Id  Versions  Version  Reject Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Version Route",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/v1/governance/blueprints/{blueprint_id}/versions/{version}/submit": {
+      "post": {
+        "description": "Submit a draft version for approval (draft \u2192 pending).",
+        "operationId": "submit_version_route_v1_governance_blueprints__blueprint_id__versions__version__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Submit Version Route V1 Governance Blueprints  Blueprint Id  Versions  Version  Submit Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Version Route",
         "tags": [
           "governance"
         ]

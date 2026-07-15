@@ -30,6 +30,7 @@ from agent_bom.api.blueprint_store import (
 )
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.security import sanitize_error
 
 router = APIRouter(tags=["governance"])
 logger = logging.getLogger(__name__)
@@ -227,7 +228,7 @@ async def submit_version_route(request: Request, blueprint_id: str, version: int
             submitted_by=_actor(request),
         )
     except BlueprintApprovalError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
     if record is None:
         raise HTTPException(status_code=404, detail="Blueprint version not found")
     return {"schema_version": _SCHEMA, "tenant_id": tenant_id, "version": record.to_dict()}
@@ -248,7 +249,7 @@ async def approve_version_route(request: Request, blueprint_id: str, version: in
             note=note,
         )
     except BlueprintApprovalError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
     if record is None:
         raise HTTPException(status_code=404, detail="Blueprint version not found")
     _emit_decision_event(tenant_id, "blueprint.version.approved", record.to_dict())
@@ -270,7 +271,7 @@ async def reject_version_route(request: Request, blueprint_id: str, version: int
             note=note,
         )
     except BlueprintApprovalError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
     if record is None:
         raise HTTPException(status_code=404, detail="Blueprint version not found")
     _emit_decision_event(tenant_id, "blueprint.version.rejected", record.to_dict())

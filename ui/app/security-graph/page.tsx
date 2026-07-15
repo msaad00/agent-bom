@@ -19,7 +19,7 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
 }
 import { PageLaneHeader } from "@/components/page-lane";
 import { AttackPathCard } from "@/components/attack-path-card";
-import { ExposurePathCommandCenter } from "@/components/exposure-path-command-center";
+import { ExposurePathCommandCenter, type ExposurePathView } from "@/components/exposure-path-command-center";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
@@ -71,6 +71,7 @@ function SecurityGraphPageContent() {
   const [showAllSnapshots, setShowAllSnapshots] = useState(false);
   const [visibleAttackPathCount, setVisibleAttackPathCount] = useState(ATTACK_PATH_QUEUE_PAGE_SIZE);
   const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
+  const [pathView, setPathView] = useState<ExposurePathView>("path");
   const captureMode = useCaptureMode();
 
   const focus = useMemo(
@@ -181,10 +182,19 @@ function SecurityGraphPageContent() {
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
     [snapshots, selectedScanId],
   );
-  const displayedSnapshots = useMemo(
-    () => (showAllSnapshots ? snapshots : snapshots.slice(0, 8)),
-    [showAllSnapshots, snapshots],
+  // Stale/empty snapshots (0 persisted nodes) pile up in a long-lived graph
+  // store and drown the real ones in the chip row. Default to the populated
+  // snapshots (plus whatever is currently selected); "show all" reveals the
+  // empty and older ones on demand.
+  const activeSnapshots = useMemo(
+    () => snapshots.filter((snapshot) => snapshot.node_count > 0 || snapshot.scan_id === selectedScanId),
+    [snapshots, selectedScanId],
   );
+  const displayedSnapshots = useMemo(
+    () => (showAllSnapshots ? snapshots : activeSnapshots.slice(0, 8)),
+    [activeSnapshots, showAllSnapshots, snapshots],
+  );
+  const hiddenSnapshotCount = Math.max(0, snapshots.length - displayedSnapshots.length);
 
   const fixFirstCards = useMemo(() => fixFirstView?.cards ?? [], [fixFirstView?.cards]);
 
@@ -416,10 +426,12 @@ function SecurityGraphPageContent() {
           path={selectedExposurePath}
           actions={selectedFixFirstCard?.next_actions ?? selectedPathActions}
           scanId={selectedScanId || undefined}
+          view={pathView}
+          onViewChange={setPathView}
         />
       ) : null}
 
-      {graphData && selectedAttackPath && (
+      {pathView === "graph" && graphData && selectedAttackPath && (
         <SecurityGraphInvestigation
           graph={graphData as UnifiedGraphData}
           attackPath={selectedAttackPath}
@@ -493,13 +505,15 @@ function SecurityGraphPageContent() {
                     );
                   })}
                 </div>
-                {snapshots.length > 8 && (
+                {(hiddenSnapshotCount > 0 || showAllSnapshots) && (
                   <button
                     type="button"
                     onClick={() => setShowAllSnapshots((current) => !current)}
                     className="mt-3 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   >
-                    {showAllSnapshots ? "Show recent snapshots" : `Show all ${snapshots.length} snapshots`}
+                    {showAllSnapshots
+                      ? "Show active snapshots"
+                      : `Show all ${snapshots.length} snapshots (${hiddenSnapshotCount} empty or older)`}
                   </button>
                 )}
               </>
@@ -515,6 +529,7 @@ function SecurityGraphPageContent() {
                       "Open the full graph after the first snapshot appears.",
                     ]}
                     command="agent-bom scan -p . -f graph"
+                    actions={[{ label: "Run a scan", href: "/scan" }]}
                   />
                 </div>
               )

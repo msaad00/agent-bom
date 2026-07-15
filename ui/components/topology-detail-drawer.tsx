@@ -63,7 +63,7 @@ export function TopologyDetailDrawer({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-sm"
+      className="fixed inset-0 z-[80] flex justify-end bg-black/45 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label={`Topology details for ${title}`}

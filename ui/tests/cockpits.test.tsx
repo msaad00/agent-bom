@@ -172,9 +172,10 @@ describe("CostPage", () => {
     expect(screen.getByText("Forecast & runway")).toBeInTheDocument();
     expect(screen.getByText("at risk")).toBeInTheDocument();
     expect(screen.getByText("trailing 24h")).toBeInTheDocument();
-    // Chargeback by cost-center panel
-    expect(screen.getByText("Chargeback by cost-center")).toBeInTheDocument();
-    expect(screen.getByText("platform-eng")).toBeInTheDocument();
+    // Cost-center chargeback is now a dimension of the unified breakdown table.
+    fireEvent.click(screen.getByRole("button", { name: "Cost center" }));
+    const table = screen.getByTestId("cost-breakdown-table");
+    expect(within(table).getByText("platform-eng")).toBeInTheDocument();
   });
 });
 

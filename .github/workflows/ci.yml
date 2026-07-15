@@ -518,6 +518,25 @@ jobs:
           cd ui
           npm run test:e2e
 
+      # Release parity gate. The release workflow builds the dashboard with
+      # NEXT_EXPORT=1 (output: export) for the Python package, whereas the
+      # steps above build in standalone mode. Export mode enforces stricter
+      # rules — e.g. every dynamic route must supply generateStaticParams — so
+      # an export-incompatible route (like /accounts/[ref]) passes standalone
+      # CI yet breaks the release build. Run the export build last (it
+      # overwrites .next/out, so it must follow the bundle:check + E2E steps
+      # that consume the standalone output) to catch it in PR CI, not at
+      # release time. Keep in sync with .github/workflows/release.yml.
+      - name: UI static-export build (release parity)
+        run: |
+          cd ui
+          rm -rf .next out
+          NEXT_EXPORT=1 npm run build
+          test -f out/index.html || {
+            echo "::error::NEXT_EXPORT=1 build did not produce ui/out/index.html"
+            exit 1
+          }
+
   helm-profiles:
     name: Helm Profile Validate
     runs-on: ubuntu-latest

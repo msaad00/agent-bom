@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import AccountDrillPage from "@/app/accounts/[ref]/page";
+import AccountDetailClient from "@/app/accounts/[ref]/AccountDetailClient";
 import { api } from "@/lib/api";
 import type { AccountSummaryResponse } from "@/lib/api-types";
 
@@ -67,6 +68,19 @@ describe("AccountDrillPage", () => {
     // Compliance health surfaces the stored pass-rate.
     expect(screen.getByText("80.0%")).toBeInTheDocument();
     expect(screen.getByText(/8 passed · 2 failed · 10 evaluated/)).toBeInTheDocument();
+  });
+
+  it("renders the client component directly from a ref read via useParams (static-export split)", async () => {
+    // page.tsx is a server component (owns generateStaticParams for output:
+    // export); the interactive body lives in AccountDetailClient, which reads
+    // the ref from the URL at runtime. Rendering the client directly asserts
+    // the split keeps the ref-driven render working.
+    vi.spyOn(api, "getCloudAccountSummary").mockResolvedValue(summary());
+    render(<AccountDetailClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /AWS · 111111111111/i })).toBeInTheDocument();
+    });
+    expect(api.getCloudAccountSummary).toHaveBeenCalledWith("aws:111111111111");
   });
 
   it("shows an honest empty state when the account has no evidence", async () => {

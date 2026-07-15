@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GraphEvidenceExportButton, GraphLegend, GraphLegendDock } from "@/components/graph-chrome";
+import { FullscreenButton, GraphEvidenceExportButton, GraphLegend, GraphLegendDock } from "@/components/graph-chrome";
 import { api } from "@/lib/api";
 
 afterEach(() => {
@@ -77,6 +77,14 @@ describe("GraphLegend", () => {
     expect(screen.getByText("Legend")).toBeInTheDocument();
     expect(screen.getAllByText("AI Agent").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Uses").length).toBeGreaterThan(0);
+  });
+});
+
+describe("FullscreenButton", () => {
+  it("exposes an accessible name for the icon-only control", () => {
+    render(<FullscreenButton />);
+
+    expect(screen.getByRole("button", { name: /enter fullscreen/i })).toBeInTheDocument();
   });
 });
 

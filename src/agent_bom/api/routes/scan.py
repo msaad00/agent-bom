@@ -30,6 +30,7 @@ import logging
 import os
 import time
 import uuid
+from functools import partial
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -89,6 +90,19 @@ def _api_local_scans_enabled() -> bool:
 async def _scan_graph_compute_call(fn, /, *args, **kwargs):
     """Run graph rendering/derivation for scan subresources off the event loop."""
     return await asyncio.to_thread(fn, *args, **kwargs)
+
+
+async def _ai_scan_call(fn, /, *args, **kwargs):
+    """Run blocking dedicated AI-scan work off-loop under shared backpressure."""
+    try:
+        async with adaptive_backpressure("ai_scan"):
+            return await anyio.to_thread.run_sync(partial(fn, *args, **kwargs))
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
 
 def _api_scan_root() -> Path:
@@ -2124,7 +2138,7 @@ async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
     for d in request.directories:
         resolved = _api_scan_path_or_400(d)
         safe_dirs.append(resolved)
-        result = scan_dataset_directory(resolved)
+        result = await _ai_scan_call(scan_dataset_directory, resolved)
         results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
 
     return {"scan_type": "dataset-cards", "directories": safe_dirs, "results": results}
@@ -2144,7 +2158,7 @@ async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
     for d in request.directories:
         resolved = _api_scan_path_or_400(d)
         safe_dirs.append(resolved)
-        result = scan_training_directory(resolved)
+        result = await _ai_scan_call(scan_training_directory, resolved)
         results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
 
     return {"scan_type": "training-pipelines", "directories": safe_dirs, "results": results}
@@ -2159,7 +2173,10 @@ async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) ->
     """
     from agent_bom.parsers.browser_extensions import discover_browser_extensions
 
-    extensions = discover_browser_extensions(include_low_risk=request.include_low_risk)
+    extensions = await _ai_scan_call(
+        discover_browser_extensions,
+        include_low_risk=request.include_low_risk,
+    )
     ext_dicts: list[Any] = [e.to_dict() if hasattr(e, "to_dict") else _dataclass_to_dict(e) for e in extensions]
 
     return {
@@ -2182,10 +2199,10 @@ async def scan_model_provenance(request: ModelProvenanceRequest) -> dict:
 
     results: list[Any] = []
     if request.hf_models:
-        hf_results = check_hf_models(request.hf_models)
+        hf_results = await _ai_scan_call(check_hf_models, request.hf_models)
         results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in hf_results)
     if request.ollama_models:
-        ollama_results = check_ollama_models(request.ollama_models)
+        ollama_results = await _ai_scan_call(check_ollama_models, request.ollama_models)
         results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in ollama_results)
 
     return {
@@ -2216,10 +2233,10 @@ async def scan_prompts(request: PromptScanRequest) -> dict:
 
     results = []
     for safe in safe_dirs:
-        result = scan_prompt_files(root=safe)
+        result = await _ai_scan_call(scan_prompt_files, root=safe)
         results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
     if all_paths:
-        result = scan_prompt_files(paths=all_paths)
+        result = await _ai_scan_call(scan_prompt_files, paths=all_paths)
         results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
 
     return {"scan_type": "prompt-scan", "results": results}
@@ -2239,8 +2256,8 @@ async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
     all_warnings = []
     for d in request.directories:
         resolved = _api_scan_path_or_400(d)
-        files, warnings = scan_model_files(resolved)
-        manifests, manifest_warnings = scan_model_manifests(resolved)
+        files, warnings = await _ai_scan_call(scan_model_files, resolved)
+        manifests, manifest_warnings = await _ai_scan_call(scan_model_manifests, resolved)
         all_files.extend(files)
         all_manifests.extend(manifests)
         all_warnings.extend(warnings)
@@ -2248,7 +2265,7 @@ async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
 
     if request.verify_hashes:
         for f in all_files:
-            hash_result = verify_model_hash(f["path"])
+            hash_result = await _ai_scan_call(verify_model_hash, f["path"])
             f["sha256"] = hash_result.get("sha256")
 
     return {

@@ -14,8 +14,11 @@ import {
   Loader2,
   Plus,
   Server,
+  Sparkles,
   X,
 } from "lucide-react";
+
+import { AiScanPanel } from "@/components/ai-scan-panel";
 
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import {
@@ -36,6 +39,11 @@ import {
   type ScanScopeChip,
 } from "@/lib/scan-scope";
 import { REPO_SCAN_SURFACES, repoScanLanguageSummary } from "@/lib/repo-scan-surfaces";
+
+/** Scan sources shown in the top tablist. Extends the job-queue ``ScanMode``
+ * with the synchronous AI/ML supply-chain surface, which renders its results
+ * inline rather than routing to a job. */
+type FormMode = ScanMode | "aiml";
 
 type ScanFormProps = {
   initialConnectionId?: string | undefined;
@@ -75,7 +83,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   const { counts } = useDeploymentContext();
   const deploymentMode = counts?.deployment_mode ?? "local";
   const enterprisePreset = isEnterprisePreset(initialPreset);
-  const [scanMode, setScanMode] = useState<ScanMode>(
+  const [scanMode, setScanMode] = useState<FormMode>(
     initialConnectionId
       ? "connected"
       : enterprisePreset
@@ -316,6 +324,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
               { id: "connected" as const, label: "Cloud account", icon: Cloud },
               { id: "adhoc" as const, label: "Ad-hoc", icon: Bot },
               { id: "scheduled" as const, label: "Data source", icon: CalendarClock },
+              { id: "aiml" as const, label: "AI / ML", icon: Sparkles },
             ] as const
           ).map((option) => {
             const Icon = option.icon;
@@ -340,6 +349,11 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
           })}
         </div>
 
+        {scanMode === "aiml" ? (
+          <div className="p-5">
+            <AiScanPanel />
+          </div>
+        ) : (
         <form
           onSubmit={scanMode === "adhoc" ? handleAdhocSubmit : (e) => e.preventDefault()}
           className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_220px]"
@@ -559,6 +573,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
             </div>
           </aside>
         </form>
+        )}
       </div>
 
       <nav aria-label="Related" className="mt-4 flex flex-wrap gap-3 text-xs text-[color:var(--text-tertiary)]">
@@ -570,7 +585,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   );
 }
 
-function ScopeSummaryPanel({ chips, mode }: { chips: ScanScopeChip[]; mode: ScanMode }) {
+function ScopeSummaryPanel({ chips, mode }: { chips: ScanScopeChip[]; mode: FormMode }) {
   const title = mode === "connected" ? "Scope" : mode === "scheduled" ? "Scope" : "Scope";
 
   return (

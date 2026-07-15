@@ -10,6 +10,7 @@ import os
 from dataclasses import dataclass, field
 from unittest.mock import patch
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.server import _jobs, app, set_job_store
@@ -515,3 +516,47 @@ def test_endpoint_returns_generic_invalid_scan_path(tmp_path, monkeypatch):
 
     assert resp.status_code == 400
     assert resp.json()["detail"] == "Invalid scan path"
+
+
+@pytest.mark.anyio
+async def test_ai_scan_work_is_offloaded_from_the_event_loop(monkeypatch):
+    """Dedicated scans must execute blocking parser work in the worker pool."""
+    from agent_bom.api.routes import scan as scan_routes
+
+    calls: list[object] = []
+
+    async def fake_run_sync(fn):
+        calls.append(fn)
+        return fn()
+
+    monkeypatch.setattr(scan_routes.anyio.to_thread, "run_sync", fake_run_sync)
+
+    result = await scan_routes._ai_scan_call(lambda: {"ok": True})
+
+    assert result == {"ok": True}
+    assert len(calls) == 1
+
+
+@pytest.mark.anyio
+async def test_ai_scan_sheds_work_with_retry_after_under_saturation(monkeypatch):
+    """Saturated dedicated scans fail fast with an actionable 429."""
+    from contextlib import asynccontextmanager
+
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes import scan as scan_routes
+    from agent_bom.backpressure import BackpressureRejectedError
+
+    @asynccontextmanager
+    async def reject(_path):
+        raise BackpressureRejectedError("ai_scan", "concurrency_limit", 3)
+        yield
+
+    monkeypatch.setattr(scan_routes, "adaptive_backpressure", reject)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await scan_routes._ai_scan_call(lambda: None)
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.headers == {"Retry-After": "3"}
+    assert exc_info.value.detail["path"] == "ai_scan"

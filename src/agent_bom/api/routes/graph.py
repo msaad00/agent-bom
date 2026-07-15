@@ -40,6 +40,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET
+from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationError
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
@@ -1196,6 +1197,8 @@ async def _graph_store_call(fn, /, *args, **kwargs):
             return await asyncio.to_thread(fn, *args, **kwargs)
     except BackpressureRejectedError as exc:
         raise HTTPException(status_code=429, detail=exc.to_dict(), headers={"Retry-After": str(exc.retry_after_seconds)}) from exc
+    except NeptuneGraphStoreUnsupportedOperationError as exc:
+        raise HTTPException(status_code=501, detail=sanitize_error(exc)) from exc
 
 
 async def _graph_compute_call(fn, /, *args, **kwargs):
@@ -1205,6 +1208,8 @@ async def _graph_compute_call(fn, /, *args, **kwargs):
             return await asyncio.to_thread(fn, *args, **kwargs)
     except BackpressureRejectedError as exc:
         raise HTTPException(status_code=429, detail=exc.to_dict(), headers={"Retry-After": str(exc.retry_after_seconds)}) from exc
+    except NeptuneGraphStoreUnsupportedOperationError as exc:
+        raise HTTPException(status_code=501, detail=sanitize_error(exc)) from exc
 
 
 def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) -> dict[str, Any]:

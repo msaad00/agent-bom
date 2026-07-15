@@ -171,19 +171,26 @@ def test_at_risk_framework_status_for_medium_vuln():
 
 
 def test_score_is_over_evaluated_controls_only():
-    """Score denominator is the evaluated controls, not the whole catalogue.
+    """Score denominator is evaluated controls only, and an all-unrated control
+    is not a silent pass.
 
-    Two of ten OWASP controls are evaluated: one passes (finding with no
-    severity) and one warns. Score must be 50 (1 pass / 2 evaluated), not 10
-    (1 pass / 10 catalogue controls).
+    A finding with no severity (UNKNOWN) is evidence with an ungraded severity:
+    the control is not_evaluated, never a pass. So with one unrated control
+    (LLM05) and one warning control (LLM01), only LLM01 is evaluated — the
+    denominator excludes both the never-triggered controls AND the unrated one.
+    No control passes (0 / 1 evaluated), so the honest score is 0, not an
+    inflated 50.
     """
-    passing = _make_blast_radius(vuln=_make_vuln(severity=Severity.UNKNOWN), owasp_tags=["LLM05"])
+    unrated = _make_blast_radius(vuln=_make_vuln(severity=Severity.UNKNOWN), owasp_tags=["LLM05"])
     warning = _make_blast_radius(vuln=_make_vuln(severity=Severity.MEDIUM), owasp_tags=["LLM01"])
-    report = _make_report(blast_radii=[passing, warning])
+    report = _make_report(blast_radii=[unrated, warning])
     result = generate_compliance_narrative(report, framework="owasp-llm")
     fw = result.framework_narratives[0]
     assert fw.status == "at_risk"
-    assert fw.score == 50
+    # Only the medium control is evaluated (warning); the unrated control is
+    # excluded, not counted as a pass — so the score is not inflated.
+    assert fw.score == 0
+    assert {c.control_id for c in fw.failing_controls} == {"LLM01"}
 
 
 def test_framework_score_is_integer_0_to_100():

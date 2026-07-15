@@ -68,6 +68,12 @@ RUN addgroup -S abom && adduser -S -G abom abom
 WORKDIR /workspace
 RUN chown abom:abom /workspace
 
+# Pre-create the state dir and hand ownership to abom (uid/gid of the abom
+# user) so a named volume or bind mount at /home/abom/.agent-bom is writable.
+# Without this the mount lands root-owned and abom (non-root) cannot create
+# jobs.db / vulns.db, crash-looping the API.
+RUN mkdir -p /home/abom/.agent-bom && chown -R abom:abom /home/abom
+
 USER abom
 
 ENV PYTHONUNBUFFERED=1

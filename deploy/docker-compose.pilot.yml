@@ -62,7 +62,10 @@ services:
     container_name: agent-bom-pilot-ui
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8422
+      # The browser same-origins to this UI; the UI's Node server proxies
+      # /v1,/health,/ws to NEXT_PUBLIC_API_URL, which must be the API
+      # container's in-network DNS name — not the browser's localhost.
+      NEXT_PUBLIC_API_URL: http://api:8422
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

@@ -87,7 +87,7 @@ export function Drawer({
         onClick={onClose}
       />
       <aside
-        className={`relative flex h-full w-full flex-col border-l border-[color:var(--border-subtle)] bg-[color:var(--surface)] shadow-2xl transition-transform duration-200 ease-out ${
+        className={`relative flex h-full w-full flex-col border-l border-[color:var(--border-subtle)] bg-[color:var(--surface)] elev-3 transition-transform duration-200 ease-out ${
           SIZE_CLASS[size]
         } ${entered ? "translate-x-0" : "translate-x-full"}`}
       >
@@ -97,7 +97,7 @@ export function Drawer({
               <button
                 type="button"
                 onClick={onBack}
-                className="mt-0.5 shrink-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1.5 text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--foreground)]"
+                className="mt-0.5 shrink-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1.5 text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                 aria-label="Back"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -122,7 +122,7 @@ export function Drawer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2 text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--foreground)]"
+              className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2 text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
               aria-label="Close"
             >
               <X className="h-4 w-4" />

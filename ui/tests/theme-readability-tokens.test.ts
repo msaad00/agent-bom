@@ -11,12 +11,16 @@ describe("theme readability tokens", () => {
   const css = readFileSync(GLOBALS, "utf8");
 
   it("defines dark surface hierarchy and readable secondary text", () => {
-    expect(css).toMatch(/--background:\s*#181a22;/);
+    // Deep, non-flat canvas with a layered panel < card < elevated hierarchy.
+    expect(css).toMatch(/--background:\s*#14161d;/);
+    expect(css).toMatch(/--surface-panel:\s*#1b1e27;/);
     expect(css).toMatch(/--surface:\s*#22262f;/);
     expect(css).toMatch(/--surface-elevated:\s*#2c3140;/);
     expect(css).toMatch(/--text-secondary:\s*#d0d4dc;/);
     expect(css).toMatch(/--text-tertiary:\s*#a8aebc;/);
-    expect(css).toMatch(/--accent-mint:\s*#34d399;/);
+    // Brand accent stays mint; --accent-mint remains as a back-compat alias.
+    expect(css).toMatch(/--accent:\s*#34d399;/);
+    expect(css).toMatch(/--accent-mint:\s*var\(--accent\);/);
   });
 
   it("keeps severity CSS vars aligned with shared chart hex helpers", () => {
@@ -29,7 +33,7 @@ describe("theme readability tokens", () => {
   });
 
   it("defines light-theme severity and surface counterparts", () => {
-    expect(css).toMatch(/:root\[data-theme="light"\][\s\S]*--background:\s*#e4e9f2;/);
+    expect(css).toMatch(/:root\[data-theme="light"\][\s\S]*--background:\s*#e6eaf1;/);
     expect(css).toMatch(/:root\[data-theme="light"\][\s\S]*--severity-critical:\s*#dc2626;/);
     expect(css).toMatch(/:root\[data-theme="light"\][\s\S]*--text-secondary:\s*#374151;/);
   });

@@ -34,8 +34,9 @@ const BUDGETS = {
   // Allows 4 KiB for the measured Linux/macOS output variance after adding the
   // blueprint route; both builds remain at roughly 3.3 MiB of emitted client JS.
   // Raised to 3456 KiB (~150 KiB headroom over the ~3304 KiB current build) for the
-  // active UX/IA polish + feature phase (nav IA, graph, governance surfaces): the
-  // near-term queue of UI PRs is legitimate feature work, not bloat, and needs room.
+  // active UX/IA polish + feature phase (nav IA, graph, governance surfaces, and the
+  // premium design-system foundation's shared-shell token classes): the near-term
+  // queue of UI PRs is legitimate feature work, not bloat, and needs room.
   totalClientJsBytes: 3_538_944,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,

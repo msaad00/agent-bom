@@ -14,9 +14,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _load_profile_helpers():
     sys.path.insert(0, str(REPO_ROOT / "src"))
-    from agent_bom.deploy_profiles import helm_chart_dir, helm_validation_profiles
+    from agent_bom.deploy_profiles import (
+        helm_chart_dir,
+        helm_validation_profiles,
+        ingress_hosts_missing_paths,
+    )
 
-    return helm_chart_dir, helm_validation_profiles
+    return helm_chart_dir, helm_validation_profiles, ingress_hosts_missing_paths
 
 
 def _run(cmd: list[str]) -> None:
@@ -24,8 +28,14 @@ def _run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
+def _render(cmd: list[str]) -> str:
+    print("+", " ".join(cmd))
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    return result.stdout
+
+
 def main() -> int:
-    helm_chart_dir, helm_validation_profiles = _load_profile_helpers()
+    helm_chart_dir, helm_validation_profiles, ingress_hosts_missing_paths = _load_profile_helpers()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--profile",
@@ -68,7 +78,15 @@ def main() -> int:
             cmd.extend(["--set", set_argument])
         for key, path in profile.set_file_arguments:
             cmd.extend(["--set-file", f"{key}={path}"])
-        _run(cmd)
+        rendered = _render(cmd)
+        missing = ingress_hosts_missing_paths(rendered)
+        if missing:
+            print(
+                f"error: profile '{profile.name}' renders Ingress host(s) with no HTTP paths: "
+                f"{', '.join(missing)}",
+                file=sys.stderr,
+            )
+            return 1
     return 0
 
 

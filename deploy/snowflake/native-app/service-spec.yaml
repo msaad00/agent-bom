@@ -1,7 +1,7 @@
 spec:
   containers:
     - name: agent-bom
-      image: /db/schema/agent_bom_repo/agent-bom:v0_95_0
+      image: /db/schema/agent_bom_repo/agent-bom:v0_96_0
       env:
         AGENT_BOM_STORE_BACKEND: snowflake
         AGENT_BOM_SNOWFLAKE_NATIVE_APP: "1"
@@ -22,7 +22,7 @@ spec:
           cpu: 2
 
     - name: agent-bom-ui
-      image: /db/schema/agent_bom_repo/agent-bom-ui:v0_95_0
+      image: /db/schema/agent_bom_repo/agent-bom-ui:v0_96_0
       env:
         NEXT_PUBLIC_API_URL: "http://localhost:8422"
         NODE_ENV: production

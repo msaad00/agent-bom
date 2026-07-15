@@ -7642,7 +7642,7 @@
         ]
       },
       "get": {
-        "description": "List compliance-hub findings for the current tenant.\n\nIncludes durable external ingests plus native scan findings projected into\nthe same shape so the list endpoint matches `/hub/posture` totals.",
+        "description": "List compliance-hub findings for the current tenant.\n\nReturns the canonical finding-list envelope (#3666) shared with\n``/v1/findings`` so consumers learn one shape across every finding surface.\nIncludes durable external ingests plus native scan findings projected into\nthe same shape so the list endpoint matches `/hub/posture` totals.\n\nOrdering is ingest-order (``sort=\"ordinal\"``) so the list matches the way\nfindings were imported; pagination is ``limit`` / ``offset``. Keyset\npagination over the same durable hub store is available (keyset-safe sort)\nthrough ``/v1/findings?cursor=`` for scale reads.",
         "operationId": "list_hub_findings_v1_compliance_hub_findings_get",
         "parameters": [
           {
@@ -12832,7 +12832,7 @@
     },
     "/v1/governance/findings": {
       "get": {
-        "description": "Return only governance findings, optionally filtered.",
+        "description": "Return only governance findings, optionally filtered.\n\nReturns the canonical finding-list envelope (#3666) shared with\n``/v1/findings`` so consumers learn one shape across every finding surface.\nGovernance findings are computed on demand from Snowflake discovery rather\nthan served from a keyset store, so pagination is in-memory ``limit`` /\n``offset`` over the materialized list; ``cursor`` / ``next_cursor`` stay\nempty for this surface.",
         "operationId": "governance_findings_v1_governance_findings_get",
         "parameters": [
           {
@@ -12875,6 +12875,26 @@
                 }
               ],
               "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
             }
           }
         ],

@@ -2054,37 +2054,46 @@ def _unpack_hub_list_page(result: tuple[Any, ...]) -> tuple[list[dict[str, Any]]
 async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0) -> dict:
     """List compliance-hub findings for the current tenant.
 
+    Returns the canonical finding-list envelope (#3666) shared with
+    ``/v1/findings`` so consumers learn one shape across every finding surface.
     Includes durable external ingests plus native scan findings projected into
     the same shape so the list endpoint matches `/hub/posture` totals.
+
+    Ordering is ingest-order (``sort="ordinal"``) so the list matches the way
+    findings were imported; pagination is ``limit`` / ``offset``. Keyset
+    pagination over the same durable hub store is available (keyset-safe sort)
+    through ``/v1/findings?cursor=`` for scale reads.
     """
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.finding_list_envelope import finding_list_envelope
 
     tenant_id = _tenant_id(request)
     safe_limit = max(1, min(limit, 1000))
     safe_offset = max(0, offset)
+    sort = "ordinal"
     native = _native_hub_findings(request)
     store = get_compliance_hub_store()
     list_page = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
     if callable(list_page):
         if native:
             window = safe_offset + safe_limit
-            hub_rows, hub_total = _unpack_hub_list_page(list_page(tenant_id, limit=window, offset=0, sort="ordinal"))
+            hub_rows, hub_total = _unpack_hub_list_page(list_page(tenant_id, limit=window, offset=0, sort=sort))
             combined = native + hub_rows
             page = combined[safe_offset : safe_offset + safe_limit]
             total = len(native) + hub_total
         else:
-            page, total = _unpack_hub_list_page(list_page(tenant_id, limit=safe_limit, offset=safe_offset, sort="ordinal"))
+            page, total = _unpack_hub_list_page(list_page(tenant_id, limit=safe_limit, offset=safe_offset, sort=sort))
     else:
         findings = store.list(tenant_id) + native
         page = findings[safe_offset : safe_offset + safe_limit]
         total = len(findings)
-    return {
-        "findings": page,
-        "count": len(page),
-        "total": total,
-        "limit": safe_limit,
-        "offset": safe_offset,
-    }
+    return finding_list_envelope(
+        findings=page,
+        total=total,
+        limit=safe_limit,
+        offset=safe_offset,
+        sort=sort,
+    )
 
 
 @router.get("/compliance/hub/posture", tags=["compliance"])

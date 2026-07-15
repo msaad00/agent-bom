@@ -36,12 +36,40 @@ product consumers.
   paths, and asserts OpenAPI marks those operations deprecated while leaving
   SAML relay-state and held graph routes unmarked.
 
+## Findings-list contract (item 1) — landed
+
+Every finding-list surface now returns one canonical envelope, built by
+`agent_bom.api.finding_list_envelope.finding_list_envelope()`
+(`FINDING_LIST_ENVELOPE_KEYS` pins the key set; the UI mirror is
+`FindingListEnvelope<T>` in `ui/lib/api-types.ts`):
+
+```
+{schema_version, findings, count, total, limit, offset, sort, scan_id,
+ cursor, next_cursor, has_more, warnings, [total_approximate]}
+```
+
+| Route | Pagination | Notes |
+|---|---|---|
+| `GET /v1/findings` | keyset `cursor`/`next_cursor` (never OFFSET at scale) + `limit`/`offset` | Reference contract; default sort `effective_reach`. |
+| `GET /v1/compliance/hub/findings` | `limit`/`offset`, ingest-order (`sort="ordinal"`) | External ingests + native scan projection. Scale keyset reads over the same durable store are available via `/v1/findings?cursor=`. |
+| `GET /v1/governance/findings` | `limit`/`offset` over the materialized list (`cursor` stays empty) | Computed on demand from Snowflake; no keyset store to walk. |
+
+Change is **additive** — legacy fields and legacy pagination are preserved
+(`test_sqlite_backend_preserves_ingest_order` stays green; governance filters
+unchanged). The three routes serve distinct data sources (scan+bulk / hub
+external+native / Snowflake governance), so none is a duplicate/alias of
+another — envelope unification, not route removal, is the consolidation.
+Guarded by `tests/api/test_findings_contract_envelope.py`.
+
 ## Out of scope (later #3666 phases)
 
 - Deleting soft-deprecated routes
-- Findings-list contract unification
-- List-envelope / pagination standardization
-- Changing response shapes
+- Hub-findings **keyset over ingest order** — needs an `ordinal`-keyset store
+  fix (SQLite `ORDER BY ledger_ordinal` does not line up with the
+  `(last_seen, canonical_id)` cursor predicate); ingest-order paging stays on
+  `limit`/`offset` until then.
+- Namespacing filtered views under `/v1/findings/...` (versioned migration)
+- Changing response shapes on non-findings list surfaces
 
 ## How to revisit
 

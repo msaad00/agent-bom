@@ -5032,9 +5032,22 @@ paths:
       description: 'List compliance-hub findings for the current tenant.
 
 
+        Returns the canonical finding-list envelope (#3666) shared with
+
+        ``/v1/findings`` so consumers learn one shape across every finding surface.
+
         Includes durable external ingests plus native scan findings projected into
 
-        the same shape so the list endpoint matches `/hub/posture` totals.'
+        the same shape so the list endpoint matches `/hub/posture` totals.
+
+
+        Ordering is ingest-order (``sort="ordinal"``) so the list matches the way
+
+        findings were imported; pagination is ``limit`` / ``offset``. Keyset
+
+        pagination over the same durable hub store is available (keyset-safe sort)
+
+        through ``/v1/findings?cursor=`` for scale reads.'
       operationId: list_hub_findings_v1_compliance_hub_findings_get
       parameters:
       - in: query
@@ -8377,7 +8390,20 @@ paths:
       - governance
   /v1/governance/findings:
     get:
-      description: Return only governance findings, optionally filtered.
+      description: 'Return only governance findings, optionally filtered.
+
+
+        Returns the canonical finding-list envelope (#3666) shared with
+
+        ``/v1/findings`` so consumers learn one shape across every finding surface.
+
+        Governance findings are computed on demand from Snowflake discovery rather
+
+        than served from a keyset store, so pagination is in-memory ``limit`` /
+
+        ``offset`` over the materialized list; ``cursor`` / ``next_cursor`` stay
+
+        empty for this surface.'
       operationId: governance_findings_v1_governance_findings_get
       parameters:
       - in: query
@@ -8403,6 +8429,20 @@ paths:
           - type: string
           - type: 'null'
           title: Category
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 500
+          title: Limit
+          type: integer
+      - in: query
+        name: offset
+        required: false
+        schema:
+          default: 0
+          title: Offset
+          type: integer
       responses:
         '200':
           content:

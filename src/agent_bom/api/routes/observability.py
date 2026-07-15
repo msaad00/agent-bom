@@ -1,9 +1,12 @@
 """Observability and data ingestion API routes.
 
 Endpoints:
-    POST /v1/traces        ingest OpenTelemetry traces
-    POST /v1/results/push  receive pushed scan results from CLI
-    POST /v1/ocsf/ingest   receive OCSF interoperability events
+    POST /v1/traces                          ingest OpenTelemetry traces
+    POST /v1/traces/attack-paths             per-span trace -> attack-path join
+    GET  /v1/traces/connectors               list native trace-pull connectors
+    POST /v1/traces/connectors/{provider}/pull  pull + correlate Langfuse/LangSmith traces
+    POST /v1/results/push                    receive pushed scan results from CLI
+    POST /v1/ocsf/ingest                     receive OCSF interoperability events
 """
 
 from __future__ import annotations
@@ -456,20 +459,85 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
     return {"calls": len(calls), "cost_usd": round(total, 6)}
 
 
+def _screen_content_enabled(explicit: bool | None) -> bool:
+    """Resolve whether opt-in trace-content screening runs for this request.
+
+    Off by default and preserves the metadata-only privacy posture: content is
+    only screened when the request explicitly opts in, or the deployment set the
+    ``AGENT_BOM_TRACE_CONTENT_SCREENING`` default.
+    """
+    if explicit is not None:
+        return bool(explicit)
+    from agent_bom.config import trace_content_screening_enabled
+
+    return trace_content_screening_enabled()
+
+
+def _screen_trace_content_events(body: dict, *, tenant_id: str) -> list[dict[str, Any]]:
+    """Run Shield over trace content (opt-in) and return redacted finding events.
+
+    Raw content is screened in-memory and never stored — only the redacted
+    detector/severity/summary per span is returned/persisted.
+    """
+    from agent_bom.trace_content import screen_trace_content
+
+    try:
+        findings = screen_trace_content(body)
+    except Exception:  # noqa: BLE001 — screening never blocks metadata ingest
+        _logger.warning("Trace content screening skipped", exc_info=True)
+        return []
+    events: list[dict[str, Any]] = []
+    for finding in findings:
+        events.append(
+            {
+                "event_id": f"{finding.trace_id}:{finding.span_id}:{finding.detector}",
+                "event_timestamp": _now(),
+                "event_type": "trace_content_finding",
+                "detector": f"shield_{finding.detector}",
+                "severity": finding.severity,
+                "tool_name": finding.tool_name,
+                "message": finding.message,
+                "session_id": finding.trace_id,
+                "trace_id": finding.trace_id,
+                "span_id": finding.span_id,
+                "source_id": "otel_content",
+            }
+        )
+    if events:
+        try:
+            _get_analytics_store().record_events(events, tenant_id=tenant_id)
+        except Exception:  # noqa: BLE001
+            _logger.warning("Trace content analytics sync skipped", exc_info=True)
+        _persist_runtime_observations(events, tenant_id=tenant_id, source="otel_content")
+    return events
+
+
 @router.post("/traces", tags=["observability"])
-async def ingest_traces(request: Request, body: dict) -> dict:
+async def ingest_traces(request: Request, body: dict, screen_content: bool | None = None) -> dict:
     """Ingest OpenTelemetry trace data and flag vulnerable tool calls.
 
     Accepts OTLP JSON format traces containing `adk.tool.*` spans.
     Cross-references tool calls against completed scan results to flag
     any calls that touch packages with known CVEs.
+
+    Span *metadata* is parsed by default; content is never read or stored.
+    Pass ``screen_content=true`` (opt-in; default follows
+    ``AGENT_BOM_TRACE_CONTENT_SCREENING``) to additionally run Shield over trace
+    content and surface injection / PII / credential-leak findings. Raw content
+    is screened in-memory and never persisted.
     """
     try:
         from agent_bom.otel_ingest import flag_vulnerable_tool_calls, parse_otel_traces
 
+        tenant_id = _tenant_id(request)
         # GenAI cost spans are independent of tool-call traces — price them first
         # so spend is captured even for payloads with no adk.tool.* spans.
-        llm_cost = _persist_llm_costs(body, tenant_id=_tenant_id(request))
+        llm_cost = _persist_llm_costs(body, tenant_id=tenant_id)
+
+        # Opt-in, privacy-safe content screening (off by default).
+        content_findings: list[dict[str, Any]] = []
+        if _screen_content_enabled(screen_content):
+            content_findings = _screen_trace_content_events(body, tenant_id=tenant_id)
 
         traces = parse_otel_traces(body)
         if not traces:
@@ -478,13 +546,15 @@ async def ingest_traces(request: Request, body: dict) -> dict:
                 "flagged": [],
                 "llm_calls": llm_cost["calls"],
                 "llm_cost_usd": llm_cost["cost_usd"],
+                "content_findings": content_findings,
+                "content_screened": _screen_content_enabled(screen_content),
                 "message": "No tool call traces found",
             }
 
         # Gather vulnerable packages and servers from scan history
         vuln_packages: dict[str, set[str]] = defaultdict(set)
         vuln_servers: dict[str, set[str]] = defaultdict(set)
-        for job in _get_store().list_all(tenant_id=_tenant_id(request)):
+        for job in _get_store().list_all(tenant_id=tenant_id):
             if job.status == JobStatus.DONE and job.result:
                 for br in job.result.get("blast_radius", []):
                     cve_id = br.get("vulnerability_id", "")
@@ -527,16 +597,18 @@ async def ingest_traces(request: Request, body: dict) -> dict:
                 for flag in flagged
             ]
             try:
-                _get_analytics_store().record_events(analytics_events, tenant_id=_tenant_id(request))
+                _get_analytics_store().record_events(analytics_events, tenant_id=tenant_id)
             except Exception:  # noqa: BLE001
                 _logger.warning("Trace analytics sync skipped", exc_info=True)
-            _persist_runtime_observations(analytics_events, tenant_id=_tenant_id(request), source="otel")
+            _persist_runtime_observations(analytics_events, tenant_id=tenant_id, source="otel")
 
         return {
             "traces": len(traces),
             "persisted_events": len(flagged),
             "llm_calls": llm_cost["calls"],
             "llm_cost_usd": llm_cost["cost_usd"],
+            "content_findings": content_findings,
+            "content_screened": _screen_content_enabled(screen_content),
             "flagged": [
                 {
                     "tool_name": f.trace.tool_name,
@@ -553,6 +625,185 @@ async def ingest_traces(request: Request, body: dict) -> dict:
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+
+
+# ─── Per-span attack-path correlation (#3898) ─────────────────────────────
+#
+# Resolve each traced tool-call span to the exact BlastRadius it hit (the precise
+# reachable CVE + exposed credential + NHI + blast radius), rather than an
+# aggregate "run_shell called 12x". The submitted trace is correlated in-memory
+# against the tenant's scan blast radii; no raw span content is stored.
+
+
+def _blast_radius_views_for_tenant(tenant_id: str) -> list[Any]:
+    """Adapt persisted scan blast-radius dicts into objects the correlation reads."""
+    from types import SimpleNamespace
+
+    views: list[Any] = []
+    for job in _get_store().list_all(tenant_id=tenant_id):
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        for br in job.result.get("blast_radius", []) or []:
+            if not isinstance(br, dict):
+                continue
+            pkg_spec = str(br.get("package", "") or "")
+            pkg_name = pkg_spec.split("@", 1)[0] if pkg_spec else ""
+            servers = [s if isinstance(s, str) else str(s.get("name", "")) for s in br.get("affected_servers", []) or []]
+            agents = [a if isinstance(a, str) else str(a.get("name", "")) for a in br.get("affected_agents", []) or []]
+            tools = [t if isinstance(t, str) else str(t.get("name", "")) for t in br.get("exposed_tools", []) or []]
+            vuln = SimpleNamespace(
+                id=str(br.get("vulnerability_id", "") or ""),
+                severity=str(br.get("severity", "unknown") or "unknown"),
+                cvss_score=br.get("cvss_score"),
+                epss_score=br.get("epss_score"),
+                is_kev=bool(br.get("is_kev", False)),
+            )
+            views.append(
+                SimpleNamespace(
+                    vulnerability=vuln,
+                    package=SimpleNamespace(name=pkg_name),
+                    affected_servers=servers,
+                    affected_agents=agents,
+                    exposed_tools=tools,
+                    exposed_credentials=[str(c) for c in br.get("exposed_credentials", []) or []],
+                    risk_score=float(br.get("risk_score", 0.0) or 0.0),
+                )
+            )
+    return views
+
+
+def _nhi_by_credential_for_tenant(tenant_id: str) -> dict[str, list[dict[str, Any]]]:
+    """Best-effort map of exposed credential name -> the NHIs that hold it.
+
+    Reads the tenant's unified graph: for each managed-identity node, the
+    credential nodes it reaches (1-2 hops) index that identity. Never raises —
+    returns an empty map when no graph/identity data is available.
+    """
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        from agent_bom.api.stores import _get_graph_store
+        from agent_bom.graph.nhi_governance import evaluate_identity_governance
+        from agent_bom.graph.types import EntityType
+
+        graph = _get_graph_store().load_graph(tenant_id=tenant_id)
+        identities = [n for n in graph.nodes.values() if n.entity_type == EntityType.MANAGED_IDENTITY]
+        if not identities:
+            return out
+        verdicts = {v.node_id: v.to_dict() for v in evaluate_identity_governance(graph)}
+        for node in identities[:5000]:
+            verdict = verdicts.get(node.id, {"node_id": node.id, "name": str(node.attributes.get("name") or node.id)})
+            # Walk up to 2 hops for reachable credential nodes.
+            frontier = [node.id]
+            seen: set[str] = set()
+            for _hop in range(2):
+                next_frontier: list[str] = []
+                for nid in frontier:
+                    for edge in graph.edges_from(nid):
+                        target = graph.nodes.get(edge.target)
+                        if target is None or edge.target in seen:
+                            continue
+                        seen.add(edge.target)
+                        if target.entity_type == EntityType.CREDENTIAL:
+                            cred_name = str(target.attributes.get("name") or target.attributes.get("env_var") or target.id)
+                            out.setdefault(cred_name.lower(), []).append(verdict)
+                        else:
+                            next_frontier.append(edge.target)
+                frontier = next_frontier
+    except Exception:  # noqa: BLE001
+        _logger.warning("NHI credential resolution skipped", exc_info=True)
+        return out
+    return out
+
+
+@router.post("/traces/attack-paths", tags=["observability"], dependencies=[_dep("read")])
+async def correlate_trace_attack_paths(request: Request, body: dict, span_id: str | None = None) -> dict[str, object]:
+    """Resolve each traced tool-call span to its exact attack path (#3898).
+
+    Accepts an OTLP JSON trace and correlates every vulnerable tool-call span
+    against the tenant's scan blast radii, returning per-span the exact reachable
+    CVE, exposed credentials, resolved non-human identities, and blast radius.
+    Correlation is in-memory; raw span content is never stored. Pass ``span_id``
+    to scope the answer to a single span.
+    """
+    from agent_bom.otel_ingest import parse_otel_traces
+    from agent_bom.runtime_correlation import correlate_spans_to_attack_paths
+
+    tenant_id = _tenant_id(request)
+    try:
+        traces = parse_otel_traces(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+    if span_id:
+        traces = [t for t in traces if t.span_id == span_id]
+
+    blast_radii = _blast_radius_views_for_tenant(tenant_id)
+    nhi_by_credential = _nhi_by_credential_for_tenant(tenant_id)
+    attack_paths = correlate_spans_to_attack_paths(traces, blast_radii, nhi_by_credential=nhi_by_credential)
+    return {
+        "schema_version": "observability.trace_attack_paths.v1",
+        "tenant_id": tenant_id,
+        "spans": len(traces),
+        "count": len(attack_paths),
+        "attack_paths": [path.to_dict() for path in attack_paths],
+    }
+
+
+@router.get("/traces/connectors", tags=["observability", "connectors"], dependencies=[_dep("read")])
+async def list_trace_connectors_route() -> dict[str, object]:
+    """List native trace-pull connectors (Langfuse, LangSmith)."""
+    from agent_bom.trace_connectors import list_trace_connectors
+
+    return {"schema_version": "observability.trace_connectors.v1", "connectors": list_trace_connectors()}
+
+
+@router.post(
+    "/traces/connectors/{provider}/pull",
+    tags=["observability", "connectors"],
+    dependencies=[_dep("runtime_ingest")],
+)
+async def pull_trace_connector(request: Request, provider: str, body: dict) -> dict[str, object]:
+    """Pull traces from an LLM-observability platform and correlate them (#3899).
+
+    Body: ``{"credentials": {...}, "limit": int, "screen_content": bool}``. The
+    provider's credentials (Langfuse public/secret key or LangSmith API key) are
+    used for auth only and never logged. Pulled traces feed the same parser +
+    per-span correlation pipeline as pushed OTLP. ``screen_content`` opts in to
+    Shield content screening (off by default; raw content is never stored).
+    """
+    from agent_bom.otel_ingest import parse_otel_traces
+    from agent_bom.runtime_correlation import correlate_spans_to_attack_paths
+    from agent_bom.trace_connectors import TraceConnectorError, fetch_traces
+
+    tenant_id = _tenant_id(request)
+    credentials = body.get("credentials") if isinstance(body.get("credentials"), dict) else {}
+    if not credentials:
+        raise HTTPException(status_code=400, detail="connector credentials are required")
+    try:
+        limit = max(1, min(int(body.get("limit", 50) or 50), 1000))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="'limit' must be an integer") from exc
+    screen_content = _screen_content_enabled(bool(body.get("screen_content", False)) or None)
+
+    try:
+        otlp = fetch_traces(provider, credentials, limit=limit, include_content=screen_content)
+    except TraceConnectorError as exc:
+        # sanitize_error keeps credentials out of the response/logs.
+        raise HTTPException(status_code=502, detail=sanitize_error(exc)) from exc
+
+    traces = parse_otel_traces(otlp)
+    blast_radii = _blast_radius_views_for_tenant(tenant_id)
+    nhi_by_credential = _nhi_by_credential_for_tenant(tenant_id)
+    attack_paths = correlate_spans_to_attack_paths(traces, blast_radii, nhi_by_credential=nhi_by_credential)
+    content_findings = _screen_trace_content_events(otlp, tenant_id=tenant_id) if screen_content else []
+    return {
+        "schema_version": "observability.trace_connectors.v1",
+        "tenant_id": tenant_id,
+        "provider": provider.strip().lower(),
+        "pulled_spans": len(traces),
+        "content_screened": screen_content,
+        "attack_paths": [path.to_dict() for path in attack_paths],
+        "content_findings": content_findings,
+    }
 
 
 # Extra (non-declared) keys that still mark a payload as a real pushed report.
@@ -590,8 +841,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         raise HTTPException(
             status_code=422,
             detail=(
-                "results push payload missing recognized fields; expected at least one of "
-                "source_id, agents, blast_radii, warnings, summary"
+                "results push payload missing recognized fields; expected at least one of source_id, agents, blast_radii, warnings, summary"
             ),
         )
     tenant_id = _tenant_id(request)
@@ -763,10 +1013,7 @@ async def trace_explorer(
         findings.extend(_iter_scan_findings(job))
     store = get_runtime_event_store()
     sessions = [session.to_dict() for session in store.list_sessions(tenant_id, limit=bounded_limit, offset=0)]
-    observations = [
-        observation.to_dict()
-        for observation in store.list_observations(tenant_id, limit=bounded_limit, offset=0)
-    ]
+    observations = [observation.to_dict() for observation in store.list_observations(tenant_id, limit=bounded_limit, offset=0)]
     return build_trace_explorer_payload(
         tenant_id=tenant_id,
         feed_events=cast(list[dict[str, Any]], feed.get("events", [])),
@@ -798,10 +1045,7 @@ async def _trace_explorer_payload_for_tenant(tenant_id: str, *, limit: int = 100
         findings.extend(_iter_scan_findings(job))
     store = get_runtime_event_store()
     sessions = [session.to_dict() for session in store.list_sessions(tenant_id, limit=bounded_limit, offset=0)]
-    observations = [
-        observation.to_dict()
-        for observation in store.list_observations(tenant_id, limit=bounded_limit, offset=0)
-    ]
+    observations = [observation.to_dict() for observation in store.list_observations(tenant_id, limit=bounded_limit, offset=0)]
     return build_trace_explorer_payload(
         tenant_id=tenant_id,
         feed_events=cast(list[dict[str, Any]], feed.get("events", [])),

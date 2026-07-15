@@ -338,3 +338,8 @@ so they cannot regress silently, but they are not part of this reference.
 | Env var | Type | Default | Description |
 |---|---|---|---|
 | `AGENT_BOM_SHIELD_ASYNC_BRIDGE_MAX_WORKERS` | `int` | `4` | The synchronous Shield SDK can be called from inside a running event loop. Use a small shared pool for that bridge instead of spawning a fresh unbounded executor per call. |
+
+## Trace-content screening (opt-in, privacy-safe)
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_TRACE_CONTENT_SCREENING` | `bool` | `False` | The trace-ingest path parses span *metadata* only and never stores content by default. Set this to run Shield.check_response over ingested trace *content* (tool output / model completions) to surface injection / PII / credential-leak findin |

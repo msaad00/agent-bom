@@ -3190,3 +3190,64 @@ export interface CloudConnectionScanResponse {
   };
   connection: CloudConnectionRecord;
 }
+
+/** One traced tool-call span resolved to the exact attack path it hit (#3898). */
+export interface TraceSpanAttackPath {
+  trace_id: string;
+  span_id: string;
+  tool_name: string;
+  server_name: string;
+  package_name: string;
+  match_basis: "tool" | "server" | "package" | string;
+  vulnerability_id: string;
+  severity: string;
+  cvss_score: number;
+  epss_score: number;
+  is_kev: boolean;
+  exposed_credentials: string[];
+  exposed_nhi: Array<Record<string, unknown>>;
+  affected_agents: string[];
+  affected_servers: string[];
+  blast_radius_score: number;
+}
+
+export interface TraceAttackPathsResponse {
+  schema_version: "observability.trace_attack_paths.v1" | string;
+  tenant_id: string;
+  spans: number;
+  count: number;
+  attack_paths: TraceSpanAttackPath[];
+}
+
+/** A privacy-safe Shield detection on opt-in-screened trace content (#3899). */
+export interface TraceContentFinding {
+  trace_id: string;
+  span_id: string;
+  tool_name: string;
+  channel: string;
+  detector: string;
+  severity: string;
+  message: string;
+}
+
+export interface TraceConnectorDescriptor {
+  name: string;
+  kind: string;
+  auth_fields: string[];
+  supports_content: boolean;
+}
+
+export interface TraceConnectorsResponse {
+  schema_version: "observability.trace_connectors.v1" | string;
+  connectors: TraceConnectorDescriptor[];
+}
+
+export interface TraceConnectorPullResponse {
+  schema_version: "observability.trace_connectors.v1" | string;
+  tenant_id: string;
+  provider: string;
+  pulled_spans: number;
+  content_screened: boolean;
+  attack_paths: TraceSpanAttackPath[];
+  content_findings: TraceContentFinding[];
+}

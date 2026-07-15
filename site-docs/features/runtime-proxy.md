@@ -122,3 +122,38 @@ The proxy exposes metrics on port 8422:
 - `agent_bom_proxy_replay_rejections_total` — replay attacks detected
 
 See [Grafana Dashboard](../deployment/grafana.md) for pre-built visualization.
+
+## Trace correlation and LLM-observability connectors
+
+Agents that already emit OpenTelemetry traces (or send them to an
+LLM-observability platform) get first-class security correlation without extra
+wiring.
+
+### Per-span attack-path correlation
+
+`POST /v1/traces/attack-paths` correlates a submitted OTLP trace against the
+tenant's scan results and resolves **each vulnerable tool-call span** to the
+exact attack path it hit — the precise reachable CVE, the credentials that path
+exposes, the non-human identities that hold those credentials, and the blast
+radius (affected agents, servers, risk score). This answers "span `abc123` is
+the exact call that reached `CVE-2025-1234`", not just "`run_shell` was called
+12 times". Correlation is performed in-memory; no raw span content is stored.
+
+### Opt-in trace-content screening
+
+By default the trace-ingest path (`POST /v1/traces`) parses span **metadata
+only** and never reads or stores content, for privacy. Set
+`AGENT_BOM_TRACE_CONTENT_SCREENING=1` (or pass `?screen_content=true`) to
+additionally run Shield over ingested trace **content** and surface
+prompt-injection, PII, and credential-leak findings on production traces. Raw
+content is screened in-memory and never persisted — only the redacted detector,
+severity, and span identity are surfaced.
+
+### Native Langfuse / LangSmith connectors
+
+`GET /v1/traces/connectors` lists the native trace-pull connectors, and
+`POST /v1/traces/connectors/{provider}/pull` pulls traces directly from
+**Langfuse** or **LangSmith** via their REST APIs — no OTLP re-wiring required.
+Pulled traces feed the same parser, per-span correlation, and (opt-in) content
+screening as pushed OTLP. Connector credentials are supplied per request (or
+from the secret store), used for authentication only, and never logged.

@@ -3467,3 +3467,200 @@ export interface ServedMcpClientConfig {
   generated_at: string;
   read_only: boolean;
 }
+
+// ─── Operations & Integrations ──────────────────────────────────────────────
+// Webhook subscriptions, SIEM connectors, threat-intel, async reports. Each
+// contract mirrors an existing REST surface so the UI reaches human↔agent
+// parity without new backend routes.
+
+/** A governance webhook destination. The signing secret is never returned in
+ *  list/detail views — only a non-reversible `secret_fingerprint` handle. */
+export interface WebhookSubscription {
+  subscription_id: string;
+  tenant_id: string;
+  url: string;
+  event_types: string[];
+  status: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+  allow_private_networks: boolean;
+  secret_fingerprint: string;
+}
+
+export interface WebhookSubscriptionsResponse {
+  schema_version: string;
+  tenant_id: string;
+  event_catalog: string[];
+  count: number;
+  subscriptions: WebhookSubscription[];
+}
+
+export interface WebhookCreateRequest {
+  url: string;
+  event_types?: string[];
+  description?: string;
+  signing_secret?: string | undefined;
+  allow_private_networks?: boolean;
+}
+
+/** Registration response. `signing_secret` is present ONLY here, exactly once,
+ *  and is unrecoverable afterward (mirrors the API-key one-time reveal). */
+export interface WebhookCreateResponse {
+  schema_version: string;
+  subscription: WebhookSubscription;
+  signing_secret: string;
+  secret_notice: string;
+}
+
+export interface WebhookMutationResponse {
+  schema_version: string;
+  subscription?: WebhookSubscription;
+  deleted?: boolean;
+  queued?: boolean;
+  subscription_id?: string;
+  event_id?: string;
+}
+
+export interface WebhookOutboxResponse {
+  schema_version: string;
+  tenant_id: string;
+  status: string | null;
+  count: number;
+  records: Array<Record<string, unknown>>;
+  stats: Record<string, number>;
+}
+
+export interface SiemConnectorsResponse {
+  connectors: string[];
+}
+
+export interface SiemFormatsResponse {
+  formats: string[];
+}
+
+export interface SiemTestResponse {
+  siem_type: string;
+  healthy: boolean;
+  error?: string;
+}
+
+export interface IntelFeedRun {
+  sync_meta_source: string;
+  last_synced: string | null;
+  record_count: number;
+  status: string;
+  validation_status: string;
+  parse_errors: number;
+  validation_failures: number;
+  cap_hit: boolean;
+}
+
+export interface IntelSource {
+  source_id: string;
+  display_name: string;
+  tier: string;
+  kind: string;
+  validation_status: string;
+  support_status: string;
+  enabled: boolean;
+  owner: string;
+  description: string;
+  feed_run: IntelFeedRun;
+}
+
+export interface IntelSourcesResponse {
+  schema_version: string;
+  sources: IntelSource[];
+  count: number;
+}
+
+export interface IntelAdvisory {
+  id: string;
+  summary: string;
+  severity: string;
+  cvss_score: number | null;
+  cvss_vector: string | null;
+  fixed_version: string | null;
+  source: string;
+  published_at: string | null;
+  modified_at: string | null;
+  epss_probability: number | null;
+  epss_percentile: number | null;
+  is_kev: boolean;
+  kev_date_added: string | null;
+  affected: Array<Record<string, unknown>>;
+  canonical_ids: { cves: string[]; ghsas: string[]; osv: string[]; cwes: string[] };
+  evidence_links: Array<{ label?: string; url: string }>;
+}
+
+export interface IntelAdvisoryResponse {
+  schema_version: string;
+  found: boolean;
+  query: string;
+  advisory: IntelAdvisory | null;
+}
+
+export interface IntelMatchPackageInput {
+  ecosystem: string;
+  name: string;
+  version?: string | undefined;
+}
+
+export interface IntelMatchItem {
+  ecosystem?: string;
+  name?: string;
+  version?: string;
+  match_count: number;
+  advisories?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+export interface IntelMatchResponse {
+  schema_version: string;
+  submitted: number;
+  matched_packages: number;
+  match_count: number;
+  matches: IntelMatchItem[];
+}
+
+export interface IntelDailyBriefResponse {
+  schema_version: string;
+  generated_at: string;
+  inputs: Record<string, unknown>;
+  sections: {
+    kev_last_24h: unknown[];
+    high_epss_inventory: unknown[];
+    vendor_advisories: unknown[];
+    ioc_telemetry_hits: unknown[];
+    campaign_matches: unknown[];
+    ransomware_sector_matches: unknown[];
+  };
+  limitations: string[];
+}
+
+export type ReportSort = "effective_reach" | "cvss" | "severity" | "ordinal";
+
+export interface ReportJobRecord {
+  job_id: string;
+  tenant_id: string;
+  status: JobStatus;
+  format: string;
+  sort: string;
+  severity: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  row_count: number | null;
+  byte_count: number | null;
+  error: string | null;
+  download_url?: string;
+  download_token?: string;
+  download_token_header?: string;
+}
+
+export interface ReportCreateRequest {
+  format?: "ndjson";
+  sort?: ReportSort;
+  severity?: string | null;
+}

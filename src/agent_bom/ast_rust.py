@@ -25,6 +25,7 @@ from agent_bom.ast_models import (
     _RustToolRegistration,
 )
 from agent_bom.ast_signal_utils import _balanced_segment, _line_number_from_index
+from agent_bom.ast_source_mask import mask_line_comments_and_strings
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_external_rust_crate
 
 if TYPE_CHECKING:
@@ -82,6 +83,7 @@ def _rust_use_bindings(source: str) -> dict[str, str]:
 
 
 def _rust_call_sites(body: str, *, line_offset: int) -> list[_RustCallSite]:
+    body = mask_line_comments_and_strings(body)
     sites: list[_RustCallSite] = []
     for match in _RUST_CALL_RE.finditer(body):
         name = match.group("name")

@@ -786,7 +786,8 @@ async def pull_trace_connector(request: Request, provider: str, body: dict) -> d
         limit = max(1, min(int(body.get("limit", 50) or 50), 1000))
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="'limit' must be an integer") from exc
-    screen_content = _screen_content_enabled(bool(body.get("screen_content", False)) or None)
+    raw_screen = body.get("screen_content")
+    screen_content = _screen_content_enabled(None if raw_screen is None else bool(raw_screen))
 
     try:
         otlp = fetch_traces(provider, credentials, limit=limit, include_content=screen_content)

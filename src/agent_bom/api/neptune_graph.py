@@ -441,7 +441,8 @@ class NeptuneGraphStore:
 
     def _unsupported(self, name: str) -> NoReturn:
         raise NeptuneGraphStoreUnsupportedOperationError(
-            f"Neptune graph backend does not yet implement {name}; use SQLite/Postgres for this API surface."
+            f"Neptune graph backend does not yet implement {name}; this backend is experimental "
+            "and partial — use the SQLite or Postgres graph backend for this API surface."
         )
 
     def page_nodes(self, **_kwargs: Any) -> tuple[str, str, list[UnifiedNode], int, str | None]:

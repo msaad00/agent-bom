@@ -1502,16 +1502,24 @@ def _canonical_scope_filters(
 
 
 def _row_matches_scope(row: dict[str, Any], filters: dict[str, str]) -> bool:
-    """Return True when a finding row matches every active scope filter."""
-    from agent_bom.finding_scope import domain_for_row
+    """Return True when a finding row matches every active scope filter.
+
+    The ``domain`` facet matches against the finding's overlapping coverage-lens
+    set, not just its primary domain, so ``domain=aspm`` returns SAST + secrets +
+    repo dependencies + IaC, and ``domain=vuln`` returns every CVE (mirroring the
+    overlapping coverage lanes on the overview).
+    """
+    from agent_bom.finding_scope import domain_for_row, lenses_for_row
 
     for key in ("provider", "account_ref", "environment"):
         wanted = filters.get(key)
         if wanted is not None and str(row.get(key) or "").strip().lower() != wanted:
             return False
     wanted_domain = filters.get("domain")
-    if wanted_domain is not None and (domain_for_row(row) or "") != wanted_domain:
-        return False
+    if wanted_domain is not None:
+        lenses = lenses_for_row(row) or ({domain_for_row(row) or ""} if domain_for_row(row) else set())
+        if wanted_domain not in lenses:
+            return False
     return True
 
 

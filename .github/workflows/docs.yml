@@ -19,10 +19,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -54,6 +50,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Serialize only real Pages deployments. Keeping this at job level (not the
+    # whole workflow) means build-only validation runs — e.g. the release
+    # workflow calling this with deploy:false — never join the pages group and
+    # so can't cancel an in-progress deploy. cancel-in-progress:false lets a
+    # running production deploy finish instead of being cancelled mid-flight.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

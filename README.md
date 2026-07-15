@@ -139,11 +139,48 @@ Matching mechanics and release evidence:
 
 </details>
 
+## Run It Anywhere
+
+Two ladders: how you consume the shared evidence model, and where you run the
+control plane. You run it in your own boundary — no managed public SaaS in this
+repo yet.
+
+**Surfaces** — one real command each:
+
+- **CLI / CI** — `agent-bom agents -p .` (or the [GitHub Action](https://github.com/marketplace/actions/agent-bom)).
+- **Self-hosted platform** — `pip install 'agent-bom[ui]' && agent-bom serve` — dashboard + API on one host.
+- **Headless** — `agent-bom api` + `agent-bom mcp server` for agents and CI.
+- **Runtime proxy / gateway** — `agent-bom gateway serve` — allow/warn/block audit trail.
+- **Reports / exports** — `agent-bom agents -p . -f sarif -o findings.sarif`.
+
+**Deploy targets** — where the control plane runs, fastest → most-managed:
+
+- **Docker Compose** — fastest; one file, loopback by default → [pilot compose](deploy/docker-compose.pilot.yml)
+- **Helm / Kubernetes** — cluster-native chart → [chart](deploy/helm/agent-bom)
+- **EKS** — opinionated Terraform module → [module](deploy/terraform/platform-eks)
+- **CloudFormation** — one-click AWS stack → [templates](deploy/cloudformation)
+- **Snowflake (SPCS native app)** — host entirely inside your own Snowflake account → [install guide](docs/snowflake-native-app/INSTALL.md)
+
+<details>
+<summary><b>Local bring-up</b> — Docker Compose in two commands</summary>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+docker compose -f docker-compose.pilot.yml up -d
+# Dashboard -> http://localhost:3000
+```
+
+Pilot compose binds to `127.0.0.1` with loopback CORS only. Use
+`docker-compose.platform.yml` or [docs/HOSTED_POC.md](docs/HOSTED_POC.md) before
+sharing a link. Full guides: [Deploy anywhere](docs/DEPLOY_PLATFORM.md).
+
+</details>
+
 ## Start Here
 
 Every lane writes into the same `Finding` and `ContextGraph` model. Pick the
 entry point that matches your role; see [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md)
-for ingest lanes, auth boundaries, and surface detail.
+for all entry points, auth boundaries, and surface detail.
 
 | Need | Surface | First action | Main artifact |
 |---|---|---|---|
@@ -151,8 +188,8 @@ for ingest lanes, auth boundaries, and surface detail.
 | Connect cloud and data-estate evidence | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
 | Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
 | Give agents security tools | MCP server | `agent-bom mcp server` | strict MCP tool responses |
-| Govern runtime tool calls | Proxy / gateway | configure proxy or gateway policy | allow/warn/block audit trail |
-| Package evidence for audit | Reports / exports | `agent-bom agents -p . -f html -o report.html` | SARIF, CycloneDX, SPDX, OCSF, compliance bundle |
+| Govern runtime tool calls | Proxy / gateway | `agent-bom gateway serve` | allow/warn/block audit trail |
+| Package evidence for audit | Reports / exports | `agent-bom agents -p . -f html -o report.html` | SARIF, CycloneDX, SPDX, JSON, HTML/PDF, compliance bundle |
 
 | Goal | Command |
 |---|---|
@@ -261,29 +298,20 @@ Snowflake auth defaults to browser SSO (`externalbrowser`); use
 CI. agent-bom authenticates through the Python connector — no `snowsql` session
 needed. Setup and grants: [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md)
 
-**Deploy in your boundary.** OSS CLI, self-hosted API/UI, gated hosted POC, or
-optional Snowflake-native lane — no managed public SaaS in this repo yet.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
-docker compose -f docker-compose.pilot.yml up -d
-# Dashboard -> http://localhost:3000
-```
-
-Pilot compose binds to `127.0.0.1` with loopback CORS only. Use
-`docker-compose.platform.yml` or [docs/HOSTED_POC.md](docs/HOSTED_POC.md) before
-sharing a link.
-
-- [Deploy anywhere](docs/DEPLOY_PLATFORM.md) · [Helm](deploy/helm/agent-bom) ·
-  [EKS module](deploy/terraform/platform-eks) ·
-  [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom) ·
-  [CloudFormation one-click](deploy/cloudformation)
+**Deploy.** Run in your own boundary — the [Run It Anywhere](#run-it-anywhere)
+ladders above cover Compose, Helm, EKS, CloudFormation, and the Snowflake SPCS
+native app. Full deploy guides:
+[Deploy anywhere](docs/DEPLOY_PLATFORM.md) · [Hosted POC](docs/HOSTED_POC.md) ·
+[Helm](deploy/helm/agent-bom) · [EKS module](deploy/terraform/platform-eks) ·
+[CloudFormation](deploy/cloudformation) ·
+[Snowflake native app](docs/snowflake-native-app/INSTALL.md) ·
+[Docker Hub](https://hub.docker.com/r/agentbom/agent-bom)
 
 **Trust.**
 
 - Read-only discovery by default; no mandatory telemetry.
 - Credential values redacted; env names preserved for explainable exposure paths.
-- Exports: JSON, SARIF, CycloneDX, SPDX, OCSF, Markdown, HTML, compliance bundles.
+- Exports: JSON, SARIF, CycloneDX, SPDX, Parquet, CSV, Markdown, HTML, PDF, compliance bundles.
 - Tenant scope, auth boundaries, and audit evidence on API/runtime paths.
 
 [Threat model](docs/THREAT_MODEL.md) · [Pentest readiness](docs/PENTEST_READINESS.md) ·

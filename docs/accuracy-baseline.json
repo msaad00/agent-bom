@@ -98,5 +98,86 @@
       "graph reachability precision for every framework and dynamic import path"
     ],
     "release_gate": true
+  },
+  "security_eval_scorecard": {
+    "attack_cases": 23,
+    "attacks_run": 25,
+    "benign_cases": 2,
+    "catalog_size": 25,
+    "coverage_pct": 100.0,
+    "detected": 23,
+    "detection_rate": 100.0,
+    "eval_name": "red-team-adversarial-coverage",
+    "eval_type": "security",
+    "false_positive_rate": 0.0,
+    "false_positives": 0,
+    "missed": 0,
+    "passed": true,
+    "per_category": {
+      "benign": {
+        "detected": 0,
+        "failed": 0,
+        "pass": true,
+        "passed": 2,
+        "total": 2
+      },
+      "bias": {
+        "detected": 2,
+        "failed": 0,
+        "pass": true,
+        "passed": 2,
+        "total": 2
+      },
+      "credential_leak": {
+        "detected": 3,
+        "failed": 0,
+        "pass": true,
+        "passed": 3,
+        "total": 3
+      },
+      "data_exfiltration": {
+        "detected": 1,
+        "failed": 0,
+        "pass": true,
+        "passed": 1,
+        "total": 1
+      },
+      "hallucination": {
+        "detected": 2,
+        "failed": 0,
+        "pass": true,
+        "passed": 2,
+        "total": 2
+      },
+      "prompt_injection": {
+        "detected": 5,
+        "failed": 0,
+        "pass": true,
+        "passed": 5,
+        "total": 5
+      },
+      "response_manipulation": {
+        "detected": 3,
+        "failed": 0,
+        "pass": true,
+        "passed": 3,
+        "total": 3
+      },
+      "tool_abuse": {
+        "detected": 5,
+        "failed": 0,
+        "pass": true,
+        "passed": 5,
+        "total": 5
+      },
+      "toxicity": {
+        "detected": 2,
+        "failed": 0,
+        "pass": true,
+        "passed": 2,
+        "total": 2
+      }
+    },
+    "schema_version": "security-eval-scorecard/v1"
   }
 }

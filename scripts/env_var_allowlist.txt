@@ -450,3 +450,8 @@ AGENT_BOM_POSTGRES_PASSWORD_FILE
 AGENT_BOM_POSTGRES_AUTH_MODE
 AGENT_BOM_POSTGRES_IAM_PROVIDER
 AGENT_BOM_POSTGRES_IAM_REGION
+
+# Explicit operator opt-in read at runtime by the CLI observe->enforce bridge
+# (cli/agents). Boolean intent flag that flips auto-proposed gateway block rules
+# from audit (propose only) to enforce mode; not a scalar config knob.
+AGENT_BOM_ENFORCE_CORRELATED_BLOCKS

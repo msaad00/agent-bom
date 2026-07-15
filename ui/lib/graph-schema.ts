@@ -80,6 +80,7 @@ export enum EntityType {
   MANAGED_IDENTITY = "managed_identity",
   ACCESS_GRANT = "access_grant",
   ACCESS_POLICY = "access_policy",
+  BLUEPRINT = "blueprint",
   // Behavioral drift (detection finding)
   DRIFT_INCIDENT = "drift_incident",
   // Cloud-CNAPP primitives
@@ -471,6 +472,7 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
   [EntityType.MANAGED_IDENTITY]: "#0891b2", // cyan
   [EntityType.ACCESS_GRANT]: "#ca8a04", // amber
   [EntityType.ACCESS_POLICY]: "#a16207", // amber
+  [EntityType.BLUEPRINT]: "#7c3aed", // violet
   [EntityType.DRIFT_INCIDENT]: "#fb923c", // orange
   [EntityType.DATA_STORE]: "#0284c7", // sky
   [EntityType.API_GATEWAY]: "#2563eb", // blue

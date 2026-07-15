@@ -104,7 +104,9 @@ describe("BlueprintsPage", () => {
     render(<BlueprintsPage />);
     await waitFor(() => expect(screen.getByText("No AI-system blueprints yet")).toBeInTheDocument());
     const seedButtons = screen.getAllByText("Seed from role archetypes");
-    fireEvent.click(seedButtons[seedButtons.length - 1]);
+    const seedButton = seedButtons.at(-1);
+    if (!seedButton) throw new Error("expected a blueprint seed action");
+    fireEvent.click(seedButton);
     await waitFor(() => expect(apiMock.seedBlueprints).toHaveBeenCalled());
   });
 

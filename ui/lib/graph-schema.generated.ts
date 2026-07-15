@@ -92,6 +92,7 @@ export enum GraphNodeKind {
   AGENT = "agent",
   API_GATEWAY = "api_gateway",
   APPLICATION = "application",
+  BLUEPRINT = "blueprint",
   CI_JOB = "ci_job",
   CLOUD_RESOURCE = "cloud_resource",
   CLUSTER = "cluster",
@@ -129,9 +130,9 @@ export enum GraphNodeKind {
   VULNERABILITY = "vulnerability",
 }
 
-export type GraphNodeKindKey = "access_grant" | "access_policy" | "account" | "agent" | "api_gateway" | "application" | "ci_job" | "cloud_resource" | "cluster" | "code_module" | "config_file" | "container" | "credential" | "credential_ref" | "data_store" | "dataset" | "directory" | "drift_incident" | "environment" | "external_import" | "federated_identity" | "fleet" | "framework" | "group" | "managed_identity" | "misconfiguration" | "model" | "org" | "package" | "policy" | "provider" | "resource" | "role" | "server" | "service_account" | "service_principal" | "source_file" | "tool" | "tool_call" | "user" | "vulnerability";
+export type GraphNodeKindKey = "access_grant" | "access_policy" | "account" | "agent" | "api_gateway" | "application" | "blueprint" | "ci_job" | "cloud_resource" | "cluster" | "code_module" | "config_file" | "container" | "credential" | "credential_ref" | "data_store" | "dataset" | "directory" | "drift_incident" | "environment" | "external_import" | "federated_identity" | "fleet" | "framework" | "group" | "managed_identity" | "misconfiguration" | "model" | "org" | "package" | "policy" | "provider" | "resource" | "role" | "server" | "service_account" | "service_principal" | "source_file" | "tool" | "tool_call" | "user" | "vulnerability";
 
-export const GRAPH_NODE_KINDS: readonly GraphNodeKindKey[] = ["access_grant", "access_policy", "account", "agent", "api_gateway", "application", "ci_job", "cloud_resource", "cluster", "code_module", "config_file", "container", "credential", "credential_ref", "data_store", "dataset", "directory", "drift_incident", "environment", "external_import", "federated_identity", "fleet", "framework", "group", "managed_identity", "misconfiguration", "model", "org", "package", "policy", "provider", "resource", "role", "server", "service_account", "service_principal", "source_file", "tool", "tool_call", "user", "vulnerability"] as const;
+export const GRAPH_NODE_KINDS: readonly GraphNodeKindKey[] = ["access_grant", "access_policy", "account", "agent", "api_gateway", "application", "blueprint", "ci_job", "cloud_resource", "cluster", "code_module", "config_file", "container", "credential", "credential_ref", "data_store", "dataset", "directory", "drift_incident", "environment", "external_import", "federated_identity", "fleet", "framework", "group", "managed_identity", "misconfiguration", "model", "org", "package", "policy", "provider", "resource", "role", "server", "service_account", "service_principal", "source_file", "tool", "tool_call", "user", "vulnerability"] as const;
 
 export interface GraphNodeKindMeta {
   label: string;
@@ -197,6 +198,15 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "icon": "circle",
     "category_uid": 5,
     "class_uid": 4001
+  },
+  "blueprint": {
+    "label": "Blueprint",
+    "color": "#6b7280",
+    "shape": "circle",
+    "layer": "asset",
+    "icon": "circle",
+    "category_uid": 0,
+    "class_uid": 0
   },
   "ci_job": {
     "label": "CI/CD Job",

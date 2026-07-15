@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, X } from "lucide-react";
+
+const FOCUSABLE_SELECTOR =
+  'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 export type DrawerSize = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl";
 
@@ -52,6 +55,7 @@ export function Drawer({
   children,
 }: DrawerProps) {
   const [entered, setEntered] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -59,13 +63,46 @@ export function Drawer({
       return;
     }
     const raf = requestAnimationFrame(() => setEntered(true));
+    // Restore focus to whatever triggered the drawer once it closes.
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    // Move focus into the panel so screen readers/keyboards land inside the dialog.
+    const focusRaf = requestAnimationFrame(() => panelRef.current?.focus());
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      ).filter((el) => el.offsetParent !== null || el === panel);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const active = document.activeElement;
+      if (event.shiftKey) {
+        if (active === first || active === panel) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => {
       cancelAnimationFrame(raf);
+      cancelAnimationFrame(focusRaf);
       document.removeEventListener("keydown", onKey);
+      previouslyFocused?.focus?.();
     };
   }, [open, onClose]);
 
@@ -73,7 +110,7 @@ export function Drawer({
 
   return (
     <div
-      className={`fixed inset-0 z-[80] flex justify-end bg-black/45 backdrop-blur-sm transition-opacity duration-200 ${
+      className={`fixed inset-0 z-[80] flex justify-end bg-black/45 backdrop-blur-sm transition-opacity duration-200 motion-reduce:transition-none ${
         entered ? "opacity-100" : "opacity-0"
       }`}
       role="dialog"
@@ -87,7 +124,9 @@ export function Drawer({
         onClick={onClose}
       />
       <aside
-        className={`relative flex h-full w-full flex-col border-l border-[color:var(--border-subtle)] bg-[color:var(--surface)] elev-3 transition-transform duration-200 ease-out ${
+        ref={panelRef}
+        tabIndex={-1}
+        className={`relative flex h-full w-full flex-col border-l border-[color:var(--border-subtle)] bg-[color:var(--surface)] elev-3 outline-none transition-transform duration-200 ease-out motion-reduce:transition-none ${
           SIZE_CLASS[size]
         } ${entered ? "translate-x-0" : "translate-x-full"}`}
       >

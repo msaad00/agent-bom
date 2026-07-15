@@ -54,7 +54,7 @@ function downloadManifest(manifest: AgentBomManifestResponse) {
 
 function ScopeChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-200">
+    <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-200">
       {label}
     </span>
   );
@@ -65,8 +65,8 @@ function BoundaryBadge({ ok, label }: { ok: boolean; label: string }) {
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
         ok
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-          : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+          : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200"
       }`}
     >
       {ok ? <ShieldCheck className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
@@ -82,9 +82,9 @@ function DriftStatusBadge({ status }: { status: string }) {
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
         needsReview
-          ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+          ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200"
           : aligned
-            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
             : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]"
       }`}
     >
@@ -109,7 +109,7 @@ function EvidenceSourceRow({ source }: { source: AiBomEvidenceSource }) {
       </div>
       <span
         className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-          source.active ? "bg-emerald-500/15 text-emerald-300" : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
+          source.active ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
         }`}
       >
         {source.active ? "Live" : "Off"}
@@ -306,7 +306,7 @@ export default function AgentBomManifestPage() {
       />
 
       {error ? (
-        <Card className="border-red-500/30 bg-red-500/10 !p-3 text-sm text-red-200">{error}</Card>
+        <Card className="border-red-500/30 bg-red-500/10 !p-3 text-sm text-red-700 dark:text-red-200">{error}</Card>
       ) : null}
 
       {/* Top row: sources | inventory metrics — side by side, scroll inside */}
@@ -493,10 +493,10 @@ export default function AgentBomManifestPage() {
                             <span
                               className={`rounded-full px-1.5 py-0.5 text-[10px] ${
                                 row.riskLevel === "high"
-                                  ? "bg-red-500/10 text-red-300"
+                                  ? "bg-red-500/10 text-red-700 dark:text-red-300"
                                   : row.riskLevel === "medium"
-                                    ? "bg-amber-500/10 text-amber-200"
-                                    : "bg-emerald-500/10 text-emerald-200"
+                                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-200"
+                                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
                               }`}
                             >
                               {row.riskLevel}

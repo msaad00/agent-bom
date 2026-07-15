@@ -48,7 +48,7 @@ export function IntegrationRequiredState({
               {primaryAction ? (
                 <Link
                   href={primaryAction.href}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
                 >
                   <Play className="h-4 w-4" />
                   {primaryAction.label}

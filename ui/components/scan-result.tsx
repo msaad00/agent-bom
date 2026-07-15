@@ -157,7 +157,7 @@ export function ScanResultView({ id }: { id: string }) {
             type="button"
             onClick={() => void handleExport("json")}
             disabled={exporting}
-            className="inline-flex items-center gap-2 rounded-lg border border-cyan-900/60 bg-cyan-950/30 px-3 py-2 text-sm font-medium text-cyan-200 transition-colors hover:border-cyan-800 hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 dark:border-cyan-900/60 bg-cyan-500/10 dark:bg-cyan-950/30 px-3 py-2 text-sm font-medium text-cyan-700 dark:text-cyan-200 transition-colors hover:border-cyan-500/30 dark:hover:border-cyan-800 hover:bg-cyan-500/10 dark:hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export graph JSON
@@ -166,7 +166,7 @@ export function ScanResultView({ id }: { id: string }) {
       </div>
 
       {exportError ? (
-        <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-xl border border-red-500/30 dark:border-red-900/50 bg-red-500/10 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {exportError}
         </div>
       ) : null}
@@ -239,14 +239,14 @@ export function ScanResultView({ id }: { id: string }) {
             </button>
             <Link
               href={`/scan?id=${id}&view=mesh`}
-              className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition-colors bg-cyan-950/30 border border-cyan-900/50 rounded-lg px-3 py-1.5"
+              className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors bg-cyan-500/10 dark:bg-cyan-950/30 border border-cyan-500/30 dark:border-cyan-900/50 rounded-lg px-3 py-1.5"
             >
               <Server className="w-3 h-3" />
               View Mesh
             </Link>
             <Link
               href={`/scan?id=${id}&view=attack-flow`}
-              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-950/30 border border-emerald-900/50 rounded-lg px-3 py-1.5"
+              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors bg-emerald-500/10 dark:bg-emerald-950/30 border border-emerald-500/30 dark:border-emerald-900/50 rounded-lg px-3 py-1.5"
             >
               <GitBranch className="w-3 h-3" />
               View Attack Flow

@@ -84,10 +84,10 @@ function IncidentCard({
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 incident.resolved
-                  ? "bg-emerald-900/60 text-emerald-300"
+                  ? "bg-emerald-500/10 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300"
                   : incident.status === "review"
-                    ? "bg-amber-900/60 text-amber-300"
-                    : "bg-red-900/60 text-red-300"
+                    ? "bg-amber-500/10 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300"
+                    : "bg-red-500/10 dark:bg-red-900/60 text-red-700 dark:text-red-300"
               }`}
             >
               {incident.resolved
@@ -121,7 +121,7 @@ function IncidentCard({
                 setBusy(false);
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -388,10 +388,10 @@ const CONNECTOR_CATEGORIES: {
 ];
 
 const CONNECTOR_CATEGORY_TONE: Record<ConnectorCategory, string> = {
-  cloud: "border-purple-500/30 bg-purple-500/10 text-purple-200",
-  code: "border-sky-500/30 bg-sky-500/10 text-sky-200",
-  ai: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-  data: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+  cloud: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-200",
+  code: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200",
+  ai: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
+  data: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200",
 };
 
 const SCHEDULE_OPTIONS = [
@@ -425,14 +425,14 @@ function eventMode(connection: CloudConnectionRecord): {
     return {
       label: "Event-driven",
       detail: `Last event ${formatWhen(connection.last_event_at)}`,
-      tone: "border-cyan-900/60 bg-cyan-950/30 text-cyan-200",
+      tone: "border-cyan-500/30 dark:border-cyan-900/60 bg-cyan-500/10 dark:bg-cyan-950/30 text-cyan-700 dark:text-cyan-200",
     };
   }
   if (connection.scan_interval_minutes) {
     return {
       label: "Scheduled scan",
       detail: `Every ${connection.scan_interval_minutes} min`,
-      tone: "border-amber-900/60 bg-amber-950/30 text-amber-200",
+      tone: "border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/30 text-amber-700 dark:text-amber-200",
     };
   }
   return {
@@ -445,11 +445,11 @@ function eventMode(connection: CloudConnectionRecord): {
 function statusTone(status: string): string {
   switch (status) {
     case "active":
-      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
+      return "border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300";
     case "error":
-      return "border-red-900/60 bg-red-950/30 text-red-300";
+      return "border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/30 text-red-700 dark:text-red-300";
     default:
-      return "border-amber-900/60 bg-amber-950/30 text-amber-300";
+      return "border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300";
   }
 }
 
@@ -752,7 +752,7 @@ export default function ConnectionsPage() {
         title="Connections"
         subtitle="Connect cloud accounts, code, AI, and data sources — read-only, with secrets encrypted at rest."
         scopeChip={
-          <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-200">
+          <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-700 dark:text-purple-200">
             {deploymentModeLabel(counts?.deployment_mode)} · brokered read-only
           </span>
         }
@@ -1237,7 +1237,7 @@ function ConnectorTile({
             onClick={() => onConnectCloud(connector.action.type === "cloud" ? connector.action.provider : "")}
             disabled={!canManage}
             aria-label={`Connect ${connector.label}`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plug className="h-3.5 w-3.5" />
             Connect
@@ -1247,7 +1247,7 @@ function ConnectorTile({
             type="button"
             onClick={onConnectCodingAgent}
             aria-label="Set up coding agent"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20"
           >
             <Plug className="h-3.5 w-3.5" />
             Set up
@@ -1256,7 +1256,7 @@ function ConnectorTile({
           <Link
             href={connector.action.href}
             aria-label={`Register ${connector.label}`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-emerald-600 hover:text-emerald-300"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-emerald-600 hover:text-emerald-700 dark:hover:text-emerald-300"
           >
             Register
             <ArrowRight className="h-3.5 w-3.5" />
@@ -1300,7 +1300,7 @@ function CodingAgentDrawer({
         </span>
       }
       headerAside={
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
           <Bot className="h-3 w-3" /> 73 MCP tools
         </span>
       }
@@ -1368,7 +1368,7 @@ function CodingAgentDrawer({
           </ul>
         </section>
 
-        <p className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-300">
+        <p className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 dark:border-emerald-900/50 bg-emerald-500/10 dark:bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-700 dark:text-emerald-300">
           <Lock className="h-3.5 w-3.5 shrink-0" /> Read-only. The server never
           writes to your cloud, repos, or control-plane data.
         </p>
@@ -1433,7 +1433,7 @@ function FragmentRow({
               </span>
             ) : null}
             {result ? (
-              <span className="inline-flex items-center gap-1 rounded border border-emerald-800/60 bg-emerald-950/20 px-1.5 py-0.5 text-[10px] text-emerald-300">
+              <span className="inline-flex items-center gap-1 rounded border border-emerald-500/30 dark:border-emerald-800/60 bg-emerald-500/10 dark:bg-emerald-950/20 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
                 CIS {formatPassRate(result.cis_benchmark.pass_rate)}
               </span>
             ) : null}
@@ -1504,7 +1504,7 @@ function FragmentRow({
                   ? "Verify the stored read-only credential without running inventory"
                   : "Testing for this provider is unavailable"
               }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800/70 bg-emerald-950/20 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-600 hover:bg-emerald-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 dark:border-emerald-800/70 bg-emerald-500/10 dark:bg-emerald-950/20 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-600 hover:bg-emerald-500/10 dark:hover:bg-emerald-950/40 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
               {isBusy ? "Working…" : "Test"}
@@ -1526,7 +1526,7 @@ function FragmentRow({
               onClick={onDelete}
               disabled={isBusy || !canManage}
               aria-label={`Delete ${connection.display_name}`}
-              className="inline-flex items-center gap-1 rounded-lg border border-red-900/60 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 transition hover:bg-red-500/10 dark:hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete
@@ -1587,7 +1587,7 @@ function ConnectionDetailDrawer({
           <button
             onClick={() => onTest(connection)}
             disabled={isBusy || !canManage || !scannable}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800/70 bg-emerald-950/20 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 dark:border-emerald-800/70 bg-emerald-500/10 dark:bg-emerald-950/20 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <CheckCircle2 className="h-3.5 w-3.5" /> {isBusy ? "Working…" : "Test"}
           </button>
@@ -1601,7 +1601,7 @@ function ConnectionDetailDrawer({
           <button
             onClick={() => onDelete(connection)}
             disabled={isBusy || !canManage}
-            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-red-900/60 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 transition hover:bg-red-500/10 dark:hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Trash2 className="h-3.5 w-3.5" /> Delete
           </button>
@@ -1611,7 +1611,7 @@ function ConnectionDetailDrawer({
       <div className="space-y-3">
         {result ? <ScanResultPanel result={result} /> : null}
         {!result && testResult ? (
-          <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+          <div className="rounded-xl border border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/20 p-3 text-xs text-emerald-700 dark:text-emerald-200">
             Read-only credential verified. No inventory, CIS, findings, or
             resource writes ran.
           </div>
@@ -1620,17 +1620,17 @@ function ConnectionDetailDrawer({
           <ScanHandoffLinks scanId={handoffScanId} />
         ) : null}
         {scanError ? (
-          <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
+          <div className="rounded-xl border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/20 p-3 text-xs text-red-700 dark:text-red-300">
             {scanError}
           </div>
         ) : null}
         {scheduleError ? (
-          <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
+          <div className="rounded-xl border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/20 p-3 text-xs text-red-700 dark:text-red-300">
             {scheduleError}
           </div>
         ) : null}
         {statusDetail ? (
-          <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200">
+          <div className="rounded-xl border border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/20 p-3 text-xs text-amber-700 dark:text-amber-200">
             {statusDetail}
           </div>
         ) : null}
@@ -1744,7 +1744,7 @@ function HandoffLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground)] transition hover:border-emerald-700 hover:text-emerald-300"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground)] transition hover:border-emerald-700 hover:text-emerald-700 dark:hover:text-emerald-300"
     >
       <Icon className="h-3.5 w-3.5" />
       {label}
@@ -2095,7 +2095,7 @@ function AddConnectionWizard({
                         <button
                           type="button"
                           onClick={handleRegenerateExternalId}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-500"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-500"
                         >
                           <RefreshCcw className="h-3 w-3" />
                           Regenerate

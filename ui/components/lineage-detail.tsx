@@ -296,7 +296,7 @@ export function LineageDetailPanel({
         {data.nodeType === "sharedServer" && (
           <div className="space-y-3">
             {data.sharedBy && (
-              <div className="text-xs px-2 py-1 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-700 font-mono">
+              <div className="text-xs px-2 py-1 rounded bg-cyan-500/10 dark:bg-cyan-900/60 text-cyan-700 dark:text-cyan-300 border border-cyan-700 font-mono">
                 Shared by {data.sharedBy} agents
               </div>
             )}
@@ -566,7 +566,7 @@ export function LineageDetailPanel({
             className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
               blastRadiusActive
                 ? "border-violet-400/50 bg-violet-500/20 text-violet-100"
-                : "border-violet-500/30 bg-violet-500/10 text-violet-200 hover:border-violet-400/60 hover:bg-violet-500/20"
+                : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-200 hover:border-violet-400/60 hover:bg-violet-500/20"
             }`}
           >
             {blastRadiusLoading ? (

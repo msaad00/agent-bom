@@ -23,20 +23,20 @@ export function postureDimensionTone(score: number) {
   if (score >= 80) {
     return {
       label: "strong",
-      badge: "border border-emerald-800 bg-emerald-950/60 text-emerald-300",
+      badge: "border border-emerald-500/30 dark:border-emerald-800 bg-emerald-500/10 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300",
       bar: "bg-emerald-500",
     };
   }
   if (score >= 60) {
     return {
       label: "watch",
-      badge: "border border-yellow-800 bg-yellow-950/60 text-yellow-300",
+      badge: "border border-yellow-500/30 dark:border-yellow-800 bg-yellow-500/10 dark:bg-yellow-950/60 text-yellow-700 dark:text-yellow-300",
       bar: "bg-yellow-500",
     };
   }
   return {
     label: "critical",
-    badge: "border border-red-800 bg-red-950/60 text-red-300",
+    badge: "border border-red-500/30 dark:border-red-800 bg-red-500/10 dark:bg-red-950/60 text-red-700 dark:text-red-300",
     bar: "bg-red-500",
   };
 }

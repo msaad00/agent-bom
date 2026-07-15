@@ -23,14 +23,14 @@ const EXPANDABLE_ROLES: ReadonlySet<ExposureEntityRole> = new Set(["agent", "ser
 const NEIGHBOR_LIMIT = 12;
 
 const ROLE_STYLE: Record<ExposureEntityRole, { icon: LucideIcon; chip: string; accent: string }> = {
-  agent: { icon: Bot, chip: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200", accent: "text-emerald-300" },
-  server: { icon: Server, chip: "border-sky-500/30 bg-sky-500/10 text-sky-200", accent: "text-sky-300" },
-  package: { icon: Package, chip: "border-amber-500/30 bg-amber-500/10 text-amber-200", accent: "text-amber-300" },
-  finding: { icon: Bug, chip: "border-red-500/30 bg-red-500/10 text-red-200", accent: "text-red-300" },
-  credential: { icon: KeyRound, chip: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200", accent: "text-fuchsia-300" },
-  tool: { icon: Wrench, chip: "border-purple-500/30 bg-purple-500/10 text-purple-200", accent: "text-purple-300" },
-  environment: { icon: Database, chip: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200", accent: "text-cyan-300" },
-  cluster: { icon: Database, chip: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200", accent: "text-indigo-300" },
+  agent: { icon: Bot, chip: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200", accent: "text-emerald-300" },
+  server: { icon: Server, chip: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200", accent: "text-sky-300" },
+  package: { icon: Package, chip: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200", accent: "text-amber-300" },
+  finding: { icon: Bug, chip: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-200", accent: "text-red-300" },
+  credential: { icon: KeyRound, chip: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-200", accent: "text-fuchsia-300" },
+  tool: { icon: Wrench, chip: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-200", accent: "text-purple-300" },
+  environment: { icon: Database, chip: "border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200", accent: "text-cyan-300" },
+  cluster: { icon: Database, chip: "border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-200", accent: "text-indigo-300" },
   unknown: {
     icon: ShieldAlert,
     chip: "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)]",

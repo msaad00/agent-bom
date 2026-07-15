@@ -48,10 +48,10 @@ function Badge({
   children: React.ReactNode;
 }) {
   const map = {
-    green: "bg-emerald-900/60 text-emerald-300",
-    blue: "bg-blue-900/60 text-blue-300",
-    red: "bg-red-900/60 text-red-300",
-    amber: "bg-amber-900/60 text-amber-300",
+    green: "bg-emerald-500/10 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300",
+    blue: "bg-blue-500/10 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300",
+    red: "bg-red-500/10 dark:bg-red-900/60 text-red-700 dark:text-red-300",
+    amber: "bg-amber-500/10 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300",
     zinc: "bg-[var(--surface-elevated)] text-[var(--text-secondary)]",
   } as const;
   return (

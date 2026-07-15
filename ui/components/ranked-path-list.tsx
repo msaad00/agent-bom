@@ -56,7 +56,7 @@ export function RankedPathList({
             <span
               className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
                 row.rank === 1
-                  ? "bg-orange-500/15 text-orange-300"
+                  ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
                   : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
               }`}
             >

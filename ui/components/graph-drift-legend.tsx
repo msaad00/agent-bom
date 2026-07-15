@@ -93,7 +93,7 @@ export function GraphDriftLegend({
           onClick={() => onToggleActive(!active)}
           className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
             active
-              ? "border-sky-500/60 bg-sky-500/15 text-sky-200"
+              ? "border-sky-500/60 bg-sky-500/15 text-sky-700 dark:text-sky-200"
               : "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]"
           }`}
         >

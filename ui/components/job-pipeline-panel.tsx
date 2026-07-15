@@ -140,11 +140,11 @@ function StatusBanner({
   const done = status === "done";
 
   const tone = failed
-    ? "border-red-500/40 bg-red-500/10 text-red-300"
+    ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
     : active
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
       : done
-        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
         : "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)]";
 
   const icon = failed ? (

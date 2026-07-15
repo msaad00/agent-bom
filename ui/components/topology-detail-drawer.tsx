@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Lock, Package, Server, ShieldAlert, Users, Wrench, X } from "lucide-react";
 
+import { useEscToClose } from "@/hooks/use-esc-to-close";
 import type { Agent } from "@/lib/api";
 import {
   serverHasCredentials,
@@ -26,6 +27,7 @@ export function TopologyDetailDrawer({
     | null;
   onClose: () => void;
 }) {
+  useEscToClose(selection !== null, onClose);
   if (!selection) return null;
 
   const agent =
@@ -96,7 +98,7 @@ export function TopologyDetailDrawer({
         </div>
 
         {hasCredentials ? (
-          <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
             <Lock className="mr-1.5 inline h-3.5 w-3.5" />
             Credential-backed env vars detected on this service path.
           </div>
@@ -128,7 +130,7 @@ export function TopologyDetailDrawer({
           {selection.kind === "agent" ? (
             <Link
               href={`/agents?name=${encodeURIComponent(selection.name)}`}
-              className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-200"
+              className="rounded-lg border border-emerald-700/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200"
             >
               Open agent record
             </Link>

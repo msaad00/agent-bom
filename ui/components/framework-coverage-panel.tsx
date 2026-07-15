@@ -123,13 +123,13 @@ export function FrameworkCoveragePanel({ items, onFocusFramework, cloudCisHref }
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-emerald-300">
+          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-300">
             {summary.passing} passing
           </span>
-          <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-yellow-200">
+          <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-yellow-700 dark:text-yellow-200">
             {summary.warning} warning
           </span>
-          <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-red-300">
+          <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-red-700 dark:text-red-300">
             {summary.failing} failing
           </span>
         </div>
@@ -214,10 +214,10 @@ export function FrameworkCoveragePanel({ items, onFocusFramework, cloudCisHref }
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
                       tone === "fail"
-                        ? "bg-red-500/15 text-red-300"
+                        ? "bg-red-500/15 text-red-700 dark:text-red-300"
                         : tone === "warning"
-                          ? "bg-yellow-500/15 text-yellow-200"
-                          : "bg-emerald-500/15 text-emerald-300"
+                          ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-200"
+                          : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                     }`}
                   >
                     {tone === "fail" ? "Fail" : tone === "warning" ? "Warn" : "Pass"}

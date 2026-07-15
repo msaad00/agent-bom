@@ -163,7 +163,7 @@ function MeshToolbar({
                   onClick={() => toggleAgent(key)}
                   className={`max-w-[13rem] truncate rounded-full border px-2.5 py-1 text-[11px] transition ${
                     active
-                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
+                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
                       : "border-[var(--border-subtle)] bg-[var(--surface)]/70 text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
                   }`}
                 >

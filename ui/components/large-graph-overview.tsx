@@ -205,7 +205,7 @@ export function LargeGraphOverview({
     <div className="flex h-full min-h-[72vh] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] shadow-2xl shadow-black/30" data-testid="large-graph-overview">
       <div className="border-b border-[var(--border-subtle)] bg-[var(--background)]/95 p-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-950/25 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-200">
             <Network className="h-3.5 w-3.5" />
             Large graph overview
           </span>

@@ -964,7 +964,7 @@ function FindingsPage() {
             : "aggregated across completed scans.",
         )}
         scopeChip={
-          <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-medium text-cyan-200">
+          <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-200">
             Shared · Engineering &amp; Compliance
           </span>
         }
@@ -995,7 +995,7 @@ function FindingsPage() {
                 <button
                   onClick={handleExportVex}
                   disabled={vexExporting || vexEligibleCount === 0}
-                  className="flex items-center gap-1.5 rounded-lg border border-emerald-900 bg-emerald-950/40 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 dark:border-emerald-900 bg-emerald-500/10 dark:bg-emerald-950/40 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-500/10 dark:hover:bg-emerald-950/70 disabled:cursor-not-allowed disabled:opacity-50"
                   title={
                     vexEligibleCount > 0
                       ? "Export signed OpenVEX JSON for findings triaged as not_affected"
@@ -1021,7 +1021,7 @@ function FindingsPage() {
       <p className="text-xs text-[color:var(--text-tertiary)]">{lensHint}</p>
 
       {triageError && (
-        <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
+        <div className="rounded-lg border border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
           {triageError}
         </div>
       )}
@@ -1086,7 +1086,7 @@ function FindingsPage() {
                 {lens === "trust" ? (
                   <a
                     href="/compliance"
-                    className="rounded-full border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-emerald-300 hover:bg-emerald-950/50"
+                    className="rounded-full border border-emerald-500/30 dark:border-emerald-900/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-2 py-1 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 dark:hover:bg-emerald-950/50"
                   >
                     Trust center
                   </a>
@@ -1232,7 +1232,7 @@ function FindingsPage() {
                     title={hint}
                     className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
                       issueTypeFilter === key
-                        ? "border-cyan-700 bg-cyan-950/40 text-cyan-200"
+                        ? "border-cyan-700 bg-cyan-500/10 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-200"
                         : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
                     }`}
                   >

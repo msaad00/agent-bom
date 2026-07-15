@@ -50,7 +50,9 @@ def _tenant(request: Request) -> str:
 
 
 def _actor(request: Request) -> str:
-    return getattr(getattr(request, "state", None), "actor", None) or "api"
+    return getattr(getattr(request, "state", None), "actor", None) or getattr(
+        getattr(request, "state", None), "api_key_name", None
+    ) or "api"
 
 
 def _emit(event_type: str, *, tenant_id: str, subject_id: str, **payload: object) -> None:

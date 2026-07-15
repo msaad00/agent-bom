@@ -101,6 +101,37 @@ _CDX_JUSTIFICATION_TO_VEX: dict[str, VexJustification] = {
     "protected_by_mitigating_control": VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST,
 }
 
+# Inverse of _CDX_JUSTIFICATION_TO_VEX: OpenVEX justification -> CycloneDX
+# ``impactAnalysisJustification`` enum member. The forward map is many-to-one
+# (several CDX members collapse onto one OpenVEX value), so this picks a single
+# canonical CDX member per OpenVEX justification. Used when emitting CycloneDX
+# ``analysis.justification`` — the OpenVEX vocabulary is not a valid CDX enum
+# member and would produce a schema-invalid document.
+_VEX_JUSTIFICATION_TO_CDX: dict[VexJustification, str] = {
+    VexJustification.COMPONENT_NOT_PRESENT: "requires_dependency",
+    VexJustification.VULNERABLE_CODE_NOT_PRESENT: "code_not_present",
+    VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH: "code_not_reachable",
+    VexJustification.VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY: "requires_configuration",
+    VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST: "protected_by_mitigating_control",
+}
+
+
+def vex_justification_to_cdx(justification: str | None) -> str | None:
+    """Translate an OpenVEX justification string to a CycloneDX enum member.
+
+    Returns ``None`` when the input is empty or is not a recognized OpenVEX
+    justification, so callers omit ``analysis.justification`` rather than emit a
+    value CycloneDX rejects.
+    """
+    if not justification:
+        return None
+    try:
+        vex_value = VexJustification(justification)
+    except ValueError:
+        return None
+    return _VEX_JUSTIFICATION_TO_CDX.get(vex_value)
+
+
 _CSAF_STATUS_TO_VEX: dict[str, VexStatus] = {
     "fixed": VexStatus.FIXED,
     "known_not_affected": VexStatus.NOT_AFFECTED,

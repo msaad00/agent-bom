@@ -2934,6 +2934,11 @@ export interface ConditionalAccessPolicy {
   allowed_hours_utc: number[];
   allowed_weekdays: number[];
   allowed_source_cidrs: string[];
+  // ABAC device/group/client conditions (evaluated fail-closed alongside the
+  // environment/time/CIDR guardrails).
+  allowed_devices: string[];
+  allowed_groups: string[];
+  allowed_clients: string[];
   updated_at: string;
   description: string;
 }
@@ -3371,4 +3376,94 @@ export interface BlueprintCreateRequest {
   owner_type?: string;
   description?: string;
   composition?: Partial<BlueprintComposition>;
+}
+
+// ── Governance: ABAC device/group/client + delegation + served MCP-config ───────
+
+/** Verified claims of a scoped delegation token (issue/verify/propagate). */
+export interface DelegationClaims {
+  jti: string;
+  tenant_id: string;
+  delegator: string;
+  delegatee: string;
+  scopes: string[];
+  chain: string[];
+  remaining_depth: number;
+  issued_at: number;
+  expires_at: number;
+}
+
+/** Response from issuing/propagating a delegation token. */
+export interface DelegationTokenResponse {
+  schema_version: string;
+  token: string;
+  delegation: DelegationClaims;
+}
+
+/** Response from `POST /v1/delegations/verify`. */
+export interface DelegationVerifyResponse {
+  schema_version: string;
+  valid: boolean;
+  reason?: string;
+  delegation?: DelegationClaims;
+}
+
+/** One tenant-scoped MCP-client-config assignment. */
+export interface McpClientConfigAssignment {
+  config_id: string;
+  tenant_id: string;
+  name: string;
+  profile_id: string;
+  connector_ids: string[];
+  connection_ids: string[];
+  created_at: string;
+  created_by: string;
+  updated_at: string;
+  revoked: boolean;
+  config_url?: string;
+}
+
+/** Response from assigning a profile → one distributable read-only config URL. */
+export interface McpConfigAssignmentResponse {
+  schema_version: string;
+  assignment: McpClientConfigAssignment;
+  config_url: string;
+}
+
+/** One credential reference in a served MCP-client-config — never a secret value. */
+export interface McpServerCredentialReference {
+  value: string;
+  handle: string;
+  source: "reference";
+}
+
+/** The served, read-only `.mcp.json` document. References connectors/secrets by
+ *  handle only; it never embeds secret material. */
+export interface ServedMcpClientConfig {
+  schema_version: string;
+  config_id: string;
+  tenant_id: string;
+  name: string;
+  profile_id: string;
+  profile?: Record<string, unknown> | null;
+  mcpServers: Record<string, {
+    connector_id: string;
+    name: string;
+    transport: string;
+    publisher?: string | null;
+    risk_level?: string | null;
+    packages: unknown[];
+    env: Record<string, McpServerCredentialReference>;
+    credential_references: string[];
+  }>;
+  connections: Array<{
+    connection_id?: string;
+    provider?: string;
+    display_name?: string;
+    has_secret: boolean;
+    handle: string;
+  }>;
+  unknown_connectors: string[];
+  generated_at: string;
+  read_only: boolean;
 }

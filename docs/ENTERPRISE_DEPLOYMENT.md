@@ -340,6 +340,7 @@ Production deployments must keep cryptographic keys separated by purpose:
 - `AGENT_BOM_AUDIT_HMAC_KEY` signs the tamper-evident audit chain and audit exports.
 - `AGENT_BOM_RATE_LIMIT_KEY` fingerprints API keys for rate-limit buckets.
 - `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY` signs httpOnly browser session cookies.
+- `AGENT_BOM_DELEGATION_SIGNING_KEY` signs scoped agent-to-agent delegation tokens; set it (never reuse another key) so delegated handoffs verify consistently across replicas and survive restarts. When unset, a per-process ephemeral key is used and tokens become invalid after restart.
 - `AGENT_BOM_TRUST_PROXY_AUTH_SECRET` attests trusted reverse-proxy identity headers and must contain at least 32 bytes of secret material.
 
 Do not reuse the API key or audit HMAC key as a rate-limit, browser-session, or proxy-attestation secret. Set `AGENT_BOM_TRUST_PROXY_AUTH_ISSUER` when the upstream proxy can inject a stable issuer identifier; the API will then reject trusted-proxy requests from any other issuer.

@@ -41,7 +41,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
 from agent_bom.api.finding_list_envelope import finding_list_envelope
-from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
+from agent_bom.api.idempotency_store import (
+    IdempotencyConflictError,
+    deterministic_batch_id,
+    idempotency_request_fingerprint,
+)
 from agent_bom.api.models import (
     BrowserExtensionsRequest,
     DatasetCardsRequest,
@@ -1994,7 +1998,11 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
             cached["idempotent_replay"] = True
             return cached
 
-    batch_id = str(uuid.uuid4())
+    # Deterministic batch id so a resend of the same body (even without an
+    # Idempotency-Key header) collapses onto one logical batch. Random per-request
+    # ids made ``upsert_current_batch``'s (canonical, batch_id) observation key
+    # miss on every replay, inflating ``scan_count`` (P1-5).
+    batch_id = deterministic_batch_id(idem_key or request_hash)
     payloads = [
         _normalized_bulk_finding(row, source=body.source, batch_id=batch_id, ordinal=idx) for idx, row in enumerate(body.findings, start=1)
     ]

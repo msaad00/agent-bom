@@ -4,13 +4,41 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import threading
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
+# Fixed namespace for content-derived batch ids so an identical write resent
+# without an ``Idempotency-Key`` header still collapses onto one logical batch
+# (stable observation dedup key) instead of minting a fresh random batch id.
+_BATCH_ID_NAMESPACE = uuid.UUID("6f6b4b2e-2c1a-4d9e-9d3b-8a1f0c5e7d42")
+_DEFAULT_IDEMPOTENCY_TTL_HOURS = 24
+
+
+def deterministic_batch_id(seed: str) -> str:
+    """Return a stable batch id derived from *seed* (idempotency key or hash).
+
+    A pure function of the seed: the same request content (or the same explicit
+    ``Idempotency-Key``) always yields the same batch id, so replays dedup rather
+    than inflate per-batch observation counts.
+    """
+    return str(uuid.uuid5(_BATCH_ID_NAMESPACE, seed or ""))
+
+
+def _idempotency_ttl_hours() -> int:
+    raw = os.environ.get("AGENT_BOM_IDEMPOTENCY_TTL_HOURS")
+    if raw is None:
+        return _DEFAULT_IDEMPOTENCY_TTL_HOURS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_IDEMPOTENCY_TTL_HOURS
 
 
 @dataclass
@@ -132,10 +160,17 @@ class InMemoryIdempotencyStore:
 
 
 class SQLiteIdempotencyStore:
-    def __init__(self, db_path: str = "agent_bom_jobs.db") -> None:
+    def __init__(self, db_path: str = "agent_bom_jobs.db", ttl_hours: int | None = None) -> None:
         self._db_path = db_path
+        self._ttl_hours = ttl_hours
         self._local = threading.local()
         self._init_db()
+
+    def _prune(self) -> None:
+        """Delete idempotency keys past the TTL (keyed on ``idx_idempotency_created_at``)."""
+        ttl = self._ttl_hours if self._ttl_hours is not None else _idempotency_ttl_hours()
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(ttl)))).isoformat()
+        self._conn.execute("DELETE FROM idempotency_keys WHERE created_at < ?", (cutoff,))
 
     @property
     def _conn(self) -> sqlite3.Connection:
@@ -209,4 +244,6 @@ class SQLiteIdempotencyStore:
                 _utcnow(),
             ),
         )
+        # Prune expired keys on write so the table cannot grow without bound.
+        self._prune()
         self._conn.commit()

@@ -1000,13 +1000,27 @@ async def trace_explorer(
     Fuses gateway/proxy feed events and persisted runtime observations into
     session-grouped spans. Each span carries correlated findings (CVE, reach
     band, compliance controls) and blocked/observed verdict metadata.
+
+    The whole assembly — unbounded findings iteration, synchronous psycopg
+    session/observation reads, and CPU-bound serialization — is offloaded via
+    ``asyncio.to_thread`` so it never blocks the event loop under scale.
+    """
+    tenant_id = _tenant_id(request)
+    bounded_limit = max(1, min(limit, 200))
+    return await asyncio.to_thread(_build_trace_explorer_payload_sync, tenant_id, limit=bounded_limit)
+
+
+def _build_trace_explorer_payload_sync(tenant_id: str, *, limit: int = 100) -> dict[str, object]:
+    """Heavy trace-explorer assembly; always run off the event loop.
+
+    Findings iteration is bounded by ``limit`` so a large estate can never fold
+    an unbounded number of scan findings into one request.
     """
     from agent_bom.api.cost_store import get_cost_store
     from agent_bom.api.routes.gateway_feed import _load_tenant_alerts, build_gateway_feed
     from agent_bom.api.routes.scan import _completed_jobs_for_tenant, _iter_scan_findings
     from agent_bom.api.trace_explorer import build_trace_explorer_payload
 
-    tenant_id = _tenant_id(request)
     bounded_limit = max(1, min(limit, 200))
     alerts = _load_tenant_alerts(tenant_id)
     llm_records = list(get_cost_store().list_records(tenant_id, limit=bounded_limit))
@@ -1018,7 +1032,12 @@ async def trace_explorer(
     )
     findings: list[dict[str, Any]] = []
     for job in _completed_jobs_for_tenant(tenant_id):
-        findings.extend(_iter_scan_findings(job))
+        for finding in _iter_scan_findings(job):
+            findings.append(finding)
+            if len(findings) >= bounded_limit:
+                break
+        if len(findings) >= bounded_limit:
+            break
     store = get_runtime_event_store()
     sessions = [session.to_dict() for session in store.list_sessions(tenant_id, limit=bounded_limit, offset=0)]
     observations = [observation.to_dict() for observation in store.list_observations(tenant_id, limit=bounded_limit, offset=0)]
@@ -1033,35 +1052,9 @@ async def trace_explorer(
 
 
 async def _trace_explorer_payload_for_tenant(tenant_id: str, *, limit: int = 100) -> dict[str, object]:
-    """Shared trace explorer builder for runtime surfaces."""
-    from agent_bom.api.cost_store import get_cost_store
-    from agent_bom.api.routes.gateway_feed import _load_tenant_alerts, build_gateway_feed
-    from agent_bom.api.routes.scan import _completed_jobs_for_tenant, _iter_scan_findings
-    from agent_bom.api.trace_explorer import build_trace_explorer_payload
-
+    """Shared trace explorer builder for runtime surfaces (offloaded off-loop)."""
     bounded_limit = max(1, min(limit, 200))
-    alerts = _load_tenant_alerts(tenant_id)
-    llm_records = list(get_cost_store().list_records(tenant_id, limit=bounded_limit))
-    feed = build_gateway_feed(
-        tenant_id=tenant_id,
-        alerts=alerts,
-        llm_records=llm_records,
-        limit=bounded_limit,
-    )
-    findings: list[dict[str, Any]] = []
-    for job in _completed_jobs_for_tenant(tenant_id):
-        findings.extend(_iter_scan_findings(job))
-    store = get_runtime_event_store()
-    sessions = [session.to_dict() for session in store.list_sessions(tenant_id, limit=bounded_limit, offset=0)]
-    observations = [observation.to_dict() for observation in store.list_observations(tenant_id, limit=bounded_limit, offset=0)]
-    return build_trace_explorer_payload(
-        tenant_id=tenant_id,
-        feed_events=cast(list[dict[str, Any]], feed.get("events", [])),
-        findings=findings,
-        sessions=sessions,
-        observations=observations,
-        limit=bounded_limit,
-    )
+    return await asyncio.to_thread(_build_trace_explorer_payload_sync, tenant_id, limit=bounded_limit)
 
 
 @router.get("/runtime/approval-queue", tags=["runtime", "observability"], dependencies=[_dep("read")])
@@ -1278,12 +1271,36 @@ async def get_llm_costs(
     to scope the report (and budget) to one allocation unit, or ``tag`` to add a
     ``by_tag`` showback slice for a freeform allocation tag.
     """
+    tenant_id = _tenant_id(request)
+    bounded_limit = max(1, min(limit, 10000))
+    # The fetch (up to 10k records) plus the summarize / owner-report / budget /
+    # forecast CPU work is all synchronous; offload it in one hop so a large cost
+    # ledger can never block the event loop.
+    return await asyncio.to_thread(
+        _build_llm_costs_report_sync,
+        tenant_id,
+        agent=agent,
+        cost_center=cost_center,
+        tag=tag,
+        limit=bounded_limit,
+    )
+
+
+def _build_llm_costs_report_sync(
+    tenant_id: str,
+    *,
+    agent: str | None,
+    cost_center: str | None,
+    tag: str | None,
+    limit: int,
+) -> dict[str, object]:
+    """Fetch + compute the LLM cost report off the event loop."""
+    from agent_bom.api.cost_forecast import forecast_spend
+    from agent_bom.api.cost_owner import owner_cost_report
     from agent_bom.api.cost_store import budget_status, get_cost_store, summarize, summarize_by_tag
 
-    tenant_id = _tenant_id(request)
     store = get_cost_store()
-    bounded_limit = max(1, min(limit, 10000))
-    records = store.list_records(tenant_id, limit=bounded_limit)
+    records = store.list_records(tenant_id, limit=limit)
     if agent:
         records = [r for r in records if r.agent == agent]
     if cost_center:
@@ -1292,8 +1309,6 @@ async def get_llm_costs(
     # Owner-attributed rollup (#3909): spend grouped by the accountable owner
     # recorded on the blueprint governing each agent. Spend from an ungoverned
     # agent rolls up under "unattributed" so nothing is silently dropped.
-    from agent_bom.api.cost_owner import owner_cost_report
-
     report["by_owner"] = owner_cost_report(store, tenant_id, records)["by_owner"]
     if tag:
         report["tag_rollup"] = summarize_by_tag(records, _bounded(tag, max_len=60))
@@ -1308,8 +1323,6 @@ async def get_llm_costs(
     report["budget"] = budget_status(spend, budget)
     # Forward-looking companion to the point-in-time budget posture: burn rate +
     # projected runway derived from the same records. Reference only.
-    from agent_bom.api.cost_forecast import forecast_spend
-
     report["forecast"] = forecast_spend(records, budget=budget)
     report["schema_version"] = "observability.costs.v1"
     report["tenant_id"] = tenant_id

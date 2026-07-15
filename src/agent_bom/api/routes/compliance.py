@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import secrets
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1998,7 +1997,14 @@ async def ingest_compliance_findings(request: Request) -> dict:
     )
 
     observed_at = normalize_observed_at(body.get("observed_at"))
-    batch_id = str(uuid.uuid4())
+    # Deterministic batch id keyed on the Idempotency-Key header (if any) or the
+    # request-content fingerprint, so re-POSTing the same document collapses onto
+    # one observation batch instead of inflating ``scan_count`` on every resend
+    # (P1-5). The (canonical, batch_id) observation key must be stable per body.
+    from agent_bom.api.idempotency_store import deterministic_batch_id, idempotency_request_fingerprint
+
+    idem_key = request.headers.get("Idempotency-Key") or ""
+    batch_id = deterministic_batch_id(idem_key or idempotency_request_fingerprint(body))
     prior_snapshots: dict[str, Any] = {}
     if needs_hub_prior_snapshots(reconcile_absent=bool(body.get("reconcile_absent"))):
         prior_snapshots = capture_hub_snapshots(store, tenant_id, source=fmt)

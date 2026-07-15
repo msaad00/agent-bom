@@ -183,6 +183,53 @@ def test_compliance_ingest_idempotent_on_resend() -> None:
     assert totals == [5, 5, 5]
 
 
+# ─── scan_count must not inflate on resend (P1-5) ────────────────────────────
+
+
+def _max_scan_count(tenant: str) -> int:
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    rows, _total, _cursor = get_compliance_hub_store().list_current_page(tenant, limit=500)
+    return max((int(row.get("scan_count", 0) or 0) for row in rows), default=0)
+
+
+def test_bulk_ingest_resend_does_not_inflate_scan_count() -> None:
+    """A resent identical bulk batch must dedup the observation, not re-count it."""
+    tenant = f"idem-scancount-bulk-{uuid4().hex}"
+    client = _client(tenant)
+    findings = _batch(20, with_id=True)
+    for _ in range(3):
+        resp = client.post("/v1/findings/bulk", json={"source": "agent", "findings": findings})
+        assert resp.status_code == 201, resp.text
+    # Random per-request batch_ids used to miss the (canonical, batch_id)
+    # observation dedup, so scan_count climbed 1 -> 2 -> 3. It must stay 1.
+    assert _max_scan_count(tenant) == 1
+
+
+def test_compliance_ingest_resend_does_not_inflate_scan_count() -> None:
+    tenant = f"idem-scancount-compliance-{uuid4().hex}"
+    client = _client(tenant, role="admin")
+    content = _sarif(5)
+    for _ in range(3):
+        resp = client.post("/v1/compliance/ingest", json={"format": "sarif", "content": content})
+        assert resp.status_code == 201, resp.text
+    assert _max_scan_count(tenant) == 1
+
+
+def test_bulk_ingest_distinct_bodies_do_increment_scan_count() -> None:
+    """Guard against over-dedup: genuinely new observations must still count."""
+    tenant = f"idem-scancount-distinct-{uuid4().hex}"
+    client = _client(tenant)
+    findings = _batch(5, with_id=True)
+    # Same findings, but a changing companion row shifts the body fingerprint so
+    # each POST is a distinct batch -> the shared findings are re-observed.
+    for n in range(3):
+        body = {"source": "agent", "findings": [*findings, {"id": f"marker-{n}", "severity": "low", "title": f"m{n}"}]}
+        resp = client.post("/v1/findings/bulk", json=body)
+        assert resp.status_code == 201, resp.text
+    assert _max_scan_count(tenant) >= 2
+
+
 # ─── Scan job replay ─────────────────────────────────────────────────────────
 
 

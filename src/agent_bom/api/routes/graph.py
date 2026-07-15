@@ -1246,6 +1246,36 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
     }
 
 
+def _overlay_filter_and_respond(
+    graph: UnifiedGraph,
+    *,
+    tenant: str,
+    apply_overlay: bool,
+    filters: Any,
+    offset: int,
+    limit: int,
+) -> dict[str, Any]:
+    """Overlay governance, apply the scoped filter, and serialize — all off-loop.
+
+    Consolidates the governance overlay, ``filtered_view`` derivation and
+    response build into one synchronous unit so ``get_graph`` runs zero heavy
+    work on the event loop between offloaded calls.
+
+    The overlay is applied BEFORE the scoped filter so governance edges are
+    subject to the relationship filter and governance nodes left unconnected in a
+    scoped view are pruned with everything else. Best-effort; never breaks read.
+    """
+    if apply_overlay:
+        try:
+            from agent_bom.graph.governance_overlay import apply_governance_overlay
+
+            apply_governance_overlay(graph, tenant_id=tenant)
+        except Exception:  # noqa: BLE001
+            logger.warning("governance overlay failed", exc_info=True)
+    filtered = graph.filtered_view(filters)
+    return _filtered_graph_response(filtered, offset=offset, limit=limit)
+
+
 def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str, agent: str, limit: int) -> dict[str, Any]:
     available_paths = _derived_attack_paths(graph)
     ranked_paths = sorted(
@@ -1596,21 +1626,6 @@ async def get_graph(
             entity_types=et_set,
             min_severity_rank=min_rank,
         )
-        # Overlay the live agent-identity governance control plane (managed
-        # identities, JIT grants, conditional-access policies, drift incidents)
-        # so attack paths can traverse agent → identity → grant → tool and
-        # agent ↔ drift. Applied BEFORE the scoped filter so governance edges
-        # are subject to the relationship filter and governance nodes left
-        # unconnected in a scoped view are pruned with everything else, rather
-        # than reappearing as orphan nodes. Best-effort; never breaks the read.
-        if not et_set:
-            try:
-                from agent_bom.graph.governance_overlay import apply_governance_overlay
-
-                apply_governance_overlay(graph, tenant_id=tenant)
-            except Exception:  # noqa: BLE001
-                logger.warning("governance overlay failed", exc_info=True)
-
         rel_set = _parse_relationship_filter(relationships)
         filters = GraphFilterOptions(
             relationship_types=rel_set,
@@ -1618,9 +1633,18 @@ async def get_graph(
             dynamic_only=dynamic_only,
             max_depth=max_depth or 6,
         )
-        graph = graph.filtered_view(filters)
-
-        return await _graph_compute_call(_filtered_graph_response, graph, offset=offset, limit=limit)
+        # Governance overlay, scoped-filter derivation, and response
+        # serialization are all CPU-bound; fold them into ONE off-loop hop so no
+        # heavy work runs between offloaded calls on the event loop.
+        return await _graph_compute_call(
+            _overlay_filter_and_respond,
+            graph,
+            tenant=tenant,
+            apply_overlay=not et_set,
+            filters=filters,
+            offset=offset,
+            limit=limit,
+        )
 
     try:
         effective_scan_id, created_at, paged_nodes, total, next_cursor = await _graph_store_call(

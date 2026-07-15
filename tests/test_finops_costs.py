@@ -365,3 +365,83 @@ def test_cost_center_budget_via_api(client):
 def test_agent_and_cost_center_budget_mutually_exclusive(client):
     bad = client.put("/v1/observability/costs/budget", json={"limit_usd": 5.0, "agent": "a", "cost_center": "team-x"})
     assert bad.status_code == 400
+
+
+# ── windowed spend SUM for budget checks (P1-6) ──────────────────────────────
+
+
+def _rec_at(observed_at, *, call_id, cost=1.0, agent="agent-a", cost_center=""):
+    return LLMCostRecord(
+        tenant_id="t1",
+        call_id=call_id,
+        agent=agent,
+        session_id="s1",
+        provider="openai",
+        model="gpt-4o",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=cost,
+        priced=True,
+        observed_at=observed_at,
+        cost_center=cost_center,
+    )
+
+
+def _iso_days_ago(days):
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_budget_window_start_env(monkeypatch):
+    from agent_bom.api.cost_store import budget_window_start
+
+    monkeypatch.delenv("AGENT_BOM_BUDGET_WINDOW_DAYS", raising=False)
+    assert budget_window_start() is None  # default: all-history
+
+    monkeypatch.setenv("AGENT_BOM_BUDGET_WINDOW_DAYS", "30")
+    cutoff = budget_window_start()
+    assert cutoff is not None and cutoff <= _iso_days_ago(29)
+
+    monkeypatch.setenv("AGENT_BOM_BUDGET_WINDOW_DAYS", "0")
+    assert budget_window_start() is None  # non-positive disables windowing
+
+
+def test_total_spend_since_bounds_sum_in_memory():
+    store = InMemoryCostStore()
+    store.record_cost(_rec_at(_iso_days_ago(2), call_id="recent", cost=4.0))
+    store.record_cost(_rec_at(_iso_days_ago(90), call_id="old", cost=100.0))
+
+    assert store.total_spend("t1") == 104.0  # unbounded default
+    assert store.total_spend("t1", since=_iso_days_ago(30)) == 4.0  # windowed
+
+
+def test_total_spend_since_bounds_sum_sqlite(tmp_path):
+    from agent_bom.api.cost_store import SQLiteCostStore
+
+    store = SQLiteCostStore(str(tmp_path / "costs.db"))
+    store.record_cost(_rec_at(_iso_days_ago(2), call_id="recent", cost=4.0))
+    store.record_cost(_rec_at(_iso_days_ago(90), call_id="old", cost=100.0))
+
+    assert store.total_spend("t1") == 104.0
+    assert store.total_spend("t1", since=_iso_days_ago(30)) == 4.0
+    assert store.total_spend("t1", agent="agent-a", since=_iso_days_ago(30)) == 4.0
+
+
+def test_budget_enforcement_uses_rolling_window(monkeypatch):
+    from agent_bom.api.cost_store import CostBudget, check_budget_enforcement
+
+    store = InMemoryCostStore()
+    store.record_cost(_rec_at(_iso_days_ago(1), call_id="recent", cost=3.0))
+    store.record_cost(_rec_at(_iso_days_ago(120), call_id="ancient", cost=50.0))
+    store.set_budget(CostBudget("t1", "", 10.0, "2026-01-01", "enforce"))
+
+    # All-history spend (53) exceeds the $10 cap...
+    monkeypatch.delenv("AGENT_BOM_BUDGET_WINDOW_DAYS", raising=False)
+    blocked, _b, spend = check_budget_enforcement(store, "t1", "")
+    assert blocked is True and spend == 53.0
+
+    # ...but the rolling 30-day window (3) is within budget.
+    monkeypatch.setenv("AGENT_BOM_BUDGET_WINDOW_DAYS", "30")
+    blocked, _b, spend = check_budget_enforcement(store, "t1", "")
+    assert blocked is False and spend == 3.0

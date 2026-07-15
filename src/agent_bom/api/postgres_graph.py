@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Iterator, Sequence
 
 from agent_bom.api.graph_store import (
@@ -21,6 +21,7 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS
 from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, graph_retention_policy, normalize_graph_tenant_id
 from agent_bom.graph import EntityType
+from agent_bom.security import sanitize_text
 
 from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
 
@@ -46,6 +47,17 @@ _GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS = [
     "attack_paths.credential_exposure",
 ]
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
+# Tables purged (children before parents) when a graph snapshot ages out of the
+# retention window, so a partial failure never orphans rows under a deleted
+# snapshot. Mirrors ``graph_store._GRAPH_PURGEABLE_TABLES`` plus the search index.
+_GRAPH_RETENTION_PURGE_TABLES = (
+    "graph_node_search",
+    "attack_paths",
+    "interaction_risks",
+    "graph_edges",
+    "graph_nodes",
+    "graph_snapshots",
+)
 _GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "graph_nodes": ("id", "scan_id"),
     "graph_edges": ("source_id", "target_id", "relationship", "scan_id"),
@@ -760,6 +772,46 @@ class PostgresGraphStore:
                 ),
             )
             conn.commit()
+
+            # Mirror the SQLite backend's age-based retention purge so Postgres
+            # snapshot history does not grow unbounded. Best-effort: a purge
+            # failure must never fail the durable save that already committed.
+            self._purge_expired_snapshots(conn, tenant)
+
+    def _purge_expired_snapshots(self, conn, tenant: str) -> None:
+        """Delete this tenant's graph snapshots older than the retention window.
+
+        Age-based purge keyed on ``graph_snapshots.created_at`` and scoped to the
+        tenant being saved. Fail-closed on unparseable timestamps (retained,
+        never deleted) and cascades to child rows in FK-safe order.
+        """
+        from agent_bom.api.tenant_graph_retention import resolve_graph_retention_days
+        from agent_bom.db.graph_store import _parse_iso_timestamp
+
+        try:
+            days = max(1, int(resolve_graph_retention_days(tenant)))
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            rows = conn.execute(
+                "SELECT scan_id, created_at FROM graph_snapshots WHERE tenant_id = %s",
+                (tenant,),
+            ).fetchall()
+            expired: list[tuple[str, str]] = []
+            for row in rows:
+                created = _parse_iso_timestamp(row[1])
+                if created is not None and created < cutoff:
+                    expired.append((tenant, str(row[0])))
+            if not expired:
+                return
+            for table in _GRAPH_RETENTION_PURGE_TABLES:
+                conn.executemany(
+                    f"DELETE FROM {table} WHERE tenant_id = %s AND scan_id = %s",  # nosec B608 - table names are static internal schema metadata
+                    expired,
+                )
+            conn.commit()
+            logger.info("Purged %d expired graph snapshot(s) (tenant=%s)", len(expired), tenant)
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("Graph snapshot retention purge skipped: %s", sanitize_text(str(exc)))
 
     def load_graph(
         self,

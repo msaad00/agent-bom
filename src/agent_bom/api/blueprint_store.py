@@ -658,6 +658,101 @@ def diff_versions(
     }
 
 
+def find_blueprint_by_seed(store: BlueprintStore, tenant_id: str, seeded_from: str) -> Blueprint | None:
+    """Return the tenant's blueprint seeded from ``seeded_from`` (a role archetype id).
+
+    Runtime drift incidents key on the runtime archetype id; the persisted
+    blueprint that governs it records that id in ``seeded_from``. This bridges a
+    drift incident back to its stored, versioned blueprint (#3905).
+    """
+    seed = (seeded_from or "").strip()
+    if not seed:
+        return None
+    for bp in store.iter_all_blueprints(limit=10000):
+        if bp.tenant_id == tenant_id and bp.seeded_from == seed:
+            return bp
+    return None
+
+
+def build_agent_owner_index(store: BlueprintStore, tenant_id: str) -> dict[str, tuple[str, str]]:
+    """Map each governed agent to ``(owner, workflow_blueprint_id)`` (#3909).
+
+    Owner attribution reads the *approved* (in-effect) version of every blueprint
+    the tenant owns: each agent in that composition is attributed to the
+    blueprint's accountable ``owner`` and the governing blueprint id (its
+    ``workflow``). Iterated in a stable blueprint-id order so an agent shared
+    across blueprints attributes deterministically (first approved wins).
+    """
+    index: dict[str, tuple[str, str]] = {}
+    blueprints = sorted(
+        (b for b in store.iter_all_blueprints(limit=10000) if b.tenant_id == tenant_id),
+        key=lambda b: b.blueprint_id,
+    )
+    for bp in blueprints:
+        if bp.current_version <= 0 or not bp.owner:
+            continue
+        version = store.get_version(tenant_id, bp.blueprint_id, bp.current_version)
+        if version is None:
+            continue
+        for agent in version.composition.agents:
+            if agent and agent not in index:
+                index[agent] = (bp.owner, bp.blueprint_id)
+    return index
+
+
+def promote_drift_to_draft_version(
+    store: BlueprintStore,
+    *,
+    tenant_id: str,
+    blueprint_id: str,
+    observed_categories: list[str],
+    incident_id: str = "",
+    created_by: str = "",
+    submit: bool = True,
+) -> BlueprintVersion | None:
+    """Fold accepted runtime drift into a NEW draft blueprint version (#3905).
+
+    Composes a new version from the blueprint's current (approved) composition
+    plus the observed/drifted tool categories, then — by default — submits it for
+    approval (draft → pending). Accepting drift therefore requires a *fresh
+    approval* by someone holding the approve capability; it is never silently
+    applied and never auto-approved. Returns None when the blueprint is missing.
+    """
+    blueprint = store.get_blueprint(tenant_id, blueprint_id)
+    if blueprint is None:
+        return None
+    base_version = blueprint.current_version or blueprint.latest_version
+    base = store.get_version(tenant_id, blueprint_id, base_version) if base_version else None
+    base_comp = base.composition if base is not None else BlueprintComposition()
+    merged_tools = sorted(set(base_comp.tools) | {c for c in observed_categories if c and c != "unknown"})
+    guardrails = list(base_comp.guardrails)
+    marker = f"accepted_drift:{incident_id}" if incident_id else "accepted_drift"
+    if marker not in guardrails:
+        guardrails.append(marker)
+    new_comp = BlueprintComposition(
+        agents=list(base_comp.agents),
+        models=list(base_comp.models),
+        tools=merged_tools,
+        datasets=list(base_comp.datasets),
+        identities=list(base_comp.identities),
+        owners=list(base_comp.owners),
+        guardrails=guardrails,
+    )
+    version = create_draft_version(
+        store, tenant_id=tenant_id, blueprint_id=blueprint_id, composition=new_comp, created_by=created_by
+    )
+    if version is None:
+        return None
+    if submit:
+        version = (
+            submit_version_for_approval(
+                store, tenant_id=tenant_id, blueprint_id=blueprint_id, version=version.version, submitted_by=created_by
+            )
+            or version
+        )
+    return version
+
+
 def seed_blueprints_from_archetypes(
     store: BlueprintStore,
     *,
@@ -766,10 +861,13 @@ __all__ = [
     "InMemoryBlueprintStore",
     "SQLiteBlueprintStore",
     "approve_version",
+    "build_agent_owner_index",
     "create_blueprint",
     "create_draft_version",
     "diff_versions",
+    "find_blueprint_by_seed",
     "get_blueprint_store",
+    "promote_drift_to_draft_version",
     "reject_version",
     "seed_blueprints_from_archetypes",
     "set_blueprint_store",

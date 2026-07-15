@@ -12738,7 +12738,9 @@ paths:
 
         Pass ``cost_center`` to read a chargeback budget scoped to one allocation
 
-        unit (#2925) instead of the per-agent / tenant-wide cap.'
+        unit (#2925), or ``owner`` (optionally with ``workflow``) to read an
+
+        accountable-owner budget (#3909), instead of the per-agent / tenant-wide cap.'
       operationId: get_llm_cost_budget_v1_observability_costs_budget_get
       parameters:
       - in: query
@@ -12754,6 +12756,20 @@ paths:
         schema:
           default: ''
           title: Cost Center
+          type: string
+      - in: query
+        name: owner
+        required: false
+        schema:
+          default: ''
+          title: Owner
+          type: string
+      - in: query
+        name: workflow
+        required: false
+        schema:
+          default: ''
+          title: Workflow
           type: string
       - in: header
         name: X-Agent-Bom-Role
@@ -12800,14 +12816,22 @@ paths:
       - observability
       - finops
     put:
-      description: 'Set a USD spend cap. Body: {limit_usd, agent?, cost_center?, mode?}.
+      description: 'Set a USD spend cap. Body: {limit_usd, agent?, cost_center?, owner?,
+        workflow?, mode?}.
 
 
         A ``cost_center`` scopes the cap to one chargeback unit (#2925); ``agent``
 
-        scopes it to one agent; neither means tenant-wide. ``agent`` and
+        scopes it to one agent; ``owner`` scopes it to an accountable human/team as
 
-        ``cost_center`` are mutually exclusive.'
+        recorded on the governing blueprint (#3909), optionally narrowed to one
+
+        governing blueprint via ``workflow``; none set means tenant-wide. ``agent``
+        /
+
+        ``cost_center`` / ``owner`` are mutually exclusive, and ``workflow`` requires
+
+        ``owner``.'
       operationId: set_llm_cost_budget_v1_observability_costs_budget_put
       parameters:
       - in: header
@@ -14229,7 +14253,14 @@ paths:
       - runtime
   /v1/runtime/drift/incidents/{incident_id}/resolve:
     post:
-      description: Resolve a drift incident once the blueprint/agent has been reconciled.
+      description: "Resolve a drift incident once the blueprint/agent has been reconciled.\n\
+        \nBody: ``{note?, disposition?, blueprint_id?}``. ``disposition`` defaults\
+        \ to a\nplain close (\"reject\"/\"ignore\"): the incident is closed and nothing\
+        \ else\nchanges. When ``disposition`` accepts the drift (\"accept\"/\"accept_drift\"\
+        ), the\nobserved (drifted) state is additionally promoted into a NEW *draft*\
+        \ version\nof the governing persisted blueprint and submitted for approval\
+        \ (draft \u2192\npending) \u2014 so accepting drift requires a fresh approval\
+        \ by an approver and is\nnever silently applied or auto-approved (#3905)."
       operationId: resolve_drift_incident_v1_runtime_drift_incidents__incident_id__resolve_post
       parameters:
       - in: path

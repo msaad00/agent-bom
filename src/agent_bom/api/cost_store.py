@@ -57,6 +57,13 @@ class CostBudget:
     - ``"report"`` (default): surfaced in budget posture only.
     - ``"enforce"``: the runtime relay fails calls closed once spend reaches
       the cap (pre-invocation enforcement), turning FinOps into a control.
+
+    A budget may be scoped to any one of the mutually-exclusive dimensions
+    ``agent`` / ``cost_center`` / ``owner`` (all empty = tenant-wide). ``owner``
+    joins spend to the accountable human/team recorded on the governing
+    blueprint header (#3909); ``workflow`` optionally narrows an owner budget to
+    one governing blueprint. Owner spend is resolved from the blueprint that
+    governs the agent — see :mod:`agent_bom.api.cost_owner`.
     """
 
     tenant_id: str
@@ -65,6 +72,8 @@ class CostBudget:
     updated_at: str
     mode: str = "report"  # report | enforce
     cost_center: str = ""  # "" means not scoped to a cost center (#2925)
+    owner: str = ""  # "" means not scoped to an accountable owner (#3909)
+    workflow: str = ""  # optional owner sub-scope: a single governing blueprint
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -184,19 +193,21 @@ COST_STORAGE_SCHEMA = StorageSchema(
         ),
         TableSchema(
             name="llm_cost_budgets",
-            columns=("tenant_id", "agent", "limit_usd", "updated_at", "mode", "cost_center"),
+            columns=("tenant_id", "agent", "limit_usd", "updated_at", "mode", "cost_center", "owner", "workflow"),
             ddl_by_backend={
                 "sqlite": (
                     "CREATE TABLE IF NOT EXISTS llm_cost_budgets (tenant_id TEXT NOT NULL, "
                     "agent TEXT NOT NULL DEFAULT '', limit_usd REAL NOT NULL, updated_at TEXT NOT NULL, "
                     "mode TEXT NOT NULL DEFAULT 'report', cost_center TEXT NOT NULL DEFAULT '', "
-                    "PRIMARY KEY (tenant_id, agent, cost_center))"
+                    "owner TEXT NOT NULL DEFAULT '', workflow TEXT NOT NULL DEFAULT '', "
+                    "PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow))"
                 ),
                 "postgres": (
                     "CREATE TABLE IF NOT EXISTS llm_cost_budgets (tenant_id TEXT NOT NULL, "
                     "agent TEXT NOT NULL DEFAULT '', limit_usd DOUBLE PRECISION NOT NULL, updated_at TEXT NOT NULL, "
                     "mode TEXT NOT NULL DEFAULT 'report', cost_center TEXT NOT NULL DEFAULT '', "
-                    "PRIMARY KEY (tenant_id, agent, cost_center))"
+                    "owner TEXT NOT NULL DEFAULT '', workflow TEXT NOT NULL DEFAULT '', "
+                    "PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow))"
                 ),
             },
         ),
@@ -215,7 +226,67 @@ class CostStore(Protocol):
 
     def set_budget(self, budget: CostBudget) -> None: ...
 
-    def get_budget(self, tenant_id: str, agent: str = "", *, cost_center: str = "") -> CostBudget | None: ...
+    def get_budget(
+        self, tenant_id: str, agent: str = "", *, cost_center: str = "", owner: str = "", workflow: str = ""
+    ) -> CostBudget | None: ...
+
+
+def _rollup_by_owner(records: list[LLMCostRecord], agent_owner: dict[str, str]) -> list[dict[str, Any]]:
+    """Aggregate spend + tokens by the accountable owner governing each agent (#3909).
+
+    ``agent_owner`` maps an agent name to the owner recorded on the blueprint
+    that governs it. A call whose agent has no governing blueprint rolls up under
+    ``"unattributed"`` so owner ROI reporting never silently drops spend.
+    """
+    buckets: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"key": "", "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "unpriced_calls": 0}
+    )
+    for r in records:
+        key = (agent_owner.get(r.agent) or "").strip() or "unattributed"
+        b = buckets[key]
+        b["key"] = key
+        b["calls"] += 1
+        b["input_tokens"] += r.input_tokens
+        b["output_tokens"] += r.output_tokens
+        b["cost_usd"] = round(b["cost_usd"] + r.cost_usd, 6)
+        if not r.priced:
+            b["unpriced_calls"] += 1
+    return sorted(buckets.values(), key=lambda b: b["cost_usd"], reverse=True)
+
+
+def summarize_by_owner(records: list[LLMCostRecord], agent_owner: dict[str, str]) -> dict[str, Any]:
+    """Owner-attributed spend report (#3909): total spend grouped by accountable owner."""
+    return {
+        "total_cost_usd": round(sum(r.cost_usd for r in records), 6),
+        "by_owner": _rollup_by_owner(records, agent_owner),
+    }
+
+
+def check_owner_budget_enforcement(
+    store: CostStore, tenant_id: str, owner: str, workflow: str, spend: float
+) -> tuple[bool, CostBudget | None]:
+    """Decide whether a call should block for exceeding an owner's budget (#3909).
+
+    A ``(owner, workflow)`` enforce budget (owner scoped to one governing
+    blueprint) wins; otherwise the owner-wide ``(owner, "")`` enforce budget
+    applies. ``spend`` is the owner's aggregate spend, resolved by the caller
+    from the blueprints that govern the owner's agents. Report-mode and missing
+    budgets never block.
+    """
+    if not owner:
+        return False, None
+    budget: CostBudget | None = None
+    if workflow:
+        budget = store.get_budget(tenant_id, "", owner=owner, workflow=workflow)
+    if budget is None or budget.mode != "enforce":
+        owner_wide = store.get_budget(tenant_id, "", owner=owner)
+        if owner_wide is not None and owner_wide.mode == "enforce":
+            budget = owner_wide
+        elif budget is None:
+            budget = owner_wide
+    if budget is None or budget.mode != "enforce":
+        return False, budget
+    return spend >= budget.limit_usd, budget
 
 
 def summarize(records: list[LLMCostRecord]) -> dict[str, Any]:
@@ -259,6 +330,8 @@ def budget_status(spend: float, budget: CostBudget | None) -> dict[str, Any]:
         "configured": True,
         "agent": budget.agent or None,
         "cost_center": budget.cost_center or None,
+        "owner": budget.owner or None,
+        "workflow": budget.workflow or None,
         "mode": budget.mode,
         "limit_usd": budget.limit_usd,
         "spend_usd": round(spend, 6),
@@ -274,7 +347,7 @@ class InMemoryCostStore:
     def __init__(self) -> None:
         self._records: dict[str, list[LLMCostRecord]] = defaultdict(list)
         self._seen: dict[str, set[str]] = defaultdict(set)
-        self._budgets: dict[tuple[str, str, str], CostBudget] = {}
+        self._budgets: dict[tuple[str, str, str, str, str], CostBudget] = {}
         self._lock = threading.Lock()
 
     def init_schema(self) -> None:
@@ -309,11 +382,13 @@ class InMemoryCostStore:
 
     def set_budget(self, budget: CostBudget) -> None:
         with self._lock:
-            self._budgets[(budget.tenant_id, budget.agent, budget.cost_center)] = budget
+            self._budgets[(budget.tenant_id, budget.agent, budget.cost_center, budget.owner, budget.workflow)] = budget
 
-    def get_budget(self, tenant_id: str, agent: str = "", *, cost_center: str = "") -> CostBudget | None:
+    def get_budget(
+        self, tenant_id: str, agent: str = "", *, cost_center: str = "", owner: str = "", workflow: str = ""
+    ) -> CostBudget | None:
         with self._lock:
-            return self._budgets.get((tenant_id, agent, cost_center))
+            return self._budgets.get((tenant_id, agent, cost_center, owner, workflow))
 
 
 class SQLiteCostStore:
@@ -366,7 +441,9 @@ class SQLiteCostStore:
                 updated_at TEXT NOT NULL,
                 mode TEXT NOT NULL DEFAULT 'report',
                 cost_center TEXT NOT NULL DEFAULT '',
-                PRIMARY KEY (tenant_id, agent, cost_center)
+                owner TEXT NOT NULL DEFAULT '',
+                workflow TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)
             )
             """
         )
@@ -378,6 +455,30 @@ class SQLiteCostStore:
         # an empty cost_center / '{}' tags and roll up under "unallocated".
         if "cost_center" not in budget_cols:
             self._conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN cost_center TEXT NOT NULL DEFAULT ''")
+        # Owner/workflow scoping (#3909) widens the budget primary key so an
+        # owner budget cannot collide with the tenant-wide row. SQLite cannot
+        # ALTER a primary key, so migrate pre-owner databases by rebuilding the
+        # table with the widened key and copying every existing budget across.
+        if "owner" not in budget_cols:
+            self._conn.executescript(
+                """
+                ALTER TABLE llm_cost_budgets RENAME TO llm_cost_budgets_pre_owner;
+                CREATE TABLE llm_cost_budgets (
+                    tenant_id TEXT NOT NULL,
+                    agent TEXT NOT NULL DEFAULT '',
+                    limit_usd REAL NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    mode TEXT NOT NULL DEFAULT 'report',
+                    cost_center TEXT NOT NULL DEFAULT '',
+                    owner TEXT NOT NULL DEFAULT '',
+                    workflow TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)
+                );
+                INSERT INTO llm_cost_budgets (tenant_id, agent, limit_usd, updated_at, mode, cost_center)
+                    SELECT tenant_id, agent, limit_usd, updated_at, mode, cost_center FROM llm_cost_budgets_pre_owner;
+                DROP TABLE llm_cost_budgets_pre_owner;
+                """
+            )
         cost_cols = [r[1] for r in self._conn.execute("PRAGMA table_info(llm_costs)").fetchall()]
         if "cost_center" not in cost_cols:
             self._conn.execute("ALTER TABLE llm_costs ADD COLUMN cost_center TEXT NOT NULL DEFAULT ''")
@@ -457,17 +558,29 @@ class SQLiteCostStore:
 
     def set_budget(self, budget: CostBudget) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO llm_cost_budgets (tenant_id, agent, limit_usd, updated_at, mode, cost_center) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (budget.tenant_id, budget.agent, budget.limit_usd, budget.updated_at, budget.mode, budget.cost_center),
+            "INSERT OR REPLACE INTO llm_cost_budgets "
+            "(tenant_id, agent, limit_usd, updated_at, mode, cost_center, owner, workflow) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                budget.tenant_id,
+                budget.agent,
+                budget.limit_usd,
+                budget.updated_at,
+                budget.mode,
+                budget.cost_center,
+                budget.owner,
+                budget.workflow,
+            ),
         )
         self._conn.commit()
 
-    def get_budget(self, tenant_id: str, agent: str = "", *, cost_center: str = "") -> CostBudget | None:
+    def get_budget(
+        self, tenant_id: str, agent: str = "", *, cost_center: str = "", owner: str = "", workflow: str = ""
+    ) -> CostBudget | None:
         row = self._conn.execute(
-            "SELECT tenant_id, agent, limit_usd, updated_at, mode, cost_center "
-            "FROM llm_cost_budgets WHERE tenant_id = ? AND agent = ? AND cost_center = ?",
-            (tenant_id, agent, cost_center),
+            "SELECT tenant_id, agent, limit_usd, updated_at, mode, cost_center, owner, workflow "
+            "FROM llm_cost_budgets WHERE tenant_id = ? AND agent = ? AND cost_center = ? AND owner = ? AND workflow = ?",
+            (tenant_id, agent, cost_center, owner, workflow),
         ).fetchone()
         if not row:
             return None
@@ -478,6 +591,8 @@ class SQLiteCostStore:
             row[3],
             row[4] if len(row) > 4 and row[4] else "report",
             row[5] if len(row) > 5 and row[5] is not None else "",
+            row[6] if len(row) > 6 and row[6] is not None else "",
+            row[7] if len(row) > 7 and row[7] is not None else "",
         )
 
 

@@ -1873,6 +1873,66 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     headers=rate_limit_headers or None,
                 )
 
+        # Owner (accountable-human) budget enforcement: when the source agent is
+        # governed by an approved blueprint, the blueprint's accountable owner may
+        # carry an enforce-mode spend cap (#3909). The owner's aggregate spend
+        # across every agent they govern is checked here, at the same pre-invocation
+        # point as the agent/tenant/cost-center caps. An ungoverned agent, or an
+        # owner with no enforce budget, is a no-op; cost-store failures fail open.
+        try:
+            from agent_bom.api.cost_owner import enforce_owner_budget
+            from agent_bom.api.cost_store import get_cost_store
+
+            owner_blocked, owner_budget, owner_spend_usd, budget_owner, budget_workflow = enforce_owner_budget(
+                get_cost_store(), tenant_id, source_agent
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("gateway owner budget check failed: %s", _sanitize_for_log(exc))
+            owner_blocked, owner_budget, owner_spend_usd, budget_owner, budget_workflow = False, None, 0.0, "", ""
+        if owner_blocked and owner_budget is not None:
+            record_gateway_relay(upstream.name, "blocked")
+            if settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.budget_exceeded",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "source_agent": source_agent,
+                        "owner": budget_owner,
+                        "workflow": budget_workflow or None,
+                        "limit_usd": owner_budget.limit_usd,
+                        "spend_usd": round(owner_spend_usd, 6),
+                        "budget_scope": "owner",
+                        "reason": "budget_enforced",
+                    }
+                )
+            _emit_gateway_governance_event(
+                "budget.exceeded",
+                tenant_id=tenant_id,
+                subject_id=source_agent,
+                payload={
+                    "source_agent": source_agent,
+                    "owner": budget_owner,
+                    "workflow": budget_workflow or None,
+                    "limit_usd": owner_budget.limit_usd,
+                    "spend_usd": round(owner_spend_usd, 6),
+                    "budget_scope": "owner",
+                },
+            )
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32001,
+                        "message": "Blocked by agent-bom gateway: owner spend budget exceeded",
+                        "data": {"owner": budget_owner, "limit_usd": owner_budget.limit_usd, "spend_usd": round(owner_spend_usd, 6)},
+                    },
+                },
+                status_code=200,
+                headers=rate_limit_headers or None,
+            )
+
         # Anomaly-triggered enforcement: a runaway agent (spend outlier vs the
         # fleet) is blocked/flagged before its next call, even while it is still
         # under any absolute budget. Off by default; cached + fail-open.

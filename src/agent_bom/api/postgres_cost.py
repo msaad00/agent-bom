@@ -58,6 +58,8 @@ class PostgresCostStore:
                     updated_at  TEXT NOT NULL,
                     mode        TEXT NOT NULL DEFAULT 'report',
                     cost_center TEXT NOT NULL DEFAULT '',
+                    owner       TEXT NOT NULL DEFAULT '',
+                    workflow    TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (tenant_id, agent, cost_center)
                 )
             """)
@@ -66,10 +68,19 @@ class PostgresCostStore:
             conn.execute("ALTER TABLE llm_costs ADD COLUMN IF NOT EXISTS cost_center TEXT NOT NULL DEFAULT ''")
             conn.execute("ALTER TABLE llm_costs ADD COLUMN IF NOT EXISTS allocation_tags TEXT NOT NULL DEFAULT '{}'")
             conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN IF NOT EXISTS cost_center TEXT NOT NULL DEFAULT ''")
-            # Back the (tenant, agent, cost_center) upsert conflict target with a
-            # unique index so it works on pre-migration tables whose PK was only
-            # (tenant_id, agent).
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_cost_budgets_scope ON llm_cost_budgets(tenant_id, agent, cost_center)")
+            # Owner/workflow scoping (#3909) added additively; pre-migration rows
+            # default to '' (not owner-scoped).
+            conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN IF NOT EXISTS owner TEXT NOT NULL DEFAULT ''")
+            conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN IF NOT EXISTS workflow TEXT NOT NULL DEFAULT ''")
+            # Back the full-scope upsert conflict target with a unique index so it
+            # works on pre-migration tables whose PK omits owner/workflow. The
+            # widened scope (agent, cost_center, owner, workflow) keeps an owner
+            # budget from colliding with the tenant-wide row.
+            conn.execute("DROP INDEX IF EXISTS uq_llm_cost_budgets_scope")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_cost_budgets_scope "
+                "ON llm_cost_budgets(tenant_id, agent, cost_center, owner, workflow)"
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_agent ON llm_costs(tenant_id, agent)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_observed ON llm_costs(tenant_id, observed_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_cost_center ON llm_costs(tenant_id, cost_center)")
@@ -160,24 +171,45 @@ class PostgresCostStore:
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """
-                INSERT INTO llm_cost_budgets (tenant_id, agent, limit_usd, updated_at, mode, cost_center)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (tenant_id, agent, cost_center)
+                INSERT INTO llm_cost_budgets (tenant_id, agent, limit_usd, updated_at, mode, cost_center, owner, workflow)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, agent, cost_center, owner, workflow)
                 DO UPDATE SET limit_usd = EXCLUDED.limit_usd,
                               updated_at = EXCLUDED.updated_at,
                               mode = EXCLUDED.mode
                 """,
-                (budget.tenant_id, budget.agent, budget.limit_usd, budget.updated_at, budget.mode, budget.cost_center),
+                (
+                    budget.tenant_id,
+                    budget.agent,
+                    budget.limit_usd,
+                    budget.updated_at,
+                    budget.mode,
+                    budget.cost_center,
+                    budget.owner,
+                    budget.workflow,
+                ),
             )
             conn.commit()
 
-    def get_budget(self, tenant_id: str, agent: str = "", *, cost_center: str = "") -> CostBudget | None:
+    def get_budget(
+        self, tenant_id: str, agent: str = "", *, cost_center: str = "", owner: str = "", workflow: str = ""
+    ) -> CostBudget | None:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
-                "SELECT tenant_id, agent, limit_usd, updated_at, mode, cost_center "
-                "FROM llm_cost_budgets WHERE tenant_id = %s AND agent = %s AND cost_center = %s",
-                (tenant_id, agent, cost_center),
+                "SELECT tenant_id, agent, limit_usd, updated_at, mode, cost_center, owner, workflow "
+                "FROM llm_cost_budgets WHERE tenant_id = %s AND agent = %s AND cost_center = %s "
+                "AND owner = %s AND workflow = %s",
+                (tenant_id, agent, cost_center, owner, workflow),
             ).fetchone()
         if not row:
             return None
-        return CostBudget(row[0], row[1], float(row[2]), row[3], row[4], row[5] if len(row) > 5 and row[5] is not None else "")
+        return CostBudget(
+            row[0],
+            row[1],
+            float(row[2]),
+            row[3],
+            row[4],
+            row[5] if len(row) > 5 and row[5] is not None else "",
+            row[6] if len(row) > 6 and row[6] is not None else "",
+            row[7] if len(row) > 7 and row[7] is not None else "",
+        )

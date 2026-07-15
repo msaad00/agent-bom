@@ -105,12 +105,27 @@ async def list_drift_incidents(request: Request, include_resolved: bool = False,
     }
 
 
+_ACCEPT_DISPOSITIONS = {"accept", "accept_drift", "promote"}
+
+
 @router.post("/runtime/drift/incidents/{incident_id}/resolve", dependencies=[_dep("config")])
 async def resolve_drift_incident(request: Request, incident_id: str, body: dict | None = None) -> dict[str, object]:
-    """Resolve a drift incident once the blueprint/agent has been reconciled."""
+    """Resolve a drift incident once the blueprint/agent has been reconciled.
+
+    Body: ``{note?, disposition?, blueprint_id?}``. ``disposition`` defaults to a
+    plain close ("reject"/"ignore"): the incident is closed and nothing else
+    changes. When ``disposition`` accepts the drift ("accept"/"accept_drift"), the
+    observed (drifted) state is additionally promoted into a NEW *draft* version
+    of the governing persisted blueprint and submitted for approval (draft →
+    pending) — so accepting drift requires a fresh approval by an approver and is
+    never silently applied or auto-approved (#3905).
+    """
+    payload = body or {}
     tenant_id = _request_tenant_id(request)
-    note = str((body or {}).get("note", "") or "")[:500]
-    resolved = get_drift_incident_store().resolve(
+    note = str(payload.get("note", "") or "")[:500]
+    disposition = str(payload.get("disposition", "") or "").strip().lower()
+    store = get_drift_incident_store()
+    resolved = store.resolve(
         tenant_id,
         incident_id,
         by=_actor(request),
@@ -119,4 +134,60 @@ async def resolve_drift_incident(request: Request, incident_id: str, body: dict 
     )
     if resolved is None:
         raise HTTPException(status_code=404, detail="Drift incident not found")
-    return {"schema_version": "runtime.drift_incidents.v1", "tenant_id": tenant_id, "resolved": True, "incident": resolved.to_dict()}
+
+    response: dict[str, object] = {
+        "schema_version": "runtime.drift_incidents.v1",
+        "tenant_id": tenant_id,
+        "resolved": True,
+        "disposition": disposition or "close",
+        "incident": resolved.to_dict(),
+    }
+    if disposition in _ACCEPT_DISPOSITIONS:
+        response["promoted_version"] = _promote_accepted_drift(
+            tenant_id, resolved, str(payload.get("blueprint_id", "") or ""), _actor(request)
+        )
+    return response
+
+
+def _promote_accepted_drift(tenant_id: str, incident: Any, blueprint_id_override: str, actor: str) -> dict[str, object] | None:
+    """Promote an accepted-drift incident into a new pending blueprint version.
+
+    Returns a summary of the created (draft → pending) version, or ``None`` when
+    no persisted blueprint governs the incident. Never auto-approves. Promotion
+    failures must not undo the already-committed incident resolution, so any
+    error degrades to ``None`` with a warning.
+    """
+    try:
+        from agent_bom.api.blueprint_store import find_blueprint_by_seed, get_blueprint_store, promote_drift_to_draft_version
+
+        bp_store = get_blueprint_store()
+        blueprint = None
+        if blueprint_id_override:
+            blueprint = bp_store.get_blueprint(tenant_id, blueprint_id_override)
+        if blueprint is None:
+            blueprint = find_blueprint_by_seed(bp_store, tenant_id, incident.blueprint_id)
+        if blueprint is None:
+            return None
+        observed_categories = sorted(
+            {str(v.get("category") or "") for v in (incident.top_violations or []) if str(v.get("category") or "")}
+        )
+        version = promote_drift_to_draft_version(
+            bp_store,
+            tenant_id=tenant_id,
+            blueprint_id=blueprint.blueprint_id,
+            observed_categories=observed_categories,
+            incident_id=incident.incident_id,
+            created_by=actor,
+            submit=True,
+        )
+        if version is None:
+            return None
+        return {
+            "blueprint_id": blueprint.blueprint_id,
+            "version": version.version,
+            "status": version.status,
+            "version_id": version.version_id,
+        }
+    except Exception:  # noqa: BLE001
+        logger.warning("drift-accept blueprint promotion failed", exc_info=True)
+        return None

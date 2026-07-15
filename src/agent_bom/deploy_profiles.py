@@ -25,6 +25,57 @@ def helm_example_dir(repo_root: Path) -> Path:
     return helm_chart_dir(repo_root) / "examples"
 
 
+def ingress_hosts_missing_paths(rendered: str) -> list[str]:
+    """Return ``host`` values whose rendered Ingress rule carries no HTTP paths.
+
+    A rule that renders ``http.paths`` as ``null``/empty is an invalid Ingress: it
+    binds a hostname but routes nowhere. This guards against example values files
+    that override ``ingress.hosts`` without carrying ``apiPaths``/``uiPaths`` — a
+    render that exits 0 yet produces an ingress that cannot route traffic.
+    """
+
+    offenders: list[str] = []
+    for document in rendered.split("\n---"):
+        if "kind: Ingress" not in document:
+            continue
+
+        manifest = None
+        try:
+            import yaml
+
+            manifest = yaml.safe_load(document)
+        except Exception:
+            manifest = None
+
+        if isinstance(manifest, dict):
+            rules = (manifest.get("spec") or {}).get("rules") or []
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                paths = ((rule.get("http") or {}).get("paths")) or []
+                if not paths:
+                    offenders.append(str(rule.get("host", "<no-host>")))
+            continue
+
+        # Fallback text scan when PyYAML is unavailable (bare CI python): every
+        # rendered ``paths:`` line must be immediately followed by a ``- path:``
+        # list item, otherwise the rule routes nowhere.
+        lines = document.splitlines()
+        current_host = "<no-host>"
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("host:"):
+                current_host = stripped.split("host:", 1)[1].strip().strip('"')
+            if stripped == "paths:":
+                following = next(
+                    (nxt.strip() for nxt in lines[index + 1 :] if nxt.strip()),
+                    "",
+                )
+                if not following.startswith("- path:"):
+                    offenders.append(current_host)
+    return offenders
+
+
 def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
     """Return the canonical shipped Helm profile matrix."""
 

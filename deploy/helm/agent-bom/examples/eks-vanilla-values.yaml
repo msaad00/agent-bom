@@ -88,6 +88,24 @@ controlPlane:
       # alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:REPLACE_ME_REGION:REPLACE_ME_ACCOUNT_ID:regional/webacl/REPLACE_ME_NAME/REPLACE_ME_ID
     hosts:
       - host: agent-bom.internal.example.com
+        apiPaths:
+          - path: /v1
+            pathType: Prefix
+          - path: /scim
+            pathType: Prefix
+          - path: /health
+            pathType: Prefix
+          - path: /docs
+            pathType: Prefix
+          - path: /redoc
+            pathType: Prefix
+          - path: /openapi.json
+            pathType: Prefix
+          - path: /ws
+            pathType: Prefix
+        uiPaths:
+          - path: /
+            pathType: Prefix
     tls: []
   backup:
     enabled: true

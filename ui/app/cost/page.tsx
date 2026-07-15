@@ -13,6 +13,7 @@ import {
   Flame,
   CalendarClock,
   Building2,
+  UserCheck,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -393,6 +394,63 @@ function ChargebackPanel({ rows }: { rows: CostBreakdownRow[] }) {
   );
 }
 
+function OwnerPanel({ rows }: { rows: CostBreakdownRow[] }) {
+  const top = [...rows].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 12);
+  const total = rows.reduce((sum, r) => sum + r.cost_usd, 0);
+  return (
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <UserCheck className="h-4 w-4 text-emerald-400" />
+        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+          Spend by accountable owner
+        </h3>
+      </div>
+      {top.length === 0 ? (
+        <p className="text-sm text-[var(--text-tertiary)]">
+          No owner attribution yet. Approve a governance blueprint whose
+          composition lists an agent to attribute that agent&apos;s spend to its
+          accountable owner.
+        </p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
+              <th className="pb-2 font-medium">Owner</th>
+              <th className="pb-2 text-right font-medium">Calls</th>
+              <th className="pb-2 text-right font-medium">Share</th>
+              <th className="pb-2 text-right font-medium">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {top.map((r) => {
+              const share = total > 0 ? r.cost_usd / total : 0;
+              return (
+                <tr
+                  key={r.key}
+                  className="border-b border-[var(--border-subtle)] last:border-0"
+                >
+                  <td className="py-2 font-mono text-xs text-[var(--text-secondary)]">
+                    {r.key || "unattributed"}
+                  </td>
+                  <td className="py-2 text-right text-[var(--text-secondary)]">
+                    {fmtInt(r.calls)}
+                  </td>
+                  <td className="py-2 text-right text-[var(--text-tertiary)]">
+                    {(share * 100).toFixed(1)}%
+                  </td>
+                  <td className="py-2 text-right font-medium text-[var(--foreground)]">
+                    {fmtUsd(r.cost_usd)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function AnomalyRow({ a }: { a: CostAnomaly }) {
   const high = a.severity === "high";
   return (
@@ -603,7 +661,10 @@ export default function CostPage() {
             <BreakdownTable title="By provider" rows={report.by_provider} />
           </div>
 
-          <ChargebackPanel rows={report.by_cost_center ?? []} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChargebackPanel rows={report.by_cost_center ?? []} />
+            <OwnerPanel rows={report.by_owner ?? []} />
+          </div>
         </>
       )}
 

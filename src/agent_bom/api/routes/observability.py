@@ -1281,6 +1281,12 @@ async def get_llm_costs(
     if cost_center:
         records = [r for r in records if (r.cost_center or "") == cost_center]
     report = summarize(records)
+    # Owner-attributed rollup (#3909): spend grouped by the accountable owner
+    # recorded on the blueprint governing each agent. Spend from an ungoverned
+    # agent rolls up under "unattributed" so nothing is silently dropped.
+    from agent_bom.api.cost_owner import owner_cost_report
+
+    report["by_owner"] = owner_cost_report(store, tenant_id, records)["by_owner"]
     if tag:
         report["tag_rollup"] = summarize_by_tag(records, _bounded(tag, max_len=60))
     if cost_center:
@@ -1304,17 +1310,25 @@ async def get_llm_costs(
 
 
 @router.get("/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("read")])
-async def get_llm_cost_budget(request: Request, agent: str = "", cost_center: str = "") -> dict[str, object]:
+async def get_llm_cost_budget(
+    request: Request, agent: str = "", cost_center: str = "", owner: str = "", workflow: str = ""
+) -> dict[str, object]:
     """Return the configured spend budget and current utilization.
 
     Pass ``cost_center`` to read a chargeback budget scoped to one allocation
-    unit (#2925) instead of the per-agent / tenant-wide cap.
+    unit (#2925), or ``owner`` (optionally with ``workflow``) to read an
+    accountable-owner budget (#3909), instead of the per-agent / tenant-wide cap.
     """
     from agent_bom.api.cost_store import budget_status, get_cost_store
 
     tenant_id = _tenant_id(request)
     store = get_cost_store()
-    if cost_center:
+    if owner:
+        from agent_bom.api.cost_owner import agent_owner_index, owner_spend
+
+        budget = store.get_budget(tenant_id, "", owner=owner, workflow=workflow)
+        spend = owner_spend(store, agent_owner_index(tenant_id), tenant_id, owner, workflow)
+    elif cost_center:
         budget = store.get_budget(tenant_id, "", cost_center=cost_center)
         spend = store.total_spend_by_cost_center(tenant_id, cost_center)
     else:
@@ -1325,12 +1339,16 @@ async def get_llm_cost_budget(request: Request, agent: str = "", cost_center: st
 
 @router.put("/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("config")])
 async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]:
-    """Set a USD spend cap. Body: {limit_usd, agent?, cost_center?, mode?}.
+    """Set a USD spend cap. Body: {limit_usd, agent?, cost_center?, owner?, workflow?, mode?}.
 
     A ``cost_center`` scopes the cap to one chargeback unit (#2925); ``agent``
-    scopes it to one agent; neither means tenant-wide. ``agent`` and
-    ``cost_center`` are mutually exclusive.
+    scopes it to one agent; ``owner`` scopes it to an accountable human/team as
+    recorded on the governing blueprint (#3909), optionally narrowed to one
+    governing blueprint via ``workflow``; none set means tenant-wide. ``agent`` /
+    ``cost_center`` / ``owner`` are mutually exclusive, and ``workflow`` requires
+    ``owner``.
     """
+    from agent_bom.api.cost_owner import owner_spend as _owner_spend
     from agent_bom.api.cost_store import CostBudget, budget_status, get_cost_store
 
     tenant_id = _tenant_id(request)
@@ -1345,16 +1363,34 @@ async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]
         raise HTTPException(status_code=400, detail="'limit_usd' must be non-negative")
     agent = _bounded(str(body.get("agent", "") or ""), max_len=120)
     cost_center = _bounded(str(body.get("cost_center", "") or ""), max_len=120)
-    if agent and cost_center:
-        raise HTTPException(status_code=400, detail="'agent' and 'cost_center' budgets are mutually exclusive")
+    owner = _bounded(str(body.get("owner", "") or ""), max_len=200)
+    workflow = _bounded(str(body.get("workflow", "") or ""), max_len=120)
+    if sum(1 for scope in (agent, cost_center, owner) if scope) > 1:
+        raise HTTPException(status_code=400, detail="'agent', 'cost_center' and 'owner' budgets are mutually exclusive")
+    if workflow and not owner:
+        raise HTTPException(status_code=400, detail="'workflow' requires an 'owner' scope")
     mode = str(body.get("mode", "report") or "report").strip().lower()
     if mode not in ("report", "enforce"):
         raise HTTPException(status_code=400, detail="'mode' must be 'report' or 'enforce'")
     store = get_cost_store()
     store.set_budget(
-        CostBudget(tenant_id=tenant_id, agent=agent, limit_usd=limit_usd, updated_at=_now(), mode=mode, cost_center=cost_center)
+        CostBudget(
+            tenant_id=tenant_id,
+            agent=agent,
+            limit_usd=limit_usd,
+            updated_at=_now(),
+            mode=mode,
+            cost_center=cost_center,
+            owner=owner,
+            workflow=workflow,
+        )
     )
-    if cost_center:
+    if owner:
+        from agent_bom.api.cost_owner import agent_owner_index
+
+        spend = _owner_spend(store, agent_owner_index(tenant_id), tenant_id, owner, workflow)
+        stored = store.get_budget(tenant_id, "", owner=owner, workflow=workflow)
+    elif cost_center:
         spend = store.total_spend_by_cost_center(tenant_id, cost_center)
         stored = store.get_budget(tenant_id, "", cost_center=cost_center)
     else:

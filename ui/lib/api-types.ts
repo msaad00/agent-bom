@@ -2766,6 +2766,12 @@ export interface HubPostureResponse {
 export interface CostBudgetStatus {
   configured: boolean;
   agent?: string | null;
+  cost_center?: string | null;
+  /** Accountable owner this budget is scoped to, from the governing blueprint
+   *  header (#3909). Null when the budget is not owner-scoped. */
+  owner?: string | null;
+  /** Optional owner sub-scope: a single governing blueprint ("workflow"). */
+  workflow?: string | null;
   mode?: string; // "report" | "enforce"
   limit_usd: number | null;
   spend_usd: number;
@@ -2830,6 +2836,10 @@ export interface CostReport {
   /** Chargeback/showback rollup by cost-center (#2925). Unallocated spend
    *  rolls up under the `"unallocated"` key. */
   by_cost_center?: CostBreakdownRow[] | undefined;
+  /** Owner-attributed rollup (#3909): spend grouped by the accountable owner
+   *  governing each agent. Spend from an ungoverned agent rolls up under the
+   *  `"unattributed"` key. */
+  by_owner?: CostBreakdownRow[] | undefined;
   /** Present only when a `tag` query param was supplied. */
   tag_rollup?: CostTagRollup | undefined;
   /** Forward-looking burn-rate + runway projection embedded on the report. */
@@ -2965,6 +2975,28 @@ export interface DriftIncidentsResponse {
   count: number;
   open_count: number;
   incidents: DriftIncident[];
+}
+
+/** Summary of a blueprint version promoted from accepted drift (#3905). */
+export interface DriftPromotedVersion {
+  blueprint_id: string;
+  version: number;
+  status: string; // "pending" — accepting drift never auto-approves
+  version_id: string;
+}
+
+/** Response to `POST /v1/runtime/drift/incidents/{id}/resolve`.
+ *
+ * With an "accept"/"accept_drift" `disposition`, the observed drift is promoted
+ * into a new draft version of the governing blueprint and submitted for approval
+ * (`promoted_version`, status `pending`); a plain close omits it (#3905). */
+export interface DriftIncidentResolveResponse {
+  schema_version: string;
+  tenant_id: string;
+  resolved: boolean;
+  disposition: string; // "close" | "reject" | "accept_drift" | ...
+  incident: DriftIncident;
+  promoted_version?: DriftPromotedVersion | null | undefined;
 }
 
 // ── NHI / identity governance: credential expiry, access reviews, discovery ──

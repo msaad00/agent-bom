@@ -53,9 +53,9 @@ Overrides win over the built-in table; model keys are matched as prefixes.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET`  | `/v1/observability/costs` | Spend by agent/model/provider + budget posture + `forecast` block. Optional `?agent=` scope. |
-| `GET`  | `/v1/observability/costs/budget` | Configured cap + current utilization. |
-| `PUT`  | `/v1/observability/costs/budget` | Set a tenant or per-agent USD cap. Body: `{"limit_usd": 250.0, "agent": "optional"}`. |
+| `GET`  | `/v1/observability/costs` | Spend by agent/model/provider/cost-center/**owner** + budget posture + `forecast` block. Optional `?agent=` scope. |
+| `GET`  | `/v1/observability/costs/budget` | Configured cap + current utilization. Optional `?owner=`/`?workflow=` or `?cost_center=` scope. |
+| `PUT`  | `/v1/observability/costs/budget` | Set a tenant, per-agent, per-cost-center, or per-**owner** USD cap. Body: `{"limit_usd": 250.0, "agent"\|"cost_center"\|"owner": "optional", "workflow": "optional"}`. |
 | `GET`  | `/v1/observability/costs/forecast` | Burn rate + projected period spend + budget runway. Optional `?agent=` scope. |
 
 The `cost_report` MCP tool exposes the same spend view to headless agents.
@@ -107,3 +107,30 @@ curl -XPUT $API/v1/observability/costs/budget -H "X-API-Key: $KEY" \
 
 Enforcement requires the gateway and control plane to share `AGENT_BOM_DB` so the
 relay can read accumulated spend.
+
+### Owner-scoped budgets (accountable human owner)
+
+Budgets also scope to the **accountable owner** recorded on the governance
+blueprint that governs an agent (#3909). An owner budget caps the aggregate
+spend of every agent that owner governs — resolved from the *approved* blueprint
+compositions in `blueprint_store` — so FinOps accountability follows the human
+who owns the workload, not just the machine agent.
+
+- Scopes are mutually exclusive: a budget is one of `agent` / `cost_center` /
+  `owner` (or tenant-wide when none is set). `workflow` optionally narrows an
+  owner budget to a single governing blueprint and requires `owner`.
+- Enforcement runs at the **same pre-invocation gateway point** as the
+  agent/tenant/cost-center caps: the source agent's owner is resolved from its
+  approved blueprint, the owner's aggregate spend is checked, and an
+  `enforce`-mode owner cap fails the call closed with JSON-RPC `-32001` and a
+  `gateway.budget_exceeded` audit event (`budget_scope: "owner"`). An agent with
+  no governing blueprint, or an owner with no enforce budget, is a no-op.
+- **Owner ROI reporting**: `GET /v1/observability/costs` returns a `by_owner`
+  rollup — spend grouped by accountable owner. Spend from an agent not governed
+  by any approved blueprint rolls up under `"unattributed"`.
+
+```bash
+# Hard-stop everything the "platform-security" team owns at $500 of spend:
+curl -XPUT $API/v1/observability/costs/budget -H "X-API-Key: $KEY" \
+  -d '{"owner":"platform-security","limit_usd":500,"mode":"enforce"}'
+```

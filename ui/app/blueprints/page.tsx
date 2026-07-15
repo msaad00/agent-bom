@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Boxes, CheckCircle2, GitBranch, Plus, RefreshCcw, Send, XCircle } from "lucide-react";
+import { Boxes } from "lucide-react";
 
 import {
   api,
@@ -147,7 +147,6 @@ export default function BlueprintsPage() {
               onClick={() => void refresh()}
               className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-2 text-sm text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
             >
-              <RefreshCcw className="h-4 w-4" />
               Refresh
             </button>
             <button
@@ -155,7 +154,6 @@ export default function BlueprintsPage() {
               disabled={!canAuthor || busy}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Plus className="h-4 w-4" />
               Seed from role archetypes
             </button>
           </>
@@ -215,9 +213,7 @@ export default function BlueprintsPage() {
                   </td>
                   <td className="px-4 py-3 text-[color:var(--text-secondary)]">{bp.owner || "—"}</td>
                   <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                    <span className="inline-flex items-center gap-1">
-                      <GitBranch className="h-3.5 w-3.5" />v{bp.current_version || "—"} / v{bp.latest_version}
-                    </span>
+                    v{bp.current_version || "—"} / v{bp.latest_version}
                   </td>
                   <td className="px-4 py-3">
                     <StatusPill status={bp.approval_status} />
@@ -345,7 +341,6 @@ function BlueprintDrawer({
                         disabled={!canAuthor || busy}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <Send className="h-3.5 w-3.5" />
                         Submit for approval
                       </button>
                     ) : null}
@@ -356,7 +351,6 @@ function BlueprintDrawer({
                           disabled={!canApprove || busy}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
                           Approve
                         </button>
                         <button
@@ -364,7 +358,6 @@ function BlueprintDrawer({
                           disabled={!canApprove || busy}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <XCircle className="h-3.5 w-3.5" />
                           Reject
                         </button>
                       </>

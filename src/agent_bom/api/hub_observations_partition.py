@@ -28,6 +28,42 @@ OBSERVATIONS_TABLE = "hub_findings_current_observations"
 _PARTITION_NAME_RE = re.compile(r"^hub_findings_current_observations_y(\d{4})m(\d{2})$")
 
 
+# SQLSTATEs raised when a concurrent worker already created the child partition
+# between our existence probe and our ``CREATE TABLE ... PARTITION OF``:
+# duplicate_table (42P07), duplicate_object (42710), and the unique_violation
+# (23505) Postgres can raise on the pg_class/pg_type catalog under the race.
+_DUPLICATE_PARTITION_SQLSTATES = frozenset({"42P07", "42710", "23505"})
+
+
+def _is_duplicate_partition_error(exc: BaseException) -> bool:
+    """Whether *exc* means the partition already exists (concurrent creation)."""
+    sqlstate = getattr(exc, "sqlstate", None) or getattr(exc, "pgcode", None)
+    if sqlstate in _DUPLICATE_PARTITION_SQLSTATES:
+        return True
+    return "already exists" in str(exc).lower()
+
+
+def _create_observation_partition(conn: Any, year: int, month: int) -> None:
+    """Create one monthly child partition, tolerating a concurrent creator.
+
+    Two API workers ingesting the same not-yet-existing month can both pass the
+    existence probe and both issue ``CREATE TABLE ... PARTITION OF``; the loser
+    of the Postgres catalog race would raise duplicate_table/duplicate_object ->
+    500. Since the partition now exists either way, that is treated as success.
+    """
+    try:
+        conn.execute(create_observation_partition_ddl(year, month))
+    except Exception as exc:  # noqa: BLE001 — narrowed by _is_duplicate_partition_error
+        if _is_duplicate_partition_error(exc):
+            logger.debug(
+                "observation partition y%dm%02d already created concurrently; treating as success",
+                year,
+                month,
+            )
+            return
+        raise
+
+
 def partition_table_name(year: int, month: int) -> str:
     """Return the child partition relation name for *year*/*month*."""
     return f"{OBSERVATIONS_TABLE}_y{year}m{month:02d}"
@@ -134,7 +170,7 @@ def ensure_observation_partitions(
         ).fetchone()
         if exists:
             continue
-        conn.execute(create_observation_partition_ddl(year, month))
+        _create_observation_partition(conn, year, month)
         created += 1
     return created
 
@@ -218,7 +254,7 @@ def ensure_observation_partition_for(
     ).fetchone()
     if exists:
         return False
-    conn.execute(create_observation_partition_ddl(month.year, month.month))
+    _create_observation_partition(conn, month.year, month.month)
     return True
 
 

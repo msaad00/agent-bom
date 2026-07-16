@@ -61,7 +61,7 @@ def test_bulk_ingest_offloads_store_writes_to_thread(monkeypatch) -> None:
 
     assert resp.status_code == 201, resp.text
     assert resp.json()["ingested"] == 2
-    assert "_bulk_ingest_store_writes" in helper_calls, (
+    assert "hub_ingest_store_writes" in helper_calls, (
         f"bulk ingest must route its blocking store writes through the off-loop helper (mirroring the read path); saw {helper_calls}"
     )
 

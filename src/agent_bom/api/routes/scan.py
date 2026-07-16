@@ -41,6 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
 from agent_bom.api.finding_list_envelope import finding_list_envelope
+from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
     deterministic_batch_id,
@@ -109,81 +110,10 @@ async def _ai_scan_call(fn, /, *args, **kwargs):
         ) from exc
 
 
-async def _hub_store_call(fn, /, *args, **kwargs):
-    """Run blocking Compliance-Hub store writes off the event loop.
-
-    The bulk/connector ingest path calls synchronous psycopg
-    (``hub_store.add`` / ``hub_store.upsert_current_batch`` / reconcile / delta
-    emission). Running them directly on the loop froze unrelated requests
-    (``/health``, ``/version``) for seconds under concurrent ingest. This mirrors
-    the read path's ``anyio.to_thread`` offload so a single deep write cannot
-    block the loop. No backpressure/429 is applied: writes are bounded per batch
-    and shedding an ingest would silently drop findings.
-    """
-    return await anyio.to_thread.run_sync(partial(fn, *args, **kwargs))
-
-
-def _bulk_ingest_store_writes(
-    hub_store: Any,
-    tenant_id: str,
-    payloads: list[dict[str, Any]],
-    *,
-    observed_at: str,
-    batch_id: str,
-    source: str,
-    reconcile_absent: bool,
-) -> dict[str, Any]:
-    """Synchronous body of the bulk-ingest store writes (runs in a worker thread).
-
-    Captures prior snapshots (when reconciliation needs them), appends the batch
-    to the ledger, upserts current-state, reconciles absent findings, and emits
-    hub deltas — all the blocking psycopg work — in one off-loop call.
-    """
-    from agent_bom.api.finding_lifecycle import collect_present_canonical_ids
-    from agent_bom.delta_stream import (
-        capture_hub_snapshots,
-        emit_hub_finding_deltas_if_enabled,
-        needs_hub_prior_snapshots,
-        resolved_canonical_ids,
-    )
-
-    prior_snapshots: dict[str, Any] = {}
-    if needs_hub_prior_snapshots(reconcile_absent=reconcile_absent):
-        prior_snapshots = capture_hub_snapshots(hub_store, tenant_id, source=source)
-    new_total = hub_store.add(tenant_id, payloads)
-    hub_store.upsert_current_batch(
-        tenant_id,
-        payloads,
-        observed_at=observed_at,
-        batch_id=batch_id,
-        source=source,
-    )
-    reconciled = 0
-    resolved_ids: set[str] = set()
-    if reconcile_absent:
-        present = collect_present_canonical_ids(payloads, source=source)
-        resolved_ids = resolved_canonical_ids(prior_snapshots, present)
-        reconciled = hub_store.reconcile_current_absent(
-            tenant_id,
-            present_canonical_ids=present,
-            observed_at=observed_at,
-            scope_source=source,
-        )
-    delta_results = emit_hub_finding_deltas_if_enabled(
-        tenant_id=tenant_id,
-        hub_store=hub_store,
-        prior=prior_snapshots,
-        batch_findings=payloads,
-        resolved_canonical_ids=resolved_ids,
-        observed_at=observed_at,
-        batch_id=batch_id,
-        source=source,
-    )
-    return {
-        "new_total": new_total,
-        "reconciled": reconciled,
-        "delta_results": delta_results,
-    }
+# Shared off-loop hub ingest write path (also used by /v1/compliance/ingest).
+# Aliased here so existing references / monkeypatch targets keep working.
+_hub_store_call = hub_store_call
+_bulk_ingest_store_writes = hub_ingest_store_writes
 
 
 def _api_scan_root() -> Path:

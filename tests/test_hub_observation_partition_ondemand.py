@@ -79,6 +79,65 @@ def test_non_partitioned_table_is_noop():
     assert ensure_observation_partition_for(_Unpartitioned(), "2020-01-01T00:00:00Z", now=_NOW) is False
 
 
+class _DuplicatePartitionError(Exception):
+    """Mimics psycopg's DuplicateTable (sqlstate 42P07)."""
+
+    sqlstate = "42P07"
+
+
+@dataclass
+class _RacingPartitionSpy:
+    """Reports the child absent on probe, then raises duplicate on CREATE.
+
+    Models two API workers creating the same not-yet-existing month partition:
+    both pass the existence probe, both issue ``CREATE TABLE ... PARTITION OF``,
+    and the loser hits the Postgres catalog race.
+    """
+
+    exc: Exception
+    executed: list[str] = field(default_factory=list)
+
+    def execute(self, sql: str, params: tuple | None = None) -> _FakeCursor:
+        norm = " ".join(sql.split()).lower()
+        self.executed.append(norm)
+        if "relkind" in norm:
+            return _FakeCursor(row=("p",))  # partitioned parent
+        if "partition of hub_findings_current_observations" in norm:
+            raise self.exc
+        if "from pg_class" in norm:
+            return _FakeCursor(row=None)  # child partition absent on probe
+        return _FakeCursor(row=None)
+
+
+def test_concurrent_partition_creation_duplicate_table_is_success():
+    """A racing worker's DuplicateTable must be swallowed, not surface as a 500."""
+    spy = _RacingPartitionSpy(exc=_DuplicatePartitionError("relation already exists"))
+    # Must not raise: the partition exists (the other worker created it).
+    assert ensure_observation_partition_for(spy, "2026-03-01T00:00:00Z", now=_NOW) is True
+    assert any("partition of" in s for s in spy.executed)
+
+
+def test_concurrent_partition_creation_already_exists_message_is_success():
+    """The 'already exists' message class (no sqlstate) is also treated as success."""
+
+    class _NoCodeError(Exception):
+        pass
+
+    spy = _RacingPartitionSpy(exc=_NoCodeError('relation "..._y2026m03" already exists'))
+    assert ensure_observation_partition_for(spy, "2026-03-01T00:00:00Z", now=_NOW) is True
+
+
+def test_non_duplicate_create_error_still_raises():
+    """A genuine DDL error (not a duplicate) must not be swallowed."""
+
+    class _BoomError(Exception):
+        sqlstate = "42501"  # insufficient_privilege
+
+    spy = _RacingPartitionSpy(exc=_BoomError("permission denied"))
+    with pytest.raises(_BoomError):
+        ensure_observation_partition_for(spy, "2026-03-01T00:00:00Z", now=_NOW)
+
+
 def test_current_month_partition_not_recreated_when_present(monkeypatch):
     @dataclass
     class _Present:

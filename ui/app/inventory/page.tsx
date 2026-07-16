@@ -1,8 +1,8 @@
-import { redirect } from "next/navigation";
+import { InventoryIndex } from "@/components/inventory/inventory-index";
 
-// The AI inventory now lives on the AI BOM surface. Keep `/inventory` as a
-// permanent server-side redirect so legacy deep links and bookmarks resolve to
-// the canonical route instead of a 404.
-export default function InventoryRedirect() {
-  redirect("/manifest");
+// Unified Asset Inventory landing — one card per asset type, correlated back to
+// findings and the security graph. Supersedes the former /inventory → /manifest
+// redirect (the AI BOM now lives under this section as "AI agents").
+export default function InventoryPage() {
+  return <InventoryIndex />;
 }

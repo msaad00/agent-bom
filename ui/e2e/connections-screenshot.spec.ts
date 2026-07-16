@@ -84,6 +84,25 @@ async function routeConnections(page: Page) {
       }),
     }),
   );
+  // The Sources segment also loads connector / schedule / provider state.
+  await page.route("**/v1/connectors", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ connectors: [] }) }),
+  );
+  await page.route("**/v1/schedules", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify([]) }),
+  );
+  await page.route("**/v1/discovery/providers", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        contract_version: "1",
+        entrypoints_enabled: false,
+        provider_count: 0,
+        warnings: [],
+        providers: [],
+      }),
+    }),
+  );
 }
 
 test("captures connections page and wizard", async ({ page }, testInfo) => {
@@ -92,12 +111,19 @@ test("captures connections page and wizard", async ({ page }, testInfo) => {
 
   await page.goto("/connections");
   await page.waitForLoadState("networkidle");
+  // Consolidated hub: default Connect segment shows the connector gallery.
   await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Connected accounts" })).toBeVisible();
-  await expect(page.getByText("Production account")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Connect/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Amazon Web Services" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("connections-page.png"), fullPage: true });
   // Also write a stable copy under the worktree for reporting.
   await page.screenshot({ path: ".screenshots/connections-page.png", fullPage: true });
+
+  // Sources segment shows the unified table merging cloud connections + sources.
+  await page.getByRole("tab", { name: /Sources/ }).click();
+  await expect(page.getByText("Production account")).toBeVisible();
+  await expect(page.getByText("Staging account")).toBeVisible();
+  await page.screenshot({ path: ".screenshots/connections-sources.png", fullPage: true });
 
   // Open the wizard and walk to the details step.
   await page.getByRole("button", { name: "Add cloud account" }).click();

@@ -170,6 +170,32 @@ ORDER BY (tenant_id, scan_id, check_key)
 PARTITION BY toYYYYMM(measured_at)
 TTL measured_at + INTERVAL 2 YEAR;
 
+-- Scheduled findings-feed export sink (#4040). Idempotent per finding via
+-- ReplacingMergeTree on the (tenant, finding) key so re-exporting a snapshot
+-- collapses to the latest row rather than duplicating.
+CREATE TABLE IF NOT EXISTS agent_bom.findings_feed (
+    tenant_id String,
+    run_id String,
+    exported_at DateTime DEFAULT now(),
+    updated_at DateTime DEFAULT now(),
+    finding_id String,
+    canonical_id String,
+    severity LowCardinality(String),
+    cvss_score Float32,
+    epss_score Float32,
+    package_name String,
+    package_version String,
+    ecosystem LowCardinality(String),
+    cve_id String,
+    source LowCardinality(String),
+    status LowCardinality(String),
+    effective_reach String,
+    first_seen String,
+    last_seen String
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (tenant_id, finding_id)
+PARTITION BY toYYYYMM(exported_at);
+
 -- Forward-compatible migrations for deployments created from older init.sql
 -- revisions. These mirror the runtime ClickHouse client migrations.
 --

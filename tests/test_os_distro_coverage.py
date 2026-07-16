@@ -147,6 +147,16 @@ def test_covered_distro_labels_empty_when_no_os_data():
     assert covered_distro_labels({"pypi", "npm", "maven"}) == []
 
 
+def test_covered_distro_labels_excludes_unrouted_suse():
+    # No host ever routes to a bare ``SUSE`` ecosystem key (SLES/SUSE Linux
+    # Enterprise is not wired), so even if SUSE advisory rows are present in
+    # the DB, "SUSE" must not be reported as a covered distro — that would be
+    # an aspirational coverage claim no package could match.
+    assert covered_distro_labels({"SUSE:sle-15", "suse linux enterprise:15"}) == []
+    # openSUSE Leap IS routed, so it remains an honest coverage label.
+    assert covered_distro_labels({"openSUSE:Leap 15.5"}) == ["openSUSE"]
+
+
 # ── end-to-end DB matching with real ecosystem keys + version formats ─────────
 
 

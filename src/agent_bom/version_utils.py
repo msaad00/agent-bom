@@ -395,6 +395,58 @@ def _compare_rpm_versions(left: str, right: str) -> int:
     return _compare_rpm_like(left_rest, right_rest)
 
 
+# apk suffix ordering (apk-tools ``apk_version_compare``): pre-release
+# suffixes sort STRICTLY BELOW the bare release, post-release suffixes above.
+#   _alpha < _beta < _pre < _rc  <  (release)  <  _cvs < _svn < _git < _hg < _p
+_APK_PRE_SUFFIXES = ("alpha", "beta", "pre", "rc")
+_APK_POST_SUFFIXES = ("cvs", "svn", "git", "hg", "p")
+_APK_SUFFIX_RE = re.compile(r"_([a-z]+)(\d*)")
+
+
+def _apk_suffix_rank(name: str) -> int:
+    """Rank an apk suffix name relative to the release (0).
+
+    Pre-release suffixes rank negative (below the release), post-release
+    suffixes rank positive (above), ordered within each class. An unrecognised
+    suffix ranks as release-level so it never silently outranks a real fix.
+    """
+    if name in _APK_PRE_SUFFIXES:
+        return _APK_PRE_SUFFIXES.index(name) - len(_APK_PRE_SUFFIXES)
+    if name in _APK_POST_SUFFIXES:
+        return _APK_POST_SUFFIXES.index(name) + 1
+    return 0
+
+
+def _apk_split_suffix(base: str) -> tuple[str, str]:
+    """Split the numeric/letter core from the ``_suffix`` tail of an apk base."""
+    idx = base.find("_")
+    if idx == -1:
+        return base, ""
+    return base[:idx], base[idx:]
+
+
+def _apk_suffix_key(suffix: str) -> list[tuple[int, int]]:
+    return [(_apk_suffix_rank(name), int(num) if num else 0) for name, num in _APK_SUFFIX_RE.findall(suffix)]
+
+
+def _compare_apk_suffix_keys(left: list[tuple[int, int]], right: list[tuple[int, int]]) -> int:
+    """Compare two apk suffix keys, treating an exhausted side as the release.
+
+    A missing suffix is the release: it outranks any pre-release suffix and is
+    outranked by any post-release suffix on the other side.
+    """
+    for i in range(max(len(left), len(right))):
+        if i >= len(left):
+            rank = right[i][0]
+            return 1 if rank < 0 else -1 if rank > 0 else 0
+        if i >= len(right):
+            rank = left[i][0]
+            return -1 if rank < 0 else 1 if rank > 0 else 0
+        if left[i] != right[i]:
+            return (left[i] > right[i]) - (left[i] < right[i])
+    return 0
+
+
 def _compare_apk_versions(left: str, right: str) -> int:
     def _split_revision(value: str) -> tuple[str, int]:
         if "-r" in value:
@@ -407,9 +459,23 @@ def _compare_apk_versions(left: str, right: str) -> int:
 
     left_base, left_rev = _split_revision(left)
     right_base, right_rev = _split_revision(right)
-    base_cmp = _compare_rpm_like(left_base, right_base)
+
+    # A ``~<commit>`` fuzzy/commit suffix is compared last, as low-priority
+    # metadata; core + apk suffix ordering decide first.
+    left_core, _, left_hash = left_base.partition("~")
+    right_core, _, right_hash = right_base.partition("~")
+
+    left_main, left_suffix = _apk_split_suffix(left_core)
+    right_main, right_suffix = _apk_split_suffix(right_core)
+
+    base_cmp = _compare_rpm_like(left_main, right_main)
     if base_cmp:
         return base_cmp
+    suffix_cmp = _compare_apk_suffix_keys(_apk_suffix_key(left_suffix), _apk_suffix_key(right_suffix))
+    if suffix_cmp:
+        return suffix_cmp
+    if left_hash != right_hash:
+        return (left_hash > right_hash) - (left_hash < right_hash)
     return (left_rev > right_rev) - (left_rev < right_rev)
 
 

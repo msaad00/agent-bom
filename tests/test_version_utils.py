@@ -211,6 +211,46 @@ def test_version_in_range_apk():
     assert version_in_range("1.2.4-r10", "0", "1.2.4-r10", None, "apk") is False
 
 
+def test_apk_prerelease_suffixes_sort_below_release():
+    # Per the apk version spec, ``_alpha`` / ``_beta`` / ``_pre`` / ``_rc``
+    # sort STRICTLY BELOW the bare release; ``_p`` (and ``-rN``) sort above.
+    assert compare_version_order("1.2.3_alpha1", "1.2.3", "apk") == -1
+    assert compare_version_order("1.2.3_beta1", "1.2.3", "apk") == -1
+    assert compare_version_order("1.2.3_pre1", "1.2.3", "apk") == -1
+    assert compare_version_order("1.2.3_rc1", "1.2.3", "apk") == -1
+    assert compare_version_order("1.2.3", "1.2.3_alpha1", "apk") == 1
+    # Post-release suffix sorts above the release.
+    assert compare_version_order("1.2.3_p1", "1.2.3", "apk") == 1
+    # Ordering within and across suffix classes.
+    assert compare_version_order("1.2.3_alpha1", "1.2.3_beta1", "apk") == -1
+    assert compare_version_order("1.2.3_pre1", "1.2.3_rc1", "apk") == -1
+    assert compare_version_order("1.2.3_rc1", "1.2.3_rc2", "apk") == -1
+    assert compare_version_order("1.2.3_alpha1", "1.2.3_p1", "apk") == -1
+
+
+def test_apk_prerelease_host_stays_vulnerable_before_fix():
+    # Regression: a vulnerable pre-release host (1.2.3_alpha1) must NOT read
+    # clean against a fix of 1.2.3 — the pre-release precedes the fix.
+    assert version_in_range("1.2.3_alpha1", "0", "1.2.3", None, "apk") is True
+    assert version_in_range("1.2.3_rc1", "0", "1.2.3", None, "apk") is True
+    # The released fix itself is not affected.
+    assert version_in_range("1.2.3", "0", "1.2.3", None, "apk") is False
+    # A post-release rebuild is also past the fix.
+    assert version_in_range("1.2.3_p1", "0", "1.2.3", None, "apk") is False
+
+
+def test_apk_suffix_with_revision():
+    assert compare_version_order("1.2.3_alpha1-r0", "1.2.3-r0", "apk") == -1
+    assert compare_version_order("1.2.3_rc1-r2", "1.2.3_rc1-r1", "apk") == 1
+
+
+def test_rpm_tilde_prerelease_ordering_unaffected():
+    # apk changes must not perturb rpm tilde handling: ``~`` sorts below.
+    assert compare_version_order("1.2.3~rc1", "1.2.3", "rpm") == -1
+    assert compare_version_order("1.2.3", "1.2.3~rc1", "rpm") == 1
+    assert compare_version_order("1.2.3~beta", "1.2.3~rc1", "rpm") == -1
+
+
 def test_version_in_range_rpm():
     assert version_in_range("3.0.7-24.el9", "0", "3.0.7-25.el9", None, "rpm") is True
     assert version_in_range("3.0.7-25.el9", "0", "3.0.7-25.el9", None, "rpm") is False

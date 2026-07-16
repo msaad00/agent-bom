@@ -236,6 +236,7 @@ def evaluate_pod_security(pods: dict, default_namespace: str = "default") -> lis
                 )
                 break
 
+        pod_sec_ctx = spec.get("securityContext", {}) or {}
         for container in _pod_containers(spec):
             cname = container.get("name", "unnamed")
             sec_ctx = container.get("securityContext", {}) or {}
@@ -257,7 +258,14 @@ def evaluate_pod_security(pods: dict, default_namespace: str = "default") -> lis
                         attack_techniques=["T1611"],
                     )
                 )
-            if sec_ctx.get("runAsUser") == 0 or sec_ctx.get("runAsNonRoot") is False:
+            # Kubernetes resolves runAsUser / runAsNonRoot at the container
+            # level, falling back to the pod-level securityContext when the
+            # container does not set them. Evaluating only the container view
+            # misses a pod that sets root at the pod level and inherits it into
+            # a container that carries an unrelated securityContext.
+            effective_run_as_user = sec_ctx.get("runAsUser", pod_sec_ctx.get("runAsUser"))
+            effective_run_as_non_root = sec_ctx.get("runAsNonRoot", pod_sec_ctx.get("runAsNonRoot"))
+            if effective_run_as_user == 0 or effective_run_as_non_root is False:
                 findings.append(
                     IaCFinding(
                         rule_id="K8S-LIVE-011",
@@ -265,8 +273,8 @@ def evaluate_pod_security(pods: dict, default_namespace: str = "default") -> lis
                         title="Running container executes as root",
                         message=(
                             f"Container '{cname}' in pod '{ns}/{name}' is running as root "
-                            "(runAsUser: 0 or runAsNonRoot: false). Run as a non-root user to limit "
-                            "exploit impact."
+                            "(runAsUser: 0 or runAsNonRoot: false, at the container or inherited "
+                            "pod level). Run as a non-root user to limit exploit impact."
                         ),
                         file_path=pod_ref,
                         line_number=1,
@@ -698,15 +706,27 @@ def scan_live_cluster_posture(
                     )
                 )
 
-        if spec.get("automountServiceAccountToken", True):
+        automount = spec.get("automountServiceAccountToken")
+        if automount is not False:
+            # An explicit opt-in is an intentional choice (medium); leaving the
+            # field unset inherits Kubernetes' on-by-default behaviour, which is
+            # nearly every normal pod — flag it as low-severity signal rather
+            # than drowning the report in MEDIUMs. We still emit it (not
+            # suppress) because a mounted token on a broadly-privileged
+            # service account remains a real exposure.
+            explicit = automount is True
+            if explicit:
+                detail = "service-account token auto-mount explicitly enabled."
+            else:
+                detail = "service-account token auto-mount left at the Kubernetes default (enabled)."
             findings.append(
                 IaCFinding(
                     rule_id="K8S-LIVE-004",
-                    severity="medium",
+                    severity="medium" if explicit else "low",
                     title="Live pod mounts service-account token",
                     message=(
-                        f"Pod '{pod_ns}/{pod_name}' is running with service-account token auto-mount enabled. "
-                        "Disable token mounting unless the workload needs Kubernetes API access."
+                        f"Pod '{pod_ns}/{pod_name}' is running with {detail} "
+                        "Set automountServiceAccountToken: false unless the workload needs Kubernetes API access."
                     ),
                     file_path=pod_ref,
                     line_number=1,

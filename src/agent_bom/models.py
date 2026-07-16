@@ -151,6 +151,14 @@ class Vulnerability:
     # none. Consumed by agent_bom.reachability_cve to upgrade a finding to
     # function-level reachability when one of these symbols is actually reached.
     affected_symbols: list[str] = field(default_factory=list)
+    # Same affected symbols grouped by the advisory's import sub-package
+    # (OSV ``ecosystem_specific.imports[].path``), e.g.
+    # {"github.com/aws/aws-sdk-go/service/s3/s3crypto": ["Client.Do"]}.
+    # Populated only when the advisory carries import-path data (Go). Lets
+    # agent_bom.reachability_cve constrain a ``function_reachable`` upgrade to
+    # the sub-package the advisory names, instead of unioning identically
+    # named symbols across every sub-package of a large module.
+    affected_symbols_by_path: dict[str, list[str]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Sanitize fixed_version — filter git SHAs and non-version strings."""

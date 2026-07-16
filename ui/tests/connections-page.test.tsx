@@ -159,8 +159,33 @@ function openAwsWizard(): HTMLElement {
 }
 
 describe("ConnectionsPage — Connect segment", () => {
-  it("carries one AWS ExternalId from setup through details into create", async () => {
+  const TEST_OK = {
+    schema_version: "cloud.connections.test.v1",
+    connection_id: "conn-1",
+    tenant_id: "tenant-acme",
+    provider: "aws",
+    status: "ok",
+  };
+
+  function fillAwsDetails(wizard: HTMLElement): string {
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    const setupId = within(wizard).getByTestId("wizard-external-id").textContent!.trim();
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    fireEvent.change(within(wizard).getByPlaceholderText("Production account"), {
+      target: { value: "Production account" },
+    });
+    fireEvent.change(within(wizard).getByPlaceholderText(/arn:aws:iam/), {
+      target: { value: "arn:aws:iam::123456789012:role/agent-bom-readonly" },
+    });
+    fireEvent.change(within(wizard).getByPlaceholderText("us-east-1, us-west-2"), {
+      target: { value: "us-east-1" },
+    });
+    return setupId;
+  }
+
+  it("carries one AWS ExternalId from setup through details into create + verify", async () => {
     apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
+    apiMock.testCloudConnection.mockResolvedValue(TEST_OK);
 
     render(<ConnectionsPage />);
     await waitForConnectTab();
@@ -205,6 +230,65 @@ describe("ConnectionsPage — Connect segment", () => {
     await waitFor(() =>
       expect(screen.getByText("Connected Production account.")).toBeInTheDocument(),
     );
+
+    // Create advances to Verify (does not close), which auto-runs the real test.
+    await waitFor(() => expect(apiMock.testCloudConnection).toHaveBeenCalledWith("conn-1"));
+    expect(within(wizard).getByRole("heading", { name: "Verify connectivity" })).toBeInTheDocument();
+  });
+
+  it("verify step confirms read-only access and runs the first scan", async () => {
+    apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
+    apiMock.testCloudConnection.mockResolvedValue(TEST_OK);
+    apiMock.scanCloudConnection.mockResolvedValue({
+      schema_version: "cloud.connections.scan.v1",
+      connection_id: "conn-1",
+      tenant_id: "tenant-acme",
+      provider: "aws",
+      scan_id: "abcdef12-3456-7890-abcd-ef1234567890",
+    });
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const wizard = openAwsWizard();
+    fillAwsDetails(wizard);
+    fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+
+    await waitFor(() => expect(apiMock.testCloudConnection).toHaveBeenCalledWith("conn-1"));
+    await waitFor(() =>
+      expect(within(wizard).getByText("Read-only access verified")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(within(wizard).getByRole("button", { name: /Run first scan/ }));
+    await waitFor(() => expect(apiMock.scanCloudConnection).toHaveBeenCalledWith("conn-1"));
+    await waitFor(() =>
+      expect(within(wizard).getByText(/First scan started/)).toBeInTheDocument(),
+    );
+  });
+
+  it("verify step surfaces a missing-permission failure honestly (no fake green)", async () => {
+    apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
+    apiMock.testCloudConnection.mockRejectedValue(
+      new Error("AccessDenied: the role is missing sts:AssumeRole for the ExternalId trust policy."),
+    );
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const wizard = openAwsWizard();
+    fillAwsDetails(wizard);
+    fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+
+    await waitFor(() => expect(apiMock.testCloudConnection).toHaveBeenCalledWith("conn-1"));
+    await waitFor(() =>
+      expect(within(wizard).getByText(/missing sts:AssumeRole/)).toBeInTheDocument(),
+    );
+
+    // Honest: no success state, and the first scan is NOT offered on a failed verify.
+    expect(within(wizard).queryByText("Read-only access verified")).toBeNull();
+    expect(within(wizard).queryByRole("button", { name: /Run first scan/ })).toBeNull();
+    expect(apiMock.scanCloudConnection).not.toHaveBeenCalled();
+    expect(within(wizard).getByRole("button", { name: /Retry verification/ })).toBeInTheDocument();
   });
 
   it("regenerating the AWS ExternalId updates setup and details together", async () => {

@@ -139,6 +139,89 @@ def ensure_observation_partitions(
     return created
 
 
+# Guard against absurd backdating (bad data / clock skew) creating unbounded
+# partition sprawl while still allowing legitimate historical backfills.
+_MAX_OBSERVATION_MONTHS_BEHIND = 120  # ~10 years
+
+
+class ObservationPartitionRangeError(ValueError):
+    """``observed_at`` is outside the window for which a partition may be created."""
+
+    def __init__(self, observed_at: str, *, months_ahead: int, months_behind: int) -> None:
+        self.observed_at = observed_at
+        self.months_ahead = months_ahead
+        self.months_behind = months_behind
+        super().__init__(
+            f"observed_at {observed_at!r} is outside the supported partition window "
+            f"({months_behind} months in the past to {months_ahead} months in the future)"
+        )
+
+
+def _month_index(value: date) -> int:
+    return value.year * 12 + (value.month - 1)
+
+
+def _parse_observed_at_month(observed_at: str) -> date | None:
+    text = (observed_at or "").strip()
+    if not text:
+        return None
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        try:
+            parsed = datetime.fromisoformat(text[:10])
+        except ValueError:
+            return None
+    return date(parsed.year, parsed.month, 1)
+
+
+def ensure_observation_partition_for(
+    conn: Any,
+    observed_at: str,
+    *,
+    now: datetime | None = None,
+    months_ahead: int = 2,
+    months_behind: int = _MAX_OBSERVATION_MONTHS_BEHIND,
+) -> bool:
+    """Ensure the monthly partition covering *observed_at* exists.
+
+    Returns ``True`` when a partition was created. Bulk/connector ingest with an
+    ``observed_at`` older than the pre-provisioned window (behind=1) previously
+    raised a raw ``CheckViolation`` -> 500. This creates the covering partition
+    on demand within a bounded window so historical backfills succeed, and raises
+    :class:`ObservationPartitionRangeError` (mapped to 4xx by the route) for
+    values so far past/future they are almost certainly bad data. Unparseable or
+    non-partitioned tables are a no-op (the legacy single table has no partition
+    constraint, and downstream normalisation owns bad timestamps).
+    """
+    if not is_observations_partitioned(conn):
+        return False
+    month = _parse_observed_at_month(observed_at)
+    if month is None:
+        return False
+    anchor = (now or datetime.now(timezone.utc)).date().replace(day=1)
+    delta_months = _month_index(month) - _month_index(anchor)
+    if delta_months > months_ahead or delta_months < -months_behind:
+        raise ObservationPartitionRangeError(observed_at, months_ahead=months_ahead, months_behind=months_behind)
+    child = partition_table_name(month.year, month.month)
+    exists = conn.execute(
+        """
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = current_schema()
+          AND c.relname = %s
+        """,
+        (child,),
+    ).fetchone()
+    if exists:
+        return False
+    conn.execute(create_observation_partition_ddl(month.year, month.month))
+    return True
+
+
 def _partition_end_date(partition_name: str) -> date | None:
     match = _PARTITION_NAME_RE.match(partition_name)
     if not match:

@@ -388,6 +388,7 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
     fixed_version: Optional[str] = None
     affected_rows: list[dict] = []
 
+    from agent_bom.os_advisory import normalize_redhat_ecosystem
     from agent_bom.package_utils import normalize_package_name
 
     for aff in data.get("affected", []):
@@ -396,6 +397,11 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
         pkg_name = pkg.get("name", "")
         if not ecosystem or not pkg_name:
             continue
+
+        # Collapse repo/module-qualified Red Hat ecosystems (``…:8::baseos``,
+        # ``…:10.0``) to a canonical per-major key so a scanned host — which
+        # cannot know a package's originating repo — matches exactly.
+        ecosystem = normalize_redhat_ecosystem(ecosystem)
 
         norm_name = normalize_package_name(pkg_name, ecosystem)
 

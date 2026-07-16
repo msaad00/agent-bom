@@ -28,6 +28,42 @@ OBSERVATIONS_TABLE = "hub_findings_current_observations"
 _PARTITION_NAME_RE = re.compile(r"^hub_findings_current_observations_y(\d{4})m(\d{2})$")
 
 
+# SQLSTATEs raised when a concurrent worker already created the child partition
+# between our existence probe and our ``CREATE TABLE ... PARTITION OF``:
+# duplicate_table (42P07), duplicate_object (42710), and the unique_violation
+# (23505) Postgres can raise on the pg_class/pg_type catalog under the race.
+_DUPLICATE_PARTITION_SQLSTATES = frozenset({"42P07", "42710", "23505"})
+
+
+def _is_duplicate_partition_error(exc: BaseException) -> bool:
+    """Whether *exc* means the partition already exists (concurrent creation)."""
+    sqlstate = getattr(exc, "sqlstate", None) or getattr(exc, "pgcode", None)
+    if sqlstate in _DUPLICATE_PARTITION_SQLSTATES:
+        return True
+    return "already exists" in str(exc).lower()
+
+
+def _create_observation_partition(conn: Any, year: int, month: int) -> None:
+    """Create one monthly child partition, tolerating a concurrent creator.
+
+    Two API workers ingesting the same not-yet-existing month can both pass the
+    existence probe and both issue ``CREATE TABLE ... PARTITION OF``; the loser
+    of the Postgres catalog race would raise duplicate_table/duplicate_object ->
+    500. Since the partition now exists either way, that is treated as success.
+    """
+    try:
+        conn.execute(create_observation_partition_ddl(year, month))
+    except Exception as exc:  # noqa: BLE001 — narrowed by _is_duplicate_partition_error
+        if _is_duplicate_partition_error(exc):
+            logger.debug(
+                "observation partition y%dm%02d already created concurrently; treating as success",
+                year,
+                month,
+            )
+            return
+        raise
+
+
 def partition_table_name(year: int, month: int) -> str:
     """Return the child partition relation name for *year*/*month*."""
     return f"{OBSERVATIONS_TABLE}_y{year}m{month:02d}"
@@ -134,9 +170,92 @@ def ensure_observation_partitions(
         ).fetchone()
         if exists:
             continue
-        conn.execute(create_observation_partition_ddl(year, month))
+        _create_observation_partition(conn, year, month)
         created += 1
     return created
+
+
+# Guard against absurd backdating (bad data / clock skew) creating unbounded
+# partition sprawl while still allowing legitimate historical backfills.
+_MAX_OBSERVATION_MONTHS_BEHIND = 120  # ~10 years
+
+
+class ObservationPartitionRangeError(ValueError):
+    """``observed_at`` is outside the window for which a partition may be created."""
+
+    def __init__(self, observed_at: str, *, months_ahead: int, months_behind: int) -> None:
+        self.observed_at = observed_at
+        self.months_ahead = months_ahead
+        self.months_behind = months_behind
+        super().__init__(
+            f"observed_at {observed_at!r} is outside the supported partition window "
+            f"({months_behind} months in the past to {months_ahead} months in the future)"
+        )
+
+
+def _month_index(value: date) -> int:
+    return value.year * 12 + (value.month - 1)
+
+
+def _parse_observed_at_month(observed_at: str) -> date | None:
+    text = (observed_at or "").strip()
+    if not text:
+        return None
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        try:
+            parsed = datetime.fromisoformat(text[:10])
+        except ValueError:
+            return None
+    return date(parsed.year, parsed.month, 1)
+
+
+def ensure_observation_partition_for(
+    conn: Any,
+    observed_at: str,
+    *,
+    now: datetime | None = None,
+    months_ahead: int = 2,
+    months_behind: int = _MAX_OBSERVATION_MONTHS_BEHIND,
+) -> bool:
+    """Ensure the monthly partition covering *observed_at* exists.
+
+    Returns ``True`` when a partition was created. Bulk/connector ingest with an
+    ``observed_at`` older than the pre-provisioned window (behind=1) previously
+    raised a raw ``CheckViolation`` -> 500. This creates the covering partition
+    on demand within a bounded window so historical backfills succeed, and raises
+    :class:`ObservationPartitionRangeError` (mapped to 4xx by the route) for
+    values so far past/future they are almost certainly bad data. Unparseable or
+    non-partitioned tables are a no-op (the legacy single table has no partition
+    constraint, and downstream normalisation owns bad timestamps).
+    """
+    if not is_observations_partitioned(conn):
+        return False
+    month = _parse_observed_at_month(observed_at)
+    if month is None:
+        return False
+    anchor = (now or datetime.now(timezone.utc)).date().replace(day=1)
+    delta_months = _month_index(month) - _month_index(anchor)
+    if delta_months > months_ahead or delta_months < -months_behind:
+        raise ObservationPartitionRangeError(observed_at, months_ahead=months_ahead, months_behind=months_behind)
+    child = partition_table_name(month.year, month.month)
+    exists = conn.execute(
+        """
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = current_schema()
+          AND c.relname = %s
+        """,
+        (child,),
+    ).fetchone()
+    if exists:
+        return False
+    _create_observation_partition(conn, month.year, month.month)
+    return True
 
 
 def _partition_end_date(partition_name: str) -> date | None:

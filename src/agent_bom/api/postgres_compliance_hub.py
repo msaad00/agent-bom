@@ -227,6 +227,51 @@ def _hydrate_postgres_current_rows(
     return hydrated
 
 
+def _ensure_backfill_marker_table(conn: Any) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_bom_hub_backfills (
+            name TEXT PRIMARY KEY,
+            completed_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _backfill_completed(conn: Any, name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM agent_bom_hub_backfills WHERE name = %s LIMIT 1",
+        (name,),
+    ).fetchone()
+    return row is not None
+
+
+def _mark_backfill_completed(conn: Any, name: str) -> None:
+    conn.execute(
+        "INSERT INTO agent_bom_hub_backfills (name, completed_at) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING",
+        (name, _now_utc_iso()),
+    )
+
+
+def _run_gated_backfill(conn: Any, name: str, update_sql: str) -> None:
+    """Run a one-time column backfill exactly once across process restarts.
+
+    Un-indexed backfill ``UPDATE``s re-ran on EVERY store init: full-table scans
+    that blew the default 15s statement_timeout at scale (so reads and ingest
+    500'd) and, for predicates like ``cvss_score = 0``, re-matched genuinely
+    unrated rows forever (0->0 rewrites = MVCC bloat each boot). #3980 only
+    guarded the primary-key migration. This gates every backfill behind a cheap
+    marker lookup so an already-migrated (possibly multi-million-row) table pays
+    a single indexed probe and issues no UPDATE. The ``update_sql`` itself is
+    additionally refined to touch only rows whose materialised value actually
+    differs from the payload, so even the one-time run is idempotent.
+    """
+    if _backfill_completed(conn, name):
+        return
+    conn.execute(update_sql)
+    _mark_backfill_completed(conn, name)
+
+
 def _postgres_current_has_ledger_col(conn: Any) -> bool:
     row = conn.execute(
         """
@@ -280,6 +325,7 @@ class PostgresComplianceHubStore:
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
             ensure_postgres_schema_version(conn, "compliance_hub")
+            _ensure_backfill_marker_table(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS compliance_hub_findings (
@@ -304,25 +350,49 @@ class PostgresComplianceHubStore:
             )
             conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT ''")
             # Backfill origin from the stored payload for pre-migration rows.
-            conn.execute("UPDATE compliance_hub_findings SET origin = COALESCE(payload->>'origin', '') WHERE origin = ''")
-            # Materialise severity/cvss sort keys so filtered severity/cvss
+            # Marker-gated + refined to only touch rows whose payload actually
+            # carries a value the materialised column is missing (never re-match
+            # correct rows or re-scan an already-migrated table on every boot).
+            _run_gated_backfill(
+                conn,
+                "compliance_hub_findings.origin",
+                "UPDATE compliance_hub_findings SET origin = COALESCE(payload->>'origin', '') "
+                "WHERE origin = '' AND COALESCE(payload->>'origin', '') <> ''",
+            )
             # Materialise severity/cvss sort keys so filtered severity/cvss
             # sorts ride a composite index rather than a payload-expression
             # sort (#3192). Backfill extracts from payload for legacy rows.
             conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT ''")
-            conn.execute("UPDATE compliance_hub_findings SET severity = COALESCE(payload->>'severity', '') WHERE severity = ''")
+            _run_gated_backfill(
+                conn,
+                "compliance_hub_findings.severity",
+                "UPDATE compliance_hub_findings SET severity = COALESCE(payload->>'severity', '') "
+                "WHERE severity = '' AND COALESCE(payload->>'severity', '') <> ''",
+            )
             conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS severity_rank INTEGER NOT NULL DEFAULT 0")
-            conn.execute(
+            _run_gated_backfill(
+                conn,
+                "compliance_hub_findings.severity_rank",
                 # Mirror severity_policy_rank() so backfilled ranks match new
                 # writes: info==low==1, none==0, everything unknown==-1 (#3192).
+                # ``<> 0`` guard so 'none'/0-rank rows are not rewritten forever.
                 "UPDATE compliance_hub_findings SET severity_rank = CASE LOWER(COALESCE(payload->>'severity', '')) "
                 "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
                 "WHEN 'info' THEN 1 WHEN 'informational' THEN 1 WHEN 'none' THEN 0 "
-                "ELSE -1 END WHERE severity_rank = 0"
+                "ELSE -1 END WHERE severity_rank = 0 AND CASE LOWER(COALESCE(payload->>'severity', '')) "
+                "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
+                "WHEN 'info' THEN 1 WHEN 'informational' THEN 1 WHEN 'none' THEN 0 "
+                "ELSE -1 END <> 0",
             )
             conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0")
-            conn.execute(
-                "UPDATE compliance_hub_findings SET cvss_score = COALESCE((payload->>'cvss_score')::float8, 0) WHERE cvss_score = 0"
+            # ``cvss_score = 0`` also matches genuinely-unrated rows, so without
+            # the ``<> 0`` payload guard this rewrote them 0->0 on every boot
+            # (MVCC bloat) and could never complete-skip. Refined + marker-gated.
+            _run_gated_backfill(
+                conn,
+                "compliance_hub_findings.cvss_score",
+                "UPDATE compliance_hub_findings SET cvss_score = COALESCE((payload->>'cvss_score')::float8, 0) "
+                "WHERE cvss_score = 0 AND COALESCE((payload->>'cvss_score')::float8, 0) <> 0",
             )
             self._migrate_primary_key(conn)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
@@ -404,12 +474,21 @@ class PostgresComplianceHubStore:
             # Materialise the ledger ingest ordinal (needs ledger_finding_id) so
             # the sort indexes below can build on pre-existing tables (#3984).
             _migrate_current_ledger_ordinal_postgres(conn)
-            conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")
+            _run_gated_backfill(
+                conn,
+                "hub_findings_current.cvss_score_null",
+                "UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL",
+            )
             # Promote origin to a materialised, indexed column so the exact
             # COUNT(*) rides the (tenant_id, origin) prefix instead of scanning
             # every row through payload->>'origin' (#3641). Idempotent guards.
             conn.execute("ALTER TABLE hub_findings_current ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT ''")
-            conn.execute("UPDATE hub_findings_current SET origin = COALESCE(payload->>'origin', '') WHERE origin = ''")
+            _run_gated_backfill(
+                conn,
+                "hub_findings_current.origin",
+                "UPDATE hub_findings_current SET origin = COALESCE(payload->>'origin', '') "
+                "WHERE origin = '' AND COALESCE(payload->>'origin', '') <> ''",
+            )
             conn.execute(_CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES)
             # Materialise scan_id (default /v1/findings scan filter) so the read
             # and its COUNT(*) ride an index instead of a per-row payload->>
@@ -418,9 +497,12 @@ class PostgresComplianceHubStore:
             # common no-scan_id rows out so it cannot shadow the default read
             # (#3926). Idempotent guards.
             conn.execute("ALTER TABLE hub_findings_current ADD COLUMN IF NOT EXISTS scan_id TEXT NOT NULL DEFAULT ''")
-            conn.execute(
+            _run_gated_backfill(
+                conn,
+                "hub_findings_current.scan_id",
                 "UPDATE hub_findings_current SET scan_id = "
-                "COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') WHERE scan_id = ''"
+                "COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') "
+                "WHERE scan_id = '' AND COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') <> ''",
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_scan "
@@ -715,6 +797,18 @@ class PostgresComplianceHubStore:
             return
         now = _now_utc_iso()
         with _tenant_connection(self._pool) as conn:
+            # observed_at is batch-level: ensure its monthly partition exists once
+            # per batch so a backdated bulk import (older than the pre-provisioned
+            # behind=1 window) does not raise a raw CheckViolation -> 500. Out of
+            # the bounded window raises ObservationPartitionRangeError -> 4xx.
+            from agent_bom.api.hub_observations_partition import ensure_observation_partition_for
+
+            ensure_observation_partition_for(conn, observed_at)
+            # Probe the ledger column ONCE per batch/connection — the schema does
+            # not change mid-batch. It was previously an information_schema query
+            # per row, the dominant write-path amplifier at scale.
+            has_ledger_col = _postgres_current_has_ledger_col(conn)
+            payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
             for payload in clean:
                 canonical = resolve_canonical_id(payload, source=source)
                 metrics = lifecycle_metrics(payload)
@@ -731,8 +825,6 @@ class PostgresComplianceHubStore:
                 ).rowcount
                 if not inserted:
                     continue
-                has_ledger_col = _postgres_current_has_ledger_col(conn)
-                payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
                 existing_row = conn.execute(
                     f"""
                     SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
@@ -764,9 +856,7 @@ class PostgresComplianceHubStore:
                     # Materialise the ledger ingest ordinal so ``sort=ordinal``
                     # rides idx_hub_findings_current_tenant_ordinal instead of a
                     # per-row correlated ledger subquery (#3984).
-                    ledger_ordinal_val = _resolve_current_ledger_ordinal_postgres(
-                        conn, tenant_id, ledger_finding_id or ""
-                    )
+                    ledger_ordinal_val = _resolve_current_ledger_ordinal_postgres(conn, tenant_id, ledger_finding_id or "")
                     conn.execute(
                         """
                         INSERT INTO hub_findings_current

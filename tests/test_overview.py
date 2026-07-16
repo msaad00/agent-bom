@@ -236,6 +236,67 @@ def test_overview_counts_bulk_ingested_findings() -> None:
     get_compliance_hub_store().clear("default")
 
 
+def test_overview_top_risks_include_hub_ingested_findings() -> None:
+    """Hub-ingested findings surface in the exec top-risk strip (P0 #1).
+
+    ``_estate_rollup`` walks scan jobs only, so a pure connector/bulk-ingested
+    estate rendered ``top_risks: []`` even with a million open findings that DO
+    move the grade + headline. The strip must now fold the hub finding spine so
+    the exec pane surfaces real, drillable top risks.
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    _ingest_hub_findings(
+        [
+            {"finding_id": "H-med-1", "severity": "medium", "cvss_score": 6.5, "title": "m1"},
+            {"finding_id": "H-med-2", "severity": "medium", "cvss_score": 5.0, "title": "m2"},
+            {"finding_id": "H-high-1", "severity": "high", "cvss_score": 8.8, "title": "h1"},
+        ]
+    )
+
+    data = client_get_overview()
+    top = data["top_risks"]
+    assert top, "hub-ingested findings must surface in the exec top-risk strip"
+    ids = {r["vulnerability_id"] for r in top}
+    assert {"H-med-1", "H-med-2", "H-high-1"} & ids, ids
+    for row in top:
+        # Each entry carries the fields the strip drills on (severity + score).
+        assert row["severity"] in {"critical", "high", "medium", "low", "unknown", "unrated"}
+        assert isinstance(row["risk_score"], (int, float))
+
+    get_compliance_hub_store().clear("default")
+
+
+def test_overview_medium_dominant_estate_surfaces_risks_and_honest_summary() -> None:
+    """The audited scenario: mediums dominate a bulk-ingested estate.
+
+    With 1 high + many mediums the posture summary must name the dominant medium
+    driver (not the lone high), and the top-risk strip must be populated — the
+    two exec-read honesty fixes reconciled on one payload.
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    findings = [{"finding_id": "H-high", "severity": "high", "cvss_score": 8.0, "title": "hi"}]
+    findings += [
+        {"finding_id": f"H-med-{i}", "severity": "medium", "cvss_score": 5.0, "title": f"m{i}"} for i in range(50)
+    ]
+    _ingest_hub_findings(findings)
+
+    data = client_get_overview()
+    summary = str(data["posture"]["summary"]).lower()
+    assert "medium" in summary, summary
+    assert data["top_risks"], "medium-dominant estate must still surface top risks"
+    # Headline + hub count remain coherent with the ingested spine.
+    assert data["headline"]["hub_findings"] == 51
+    assert data["headline"]["high"] == 1
+
+    get_compliance_hub_store().clear("default")
+
+
 def test_overview_hub_findings_do_not_upgrade_failing_scan() -> None:
     """Ingested evidence can only move a scan grade down, never launder it up."""
     _clear_jobs()

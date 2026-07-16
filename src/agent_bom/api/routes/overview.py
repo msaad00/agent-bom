@@ -88,12 +88,7 @@ def _overview_fingerprint(jobs: list[Any], hub_severity: dict[str, int]) -> str:
     """
     parts = []
     for job in jobs:
-        stamp = (
-            getattr(job, "completed_at", None)
-            or getattr(job, "updated_at", None)
-            or getattr(job, "created_at", None)
-            or ""
-        )
+        stamp = getattr(job, "completed_at", None) or getattr(job, "updated_at", None) or getattr(job, "created_at", None) or ""
         status = getattr(job, "status", "")
         parts.append(f"{getattr(job, 'job_id', '')}|{getattr(status, 'value', status)}|{stamp}")
     parts.sort()
@@ -128,6 +123,7 @@ def _reset_overview_cache() -> None:
     """Test hook: drop all cached overview payloads."""
     with _overview_cache_lock:
         _overview_cache.clear()
+
 
 _SEVERITY_KEYS = ("critical", "high", "medium", "low")
 # ``unrated`` is the honest home for findings whose severity the histogram does
@@ -295,15 +291,44 @@ def _rollup_from_summary(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _finding_top_risk(row: dict[str, Any]) -> dict[str, Any]:
-    """Build a top-risk strip entry from a unified findings-spine row."""
-    asset = row.get("asset") if isinstance(row.get("asset"), dict) else {}
+def _row_risk_score(row: dict[str, Any]) -> float:
+    """Comparable 0–10 risk for a top-risk entry, spine or hub-ingested.
+
+    Prefers an explicit ``risk_score``; a hub-ingested finding carries no such
+    field, so fall back to its materialised ``effective_reach_score`` (a ~0–100
+    priority signal — the same one ``/v1/findings`` sorts on) scaled to the 0–10
+    band the scan spine uses, so scan and hub risks sort on one scale. Falls back
+    to ``cvss_score`` when neither is present. The result is clamped to [0, 10]
+    so an out-of-range reach never renders an absurd risk (the store's own
+    reach-ordered page already fixes which rows are the top risks).
+    """
     risk = row.get("risk_score")
+    if risk is None:
+        reach = row.get("effective_reach_score")
+        if reach is not None:
+            try:
+                return round(min(10.0, max(0.0, float(reach) / 10.0)), 1)
+            except (TypeError, ValueError):
+                return 0.0
+        try:
+            return round(min(10.0, max(0.0, float(row.get("cvss_score") or 0.0))), 1)
+        except (TypeError, ValueError):
+            return 0.0
+    try:
+        return round(float(risk or 0), 1)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _finding_top_risk(row: dict[str, Any]) -> dict[str, Any]:
+    """Build a top-risk strip entry from a unified findings-spine or hub row."""
+    asset = row.get("asset") if isinstance(row.get("asset"), dict) else {}
+    evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
     return {
-        "vulnerability_id": str(row.get("cve_id") or row.get("canonical_id") or row.get("id") or ""),
-        "package": row.get("package") or (asset or {}).get("name"),
+        "vulnerability_id": str(row.get("cve_id") or row.get("canonical_id") or row.get("id") or row.get("finding_id") or ""),
+        "package": row.get("package") or (asset or {}).get("name") or (evidence or {}).get("package_name"),
         "severity": (str(row.get("severity") or "").strip().lower() or "low"),
-        "risk_score": round(float(risk or 0), 1),
+        "risk_score": _row_risk_score(row),
         "is_kev": bool(row.get("is_kev") or row.get("cisa_kev")),
         "cvss_score": row.get("cvss_score"),
         "epss_score": row.get("epss_score"),
@@ -664,6 +689,64 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
     return empty
 
 
+_HUB_TOP_RISK_LIMIT = 10
+
+
+def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> list[dict[str, Any]]:
+    """Top hub-ingested findings for the exec top-risk strip (P0 #1).
+
+    ``_estate_rollup`` walks scan jobs only, so a connector/bulk-ingested estate
+    rendered an empty top-risk strip even with a million open findings that DO
+    move the grade + headline (via ``_hub_severity_snapshot``). This folds the
+    hub finding spine into the strip. It reads a single bounded page ordered by
+    the materialised ``effective_reach_score`` (index-backed on the SQL
+    backends), so it stays sub-linear at million-row scale — it never hydrates
+    the whole ledger (mirrors the #3963 rule that the overview must not fold
+    every hub payload). Degrades to an empty list if the hub store is
+    unavailable so the overview never fails closed on an optional dependency.
+    """
+    if limit <= 0:
+        return []
+    try:
+        from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+        store = get_compliance_hub_store()
+        page = store.list_page(
+            _tenant_id(request),
+            limit=limit,
+            sort="effective_reach",
+            include_total=False,
+        )
+    except Exception:  # pragma: no cover - hub store optional
+        _logger.debug("hub top risks failed", exc_info=True)
+        return []
+    rows = page[0] if isinstance(page, tuple) else page
+    return [_finding_top_risk(row) for row in rows or [] if isinstance(row, dict)]
+
+
+def _merge_top_risks(*groups: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
+    """Merge scan + hub top-risk entries: dedupe by id, sort by risk, cap.
+
+    Deduped on ``vulnerability_id`` (keeping the higher-risk occurrence) so a
+    finding present in both the scan spine and the hub ledger is not doubled;
+    keyless entries (no id) are always kept.
+    """
+    best_by_id: dict[str, dict[str, Any]] = {}
+    keyless: list[dict[str, Any]] = []
+    for group in groups:
+        for entry in group:
+            key = str(entry.get("vulnerability_id") or "")
+            if not key:
+                keyless.append(entry)
+                continue
+            existing = best_by_id.get(key)
+            if existing is None or float(entry.get("risk_score") or 0.0) > float(existing.get("risk_score") or 0.0):
+                best_by_id[key] = entry
+    merged = [*best_by_id.values(), *keyless]
+    merged.sort(key=lambda r: float(r.get("risk_score") or 0.0), reverse=True)
+    return merged[:limit]
+
+
 def _combined_severity(scan_severity: dict[str, int], hub_severity: dict[str, int]) -> dict[str, int]:
     """Merge scan + hub-ingested severity into the five reconciled buckets.
 
@@ -851,6 +934,11 @@ def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_sev
     repo_scans = _repo_scan_count(jobs)
     vuln_severity = estate["vuln_severity"]
 
+    # Fold hub-ingested findings into the exec top-risk strip so a
+    # connector/bulk-ingested estate (scan jobs alone) no longer renders an empty
+    # strip while a million open findings drive the grade (P0 #1).
+    top_risks = _merge_top_risks(estate["top_risks"], _hub_top_risks(request))
+
     domains = {
         "cloud": {
             "label": "Cloud posture",
@@ -947,7 +1035,7 @@ def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_sev
         },
         "domains": domains,
         "coverage": coverage,
-        "top_risks": estate["top_risks"],
+        "top_risks": top_risks,
     }
 
 

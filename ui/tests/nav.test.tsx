@@ -151,12 +151,13 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/scan')).toBe(true)
   })
 
-  it('groups Connections and Data Sources together under Connect', () => {
+  it('consolidates cloud + data sources into a single Connections item under Connect', () => {
     renderExpandedNav()
     fireEvent.click(screen.getByRole('button', { name: /connect/i }))
     const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
     expect(hrefs).toContain('/connections')
-    expect(hrefs).toContain('/sources')
+    // Data Sources folded into the Connections hub; no separate /sources nav item.
+    expect(hrefs).not.toContain('/sources')
   })
 
   it('contains link to Scan Jobs (/jobs) under Operations', () => {
@@ -334,7 +335,7 @@ describe('Nav', () => {
       Posture: ['/', '/findings', '/security-graph', '/remediation'],
       'AI inventory': ['/agents', '/manifest', '/fleet'],
       Governance: ['/compliance', '/blueprints', '/findings?lens=trust', '/governance', '/drift', '/audit'],
-      Connect: ['/connections', '/sources', '/scan'],
+      Connect: ['/connections', '/scan'],
       Runtime: ['/runtime', '/traces', '/identity'],
       Reference: ['/registry'],
       Operations: ['/cost', '/jobs', '/activity'],

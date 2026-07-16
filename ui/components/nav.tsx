@@ -7,7 +7,6 @@ import {
   Scan,
   Bug,
   MessageSquareQuote,
-  Database,
   Activity,
   GitBranch,
   Shield,
@@ -171,8 +170,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Plug,
     desc: "Add sources, then scan",
     links: [
-      { href: "/connections", label: "Connections", icon: Plug, capability: "inventory.read", desc: "Link cloud, repo, and MCP systems" },
-      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage", desc: "Registered scan targets and status" },
+      { href: "/connections", label: "Connections", icon: Plug, capability: "inventory.read", desc: "Connect cloud, code, AI, and data — then see every source in one place" },
       { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
     ],
   },

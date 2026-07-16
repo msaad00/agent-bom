@@ -336,11 +336,19 @@ def _auth_session_state(request: Request) -> dict:
     auth_runtime = get_auth_runtime_status()
     role_summary = summarize_role(role)
 
+    sso_provider = None
+    configured_modes = auth_runtime.get("configured_modes")
+    if isinstance(configured_modes, list) and "oidc_browser" in configured_modes:
+        from agent_bom.api.oidc_browser import configured_browser_sso_provider
+
+        sso_provider = configured_browser_sso_provider()
+
     return {
         "authenticated": authenticated,
         "auth_required": auth_runtime["auth_required"],
         "configured_modes": auth_runtime["configured_modes"],
         "recommended_ui_mode": auth_runtime["recommended_ui_mode"],
+        "sso_provider": sso_provider,
         "auth_method": method,
         "subject": subject,
         "role": role,
@@ -970,6 +978,7 @@ async def auth_me(request: Request) -> dict:
         "auth_required": state["auth_required"],
         "configured_modes": state["configured_modes"],
         "recommended_ui_mode": state["recommended_ui_mode"],
+        "sso_provider": state["sso_provider"],
         "auth_method": state["auth_method"],
         "subject": state["subject"],
         "tenant_id": state["tenant_id"],

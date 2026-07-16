@@ -1751,6 +1751,39 @@ components:
           type: array
       title: PromptScanRequest
       type: object
+    ProviderKeyCreate:
+      additionalProperties: false
+      description: Register a real provider key. ``api_key`` is write-only.
+      properties:
+        api_key:
+          maxLength: 8192
+          minLength: 1
+          title: Api Key
+          type: string
+        display_name:
+          maxLength: 200
+          minLength: 1
+          title: Display Name
+          type: string
+        owner:
+          default: ''
+          maxLength: 200
+          title: Owner
+          type: string
+        owner_type:
+          default: ''
+          maxLength: 60
+          title: Owner Type
+          type: string
+        provider:
+          title: Provider
+          type: string
+      required:
+      - provider
+      - display_name
+      - api_key
+      title: ProviderKeyCreate
+      type: object
     ProxyAuditIngestRequest:
       additionalProperties: false
       properties:
@@ -2467,6 +2500,84 @@ components:
       required:
       - version
       title: VersionInfo
+      type: object
+    VirtualKeyAuthorize:
+      additionalProperties: false
+      description: Authorize a virtual key for a specific provider/model call (decision
+        only).
+      properties:
+        holder_id:
+          default: ''
+          maxLength: 200
+          title: Holder Id
+          type: string
+        model:
+          maxLength: 128
+          minLength: 1
+          title: Model
+          type: string
+        provider:
+          maxLength: 64
+          minLength: 1
+          title: Provider
+          type: string
+        virtual_key:
+          maxLength: 4096
+          minLength: 1
+          title: Virtual Key
+          type: string
+      required:
+      - virtual_key
+      - provider
+      - model
+      title: VirtualKeyAuthorize
+      type: object
+    VirtualKeyMint:
+      additionalProperties: false
+      description: Mint a scoped virtual key against a registered provider key.
+      properties:
+        allowed_models:
+          items:
+            type: string
+          title: Allowed Models
+          type: array
+        holder_id:
+          maxLength: 200
+          minLength: 1
+          title: Holder Id
+          type: string
+        holder_type:
+          default: ''
+          maxLength: 60
+          title: Holder Type
+          type: string
+        owner:
+          default: ''
+          maxLength: 200
+          title: Owner
+          type: string
+        owner_type:
+          default: ''
+          maxLength: 60
+          title: Owner Type
+          type: string
+        ttl_seconds:
+          default: 3600
+          title: Ttl Seconds
+          type: integer
+      required:
+      - holder_id
+      title: VirtualKeyMint
+      type: object
+    VirtualKeyRevoke:
+      additionalProperties: false
+      properties:
+        reason:
+          default: ''
+          maxLength: 500
+          title: Reason
+          type: string
+      title: VirtualKeyRevoke
       type: object
     _HitlDecisionBody:
       additionalProperties: false
@@ -13103,6 +13214,451 @@ paths:
       summary: Mitre Coverage
       tags:
       - mitre
+  /v1/model-keys/authorize:
+    post:
+      description: "Authorize a virtual key for a provider/model call \u2014 decision\
+        \ only, no secret.\n\nResolves the virtual key server-side (enforcing scope,\
+        \ revocation, expiry, and\ntenant), records usage, and returns an authorization\
+        \ decision. The real\nprovider key is unsealed only in-process to prove it\
+        \ is resolvable and is\n**never** included in the response."
+      operationId: authorize_virtual_key_v1_model_keys_authorize_post
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VirtualKeyAuthorize'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Authorize Virtual Key V1 Model Keys Authorize Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Authorize Virtual Key
+      tags:
+      - model-keys
+  /v1/model-keys/providers:
+    get:
+      description: List the tenant's registered provider keys (non-secret metadata
+        only).
+      operationId: list_provider_keys_v1_model_keys_providers_get
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response List Provider Keys V1 Model Keys Providers Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: List Provider Keys
+      tags:
+      - model-keys
+    post:
+      description: 'Register (seal) a real provider key for the authenticated tenant.
+
+
+        The ``api_key`` is encrypted at rest and never echoed back. Fails closed with
+
+        503 when no sealing key is configured, rather than storing plaintext.'
+      operationId: create_provider_key_v1_model_keys_providers_post
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderKeyCreate'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Create Provider Key V1 Model Keys Providers Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Create Provider Key
+      tags:
+      - model-keys
+  /v1/model-keys/providers/{provider_key_id}:
+    delete:
+      description: Delete a provider key. Its virtual keys then fail resolution closed.
+      operationId: delete_provider_key_v1_model_keys_providers__provider_key_id__delete
+      parameters:
+      - in: path
+        name: provider_key_id
+        required: true
+        schema:
+          title: Provider Key Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Delete Provider Key
+      tags:
+      - model-keys
+    get:
+      description: Return one provider key's non-secret metadata (tenant-scoped).
+      operationId: get_provider_key_v1_model_keys_providers__provider_key_id__get
+      parameters:
+      - in: path
+        name: provider_key_id
+        required: true
+        schema:
+          title: Provider Key Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Provider Key V1 Model Keys Providers  Provider
+                  Key Id  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Provider Key
+      tags:
+      - model-keys
+  /v1/model-keys/providers/{provider_key_id}/virtual-keys:
+    post:
+      description: Mint a scoped, time-boxed virtual key. The raw token is returned
+        once here.
+      operationId: mint_virtual_key_route_v1_model_keys_providers__provider_key_id__virtual_keys_post
+      parameters:
+      - in: path
+        name: provider_key_id
+        required: true
+        schema:
+          title: Provider Key Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VirtualKeyMint'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Mint Virtual Key Route V1 Model Keys Providers  Provider
+                  Key Id  Virtual Keys Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Mint Virtual Key Route
+      tags:
+      - model-keys
+  /v1/model-keys/virtual-keys:
+    get:
+      description: List the tenant's virtual keys (never carries the token/hash).
+      operationId: list_virtual_keys_v1_model_keys_virtual_keys_get
+      parameters:
+      - in: query
+        name: provider_key_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Provider Key Id
+      - in: query
+        name: include_inactive
+        required: false
+        schema:
+          default: false
+          title: Include Inactive
+          type: boolean
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response List Virtual Keys V1 Model Keys Virtual Keys Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: List Virtual Keys
+      tags:
+      - model-keys
+  /v1/model-keys/virtual-keys/{virtual_key_id}/revoke:
+    post:
+      description: Immediately revoke a virtual key; further resolution fails closed.
+      operationId: revoke_virtual_key_route_v1_model_keys_virtual_keys__virtual_key_id__revoke_post
+      parameters:
+      - in: path
+        name: virtual_key_id
+        required: true
+        schema:
+          title: Virtual Key Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VirtualKeyRevoke'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Revoke Virtual Key Route V1 Model Keys Virtual Keys  Virtual
+                  Key Id  Revoke Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Revoke Virtual Key Route
+      tags:
+      - model-keys
   /v1/observability/anomalies:
     get:
       description: 'Detect cost and behavior anomalies (per-agent spend + per-session

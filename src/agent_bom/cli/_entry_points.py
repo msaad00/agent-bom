@@ -436,7 +436,11 @@ def _handle_emit(con: object, source: _ConnectSource, kwargs: dict[str, object])
     try:
         artifact = onboarding.emit_artifact(source.name, fmt, options=_emit_options(source, kwargs))
     except ValueError as exc:
-        err.print(f"[red]{exc}[/red]")
+        from rich.markup import escape
+
+        # Escape the message: validation errors embed regex like ``[a-z0-9-]``
+        # that Rich would otherwise parse as markup tags and drop.
+        err.print(f"[red]{escape(str(exc))}[/red]")
         raise click.exceptions.Exit(2) from None
 
     out = str(kwargs.get("out") or "").strip()

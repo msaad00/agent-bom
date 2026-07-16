@@ -75,11 +75,27 @@ class TestAwsEmit:
 
 
 class TestOtherProviderEmit:
+    _AZURE_SUB = "11111111-2222-3333-4444-555555555555"
+
     def test_azure_emits_reader_script(self) -> None:
-        r = _run(["connect", "azure", "--emit", "--subscription-id", "sub-1"])
+        r = _run(["connect", "azure", "--emit", "--subscription-id", self._AZURE_SUB])
         assert r.exit_code == 0, r.output
         assert "az ad sp create-for-rbac" in r.stdout
-        assert "sub-1" in r.stdout
+        assert self._AZURE_SUB in r.stdout
+
+    def test_azure_emit_rejects_injection(self) -> None:
+        # A hostile subscription id must be rejected (non-zero exit), never
+        # interpolated into the emitted bash script.
+        r = _run(["connect", "azure", "--emit", "--subscription-id", "foo}; rm -rf /tmp/x #"])
+        assert r.exit_code == 2, r.output
+        assert "rm -rf" not in r.stdout
+        assert "invalid Azure subscription id" in r.stderr
+
+    def test_snowflake_emit_rejects_injection(self) -> None:
+        r = _run(["connect", "snowflake", "--emit", "--role", "X; GRANT ROLE ACCOUNTADMIN TO USER attacker; --"])
+        assert r.exit_code == 2, r.output
+        assert "GRANT ROLE ACCOUNTADMIN" not in r.stdout
+        assert "invalid Snowflake role" in r.stderr
 
     def test_gcp_emits_viewer_script(self) -> None:
         r = _run(["connect", "gcp", "--emit", "--project", "proj-1"])

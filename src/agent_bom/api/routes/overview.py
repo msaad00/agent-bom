@@ -291,33 +291,46 @@ def _rollup_from_summary(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Per-severity risk floor (0–10) so a top-risk entry ranks by its severity band
+# first and its CVSS refines only WITHIN the band. A hub/connector finding often
+# carries only a severity (no CVSS, no reachability), so keying purely on CVSS
+# scored a critical-without-CVSS at 0.0 — sorting it below a medium@6.5. The
+# floor keeps the worst-severity finding worst-first regardless of missing CVSS.
+_SEVERITY_RISK_FLOOR: dict[str, float] = {
+    "critical": 9.0,
+    "high": 7.0,
+    "medium": 4.0,
+    "low": 1.5,
+}
+_UNRATED_RISK_FLOOR = 0.5
+
+
 def _row_risk_score(row: dict[str, Any]) -> float:
     """Comparable 0–10 risk for a top-risk entry, spine or hub-ingested.
 
-    Prefers an explicit ``risk_score``; a hub-ingested finding carries no such
-    field, so fall back to its materialised ``effective_reach_score`` (a ~0–100
-    priority signal — the same one ``/v1/findings`` sorts on) scaled to the 0–10
-    band the scan spine uses, so scan and hub risks sort on one scale. Falls back
-    to ``cvss_score`` when neither is present. The result is clamped to [0, 10]
-    so an out-of-range reach never renders an absurd risk (the store's own
-    reach-ordered page already fixes which rows are the top risks).
+    Prefers an explicit ``risk_score`` (the scan spine always sets one). A
+    hub-ingested / bulk finding carries no ``risk_score`` and usually no
+    reachability signal, so we derive a band-dominant blend: the finding's
+    severity floor (:data:`_SEVERITY_RISK_FLOOR`) plus a small CVSS refinement
+    (``cvss / 100``) that orders findings WITHIN a band without ever crossing it.
+    That keeps a critical worst-first even when it carries no CVSS — the earlier
+    CVSS-only fallback scored such a critical at 0.0, burying it below a
+    medium@6.5. Result clamped to [0, 10].
     """
     risk = row.get("risk_score")
-    if risk is None:
-        reach = row.get("effective_reach_score")
-        if reach is not None:
-            try:
-                return round(min(10.0, max(0.0, float(reach) / 10.0)), 1)
-            except (TypeError, ValueError):
-                return 0.0
+    if risk is not None:
         try:
-            return round(min(10.0, max(0.0, float(row.get("cvss_score") or 0.0))), 1)
+            return round(min(10.0, max(0.0, float(risk or 0))), 1)
         except (TypeError, ValueError):
             return 0.0
+    severity = str(row.get("severity") or "").strip().lower()
+    floor = _SEVERITY_RISK_FLOOR.get(severity, _UNRATED_RISK_FLOOR)
     try:
-        return round(float(risk or 0), 1)
+        cvss = float(row.get("cvss_score") or 0.0)
     except (TypeError, ValueError):
-        return 0.0
+        cvss = 0.0
+    refine = min(max(cvss, 0.0), 10.0) / 100.0
+    return round(min(10.0, max(0.0, floor + refine)), 1)
 
 
 def _finding_top_risk(row: dict[str, Any]) -> dict[str, Any]:
@@ -699,11 +712,19 @@ def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> lis
     rendered an empty top-risk strip even with a million open findings that DO
     move the grade + headline (via ``_hub_severity_snapshot``). This folds the
     hub finding spine into the strip. It reads a single bounded page ordered by
-    the materialised ``effective_reach_score`` (index-backed on the SQL
-    backends), so it stays sub-linear at million-row scale — it never hydrates
-    the whole ledger (mirrors the #3963 rule that the overview must not fold
-    every hub payload). Degrades to an empty list if the hub store is
-    unavailable so the overview never fails closed on an optional dependency.
+    the materialised ``severity_rank`` (index-backed on the SQL backends), so it
+    stays sub-linear at million-row scale — it never hydrates the whole ledger
+    (mirrors the #3963 rule that the overview must not fold every hub payload).
+
+    Sorting by severity, NOT ``effective_reach``: the bulk/connector payload this
+    targets carries only severity + CVSS, so ``compute_effective_reach_score`` is
+    0.0 for every row — a reach-ordered page ties them all at 0.0 and degenerates
+    to ingest/rowid order, so the single worst finding (a lone critical behind
+    thousands of mediums) fell off the strip entirely. Severity-first ordering
+    guarantees the worst band is surfaced regardless of ingest order; the
+    per-entry ``_row_risk_score`` blend then refines within-band by CVSS.
+    Degrades to an empty list if the hub store is unavailable so the overview
+    never fails closed on an optional dependency.
     """
     if limit <= 0:
         return []
@@ -714,7 +735,7 @@ def _hub_top_risks(request: Request, *, limit: int = _HUB_TOP_RISK_LIMIT) -> lis
         page = store.list_page(
             _tenant_id(request),
             limit=limit,
-            sort="effective_reach",
+            sort="severity",
             include_total=False,
         )
     except Exception:  # pragma: no cover - hub store optional

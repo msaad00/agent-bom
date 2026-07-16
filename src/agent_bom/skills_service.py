@@ -14,6 +14,7 @@ from typing import Iterable
 from agent_bom.integrity import verify_instruction_file
 from agent_bom.parsers.skill_audit import SkillAuditResult, audit_skill_result
 from agent_bom.parsers.skills import (
+    SKILL_DISCOVERY_SKIP_DIRS,
     SkillScanResult,
     discover_skill_files,
     looks_like_instruction_surface,
@@ -24,6 +25,7 @@ from agent_bom.security import sanitize_command_args
 from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
 from agent_bom.skill_intel import ThreatIntelResult, ThreatIntelStatus, lookup_bundle_threat_intel
 from agent_bom.skills_catalog import catalog_scan_timestamp, load_skills_catalog, save_skills_catalog
+from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
 
@@ -194,16 +196,14 @@ def _discover_explicit_skill_files(directory: Path) -> list[Path]:
     found: list[Path] = []
     seen: set[Path] = set()
     allow_docs_skills = "docs" in directory.parts and "skills" in directory.parts
-    for path in sorted(directory.rglob("*")):
-        if not path.is_file():
-            continue
+    for path in iter_discovery_files(directory, extra_skip_dirs=SKILL_DISCOVERY_SKIP_DIRS):
         if not looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
             continue
         resolved = path.resolve()
         if resolved not in seen:
             seen.add(resolved)
             found.append(resolved)
-    return found
+    return sorted(found)
 
 
 def resolve_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path | None = None) -> list[Path]:

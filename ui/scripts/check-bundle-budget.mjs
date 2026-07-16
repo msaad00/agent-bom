@@ -39,7 +39,12 @@ const BUDGETS = {
   // queue of UI PRs is legitimate feature work, not bloat, and needs room.
   // The first-class AI/ML scan surface stays within that measured phase allowance.
   // Audit evidence, deploy-gate, and exposure-path parity also remain within it.
-  totalClientJsBytes: 3_538_944,
+  // Includes the unified Asset Inventory section (a page per asset type —
+  // packages, MCP servers, agents, cloud, identities, containers, code — driven
+  // off the canonical context graph with correlated findings and a master/detail
+  // split): a full new IA surface, ~12 KiB of client JS, plus small CI variance
+  // headroom. Legitimate feature work, not bloat.
+  totalClientJsBytes: 3_571_712,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

@@ -7,7 +7,6 @@ import {
   Scan,
   Bug,
   MessageSquareQuote,
-  Database,
   Activity,
   GitBranch,
   Shield,
@@ -141,6 +140,19 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Inventory",
+    icon: Boxes,
+    desc: "Every asset by type, correlated",
+    links: [
+      {
+        href: "/inventory",
+        label: "Asset Inventory",
+        icon: Boxes,
+        desc: "Repos, packages, images, cloud, identities, MCP, agents — one section",
+      },
+    ],
+  },
+  {
     label: "Governance",
     icon: Scale,
     desc: "Compliance, policy, and audit",
@@ -158,8 +170,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Plug,
     desc: "Add sources, then scan",
     links: [
-      { href: "/connections", label: "Connections", icon: Plug, capability: "inventory.read", desc: "Link cloud, repo, and MCP systems" },
-      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage", desc: "Registered scan targets and status" },
+      { href: "/connections", label: "Connections", icon: Plug, capability: "inventory.read", desc: "Connect cloud, code, AI, and data — then see every source in one place" },
       { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
     ],
   },
@@ -206,6 +217,7 @@ const NAV_LINK_ICON_CLASS: Record<string, string> = {
   "/agents": "text-emerald-400",
   "/manifest": "text-cyan-400",
   "/fleet": "text-blue-400",
+  "/inventory": "text-sky-400",
   "/connections": "text-purple-400",
   "/sources": "text-indigo-400",
   "/scan": "text-orange-400",
@@ -226,6 +238,7 @@ const NAV_LINK_ICON_CLASS: Record<string, string> = {
 const NAV_GROUP_ICON_CLASS: Record<string, string> = {
   Posture: "text-sky-400",
   "AI inventory": "text-emerald-400",
+  Inventory: "text-sky-400",
   Governance: "text-emerald-400",
   Connect: "text-purple-400",
   Runtime: "text-pink-400",

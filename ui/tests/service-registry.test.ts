@@ -30,6 +30,6 @@ describe("service registry helpers", () => {
 
   it("maps unlock destinations for connect surfaces", () => {
     expect(SERVICE_META.cloud_accounts.unlockHref).toBe("/connections");
-    expect(SERVICE_META.data_sources.unlockHref).toBe("/sources");
+    expect(SERVICE_META.data_sources.unlockHref).toBe("/connections?tab=sources");
   });
 });

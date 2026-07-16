@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.traversal import iter_discovery_files
 
 # ─── Framework registry ───────────────────────────────────────────────────────
 # Maps canonical PyPI package name → (display_name, framework_key, import_roots)
@@ -163,16 +164,20 @@ def _parse_pyproject_toml(path: Path) -> dict[str, str]:
 
 
 def _collect_requirements(project: Path) -> dict[str, str]:
-    """Collect {package: version} from all requirement files in the project."""
+    """Collect {package: version} from all requirement files in the project.
+
+    Traversal prunes vendored/generated directories and nested VCS worktrees so
+    a repository that keeps agent worktrees (each a full nested checkout) does
+    not re-count every manifest once per worktree.
+    """
     pkgs: dict[str, str] = {}
-    for req_file in project.rglob("requirements*.txt"):
+    for path in iter_discovery_files(project):
+        name = path.name
         try:
-            pkgs.update(_parse_requirements_txt(req_file))
-        except OSError:
-            pass
-    for ppt in project.rglob("pyproject.toml"):
-        try:
-            pkgs.update(_parse_pyproject_toml(ppt))
+            if name.startswith("requirements") and name.endswith(".txt"):
+                pkgs.update(_parse_requirements_txt(path))
+            elif name == "pyproject.toml":
+                pkgs.update(_parse_pyproject_toml(path))
         except OSError:
             pass
     return pkgs

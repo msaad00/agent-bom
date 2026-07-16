@@ -29,6 +29,7 @@ from agent_bom.reachability_cve import (
     PACKAGE_REACHABLE,
     UNREACHABLE,
     SymbolReachIndex,
+    advisory_affected_symbols_by_path,
     classify_reachability,
     extract_advisory_identifiers,
     extract_affected_symbols,
@@ -385,6 +386,51 @@ def test_go_function_reachable_from_real_ast_analysis(tmp_path: Path) -> None:
     )
     assert signal.state == FUNCTION_REACHABLE
     assert signal.matched_symbols == ("NewDecryptionClient",)
+
+
+def test_go_cross_subpackage_symbol_collision_is_not_function_reachable() -> None:
+    # Regression: an affected symbol lives in ``service/s3/s3crypto`` but the
+    # project only reaches an identically-named symbol in an UNRELATED
+    # sub-package (``service/dynamodb``). Common Go names (New/Client/Do/Get)
+    # collide across a big module, so a whole-module symbol union over-claims
+    # ``function_reachable``. The advisory's own sub-package must be honoured.
+    index = SymbolReachIndex.from_reaches([_go_reach("github.com/aws/aws-sdk-go/service/dynamodb", "Client.Do")])
+    signal = classify_reachability(
+        package="github.com/aws/aws-sdk-go",
+        advisory=_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["Client.Do"]),
+        index=index,
+        ecosystem="go",
+    )
+    assert signal.state == PACKAGE_REACHABLE
+    assert signal.matched_symbols == ()
+
+
+def test_go_cross_subpackage_collision_via_model_by_path() -> None:
+    # Same collision, but exercised the way the real pipeline sees it: the
+    # advisory arrives as a ``Vulnerability`` model whose sub-package grouping
+    # is carried on ``affected_symbols_by_path`` (populated at scan time).
+    index = SymbolReachIndex.from_reaches([_go_reach("github.com/aws/aws-sdk-go/service/dynamodb", "Client.Do")])
+    vuln = Vulnerability(
+        id="GO-2022-0646",
+        summary="x",
+        severity=Severity.HIGH,
+        affected_symbols=["Client.Do"],
+        affected_symbols_by_path={"github.com/aws/aws-sdk-go/service/s3/s3crypto": ["Client.Do"]},
+    )
+    signal = classify_reachability(
+        package="github.com/aws/aws-sdk-go",
+        advisory=vuln,
+        index=index,
+        ecosystem="go",
+    )
+    assert signal.state == PACKAGE_REACHABLE
+
+
+def test_advisory_affected_symbols_by_path_groups_go_imports() -> None:
+    by_path = advisory_affected_symbols_by_path(
+        _go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient"])
+    )
+    assert by_path == {"github.com/aws/aws-sdk-go/service/s3/s3crypto": ["NewDecryptionClient"]}
 
 
 def test_wiring_stamps_go_row_with_realistic_subpackage_import() -> None:

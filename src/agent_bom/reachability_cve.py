@@ -165,6 +165,24 @@ class SymbolReachIndex:
             symbols |= self._symbols_by_key.get(key, set())
         return symbols
 
+    def symbols_for_import_path(self, import_path: str, *, ecosystem: str = "go") -> set[str]:
+        """Symbols reached in one specific import path (and its sub-packages).
+
+        Unlike :meth:`symbols_for_package`, which unions symbols across *every*
+        sub-package of a module, this scopes the reached set to the exact
+        import path the advisory names plus anything nested beneath it on the
+        ``/`` boundary. That prevents an identically-named symbol reached in an
+        unrelated sibling sub-package from over-claiming ``function_reachable``.
+        """
+        eco = normalize_package_ecosystem(ecosystem or "pypi")
+        exact = _pkg_index_key(import_path, eco)
+        symbols: set[str] = set(self._symbols_by_key.get(exact, set()))
+        prefix = f"{exact}/"
+        for key, syms in self._symbols_by_key.items():
+            if key != exact and key.startswith(prefix):
+                symbols |= syms
+        return symbols
+
     def call_path_for_package(self, package: str, *, ecosystem: str = "pypi") -> tuple[str, ...]:
         shortest: tuple[str, ...] = ()
         for key in self._matching_keys(package, ecosystem):
@@ -389,6 +407,105 @@ def extract_affected_symbols(advisory: "Vulnerability | Mapping[str, Any] | None
     return tokens
 
 
+def _by_path_from_mapping(advisory: Mapping[str, Any]) -> dict[str, set[str]]:
+    """Group an advisory's affected symbols by their import sub-package path.
+
+    OSV Go records carry ``ecosystem_specific.imports[].{path,symbols}``; the
+    ``path`` is the fully-qualified import path of the sub-package the symbol
+    lives in. We key by that path so reachability can be scoped to it. Symbols
+    with no path (GHSA ``database_specific.vulnerable_functions`` and imports
+    that omit ``path``) are grouped under the empty-string key — they cannot be
+    localized and stay best-effort package-level.
+    """
+    result: dict[str, set[str]] = {}
+    total = 0
+
+    pathless = _symbols_from_database_specific(advisory)
+    if pathless:
+        result.setdefault("", set()).update(pathless)
+        total += len(pathless)
+
+    for block in _iter_affected_blocks(advisory):
+        eco = block.get("ecosystem_specific")
+        if not isinstance(eco, Mapping):
+            continue
+        imports = eco.get("imports")
+        if not isinstance(imports, list):
+            continue
+        for imp in imports:
+            if not isinstance(imp, Mapping):
+                continue
+            symbols = imp.get("symbols")
+            if not isinstance(symbols, list):
+                continue
+            path = imp.get("path")
+            key = path.strip() if isinstance(path, str) and path.strip() else ""
+            bucket = result.setdefault(key, set())
+            for sym in symbols:
+                if isinstance(sym, str):
+                    bucket |= _symbol_tokens(sym)
+                    total += 1
+                    if total >= _MAX_SYMBOLS:
+                        return result
+    return result
+
+
+def extract_affected_symbols_by_path(
+    advisory: "Vulnerability | Mapping[str, Any] | None",
+) -> dict[str, set[str]]:
+    """Affected-symbol token sets grouped by advisory import sub-package path.
+
+    Prefers a :class:`~agent_bom.models.Vulnerability`'s pre-extracted
+    ``affected_symbols_by_path`` field; falls back to parsing a raw advisory
+    mapping. When neither carries path data the advisory's flat symbol list is
+    returned under the empty-string (path-less) key.
+    """
+    if advisory is None:
+        return {}
+
+    if isinstance(advisory, Mapping):
+        return _by_path_from_mapping(advisory)
+
+    result: dict[str, set[str]] = {}
+    by_path_field = getattr(advisory, "affected_symbols_by_path", None)
+    if isinstance(by_path_field, Mapping) and by_path_field:
+        for path, syms in by_path_field.items():
+            if not isinstance(syms, (list, tuple, set)):
+                continue
+            bucket = result.setdefault(str(path), set())
+            for sym in syms:
+                if isinstance(sym, str):
+                    bucket |= _symbol_tokens(sym)
+        if result:
+            return result
+
+    flat = getattr(advisory, "affected_symbols", None)
+    if isinstance(flat, (list, tuple, set)):
+        flat_tokens: set[str] = set()
+        for sym in flat:
+            if isinstance(sym, str):
+                flat_tokens |= _symbol_tokens(sym)
+        if flat_tokens:
+            result[""] = flat_tokens
+    return result
+
+
+def advisory_affected_symbols_by_path(
+    advisory: "Vulnerability | Mapping[str, Any] | None",
+) -> dict[str, list[str]]:
+    """Path-grouped affected symbols ready for ``Vulnerability.affected_symbols_by_path``.
+
+    Only non-empty (localizable) import paths are returned — path-less symbols
+    already live in the flat ``affected_symbols`` field, so persisting them here
+    too would be redundant and re-introduce cross-sub-package unioning.
+    """
+    grouped: dict[str, list[str]] = {}
+    for path, tokens in extract_affected_symbols_by_path(advisory).items():
+        if path and tokens:
+            grouped[path] = sorted(tokens)
+    return grouped
+
+
 def classify_reachability(
     *,
     package: str,
@@ -420,23 +537,36 @@ def classify_reachability(
     """
     eco = normalize_package_ecosystem(ecosystem or "pypi")
     advisory_symbols = extract_affected_symbols(advisory)
+    advisory_by_path = extract_affected_symbols_by_path(advisory)
     advisory_ids = extract_advisory_identifiers(advisory)
-    reached_symbols = index.symbols_for_package(package, ecosystem=eco)
     pkg_reached = index.is_package_reached(package, ecosystem=eco) or package_reachable is True
     call_path = index.call_path_for_package(package, ecosystem=eco)
 
-    if advisory_symbols and reached_symbols:
-        matched = sorted(advisory_symbols & reached_symbols)
-        if matched:
-            return ReachabilitySignal(
-                state=FUNCTION_REACHABLE,
-                package=package,
-                reason="advisory affected symbol is reached from an entrypoint",
-                matched_symbols=tuple(matched),
-                advisory_symbols=tuple(sorted(advisory_symbols)),
-                call_path=call_path,
-                advisory_identifiers=advisory_ids,
-            )
+    # Match each affected symbol against the symbols reached IN THE SUB-PACKAGE
+    # the advisory names (Go import paths). A whole-module union would let an
+    # identically-named symbol in an unrelated sibling sub-package falsely
+    # upgrade the finding to function_reachable. Path-less advisory symbols
+    # (non-Go, or GHSA function lists) fall back to package-level reach.
+    matched: set[str] = set()
+    for path, syms in advisory_by_path.items():
+        if not syms:
+            continue
+        if path and eco == "go":
+            reached = index.symbols_for_import_path(path, ecosystem=eco)
+        else:
+            reached = index.symbols_for_package(package, ecosystem=eco)
+        matched |= syms & reached
+
+    if matched:
+        return ReachabilitySignal(
+            state=FUNCTION_REACHABLE,
+            package=package,
+            reason="advisory affected symbol is reached from an entrypoint",
+            matched_symbols=tuple(sorted(matched)),
+            advisory_symbols=tuple(sorted(advisory_symbols)),
+            call_path=call_path,
+            advisory_identifiers=advisory_ids,
+        )
 
     if pkg_reached:
         if not advisory_symbols:
@@ -471,7 +601,9 @@ __all__ = [
     "SymbolReachIndex",
     "ReachabilitySignal",
     "advisory_affected_symbols_list",
+    "advisory_affected_symbols_by_path",
     "extract_advisory_identifiers",
     "extract_affected_symbols",
+    "extract_affected_symbols_by_path",
     "classify_reachability",
 ]

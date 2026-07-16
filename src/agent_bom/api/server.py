@@ -204,9 +204,39 @@ def _storage_health() -> StorageHealth:
     return storage
 
 
+def _log_control_plane_auth_posture() -> None:
+    """Emit the control-plane auth-posture warning once, at serving start.
+
+    Reads the *final* runtime auth status so the log reflects the effective
+    posture after every ``configure_api`` call. The module-level
+    ``configure_api_from_env`` runs at import with only environment auth in
+    scope, so emitting from ``configure_api`` itself surfaced a misleading
+    transient "no auth configured" CRITICAL whenever the key arrived via a CLI
+    ``--api-key`` flag (which is not in the environment yet). Logging here — the
+    lifespan startup, after the CLI has reconfigured — avoids that.
+    """
+    from agent_bom.api.middleware import get_auth_runtime_status
+
+    status = get_auth_runtime_status()
+    auth_configured = bool(status.get("auth_configured"))
+    unauthenticated_allowed = bool(status.get("unauthenticated_allowed"))
+    if not auth_configured and not unauthenticated_allowed:
+        _logger.critical(
+            "SECURITY: No control-plane authentication configured; protected API endpoints will fail closed. "
+            "Set AGENT_BOM_API_KEY, AGENT_BOM_API_KEYS, OIDC/SAML/proxy auth, or "
+            "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 for local development only."
+        )
+    elif not auth_configured:
+        _logger.warning(
+            "SECURITY: AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 enables unauthenticated API access. "
+            "Use only for single-user local development."
+        )
+
+
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
+    _log_control_plane_auth_posture()
     configure_otel_tracing()
     # Priority: Snowflake > Postgres > SQLite > InMemory (lazy default)
     snowflake_configured = bool(os.environ.get("SNOWFLAKE_ACCOUNT"))
@@ -784,17 +814,12 @@ def configure_api(
         unauthenticated_allowed=allow_unauthenticated,
     )
 
-    if not auth_configured and not allow_unauthenticated:
-        _logger.critical(
-            "SECURITY: No control-plane authentication configured; protected API endpoints will fail closed. "
-            "Set AGENT_BOM_API_KEY, AGENT_BOM_API_KEYS, OIDC/SAML/proxy auth, or "
-            "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 for local development only."
-        )
-    elif not auth_configured:
-        _logger.warning(
-            "SECURITY: AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 enables unauthenticated API access. "
-            "Use only for single-user local development."
-        )
+    # The control-plane auth-posture warning is emitted once at serving start
+    # (see ``_log_control_plane_auth_posture`` in ``_lifespan``) rather than
+    # here: ``configure_api`` runs at import via ``configure_api_from_env`` with
+    # only environment auth visible, so logging here would emit a misleading
+    # transient "no auth configured" CRITICAL before a CLI ``--api-key`` flag
+    # reconfigures. Logging at lifespan reflects the final effective posture.
 
     # Refresh runtime-configurable middleware. _replace_middleware inserts at
     # the front; this call order keeps the coarse per-IP limiter outermost
@@ -1096,6 +1121,17 @@ def _dashboard_dist_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "ui_dist"
 
 
+def _ui_disabled() -> bool:
+    """True when the bundled dashboard is disabled (`serve --no-ui` / legacy `api`).
+
+    Mirrors the ``AGENT_BOM_NO_UI`` gate that keeps ``_mount_dashboard`` from
+    mounting the SPA. The ``/`` route is registered independently of that mount,
+    so it must honour the same gate or ``--no-ui`` would still serve the
+    dashboard index at the root.
+    """
+    return bool(os.environ.get("AGENT_BOM_NO_UI"))
+
+
 def _validated_dashboard_file(ui_dist: Path, relative_path: str) -> _DashboardFile | None:
     ui_root = ui_dist.resolve()
     raw_path = relative_path.strip()
@@ -1198,11 +1234,12 @@ def _maybe_attach_dev_session_cookie(response: Any, request: Request) -> None:
 
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def root(request: Request):
-    dashboard_index = _dashboard_index_file()
-    if dashboard_index:
-        response = _dashboard_html_response(dashboard_index)
-        _maybe_attach_dev_session_cookie(response, request)
-        return response
+    if not _ui_disabled():
+        dashboard_index = _dashboard_index_file()
+        if dashboard_index:
+            response = _dashboard_html_response(dashboard_index)
+            _maybe_attach_dev_session_cookie(response, request)
+            return response
     return RedirectResponse(url="/docs")
 
 

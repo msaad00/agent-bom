@@ -362,7 +362,11 @@ def compute_exit_code(
                 f"Upgrade to --fail-on-severity to enforce."
             )
 
-    if fail_on_malicious and exit_code == 0:
+    # A known-malicious package is a fail-closed BLOCK regardless of the opt-in
+    # --fail-on-malicious flag, mirroring `check`, which always exits 1 on a
+    # malicious verdict. A default scan silently exiting 0 on a typosquat /
+    # dependency-confusion / known-malicious advisory would let it install.
+    if exit_code == 0:
         for br in _active_blast_radii:
             if getattr(br.package, "is_malicious", False):
                 if not quiet:

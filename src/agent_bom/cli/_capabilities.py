@@ -91,4 +91,28 @@ def capabilities_cmd() -> None:
     \b
     No secret values are ever printed — only whether a variable is set.
     """
+    from agent_bom.cli._agent_mode import agent_mode_requested
+
+    if agent_mode_requested():
+        from agent_bom.cli._agent_mode import emit_command_envelope
+
+        capabilities = [
+            {
+                "name": cap.name,
+                "group": cap.group,
+                "state": status.state.value,
+                "does": cap.does,
+                "detail": status.detail,
+                "unlock": cap.unlock if status.state is not State.ON else None,
+            }
+            for cap, status in resolved_capabilities()
+        ]
+        on = sum(1 for cap in capabilities if cap["state"] == "on")
+        emit_command_envelope(
+            command="capabilities",
+            data={"capabilities": capabilities, "coverage": coverage_line()},
+            summary={"total": len(capabilities), "enabled": on},
+        )
+        return
+
     render_capabilities(Console())

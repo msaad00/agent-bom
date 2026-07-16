@@ -56,6 +56,64 @@ def test_remediation_plan_remove_command_for_malicious_package() -> None:
     assert plan[0]["command"] == "npm uninstall flatmap-stream"
 
 
+def test_remediation_console_renders_remove_not_monitor_for_malicious() -> None:
+    """Console remediation plan must render an explicit REMOVE + MALICIOUS marker
+    for a known-malicious package, never bucket it under 'monitor upstream for
+    patches' (which is only correct for no-fix-yet CVEs)."""
+    import io
+
+    from rich.console import Console
+
+    from agent_bom import output as output_mod
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.console_render import print_remediation_plan
+
+    report = AIBOMReport(blast_radii=[_malicious_blast_radius()])
+
+    buffer = io.StringIO()
+    original = output_mod.console
+    output_mod.console = Console(file=buffer, force_terminal=False, width=200, no_color=True)
+    try:
+        print_remediation_plan(report)
+    finally:
+        output_mod.console = original
+
+    text = buffer.getvalue()
+    assert "flatmap-stream" in text
+    assert "monitor upstream for patches" not in text
+    assert "MALICIOUS" in text
+    assert "Remove" in text
+
+
+def test_scan_exits_one_on_malicious_package_by_default() -> None:
+    """A known-malicious package must fail the scan (exit 1) even without the
+    opt-in --fail-on-malicious flag, matching `check`'s fail-closed policy. A
+    default scan silently exiting 0 would let a malicious dependency through."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from agent_bom.cli.agents._context import ScanContext
+    from agent_bom.cli.agents._post import compute_exit_code
+
+    ctx = ScanContext(
+        con=Console(file=StringIO(), force_terminal=False),
+        blast_radii=[_malicious_blast_radius()],
+    )
+    code = compute_exit_code(
+        ctx,
+        fail_on_severity=None,
+        warn_on_severity=None,
+        fail_on_kev=False,
+        fail_if_ai_risk=False,
+        push_url=None,
+        push_api_key=None,
+        quiet=True,
+        fail_on_malicious=False,
+    )
+    assert code == 1
+
+
 def test_forward_fixed_version_rejects_downgrade() -> None:
     assert _forward_fixed_version("0.2.1", "1.2.0", "npm") is None
     assert _forward_fixed_version("1.2.3", "1.2.0", "npm") == "1.2.3"

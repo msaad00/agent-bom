@@ -444,3 +444,33 @@ def error_envelope(*, command: str | None, message: str, exit_code: int, error_t
 
 def dumps_envelope(payload: dict[str, Any]) -> str:
     return json.dumps(_redact_sensitive(payload), separators=(",", ":"), sort_keys=True, default=str)
+
+
+def emit_command_envelope(
+    *,
+    command: str,
+    data: dict[str, Any],
+    exit_code: int = 0,
+    summary: dict[str, Any] | None = None,
+    confidence: dict[str, Any] | None = None,
+    error_type: str | None = None,
+) -> None:
+    """Print the stable agent-mode envelope for a non-scan read command.
+
+    A thin wrapper over :func:`command_success_envelope` +
+    :func:`dumps_envelope` so read commands (doctor, capabilities, where,
+    mesh, scanners) emit ONE valid JSON object instead of ANSI when the caller
+    requested ``--agent-mode``. The same credential-redaction barrier applies,
+    so no probed environment value can leak into the serialized payload.
+    """
+    import click
+
+    envelope = command_success_envelope(
+        command=command,
+        data=data,
+        exit_code=exit_code,
+        summary=summary or {},
+        confidence=confidence or {"level": "high", "signals": []},
+        error_type=error_type,
+    )
+    click.echo(dumps_envelope(envelope))

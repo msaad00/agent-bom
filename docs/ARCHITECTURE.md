@@ -93,7 +93,7 @@ flowchart TB
 
 ---
 
-## 1c. Implementation stack — hermetic and single-language
+## 1b. Implementation stack — hermetic and single-language
 
 With the product mental model in place, the implementation detail: agent-bom is
 pure Python (3.11+) end to end — CLI, FastAPI surface, MCP server, parsers,
@@ -111,7 +111,7 @@ Operational consequences:
 
 ---
 
-## 1b. Data Flow - one scan request
+## 1c. Data Flow - one scan request
 
 A single scan request walks discovery → extraction → scan → finding → graph →
 outputs. The same lower libraries serve the CLI and the API.
@@ -137,7 +137,7 @@ answerable · outputs land in the gate, ticket, or SIEM you already run.
 
 ---
 
-## 1c. Frontend · Backend · Middleware
+## 1d. Frontend · Backend · Middleware
 
 The dashboard is one door into the product, not the only one. The Next.js UI and
 every headless caller hit the same FastAPI surface, behind the same middleware,
@@ -176,7 +176,29 @@ enforced once for the UI, agents, and SDKs alike — there is no privileged
 
 ---
 
-## 1d. Input / Output Formats
+## 1e. Auth & Connections
+
+The identity and connection model is **connect once, act through the stored
+connection** — no surface ever prompts for a per-action credential.
+
+- **Humans** sign in via OAuth / OIDC / SAML SSO (standard providers plus a
+  Snowflake OAuth authorization-code + PKCE flow), with SCIM provisioning —
+  `src/agent_bom/api/{oidc,saml,scim}.py`, `src/agent_bom/api/snowflake_oauth.py`.
+- **Agents / CI** use scoped API keys / tokens.
+- **Sources** (AWS, Azure, GCP, Snowflake) are onboarded once via read-only,
+  agentless, brokered connectors — one least-privilege managed role per source,
+  short-lived brokered credentials (e.g. AWS `sts:AssumeRole`), and write-only
+  secrets (encrypted at rest, never read back). Every scan then runs through that
+  stored connection.
+
+Auth mode, tenant scope, RBAC, and audit are enforced in the shared middleware
+(`src/agent_bom/api/middleware.py`) for every caller. Provider grants and setup
+are in [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md); the enterprise auth surface and
+environment knobs are in [`ENTERPRISE.md`](ENTERPRISE.md).
+
+---
+
+## 1f. Input / Output Formats
 
 agent-bom is format-agnostic on both ends: ingest whatever evidence exists,
 emit whatever the next tool consumes.

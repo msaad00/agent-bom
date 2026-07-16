@@ -281,9 +281,7 @@ def test_overview_medium_dominant_estate_surfaces_risks_and_honest_summary() -> 
 
     get_compliance_hub_store().clear("default")
     findings = [{"finding_id": "H-high", "severity": "high", "cvss_score": 8.0, "title": "hi"}]
-    findings += [
-        {"finding_id": f"H-med-{i}", "severity": "medium", "cvss_score": 5.0, "title": f"m{i}"} for i in range(50)
-    ]
+    findings += [{"finding_id": f"H-med-{i}", "severity": "medium", "cvss_score": 5.0, "title": f"m{i}"} for i in range(50)]
     _ingest_hub_findings(findings)
 
     data = client_get_overview()
@@ -293,6 +291,39 @@ def test_overview_medium_dominant_estate_surfaces_risks_and_honest_summary() -> 
     # Headline + hub count remain coherent with the ingested spine.
     assert data["headline"]["hub_findings"] == 51
     assert data["headline"]["high"] == 1
+
+    get_compliance_hub_store().clear("default")
+
+
+def test_overview_top_risks_surface_worst_finding_regardless_of_ingest_order() -> None:
+    """The worst finding must surface in the strip even when ingested LAST (#4059).
+
+    ``_hub_top_risks`` sorted by ``effective_reach``, but severity-only bulk rows
+    all compute reach 0.0 — so the 'top 10' tie degenerated to ingest/rowid order
+    and a critical ingested after 30 mediums was ABSENT from the strip. The strip
+    must sort worst-first by severity/cvss, and a critical that carries no CVSS
+    must still outrank a medium that has one (so ``_row_risk_score`` derives from
+    severity, not 0.0).
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    findings = [{"finding_id": f"H-med-{i}", "severity": "medium", "cvss_score": 5.0, "title": f"m{i}"} for i in range(30)]
+    # The single worst finding, ingested LAST and carrying NO cvss score.
+    findings.append({"finding_id": "H-crit", "severity": "critical", "title": "the one that matters"})
+    _ingest_hub_findings(findings)
+
+    data = client_get_overview()
+    top = data["top_risks"]
+    ids = [r["vulnerability_id"] for r in top]
+    assert "H-crit" in ids, ids
+    # Worst-first: the critical leads the strip despite lacking a CVSS score.
+    assert top[0]["vulnerability_id"] == "H-crit", ids
+    crit = top[0]
+    meds = [r for r in top if r["vulnerability_id"].startswith("H-med-")]
+    assert meds, ids
+    assert crit["risk_score"] > meds[0]["risk_score"], top
 
     get_compliance_hub_store().clear("default")
 

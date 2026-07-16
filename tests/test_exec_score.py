@@ -72,6 +72,34 @@ def test_summary_leads_with_critical_when_critical_dominates() -> None:
     assert summary.index("critical") < summary.index("medium"), summary
 
 
+def test_summary_always_names_present_critical_even_when_lower_bands_dominate() -> None:
+    """A present critical must never be hidden behind two lower bands (#4059).
+
+    The band-ranking fix named only the top-2 contributing bands, so
+    ``1 critical + 7 medium + 25 low`` read ``7 medium · 25 low`` — the critical
+    was DROPPED (worse than the original bug). A critical/high with count > 0 is
+    always named; the remaining slots fill with the next-highest contributors.
+    """
+    result = compute_exec_score(severity=_sev(critical=1, medium=7, low=25))
+    summary = result["summary"]
+    assert "1 critical" in summary, summary
+    # The lower bands still show (they drive the grade), the critical is not lost.
+    assert "7 medium" in summary, summary
+
+
+def test_summary_names_critical_at_million_scale_bulk_estate() -> None:
+    """The bulk/connector case: a lone critical under millions of lower findings
+    must still be named in the blurb."""
+    result = compute_exec_score(severity=_sev(critical=1, medium=1_000_000, low=1_000_000))
+    assert "1 critical" in result["summary"], result["summary"]
+
+
+def test_summary_always_names_present_high_behind_dominant_lower_bands() -> None:
+    """Same guarantee for a present high behind dominant mediums + lows."""
+    result = compute_exec_score(severity=_sev(high=1, medium=1000, low=5000))
+    assert "1 high" in result["summary"], result["summary"]
+
+
 def test_large_estate_grades_f_without_flooring_at_zero() -> None:
     """A big critical estate is grade F with a very low — but non-zero — score.
 

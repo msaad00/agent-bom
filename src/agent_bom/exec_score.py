@@ -408,6 +408,14 @@ def compute_exec_score(
 # whichever band actually drives the grade.
 _SEVERITY_DRIVERS: tuple[str, ...] = ("critical", "high", "medium", "low", "unrated")
 
+# Bands whose presence the blurb must ALWAYS name — an exec read that omits a
+# present critical/high is dishonest regardless of grade contribution.
+_ALWAYS_NAMED_DRIVERS: tuple[str, ...] = ("critical", "high")
+
+# Cap on severity bands named in the blurb, keeping it concise while always
+# reserving room for a present critical/high plus the dominant lower driver(s).
+_MAX_SUMMARY_SEVERITY_BITS = 3
+
 
 def _build_summary(
     *,
@@ -420,25 +428,40 @@ def _build_summary(
 ) -> str:
     """Honest one-line blurb. Never claims 'no vulnerabilities' when total > 0.
 
-    Names the DOMINANT driver of the grade — the severity band with the largest
-    penalty contribution (weight × count) — first, then the next-largest, then
-    the KEV / exposure amplifiers. The old blurb named only critical/high (and
-    surfaced medium/low only when both were zero), so ``1 high + 1,000,000
-    medium`` read as "1 high" — overstating the lone high and hiding the mediums
-    that actually drive the F. Ranking by contribution fixes that generally: a
-    critical-dominant estate still leads with critical, a medium-dominant estate
-    leads with medium.
+    Always names a present critical/high (honesty: an exec blurb must never drop
+    a present severe band), then fills the remaining slots with the next-highest
+    grade contributors, then the KEV / exposure amplifiers. Within that named
+    set the bands are ordered DOMINANT-first (largest penalty contribution), so a
+    medium-dominant estate still leads with medium while the critical/high is
+    never omitted. The earlier band-ranking blurb named only the top-2
+    contributing bands, so ``1 critical + 7 medium + 25 low`` read
+    ``7 medium · 25 low`` — the critical was DROPPED. Naming critical/high
+    unconditionally fixes that.
     """
     score_txt = f"{grade} · {int(round(score))}%"
     if finding_total > 0:
-        ranked = sorted(
-            (b for b in breakdown if b.get("driver") in _SEVERITY_DRIVERS and int(b.get("count") or 0) > 0),
-            key=lambda b: (float(b.get("contribution") or 0.0), int(b.get("count") or 0)),
+        by_driver = {str(b.get("driver")): b for b in breakdown if b.get("driver") in _SEVERITY_DRIVERS and int(b.get("count") or 0) > 0}
+
+        def _contribution(driver: str) -> tuple[float, int]:
+            row = by_driver[driver]
+            return (float(row.get("contribution") or 0.0), int(row.get("count") or 0))
+
+        # Always name a present critical/high; never let a lower band bury them.
+        named: list[str] = [d for d in _ALWAYS_NAMED_DRIVERS if d in by_driver]
+        # Fill the remaining slots with the highest-contribution lower bands.
+        fillers = sorted(
+            (d for d in by_driver if d not in named),
+            key=_contribution,
             reverse=True,
         )
-        # Name the top two contributing bands so the dominant driver leads and a
-        # secondary (e.g. the lone high) still shows for context.
-        bits: list[str] = [f"{int(b['count']):,} {b['driver']}" for b in ranked[:2]]
+        for driver in fillers:
+            if len(named) >= _MAX_SUMMARY_SEVERITY_BITS:
+                break
+            named.append(driver)
+        # Order the named bands dominant-first so the blurb reads as the grade
+        # driver while a present critical/high is still guaranteed to appear.
+        named.sort(key=_contribution, reverse=True)
+        bits: list[str] = [f"{int(by_driver[d]['count']):,} {d}" for d in named]
         if counts["kev"]:
             bits.append(f"{counts['kev']:,} KEV")
         if counts["exposure"]:

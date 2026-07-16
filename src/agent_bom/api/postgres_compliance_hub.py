@@ -47,6 +47,18 @@ from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _g
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
+def _invalidate_overview_severity(tenant_id: str) -> None:
+    """Drop the memoised /v1/overview severity histogram after a ledger change.
+
+    Any mutation of ``compliance_hub_findings`` (the ``severity_breakdown``
+    source) must invalidate the per-tenant overview cache so the headline never
+    goes stale relative to the ledger (wave-2 residual #3).
+    """
+    from agent_bom.api import hub_overview_cache
+
+    hub_overview_cache.invalidate_tenant(tenant_id)
+
+
 def _migrate_lifecycle_observations_l2_postgres(conn: Any) -> None:
     """Upgrade L1 observation rows (PK on observed_at) to L2 (PK on scan_id)."""
     conn.execute(
@@ -696,6 +708,7 @@ class PostgresComplianceHubStore:
         with _tenant_connection(self._pool) as conn:
             new_rows = self._write_ledger_batch(conn, tenant_id, findings)
             conn.commit()
+        _invalidate_overview_severity(tenant_id)
         return self._bump_tenant_total(tenant_id, new_rows)
 
     def ingest_batch_atomic(
@@ -740,6 +753,7 @@ class PostgresComplianceHubStore:
                     scope_source=source,
                 )
             conn.commit()
+        _invalidate_overview_severity(tenant_id)
         new_total = self._bump_tenant_total(tenant_id, new_rows)
         return new_total, reconciled
 
@@ -861,6 +875,7 @@ class PostgresComplianceHubStore:
             conn.commit()
         removed = cur.rowcount or 0
         self._reset_ingest_stats(tenant_id)
+        _invalidate_overview_severity(tenant_id)
         if removed:
             from agent_bom.api.findings_count_cache import invalidate_tenant
 

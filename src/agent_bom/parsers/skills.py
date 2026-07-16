@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.models import MCPServer, Package, TransportType
+from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
 
@@ -562,9 +563,7 @@ def discover_skill_files(project_dir: Path) -> list[Path]:
     found: list[Path] = []
     seen: set[Path] = set()
 
-    for path in sorted(project_dir.rglob("*")):
-        if not path.is_file():
-            continue
+    for path in iter_discovery_files(project_dir, extra_skip_dirs=SKILL_DISCOVERY_SKIP_DIRS):
         if not looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
             continue
         resolved = path.resolve()
@@ -572,7 +571,7 @@ def discover_skill_files(project_dir: Path) -> list[Path]:
             seen.add(resolved)
             found.append(path)
 
-    return found
+    return sorted(found)
 
 
 # ─── Batch scanning ──────────────────────────────────────────────────────────

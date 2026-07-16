@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_bom.traversal import iter_discovery_files
+
 _SKIP_DIRS = frozenset(
     {
         ".git",
@@ -105,11 +107,10 @@ def _walk_limited(root: Path, *, max_files: int = 4000) -> list[Path]:
     files: list[Path] = []
     if not root.is_dir():
         return files
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in _SKIP_DIRS for part in path.parts):
-            continue
+    # Prune vendored/generated dirs and nested VCS worktrees during the walk so
+    # detection does not descend into duplicated checkouts (e.g. agent
+    # worktrees under ``.claude/worktrees``) or scan millions of vendored paths.
+    for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS, max_files=max_files):
         files.append(path)
         if len(files) >= max_files:
             break

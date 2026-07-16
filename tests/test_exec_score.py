@@ -45,6 +45,33 @@ def test_summary_never_claims_no_vulns_when_counted() -> None:
     assert "3 high" in result["summary"]
 
 
+def test_summary_names_dominant_driver_not_just_highest_severity() -> None:
+    """A lone high must not headline the blurb when a million mediums drive the F.
+
+    Regression for the misleading exec summary (P0-1): the old blurb named only
+    critical/high (medium/low surfaced only when crit+high were both zero), so
+    ``1 high + 1,000,000 medium`` read as "1 high across connected surfaces" —
+    overstating the lone high and hiding the mediums that actually drive the
+    grade. The summary must name the DOMINANT driver (largest grade contribution)
+    first.
+    """
+    result = compute_exec_score(severity=_sev(high=1, medium=1_000_000))
+    summary = result["summary"]
+    # The dominant medium driver is named (with a thousands separator), first.
+    assert "1,000,000 medium" in summary, summary
+    assert summary.index("medium") < summary.index("high"), summary
+    # The lone high is still shown for context, just not as the headline.
+    assert "1 high" in summary, summary
+
+
+def test_summary_leads_with_critical_when_critical_dominates() -> None:
+    """When criticals dominate the contribution, they still lead — general rule."""
+    result = compute_exec_score(severity=_sev(critical=5, medium=3))
+    summary = result["summary"]
+    assert "5 critical" in summary, summary
+    assert summary.index("critical") < summary.index("medium"), summary
+
+
 def test_large_estate_grades_f_without_flooring_at_zero() -> None:
     """A big critical estate is grade F with a very low — but non-zero — score.
 

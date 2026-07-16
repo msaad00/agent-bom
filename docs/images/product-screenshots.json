@@ -1,5 +1,5 @@
 {
-  "release_version": "0.96.2",
+  "release_version": "0.96.3",
   "captured_at": "2026-07-13T19:41:49.902Z",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
@@ -7,79 +7,79 @@
       "path": "dashboard-live.png",
       "page": "/?capture=1",
       "scope": "Overview command center — posture ring, findings breakdown, scan coverage, environment tabs",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
       "scope": "Overview lower frame with exposure path and feed/analytics tabs",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "cloud-accounts-live.png",
       "page": "/connections?capture=1",
       "scope": "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "new-scan-live.png",
       "page": "/scan?capture=1",
       "scope": "New Scan form with connected account, ad-hoc, and public repo modes",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
       "scope": "Focused agent mesh graph across the active agent, MCP server, package, tool, and CVE path, cropped to the product graph surface",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "gateway-policies-live.png",
       "page": "/runtime?tab=gateway&capture=1",
       "scope": "Runtime gateway KPI rollup and live tool-call feed",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "security-graph-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "lineage-graph-live.png",
       "page": "/graph?capture=1&scan=scan-proof-ai-platform",
       "scope": "Expanded but bounded lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "context-map-live.png",
       "page": "/context?capture=1",
       "scope": "Agent-scoped context map showing reachable MCP servers and lateral movement side panel",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "fleet-state-live.png",
       "page": "/fleet?capture=1",
       "scope": "Expanded fleet row showing lifecycle distribution, approved state, owner metadata, environment label, and discovery state",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "identity-audit-live.png",
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with HMAC integrity counters and agent identity issue, rotate, revoke events",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "dependency-map-live.png",
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     },
     {
       "path": "remediation-live.png",
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation table with prioritized packages and framework context",
-      "visible_version": "0.96.2"
+      "visible_version": "0.96.3"
     }
   ]
 }

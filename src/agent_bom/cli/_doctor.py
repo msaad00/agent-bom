@@ -143,6 +143,44 @@ def doctor_cmd() -> None:
     except Exception:
         cloud_sdk_checks.append(("Cloud SDKs", "freshness check unavailable", "info"))
 
+    checks = [*core_checks, *runtime_checks, *platform_checks]
+    warns = sum(1 for _, _, s in checks if s == "warn")
+
+    from agent_bom.cli._agent_mode import agent_mode_requested
+
+    if agent_mode_requested():
+        from agent_bom.cli._agent_mode import emit_command_envelope
+
+        def _section(rows: list[tuple[str, str, str]]) -> list[dict[str, str]]:
+            return [{"label": label, "value": value, "status": status} for label, value, status in rows]
+
+        capabilities: list[dict[str, str]] = []
+        coverage = None
+        try:
+            from agent_bom.capabilities import coverage_line, resolved_capabilities
+
+            for cap, status in resolved_capabilities():
+                capabilities.append({"name": cap.name, "state": status.state.value, "detail": status.detail})
+            coverage = coverage_line()
+        except Exception:
+            capabilities = []
+
+        emit_command_envelope(
+            command="doctor",
+            data={
+                "core": _section(core_checks),
+                "runtime": _section(runtime_checks),
+                "platform": _section(platform_checks),
+                "cloud_sdk": _section(cloud_sdk_checks),
+                "capabilities": capabilities,
+                "coverage": coverage,
+                "ready": warns == 0,
+                "warnings": warns,
+            },
+            summary={"warnings": warns, "ready": warns == 0},
+        )
+        return
+
     # Print results
     console.print("  [bold]agent-bom doctor[/bold]")
     console.print()
@@ -171,8 +209,6 @@ def doctor_cmd() -> None:
 
     console.print()
 
-    checks = [*core_checks, *runtime_checks, *platform_checks]
-    warns = sum(1 for _, _, s in checks if s == "warn")
     if warns == 0:
         console.print("  [green]Ready to scan.[/green]")
     else:

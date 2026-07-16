@@ -237,6 +237,99 @@ def test_tenant_b_cannot_see_or_authorize_tenant_a_keys() -> None:
     assert denied.status_code == 404
 
 
+# ── RBAC tier split: root-credential writes are admin, minting is analyst ─────
+
+
+def test_analyst_can_mint_revoke_authorize_but_not_register_or_delete() -> None:
+    """register/delete of a real provider key are admin-tier; mint/authorize/revoke stay analyst-tier."""
+    client = TestClient(_app())
+    # Admin provisions the real provider credential.
+    pk = _register(client)
+    pk_id = pk["provider_key_id"]
+
+    # Analyst (scan tier) may NOT write a new real provider secret.
+    denied_register = client.post(
+        "/v1/model-keys/providers",
+        json={"provider": "openai", "display_name": "x", "api_key": _REAL_KEY},
+        headers=_headers(role="analyst"),
+    )
+    assert denied_register.status_code == 403, denied_register.text
+
+    # Analyst CAN mint a scoped virtual key against the admin-provisioned root key.
+    minted = client.post(
+        f"/v1/model-keys/providers/{pk_id}/virtual-keys",
+        json={"holder_id": "agent-1", "allowed_models": ["gpt-4o"]},
+        headers=_headers(role="analyst"),
+    )
+    assert minted.status_code == 201, minted.text
+    raw = minted.json()["virtual_key"]
+    vk_id = minted.json()["virtual_key_record"]["virtual_key_id"]
+
+    # Analyst CAN authorize (resolve) it.
+    authorized = client.post(
+        "/v1/model-keys/authorize",
+        json={"virtual_key": raw, "provider": "openai", "model": "gpt-4o"},
+        headers=_headers(role="analyst"),
+    )
+    assert authorized.status_code == 200, authorized.text
+
+    # Analyst CAN revoke it.
+    revoked = client.post(
+        f"/v1/model-keys/virtual-keys/{vk_id}/revoke",
+        json={"reason": "rotate"},
+        headers=_headers(role="analyst"),
+    )
+    assert revoked.status_code == 200, revoked.text
+
+    # Analyst may NOT delete the real provider credential (admin-tier root write).
+    denied_delete = client.delete(f"/v1/model-keys/providers/{pk_id}", headers=_headers(role="analyst"))
+    assert denied_delete.status_code == 403, denied_delete.text
+
+    # Admin may delete it.
+    assert client.delete(f"/v1/model-keys/providers/{pk_id}", headers=_headers(role="admin")).status_code == 204
+
+
+# ── holder scope is a caller-asserted scope enforced at resolve ───────────────
+
+
+def test_holder_scope_enforced_against_asserted_holder() -> None:
+    """A virtual key bound to holder A is denied when the caller asserts a different holder.
+
+    Holder scope is caller-asserted (the authorizing principal is the gateway/operator,
+    not the data-plane holder), so an asserted mismatching holder must fail closed while
+    the correct holder — and an unasserted holder — pass.
+    """
+    client = TestClient(_app())
+    pk = _register(client)
+    raw = _mint(client, pk["provider_key_id"], holder_id="agent-A")["virtual_key"]
+
+    # Asserting a DIFFERENT holder must be denied (holder_mismatch -> 403).
+    mismatched = client.post(
+        "/v1/model-keys/authorize",
+        json={"virtual_key": raw, "provider": "openai", "model": "gpt-4o", "holder_id": "agent-B"},
+        headers=_headers(),
+    )
+    assert mismatched.status_code == 403, mismatched.text
+
+    # Asserting the bound holder is authorized.
+    matched = client.post(
+        "/v1/model-keys/authorize",
+        json={"virtual_key": raw, "provider": "openai", "model": "gpt-4o", "holder_id": "agent-A"},
+        headers=_headers(),
+    )
+    assert matched.status_code == 200, matched.text
+    assert matched.json()["holder_id"] == "agent-A"
+
+    # Omitting the holder does not bypass the other scopes; it authorizes on
+    # token + tenant + provider + model scope (holder is defense-in-depth).
+    unasserted = client.post(
+        "/v1/model-keys/authorize",
+        json={"virtual_key": raw, "provider": "openai", "model": "gpt-4o"},
+        headers=_headers(),
+    )
+    assert unasserted.status_code == 200, unasserted.text
+
+
 def test_register_unsupported_provider_rejected() -> None:
     client = TestClient(_app())
     resp = client.post(

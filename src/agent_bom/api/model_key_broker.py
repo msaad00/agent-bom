@@ -6,7 +6,11 @@ credential (OpenAI, Anthropic, Azure OpenAI, Bedrock, …) **once**, and agent-b
 mints **virtual keys** that
 
 - map to the real key without ever exposing it,
-- are SCOPED (per holder identity/blueprint, provider, optional model allowlist),
+- are SCOPED to a provider and an optional model allowlist, plus a bound holder
+  identity/blueprint that is enforced at resolve time **when the caller asserts
+  it** (holder is caller-asserted defense-in-depth over the bearer token, not the
+  transport principal — the authorizing caller is the gateway acting for many
+  holders),
 - are time-boxed (expiry) and REVOCABLE independently, and
 - attribute usage back to the holder.
 

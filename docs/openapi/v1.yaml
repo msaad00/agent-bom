@@ -13220,7 +13220,13 @@ paths:
         \ only, no secret.\n\nResolves the virtual key server-side (enforcing scope,\
         \ revocation, expiry, and\ntenant), records usage, and returns an authorization\
         \ decision. The real\nprovider key is unsealed only in-process to prove it\
-        \ is resolvable and is\n**never** included in the response."
+        \ is resolvable and is\n**never** included in the response.\n\n``holder_id``\
+        \ is a caller-asserted scope, not the authenticating principal:\nthis endpoint\
+        \ is called by the gateway/operator on behalf of the data-plane\nholder, so\
+        \ when a ``holder_id`` is asserted it is enforced against the key's\nbound\
+        \ holder (a mismatch fails closed); omitting it does not bypass the token,\n\
+        tenant, provider, or model scope. The calling principal is captured in the\n\
+        audit trail."
       operationId: authorize_virtual_key_v1_model_keys_authorize_post
       parameters:
       - in: header
@@ -13323,9 +13329,13 @@ paths:
       description: 'Register (seal) a real provider key for the authenticated tenant.
 
 
-        The ``api_key`` is encrypted at rest and never echoed back. Fails closed with
+        Writing a real provider secret into the vault is a root-credential write and
 
-        503 when no sealing key is configured, rather than storing plaintext.'
+        requires the admin/``config`` tier. The ``api_key`` is encrypted at rest and
+
+        never echoed back. Fails closed with 503 when no sealing key is configured,
+
+        rather than storing plaintext.'
       operationId: create_provider_key_v1_model_keys_providers_post
       parameters:
       - in: header
@@ -13378,7 +13388,8 @@ paths:
       - model-keys
   /v1/model-keys/providers/{provider_key_id}:
     delete:
-      description: Delete a provider key. Its virtual keys then fail resolution closed.
+      description: "Delete a provider key (admin/``config`` tier \u2014 a root-credential\
+        \ write).\n\nIts virtual keys then fail resolution closed."
       operationId: delete_provider_key_v1_model_keys_providers__provider_key_id__delete
       parameters:
       - in: path

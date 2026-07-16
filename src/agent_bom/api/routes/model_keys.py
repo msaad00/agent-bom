@@ -15,9 +15,20 @@ Security contract (identical posture to the connection broker):
       ``/authorize`` endpoint validates scope + revocation + expiry and returns an
       authorization DECISION (provider, holder, provider-key id) — never the real
       key. It is the only surface that touches the real key, and it strips it.
-    - Every endpoint is tenant-scoped and RBAC-gated. Reads require ``read``;
-      mutations (register / mint / revoke / delete / authorize) require ``scan``.
-    - Every mutation is audit-logged (secret-free).
+    - Holder scope is **caller-asserted**, not derived from the transport
+      principal: ``/authorize`` is called by the gateway/operator acting on behalf
+      of many data-plane holders (agents / blueprints), so the authenticating
+      principal is that gateway, not the holder the key was minted for. When the
+      caller asserts a ``holder_id`` it is enforced at resolve time (a mismatch
+      fails closed with ``holder_mismatch``); omitting it does not bypass the
+      token, tenant, provider, or model scope — holder is defense-in-depth on top
+      of the bearer token, which remains the primary secret.
+    - Every endpoint is tenant-scoped and RBAC-gated. Reads require ``read``.
+      Minting, authorizing, and revoking a virtual key require ``scan`` (analyst).
+      Registering or deleting a **real provider credential** is a root-credential
+      write and requires ``config`` (admin).
+    - Every mutation is audit-logged (secret-free), attributed to the calling
+      principal.
 
 Endpoints:
     POST   /v1/model-keys/providers                          register a real provider key
@@ -60,6 +71,10 @@ _logger = logging.getLogger(__name__)
 
 _READ_DEP = require_authenticated_permission("read")
 _SCAN_DEP = require_authenticated_permission("scan")
+# Writing or deleting a real provider credential in the vault is a root-credential
+# write, gated at the admin/config tier (as other root-credential/config writes
+# are). Minting/authorizing/revoking scoped virtual keys stays at ``scan``.
+_CONFIG_DEP = require_authenticated_permission("config")
 
 _MAX_ALLOWED_MODELS = 50
 _MAX_MODEL_LEN = 128
@@ -119,6 +134,8 @@ class VirtualKeyAuthorize(BaseModel):
     virtual_key: str = Field(min_length=1, max_length=4096)
     provider: str = Field(min_length=1, max_length=64)
     model: str = Field(min_length=1, max_length=_MAX_MODEL_LEN)
+    # Optional caller-asserted holder identity. When present it is enforced at
+    # resolve time (a mismatch fails closed); it is NOT the transport principal.
     holder_id: str = Field(default="", max_length=200)
 
 
@@ -141,11 +158,13 @@ def _validate_models(models: list[str]) -> list[str]:
 
 
 @router.post("/model-keys/providers", status_code=201)
-async def create_provider_key(request: Request, body: ProviderKeyCreate, _role: Any = _SCAN_DEP) -> dict[str, Any]:
+async def create_provider_key(request: Request, body: ProviderKeyCreate, _role: Any = _CONFIG_DEP) -> dict[str, Any]:
     """Register (seal) a real provider key for the authenticated tenant.
 
-    The ``api_key`` is encrypted at rest and never echoed back. Fails closed with
-    503 when no sealing key is configured, rather than storing plaintext.
+    Writing a real provider secret into the vault is a root-credential write and
+    requires the admin/``config`` tier. The ``api_key`` is encrypted at rest and
+    never echoed back. Fails closed with 503 when no sealing key is configured,
+    rather than storing plaintext.
     """
     tenant_id = _tenant(request)
     try:
@@ -197,8 +216,11 @@ async def get_provider_key(request: Request, provider_key_id: str, _role: Any = 
 
 
 @router.delete("/model-keys/providers/{provider_key_id}", status_code=204)
-async def delete_provider_key(request: Request, provider_key_id: str, _role: Any = _SCAN_DEP) -> None:
-    """Delete a provider key. Its virtual keys then fail resolution closed."""
+async def delete_provider_key(request: Request, provider_key_id: str, _role: Any = _CONFIG_DEP) -> None:
+    """Delete a provider key (admin/``config`` tier — a root-credential write).
+
+    Its virtual keys then fail resolution closed.
+    """
     tenant_id = _tenant(request)
     deleted = get_model_key_broker_store().delete_provider_key(provider_key_id, tenant_id=tenant_id)
     if not deleted:
@@ -307,6 +329,13 @@ async def authorize_virtual_key(request: Request, body: VirtualKeyAuthorize, _ro
     tenant), records usage, and returns an authorization decision. The real
     provider key is unsealed only in-process to prove it is resolvable and is
     **never** included in the response.
+
+    ``holder_id`` is a caller-asserted scope, not the authenticating principal:
+    this endpoint is called by the gateway/operator on behalf of the data-plane
+    holder, so when a ``holder_id`` is asserted it is enforced against the key's
+    bound holder (a mismatch fails closed); omitting it does not bypass the token,
+    tenant, provider, or model scope. The calling principal is captured in the
+    audit trail.
     """
     tenant_id = _tenant(request)
     try:

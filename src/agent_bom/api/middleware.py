@@ -886,6 +886,17 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/sources/", "analyst"),
         ("POST", "/v1/baseline/compare", "analyst"),
         ("POST", "/v1/graph/presets", "analyst"),
+        # Model-key broker: registering / deleting a REAL provider credential is a
+        # root-credential write (admin, via the unmatched-mutating fallback below).
+        # Minting a scoped short-lived virtual key, authorizing it, and revoking it
+        # are operational and stay analyst — otherwise the admin fallback would
+        # silently over-gate the documented scan-tier surface. These prefixes match
+        # only the sub-paths (mint = providers/{id}/virtual-keys, revoke =
+        # virtual-keys/{id}/revoke); the exact register path /v1/model-keys/providers
+        # has no trailing slash and correctly falls through to the admin fallback.
+        ("POST", "/v1/model-keys/providers/", "analyst"),
+        ("POST", "/v1/model-keys/virtual-keys/", "analyst"),
+        ("POST", "/v1/model-keys/authorize", "analyst"),
         ("DELETE", "/v1/schedules/", "analyst"),
         ("DELETE", "/v1/graph/presets/", "analyst"),
         ("PUT", "/v1/schedules/", "analyst"),

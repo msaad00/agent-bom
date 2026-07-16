@@ -84,6 +84,25 @@ def record_manifest_parse_warning(*, ecosystem: str, path: str, detail: str) -> 
         pass
 
 
+def covered_os_distros(conn: sqlite3.Connection) -> list[str]:
+    """Return the OS-distro families the local DB actually carries advisories for.
+
+    Reads the distinct ``affected.ecosystem`` values and maps them to human
+    distro labels via :func:`agent_bom.os_advisory.covered_distro_labels`. This is
+    the honest "which distros are active" signal for the scan/DB status surface —
+    derived from the data present, never an aspirational static list, so we never
+    overclaim coverage the DB does not hold.
+    """
+    from agent_bom.os_advisory import covered_distro_labels
+
+    try:
+        rows = conn.execute("SELECT DISTINCT ecosystem FROM affected").fetchall()
+    except sqlite3.Error as exc:  # pragma: no cover - defensive
+        _logger.debug("Could not read OS-distro coverage: %s", exc)
+        return []
+    return covered_distro_labels(str(r[0]) for r in rows if r and r[0])
+
+
 def _release_key(pkg: "Package") -> Optional[tuple[str, str]]:
     """Return ``(family, db_release_key)`` for an OS package with a known release.
 

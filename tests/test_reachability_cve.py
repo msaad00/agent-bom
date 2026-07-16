@@ -285,6 +285,118 @@ def test_function_reachable_from_real_ast_analysis(tmp_path: Path) -> None:
     assert classify_reachability(package="requests", advisory=other, index=index).state == PACKAGE_REACHABLE
 
 
+# ── Go module ⇄ import-path join ──────────────────────────────────────────
+#
+# The Go AST records ``reach.package`` as the full *import path*
+# (``github.com/aws/aws-sdk-go/service/s3/s3crypto``) while an SCA finding —
+# and the OSV advisory ``affected[].package.name`` — is the *module*
+# (``github.com/aws/aws-sdk-go``). The two must join or Go symbol reach, the
+# richest advisory-symbol source, is inert.
+
+
+def _go_reach(import_path: str, symbol: str) -> DependencySymbolReach:
+    return DependencySymbolReach(
+        entrypoint="decrypt",
+        package=import_path,
+        module=import_path,
+        symbol=symbol,
+        file_path="main.go",
+        line_number=9,
+        call_path=["decrypt", f"{import_path}.{symbol}"],
+        ecosystem="go",
+    )
+
+
+def _go_osv(import_path: str, symbols: list[str], module: str = "github.com/aws/aws-sdk-go") -> dict:
+    return {
+        "id": "GO-2022-0646",
+        "affected": [
+            {
+                "package": {"ecosystem": "Go", "name": module},
+                "ecosystem_specific": {"imports": [{"path": import_path, "symbols": symbols}]},
+            }
+        ],
+    }
+
+
+def test_go_module_finding_reaches_subpackage_import_symbol() -> None:
+    # Finding is the module; the reached import path is a sub-package of it.
+    index = SymbolReachIndex.from_reaches([_go_reach("github.com/aws/aws-sdk-go/service/s3/s3crypto", "NewDecryptionClient")])
+    signal = classify_reachability(
+        package="github.com/aws/aws-sdk-go",
+        advisory=_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient", "NewEncryptionClient"]),
+        index=index,
+        ecosystem="go",
+    )
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.matched_symbols == ("NewDecryptionClient",)
+    assert signal.call_path  # closest sub-package call path is surfaced
+
+
+def test_go_module_package_reachable_when_affected_symbol_not_called() -> None:
+    # A benign symbol of a sub-package is reached; the advisory flags another.
+    index = SymbolReachIndex.from_reaches([_go_reach("github.com/aws/aws-sdk-go/service/s3", "ListBuckets")])
+    signal = classify_reachability(
+        package="github.com/aws/aws-sdk-go",
+        advisory=_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient"]),
+        index=index,
+        ecosystem="go",
+    )
+    assert signal.state == PACKAGE_REACHABLE
+    assert signal.matched_symbols == ()
+
+
+def test_go_module_prefix_respects_module_boundary() -> None:
+    # A different module that merely shares a string prefix must not match:
+    # ``…/aws-sdk-goodies`` is not a sub-package of ``…/aws-sdk-go``.
+    index = SymbolReachIndex.from_reaches([_go_reach("github.com/aws/aws-sdk-goodies/crypto", "NewDecryptionClient")])
+    signal = classify_reachability(
+        package="github.com/aws/aws-sdk-go",
+        advisory=_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient"]),
+        index=index,
+        ecosystem="go",
+    )
+    assert signal.state == UNREACHABLE
+
+
+def test_go_function_reachable_from_real_ast_analysis(tmp_path: Path) -> None:
+    (tmp_path / "main.go").write_text(
+        "package main\n\n"
+        "import (\n"
+        '\t"github.com/aws/aws-sdk-go/service/s3/s3crypto"\n'
+        '\t"github.com/mark3labs/mcp-go/server"\n'
+        ")\n\n"
+        "func handleTool(args map[string]any) (any, error) {\n"
+        "\tclient := s3crypto.NewDecryptionClient(nil)\n"
+        "\treturn client, nil\n"
+        "}\n\n"
+        "func main() {\n"
+        '\ts := server.NewMCPServer("demo", "1.0.0")\n'
+        '\ts.AddTool("decrypt", handleTool)\n'
+        "}\n"
+    )
+    result = analyze_project(tmp_path)
+    index = SymbolReachIndex.from_ast_result(result)
+    signal = classify_reachability(
+        package="github.com/aws/aws-sdk-go",
+        advisory=_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient"]),
+        index=index,
+        ecosystem="go",
+    )
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.matched_symbols == ("NewDecryptionClient",)
+
+
+def test_wiring_stamps_go_row_with_realistic_subpackage_import() -> None:
+    br = _python_br(["NewDecryptionClient"], pkg_name="github.com/aws/aws-sdk-go")
+    br.package.ecosystem = "go"
+    go_reach = _go_reach("github.com/aws/aws-sdk-go/service/s3/s3crypto", "NewDecryptionClient")
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[go_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["NewDecryptionClient"]
+
+
 # ── thin wiring hook ──────────────────────────────────────────────────────
 
 

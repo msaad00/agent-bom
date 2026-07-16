@@ -43,6 +43,7 @@ from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, V
 from agent_bom.nist_800_53 import tag_blast_radius as tag_nist_800_53
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
 from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
+from agent_bom.os_advisory import apk_advisory_ecosystems, rpm_advisory_ecosystems
 from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
@@ -270,8 +271,14 @@ _DEBIAN_OSV_FALLBACKS = ("Debian:11", "Debian:12", "Debian:13", "Debian:14")
 _ALPINE_OSV_FALLBACKS = alpine_osv_fallback_ecosystems()
 
 
-def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
-    """Return one or more OSV ecosystem identifiers for a package."""
+def _resolve_osv_ecosystems(pkg: Package, *, for_local_db: bool) -> list[str]:
+    """Return OSV ecosystem identifier(s) for a package.
+
+    ``for_local_db`` selects the key variant: the local DB stores RPM-distro
+    advisories under a per-major key (e.g. ``Red Hat:enterprise_linux:8``) while
+    the live OSV API is queried with the bare distro ecosystem it accepts
+    (``Red Hat``). Every other ecosystem resolves identically for both paths.
+    """
     eco_key = pkg.ecosystem.lower()
 
     if eco_key == "deb":
@@ -287,6 +294,10 @@ def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
         return list(_DEBIAN_OSV_FALLBACKS)
 
     if eco_key == "apk":
+        # Wolfi/Chainguard are apk-based but use their own version-less ecosystems.
+        non_alpine = apk_advisory_ecosystems(pkg.distro_name)
+        if non_alpine:
+            return non_alpine
         distro_version = (pkg.distro_version or "").strip()
         if distro_version:
             # Alpine advisories are keyed by minor branch (``v3.16``), so a full
@@ -294,13 +305,26 @@ def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
             return [f"Alpine:{alpine_release_branch(distro_version)}"]
         return list(_ALPINE_OSV_FALLBACKS)
 
+    if eco_key == "rpm":
+        # RHEL/CentOS, Rocky, AlmaLinux and openSUSE Leap advisories are carried
+        # by the OSV bulk export under distro-specific ecosystems. Fall back to
+        # the cross-distro "Linux" ecosystem only when the distro is unresolved.
+        distro = rpm_advisory_ecosystems(pkg.distro_name, pkg.distro_version, for_local_db=for_local_db)
+        if distro:
+            return distro
+
     osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
     return [osv_ecosystem] if osv_ecosystem else []
 
 
+def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
+    """Return one or more OSV ecosystem identifiers for a package (live API path)."""
+    return _resolve_osv_ecosystems(pkg, for_local_db=False)
+
+
 def _db_ecosystems_for_package(pkg: Package) -> list[str]:
-    """Return normalized DB ecosystem keys for a package."""
-    return [eco.lower() for eco in _osv_ecosystems_for_package(pkg)]
+    """Return normalized local-DB ecosystem keys for a package."""
+    return [eco.lower() for eco in _resolve_osv_ecosystems(pkg, for_local_db=True)]
 
 
 def _db_covered_ecosystems() -> set[str]:

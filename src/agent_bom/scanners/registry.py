@@ -227,6 +227,39 @@ def builtin_scanner_registrations() -> list[ScannerRegistration]:
             standards=("SLSA", "NIST", "SOC2"),
         ),
         _registration(
+            "k8s-live-cluster",
+            "agent_bom.k8s",
+            phase=ScannerPhase.DISCOVERY,
+            run_attr="scan_live_cluster_posture",
+            input_types=("kubeconfig_context", "kubectl"),
+            output_types=("iac_findings",),
+            finding_types=(
+                "kubernetes-live",
+                "pod-security",
+                "rbac-wildcard",
+                "cluster-admin-binding",
+                "kubelet-cis",
+                "network-policy-gap",
+            ),
+            summary=(
+                "Read-only live Kubernetes cluster audit via kubectl: PodSecurity on running "
+                "workloads, RBAC/namespace over-broad grants, and node/kubelet CIS configuration."
+            ),
+            capabilities=ExtensionCapabilities(
+                scan_modes=("cluster", "online"),
+                required_scopes=("kubernetes_cluster_read",),
+                permissions_used=("kubectl_get", "kubelet_configz_read"),
+                outbound_destinations=("kubernetes_api_server",),
+                data_boundary="cluster_state_read_only",
+                network_access=True,
+                guarantees=("read_only", "no_cluster_mutation"),
+            ),
+            failure_mode=ScannerFailureMode.SKIP_WHEN_UNAVAILABLE,
+            skip_when=("kubectl_missing", "cluster_unreachable", "no_cluster_scope"),
+            telemetry_keys=("pods_scanned", "nodes_scanned", "findings_emitted", "duration_ms"),
+            standards=("CIS", "NIST"),
+        ),
+        _registration(
             "cicd-github-actions",
             "agent_bom.github_actions",
             phase=ScannerPhase.DISCOVERY,

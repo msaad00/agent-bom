@@ -97,7 +97,10 @@ def project_has_analyzable_sources(project_path: str | Path) -> bool:
     for path in project.rglob("*"):
         if not path.is_file():
             continue
-        if any(part in _SKIP_DIRS for part in path.parts):
+        # Only consider path components RELATIVE to the scan root — an ancestor
+        # directory of where the user keeps the project (e.g. ~/dev/test/proj,
+        # /ci/build/app) must never disable analysis.
+        if any(part in _SKIP_DIRS for part in path.relative_to(project).parts):
             continue
         if any(skip in path.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
@@ -129,7 +132,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     # Collect source files
     py_files = []
     for f in sorted(project.rglob("*.py")):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         # Skip test/fixture/pattern files to avoid false positives
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
@@ -140,7 +143,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     for f in sorted(project.rglob("*")):
         if f.suffix.lower() not in _JS_TS_EXTS:
             continue
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
@@ -148,7 +151,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     go_files = []
     for f in sorted(project.rglob("*.go")):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
@@ -156,7 +159,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     rust_files = []
     for f in sorted(project.rglob("*.rs")):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
@@ -164,7 +167,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     java_files = []
     for f in sorted(project.rglob("*.java")):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
@@ -172,7 +175,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     csharp_files = []
     for f in sorted(project.rglob("*.cs")):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
@@ -180,7 +183,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     ruby_files = []
     for f in sorted(project.rglob("*.rb")):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
@@ -188,7 +191,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     php_files = []
     for f in sorted(project.rglob("*.php")):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
@@ -196,7 +199,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     swift_files = []
     for f in sorted(project.rglob("*.swift")):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue

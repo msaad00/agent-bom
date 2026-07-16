@@ -41,6 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
 from agent_bom.api.finding_list_envelope import finding_list_envelope
+from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
     deterministic_batch_id,
@@ -107,6 +108,12 @@ async def _ai_scan_call(fn, /, *args, **kwargs):
             detail=exc.to_dict(),
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+
+
+# Shared off-loop hub ingest write path (also used by /v1/compliance/ingest).
+# Aliased here so existing references / monkeypatch targets keep working.
+_hub_store_call = hub_store_call
+_bulk_ingest_store_writes = hub_ingest_store_writes
 
 
 def _api_scan_root() -> Path:
@@ -2034,49 +2041,35 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     payloads = [
         _normalized_bulk_finding(row, source=body.source, batch_id=batch_id, ordinal=idx) for idx, row in enumerate(body.findings, start=1)
     ]
-    from agent_bom.api.finding_lifecycle import collect_present_canonical_ids, normalize_observed_at
+    from agent_bom.api.finding_lifecycle import normalize_observed_at
 
     observed_at = normalize_observed_at(body.observed_at or body.metadata.get("observed_at"))
     hub_store = get_compliance_hub_store()
-    from agent_bom.delta_stream import (
-        capture_hub_snapshots,
-        emit_hub_finding_deltas_if_enabled,
-        needs_hub_prior_snapshots,
-        resolved_canonical_ids,
-    )
 
-    prior_snapshots: dict[str, Any] = {}
-    if needs_hub_prior_snapshots(reconcile_absent=body.reconcile_absent):
-        prior_snapshots = capture_hub_snapshots(hub_store, tenant_id, source=body.source)
-    new_total = hub_store.add(tenant_id, payloads)
-    hub_store.upsert_current_batch(
-        tenant_id,
-        payloads,
-        observed_at=observed_at,
-        batch_id=batch_id,
-        source=body.source,
-    )
-    reconciled = 0
-    resolved_ids: set[str] = set()
-    if body.reconcile_absent:
-        present = collect_present_canonical_ids(payloads, source=body.source)
-        resolved_ids = resolved_canonical_ids(prior_snapshots, present)
-        reconciled = hub_store.reconcile_current_absent(
+    # Offload the blocking psycopg write sequence (ledger append + current-state
+    # upsert + reconcile + delta emission) to a worker thread so concurrent bulk
+    # ingest cannot freeze the event loop and unrelated requests (mirrors the
+    # read path). See ``_bulk_ingest_store_writes`` / ``_hub_store_call``.
+    from agent_bom.api.hub_observations_partition import ObservationPartitionRangeError
+
+    try:
+        store_result = await _hub_store_call(
+            _bulk_ingest_store_writes,
+            hub_store,
             tenant_id,
-            present_canonical_ids=present,
+            payloads,
             observed_at=observed_at,
-            scope_source=body.source,
+            batch_id=batch_id,
+            source=body.source,
+            reconcile_absent=body.reconcile_absent,
         )
-    delta_results = emit_hub_finding_deltas_if_enabled(
-        tenant_id=tenant_id,
-        hub_store=hub_store,
-        prior=prior_snapshots,
-        batch_findings=payloads,
-        resolved_canonical_ids=resolved_ids,
-        observed_at=observed_at,
-        batch_id=batch_id,
-        source=body.source,
-    )
+    except ObservationPartitionRangeError as exc:
+        # observed_at is so far past/future it is almost certainly bad data — a
+        # clean 4xx instead of a raw partition CheckViolation 500.
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
+    new_total = store_result["new_total"]
+    reconciled = store_result["reconciled"]
+    delta_results = store_result["delta_results"]
     warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
     response = {
         "schema_version": "v1",

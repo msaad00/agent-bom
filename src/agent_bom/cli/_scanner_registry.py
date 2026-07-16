@@ -21,6 +21,19 @@ def scanners_cmd(include_planned: bool, output_format: str) -> None:
     summary = scanner_registry_summary()
     warnings = scanner_registry_warnings()
 
+    from agent_bom.cli._agent_mode import agent_mode_requested, emit_command_envelope
+
+    if agent_mode_requested():
+        emit_command_envelope(
+            command="scanners",
+            data={
+                "drivers": [driver.to_dict() for driver in drivers],
+                "summary": summary,
+                "warnings": warnings,
+            },
+        )
+        return
+
     if output_format == "json":
         click.echo(
             json.dumps(

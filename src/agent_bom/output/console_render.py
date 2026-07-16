@@ -1454,8 +1454,14 @@ def print_remediation_plan(report: AIBOMReport) -> None:
         return
 
     plan = build_remediation_plan(all_cve)
-    fixable = [p for p in plan if p["fix"]]
-    unfixable = [p for p in plan if not p["fix"]]
+    # A malicious package sets fix=None to signal REMOVAL (not a version bump),
+    # so it must be pulled out of the fix-based buckets. Without this it lands in
+    # the "no fix yet — monitor upstream for patches" bucket, which tells the user
+    # to keep a known-malicious dependency and wait — the opposite of the
+    # required "remove immediately" action.
+    malicious = [p for p in plan if p.get("is_malicious")]
+    fixable = [p for p in plan if p["fix"] and not p.get("is_malicious")]
+    unfixable = [p for p in plan if not p["fix"] and not p.get("is_malicious")]
 
     # Totals for percentage calculations
     total_agents = report.total_agents or 1
@@ -1478,6 +1484,22 @@ def print_remediation_plan(report: AIBOMReport) -> None:
         Severity.LOW: "dim",
         Severity.NONE: "white",
     }
+
+    if malicious:
+        _console().print(
+            f"  [red bold]☠ {len(malicious)} MALICIOUS package(s) — remove immediately (do not wait for a patch):[/red bold]\n"
+        )
+        for item in malicious:
+            reason = item.get("reason") or "known malicious package"
+            _console().print(
+                f"    [white on red] MALICIOUS [/white on red] "
+                f"[red bold]Remove {item['package']}@{item['current']}[/red bold] [dim]({reason})[/dim]"
+            )
+            if item.get("command"):
+                _console().print(f"      [dim]$ {item['command']}[/dim]")
+            if item["agents"]:
+                _console().print(f"      [dim]agents:[/dim]  {', '.join(item['agents'][:3])}")
+        _console().print()
 
     if fixable:
         _console().print(f"  [bold]{len(fixable)} fixable upgrade(s) — ordered by grouped blast-radius risk:[/bold]\n")

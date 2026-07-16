@@ -247,3 +247,44 @@ def oidc_browser_enabled_from_env() -> bool:
         return OIDCBrowserConfig.from_env().enabled
     except OIDCError:
         return False
+
+
+def sso_provider_from_issuer(issuer: str) -> str:
+    """Map an OIDC issuer URL to a known SSO provider brand for /login presets.
+
+    Pure display helper: returns one of ``"okta"``, ``"entra"``, ``"google"``,
+    or ``"generic"`` from the issuer host. Detection is host-based and never
+    forks the auth flow — an unrecognized (or custom-domain) issuer falls back
+    to ``"generic"`` so the sign-in button stays honestly un-branded rather than
+    guessing a vendor.
+    """
+    from urllib.parse import urlparse
+
+    host = ""
+    try:
+        host = (urlparse(issuer.strip()).hostname or "").lower()
+    except (ValueError, AttributeError):
+        host = ""
+    if not host:
+        return "generic"
+    if host == "accounts.google.com":
+        return "google"
+    if host.endswith((".okta.com", ".oktapreview.com", ".okta-emea.com")):
+        return "okta"
+    if host == "login.microsoftonline.com" or host.endswith((".microsoftonline.com", ".windows.net")):
+        return "entra"
+    return "generic"
+
+
+def configured_browser_sso_provider() -> str | None:
+    """Return the SSO provider brand for the configured browser-OIDC issuer.
+
+    ``None`` when browser OIDC is not enabled (no branded button applies).
+    """
+    try:
+        cfg = OIDCBrowserConfig.from_env()
+    except OIDCError:
+        return None
+    if not cfg.enabled:
+        return None
+    return sso_provider_from_issuer(cfg.oidc.issuer)

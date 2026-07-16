@@ -106,6 +106,68 @@ describe("LoginPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("brands the SSO button with the configured provider (Okta)", async () => {
+    apiMock.getAuthMe.mockReset();
+    apiMock.getAuthMe.mockResolvedValue({
+      authenticated: false,
+      auth_required: true,
+      configured_modes: ["oidc_browser", "oidc_bearer", "api_key"],
+      recommended_ui_mode: "oidc_browser",
+      sso_provider: "okta",
+      auth_method: null,
+      subject: null,
+      role: null,
+      tenant_id: "default",
+      role_summary: null,
+      memberships: [],
+      request_id: null,
+      trace_id: null,
+      span_id: null,
+    });
+
+    render(
+      <AuthProvider>
+        <LoginPage />
+      </AuthProvider>,
+    );
+
+    const ssoLink = await screen.findByRole("link", { name: /sign in with okta/i });
+    expect(ssoLink).toHaveAttribute("href", "/v1/auth/oidc/login");
+    expect(screen.getByText("Sign in with Okta, or use an API key as a fallback.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /sign in with sso/i })).not.toBeInTheDocument();
+    // API-key fallback stays available and unchanged.
+    expect(screen.getByLabelText("API key")).toBeInTheDocument();
+  });
+
+  it("brands the SSO button for Microsoft Entra", async () => {
+    apiMock.getAuthMe.mockReset();
+    apiMock.getAuthMe.mockResolvedValue({
+      authenticated: false,
+      auth_required: true,
+      configured_modes: ["oidc_browser", "api_key"],
+      recommended_ui_mode: "oidc_browser",
+      sso_provider: "entra",
+      auth_method: null,
+      subject: null,
+      role: null,
+      tenant_id: "default",
+      role_summary: null,
+      memberships: [],
+      request_id: null,
+      trace_id: null,
+      span_id: null,
+    });
+
+    render(
+      <AuthProvider>
+        <LoginPage />
+      </AuthProvider>,
+    );
+
+    const ssoLink = await screen.findByRole("link", { name: /sign in with microsoft/i });
+    expect(ssoLink).toHaveAttribute("href", "/v1/auth/oidc/login");
+  });
+
   it("shows the reverse-proxy SSO hint (no fake button) when trusted_proxy is configured", async () => {
     apiMock.getAuthMe.mockReset();
     apiMock.getAuthMe.mockResolvedValue({

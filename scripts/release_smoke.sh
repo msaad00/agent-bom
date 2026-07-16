@@ -39,7 +39,11 @@ ok "CLI reachable ($version)"
 
 bold "2/5 Curated demo scan (offline JSON)"
 json_out="$tmp/demo-report.json"
-if ! "${AGENT_BOM_BIN[@]}" agents --demo --offline --quiet --no-auto-update-db -f json -o "$json_out"; then
+set +e
+"${AGENT_BOM_BIN[@]}" agents --demo --offline --quiet --no-auto-update-db -f json -o "$json_out"
+scan_rc=$?
+set -e
+if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 1 ]; then
   fail "demo offline scan failed"
 fi
 [ -s "$json_out" ] || fail "demo JSON report is empty"
@@ -56,13 +60,27 @@ findings = report.get("findings") or report.get("vulnerabilities") or []
 print(len(findings))
 PY
 )"
+if [ "$scan_rc" -eq 1 ]; then
+  python3 - "$json_out" <<'PY' || fail "demo scan exited 1 without a malicious finding"
+import json, sys
+
+report = json.load(open(sys.argv[1]))
+findings = report.get("findings") or []
+if not any(row.get("is_malicious") for row in findings):
+    raise SystemExit(1)
+PY
+fi
 [ "$agents" -gt 0 ] || fail "demo scan returned zero agents"
 [ "$vulns" -gt 0 ] || fail "demo scan returned zero findings"
 ok "demo scan produced ${agents} agent(s) and ${vulns} finding(s)"
 
 bold "3/5 CSV export"
 csv_out="$tmp/demo-report.csv"
-if ! "${AGENT_BOM_BIN[@]}" agents --demo --offline --quiet --no-auto-update-db -f csv -o "$csv_out"; then
+set +e
+"${AGENT_BOM_BIN[@]}" agents --demo --offline --quiet --no-auto-update-db -f csv -o "$csv_out"
+csv_rc=$?
+set -e
+if [ "$csv_rc" -ne 0 ] && [ "$csv_rc" -ne 1 ]; then
   fail "demo CSV export failed"
 fi
 [ -s "$csv_out" ] || fail "demo CSV export is empty"

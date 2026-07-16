@@ -38,7 +38,7 @@ from agent_bom.api.stores import (
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_text
+from agent_bom.security import sanitize_error, sanitize_text
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
@@ -1991,13 +1991,7 @@ async def ingest_compliance_findings(request: Request) -> dict:
             payload["applicable_frameworks"] = [normalize_framework_slug(str(slug)) for slug in frameworks if slug]
     tenant_id = _tenant_id(request)
     store = get_compliance_hub_store()
-    from agent_bom.api.finding_lifecycle import collect_present_canonical_ids, normalize_observed_at
-    from agent_bom.delta_stream import (
-        capture_hub_snapshots,
-        emit_hub_finding_deltas_if_enabled,
-        needs_hub_prior_snapshots,
-        resolved_canonical_ids,
-    )
+    from agent_bom.api.finding_lifecycle import normalize_observed_at
 
     observed_at = normalize_observed_at(body.get("observed_at"))
     # Deterministic batch id keyed on the Idempotency-Key header (if any) or the
@@ -2008,38 +2002,34 @@ async def ingest_compliance_findings(request: Request) -> dict:
 
     idem_key = request.headers.get("Idempotency-Key") or ""
     batch_id = deterministic_batch_id(idem_key or idempotency_request_fingerprint(body))
-    prior_snapshots: dict[str, Any] = {}
-    if needs_hub_prior_snapshots(reconcile_absent=bool(body.get("reconcile_absent"))):
-        prior_snapshots = capture_hub_snapshots(store, tenant_id, source=fmt)
-    new_total = store.add(tenant_id, payloads)
-    store.upsert_current_batch(
-        tenant_id,
-        payloads,
-        observed_at=observed_at,
-        batch_id=batch_id,
-        source=fmt,
-    )
-    reconciled = 0
-    resolved_ids: set[str] = set()
-    if body.get("reconcile_absent"):
-        present = collect_present_canonical_ids(payloads, source=fmt)
-        resolved_ids = resolved_canonical_ids(prior_snapshots, present)
-        reconciled = store.reconcile_current_absent(
+
+    # Offload the blocking psycopg write sequence (ledger append + current-state
+    # upsert + reconcile + delta emission) to a worker thread so concurrent
+    # compliance ingest cannot freeze the event loop and unrelated requests
+    # (mirrors the bulk ingest and read paths). See ``hub_ingest_store_writes`` /
+    # ``hub_store_call``.
+    from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
+    from agent_bom.api.hub_observations_partition import ObservationPartitionRangeError
+
+    try:
+        store_result = await hub_store_call(
+            hub_ingest_store_writes,
+            store,
             tenant_id,
-            present_canonical_ids=present,
+            payloads,
             observed_at=observed_at,
-            scope_source=fmt,
+            batch_id=batch_id,
+            source=fmt,
+            reconcile_absent=bool(body.get("reconcile_absent")),
         )
-    delta_results = emit_hub_finding_deltas_if_enabled(
-        tenant_id=tenant_id,
-        hub_store=store,
-        prior=prior_snapshots,
-        batch_findings=payloads,
-        resolved_canonical_ids=resolved_ids,
-        observed_at=observed_at,
-        batch_id=batch_id,
-        source=fmt,
-    )
+    except ObservationPartitionRangeError as exc:
+        # observed_at is so far past/future it is almost certainly bad data — a
+        # clean 422 instead of a raw partition CheckViolation 500 (mirrors the
+        # bulk ingest route).
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
+    new_total = store_result["new_total"]
+    reconciled = store_result["reconciled"]
+    delta_results = store_result["delta_results"]
 
     framework_counts: dict[str, int] = {}
     for payload in payloads:

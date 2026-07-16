@@ -292,6 +292,8 @@ _CONNECT_FIELDS: dict[str, tuple[_ConnectField, ...]] = {
 
 def _connect_options(source: _ConnectSource) -> list[click.Parameter]:
     """Build the Click options for one provider's establish + verify flags."""
+    from agent_bom.cloud.onboarding import default_emit_format
+
     options: list[click.Parameter] = []
     for field in _CONNECT_FIELDS[source.name]:
         decls = [field.flag, field.param]
@@ -301,6 +303,43 @@ def _connect_options(source: _ConnectSource) -> list[click.Parameter]:
             options.append(click.Option(decls, type=click.Path(exists=True, dir_okay=False), help=field.help))
         else:
             options.append(click.Option(decls, help=field.help))
+    # ── Emit a ready-to-run, read-only deploy artifact (provisioning-time) ──
+    default_fmt = default_emit_format(source.name)
+    options.append(
+        click.Option(
+            ["--emit"],
+            is_flag=False,
+            flag_value=default_fmt,
+            default=None,
+            help=(
+                f"Emit a ready-to-run, read-only deploy artifact ({default_fmt}) that "
+                f"provisions the role/app this connection uses, then exit. Bare --emit "
+                f"uses the default format."
+            ),
+        )
+    )
+    options.append(
+        click.Option(
+            ["--out"],
+            type=click.Path(dir_okay=False, writable=True),
+            help="Write the emitted artifact to this file (default: stdout).",
+        )
+    )
+    if source.name == "aws":
+        options.append(
+            click.Option(
+                ["--trust-principal"],
+                "trust_principal",
+                help="ARN of the agent-bom scanner principal to trust in the emitted role (AWS emit).",
+            )
+        )
+        options.append(
+            click.Option(
+                ["--role-name"],
+                "role_name",
+                help=f"Name of the read-only role in the emitted template (AWS emit; default {source.name}-readonly).",
+            )
+        )
     options.extend(
         [
             click.Option(["--display-name"], help="Human label for the connection (defaults to the provider name)."),
@@ -351,6 +390,67 @@ def _resolve_connect_inputs(source: _ConnectSource, kwargs: dict[str, object]) -
         elif field.kind == "auth_param":
             auth_params[field.auth_key] = str(value)
     return role_ref, external_id, regions, auth_params, supplied
+
+
+def _emit_options(source: _ConnectSource, kwargs: dict[str, object]) -> dict[str, str]:
+    """Map raw Click kwargs onto the onboarding-generator option keys.
+
+    Reuses the same connection flags the establish path uses (``--external-id``,
+    ``--subscription-id``, ``--project``, ``--role``/``--user``/``--warehouse``)
+    plus the AWS-only ``--trust-principal`` / ``--role-name`` so the emitted
+    artifact provisions exactly what ``connect`` then consumes.
+    """
+
+    def _val(key: str) -> str:
+        return str(kwargs.get(key) or "").strip()
+
+    if source.name == "aws":
+        return {
+            "external_id": _val("external_id"),
+            "role_name": _val("role_name"),
+            "trusted_principal_arn": _val("trust_principal"),
+        }
+    if source.name == "azure":
+        return {"subscription_id": _val("subscription_id")}
+    if source.name == "gcp":
+        return {"project_id": _val("project")}
+    # snowflake
+    return {"role": _val("role"), "user": _val("user"), "warehouse": _val("warehouse")}
+
+
+def _handle_emit(con: object, source: _ConnectSource, kwargs: dict[str, object]) -> None:
+    """Emit a ready-to-run, read-only deploy artifact and exit.
+
+    Artifact goes to stdout (pipe-friendly) or ``--out``; all human guidance goes
+    to stderr so stdout stays a clean, parseable artifact. Requires no connection
+    secret — this runs *before* the operator has credentials.
+    """
+    from pathlib import Path
+
+    from rich.console import Console
+
+    from agent_bom.cloud import onboarding
+
+    err = Console(stderr=True)
+    fmt = str(kwargs.get("emit") or "").strip()
+    try:
+        artifact = onboarding.emit_artifact(source.name, fmt, options=_emit_options(source, kwargs))
+    except ValueError as exc:
+        err.print(f"[red]{exc}[/red]")
+        raise click.exceptions.Exit(2) from None
+
+    out = str(kwargs.get("out") or "").strip()
+    if out:
+        Path(out).write_text(artifact, encoding="utf-8")
+        err.print(f"[green]Wrote[/green] read-only {source.title} deploy artifact to [bold]{out}[/bold].")
+    else:
+        click.echo(artifact)
+
+    err.print(
+        f"[dim]Deploy this read-only artifact, then establish the connection:[/dim] "
+        f"[cyan]agent-bom connect {source.name} ...[/cyan] "
+        f"[dim](use the outputs it prints).[/dim]"
+    )
 
 
 def _readonly_probe(provider: str, brokered: object, regions: list[str]) -> str:
@@ -487,6 +587,10 @@ def _make_connect_subcommand(source: _ConnectSource) -> click.Command:
         from rich.console import Console
 
         con = Console()
+        if kwargs.get("emit") is not None:
+            # Provisioning-time: emit a ready-to-run read-only artifact and exit.
+            _handle_emit(con, source, kwargs)
+            return
         role_ref, external_id, regions, auth_params, supplied = _resolve_connect_inputs(source, kwargs)
         if not supplied:
             # Back-compat: no connection flags -> unchanged informational output.

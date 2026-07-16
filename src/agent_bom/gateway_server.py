@@ -562,6 +562,40 @@ def _request_cost_center(request: Request, message: dict[str, Any]) -> str:
     return ""
 
 
+_CONDITIONAL_ACCESS_EVAL_FAILED = "conditional access evaluation failed"
+
+
+def _conditional_access_fail_closed(tenant_id: str) -> tuple[bool, str, str]:
+    """Decide the conditional-access outcome after an evaluation error, fail-closed.
+
+    The primary evaluation (``evaluate_conditional_access_for_request``) raised, so
+    we cannot trust its verdict. A conditional-access ``deny``/``require`` policy
+    that would otherwise block the call MUST NOT be silently bypassed (§7 fail
+    closed). But we also must not turn a flaky store into a blanket outage for
+    tenants that never configured the feature.
+
+    Resolution:
+    - Re-read the tenant's active conditional-access policies with a cheap,
+      independent lookup. If that read succeeds and finds **no** policies, there
+      is no gate to bypass → allow.
+    - If the tenant HAS one or more active conditional-access policies → deny.
+    - If we cannot even determine whether policies exist (the lookup also
+      raised — e.g. the store is unavailable), we cannot prove the gate is empty,
+      so deny. Only a positively-confirmed empty policy set opens the gate.
+
+    Returns ``(allowed, reason, policy_id)`` matching the primary evaluator.
+    """
+    try:
+        from agent_bom.api.agent_identity_store import get_agent_identity_store
+
+        policies = get_agent_identity_store().list_conditional_policies(tenant_id, include_disabled=False, limit=1)
+    except Exception:  # noqa: BLE001 — cannot confirm an empty gate → fail closed
+        return False, _CONDITIONAL_ACCESS_EVAL_FAILED, ""
+    if not policies:
+        return True, "", ""
+    return False, _CONDITIONAL_ACCESS_EVAL_FAILED, ""
+
+
 def _emit_gateway_governance_event(event_type: str, *, tenant_id: str, subject_id: str, payload: dict[str, Any]) -> None:
     """Fan a gateway governance event to subscribed webhooks (best-effort).
 
@@ -2160,8 +2194,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         tenant_id=tenant_id,
                         ctx=ctx,
                     )
-                except Exception:  # noqa: BLE001
-                    cond_allowed, cond_reason, cond_policy_id = True, "", ""
+                except Exception:  # noqa: BLE001 — fail CLOSED: an eval error must not bypass a policy
+                    cond_allowed, cond_reason, cond_policy_id = _conditional_access_fail_closed(tenant_id)
                 if not cond_allowed:
                     allowed, reason, policy_source = False, cond_reason, "conditional_access"
                     if settings.audit_sink is not None:

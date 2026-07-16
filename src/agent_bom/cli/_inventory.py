@@ -233,7 +233,11 @@ def where(as_json: bool):
 
     current_platform = get_platform()
 
-    if as_json:
+    from agent_bom.cli._agent_mode import agent_mode_requested
+
+    agent_mode = agent_mode_requested()
+
+    if as_json or agent_mode:
         import json as _json
 
         from agent_bom.discovery.coverage import discovery_coverage_summary
@@ -242,6 +246,11 @@ def where(as_json: bool):
         for entry in summary["paths"]:
             path = str(entry["path"])
             entry["expanded"] = str(expand_path(path)) if not path.startswith(".") else path
+        if agent_mode:
+            from agent_bom.cli._agent_mode import emit_command_envelope
+
+            emit_command_envelope(command="where", data=summary)
+            return
         click.echo(_json.dumps(summary, indent=2))
         return
 

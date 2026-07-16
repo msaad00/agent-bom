@@ -487,6 +487,96 @@ _JS_IMPORTABLE_FILE_MUTATION_CALLS = {
 # ── Behavioral scanning function ─────────────────────────────────────────────
 
 
+# ── Prohibition / policy context guard ──────────────────────────────────────
+#
+# Instruction files legitimately *enumerate* dangerous flags and commands in
+# order to forbid them ("## Never — `git push --force`, `--no-verify`, …",
+# "Do not disable the sandbox"). Matching the literal token there flags the
+# repository's own governance docs as malicious. A behavioral match is treated
+# as policy prose — and skipped — when it sits under a prohibition heading or a
+# prohibition cue ("never", "do not", "without explicit approval", …) governs it
+# nearby. The cue must be *proximate* to the match (same list item / paragraph),
+# so a real dangerous instruction elsewhere in the file is still detected and an
+# attacker cannot neutralise an injection by dropping a stray "never" far away.
+
+_PROHIBITION_HEADING_RE = re.compile(
+    r"^\s{0,3}#{1,6}\s+.*\b(?:never|don'?ts?|do\s+not|avoid|prohibit\w*|"
+    r"forbidden|forbid|disallow\w*|anti[-\s]?patterns?|red\s+flags?)\b",
+    re.IGNORECASE,
+)
+
+_PROHIBITION_CUE_RE = re.compile(
+    r"\b(?:never|do\s+not|don'?t|must\s+not|must\s+never|shall\s+not|"
+    r"should\s+not|cannot|can'?t|avoid|prohibit\w*|forbid\w*|forbidden|"
+    r"disallow\w*|not\s+allowed|not\s+permitted|"
+    r"without\s+(?:an?\s+|prior\s+|explicit\s+|the\s+|a\s+)*"
+    r"(?:explicit|prior|human|user|written|manual)|"
+    r"(?:require[sd]?|need(?:s|ed)?|after|only\s+after|upon|following|pending|once)"
+    r"\s+(?:an?\s+|explicit\s+|prior\s+|human\s+|user\s+|manual\s+|written\s+|the\s+)*"
+    r"(?:review|approval|confirmation|consent|sign[-\s]?off|request)|"
+    r"reject\w*|refus\w*)\b",
+    re.IGNORECASE,
+)
+
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
+
+# How far (characters) from a match a prohibition cue may sit and still be read
+# as governing it, clamped to the match's own list item / paragraph.
+_PROHIBITION_PROXIMITY = 90
+
+
+def _nearest_heading_is_prohibition(lines: list[str], line_idx: int) -> bool:
+    """Return True when the closest preceding markdown heading forbids behavior."""
+    for j in range(min(line_idx, len(lines) - 1), -1, -1):
+        if lines[j].lstrip().startswith("#"):
+            return bool(_PROHIBITION_HEADING_RE.match(lines[j]))
+    return False
+
+
+def _block_bounds(lines: list[str], line_idx: int) -> tuple[int, int]:
+    """Return the (start, end) line indices of the list item / paragraph block."""
+    start = line_idx
+    while (
+        start > 0
+        and lines[start].startswith((" ", "\t"))
+        and lines[start].strip()
+        and not _LIST_ITEM_RE.match(lines[start])
+    ):
+        start -= 1
+    end = line_idx
+    while (
+        end + 1 < len(lines)
+        and lines[end + 1].startswith((" ", "\t"))
+        and lines[end + 1].strip()
+        and not _LIST_ITEM_RE.match(lines[end + 1])
+    ):
+        end += 1
+    return start, end
+
+
+def _is_prohibition_context(content: str, match_start: int, match_end: int) -> bool:
+    """Return True when a behavioral match is forbidden/policy prose, not a directive."""
+    lines = content.split("\n")
+    line_idx = content.count("\n", 0, match_start)
+    if _nearest_heading_is_prohibition(lines, line_idx):
+        return True
+    start_line, end_line = _block_bounds(lines, line_idx)
+    block_start = sum(len(line) + 1 for line in lines[:start_line])
+    block_end = block_start + sum(len(lines[i]) + 1 for i in range(start_line, end_line + 1))
+    lo = max(block_start, match_start - _PROHIBITION_PROXIMITY)
+    hi = min(block_end, match_end + _PROHIBITION_PROXIMITY)
+    return bool(_PROHIBITION_CUE_RE.search(content[lo:hi]))
+
+
+def _first_actionable_match(pattern: re.Pattern, content: str) -> re.Match | None:
+    """Return the first pattern match that is not forbidden/policy prose."""
+    for candidate in pattern.finditer(content):
+        if _is_prohibition_context(content, candidate.start(), candidate.end()):
+            continue
+        return candidate
+    return None
+
+
 def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
     """Scan full skill file text for behavioral risk patterns.
 
@@ -505,7 +595,7 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
             if bp.category in seen_categories:
                 continue
 
-            match = bp.pattern.search(content)
+            match = _first_actionable_match(bp.pattern, content)
             severity = bp.severity
             confidence = "high" if bp.severity in {"critical", "high"} else "medium"
 
@@ -513,7 +603,7 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                 # Only a low-confidence keyword/heuristic matched. Keep the
                 # finding visible but demote it so a lone descriptive keyword
                 # cannot dominate the file's trust verdict.
-                match = bp.weak_pattern.search(content)
+                match = _first_actionable_match(bp.weak_pattern, content)
                 if match is not None:
                     severity = bp.weak_severity
                     confidence = "low"

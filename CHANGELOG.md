@@ -9,6 +9,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.96.3] - 2026-07-16
+
+### Added
+- Readable-at-scale graph — auto-layout with enforced node separation, clustering, and no pagination (#4005).
+- Unified Asset Inventory — a page per asset type, correlated to findings and the graph (#4006).
+- One consolidated Connections hub (Connect + Sources segments) replacing the overlapping Connections/Cloud/Data-sources surfaces (#4008).
+- Bounded retention plus a default ~90-day time-window filter across findings, snapshots, and graph — the applied window is labeled and overridable, never a silent truncation (#4009).
+
+### Fixed
+- Skill scanner no longer flags legitimate prohibition/policy language (e.g. an `AGENTS.md` "## Never" section) as malicious — a proximity-clamped prohibition-context guard, with detection of real prompt-injection/bypass directives unchanged (#4050).
+- Bounded, nested-worktree-aware discovery traversal — project/skill scans no longer recurse into nested VCS worktrees (fixing large-RSS blowups and inflated inventory counts) (#4050).
+- `serve --no-ui` now actually disables the dashboard (root redirects to `/docs`) instead of still serving it (#4050).
+- Startup auth-posture log reflects the final effective state, so `--api-key` no longer triggers a misleading transient "No authentication configured" message (#4050).
+- Index-backed unfiltered effective-reach findings sort — the default findings read is now index-range-scanned instead of a full sort (#4049).
+- Connections screenshot E2E updated for the consolidated hub (#4048).
+
+### Changed
+- README: guided self-host/deploy section (incl. the Snowflake SPCS native app) and accuracy fixes; GitHub Pages deploy concurrency hardened (#4043).
+
 ## [0.96.2] - 2026-07-15
 
 ### Fixed
@@ -2332,7 +2351,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.3...HEAD
+[0.96.3]: https://github.com/msaad00/agent-bom/compare/v0.96.2...v0.96.3
 [0.96.2]: https://github.com/msaad00/agent-bom/compare/v0.96.1...v0.96.2
 [0.96.1]: https://github.com/msaad00/agent-bom/compare/v0.96.0...v0.96.1
 [0.96.0]: https://github.com/msaad00/agent-bom/compare/v0.95.0...v0.96.0

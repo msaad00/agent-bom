@@ -15,6 +15,10 @@
 AGENT_BOM_AI_MODEL_ADVISORY_FEED
 # CLI machine-readable envelope toggle; read by the entrypoint before config is loaded.
 AGENT_BOM_AGENT_MODE
+# Literal Snowflake object names emitted by the onboarding SQL template; not process environment variables.
+AGENT_BOM_READONLY
+AGENT_BOM_SVC
+AGENT_BOM_WH
 AGENT_BOM_ALERT_WEBHOOK
 AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS
 AGENT_BOM_ANALYTICS_BACKEND

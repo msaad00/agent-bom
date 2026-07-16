@@ -442,17 +442,45 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
       agent-bom mesh --project .   # project-local discovery only
       agent-bom mesh report.json --format json --output mesh.json
     """
+    from agent_bom.cli._agent_mode import agent_mode_requested, emit_command_envelope
     from agent_bom.output.agent_mesh import build_agent_mesh
 
     con = Console()
+    agent_mode = agent_mode_requested()
 
     try:
-        agents_data, blast_radius, scope_label = _load_mesh_source(scan_file, project_dir)
+        if agent_mode:
+            # Keep stdout carrying ONLY the JSON envelope — silence the live
+            # discovery progress banner that discover_all prints through the
+            # discovery module's console.
+            import io as _io
+
+            from agent_bom import discovery as _discovery
+
+            _prev_console = _discovery.console
+            _discovery.console = Console(file=_io.StringIO(), quiet=True)
+            try:
+                agents_data, blast_radius, scope_label = _load_mesh_source(scan_file, project_dir)
+            finally:
+                _discovery.console = _prev_console
+        else:
+            agents_data, blast_radius, scope_label = _load_mesh_source(scan_file, project_dir)
     except (ValueError, OSError, json.JSONDecodeError) as exc:
+        if agent_mode:
+            emit_command_envelope(
+                command="mesh",
+                data={"error": str(exc)},
+                exit_code=1,
+                error_type="mesh_source_error",
+            )
+            raise SystemExit(1) from exc
         con.print(f"[red]Error loading mesh source:[/red] {exc}")
         raise SystemExit(1) from exc
 
     if not agents_data:
+        if agent_mode:
+            emit_command_envelope(command="mesh", data=build_agent_mesh([], blast_radius))
+            return
         if project_dir:
             con.print("[yellow]No project-local agents discovered.[/yellow] Try [bold]agent-bom mesh[/bold] for machine-wide discovery.")
         else:
@@ -460,6 +488,10 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
         return
 
     mesh = build_agent_mesh(agents_data, blast_radius)
+
+    if agent_mode:
+        emit_command_envelope(command="mesh", data=mesh)
+        return
 
     if fmt == "json":
         output = json.dumps(mesh, indent=2)

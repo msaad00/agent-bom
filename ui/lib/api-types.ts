@@ -1219,6 +1219,8 @@ export interface AuthMeResponse {
   auth_required: boolean;
   configured_modes: string[];
   recommended_ui_mode: string;
+  /** Detected brand of the configured browser-OIDC issuer (okta/entra/google) or null. */
+  sso_provider?: string | null | undefined;
   auth_method: string | null;
   subject: string | null;
   tenant_id: string;

@@ -615,26 +615,6 @@ export function FilterPanel({
         </label>
       </div>
 
-      <FilterSection
-        title="Page size"
-        open={openSections.pageSize}
-        onToggle={() => toggleSection("pageSize")}
-        summary={`${filters.pageSize} nodes`}
-      >
-        <select
-          value={String(filters.pageSize)}
-          onChange={(e) =>
-            onChange({ ...filters, pageSize: Number(e.target.value) })
-          }
-          className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
-        >
-          <option value="25">25 nodes</option>
-          <option value="50">50 nodes</option>
-          <option value="100">100 nodes</option>
-          <option value="250">250 nodes</option>
-          <option value="500">500 nodes</option>
-        </select>
-      </FilterSection>
     </div>
   );
 }

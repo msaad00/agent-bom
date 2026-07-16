@@ -19,6 +19,11 @@ import {
 } from "lucide-react";
 import { api, type JobListItem, type ScanJob } from "@/lib/api";
 import { useGraphLayout } from "@/lib/use-graph-layout";
+import {
+  LINEAGE_MIN_SEPARATION,
+  LINEAGE_NODE_HEIGHT,
+  LINEAGE_NODE_WIDTH,
+} from "@/lib/graph-node-dimensions";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
@@ -323,10 +328,14 @@ export default function MeshPage() {
       ringSpacing: captureMode ? 150 : 240,
     },
     dagre: {
-      nodeWidth: captureMode ? 190 : 260,
-      nodeHeight: captureMode ? 72 : 96,
-      rankSep: captureMode ? 100 : 160,
-      nodeSep: captureMode ? 28 : 48,
+      // The lineage card footprint is the same on-screen size in capture mode;
+      // only the rank/node separation tightens for screenshots. Declaring the
+      // real footprint + the separation guarantee keeps cards from touching.
+      nodeWidth: LINEAGE_NODE_WIDTH,
+      nodeHeight: LINEAGE_NODE_HEIGHT,
+      rankSep: captureMode ? 120 : 176,
+      nodeSep: captureMode ? 48 : 56,
+      minSeparation: LINEAGE_MIN_SEPARATION,
     },
   });
 

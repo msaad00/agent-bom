@@ -49,6 +49,7 @@ import {
   type LineageNodeType,
 } from "@/components/lineage-nodes";
 import { useGraphLayout } from "@/lib/use-graph-layout";
+import { readableLineageDagreLr } from "@/lib/graph-node-dimensions";
 import { effectiveLodBandForGraph, useLodBand } from "@/lib/lod-renderer";
 import {
   aggregateSiblings,
@@ -109,6 +110,7 @@ import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
   LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
+  LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
   LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
 } from "@/lib/large-graph-overview";
 import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
@@ -129,6 +131,12 @@ import {
   type EvidenceLensFilter,
 } from "@/lib/filter-algebra";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+
+// The whole current-scan graph loads in one request (no numbered pagination).
+// The bound matches the interactive render budget: past it, the overview
+// aggregates dense neighborhoods rather than splitting the topology across
+// pages, so edges never vanish across a page boundary.
+const GRAPH_FULL_FETCH_LIMIT = LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES;
 
 const GraphDriftLegend = dynamic(
   () =>
@@ -679,7 +687,6 @@ function GraphPageInner() {
   const [attackPathQueue, setAttackPathQueue] = useState<UnifiedGraphResponse | null>(
     null,
   );
-  const [pageOffset, setPageOffset] = useState(0);
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
@@ -830,13 +837,11 @@ function GraphPageInner() {
         runtimeMode: filters.runtimeMode,
         maxDepth: filters.maxDepth,
         severity: filters.severity,
-        pageSize: filters.pageSize,
       }),
     [selectedScanId, serverEntityTypes, serverRelationships, filters],
   );
 
   useEffect(() => {
-    setPageOffset(0);
     setExpandedClusterIds(new Set());
     setPinnedFocusId(null);
     setHoveredNodeId(null);
@@ -893,8 +898,13 @@ function GraphPageInner() {
         staticOnly: filters.runtimeMode === "static",
         dynamicOnly: filters.runtimeMode === "dynamic",
         maxDepth: filters.maxDepth,
-        offset: pageOffset,
-        limit: filters.pageSize,
+        // No numbered pagination: fetch the whole current-scan graph (bounded
+        // by the render budget) in one shot. Scale is handled downstream by
+        // sibling clustering, level-of-detail, and the WebGL overview — never
+        // by splitting one topology across pages, which would sever edges that
+        // cross a page boundary.
+        offset: 0,
+        limit: GRAPH_FULL_FETCH_LIMIT,
       })
       .then((result) => {
         if (cancelled) return;
@@ -919,8 +929,6 @@ function GraphPageInner() {
     filters.runtimeMode,
     filters.maxDepth,
     filters.severity,
-    filters.pageSize,
-    pageOffset,
     investigationMode,
   ]);
 
@@ -1369,16 +1377,14 @@ function GraphPageInner() {
         nodeRepulsion: filters.agentName ? 3600 : 4400,
         preservePinnedPositions: true,
       },
-      dagreLr: {
-        // Bigger node boxes + tighter ranks keep the wide left-to-right DAG from
-        // collapsing into a thin, far-zoomed strip. The extra vertical nodeSep
-        // spreads short graphs so fitView fills the canvas instead of leaving a
-        // tall empty band above and below the topology.
-        nodeWidth: 248,
-        nodeHeight: 96,
-        rankSep: filters.agentName ? 120 : 140,
-        nodeSep: filters.agentName ? 64 : 78,
-      },
+      // The declared node box matches the real lineage-card footprint
+      // (max-w-[300px], tall CVE cards) so dagre — plus the wired-in
+      // min-separation guarantee — never lets two cards touch, even on a
+      // 4-node chain. A focused single-agent view tightens the ranks a little
+      // while keeping the same non-overlap guarantee.
+      dagreLr: readableLineageDagreLr(
+        filters.agentName ? { rankSep: 152, nodeSep: 52 } : {},
+      ),
     },
   );
 
@@ -2128,7 +2134,6 @@ function GraphPageInner() {
     setRollupDismissed(true);
     setRollupStack([]);
     setRollupError(null);
-    setPageOffset(0);
   }, []);
 
   const navigateRollupBreadcrumb = useCallback((index: number) => {
@@ -2175,28 +2180,10 @@ function GraphPageInner() {
     [selectedScanId],
   );
 
-  const pageStart =
-    graphData && graphData.pagination.total > 0
-      ? graphData.pagination.offset + 1
-      : 0;
-  const pageEnd =
-    graphData && graphData.pagination.total > 0
-      ? Math.min(
-          graphData.pagination.offset + graphData.pagination.limit,
-          graphData.pagination.total,
-        )
-      : 0;
-  const pageNumber =
-    graphData && graphData.pagination.limit > 0
-      ? Math.floor(graphData.pagination.offset / graphData.pagination.limit) + 1
-      : 1;
-  const totalPages =
-    graphData && graphData.pagination.limit > 0
-      ? Math.max(
-          1,
-          Math.ceil(graphData.pagination.total / graphData.pagination.limit),
-        )
-      : 1;
+  // No numbered pagination — the full current-scan graph loads at once (see the
+  // fetch effect). `graphTruncated` only fires when a scan exceeds the render
+  // budget, in which case the overview aggregates rather than paging.
+  const graphTruncated = graphData?.pagination.has_more === true;
   if (loadingSnapshots) {
     return (
       <div className="flex items-center justify-center h-[80vh] text-[var(--text-secondary)]">
@@ -2397,7 +2384,7 @@ function GraphPageInner() {
                 onClick={clearInvestigationMode}
                 className="rounded-lg border border-sky-400/30 bg-sky-950/60 px-2.5 py-1 text-sky-100 transition hover:border-sky-300"
               >
-                Return to paged graph
+                Return to full graph
               </button>
             </div>
           )}
@@ -2490,8 +2477,7 @@ function GraphPageInner() {
           )}
           {graphData && graphData.pagination.total > 0 && (
             <span>
-              showing {pageStart}-{pageEnd} of {graphData.pagination.total}{" "}
-              nodes
+              {graphData.pagination.total.toLocaleString()} nodes in graph
             </span>
           )}
         </div>
@@ -3079,39 +3065,17 @@ function GraphPageInner() {
 
           {loadingGraph && graphData && <GraphRefreshOverlay />}
 
-          {graphData && graphData.pagination.total > filters.pageSize && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)]/80 px-1 pt-2 text-xs">
-              <button
-                type="button"
-                onClick={() =>
-                  setPageOffset((current) =>
-                    Math.max(0, current - filters.pageSize),
-                  )
-                }
-                disabled={loadingGraph || pageOffset === 0}
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Previous page
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setPageOffset((current) => current + filters.pageSize)
-                }
-                disabled={loadingGraph || !graphData?.pagination.has_more}
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Next page
-              </button>
-              <span className="text-[var(--text-tertiary)]">
-                Page {pageNumber} of {totalPages} · showing {pageStart}-{pageEnd} of{" "}
-                {graphData.pagination.total} nodes
+          {graphTruncated && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)]/80 px-1 pt-2 text-xs text-[var(--text-tertiary)]">
+              <span className="text-amber-400">
+                This scan exceeds the interactive render budget of{" "}
+                {GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes.
               </span>
-              {graphData.pagination.has_more && (
-                <span className="text-amber-400">
-                  Narrow scope or focus an attack path for a readable graph.
-                </span>
-              )}
+              <span>
+                The highest-signal topology is shown and dense neighborhoods are
+                aggregated — zoom, filter by layer/severity, or focus an agent or
+                attack path to drill in. Nothing is split across pages.
+              </span>
             </div>
           )}
 

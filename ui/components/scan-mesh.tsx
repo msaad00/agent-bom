@@ -14,6 +14,7 @@ import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
 import { buildMeshGraph, getConnectedIds, type MeshStatsData } from "@/lib/mesh-graph";
 import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, legendItemsForVisibleNodes, minimapNodeColor, readableGraphEdges } from "@/lib/graph-utils";
+import { READABLE_LINEAGE_DAGRE_LR } from "@/lib/graph-node-dimensions";
 import { GraphLegend } from "@/components/graph-chrome";
 
 export function ScanMeshView({ id }: { id: string }) {
@@ -41,12 +42,7 @@ export function ScanMeshView({ id }: { id: string }) {
   }, [job]);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
-    dagreLr: {
-      nodeWidth: 200,
-      nodeHeight: 70,
-      rankSep: 140,
-      nodeSep: 25,
-    },
+    dagreLr: READABLE_LINEAGE_DAGRE_LR,
   });
 
   const connectedIds = useMemo(() => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null), [hoveredNodeId, layoutEdges]);

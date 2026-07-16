@@ -4203,6 +4203,81 @@ paths:
       summary: Create Browser Session
       tags:
       - enterprise
+  /v1/auth/snowflake/callback:
+    get:
+      description: 'Complete Snowflake OAuth sign-in and mint a browser session cookie.
+
+
+        Snowflake''s OAuth server is non-standard: no ID token, JWKS, or userinfo.
+
+        Identity is the ``username`` returned by the token endpoint (fail closed if
+
+        absent). Role defaults to the configured least-privilege role and is only
+
+        elevated by an explicit SCIM mapping for the user.'
+      operationId: snowflake_oauth_callback_v1_auth_snowflake_callback_get
+      parameters:
+      - in: query
+        name: code
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Code
+      - in: query
+        name: state
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: State
+      - in: query
+        name: error
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      - in: query
+        name: error_description
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Description
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Snowflake Oauth Callback
+      tags:
+      - enterprise
+  /v1/auth/snowflake/login:
+    get:
+      description: Start Snowflake OAuth authorization-code + PKCE sign-in for the
+        dashboard.
+      operationId: snowflake_oauth_login_v1_auth_snowflake_login_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Snowflake Oauth Login
+      tags:
+      - enterprise
   /v1/baseline/compare:
     post:
       description: Compare two scan results to show new, resolved, and persistent

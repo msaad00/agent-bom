@@ -168,6 +168,37 @@ describe("LoginPage", () => {
     expect(ssoLink).toHaveAttribute("href", "/v1/auth/oidc/login");
   });
 
+  it("shows Sign in with Snowflake when snowflake_oauth is configured", async () => {
+    apiMock.getAuthMe.mockReset();
+    apiMock.getAuthMe.mockResolvedValue({
+      authenticated: false,
+      auth_required: true,
+      configured_modes: ["snowflake_oauth", "api_key"],
+      recommended_ui_mode: "snowflake_oauth",
+      auth_method: null,
+      subject: null,
+      role: null,
+      tenant_id: "default",
+      role_summary: null,
+      memberships: [],
+      request_id: null,
+      trace_id: null,
+      span_id: null,
+    });
+
+    render(
+      <AuthProvider>
+        <LoginPage />
+      </AuthProvider>,
+    );
+
+    const snowflakeLink = await screen.findByRole("link", { name: /sign in with snowflake/i });
+    expect(snowflakeLink).toHaveAttribute("href", "/v1/auth/snowflake/login");
+    expect(screen.getByText("Sign in with Snowflake, or use an API key as a fallback.")).toBeInTheDocument();
+    // No generic OIDC button when only Snowflake is configured.
+    expect(screen.queryByRole("link", { name: /^sign in with sso$/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("API key")).toBeInTheDocument();
+  });
   it("shows the reverse-proxy SSO hint (no fake button) when trusted_proxy is configured", async () => {
     apiMock.getAuthMe.mockReset();
     apiMock.getAuthMe.mockResolvedValue({

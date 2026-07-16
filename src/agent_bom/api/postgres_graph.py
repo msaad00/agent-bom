@@ -587,9 +587,16 @@ class PostgresGraphStore:
                         _node_search_text(node),
                     )
 
+            # Retired-edge detection: start from the prior snapshot's edge keys
+            # and discard each one still present in the incoming stream. This
+            # bounds the tracking set to the PREVIOUS snapshot size instead of
+            # materialising a second O(edges) set of every incoming key (#4055).
+            removed_edge_keys: set[tuple[str, str, str]] = set(previous_edges)
+
             def edge_rows() -> Iterator[tuple[Any, ...]]:
                 for edge in graph.edges:
-                    rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+                    rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+                    removed_edge_keys.discard((edge.source, edge.target, rel))
                     previous = previous_edges.get((edge.source, edge.target, rel))
                     valid_from = edge.valid_from or edge.first_seen or now
                     first_seen = edge.first_seen
@@ -721,15 +728,6 @@ class PostgresGraphStore:
                 edge_rows(),
                 batch_size=batch_size,
             )
-            incoming_edge_keys = {
-                (
-                    edge.source,
-                    edge.target,
-                    edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship),
-                )
-                for edge in graph.edges
-            }
-            removed_edge_keys = set(previous_edges) - incoming_edge_keys
             if removed_edge_keys:
                 _execute_many_batched(
                     conn,

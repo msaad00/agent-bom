@@ -351,6 +351,24 @@ class PostgresComplianceHubStore:
                 "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_severity_cvss "
                 "ON compliance_hub_findings(tenant_id, origin, severity_rank, cvss_score DESC, ordinal)"
             )
+            # Non-origin covering sort indexes so the *unfiltered* default reads
+            # (``WHERE tenant_id=? ORDER BY <col> DESC, ordinal``) ride an ordered
+            # index range scan + LIMIT instead of a full-tenant sort — the
+            # origin-scoped indexes cannot serve them (``origin`` is an
+            # unconstrained middle column). Origin-scoped indexes are kept for the
+            # filtered reads that need origin equality (#4049).
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_reach_all "
+                "ON compliance_hub_findings(tenant_id, effective_reach_score DESC, ordinal)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_cvss_all "
+                "ON compliance_hub_findings(tenant_id, cvss_score DESC, ordinal)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_severity_all "
+                "ON compliance_hub_findings(tenant_id, severity_rank DESC, ordinal)"
+            )
             # Back the severity GROUP BY (severity_breakdown) with a sargable
             # tenant/severity index so the overview aggregate scans the column
             # instead of decoding every payload (#3963). Partial on non-empty

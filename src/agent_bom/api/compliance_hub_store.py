@@ -78,6 +78,13 @@ _CurrentPageSortKey = tuple[float | str, str | tuple[int, ...], str]
 # uses ingest order.
 _LIST_PAGE_SORTS = ("effective_reach", "cvss", "severity", "ordinal")
 
+# Private per-row slot on the in-memory store carrying the effective-reach
+# composite materialised at ingest (mirrors the SQL ``effective_reach_score``
+# column). The read-path sort trusts this scalar instead of re-deriving
+# ``symbol_reachability_from_payload`` for every row on every request (#4049).
+# Stripped from every returned payload so it never leaks into API output.
+_REACH_SORT_KEY = "__reach_sort__"
+
 
 def _severity_rank(payload: dict[str, Any]) -> int:
     return severity_policy_rank(str(payload.get("severity", "")))
@@ -123,7 +130,16 @@ def _page_signal(row: dict[str, Any], sort: str) -> float:
         return _cvss_value(row)
     if sort == "severity":
         return float(_severity_rank(row))
-    return compute_effective_reach_score(row)  # effective_reach default
+    # effective_reach (default): trust the composite materialised at ingest
+    # (``_REACH_SORT_KEY``) instead of re-deriving it per row on the read path.
+    # Fall back to deriving it for any row that predates materialisation (#4049).
+    cached = row.get(_REACH_SORT_KEY)
+    if cached is not None:
+        try:
+            return float(cached)
+        except (TypeError, ValueError):
+            pass
+    return compute_effective_reach_score(row)
 
 
 def _page_sort_key(sort: str) -> Callable[[dict[str, Any]], float]:
@@ -135,6 +151,18 @@ def _page_sort_key(sort: str) -> Callable[[dict[str, Any]], float]:
     """
     normalized = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
     return lambda row: -_page_signal(row, normalized)
+
+
+def _strip_reach_sort(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop the private ingest-materialised reach scalar from returned payloads.
+
+    ``hydrate_finding_payloads_memory`` returns fresh dict copies, so popping
+    here never mutates the stored bucket — it just keeps ``_REACH_SORT_KEY`` an
+    internal sort scalar and out of the API response (#4049).
+    """
+    for row in rows:
+        row.pop(_REACH_SORT_KEY, None)
+    return rows
 
 
 def _filter_hub_rows(
@@ -732,6 +760,10 @@ class InMemoryComplianceHubStore:
                     continue
                 slim = normalize_finding_payload_for_store(tenant_id, payload)
                 stored = _redact_finding(slim)
+                # Materialise the effective-reach composite once at ingest so the
+                # read-path sort never re-derives it per row (#4049). Mirrors the
+                # SQL backends materialising the ``effective_reach_score`` column.
+                stored[_REACH_SORT_KEY] = compute_effective_reach_score(stored)
                 finding_id = str(stored.get("id") or "")
                 if finding_id and finding_id in slots:
                     # Refresh payload, keep original ingest position.
@@ -750,7 +782,7 @@ class InMemoryComplianceHubStore:
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
-        return hydrate_finding_payloads_memory(tenant_id, rows)
+        return _strip_reach_sort(hydrate_finding_payloads_memory(tenant_id, rows))
 
     def _guard_sort_ceiling(self, tenant_id: str, row_count: int) -> None:
         """Warn once per tenant when the whole-tenant re-sort ceiling is crossed.
@@ -794,7 +826,7 @@ class InMemoryComplianceHubStore:
             rows = rows[offset:]
         if limit >= 0:
             rows = rows[:limit]
-        return hydrate_finding_payloads_memory(tenant_id, rows), total
+        return _strip_reach_sort(hydrate_finding_payloads_memory(tenant_id, rows)), total
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
         with self._lock:
@@ -1327,6 +1359,25 @@ class SQLiteComplianceHubStore:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_severity_cvss "
             "ON compliance_hub_findings(tenant_id, origin, severity_rank, cvss_score DESC, ordinal)"
+        )
+        # Non-origin covering sort indexes so the *unfiltered* default reads
+        # (``WHERE tenant_id=? ORDER BY <col> DESC, ordinal``) ride an ordered
+        # index range scan + LIMIT instead of a temp-B-tree filesort — the
+        # origin-scoped indexes above cannot serve them because ``origin`` is an
+        # unconstrained middle column (#4049). Distinct names + IF NOT EXISTS so
+        # steady-state startup is a no-op (no rebuild); the origin-scoped indexes
+        # are kept for the filtered reads that still need origin equality.
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_reach_all "
+            "ON compliance_hub_findings(tenant_id, effective_reach_score DESC, ordinal)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_cvss_all "
+            "ON compliance_hub_findings(tenant_id, cvss_score DESC, ordinal)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_severity_all "
+            "ON compliance_hub_findings(tenant_id, severity_rank DESC, ordinal)"
         )
         # Back the scan_id filter with an index (was a per-row json_extract scan).
         # PARTIAL on scan_id != '' so the common no-scan_id rows stay OUT of the

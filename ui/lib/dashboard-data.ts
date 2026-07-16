@@ -7,14 +7,14 @@ import {
   Server,
 } from "lucide-react";
 
-import type { Agent, BlastRadius, ScanJob, ScanResult } from "@/lib/api";
+import type { Agent, BlastRadius, OverviewTopRisk, ScanJob, ScanResult } from "@/lib/api";
 import type {
   EpssDataPoint,
   EpssVsCvssPoint,
   TrendDataPoint,
 } from "@/components/charts";
 import type { ExposurePathView } from "@/components/overview-cockpit";
-import { buildSecurityGraphHref } from "@/lib/attack-paths";
+import { buildFindingsHref, buildSecurityGraphHref } from "@/lib/attack-paths";
 import { severityRank } from "@/lib/severity";
 
 // ─── Shared dashboard aggregation ───────────────────────────────────────────
@@ -271,6 +271,79 @@ export function buildExposurePathView(
       agentName: agents[0],
     }),
   };
+}
+
+const CVE_ID_PATTERN = /^CVE-\d{4}-\d{4,}$/i;
+
+/**
+ * Build an exec exposure-path row from the API's authoritative `overview.top_risks`
+ * (#4063). Hub/bulk-ingested findings never create scan jobs, so the scan-derived
+ * `blast_radius` path leaves the strip empty for a pure bulk estate even though
+ * `/v1/overview` returns correct, worst-first `top_risks`. This maps that server-
+ * reconciled entry into the same `ExposurePathView` the scan path renders.
+ *
+ * The drill lands on real finding ROWS, never an empty security-graph snapshot a
+ * scan-less estate has no data for: a CVE-shaped id drills the exact CVE
+ * (`/findings?cve=…`, provably non-empty — the row is why this risk exists); any
+ * other id (GHSA, canonical, synthetic) would return 0 under a `?cve=` filter, so
+ * fall back to the severity band the finding provably belongs to.
+ */
+export function buildTopRiskExposurePath(
+  risk: OverviewTopRisk,
+  index?: number,
+): ExposurePathView {
+  const severity = (risk.severity || "").trim().toLowerCase();
+  const nodes: ExposurePathView["nodes"] = [
+    severity
+      ? { type: "cve", label: risk.vulnerability_id, severity }
+      : { type: "cve", label: risk.vulnerability_id },
+  ];
+  if (risk.package) nodes.push({ type: "package", label: risk.package });
+  const agent = risk.affected_agents?.[0];
+  if (agent) nodes.push({ type: "agent", label: agent });
+
+  const href = CVE_ID_PATTERN.test(risk.vulnerability_id)
+    ? buildFindingsHref({ cve: risk.vulnerability_id })
+    : severity && severity !== "unrated"
+      ? `/findings?severity=${encodeURIComponent(severity)}`
+      : "/findings";
+
+  const baseKey = `${risk.vulnerability_id}:${risk.package ?? "unknown"}`;
+  return {
+    key: index === undefined ? baseKey : `${baseKey}:${index}`,
+    nodes,
+    riskScore: risk.risk_score ?? 0,
+    href,
+  };
+}
+
+/**
+ * Assemble the exec top-risk strip from BOTH sources so it stays populated and
+ * honest across estate shapes (#4063). Scan-derived `blast_radius` rows carry the
+ * richest chain (server/credential hops) plus the scan→graph drill, so they lead;
+ * the server-reconciled `overview.top_risks` — the authoritative source that also
+ * covers hub/bulk-ingested findings, which never create scan jobs — contributes
+ * any risk not already represented by a scan blast. Deduped by `vulnerability_id`
+ * so scan and hub are never double-counted; ranked worst-first and capped.
+ */
+export function buildExecExposurePaths(
+  allBlast: (BlastRadius & { scanId?: string })[],
+  topRisks: OverviewTopRisk[] | null | undefined,
+  limit = 5,
+): ExposurePathView[] {
+  const blastRanked = [...allBlast].sort(
+    (a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score),
+  );
+  const blastViews = blastRanked.map((blast, index) =>
+    buildExposurePathView(blast, blast.scanId, index),
+  );
+  const covered = new Set(blastRanked.map((b) => b.vulnerability_id).filter(Boolean));
+  const topRiskViews = (topRisks ?? [])
+    .filter((r) => r.vulnerability_id && !covered.has(r.vulnerability_id))
+    .map((risk, index) => buildTopRiskExposurePath(risk, blastViews.length + index));
+  return [...blastViews, ...topRiskViews]
+    .sort((a, b) => b.riskScore - a.riskScore)
+    .slice(0, limit);
 }
 
 export function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {

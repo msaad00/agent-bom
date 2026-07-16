@@ -32,6 +32,7 @@ import {
   blastCredentials,
   blastTools,
   buildExposurePathView,
+  buildExecExposurePaths,
 } from "@/lib/dashboard-data";
 import { buildIssueSeverityMatrix } from "@/lib/finding-issue-type";
 import {
@@ -244,12 +245,13 @@ export default function Dashboard() {
     return buildExposurePathView(topRisk, topRisk.scanId);
   }, [topRisk]);
 
-  const exposurePaths = useMemo<ExposurePathView[]>(() => {
-    return [...allBlast]
-      .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
-      .slice(0, 5)
-      .map((blast, index) => buildExposurePathView(blast, blast.scanId, index));
-  }, [allBlast]);
+  // The exec top-risk strip merges the scan-derived blast_radius chain with the
+  // server-reconciled overview.top_risks so it stays populated AND honest for
+  // hub/bulk-ingested estates that never create scan jobs (#4063).
+  const exposurePaths = useMemo<ExposurePathView[]>(
+    () => buildExecExposurePaths(allBlast, overview?.top_risks),
+    [allBlast, overview],
+  );
 
   // Total packages scanned across all jobs
   const totalPackages = useMemo(() => {

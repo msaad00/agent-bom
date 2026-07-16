@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { OverviewCockpit } from "@/components/overview-cockpit";
-import type { OverviewResponse } from "@/lib/api";
+import { buildExecExposurePaths } from "@/lib/dashboard-data";
+import type { OverviewResponse, OverviewTopRisk } from "@/lib/api";
 
 function domain(
   label: string,
@@ -129,6 +130,41 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText("Data sources")).not.toBeInTheDocument();
     expect(screen.getByText(/3 of 4 operational lanes active/i)).toBeInTheDocument();
     expect(screen.getByText(/2 connected/i)).toBeInTheDocument();
+  });
+
+  it("renders the top-risk strip from overview.top_risks for a bulk estate with no scans (#4063)", () => {
+    // A hub/bulk-ingested estate has no scan jobs, so the scan-derived blast path
+    // is empty. The strip must still populate from the server-reconciled
+    // top_risks and each row must drill to real finding rows.
+    const topRisks: OverviewTopRisk[] = [
+      { vulnerability_id: "CVE-2026-5555", package: "urllib3", severity: "critical", risk_score: 9.6, is_kev: true, cvss_score: 9.8, epss_score: 0.6, affected_agents: ["Ingest Bot"] },
+      { vulnerability_id: "CVE-2026-4444", package: "lodash", severity: "high", risk_score: 7.1, is_kev: false, cvss_score: 7.5, epss_score: 0.2, affected_agents: [] },
+    ];
+    const exposurePaths = buildExecExposurePaths([], topRisks);
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        topPath={null}
+        exposurePaths={exposurePaths}
+        critical={1}
+        high={1}
+      />,
+    );
+
+    expect(screen.getByText("CVE-2026-5555")).toBeInTheDocument();
+    expect(screen.getByText("urllib3")).toBeInTheDocument();
+    expect(screen.getByText("CVE-2026-4444")).toBeInTheDocument();
+    // Worst-first row drills to the exact CVE's finding rows (non-empty target).
+    const worst = screen.getByText("CVE-2026-5555").closest("a");
+    expect(worst).toHaveAttribute("href", "/findings?cve=CVE-2026-5555");
+  });
+
+  it("shows an honest empty strip when there are genuinely no risks (#4063)", () => {
+    render(<OverviewCockpit {...baseProps} topPath={null} exposurePaths={[]} critical={0} high={0} />);
+    expect(
+      screen.getByText(/Run a scan to correlate CVEs, packages, agents, and credentials/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/CVE-/)).not.toBeInTheDocument();
   });
 
   it("surfaces risk themes and links into findings / compliance", () => {

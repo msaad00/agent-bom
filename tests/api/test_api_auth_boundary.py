@@ -203,6 +203,24 @@ def test_read_shaped_posts_stay_viewer_reachable() -> None:
     assert middleware._required_role("POST", "/v1/auth/keys") == "admin"
 
 
+def test_model_keys_rbac_tiers_split_root_writes_from_minting() -> None:
+    """Root provider-credential writes are admin-tier; minting/authorizing/revoking are analyst-tier.
+
+    Registering or deleting a real provider secret is a root-credential write and
+    must require ``admin``. Minting a scoped, short-lived virtual key, authorizing
+    it, and revoking it are operational and stay at ``analyst`` — otherwise the
+    unmatched-mutating-route admin fallback silently over-gates them.
+    """
+    middleware = APIKeyMiddleware(app, api_key="")
+    # Root-credential writes -> admin.
+    assert middleware._required_role("POST", "/v1/model-keys/providers") == "admin"
+    assert middleware._required_role("DELETE", "/v1/model-keys/providers/mpk_abc123") == "admin"
+    # Minting / authorizing / revoking -> analyst.
+    assert middleware._required_role("POST", "/v1/model-keys/providers/mpk_abc123/virtual-keys") == "analyst"
+    assert middleware._required_role("POST", "/v1/model-keys/virtual-keys/vmk_abc123/revoke") == "analyst"
+    assert middleware._required_role("POST", "/v1/model-keys/authorize") == "analyst"
+
+
 def test_head_inherits_get_route_role() -> None:
     """A HEAD request must inherit the required role of the matching GET route.
 

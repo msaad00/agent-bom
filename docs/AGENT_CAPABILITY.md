@@ -17,7 +17,7 @@ attack paths, compliance tags, and runtime audit chain.
 | Area | Shipped today |
 |---|---|
 | MCP security tools | 73 tools, 6 resources, 8 workflow prompts |
-| REST API | 329 operations across 38 route modules (+ 2 WebSocket routes) — see `docs/openapi/v1.json` |
+| REST API | 337 operations across 39 route modules (+ 2 WebSocket routes) — see `docs/openapi/v1.json` |
 | Package / SCA | 15 ecosystems, SARIF, CycloneDX, SPDX, HTML |
 | Graph / blast radius | UnifiedGraph, attack paths, hop counts, remediation handoff |
 | Runtime proxy | stdio/local MCP inline enforcement (7 detectors) |
@@ -58,4 +58,3 @@ attack paths, compliance tags, and runtime audit chain.
 ## Version
 
 `0.96.3` — regenerate metrics with `python scripts/product_metrics_snapshot.py --write` and this file with `python scripts/generate_agent_capability_manifest.py --write`.
-

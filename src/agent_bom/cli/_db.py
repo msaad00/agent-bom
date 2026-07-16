@@ -135,6 +135,9 @@ def db_status(db_path: str | None) -> None:
     conn = init_db(db_file)
     try:
         stats = db_stats(conn)
+        from agent_bom.coverage import covered_os_distros
+
+        os_distros = covered_os_distros(conn)
     finally:
         conn.close()
 
@@ -143,6 +146,8 @@ def db_status(db_path: str | None) -> None:
     con.print(f"  Affected ranges : {stats['affected_count']:,}")
     con.print(f"  EPSS scores     : {stats['epss_count']:,}")
     con.print(f"  KEV entries     : {stats['kev_count']:,}")
+    if os_distros:
+        con.print(f"  OS distros      : {', '.join(os_distros)}")
 
     meta = stats.get("sync_meta", {})
     if meta:

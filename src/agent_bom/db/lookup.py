@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from agent_bom.api.tracing import get_tracer
+from agent_bom.os_advisory import OS_DISTRO_COMPARATOR_FAMILIES
 
 _logger = logging.getLogger(__name__)
 _LOOKUP_TRACER = get_tracer("agent_bom.db.lookup")
@@ -265,7 +266,9 @@ def _version_affected(
 
 
 # Map a (possibly release-suffixed) DB ecosystem to a base family the version
-# comparator understands.
+# comparator understands. The RPM/apk distro families (Red Hat, Rocky, AlmaLinux,
+# openSUSE/SUSE, Wolfi, Chainguard) are contributed by ``os_advisory`` so the
+# routing and comparator maps never drift apart.
 _ECO_FAMILY_TO_COMPARATOR = {
     "debian": "deb",
     "ubuntu": "deb",
@@ -274,6 +277,7 @@ _ECO_FAMILY_TO_COMPARATOR = {
     "apk": "apk",
     "rpm": "rpm",
     "linux": "rpm",
+    **OS_DISTRO_COMPARATOR_FAMILIES,
 }
 
 

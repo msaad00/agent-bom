@@ -334,9 +334,24 @@ def detect_os_type(root: Path = Path("/")) -> str | None:
                 os_id = line.split("=", 1)[1].strip().strip('"').lower()
                 if os_id in ("debian", "ubuntu", "linuxmint", "pop"):
                     return "deb"
-                if os_id in ("fedora", "rhel", "centos", "rocky", "alma", "almalinux", "ol"):
+                if os_id in (
+                    "fedora",
+                    "rhel",
+                    "centos",
+                    "rocky",
+                    "alma",
+                    "almalinux",
+                    "ol",
+                    "opensuse",
+                    "opensuse-leap",
+                    "opensuse-tumbleweed",
+                    "opensuse-leap-micro",
+                    "sles",
+                    "sled",
+                    "suse",
+                ):
                     return "rpm"
-                if os_id == "alpine":
+                if os_id in ("alpine", "wolfi", "chainguard"):
                     return "apk"
     except OSError:
         pass

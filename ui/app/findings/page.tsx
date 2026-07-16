@@ -13,6 +13,7 @@ import {
   type FindingTriageDecision,
   type FindingTriageItem,
   type FindingTriageJustification,
+  type ReadWindow,
   type UnifiedGraphResponse,
 } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -264,6 +265,16 @@ const DOMAIN_FILTERS: { key: string; label: string }[] = [
 
 const PROVIDER_OPTIONS = ["aws", "azure", "gcp", "snowflake", "databricks"];
 
+// Default read-window (#4009): findings default to the last ~90 days so counts
+// are honestly scoped, with an explicit widen-to-all option.
+const DEFAULT_FINDINGS_WINDOW_DAYS = 90;
+const WINDOW_OPTIONS: { value: number; label: string }[] = [
+  { value: 30, label: "Last 30 days" },
+  { value: 90, label: "Last 90 days" },
+  { value: 365, label: "Last 12 months" },
+  { value: 0, label: "All time" },
+];
+
 export default function FindingsPageWrapper() {
   return (
     <Suspense fallback={
@@ -291,6 +302,7 @@ function FindingsPage() {
   const paramScan = searchParams.get("scan") ?? searchParams.get("scan_id");
   const paramIssueType = searchParams.get("issue");
   const paramLens = searchParams.get("lens");
+  const paramWindow = searchParams.get("window");
   // First-class scope + taxonomy facets (issue #3946), URL-synced.
   const paramDomain = searchParams.get("domain");
   const paramProvider = searchParams.get("provider");
@@ -326,6 +338,15 @@ function FindingsPage() {
   const [environmentFilter, setEnvironmentFilter] = useState<string>(paramEnvironment ?? "");
   const [sortKey, setSortKey] = useState<SortKey>("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  // Default read-window (#4009): findings default to the last ~90 days so the
+  // count is honestly "last 90d", not "all". ``0`` widens to all history.
+  const [windowDays, setWindowDays] = useState<number>(() => {
+    const parsed = Number(paramWindow);
+    return paramWindow != null && Number.isFinite(parsed) && parsed >= 0
+      ? Math.floor(parsed)
+      : DEFAULT_FINDINGS_WINDOW_DAYS;
+  });
+  const [appliedWindow, setAppliedWindow] = useState<ReadWindow | null>(null);
   const [search, setSearch] = useState(paramQuery ?? paramCve ?? paramAgent ?? "");
   const [groupBy, setGroupBy] = useState<GroupKey>(
     paramGroup === "package" || paramGroup === "agent" || paramGroup === "severity" ? paramGroup : "none",
@@ -436,6 +457,15 @@ function FindingsPage() {
   }, [paramEnvironment]);
 
   useEffect(() => {
+    const parsed = Number(paramWindow);
+    setWindowDays(
+      paramWindow != null && Number.isFinite(parsed) && parsed >= 0
+        ? Math.floor(parsed)
+        : DEFAULT_FINDINGS_WINDOW_DAYS,
+    );
+  }, [paramWindow]);
+
+  useEffect(() => {
     const params = new URLSearchParams();
     if (filter !== "all") params.set("severity", filter);
     if (issueTypeFilter !== "all") params.set("issue", issueTypeFilter);
@@ -447,6 +477,7 @@ function FindingsPage() {
     if (providerFilter.trim()) params.set("provider", providerFilter.trim());
     if (accountFilter.trim()) params.set("account", accountFilter.trim());
     if (environmentFilter.trim()) params.set("environment", environmentFilter.trim());
+    if (windowDays !== DEFAULT_FINDINGS_WINDOW_DAYS) params.set("window", String(windowDays));
     if (page > 1) params.set("page", String(page));
     if (paramScan) params.set("scan", paramScan);
     const qs = params.toString();
@@ -462,6 +493,7 @@ function FindingsPage() {
     providerFilter,
     accountFilter,
     environmentFilter,
+    windowDays,
     page,
     paramScan,
     pathname,
@@ -753,7 +785,9 @@ function FindingsPage() {
             limit: PAGE_SIZE,
             offset: (page - 1) * PAGE_SIZE,
             approximateTotal: true,
+            windowDays,
           });
+          setAppliedWindow(response.window ?? null);
           if (response.total > 0 || response.findings.length > 0) {
             setVulns(collectUnifiedFindings(response.findings));
             setFindingsTotal(response.total);
@@ -785,6 +819,7 @@ function FindingsPage() {
     providerFilter,
     accountFilter,
     environmentFilter,
+    windowDays,
     sortKey,
   ]);
 
@@ -1112,6 +1147,18 @@ function FindingsPage() {
                   onChange={(e) => setSearch(e.target.value)}
                   className="min-w-[12rem] flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:border-[var(--border-strong)] focus:outline-none"
                 />
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  data-testid="findings-window-chip"
+                  title="Findings are scoped to this time window. Open Filters to widen."
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                >
+                  <span className="text-[color:var(--text-tertiary)]">Window</span>
+                  {appliedWindow?.label ??
+                    WINDOW_OPTIONS.find((o) => o.value === windowDays)?.label ??
+                    "Last 90 days"}
+                </button>
                 <div className="relative" ref={filtersRef}>
                   <button
                     type="button"
@@ -1144,6 +1191,21 @@ function FindingsPage() {
                         >
                           <option value="latest">Latest completed scan</option>
                           <option value="all">All completed scans</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Time window</span>
+                        <select
+                          value={windowDays}
+                          onChange={(e) => setWindowDays(Number(e.target.value))}
+                          data-testid="findings-window-select"
+                          className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] focus:border-[var(--border-strong)] focus:outline-none"
+                        >
+                          {WINDOW_OPTIONS.map(({ value, label }) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div className="flex flex-col gap-1">

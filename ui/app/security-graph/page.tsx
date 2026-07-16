@@ -101,7 +101,8 @@ function SecurityGraphPageContent() {
       setLoadingSnapshots(true);
       try {
         const [snapshotList, postureData] = await Promise.all([
-          api.getGraphSnapshots(25),
+          // windowDays: 0 keeps all retained snapshots visible (#4009).
+          api.getGraphSnapshots(25, 0),
           api.getPosture().catch(() => null),
         ]);
         if (cancelled) return;

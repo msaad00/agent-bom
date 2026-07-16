@@ -7127,6 +7127,16 @@ paths:
             type: string
           - type: 'null'
           title: Domain
+      - in: query
+        name: window_days
+        required: false
+        schema:
+          anyOf:
+          - maximum: 3650
+            minimum: 0
+            type: integer
+          - type: 'null'
+          title: Window Days
       responses:
         '200':
           content:
@@ -10127,8 +10137,10 @@ paths:
       - graph
   /v1/graph/history:
     get:
-      description: Return retained graph history and adjacent diff summaries for the
-        request tenant.
+      description: "Return retained graph history and adjacent diff summaries for\
+        \ the request tenant.\n\nDefaults to the last ``AGENT_BOM_RETENTION_DAYS``\
+        \ (\u224890d); the applied window\nis echoed under ``window`` so clients can\
+        \ label it honestly (#4009)."
       operationId: get_graph_history_v1_graph_history_get
       parameters:
       - description: Max snapshots
@@ -10142,6 +10154,17 @@ paths:
           minimum: 1
           title: Limit
           type: integer
+      - description: Default read-window in days; 0 = all retained history
+        in: query
+        name: window_days
+        required: false
+        schema:
+          anyOf:
+          - minimum: 0
+            type: integer
+          - type: 'null'
+          description: Default read-window in days; 0 = all retained history
+          title: Window Days
       responses:
         '200':
           content:
@@ -10829,12 +10852,15 @@ paths:
       - graph
   /v1/graph/snapshots:
     get:
-      description: "List persisted scan snapshots ordered by creation time.\n\nA snapshot's\
-        \ ``risk_summary`` is a per-scan count of *graph nodes* carrying\neach severity\
-        \ \u2014 a distinct metric from the exec open-finding headline\n(``/v1/overview``\
-        \ / ``/v1/posture/counts``), which counts deduped findings\nacross the estate.\
-        \ Each row is tagged ``severity_basis: \"graph_nodes\"`` so a\nconsumer never\
-        \ mistakes the graph-node tally for the reconciled exec\nseverity count (#3961)."
+      description: "List persisted scan snapshots ordered by creation time.\n\nDefaults\
+        \ to the last ``AGENT_BOM_RETENTION_DAYS`` (\u224890d) so the picker shows\n\
+        recent, non-stale history; pass ``?window_days=0`` to widen to all retained\n\
+        snapshots (#4009).\n\nA snapshot's ``risk_summary`` is a per-scan count of\
+        \ *graph nodes* carrying\neach severity \u2014 a distinct metric from the\
+        \ exec open-finding headline\n(``/v1/overview`` / ``/v1/posture/counts``),\
+        \ which counts deduped findings\nacross the estate. Each row is tagged ``severity_basis:\
+        \ \"graph_nodes\"`` so a\nconsumer never mistakes the graph-node tally for\
+        \ the reconciled exec\nseverity count (#3961)."
       operationId: get_graph_snapshots_v1_graph_snapshots_get
       parameters:
       - description: Max snapshots
@@ -10848,6 +10874,17 @@ paths:
           minimum: 1
           title: Limit
           type: integer
+      - description: Default read-window in days; 0 = all retained history
+        in: query
+        name: window_days
+        required: false
+        schema:
+          anyOf:
+          - minimum: 0
+            type: integer
+          - type: 'null'
+          description: Default read-window in days; 0 = all retained history
+          title: Window Days
       responses:
         '200':
           content:

@@ -8,7 +8,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, Iterator, Sequence
+from typing import Any, Callable, Iterable, Iterator, Sequence
 
 from agent_bom.api.graph_store import (
     MAX_NODE_PAGE_OFFSET,
@@ -26,6 +26,38 @@ from agent_bom.security import sanitize_text
 from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
 
 logger = logging.getLogger(__name__)
+
+
+def select_expired_snapshot_ids(
+    rows: Iterable[Sequence[Any]],
+    *,
+    now: datetime,
+    resolve_days: "Callable[[str], int]",
+) -> list[tuple[str, str]]:
+    """Select ``(scan_id, tenant_id)`` snapshots older than their retention window.
+
+    Pure, side-effect-free core of the age-based snapshot purge, extracted so the
+    bounded-retention guarantee is unit-testable without a live Postgres. ``rows``
+    are ``(scan_id, tenant_id, created_at)`` triples. Fail-closed: any snapshot
+    whose ``created_at`` cannot be parsed as ISO-8601 is retained, never deleted.
+    """
+    from agent_bom.db.graph_store import _parse_iso_timestamp
+
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    expired: list[tuple[str, str]] = []
+    cutoffs: dict[str, datetime] = {}
+    for row in rows:
+        scan_id, tenant_id, created_raw = str(row[0]), str(row[1]), row[2]
+        cutoff = cutoffs.get(tenant_id)
+        if cutoff is None:
+            cutoff = now - timedelta(days=max(1, int(resolve_days(tenant_id))))
+            cutoffs[tenant_id] = cutoff
+        created = _parse_iso_timestamp(created_raw)
+        if created is not None and created < cutoff:
+            expired.append((scan_id, tenant_id))
+    return expired
+
 
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
 _FINDING_ENTITY_TYPES = {
@@ -786,26 +818,25 @@ class PostgresGraphStore:
         never deleted) and cascades to child rows in FK-safe order.
         """
         from agent_bom.api.tenant_graph_retention import resolve_graph_retention_days
-        from agent_bom.db.graph_store import _parse_iso_timestamp
 
         try:
-            days = max(1, int(resolve_graph_retention_days(tenant)))
-            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             rows = conn.execute(
                 "SELECT scan_id, created_at FROM graph_snapshots WHERE tenant_id = %s",
                 (tenant,),
             ).fetchall()
-            expired: list[tuple[str, str]] = []
-            for row in rows:
-                created = _parse_iso_timestamp(row[1])
-                if created is not None and created < cutoff:
-                    expired.append((tenant, str(row[0])))
+            triples = [(str(row[0]), tenant, row[1]) for row in rows]
+            expired = select_expired_snapshot_ids(
+                triples,
+                now=datetime.now(timezone.utc),
+                resolve_days=resolve_graph_retention_days,
+            )
             if not expired:
                 return
+            delete_params = [(tenant_id, scan_id) for scan_id, tenant_id in expired]
             for table in _GRAPH_RETENTION_PURGE_TABLES:
                 conn.executemany(
                     f"DELETE FROM {table} WHERE tenant_id = %s AND scan_id = %s",  # nosec B608 - table names are static internal schema metadata
-                    expired,
+                    delete_params,
                 )
             conn.commit()
             logger.info("Purged %d expired graph snapshot(s) (tenant=%s)", len(expired), tenant)
@@ -1391,18 +1422,24 @@ class PostgresGraphStore:
             },
         }
 
-    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]:
+    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> list[dict[str, Any]]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
+        where = "WHERE tenant_id = %s"
+        params: list[Any] = [tenant_id]
+        if since:
+            where += " AND created_at >= %s"
+            params.append(since)
+        params.append(limit)
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT scan_id, created_at, node_count, edge_count, risk_summary
                 FROM graph_snapshots
-                WHERE tenant_id = %s
+                {where}
                 ORDER BY created_at DESC
                 LIMIT %s
-                """,
-                (tenant_id, limit),
+                """,  # nosec B608 - where clause is composed from static fragments only
+                params,
             ).fetchall()
             return [
                 {
@@ -1504,9 +1541,9 @@ class PostgresGraphStore:
         }
         return _digest_payload(graph_rows), _digest_payload(finding_rows), counts
 
-    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict[str, Any]:
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
-        snapshots = self.list_snapshots(tenant_id=tenant_id, limit=limit)
+        snapshots = self.list_snapshots(tenant_id=tenant_id, limit=limit, since=since)
         history: list[dict[str, Any]] = []
         for snapshot in snapshots:
             scan_id = snapshot["scan_id"]

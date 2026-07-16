@@ -123,6 +123,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_DSPM_S3_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
 | `AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET` | `int` | `10` | Content reads are opt-in at the caller/module level. These caps bound the amount of object-store data read when an operator enables object-store sampling. |
 
+## Default Read Window
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_RETENTION_DAYS` | `int` | `90` | Default time-window (days) applied to list / graph / snapshot read surfaces. Views default to the last ``RETENTION_DAYS`` so counts are honestly scoped to a recent window at scale; callers widen or clear the window with ``?window_days=`` (` |
+
 ## Demo Estate
 | Env var | Type | Default | Description |
 |---|---|---|---|

@@ -287,8 +287,13 @@ class ComplianceHubStore(Protocol):
         origin: str | None = None,
         include_total: bool = True,
         cursor: str | None = None,
+        since: str | None = None,
     ) -> FindingCursorPage:
-        """Return a page from ``hub_findings_current`` with lifecycle fields merged."""
+        """Return a page from ``hub_findings_current`` with lifecycle fields merged.
+
+        ``since`` (ISO-8601 cutoff) bounds the page to findings whose
+        ``last_seen`` is within the read window; ``None`` returns all history.
+        """
         ...
 
     def reconcile_current_absent(
@@ -906,13 +911,14 @@ class InMemoryComplianceHubStore:
         origin: str | None = None,
         include_total: bool = True,
         cursor: str | None = None,
+        since: str | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
         normalized_sort = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
         with self._lock:
             rows = list(self._current.get(tenant_id, {}).values())
-        rows = _filter_current_rows(rows, severity=severity, scan_id=scan_id, origin=origin)
+        rows = _filter_current_rows(rows, severity=severity, scan_id=scan_id, origin=origin, since=since)
         total = len(rows) if include_total else None
         rows.sort(key=_current_page_sort_key(normalized_sort))
         if cursor:
@@ -1103,6 +1109,7 @@ def _filter_current_rows(
     severity: str | None,
     scan_id: str | None,
     origin: str | None,
+    since: str | None = None,
 ) -> list[dict[str, Any]]:
     if origin is not None:
         rows = [r for r in rows if (r.get("payload") or {}).get("origin") == origin]
@@ -1113,6 +1120,8 @@ def _filter_current_rows(
         rows = [
             r for r in rows if str((r.get("payload") or {}).get("batch_id") or (r.get("payload") or {}).get("scan_id") or "") == scan_id
         ]
+    if since:
+        rows = [r for r in rows if str(r.get("last_seen") or "") >= since]
     return rows
 
 
@@ -1639,12 +1648,18 @@ class SQLiteComplianceHubStore:
         origin: str | None = None,
         include_total: bool = True,
         cursor: str | None = None,
+        since: str | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
         normalized_sort = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
         where = ["tenant_id = ?"]
         params: list[Any] = [tenant_id]
+        if since:
+            # Default read-window: bound to findings last observed within the
+            # window so counts stay honestly "last Nd" at scale (#4009).
+            where.append("last_seen >= ?")
+            params.append(since)
         if origin is not None:
             # Materialised column (backfilled from payload) so the exact COUNT(*)
             # rides the (tenant_id, origin, …) index prefix instead of scanning

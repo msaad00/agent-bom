@@ -937,6 +937,16 @@ export interface FindingListEnvelope<T> {
   next_cursor: string;
   has_more: boolean;
   warnings: string[];
+  /** Applied default read-window (#4009); present on `/v1/findings`. */
+  window?: ReadWindow | undefined;
+}
+
+/** Applied time-window echoed by windowed read surfaces (#4009). */
+export interface ReadWindow {
+  days: number;
+  since: string | null;
+  applied: boolean;
+  label: string;
 }
 
 export type FindingsResponse = FindingListEnvelope<UnifiedFinding>;

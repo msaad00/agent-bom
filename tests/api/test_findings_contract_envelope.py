@@ -47,8 +47,9 @@ def _client(tenant: str = "tenant-alpha", role: str = "admin") -> TestClient:
 
 
 def _assert_canonical_envelope(body: dict) -> None:
-    # ``total_approximate`` is the only optional key; everything else is fixed.
-    keys = set(body) - {"total_approximate"}
+    # ``total_approximate`` and the default-read-window echo ``window`` (#4009)
+    # are optional extras; every other key is fixed.
+    keys = set(body) - {"total_approximate", "window"}
     assert keys == set(FINDING_LIST_ENVELOPE_KEYS), sorted(keys ^ set(FINDING_LIST_ENVELOPE_KEYS))
     assert isinstance(body["findings"], list)
     assert body["count"] == len(body["findings"])

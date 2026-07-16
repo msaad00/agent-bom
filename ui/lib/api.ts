@@ -373,6 +373,7 @@ export type {
   ReportCreateRequest,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
+export type { ReadWindow } from "./api-types";
 
 // ── Scan Pipeline Step Types ────────────────────────────────────────────────
 
@@ -756,7 +757,13 @@ export const api = {
   },
 
   /** List persisted unified graph snapshots */
-  getGraphSnapshots: (limit = 50) => get<GraphSnapshot[]>(`/v1/graph/snapshots?limit=${limit}`),
+  getGraphSnapshots: (limit = 50, windowDays?: number) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    // Default read-window (#4009): omit for the server default (~90d); pass 0 to
+    // widen to all retained snapshots so old history is never silently hidden.
+    if (windowDays != null) params.set("window_days", String(windowDays));
+    return get<GraphSnapshot[]>(`/v1/graph/snapshots?${params.toString()}`);
+  },
 
   /** Diff two persisted graph snapshots without loading either full graph */
   getGraphDiff: (oldScanId: string, newScanId: string) => {
@@ -1222,6 +1229,9 @@ export const api = {
     account?: string;
     environment?: string;
     domain?: string;
+    // Default read-window in days (#4009). Omit for the server default (~90d);
+    // pass 0 to widen to all retained history.
+    windowDays?: number;
   }) => {
     const params = new URLSearchParams();
     if (filters?.scanId) params.set("scan_id", filters.scanId);
@@ -1234,6 +1244,7 @@ export const api = {
     if (filters?.account) params.set("account", filters.account);
     if (filters?.environment) params.set("environment", filters.environment);
     if (filters?.domain) params.set("domain", filters.domain);
+    if (filters?.windowDays != null) params.set("window_days", String(filters.windowDays));
     const qs = params.toString();
     return get<FindingsResponse>(`/v1/findings${qs ? `?${qs}` : ""}`);
   },

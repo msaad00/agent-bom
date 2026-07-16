@@ -251,17 +251,22 @@ class NeptuneGraphStore:
                 return snapshots[index + 1]["scan_id"]
         return ""
 
-    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]:
+    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> list[dict[str, Any]]:
+        bindings: dict[str, Any] = {"tenant_id": tenant_id or "default", "limit": int(limit)}
+        since_clause = ""
+        if since:
+            since_clause = "has('created_at', gte(since))."
+            bindings["since"] = since
         rows = self._submit(
-            """
-            g.V().hasLabel('abom_snapshot').has('tenant_id', tenant_id).
+            f"""
+            g.V().hasLabel('abom_snapshot').has('tenant_id', tenant_id).{since_clause}
               order().by('created_at', desc).limit(limit).valueMap()
             """,
-            {"tenant_id": tenant_id or "default", "limit": int(limit)},
+            bindings,
         )
         return [self._snapshot_from_record(row) for row in rows]
 
-    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict[str, Any]:
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]:
         self._unsupported("graph_history")
 
     def evidence_manifest(

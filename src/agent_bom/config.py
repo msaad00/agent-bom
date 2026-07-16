@@ -306,6 +306,16 @@ ICEBERG_TABLE = _str("AGENT_BOM_ICEBERG_TABLE", "findings")
 ICEBERG_WAREHOUSE = _str("AGENT_BOM_ICEBERG_WAREHOUSE", "")
 
 
+# ── Default Read Window ───────────────────────────────────────────────────
+# Default time-window (days) applied to list / graph / snapshot read surfaces.
+# Views default to the last ``RETENTION_DAYS`` so counts are honestly scoped to
+# a recent window at scale; callers widen or clear the window with
+# ``?window_days=`` (``0`` = all retained history). This is a *view* default —
+# it never deletes data. Hard deletion is governed by the retention knobs below.
+
+RETENTION_DAYS = _int("AGENT_BOM_RETENTION_DAYS", 90)
+
+
 # ── Graph Retention ───────────────────────────────────────────────────────
 # Age-based graph snapshot retention for self-hosted graph stores. Per-tenant
 # overrides resolve from ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` (JSON map) and

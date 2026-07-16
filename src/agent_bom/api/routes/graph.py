@@ -2488,8 +2488,13 @@ async def get_graph_node_neighbors(
 async def get_graph_snapshots(
     request: Request,
     limit: int = Query(50, ge=1, le=500, description="Max snapshots"),
+    window_days: int | None = Query(None, ge=0, description="Default read-window in days; 0 = all retained history"),
 ) -> list[dict]:
     """List persisted scan snapshots ordered by creation time.
+
+    Defaults to the last ``AGENT_BOM_RETENTION_DAYS`` (≈90d) so the picker shows
+    recent, non-stale history; pass ``?window_days=0`` to widen to all retained
+    snapshots (#4009).
 
     A snapshot's ``risk_summary`` is a per-scan count of *graph nodes* carrying
     each severity — a distinct metric from the exec open-finding headline
@@ -2498,7 +2503,12 @@ async def get_graph_snapshots(
     consumer never mistakes the graph-node tally for the reconciled exec
     severity count (#3961).
     """
-    snapshots = await _graph_store_call(_get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit)
+    from agent_bom.api import time_window
+
+    since = time_window.window_since_iso(time_window.normalize_window_days(window_days))
+    snapshots = await _graph_store_call(
+        _get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit, since=since
+    )
     for snapshot in snapshots:
         if isinstance(snapshot, dict) and "risk_summary" in snapshot:
             snapshot["severity_basis"] = "graph_nodes"
@@ -2509,9 +2519,23 @@ async def get_graph_snapshots(
 async def get_graph_history(
     request: Request,
     limit: int = Query(50, ge=1, le=500, description="Max snapshots"),
+    window_days: int | None = Query(None, ge=0, description="Default read-window in days; 0 = all retained history"),
 ) -> dict:
-    """Return retained graph history and adjacent diff summaries for the request tenant."""
-    return await _graph_store_call(_get_graph_store_or_503().graph_history, tenant_id=_tenant(request), limit=limit)
+    """Return retained graph history and adjacent diff summaries for the request tenant.
+
+    Defaults to the last ``AGENT_BOM_RETENTION_DAYS`` (≈90d); the applied window
+    is echoed under ``window`` so clients can label it honestly (#4009).
+    """
+    from agent_bom.api import time_window
+
+    resolved = time_window.normalize_window_days(window_days)
+    since = time_window.window_since_iso(resolved)
+    history = await _graph_store_call(
+        _get_graph_store_or_503().graph_history, tenant_id=_tenant(request), limit=limit, since=since
+    )
+    if isinstance(history, dict):
+        history["window"] = time_window.window_metadata(resolved)
+    return history
 
 
 @router.get("/graph/evidence-manifest", tags=["graph"])

@@ -1471,3 +1471,41 @@ def test_prompt_injection_still_flagged_under_benign_heading():
     audit = audit_skill_result(_make_behavioral_result(content))
     cats = {f.category for f in audit.findings if f.context == "behavioral"}
     assert "prompt_coercion" in cats
+
+
+# ── ReDoS: the prohibition-cue regex must run in linear time ──
+
+
+def test_prohibition_cue_regex_linear_time_on_pathological_input():
+    """Pathological "without a a a …" input must not exponentially backtrack.
+
+    The prohibition-cue alternation previously used an unbounded ``(?:…)*`` with
+    overlapping ``an?\\s+`` / ``a\\s+`` branches, so "without " + "a " * N + "x"
+    triggered exponential backtracking (CodeQL: inefficient regular expression).
+    A bounded, de-overlapped group makes matching linear; this input completed in
+    ~150 ms at N=20 before the fix and in well under a millisecond after it.
+    """
+    import time
+
+    from agent_bom.parsers.skill_audit_behavior import _PROHIBITION_CUE_RE
+
+    pathological = "without " + "a " * 50 + "x"
+    start = time.perf_counter()
+    _PROHIBITION_CUE_RE.search(pathological)
+    elapsed = time.perf_counter() - start
+    assert elapsed < 0.1, f"prohibition-cue regex took {elapsed * 1000:.1f} ms (possible ReDoS)"
+
+
+def test_prohibition_cue_regex_still_matches_real_cues():
+    """De-overlapping/bounding the regex must not drop legitimate prohibition cues."""
+    from agent_bom.parsers.skill_audit_behavior import _PROHIBITION_CUE_RE
+
+    for cue in (
+        "without an explicit user request",
+        "without explicit approval",
+        "without a prior written approval",
+        "without prior human review",
+        "requires an explicit review",
+        "only after a manual approval",
+    ):
+        assert _PROHIBITION_CUE_RE.search(cue), f"prohibition cue no longer matches: {cue!r}"

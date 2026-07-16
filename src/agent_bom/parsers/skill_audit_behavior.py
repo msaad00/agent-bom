@@ -509,10 +509,10 @@ _PROHIBITION_CUE_RE = re.compile(
     r"\b(?:never|do\s+not|don'?t|must\s+not|must\s+never|shall\s+not|"
     r"should\s+not|cannot|can'?t|avoid|prohibit\w*|forbid\w*|forbidden|"
     r"disallow\w*|not\s+allowed|not\s+permitted|"
-    r"without\s+(?:an?\s+|prior\s+|explicit\s+|the\s+|a\s+)*"
+    r"without\s+(?:(?:an?|prior|explicit|the)\s+){0,4}"
     r"(?:explicit|prior|human|user|written|manual)|"
     r"(?:require[sd]?|need(?:s|ed)?|after|only\s+after|upon|following|pending|once)"
-    r"\s+(?:an?\s+|explicit\s+|prior\s+|human\s+|user\s+|manual\s+|written\s+|the\s+)*"
+    r"\s+(?:(?:an?|explicit|prior|human|user|manual|written|the)\s+){0,4}"
     r"(?:review|approval|confirmation|consent|sign[-\s]?off|request)|"
     r"reject\w*|refus\w*)\b",
     re.IGNORECASE,

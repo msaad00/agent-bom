@@ -295,6 +295,9 @@ def test_scan_live_cluster_posture_finds_runtime_gaps(monkeypatch):
                 }
             ]
         },
+        ("get", "clusterroles"): {"items": []},
+        ("get", "roles"): {"items": []},
+        ("get", "nodes"): {"items": []},
     }
 
     def fake_run(cmd, **kwargs):
@@ -324,7 +327,22 @@ def test_scan_live_cluster_posture_clean_cluster(monkeypatch):
             "items": [
                 {
                     "metadata": {"name": "api", "namespace": "prod"},
-                    "spec": {"automountServiceAccountToken": False},
+                    "spec": {
+                        "automountServiceAccountToken": False,
+                        "securityContext": {"runAsNonRoot": True, "seccompProfile": {"type": "RuntimeDefault"}},
+                        "containers": [
+                            {
+                                "name": "api",
+                                "securityContext": {
+                                    "privileged": False,
+                                    "runAsNonRoot": True,
+                                    "allowPrivilegeEscalation": False,
+                                    "readOnlyRootFilesystem": True,
+                                    "capabilities": {"drop": ["ALL"]},
+                                },
+                            }
+                        ],
+                    },
                     "status": {
                         "phase": "Running",
                         "containerStatuses": [{"name": "api", "ready": True, "state": {"running": {}}}],
@@ -334,6 +352,9 @@ def test_scan_live_cluster_posture_clean_cluster(monkeypatch):
         },
         ("get", "networkpolicies"): {"items": [{"metadata": {"name": "default-deny", "namespace": "prod"}}]},
         ("get", "clusterrolebindings"): {"items": []},
+        ("get", "clusterroles"): {"items": []},
+        ("get", "roles"): {"items": []},
+        ("get", "nodes"): {"items": []},
     }
 
     def fake_run(cmd, **kwargs):

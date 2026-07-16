@@ -779,9 +779,11 @@ def configure_api(
     from agent_bom.api.oidc_browser import oidc_browser_enabled_from_env
     from agent_bom.api.saml import saml_enabled_from_env
     from agent_bom.api.scim import scim_enabled_from_env
+    from agent_bom.api.snowflake_oauth import snowflake_oauth_enabled_from_env
 
     oidc_enabled = oidc_enabled_from_env()
     oidc_browser_enabled = oidc_browser_enabled_from_env()
+    snowflake_oauth_enabled = snowflake_oauth_enabled_from_env()
     scim_enabled = scim_enabled_from_env()
     saml_enabled = saml_enabled_from_env()
     trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -791,6 +793,7 @@ def configure_api(
         or runtime_key_store_configured
         or oidc_enabled
         or oidc_browser_enabled
+        or snowflake_oauth_enabled
         or trusted_proxy_enabled
         or scim_enabled
         or saml_enabled
@@ -808,6 +811,7 @@ def configure_api(
         api_key_configured=bool(api_key or env_key_store_configured or runtime_key_store_configured),
         oidc_enabled=oidc_enabled,
         oidc_browser_enabled=oidc_browser_enabled,
+        snowflake_oauth_enabled=snowflake_oauth_enabled,
         trusted_proxy_enabled=trusted_proxy_enabled,
         scim_enabled=scim_enabled,
         saml_enabled=saml_enabled,

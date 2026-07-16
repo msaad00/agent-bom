@@ -419,6 +419,15 @@ AGENT_BOM_SNOWFLAKE_INVENTORY  # opt-in flag (default OFF) gating read-only esta
 AGENT_BOM_SNOWFLAKE_MAX_ROLES  # max roles enumerated by live SHOW-based identity discovery before the scan warns + caps (default 2000); read in cloud/snowflake.py
 AGENT_BOM_SNOWFLAKE_ORG  # opt-in flag (default OFF) gating read-only Snowflake organization→accounts roll-up discovery (requires ORGADMIN; no-ops gracefully without it); read in cloud/snowflake.py
 AGENT_BOM_SNOWFLAKE_MAX_ACCOUNTS  # max member accounts enumerated by organization roll-up before the scan warns + caps; read in cloud/snowflake.py
+# Snowflake OAuth browser-login settings are resolved per request; the client
+# secret remains secret-source-only and none are scalar tuning knobs.
+AGENT_BOM_SNOWFLAKE_OAUTH_ACCOUNT_URL
+AGENT_BOM_SNOWFLAKE_OAUTH_CLIENT_ID
+AGENT_BOM_SNOWFLAKE_OAUTH_CLIENT_SECRET
+AGENT_BOM_SNOWFLAKE_OAUTH_DEFAULT_ROLE
+AGENT_BOM_SNOWFLAKE_OAUTH_REDIRECT_URI
+AGENT_BOM_SNOWFLAKE_OAUTH_SCOPE
+AGENT_BOM_SNOWFLAKE_OAUTH_TENANT_ID
 AGENT_BOM_STATE_DIR
 AGENT_BOM_TAINT_MAX_DEPTH
 AGENT_BOM_TENANT_ID

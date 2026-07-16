@@ -417,6 +417,7 @@ def configure_auth_runtime(
     scim_enabled: bool = False,
     saml_enabled: bool = False,
     oidc_browser_enabled: bool = False,
+    snowflake_oauth_enabled: bool = False,
     unauthenticated_allowed: bool = False,
 ) -> None:
     """Track the active auth modes for operator/UI introspection surfaces."""
@@ -425,6 +426,8 @@ def configure_auth_runtime(
         configured_modes.append("trusted_proxy")
     if oidc_browser_enabled:
         configured_modes.append("oidc_browser")
+    if snowflake_oauth_enabled:
+        configured_modes.append("snowflake_oauth")
     if oidc_enabled:
         configured_modes.append("oidc_bearer")
     if api_key_configured:
@@ -452,6 +455,8 @@ def configure_auth_runtime(
         recommended_ui_mode = "reverse_proxy_oidc"
     elif oidc_browser_enabled:
         recommended_ui_mode = "oidc_browser"
+    elif snowflake_oauth_enabled:
+        recommended_ui_mode = "snowflake_oauth"
     elif oidc_enabled:
         recommended_ui_mode = "oidc_bearer"
     elif saml_enabled or api_key_configured:
@@ -702,6 +707,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/v1/auth/session",
             "/v1/auth/oidc/login",
             "/v1/auth/oidc/callback",
+            "/v1/auth/snowflake/login",
+            "/v1/auth/snowflake/callback",
             "/v1/auth/saml/metadata",
             "/v1/auth/saml/relay-state",
             "/v1/auth/saml/login",
@@ -719,6 +726,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/v1/auth/session",
             "/v1/auth/oidc/login",
             "/v1/auth/oidc/callback",
+            "/v1/auth/snowflake/login",
+            "/v1/auth/snowflake/callback",
             "/v1/auth/saml/metadata",
             "/v1/auth/saml/relay-state",
             "/v1/auth/saml/login",

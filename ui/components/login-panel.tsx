@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { KeyRound, Loader2, ShieldCheck, Snowflake } from "lucide-react";
 
 import { useAuthState } from "@/components/auth-provider";
 import { BrandLogo } from "@/components/brand-logo";
@@ -12,6 +12,7 @@ import { ssoLoginPreset } from "@/lib/sso-login-presets";
 
 const AUTH_FAILURE_MESSAGE = "That API key wasn't accepted — check it and try again.";
 const OIDC_BROWSER_LOGIN_PATH = "/v1/auth/oidc/login";
+const SNOWFLAKE_OAUTH_LOGIN_PATH = "/v1/auth/snowflake/login";
 
 function isAuthFailure(message: string): boolean {
   const normalized = message.toLowerCase();
@@ -82,10 +83,12 @@ export function LoginPanel({
   if (!error || isAuthFailure(error)) {
     const configuredModes = session?.configured_modes ?? [];
     const browserOidcConfigured = configuredModes.includes("oidc_browser");
+    const snowflakeOauthConfigured = configuredModes.includes("snowflake_oauth");
+    const ssoConfigured = browserOidcConfigured || snowflakeOauthConfigured;
     const trustedProxyConfigured = configuredModes.includes("trusted_proxy");
     const oidcBearerConfigured = configuredModes.includes("oidc_bearer");
-    const proxyOrBearerHint = !browserOidcConfigured && (trustedProxyConfigured || oidcBearerConfigured);
-    const showApiKeyDivider = browserOidcConfigured || proxyOrBearerHint;
+    const proxyOrBearerHint = !ssoConfigured && (trustedProxyConfigured || oidcBearerConfigured);
+    const showApiKeyDivider = ssoConfigured || proxyOrBearerHint;
     const authError = error && isAuthFailure(error) ? AUTH_FAILURE_MESSAGE : null;
     const shownError = formError ?? authError;
     const ssoPreset = ssoLoginPreset(session?.sso_provider);
@@ -99,20 +102,35 @@ export function LoginPanel({
             </div>
             <h1 className="text-xl font-semibold tracking-tight text-[var(--foreground)]">{title}</h1>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
-              {browserOidcConfigured
-                ? `${ssoPreset.buttonLabel}, or use an API key as a fallback.`
+              {ssoConfigured
+                ? `${browserOidcConfigured ? ssoPreset.buttonLabel : "Sign in with Snowflake"}, or use an API key as a fallback.`
                 : "Enter your API key to access the dashboard."}
             </p>
           </div>
 
-          {browserOidcConfigured ? (
-            <div className="mb-6">
-              <a
-                href={OIDC_BROWSER_LOGIN_PATH}
-                className="flex w-full items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400"
-              >
-                {ssoPreset.buttonLabel}
-              </a>
+          {ssoConfigured ? (
+            <div className="mb-6 space-y-3">
+              {browserOidcConfigured ? (
+                <a
+                  href={OIDC_BROWSER_LOGIN_PATH}
+                  className="flex w-full items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400"
+                >
+                  {ssoPreset.buttonLabel}
+                </a>
+              ) : null}
+              {snowflakeOauthConfigured ? (
+                <a
+                  href={SNOWFLAKE_OAUTH_LOGIN_PATH}
+                  className={
+                    browserOidcConfigured
+                      ? "flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)]"
+                      : "flex w-full items-center justify-center gap-2 rounded-xl bg-[#29B5E8] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#1a9fd0]"
+                  }
+                >
+                  <Snowflake className="h-4 w-4" aria-hidden="true" />
+                  Sign in with Snowflake
+                </a>
+              ) : null}
               {showApiKeyDivider ? (
                 <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-[var(--text-tertiary)]">
                   <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
@@ -179,7 +197,7 @@ export function LoginPanel({
                 className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] py-2.5 pl-9 pr-3 font-mono text-sm text-[var(--foreground)] outline-none ring-0 placeholder:text-[var(--text-tertiary)] focus:border-emerald-500"
                 placeholder="Paste your API key"
                 autoComplete="off"
-                autoFocus={!browserOidcConfigured}
+                autoFocus={!ssoConfigured}
               />
             </div>
             <p className="mt-2 text-xs leading-5 text-[var(--text-tertiary)]">
@@ -193,7 +211,7 @@ export function LoginPanel({
               type="submit"
               disabled={!apiKey.trim()}
               className={
-                browserOidcConfigured
+                ssoConfigured
                   ? "mt-5 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)] disabled:cursor-not-allowed disabled:border-[var(--border-subtle)] disabled:bg-[var(--background)] disabled:text-[var(--text-tertiary)]"
                   : "mt-5 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-[var(--surface-elevated)] disabled:text-[var(--text-tertiary)]"
               }
@@ -228,7 +246,7 @@ export function LoginPanel({
             </div>
           </form>
 
-          {!browserOidcConfigured && !proxyOrBearerHint ? (
+          {!ssoConfigured && !proxyOrBearerHint ? (
             <p className="mt-6 border-t border-[var(--border-subtle)] pt-4 text-center text-xs text-[var(--text-tertiary)]">
               Setting up single sign-on? Configure browser OIDC, a reverse proxy, or an OIDC issuer in your deployment.
             </p>

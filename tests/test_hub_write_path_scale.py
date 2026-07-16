@@ -38,12 +38,41 @@ class _FakeCursor:
         return []
 
 
+class _FakeBatchCursor:
+    """Minimal cursor supporting the bulk ``executemany(..., returning=True)``.
+
+    The batched current-state upsert records observations via
+    ``conn.cursor().executemany(... RETURNING canonical_id)``. This fake reports
+    no newly-inserted canonicals (``pgresult=None``, ``nextset()`` False), so the
+    upsert short-circuits after the single ledger-column probe — exactly what the
+    hoist test needs to assert.
+    """
+
+    pgresult = None
+
+    def __enter__(self) -> "_FakeBatchCursor":
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        return None
+
+    def executemany(self, sql: str, params: Any, *, returning: bool = False) -> None:
+        return None
+
+    def fetchall(self) -> list[tuple[Any, ...]]:  # pragma: no cover - guarded by pgresult
+        return []
+
+    def nextset(self) -> bool:
+        return False
+
+
 @dataclass
 class _UpsertConnSpy:
-    """Answers every per-row query so ``upsert_current_batch`` runs end-to-end.
+    """Answers every per-batch query so ``upsert_current_batch`` runs end-to-end.
 
-    Observation INSERT returns rowcount=1 (proceed); the current-row SELECT
-    returns no existing row (treated as a fresh insert). Records executed SQL.
+    Observation writes go through a batched cursor that reports no inserts (so
+    the upsert short-circuits); the partition-ensure + ledger-column probe still
+    run once. Records executed SQL.
     """
 
     executed: list[str] = field(default_factory=list)
@@ -51,6 +80,9 @@ class _UpsertConnSpy:
     def execute(self, sql: str, params: tuple | None = None) -> _FakeCursor:
         self.executed.append(" ".join(sql.split()).lower())
         return _FakeCursor(row=None, rowcount=1)
+
+    def cursor(self) -> _FakeBatchCursor:
+        return _FakeBatchCursor()
 
     def commit(self) -> None:  # pragma: no cover - trivial
         pass

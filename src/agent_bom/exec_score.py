@@ -382,6 +382,7 @@ def compute_exec_score(
         counts=counts,
         finding_total=finding_total,
         floor_summary=floor_summary,
+        breakdown=breakdown,
     )
 
     return {
@@ -402,6 +403,12 @@ def compute_exec_score(
     }
 
 
+# Severity drivers, in the order they appear in ``DRIVER_ORDER`` — the summary
+# ranks these by grade contribution (not by fixed severity) so the blurb names
+# whichever band actually drives the grade.
+_SEVERITY_DRIVERS: tuple[str, ...] = ("critical", "high", "medium", "low", "unrated")
+
+
 def _build_summary(
     *,
     grade: str,
@@ -409,20 +416,34 @@ def _build_summary(
     counts: Mapping[str, int],
     finding_total: int,
     floor_summary: str | None,
+    breakdown: list[dict[str, Any]],
 ) -> str:
-    """Honest one-line blurb. Never claims 'no vulnerabilities' when total > 0."""
+    """Honest one-line blurb. Never claims 'no vulnerabilities' when total > 0.
+
+    Names the DOMINANT driver of the grade — the severity band with the largest
+    penalty contribution (weight × count) — first, then the next-largest, then
+    the KEV / exposure amplifiers. The old blurb named only critical/high (and
+    surfaced medium/low only when both were zero), so ``1 high + 1,000,000
+    medium`` read as "1 high" — overstating the lone high and hiding the mediums
+    that actually drive the F. Ranking by contribution fixes that generally: a
+    critical-dominant estate still leads with critical, a medium-dominant estate
+    leads with medium.
+    """
     score_txt = f"{grade} · {int(round(score))}%"
     if finding_total > 0:
-        bits: list[str] = []
-        if counts["critical"]:
-            bits.append(f"{counts['critical']} critical")
-        if counts["high"]:
-            bits.append(f"{counts['high']} high")
+        ranked = sorted(
+            (b for b in breakdown if b.get("driver") in _SEVERITY_DRIVERS and int(b.get("count") or 0) > 0),
+            key=lambda b: (float(b.get("contribution") or 0.0), int(b.get("count") or 0)),
+            reverse=True,
+        )
+        # Name the top two contributing bands so the dominant driver leads and a
+        # secondary (e.g. the lone high) still shows for context.
+        bits: list[str] = [f"{int(b['count']):,} {b['driver']}" for b in ranked[:2]]
         if counts["kev"]:
-            bits.append(f"{counts['kev']} KEV")
+            bits.append(f"{counts['kev']:,} KEV")
         if counts["exposure"]:
-            bits.append(f"{counts['exposure']} touch secrets")
-        lead = " · ".join(bits) if bits else f"{finding_total} finding(s)"
+            bits.append(f"{counts['exposure']:,} touch secrets")
+        lead = " · ".join(bits) if bits else f"{finding_total:,} finding(s)"
         return f"{score_txt} — {lead} across connected surfaces."
     # No open findings but still graded: a scan ran (floor present). Explain what
     # graded it instead of asserting a clean "no vulnerabilities / strong" line.

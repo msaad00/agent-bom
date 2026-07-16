@@ -181,6 +181,13 @@ class AccessContext:
     device_id: str = ""
     groups: list[str] = field(default_factory=list)
     client_id: str = ""
+    # Device posture (ABAC), enriched from EDR/MDM signals
+    # (:mod:`agent_bom.device_posture`). ``None`` means "not supplied / unknown"
+    # — a ``require_device_*`` policy fails closed on an unknown device rather
+    # than waving it through.
+    device_managed: bool | None = None
+    device_compliant: bool | None = None
+    device_disk_encrypted: bool | None = None
     at: datetime | None = None
 
 
@@ -219,6 +226,12 @@ class ConditionalAccessPolicy:
     allowed_devices: list[str] = field(default_factory=list)
     allowed_groups: list[str] = field(default_factory=list)
     allowed_clients: list[str] = field(default_factory=list)
+    # Device-posture conditions (ABAC), evaluated against EDR/MDM-enriched
+    # context. Each defaults off; when set, the request must prove the posture
+    # attribute is True or the condition fails closed (unknown/False → not met).
+    require_device_managed: bool = False
+    require_device_compliant: bool = False
+    require_device_disk_encrypted: bool = False
     updated_at: str = ""
     description: str = ""
 
@@ -262,6 +275,14 @@ class ConditionalAccessPolicy:
             return False
         # Client: exact match against the allowed MCP client applications.
         if self.allowed_clients and (not ctx.client_id or ctx.client_id not in set(self.allowed_clients)):
+            return False
+        # Device posture (EDR/MDM enriched). A required posture attribute must be
+        # proven True; an unknown (None) or False posture fails closed.
+        if self.require_device_managed and ctx.device_managed is not True:
+            return False
+        if self.require_device_compliant and ctx.device_compliant is not True:
+            return False
+        if self.require_device_disk_encrypted and ctx.device_disk_encrypted is not True:
             return False
         return True
 
@@ -1011,6 +1032,21 @@ def _put_grant_any_tenant(store: AgentIdentityStore, grant: AgentJITGrant) -> No
         store.put_jit_grant(grant)
 
 
+def _export_audit_to_otlp(record: Any) -> None:
+    """Fire-and-forget OTLP-log export of a sealed audit record.
+
+    Batched + non-blocking (the OTLP batch processor flushes off-thread) and a
+    strict no-op unless ``AGENT_BOM_OTEL_LOGS_ENDPOINT`` is configured, so the
+    cleanup loop is never blocked or aborted by observability export.
+    """
+    try:
+        from agent_bom.siem.otlp_logs import export_governance_audit_record
+
+        export_governance_audit_record(record)
+    except Exception:  # noqa: BLE001 — export must never abort cleanup
+        _lifecycle_logger.debug("governance audit OTLP export skipped", exc_info=True)
+
+
 def _emit_audit(record_kwargs: dict[str, Any], audit_log: Any) -> None:
     """Append one governance-audit record, tolerating a sink failure."""
     if audit_log is None:
@@ -1019,7 +1055,8 @@ def _emit_audit(record_kwargs: dict[str, Any], audit_log: Any) -> None:
         from agent_bom.api.governance_audit_log import make_governance_audit_record
 
         record = make_governance_audit_record(**record_kwargs)
-        audit_log.append(record)
+        sealed = audit_log.append(record)
+        _export_audit_to_otlp(sealed)
     except Exception:  # noqa: BLE001 — an audit-sink hiccup must not abort cleanup
         _lifecycle_logger.warning(
             "governance audit append failed for action=%s target=%s; "
@@ -1330,6 +1367,9 @@ def create_conditional_policy(
     allowed_devices: list[str] | None = None,
     allowed_groups: list[str] | None = None,
     allowed_clients: list[str] | None = None,
+    require_device_managed: bool = False,
+    require_device_compliant: bool = False,
+    require_device_disk_encrypted: bool = False,
     description: str = "",
 ) -> ConditionalAccessPolicy:
     """Create an active conditional-access policy for ``tenant_id``."""
@@ -1354,6 +1394,9 @@ def create_conditional_policy(
         allowed_devices=list(allowed_devices or []),
         allowed_groups=list(allowed_groups or []),
         allowed_clients=list(allowed_clients or []),
+        require_device_managed=bool(require_device_managed),
+        require_device_compliant=bool(require_device_compliant),
+        require_device_disk_encrypted=bool(require_device_disk_encrypted),
         updated_at=now,
         description=description[:1000],
     )

@@ -423,6 +423,13 @@ def _str_list(body: dict, key: str, *, max_items: int = 200, max_len: int = 120)
     return [str(v).strip()[:max_len] for v in raw if str(v).strip()][:max_items]
 
 
+def _bool(body: dict, key: str) -> bool:
+    raw = body.get(key, False)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"true", "1", "yes", "on"}
+
+
 def _int_list(body: dict, key: str, *, lo: int, hi: int) -> list[int]:
     raw = body.get(key, [])
     if raw in (None, ""):
@@ -477,6 +484,9 @@ async def create_conditional_access_policy(request: Request, body: dict) -> dict
         allowed_devices=_str_list(body, "allowed_devices", max_len=200),
         allowed_groups=_str_list(body, "allowed_groups", max_len=120),
         allowed_clients=_str_list(body, "allowed_clients", max_len=200),
+        require_device_managed=_bool(body, "require_device_managed"),
+        require_device_compliant=_bool(body, "require_device_compliant"),
+        require_device_disk_encrypted=_bool(body, "require_device_disk_encrypted"),
         description=str(body.get("description", "") or ""),
     )
     log_action(
@@ -987,3 +997,57 @@ async def get_agent_identity(request: Request, identity_id: str) -> dict[str, ob
     if identity is None or identity.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="Agent identity not found")
     return {"schema_version": "agent.identity.v1", "identity": identity.to_public_dict()}
+
+
+# ── Device posture (EDR/MDM) ingest → ABAC device-attribute enrichment ────────
+
+
+@router.post("/device-posture", status_code=201, dependencies=[_dep("config")])
+async def ingest_device_posture(request: Request, body: dict) -> dict[str, object]:
+    """Ingest EDR/MDM device posture/compliance signals for the caller's tenant.
+
+    ``source`` selects the normalizer (``generic`` for the canonical shape, or a
+    vendor field-mapping such as ``crowdstrike`` / ``intune``); ``payload`` is
+    the source's already-fetched JSON. This is read-only, agentless enrichment —
+    no vendor credential is stored here. The normalized signals feed the
+    ``require_device_managed`` / ``require_device_compliant`` /
+    ``require_device_disk_encrypted`` conditional-access conditions.
+    """
+    from agent_bom.device_posture import get_device_posture_store, ingest_device_signals, list_device_connectors
+
+    source = str(body.get("source", "generic") or "generic").strip().lower()
+    if source not in list_device_connectors():
+        raise HTTPException(status_code=400, detail=f"unknown source '{source}'; available: {list_device_connectors()}")
+    payload = body.get("payload", body)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="'payload' must be an object")
+    tenant_id = _tenant(request)
+    try:
+        signals = ingest_device_signals(get_device_posture_store(), source, payload, tenant_id=tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+    log_action(
+        "agent_identity.device_posture_ingested",
+        actor=_actor(request),
+        resource=f"device-posture/{source}",
+        tenant_id=tenant_id,
+        source=source,
+        count=len(signals),
+    )
+    return {
+        "schema_version": "identity.device_posture.v1",
+        "source": source,
+        "ingested": len(signals),
+        "devices": [s.to_public_dict() for s in signals],
+    }
+
+
+@router.get("/device-posture/{device_id}", dependencies=[_dep("read")])
+async def get_device_posture(request: Request, device_id: str) -> dict[str, object]:
+    """Return the latest stored posture signal for one device (tenant-scoped)."""
+    from agent_bom.device_posture import get_device_posture_store
+
+    signal = get_device_posture_store().get(device_id, tenant_id=_tenant(request))
+    if signal is None:
+        raise HTTPException(status_code=404, detail="No device-posture signal for this device")
+    return {"schema_version": "identity.device_posture.v1", "device": signal.to_public_dict()}

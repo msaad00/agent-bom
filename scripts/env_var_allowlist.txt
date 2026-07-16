@@ -310,6 +310,10 @@ AGENT_BOM_OKTA_ORG_URL  # Okta org base URL for read-only NHI discovery; read in
 AGENT_BOM_ENTITLEMENT_FILE
 AGENT_BOM_OTEL_TRACES_ENDPOINT
 AGENT_BOM_OTEL_TRACES_HEADERS
+# OTLP/HTTP endpoint + optional collector-auth headers for exporting the
+# governance audit chain as OTLP logs; read in siem/otlp_logs.py.
+AGENT_BOM_OTEL_LOGS_ENDPOINT
+AGENT_BOM_OTEL_LOGS_HEADERS
 AGENT_BOM_POSTGRES_URL
 # API posture webhook outbox SQLite path override; deploy-time operator setting.
 AGENT_BOM_POSTURE_WEBHOOK_OUTBOX_DB

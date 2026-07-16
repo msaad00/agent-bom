@@ -25,6 +25,9 @@ class TracingHealthSnapshot(TypedDict):
     otlp_export: str
     otlp_endpoint_configured: bool
     otlp_headers_configured: bool
+    otlp_logs_export: str
+    otlp_logs_endpoint_configured: bool
+    otlp_logs_headers_configured: bool
 
 
 def _random_trace_id() -> str:
@@ -222,6 +225,12 @@ def get_tracing_health() -> TracingHealthSnapshot:
     state = _otel_tracing_state
     if state == "unconfigured" and not endpoint:
         state = "disabled"
+    try:
+        from agent_bom.siem.otlp_logs import audit_otlp_health
+
+        logs_health = audit_otlp_health()
+    except Exception:  # noqa: BLE001 - health probe must never raise
+        logs_health = {"otlp_logs_export": "disabled", "otlp_logs_endpoint_configured": False, "otlp_logs_headers_configured": False}
     return {
         "w3c_trace_context": True,
         "w3c_tracestate": True,
@@ -229,4 +238,7 @@ def get_tracing_health() -> TracingHealthSnapshot:
         "otlp_export": state,
         "otlp_endpoint_configured": bool(endpoint),
         "otlp_headers_configured": bool(headers),
+        "otlp_logs_export": str(logs_health["otlp_logs_export"]),
+        "otlp_logs_endpoint_configured": bool(logs_health["otlp_logs_endpoint_configured"]),
+        "otlp_logs_headers_configured": bool(logs_health["otlp_logs_headers_configured"]),
     }

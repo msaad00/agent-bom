@@ -2145,6 +2145,16 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         groups=_request_groups(request),
                         client_id=_request_client_id(request),
                     )
+                    # Enrich the access context with EDR/MDM device posture so a
+                    # require_device_managed/compliant/disk_encrypted policy can
+                    # be evaluated. Unknown devices leave posture None → the
+                    # guardrail fails closed.
+                    try:
+                        from agent_bom.device_posture import apply_device_posture, get_device_posture_store
+
+                        apply_device_posture(get_device_posture_store(), ctx, tenant_id=tenant_id)
+                    except Exception:  # noqa: BLE001 — enrichment must not break the decision path
+                        pass
                     cond_allowed, cond_reason, cond_policy_id = evaluate_conditional_access_for_request(
                         get_agent_identity_store(),
                         tenant_id=tenant_id,

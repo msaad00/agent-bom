@@ -15,6 +15,7 @@ import sqlite3
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -1126,6 +1127,86 @@ class SQLiteGraphStore:
             sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
             conn.commit()
 
+    def save_graph_streaming(
+        self,
+        *,
+        scan_id: str,
+        tenant_id: str = "",
+        nodes: Iterable[UnifiedNode],
+        edges: Iterable[UnifiedEdge],
+        attack_paths: Iterable[AttackPath] = (),
+        interaction_risks: Iterable[Any] = (),
+        created_at: str = "",
+    ) -> dict[str, int]:
+        """Persist a snapshot from node/edge iterables without materialising a graph.
+
+        Bounded-memory equivalent of :meth:`save_graph` (#4055): peak RSS is
+        decoupled from graph size for producers that yield nodes/edges lazily.
+        """
+        with sqlite_graph_store.open_graph_db(self._db_path) as conn:
+            conn.execute(_CREATE_PRESET_TABLE_SQLITE)
+            conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
+            counts = sqlite_graph_store.save_graph_streaming(
+                conn,
+                scan_id=scan_id,
+                tenant_id=tenant_id,
+                nodes=nodes,
+                edges=edges,
+                attack_paths=attack_paths,
+                interaction_risks=interaction_risks,
+                created_at=created_at,
+            )
+            self._refresh_snapshot_search_index(conn, tenant_id=tenant_id, scan_id=scan_id)
+            sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
+            conn.commit()
+            return counts
+
+    def iter_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+    ) -> Iterator[UnifiedNode]:
+        """Yield a snapshot's nodes without building the whole graph in memory."""
+        conn = self._open_ro_conn()
+        if conn is None:
+            return
+        try:
+            yield from sqlite_graph_store.iter_graph_nodes(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                entity_types=entity_types,
+                min_severity_rank=min_severity_rank,
+            )
+        finally:
+            conn.close()
+
+    def iter_edges(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        relationship_types: frozenset[str] | None = None,
+        node_ids: set[str] | None = None,
+    ) -> Iterator[UnifiedEdge]:
+        """Yield a snapshot's edges without building the whole graph in memory."""
+        conn = self._open_ro_conn()
+        if conn is None:
+            return
+        try:
+            yield from sqlite_graph_store.iter_graph_edges(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                relationship_types=relationship_types,
+                node_ids=node_ids,
+            )
+        finally:
+            conn.close()
+
     def load_graph(
         self,
         *,
@@ -1336,9 +1417,7 @@ class SQLiteGraphStore:
                     # for those. risk_summary already carries the severity counts.
                     if snap_row[3] is not None:
                         cached_node_types = {str(k): int(v) for k, v in json.loads(snap_row[3]).items()}
-                        cached_severity_counts = {
-                            str(k): int(v) for k, v in json.loads(snap_row[2] or "{}").items() if k
-                        }
+                        cached_severity_counts = {str(k): int(v) for k, v in json.loads(snap_row[2] or "{}").items() if k}
 
             if stored_node_count is not None:
                 total_nodes = stored_node_count

@@ -1586,6 +1586,46 @@ def test_graph_store_save_graph_batches_postgres_writes(mock_pool, monkeypatch):
     assert [len(batch) for batch in graph_edge_batches] == [2]
 
 
+def test_graph_store_save_graph_streaming_matches_save_graph(mock_pool):
+    """save_graph_streaming (generators) emits the same writes as save_graph (#4055)."""
+    from agent_bom.api.postgres_store import PostgresGraphStore
+    from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+
+    def build() -> UnifiedGraph:
+        g = UnifiedGraph(scan_id="scan-stream", tenant_id="tenant-alpha", created_at="2026-07-16T00:00:00+00:00")
+        g.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="A", severity="high", risk_score=9.0))
+        g.add_node(UnifiedNode(id="pkg:p", entity_type=EntityType.PACKAGE, label="P"))
+        g.add_edge(UnifiedEdge(source="agent:a", target="pkg:p", relationship=RelationshipType.DEPENDS_ON))
+        return g
+
+    def writes(pool) -> dict:
+        calls = pool._conn.executemany_calls
+        return {
+            "nodes": [r for sql, r in calls if "INSERT INTO graph_nodes" in sql and "graph_node_search" not in sql],
+            "search": [r for sql, r in calls if "INSERT INTO graph_node_search" in sql],
+            "edges": [r for sql, r in calls if "INSERT INTO graph_edges" in sql],
+            "snapshot": [(sql, p) for sql, p in pool._conn.executed if "INSERT INTO graph_snapshots" in sql],
+        }
+
+    pool_a = MockPool()
+    PostgresGraphStore(pool=pool_a).save_graph(build())
+
+    pool_b = MockPool()
+    g = build()
+    counts = PostgresGraphStore(pool=pool_b).save_graph_streaming(
+        scan_id=g.scan_id,
+        tenant_id=g.tenant_id,
+        created_at=g.created_at,
+        nodes=(n for n in g.nodes.values()),
+        edges=(e for e in g.edges),
+        attack_paths=iter(g.attack_paths),
+        interaction_risks=iter(g.interaction_risks),
+    )
+
+    assert counts == {"nodes": 2, "edges": 1}
+    assert writes(pool_a) == writes(pool_b)
+
+
 def test_graph_store_search_applies_local_timeout(mock_pool, monkeypatch):
     from agent_bom.api import postgres_graph
     from agent_bom.api.postgres_store import PostgresGraphStore

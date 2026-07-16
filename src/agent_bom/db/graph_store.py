@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sqlite3
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -598,10 +599,52 @@ def _digest_payload(payload: Any) -> str:
 
 
 def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
-    """Persist a UnifiedGraph as an immutable per-scan snapshot."""
-    tenant = normalize_graph_tenant_id(graph.tenant_id)
-    scan = graph.scan_id
-    now = graph.created_at or _now_iso()
+    """Persist a UnifiedGraph as an immutable per-scan snapshot.
+
+    Thin wrapper over :func:`save_graph_streaming` — the streamed path never
+    holds more than one write batch plus the prior snapshot's edge index in
+    memory, so peak RSS is decoupled from graph size (see #4055). Callers that
+    already hold a fully built ``UnifiedGraph`` keep the same behaviour; callers
+    that can produce nodes/edges lazily should call ``save_graph_streaming``
+    directly with generators to avoid materialising the whole graph.
+    """
+    save_graph_streaming(
+        conn,
+        scan_id=graph.scan_id,
+        tenant_id=graph.tenant_id,
+        created_at=graph.created_at,
+        nodes=graph.nodes.values(),
+        edges=graph.edges,
+        attack_paths=graph.attack_paths,
+        interaction_risks=graph.interaction_risks,
+    )
+
+
+def save_graph_streaming(
+    conn: sqlite3.Connection,
+    *,
+    scan_id: str,
+    tenant_id: str = "",
+    nodes: Iterable[UnifiedNode],
+    edges: Iterable[UnifiedEdge],
+    attack_paths: Iterable[AttackPath] = (),
+    interaction_risks: Iterable[InteractionRisk] = (),
+    created_at: str = "",
+) -> dict[str, int]:
+    """Persist a graph snapshot from streamed node/edge iterables.
+
+    Unlike :func:`save_graph`, this never requires a fully materialised
+    ``UnifiedGraph``. ``nodes`` and ``edges`` are consumed lazily and flushed to
+    SQLite in bounded batches, and the snapshot's node/edge/severity/type
+    breakdowns are accumulated incrementally as rows stream through — so a
+    producer that yields nodes/edges on the fly keeps peak RSS flat regardless
+    of graph size (#4055). Writes are byte-identical to ``save_graph``.
+
+    Returns the persisted ``{"nodes": N, "edges": M}`` counts.
+    """
+    tenant = normalize_graph_tenant_id(tenant_id)
+    scan = scan_id
+    now = created_at or _now_iso()
     batch_size = _graph_write_batch_size()
     previous_scan = latest_snapshot_id(conn, tenant_id=tenant)
     if previous_scan == scan:
@@ -618,12 +661,31 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
         ):
             previous_edges[(row["source_id"], row["target_id"], row["relationship"])] = row
 
+    # Incrementally accumulated snapshot stats — mirrors UnifiedGraph.stats()
+    # (severity_counts only counts truthy severities; node_type_counts is every
+    # node) without a second pass over a fully materialised graph.
+    node_count = 0
+    edge_count = 0
+    severity_counts: dict[str, int] = defaultdict(int)
+    type_counts: dict[str, int] = defaultdict(int)
+    # Retired-edge detection: start with the prior snapshot's edge keys and
+    # discard each one still present in the incoming stream. This bounds the
+    # extra set to the PREVIOUS snapshot size (empty on a first save) rather
+    # than tracking every incoming edge key — so peak RSS stays flat.
+    removed_edge_keys: set[tuple[str, str, str]] = set(previous_edges)
+
     # ── Nodes ──
     def node_rows() -> Iterator[tuple[Any, ...]]:
-        for node in graph.nodes.values():
+        nonlocal node_count
+        for node in nodes:
+            node_count += 1
+            et = node.entity_type.value if isinstance(node.entity_type, EntityType) else node.entity_type
+            type_counts[et] += 1
+            if node.severity:
+                severity_counts[node.severity] += 1
             yield (
                 node.id,
-                node.entity_type.value if isinstance(node.entity_type, EntityType) else node.entity_type,
+                et,
                 node.label,
                 node.category_uid,
                 node.class_uid,
@@ -658,8 +720,11 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
 
     # ── Edges ──
     def edge_rows() -> Iterator[tuple[Any, ...]]:
-        for edge in graph.edges:
-            rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+        nonlocal edge_count
+        for edge in edges:
+            edge_count += 1
+            rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+            removed_edge_keys.discard((edge.source, edge.target, rel))
             previous = previous_edges.get((edge.source, edge.target, rel))
             valid_from = edge.valid_from or edge.first_seen or now
             first_seen = edge.first_seen
@@ -703,15 +768,6 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
         batch_size=batch_size,
     )
 
-    incoming_edge_keys = {
-        (
-            edge.source,
-            edge.target,
-            edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship),
-        )
-        for edge in graph.edges
-    }
-    removed_edge_keys = set(previous_edges) - incoming_edge_keys
     if removed_edge_keys:
         _executemany_batched(
             conn,
@@ -725,7 +781,9 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
         )
 
     # ── Attack paths ──
-    for ap in graph.attack_paths:
+    attack_path_count = 0
+    for ap in attack_paths:
+        attack_path_count += 1
         conn.execute(
             """\
             INSERT OR REPLACE INTO attack_paths (
@@ -752,7 +810,7 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
         )
 
     # ── Interaction risks ──
-    for ir in graph.interaction_risks:
+    for ir in interaction_risks:
         conn.execute(
             """\
             INSERT OR REPLACE INTO interaction_risks (
@@ -768,7 +826,6 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
     # totals so inventory/summary serves them from this row instead of running a
     # GROUP BY over every node per request (O(N) → O(1)). ``risk_summary`` already
     # carries the severity breakdown; ``node_type_counts`` adds the entity types.
-    stats = graph.stats()
     conn.execute(
         """
         INSERT OR REPLACE INTO graph_snapshots
@@ -779,19 +836,19 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
             scan,
             tenant,
             now,
-            stats["total_nodes"],
-            stats["total_edges"],
-            json.dumps(stats.get("severity_counts", {})),
-            json.dumps(stats.get("node_types", {})),
+            node_count,
+            edge_count,
+            json.dumps(dict(severity_counts)),
+            json.dumps(dict(type_counts)),
         ),
     )
 
     conn.commit()
     logger.info(
         "Saved graph: %d nodes, %d edges, %d attack paths (scan=%s)",
-        len(graph.nodes),
-        len(graph.edges),
-        len(graph.attack_paths),
+        node_count,
+        edge_count,
+        attack_path_count,
         scan,
     )
 
@@ -804,6 +861,8 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
             logger.info("Purged %d expired graph snapshot(s)", result["purged_count"])
     except sqlite3.Error as exc:
         logger.warning("Graph snapshot retention purge skipped: %s", sanitize_text(str(exc)))
+
+    return {"nodes": node_count, "edges": edge_count}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -923,6 +982,110 @@ def load_graph(
             )
 
     return graph
+
+
+def _node_from_snapshot_row(row: sqlite3.Row) -> UnifiedNode:
+    return UnifiedNode(
+        id=row["id"],
+        entity_type=EntityType(row["entity_type"]),
+        label=row["label"],
+        category_uid=row["category_uid"],
+        class_uid=row["class_uid"],
+        type_uid=row["type_uid"],
+        status=NodeStatus(row["status"]),
+        risk_score=row["risk_score"],
+        severity=row["severity"] or "",
+        severity_id=row["severity_id"],
+        first_seen=row["first_seen"],
+        last_seen=row["last_seen"],
+        attributes=json.loads(row["attributes"]),
+        compliance_tags=json.loads(row["compliance_tags"]),
+        data_sources=json.loads(row["data_sources"]),
+        dimensions=NodeDimensions.from_dict(json.loads(row["dimensions"])),
+    )
+
+
+def _edge_from_snapshot_row(row: sqlite3.Row) -> UnifiedEdge:
+    return UnifiedEdge(
+        source=row["source_id"],
+        target=row["target_id"],
+        relationship=RelationshipType(row["relationship"]),
+        direction=row["direction"],
+        weight=row["weight"],
+        traversable=bool(row["traversable"]),
+        first_seen=row["first_seen"],
+        last_seen=row["last_seen"],
+        valid_from=row["valid_from"] or row["first_seen"],
+        valid_to=row["valid_to"],
+        confidence=row["confidence"],
+        provenance=json.loads(row["provenance"] or "{}"),
+        source_scan_id=row["source_scan_id"] or row["scan_id"],
+        source_run_id=row["source_run_id"] or "",
+        evidence=json.loads(row["evidence"]),
+        activity_id=row["activity_id"],
+    )
+
+
+def iter_graph_nodes(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    scan_id: str = "",
+    entity_types: set[str] | None = None,
+    min_severity_rank: int = 0,
+) -> Iterator[UnifiedNode]:
+    """Yield a snapshot's nodes one at a time without building a ``UnifiedGraph``.
+
+    Bounded-memory read primitive for callers that genuinely need to iterate the
+    whole graph (export, counting, streaming transforms) but do not need the
+    adjacency indexes ``load_graph`` builds — peak RSS stays flat as the snapshot
+    grows (#4055). ``sqlite3`` streams rows from the cursor lazily.
+    """
+    tenant_id = normalize_graph_tenant_id(tenant_id)
+    effective_scan_id, _created_at = _resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+    if not effective_scan_id:
+        return
+    query = "SELECT * FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?"
+    params: list[Any] = [tenant_id, effective_scan_id]
+    if entity_types:
+        placeholders = ",".join("?" * len(entity_types))
+        query += f" AND entity_type IN ({placeholders})"  # nosec B608 - placeholders are only "?" markers
+        params.extend(sorted(entity_types))
+    for row in conn.execute(query, params):
+        if min_severity_rank and SEVERITY_RANK.get(row["severity"] or "", 0) < min_severity_rank:
+            continue
+        yield _node_from_snapshot_row(row)
+
+
+def iter_graph_edges(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    scan_id: str = "",
+    relationship_types: frozenset[str] | None = None,
+    node_ids: set[str] | None = None,
+) -> Iterator[UnifiedEdge]:
+    """Yield a snapshot's edges one at a time without building a ``UnifiedGraph``.
+
+    When ``node_ids`` is given, only edges whose both endpoints are in that set
+    are yielded — mirroring ``load_graph``'s endpoint filter for the case where
+    the node stream was itself filtered. When omitted, every persisted edge is
+    yielded (both endpoints exist by construction for a full snapshot).
+    """
+    tenant_id = normalize_graph_tenant_id(tenant_id)
+    effective_scan_id, _created_at = _resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+    if not effective_scan_id:
+        return
+    query = "SELECT * FROM graph_edges WHERE tenant_id = ? AND scan_id = ?"
+    params: list[Any] = [tenant_id, effective_scan_id]
+    if relationship_types:
+        placeholders = ",".join("?" * len(relationship_types))
+        query += f" AND relationship IN ({placeholders})"  # nosec B608 - placeholders are only "?" markers
+        params.extend(sorted(relationship_types))
+    for row in conn.execute(query, params):
+        if node_ids is not None and (row["source_id"] not in node_ids or row["target_id"] not in node_ids):
+            continue
+        yield _edge_from_snapshot_row(row)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

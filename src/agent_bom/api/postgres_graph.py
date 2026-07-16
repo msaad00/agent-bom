@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Iterator, Sequence
 
@@ -120,23 +121,30 @@ def _batched_rows(rows: Iterable[Sequence[Any]], batch_size: int) -> Iterator[li
         yield batch
 
 
-def _execute_many_batched(conn, sql: str, rows: Iterable[Sequence[Any]], *, batch_size: int) -> int:
-    """Execute DML rows in bounded batches.
+def _executemany(conn, sql: str, batch: Sequence[Sequence[Any]]) -> None:
+    """Execute one already-batched set of rows against a psycopg-like conn.
 
     psycopg connections expose ``cursor().executemany``. Tests and light mocks
     often only expose ``execute`` or ``executemany`` directly, so keep a small
-    compatibility fallback while preserving bounded memory behavior.
+    compatibility fallback.
     """
+    if not batch:
+        return
+    if hasattr(conn, "executemany"):
+        conn.executemany(sql, batch)
+    elif hasattr(conn, "cursor"):
+        with conn.cursor() as cur:
+            cur.executemany(sql, batch)
+    else:
+        for row in batch:
+            conn.execute(sql, row)
+
+
+def _execute_many_batched(conn, sql: str, rows: Iterable[Sequence[Any]], *, batch_size: int) -> int:
+    """Execute DML rows in bounded batches (peak memory ~one batch)."""
     total = 0
     for batch in _batched_rows(rows, batch_size):
-        if hasattr(conn, "executemany"):
-            conn.executemany(sql, batch)
-        elif hasattr(conn, "cursor"):
-            with conn.cursor() as cur:
-                cur.executemany(sql, batch)
-        else:
-            for row in batch:
-                conn.execute(sql, row)
+        _executemany(conn, sql, batch)
         total += len(batch)
     return total
 
@@ -518,12 +526,46 @@ class PostgresGraphStore:
         return total
 
     def save_graph(self, graph) -> None:
+        """Persist a fully built ``UnifiedGraph`` (delegates to the streamed path)."""
+        self.save_graph_streaming(
+            scan_id=graph.scan_id or "",
+            tenant_id=graph.tenant_id,
+            nodes=graph.nodes.values(),
+            edges=graph.edges,
+            attack_paths=graph.attack_paths,
+            interaction_risks=graph.interaction_risks,
+            created_at=graph.created_at,
+        )
+
+    def save_graph_streaming(
+        self,
+        *,
+        scan_id: str,
+        tenant_id: str = "",
+        nodes: Iterable[Any],
+        edges: Iterable[Any],
+        attack_paths: Iterable[Any] = (),
+        interaction_risks: Iterable[Any] = (),
+        created_at: str = "",
+    ) -> dict[str, int]:
+        """Persist a snapshot from node/edge iterables without materialising a graph.
+
+        Bounded-memory equivalent of :meth:`save_graph` (#4055): nodes and edges
+        are consumed lazily and flushed in bounded batches, and the snapshot's
+        node/edge/severity breakdowns are accumulated incrementally — so a
+        producer that yields nodes/edges on the fly keeps peak RSS flat. The node
+        and node-search rows are written in a single pass so the node stream is
+        consumed exactly once.
+        """
         from agent_bom.graph import RelationshipType
 
-        scan = graph.scan_id or ""
-        tenant = normalize_graph_tenant_id(graph.tenant_id)
-        now = graph.created_at or datetime.now(timezone.utc).isoformat()
+        scan = scan_id or ""
+        tenant = normalize_graph_tenant_id(tenant_id)
+        now = created_at or datetime.now(timezone.utc).isoformat()
         batch_size = _graph_write_batch_size()
+        node_count = 0
+        edge_count = 0
+        severity_counts: dict[str, int] = defaultdict(int)
 
         with _tenant_connection(self._pool) as conn:
             previous_row = conn.execute(
@@ -551,45 +593,18 @@ class PostgresGraphStore:
                 ).fetchall():
                     previous_edges[(row[0], row[1], row[2])] = row
 
-            def node_rows() -> Iterator[tuple[Any, ...]]:
-                for node in graph.nodes.values():
-                    yield (
-                        node.id,
-                        node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type,
-                        node.label,
-                        node.category_uid,
-                        node.class_uid,
-                        node.type_uid,
-                        node.status.value if hasattr(node.status, "value") else node.status,
-                        node.risk_score,
-                        node.severity,
-                        node.severity_id,
-                        node.first_seen,
-                        node.last_seen,
-                        json.dumps(node.attributes, default=str),
-                        json.dumps(node.compliance_tags),
-                        json.dumps(node.data_sources),
-                        json.dumps(node.dimensions.to_dict()),
-                        scan,
-                        tenant,
-                    )
-
-            def node_search_rows() -> Iterator[tuple[Any, ...]]:
-                for node in graph.nodes.values():
-                    yield (
-                        node.id,
-                        tenant,
-                        scan,
-                        node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type),
-                        (node.severity or "").lower(),
-                        " ".join(node.compliance_tags).lower(),
-                        " ".join(node.data_sources).lower(),
-                        _node_search_text(node),
-                    )
+            # Retired-edge detection: start from the prior snapshot's edge keys
+            # and discard each one still present in the incoming stream. This
+            # bounds the tracking set to the PREVIOUS snapshot size instead of
+            # materialising a second O(edges) set of every incoming key (#4055).
+            removed_edge_keys: set[tuple[str, str, str]] = set(previous_edges)
 
             def edge_rows() -> Iterator[tuple[Any, ...]]:
-                for edge in graph.edges:
-                    rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+                nonlocal edge_count
+                for edge in edges:
+                    edge_count += 1
+                    rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+                    removed_edge_keys.discard((edge.source, edge.target, rel))
                     previous = previous_edges.get((edge.source, edge.target, rel))
                     valid_from = edge.valid_from or edge.first_seen or now
                     first_seen = edge.first_seen
@@ -620,7 +635,7 @@ class PostgresGraphStore:
                     )
 
             def attack_path_rows() -> Iterator[tuple[Any, ...]]:
-                for ap in graph.attack_paths:
+                for ap in attack_paths:
                     yield (
                         ap.source,
                         ap.target,
@@ -638,7 +653,7 @@ class PostgresGraphStore:
                     )
 
             def interaction_risk_rows() -> Iterator[tuple[Any, ...]]:
-                for ir in graph.interaction_risks:
+                for ir in interaction_risks:
                     yield (
                         ir.pattern,
                         json.dumps(sorted(ir.agents)),
@@ -649,9 +664,11 @@ class PostgresGraphStore:
                         tenant,
                     )
 
-            _execute_many_batched(
-                conn,
-                """
+            # Nodes + their search-index rows are written in a SINGLE pass so the
+            # node stream is consumed exactly once (it may be a generator). Both
+            # per-batch buffers are bounded by ``batch_size``; snapshot stats are
+            # accumulated here to avoid a second pass over a materialised graph.
+            _node_sql = """
                 INSERT INTO graph_nodes (
                     id, entity_type, label, category_uid, class_uid, type_uid,
                     status, risk_score, severity, severity_id,
@@ -674,13 +691,8 @@ class PostgresGraphStore:
                     compliance_tags = EXCLUDED.compliance_tags,
                     data_sources = EXCLUDED.data_sources,
                     dimensions = EXCLUDED.dimensions
-                """,
-                node_rows(),
-                batch_size=batch_size,
-            )
-            _execute_many_batched(
-                conn,
                 """
+            _search_sql = """
                 INSERT INTO graph_node_search (
                     node_id, tenant_id, scan_id, entity_type, severity, compliance_tags, data_sources, search_text
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -690,10 +702,59 @@ class PostgresGraphStore:
                     compliance_tags = EXCLUDED.compliance_tags,
                     data_sources = EXCLUDED.data_sources,
                     search_text = EXCLUDED.search_text
-                """,
-                node_search_rows(),
-                batch_size=batch_size,
-            )
+                """
+            node_batch: list[tuple[Any, ...]] = []
+            search_batch: list[tuple[Any, ...]] = []
+
+            def _flush_nodes() -> None:
+                _executemany(conn, _node_sql, node_batch)
+                _executemany(conn, _search_sql, search_batch)
+                node_batch.clear()
+                search_batch.clear()
+
+            for node in nodes:
+                node_count += 1
+                if node.severity:
+                    severity_counts[node.severity] += 1
+                entity_val = node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type
+                node_batch.append(
+                    (
+                        node.id,
+                        entity_val,
+                        node.label,
+                        node.category_uid,
+                        node.class_uid,
+                        node.type_uid,
+                        node.status.value if hasattr(node.status, "value") else node.status,
+                        node.risk_score,
+                        node.severity,
+                        node.severity_id,
+                        node.first_seen,
+                        node.last_seen,
+                        json.dumps(node.attributes, default=str),
+                        json.dumps(node.compliance_tags),
+                        json.dumps(node.data_sources),
+                        json.dumps(node.dimensions.to_dict()),
+                        scan,
+                        tenant,
+                    )
+                )
+                search_batch.append(
+                    (
+                        node.id,
+                        tenant,
+                        scan,
+                        str(entity_val),
+                        (node.severity or "").lower(),
+                        " ".join(node.compliance_tags).lower(),
+                        " ".join(node.data_sources).lower(),
+                        _node_search_text(node),
+                    )
+                )
+                if len(node_batch) >= batch_size:
+                    _flush_nodes()
+            _flush_nodes()
+
             _execute_many_batched(
                 conn,
                 """
@@ -721,15 +782,6 @@ class PostgresGraphStore:
                 edge_rows(),
                 batch_size=batch_size,
             )
-            incoming_edge_keys = {
-                (
-                    edge.source,
-                    edge.target,
-                    edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship),
-                )
-                for edge in graph.edges
-            }
-            removed_edge_keys = set(previous_edges) - incoming_edge_keys
             if removed_edge_keys:
                 _execute_many_batched(
                     conn,
@@ -783,7 +835,6 @@ class PostgresGraphStore:
                 batch_size=batch_size,
             )
 
-            stats = graph.stats()
             conn.execute(
                 """
                 INSERT INTO graph_snapshots (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary)
@@ -798,9 +849,9 @@ class PostgresGraphStore:
                     scan,
                     tenant,
                     now,
-                    stats["total_nodes"],
-                    stats["total_edges"],
-                    json.dumps(stats.get("severity_counts", {})),
+                    node_count,
+                    edge_count,
+                    json.dumps(dict(severity_counts)),
                 ),
             )
             conn.commit()
@@ -809,6 +860,8 @@ class PostgresGraphStore:
             # snapshot history does not grow unbounded. Best-effort: a purge
             # failure must never fail the durable save that already committed.
             self._purge_expired_snapshots(conn, tenant)
+
+        return {"nodes": node_count, "edges": edge_count}
 
     def _purge_expired_snapshots(self, conn, tenant: str) -> None:
         """Delete this tenant's graph snapshots older than the retention window.

@@ -133,7 +133,7 @@ test("captures connections page and wizard", async ({ page }, testInfo) => {
   const setupExternalId = (await dialog.getByTestId("wizard-external-id").textContent())?.trim();
   expect(setupExternalId).toMatch(/^[a-f0-9]{32}$/);
   await dialog.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(page.getByText("Read-only connection · step 3 of 3")).toBeVisible();
+  await expect(page.getByText("Read-only connection · step 3 of 4")).toBeVisible();
   await dialog.getByPlaceholder("Production account").fill("Production account");
   await dialog.getByPlaceholder(/arn:aws:iam/).fill("arn:aws:iam::123456789012:role/agent-bom-readonly");
   await expect(dialog.getByTestId("wizard-external-id-details")).toHaveText(setupExternalId!);

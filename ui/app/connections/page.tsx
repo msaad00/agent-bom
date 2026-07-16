@@ -942,12 +942,20 @@ function ConnectionsHub() {
 
   const handleCreated = useCallback(
     (created: CloudConnectionRecord) => {
-      setWizardOpen(false);
+      // The connection now exists; the wizard stays open on its Verify step so the
+      // operator sees the live connectivity/permission check before closing. We
+      // refresh the background list so the new row appears immediately.
       setMessage(`Connected ${created.display_name}.`);
       void refresh();
     },
     [refresh],
   );
+
+  const handleWizardClose = useCallback(() => {
+    setWizardOpen(false);
+    // Pick up any status change from an in-wizard verify / first scan.
+    void refresh();
+  }, [refresh]);
 
   const handleRegisterSource = useCallback(
     (kind: SourceKind) => {
@@ -1445,7 +1453,7 @@ function ConnectionsHub() {
       {wizardOpen ? (
         <AddConnectionWizard
           initialProvider={wizardProvider}
-          onClose={() => setWizardOpen(false)}
+          onClose={handleWizardClose}
           onCreated={handleCreated}
         />
       ) : null}
@@ -3162,6 +3170,9 @@ function buildWizardForm(provider: string): WizardForm {
   };
 }
 
+type WizardStep = 0 | 1 | 2 | 3;
+type VerifyState = "idle" | "running" | "ok" | "error";
+
 function AddConnectionWizard({
   initialProvider,
   onClose,
@@ -3171,7 +3182,7 @@ function AddConnectionWizard({
   onClose: () => void;
   onCreated: (created: CloudConnectionRecord) => void;
 }) {
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [step, setStep] = useState<WizardStep>(0);
   const [form, setForm] = useState<WizardForm>(() =>
     buildWizardForm(initialProvider && providerOption(initialProvider) ? initialProvider : "aws"),
   );
@@ -3179,6 +3190,14 @@ function AddConnectionWizard({
   const [formError, setFormError] = useState<string | null>(null);
   const [generatedExternalId, setGeneratedExternalId] = useState("");
   const [grantMethod, setGrantMethod] = useState<CloudGrantMethod>("cli");
+  // Verify step: the created connection + the live connectivity/permission check
+  // and optional first scan run against the real /test and /scan endpoints.
+  const [createdRecord, setCreatedRecord] = useState<CloudConnectionRecord | null>(null);
+  const [verifyState, setVerifyState] = useState<VerifyState>("idle");
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [scanState, setScanState] = useState<VerifyState>("idle");
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanId, setScanId] = useState<string | null>(null);
 
   const provider = useMemo(
     () => providerOption(form.provider) ?? PROVIDER_OPTIONS[0]!,
@@ -3225,7 +3244,7 @@ function AddConnectionWizard({
   }
 
   function goNext() {
-    setStep((current) => (current + 1) as 0 | 1 | 2);
+    setStep((current) => (current === 3 ? current : ((current + 1) as WizardStep)));
   }
 
   function handleRegenerateExternalId() {
@@ -3233,6 +3252,41 @@ function AddConnectionWizard({
     setGeneratedExternalId(value);
     setForm((current) => ({ ...current, external_id: value }));
   }
+
+  const runVerify = useCallback(async (record: CloudConnectionRecord) => {
+    setVerifyState("running");
+    setVerifyError(null);
+    try {
+      await api.testCloudConnection(record.id);
+      setVerifyState("ok");
+    } catch (err) {
+      // Surface the sanitized "why + how to fix" from the API verbatim — never a
+      // fabricated success. A failed verify keeps the connection in error state.
+      setVerifyError(err instanceof Error ? err.message : "Connectivity check failed.");
+      setVerifyState("error");
+    }
+  }, []);
+
+  async function runFirstScan() {
+    if (!createdRecord) return;
+    setScanState("running");
+    setScanError(null);
+    try {
+      const result = await api.scanCloudConnection(createdRecord.id);
+      setScanId(typeof result.scan_id === "string" ? result.scan_id : null);
+      setScanState("ok");
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : "First scan failed.");
+      setScanState("error");
+    }
+  }
+
+  // Auto-run the real connectivity/permission check on entering the Verify step.
+  useEffect(() => {
+    if (step === 3 && createdRecord && verifyState === "idle") {
+      void runVerify(createdRecord);
+    }
+  }, [step, createdRecord, verifyState, runVerify]);
 
   const providerMeta = cloudProviderMeta(provider.value);
   const deployScript = buildGrantScript(
@@ -3243,6 +3297,9 @@ function AddConnectionWizard({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Only the Details step creates the connection; guard against Enter on
+    // other steps re-submitting (and re-creating) an existing connection.
+    if (step !== 2) return;
     setFormError(null);
 
     const displayName = form.display_name.trim();
@@ -3289,8 +3346,13 @@ function AddConnectionWizard({
     setSubmitting(true);
     try {
       const created = await api.createCloudConnection(payload);
+      // Drop the secret from client state the moment it is persisted.
       setForm((current) => ({ ...current, external_id: "" }));
+      setCreatedRecord(created);
+      // Refresh the background list + toast, but keep the wizard open so the
+      // operator sees the live Verify step before finishing.
       onCreated(created);
+      setStep(3);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to create connection.");
     } finally {
@@ -3317,7 +3379,7 @@ function AddConnectionWizard({
             </span>
             <div>
               <h2 className="text-base font-semibold text-[var(--foreground)]">Add cloud account</h2>
-              <p className="text-xs text-[var(--text-secondary)]">Read-only connection · step {step + 1} of 3</p>
+              <p className="text-xs text-[var(--text-secondary)]">Read-only connection · step {step + 1} of 4</p>
             </div>
           </div>
           <button
@@ -3548,23 +3610,117 @@ function AddConnectionWizard({
               </div>
             ) : null}
 
+            {step === 3 ? (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">Verify connectivity</h3>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                    We broker a short-lived read-only credential and check access — no inventory, findings, or writes.
+                  </p>
+                </div>
+
+                {verifyState === "running" ? (
+                  <div className="flex items-center gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+                    <Loader2 className="h-4 w-4 animate-spin text-[var(--text-tertiary)]" />
+                    Verifying read-only access…
+                  </div>
+                ) : null}
+
+                {verifyState === "ok" ? (
+                  <div className="space-y-3 rounded-xl border border-emerald-500/30 dark:border-emerald-800/70 bg-emerald-500/10 dark:bg-emerald-950/20 px-4 py-3">
+                    <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-200">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Read-only access verified
+                    </p>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      The connection is active. Run a first read-only scan now, or close and scan later from the table.
+                    </p>
+                    {scanState === "ok" ? (
+                      <p className="flex flex-wrap items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-200">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        First scan started{scanId ? ` — ${scanId}` : "."}
+                      </p>
+                    ) : scanState === "error" ? (
+                      <div className="space-y-2">
+                        <p className="flex items-start gap-1.5 text-xs text-red-700 dark:text-red-300">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span>{scanError}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void runFirstScan()}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-500"
+                        >
+                          <RefreshCcw className="h-3.5 w-3.5" /> Retry scan
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void runFirstScan()}
+                        disabled={scanState === "running"}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {scanState === "running" ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting first scan…
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="h-3.5 w-3.5" /> Run first scan
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+
+                {verifyState === "error" ? (
+                  <div className="space-y-3 rounded-xl border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/20 px-4 py-3">
+                    <p className="flex items-center gap-2 text-sm font-medium text-red-700 dark:text-red-300">
+                      <AlertTriangle className="h-4 w-4" />
+                      Verification failed
+                    </p>
+                    <p className="text-xs leading-5 text-[var(--text-secondary)]">{verifyError}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)]">
+                      The connection was saved but is not active. Fix the grant (or its permissions) and retry — nothing
+                      was scanned.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => createdRecord && void runVerify(createdRecord)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+                    >
+                      <RefreshCcw className="h-3.5 w-3.5" /> Retry verification
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {formError ? <p className="text-sm text-red-400">{formError}</p> : null}
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-[color:var(--border-subtle)] px-5 py-4">
-            <button
-              type="button"
-              onClick={() => (step === 0 ? onClose() : setStep((s) => (s - 1) as 0 | 1 | 2))}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-            >
-              {step === 0 ? (
-                "Cancel"
-              ) : (
-                <>
-                  <ArrowLeft className="h-4 w-4" /> Back
-                </>
-              )}
-            </button>
+            {step === 3 ? (
+              // The connection already exists; going back would re-create it. Verify
+              // and first-scan actions live in the panel; the footer only closes.
+              <span aria-hidden className="h-9" />
+            ) : (
+              <button
+                type="button"
+                onClick={() => (step === 0 ? onClose() : setStep((s) => (s - 1) as WizardStep))}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+              >
+                {step === 0 ? (
+                  "Cancel"
+                ) : (
+                  <>
+                    <ArrowLeft className="h-4 w-4" /> Back
+                  </>
+                )}
+              </button>
+            )}
             {step < 2 ? (
               <button
                 key="wizard-next"
@@ -3574,7 +3730,7 @@ function AddConnectionWizard({
               >
                 Next <ArrowRight className="h-4 w-4" />
               </button>
-            ) : (
+            ) : step === 2 ? (
               <button
                 key="wizard-submit"
                 type="submit"
@@ -3583,6 +3739,15 @@ function AddConnectionWizard({
               >
                 <Plus className="h-4 w-4" />
                 {submitting ? "Connecting…" : "Create connection"}
+              </button>
+            ) : (
+              <button
+                key="wizard-done"
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400"
+              >
+                Done
               </button>
             )}
           </div>
@@ -3593,7 +3758,7 @@ function AddConnectionWizard({
 }
 
 function StepIndicator({ step }: { step: number }) {
-  const labels = ["Provider", "Setup", "Details"];
+  const labels = ["Provider", "Setup", "Details", "Verify"];
   return (
     <div className="flex items-center gap-2">
       {labels.map((label, index) => (

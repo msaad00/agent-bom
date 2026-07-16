@@ -321,9 +321,7 @@ def _go_osv(import_path: str, symbols: list[str], module: str = "github.com/aws/
 
 def test_go_module_finding_reaches_subpackage_import_symbol() -> None:
     # Finding is the module; the reached import path is a sub-package of it.
-    index = SymbolReachIndex.from_reaches(
-        [_go_reach("github.com/aws/aws-sdk-go/service/s3/s3crypto", "NewDecryptionClient")]
-    )
+    index = SymbolReachIndex.from_reaches([_go_reach("github.com/aws/aws-sdk-go/service/s3/s3crypto", "NewDecryptionClient")])
     signal = classify_reachability(
         package="github.com/aws/aws-sdk-go",
         advisory=_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient", "NewEncryptionClient"]),
@@ -337,9 +335,7 @@ def test_go_module_finding_reaches_subpackage_import_symbol() -> None:
 
 def test_go_module_package_reachable_when_affected_symbol_not_called() -> None:
     # A benign symbol of a sub-package is reached; the advisory flags another.
-    index = SymbolReachIndex.from_reaches(
-        [_go_reach("github.com/aws/aws-sdk-go/service/s3", "ListBuckets")]
-    )
+    index = SymbolReachIndex.from_reaches([_go_reach("github.com/aws/aws-sdk-go/service/s3", "ListBuckets")])
     signal = classify_reachability(
         package="github.com/aws/aws-sdk-go",
         advisory=_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient"]),
@@ -353,9 +349,7 @@ def test_go_module_package_reachable_when_affected_symbol_not_called() -> None:
 def test_go_module_prefix_respects_module_boundary() -> None:
     # A different module that merely shares a string prefix must not match:
     # ``…/aws-sdk-goodies`` is not a sub-package of ``…/aws-sdk-go``.
-    index = SymbolReachIndex.from_reaches(
-        [_go_reach("github.com/aws/aws-sdk-goodies/crypto", "NewDecryptionClient")]
-    )
+    index = SymbolReachIndex.from_reaches([_go_reach("github.com/aws/aws-sdk-goodies/crypto", "NewDecryptionClient")])
     signal = classify_reachability(
         package="github.com/aws/aws-sdk-go",
         advisory=_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient"]),
@@ -368,7 +362,7 @@ def test_go_module_prefix_respects_module_boundary() -> None:
 def test_go_function_reachable_from_real_ast_analysis(tmp_path: Path) -> None:
     (tmp_path / "main.go").write_text(
         "package main\n\n"
-        'import (\n'
+        "import (\n"
         '\t"github.com/aws/aws-sdk-go/service/s3/s3crypto"\n'
         '\t"github.com/mark3labs/mcp-go/server"\n'
         ")\n\n"

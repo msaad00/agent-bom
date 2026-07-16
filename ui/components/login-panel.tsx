@@ -8,6 +8,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { api } from "@/lib/api";
 import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { clearSessionApiKey } from "@/lib/auth";
+import { ssoLoginPreset } from "@/lib/sso-login-presets";
 
 const AUTH_FAILURE_MESSAGE = "That API key wasn't accepted — check it and try again.";
 const OIDC_BROWSER_LOGIN_PATH = "/v1/auth/oidc/login";
@@ -87,6 +88,7 @@ export function LoginPanel({
     const showApiKeyDivider = browserOidcConfigured || proxyOrBearerHint;
     const authError = error && isAuthFailure(error) ? AUTH_FAILURE_MESSAGE : null;
     const shownError = formError ?? authError;
+    const ssoPreset = ssoLoginPreset(session?.sso_provider);
 
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
@@ -98,7 +100,7 @@ export function LoginPanel({
             <h1 className="text-xl font-semibold tracking-tight text-[var(--foreground)]">{title}</h1>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
               {browserOidcConfigured
-                ? "Sign in with SSO, or use an API key as a fallback."
+                ? `${ssoPreset.buttonLabel}, or use an API key as a fallback.`
                 : "Enter your API key to access the dashboard."}
             </p>
           </div>
@@ -109,7 +111,7 @@ export function LoginPanel({
                 href={OIDC_BROWSER_LOGIN_PATH}
                 className="flex w-full items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400"
               >
-                Sign in with SSO
+                {ssoPreset.buttonLabel}
               </a>
               {showApiKeyDivider ? (
                 <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-[var(--text-tertiary)]">

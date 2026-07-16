@@ -103,6 +103,56 @@ def test_pod_security_run_as_root_and_priv_escalation_and_caps():
     assert "K8S-LIVE-013" in ids  # dangerous capability
 
 
+def test_pod_security_pod_level_root_inherited_by_container():
+    # Regression: root is set at the POD level; the container has a
+    # securityContext but does not override runAsUser/runAsNonRoot, so it
+    # inherits root. Container-only evaluation missed this (false-negative).
+    pods = {
+        "items": [
+            _pod(
+                {
+                    "securityContext": {"runAsUser": 0, "seccompProfile": {"type": "RuntimeDefault"}},
+                    "containers": [{"name": "c", "securityContext": {"readOnlyRootFilesystem": True}}],
+                }
+            )
+        ]
+    }
+    ids = {f.rule_id for f in evaluate_pod_security(pods)}
+    assert "K8S-LIVE-011" in ids
+
+
+def test_pod_security_pod_level_run_as_non_root_false_inherited():
+    pods = {
+        "items": [
+            _pod(
+                {
+                    "securityContext": {"runAsNonRoot": False, "seccompProfile": {"type": "RuntimeDefault"}},
+                    "containers": [{"name": "c", "securityContext": {"readOnlyRootFilesystem": True}}],
+                }
+            )
+        ]
+    }
+    ids = {f.rule_id for f in evaluate_pod_security(pods)}
+    assert "K8S-LIVE-011" in ids
+
+
+def test_pod_security_container_overrides_pod_level_root():
+    # Pod sets root, but the container explicitly runs as a non-root uid: the
+    # container override wins, so no root finding.
+    pods = {
+        "items": [
+            _pod(
+                {
+                    "securityContext": {"runAsUser": 0, "seccompProfile": {"type": "RuntimeDefault"}},
+                    "containers": [{"name": "c", "securityContext": {"runAsUser": 1000, "runAsNonRoot": True}}],
+                }
+            )
+        ]
+    }
+    ids = {f.rule_id for f in evaluate_pod_security(pods)}
+    assert "K8S-LIVE-011" not in ids
+
+
 def test_pod_security_missing_pod_security_context():
     pods = {"items": [_pod({"containers": [{"name": "c", "securityContext": {"readOnlyRootFilesystem": True}}]})]}
     ids = {f.rule_id for f in evaluate_pod_security(pods)}

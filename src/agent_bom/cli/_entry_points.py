@@ -445,7 +445,10 @@ def _handle_emit(con: object, source: _ConnectSource, kwargs: dict[str, object])
 
     out = str(kwargs.get("out") or "").strip()
     if out:
-        Path(out).write_text(artifact, encoding="utf-8")
+        # The artifact may contain an AWS ExternalId, which is a non-secret
+        # confused-deputy correlation value. Actual credentials are generated
+        # only when the operator deploys the artifact and are never present here.
+        Path(out).write_text(artifact, encoding="utf-8")  # lgtm[py/clear-text-storage-sensitive-data]
         err.print(f"[green]Wrote[/green] read-only {source.title} deploy artifact to [bold]{out}[/bold].")
     else:
         click.echo(artifact)

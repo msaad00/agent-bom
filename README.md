@@ -55,25 +55,123 @@
 
 </details>
 
-## How It Works
+## Architecture & how it works
 
-Four beats that match the commands and the sidebar:
+One package, full stack: a **React / Next.js** cockpit and every headless caller
+hit the same **FastAPI** control plane, behind one middleware seam, over the same
+scan pipeline and stores. Everything normalizes into one `Finding` and one
+`ContextGraph`, so posture, blast radius, and enforcement read from a single
+evidence set. Deeper module and surface detail lives in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-```text
-connect → scan → graph → serve
+**The stack — UI ⇄ API + middleware ⇄ pipeline/enrichment ⇄ stores:**
+
+```mermaid
+flowchart TB
+    UI["React / Next.js UI<br/>exec single-pane · engineer drill"]
+    HL["Headless<br/>CLI · MCP server · agents / CI"]
+    MW["Middleware — one seam for every caller<br/>auth · tenant scope · RLS · rate-limit · audit"]
+    API["FastAPI + uvicorn control plane<br/>REST API · MCP tools"]
+    PIPE["Scan pipeline + scanners<br/>discover · OSV / advisories · reachability · cloud / CIS · IaC"]
+    ENR["Enrichment<br/>NVD CVSS · EPSS · CISA KEV · distro advisories"]
+    ST["Stores<br/>SQLite / Postgres + correlated graph store"]
+
+    UI --> MW
+    HL --> MW
+    MW --> API
+    API --> PIPE --> ENR --> ST
+    API --> ST
 ```
 
-- **connect** — read-only cloud, data, code, and agent sources.
-- **scan** — `agents` / CI.
-- **graph** — `ContextGraph` + blast radius.
-- **serve** — `agent-bom serve`, one pane of glass; the Findings page is a posture queue here, not a product lane.
+**The workflow — one read-only pipeline from source to answer:**
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom flow: connect read-only sources, scan, ContextGraph blast radius, serve as one pane of glass" width="980" />
-  </picture>
-</p>
+```mermaid
+flowchart LR
+    C["connect<br/>read-only · brokered"] --> D["discover<br/>estate · agents · MCP"]
+    D --> S["scan<br/>OSV · advisories · CIS · IaC"]
+    S --> E["enrich<br/>CVSS · EPSS · KEV · reachability"]
+    E --> R["correlate<br/>finding → asset → identity → config"]
+    R --> G["graph<br/>blast radius · attack paths"]
+    G --> X["serve<br/>exec read + engineer drill"]
+```
+
+Every stage is read-only and agentless; the dashboard shows live per-stage
+status rather than a black box.
+
+<details>
+<summary><b>Frontend</b> — the human cockpit</summary>
+
+- **Next.js 16 · React 19 · Tailwind 4** (`ui/`), built with `next build`.
+- **Two altitudes in one pane**: an exec single-pane read (posture, top risks,
+  compliance evidence) that drills to engineer detail (reachability, path, fix).
+- Inventory, findings, graph, compliance, and runtime views all render from the
+  same API — no privileged "UI-only" data path.
+
+</details>
+
+<details>
+<summary><b>Backend</b> — the FastAPI control plane</summary>
+
+- **FastAPI + uvicorn**, pure Python 3.11+ end to end (`src/agent_bom/api/server.py`).
+- The scan pipeline (`src/agent_bom/api/pipeline.py`, `ScanPipeline`) runs on a
+  bounded `ThreadPoolExecutor` — heavy scan/DB work is offloaded **off the event
+  loop** so reads stay responsive.
+- **Stores** scale without a rewrite: SQLite (default / single node) → Postgres
+  (multi-replica), plus a correlated graph store.
+- Headless parity: the **MCP server** and **CLI** expose the same evidence to
+  agents and CI, not just the UI.
+
+</details>
+
+<details>
+<summary><b>Enrichment</b> — from a CVE row to real-world risk</summary>
+
+- Scanners emit raw findings (`src/agent_bom/scanners/` — OSV batch, GHSA, distro
+  and vendor advisories); `src/agent_bom/enrichment.py` layers **NVD CVSS · EPSS ·
+  CISA KEV** and distro advisory data on top.
+- **AST reachability** (`src/agent_bom/reachability_cve.py`) resolves whether a
+  vulnerable symbol is actually reachable — ranking by exploitability, not just CVSS.
+- The result feeds severity, exploitability, and blast-radius scoring.
+- Confidence tiers and the NVD key model are covered in the **Accuracy model**
+  section below.
+
+</details>
+
+<details>
+<summary><b>Correlated graph</b> — the moat</summary>
+
+- `ContextGraph` / `UnifiedGraph` (`src/agent_bom/context_graph.py`) fuses
+  **assets → identities → configs/misconfigs → findings → attack paths** into one
+  connected model.
+- A vulnerable package links to the MCP server that loads it, the tools it
+  exposes, reachable credential references, and the agents that can call it — a
+  reachable blast radius, not an isolated CVE row.
+- Estate-scale `CONTAINS` roll-up keeps it readable and sargable at scale; the
+  full contract is in [docs/graph/CONTRACT.md](docs/graph/CONTRACT.md).
+
+</details>
+
+### Auth & Connections
+
+The honest model — **connect once, then every action runs through the stored
+connection.** There is **never a per-action credential prompt** and no
+"paste your laptop login" to run a scan or push a result.
+
+- **Humans** sign in via **OAuth / OIDC / SAML SSO** (standard providers plus a
+  Snowflake OAuth authorization-code + PKCE flow), with **SCIM** for user and
+  group provisioning (`src/agent_bom/api/{oidc,saml,scim}.py`,
+  `snowflake_oauth.py`).
+- **Agents / CI** authenticate with **scoped API keys / tokens**.
+- **Sources** (AWS, Azure, GCP, Snowflake) are onboarded **once** through
+  **read-only, agentless, brokered connectors** — a single least-privilege
+  managed role per source with **short-lived, brokered credentials** (e.g. AWS
+  `sts:AssumeRole`); connection secrets are **write-only** (encrypted at rest,
+  never read back). Setup and the exact grant per provider live in
+  [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md); the enterprise auth surface is
+  in [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
+
+Auth, tenant isolation, and audit are enforced once in middleware for the UI,
+agents, and SDKs alike — there is no privileged backdoor.
 
 <details>
 <summary><b>Control-plane architecture</b></summary>

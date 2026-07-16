@@ -14,7 +14,20 @@ Two halves already exist in the codebase and this module is the join:
   *symbols* of which *packages* are reachable from a live entrypoint.
 * **Advisory symbols** — some OSV/GHSA advisories carry the affected
   *functions/symbols* under ``affected[].ecosystem_specific.imports`` (the
-  OSV / Go-vulndb ``imports[].{path,symbols}`` shape). Most do not.
+  OSV / Go-vulndb ``imports[].{path,symbols}`` shape). Most do not. The Go
+  vulnerability database (OSV ecosystem ``Go``) is the richest source: nearly
+  every record lists ``imports[].symbols`` (verified against live
+  ``api.osv.dev`` records, e.g. ``GO-2022-0646``). GHSA occasionally lists
+  affected functions in ``database_specific``; the remaining ecosystems carry
+  no symbol data today and stay honestly package-level.
+
+Go module vs import path: an SCA finding — and an OSV ``affected[].package.name``
+— is a *module* (``github.com/aws/aws-sdk-go``), whereas the AST records reach
+against the fully-qualified *import path*
+(``github.com/aws/aws-sdk-go/service/s3/s3crypto``). The reach index therefore
+matches a module finding against any reached sub-package import path on the
+``/`` module boundary, so Go symbol reach actually fires instead of always
+degrading to package-level.
 
 For a vulnerable package we extract the advisory's affected symbols (if
 any) and intersect them with the project's reached symbol set. The result
@@ -122,15 +135,43 @@ class SymbolReachIndex:
     def from_ast_result(cls, result: "ASTAnalysisResult") -> "SymbolReachIndex":
         return cls.from_reaches(result.dependency_symbol_reach)
 
+    def _matching_keys(self, package: str, ecosystem: str) -> list[str]:
+        """Index keys that belong to ``package`` for reach lookups.
+
+        For most ecosystems the reached-symbol key *is* the package name, so
+        this is the exact key. Go is the exception: the AST records
+        ``reach.package`` as the fully-qualified *import path*
+        (``github.com/aws/aws-sdk-go/service/s3/s3crypto``) while an SCA finding
+        and its OSV advisory name the *module*
+        (``github.com/aws/aws-sdk-go``). We therefore also match any indexed
+        import path that is a sub-package of the module, honouring the ``/``
+        module boundary so ``…/aws-sdk-go`` never matches ``…/aws-sdk-goodies``.
+        """
+        eco = normalize_package_ecosystem(ecosystem or "pypi")
+        exact = _pkg_index_key(package, eco)
+        keys = [exact] if exact in self._symbols_by_key else []
+        if eco == "go":
+            prefix = f"{exact}/"
+            keys.extend(key for key in self._symbols_by_key if key != exact and key.startswith(prefix))
+        return keys
+
     def is_package_reached(self, package: str, *, ecosystem: str = "pypi") -> bool:
         """True when any symbol of ``package`` is reached from an entrypoint."""
-        return _pkg_index_key(package, ecosystem) in self._symbols_by_key
+        return bool(self._matching_keys(package, ecosystem))
 
     def symbols_for_package(self, package: str, *, ecosystem: str = "pypi") -> set[str]:
-        return set(self._symbols_by_key.get(_pkg_index_key(package, ecosystem), set()))
+        symbols: set[str] = set()
+        for key in self._matching_keys(package, ecosystem):
+            symbols |= self._symbols_by_key.get(key, set())
+        return symbols
 
     def call_path_for_package(self, package: str, *, ecosystem: str = "pypi") -> tuple[str, ...]:
-        return self._paths_by_key.get(_pkg_index_key(package, ecosystem), ())
+        shortest: tuple[str, ...] = ()
+        for key in self._matching_keys(package, ecosystem):
+            candidate = self._paths_by_key.get(key)
+            if candidate and (not shortest or len(candidate) < len(shortest)):
+                shortest = candidate
+        return shortest
 
     def __bool__(self) -> bool:
         return bool(self._symbols_by_key)

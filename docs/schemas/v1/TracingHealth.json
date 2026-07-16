@@ -15,6 +15,21 @@
       "title": "Otlp Headers Configured",
       "type": "boolean"
     },
+    "otlp_logs_endpoint_configured": {
+      "default": false,
+      "title": "Otlp Logs Endpoint Configured",
+      "type": "boolean"
+    },
+    "otlp_logs_export": {
+      "default": "disabled",
+      "title": "Otlp Logs Export",
+      "type": "string"
+    },
+    "otlp_logs_headers_configured": {
+      "default": false,
+      "title": "Otlp Logs Headers Configured",
+      "type": "boolean"
+    },
     "w3c_baggage": {
       "default": true,
       "title": "W3C Baggage",

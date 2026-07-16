@@ -2431,6 +2431,18 @@ components:
           default: false
           title: Otlp Headers Configured
           type: boolean
+        otlp_logs_endpoint_configured:
+          default: false
+          title: Otlp Logs Endpoint Configured
+          type: boolean
+        otlp_logs_export:
+          default: disabled
+          title: Otlp Logs Export
+          type: string
+        otlp_logs_headers_configured:
+          default: false
+          title: Otlp Logs Headers Configured
+          type: boolean
         w3c_baggage:
           default: true
           title: W3C Baggage
@@ -6706,6 +6718,120 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Verify Agent Delegation
+      tags:
+      - identity
+  /v1/device-posture:
+    post:
+      description: "Ingest EDR/MDM device posture/compliance signals for the caller's\
+        \ tenant.\n\n``source`` selects the normalizer (``generic`` for the canonical\
+        \ shape, or a\nvendor field-mapping such as ``crowdstrike`` / ``intune``);\
+        \ ``payload`` is\nthe source's already-fetched JSON. This is read-only, agentless\
+        \ enrichment \u2014\nno vendor credential is stored here. The normalized signals\
+        \ feed the\n``require_device_managed`` / ``require_device_compliant`` /\n\
+        ``require_device_disk_encrypted`` conditional-access conditions."
+      operationId: ingest_device_posture_v1_device_posture_post
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              title: Body
+              type: object
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Ingest Device Posture V1 Device Posture Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Ingest Device Posture
+      tags:
+      - identity
+  /v1/device-posture/{device_id}:
+    get:
+      description: Return the latest stored posture signal for one device (tenant-scoped).
+      operationId: get_device_posture_v1_device_posture__device_id__get
+      parameters:
+      - in: path
+        name: device_id
+        required: true
+        schema:
+          title: Device Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Device Posture V1 Device Posture  Device Id  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Device Posture
       tags:
       - identity
   /v1/discovery/providers:

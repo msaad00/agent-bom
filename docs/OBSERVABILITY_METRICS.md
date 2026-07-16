@@ -95,6 +95,49 @@ OTLP/HTTP through `src/agent_bom/api/tracing.py`. Recommended exporters:
 Correlate traces with audit entries via the `trace_id` field written to
 every `compliance.report_exported` audit entry.
 
+## Audit-event OTLP log export
+
+The tamper-evident governance/NHI-lifecycle audit chain
+(`src/agent_bom/api/governance_audit_log.py`) can also be exported as OTLP
+**logs** (distinct from the trace spans above) to any OTLP/HTTP collector. Set
+`AGENT_BOM_OTEL_LOGS_ENDPOINT` (the collector's logs endpoint, e.g.
+`https://collector.example.com/v1/logs`) and optional
+`AGENT_BOM_OTEL_LOGS_HEADERS` (comma-separated `key=value` collector-auth
+pairs). When configured, every audit record appended by the lifecycle-cleanup
+loop (JIT-grant expiry, dormant-identity auto-revoke, token-rotation-due) is
+emitted as an OTLP `LogRecord` through `src/agent_bom/siem/otlp_logs.py`:
+
+- **Severity** escalates to `WARN` for revocation/enforcement actions and stays
+  `INFO` for routine notices.
+- **Attributes** carry `governance.tenant_id`, `governance.actor`,
+  `governance.action`, `governance.target_type`/`target_id`, before/after state,
+  and the chain `governance.record_hash` (so a consumer can attribute and verify
+  per tenant). The free-form record `detail` is deliberately **not** exported, so
+  a caller-supplied secret can never leave the process.
+- **Batched + non-blocking:** a `BatchLogRecordProcessor` flushes on a background
+  thread, so export never blocks the request or cleanup path. The endpoint is
+  validated against the outbound URL policy (private/loopback egress is refused
+  unless explicitly opened). Requires the `otel` extra; a graceful no-op
+  otherwise.
+
+`GET /health` reports the export state under `tracing.otlp_logs_export`
+(`disabled` / `pending` / `configured`) so operators can confirm whether audit
+logs are merely available or actively exported.
+
+## Device posture (EDR/MDM) → conditional-access ABAC
+
+EDR (endpoint detection & response) and MDM (mobile device management) systems
+own device managed/compliant/encrypted ground truth. `POST /v1/device-posture`
+ingests those signals — `source` selects the normalizer (`generic` for the
+canonical shape, or a vendor field-mapping such as `crowdstrike` / `intune`) and
+`payload` is the source's already-fetched JSON. This is read-only and agentless:
+no vendor credential is stored here. Normalized, tenant-scoped
+`DeviceSignal`s (`src/agent_bom/device_posture.py`) feed the
+`require_device_managed` / `require_device_compliant` /
+`require_device_disk_encrypted` conditions on a conditional-access policy, which
+fail closed for an unknown or non-compliant device. `GET /v1/device-posture/{id}`
+returns the latest stored signal for a device.
+
 ## Runtime Production Index
 
 `GET /v1/runtime/production-index` returns the security equivalent of a

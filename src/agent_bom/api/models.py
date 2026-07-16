@@ -320,6 +320,11 @@ class TracingHealth(BaseModel):
     otlp_export: str = "disabled"
     otlp_endpoint_configured: bool = False
     otlp_headers_configured: bool = False
+    # Audit-event OTLP *log* export (governance chain → OTLP logs), distinct from
+    # the trace-span export above.
+    otlp_logs_export: str = "disabled"
+    otlp_logs_endpoint_configured: bool = False
+    otlp_logs_headers_configured: bool = False
 
 
 class AnalyticsHealth(BaseModel):

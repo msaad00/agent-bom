@@ -797,7 +797,9 @@ function GraphPageInner() {
   useEffect(() => {
     setLoadingSnapshots(true);
     api
-      .getGraphSnapshots(40)
+      // windowDays: 0 shows all retained snapshots so the picker never silently
+      // hides older scans; on-save retention purge still bounds storage (#4009).
+      .getGraphSnapshots(40, 0)
       .then((items) => {
         setSnapshots(items);
         if (items.length > 0) {

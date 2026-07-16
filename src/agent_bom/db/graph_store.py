@@ -1115,17 +1115,28 @@ def list_snapshots(
     *,
     tenant_id: str = "",
     limit: int = 50,
+    since: str | None = None,
 ) -> list[dict[str, Any]]:
-    """List recent graph snapshots ordered by creation time desc."""
+    """List recent graph snapshots ordered by creation time desc.
+
+    ``since`` (an ISO-8601 cutoff) bounds the result to snapshots created within
+    the read window; pass ``None`` to return all retained history.
+    """
     tenant_id = normalize_graph_tenant_id(tenant_id)
+    where = "WHERE tenant_id = ?"
+    params: list[Any] = [tenant_id]
+    if since:
+        where += " AND created_at >= ?"
+        params.append(since)
+    params.append(limit)
     rows = conn.execute(
-        """\
+        f"""\
         SELECT scan_id, created_at, node_count, edge_count, risk_summary
         FROM graph_snapshots
-        WHERE tenant_id = ?
+        {where}
         ORDER BY created_at DESC LIMIT ?
-        """,
-        (tenant_id, limit),
+        """,  # nosec B608 - where clause is composed from static fragments only
+        params,
     ).fetchall()
     return [
         {
@@ -1287,10 +1298,15 @@ def graph_history(
     *,
     tenant_id: str = "",
     limit: int = 50,
+    since: str | None = None,
 ) -> dict[str, Any]:
-    """Return retained graph snapshot history with adjacent diff summaries."""
+    """Return retained graph snapshot history with adjacent diff summaries.
+
+    ``since`` bounds the returned snapshots to the read window (ISO-8601 cutoff);
+    ``None`` returns all retained history.
+    """
     tenant_id = normalize_graph_tenant_id(tenant_id)
-    snapshots = list_snapshots(conn, tenant_id=tenant_id, limit=limit)
+    snapshots = list_snapshots(conn, tenant_id=tenant_id, limit=limit, since=since)
     history: list[dict[str, Any]] = []
     for snapshot in snapshots:
         scan_id = snapshot["scan_id"]

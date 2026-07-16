@@ -165,9 +165,9 @@ class GraphStoreProtocol(Protocol):
 
     def changed_edges_between_scans(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]: ...
 
-    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]: ...
+    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> list[dict[str, Any]]: ...
 
-    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict[str, Any]: ...
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]: ...
 
     def evidence_manifest(
         self,
@@ -1195,17 +1195,17 @@ class SQLiteGraphStore:
         finally:
             conn.close()
 
-    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]:
+    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> list[dict[str, Any]]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return []
         try:
-            return sqlite_graph_store.list_snapshots(conn, tenant_id=tenant_id, limit=limit)
+            return sqlite_graph_store.list_snapshots(conn, tenant_id=tenant_id, limit=limit, since=since)
         finally:
             conn.close()
 
-    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict[str, Any]:
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
@@ -1216,7 +1216,7 @@ class SQLiteGraphStore:
                 "snapshots": [],
             }
         try:
-            return sqlite_graph_store.graph_history(conn, tenant_id=tenant_id, limit=limit)
+            return sqlite_graph_store.graph_history(conn, tenant_id=tenant_id, limit=limit, since=since)
         finally:
             conn.close()
 

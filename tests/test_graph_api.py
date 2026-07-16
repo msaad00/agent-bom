@@ -1287,11 +1287,11 @@ class _RecordingGraphStore:
             "summary": {"added": 0, "removed": 0, "changed": 0, "unchanged": 0},
         }
 
-    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict]:
+    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> list[dict]:
         self.calls.append(("list_snapshots", tenant_id, limit))
         return [{"scan_id": self.graph.scan_id, "created_at": self.graph.created_at, "node_count": 1, "edge_count": 0, "risk_summary": {}}]
 
-    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict:
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict:
         self.calls.append(("graph_history", tenant_id, limit))
         return {
             "schema_version": "agent-bom.graph_history/v1",

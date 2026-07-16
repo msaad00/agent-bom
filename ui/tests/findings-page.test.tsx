@@ -205,4 +205,28 @@ describe("FindingsPage", () => {
     );
     expect(screen.getByTestId("findings-filters-toggle")).not.toHaveTextContent("(1)");
   });
+
+  it("defaults the time window to 90 days and can widen to all history (#4009)", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      findings: [],
+      total: 0,
+      window: { days: 90, since: "2026-04-01T00:00:00Z", applied: true, label: "Last 90 days" },
+    });
+
+    render(<FindingsPage />);
+    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+
+    // The default window is visible (not silently applied).
+    expect(screen.getByTestId("findings-window-chip")).toHaveTextContent("Last 90 days");
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenCalledWith(expect.objectContaining({ windowDays: 90 })),
+    );
+
+    // Widening to "All time" re-queries with windowDays: 0.
+    fireEvent.click(screen.getByTestId("findings-window-chip"));
+    fireEvent.change(screen.getByTestId("findings-window-select"), { target: { value: "0" } });
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenCalledWith(expect.objectContaining({ windowDays: 0 })),
+    );
+  });
 });

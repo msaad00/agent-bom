@@ -1551,11 +1551,12 @@ def _resolve_bulk_findings_total(
     bulk_total: int | None,
     page_len: int,
     limit: int,
+    window_days: int = 0,
 ) -> tuple[int | None, bool]:
     """Return ``(total, total_approximate)`` for the bulk-ingest slice."""
     from agent_bom.api.findings_count_cache import cache_key, get_cached_total, set_cached_total
 
-    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest")
+    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest", window_days=window_days)
     if not approximate_total:
         if bulk_total is not None:
             set_cached_total(key, bulk_total)
@@ -1615,6 +1616,7 @@ def _merged_scan_bulk_page(
     scan_id: str | None,
     offset: int,
     limit: int,
+    since: str | None = None,
 ) -> list[dict[str, Any]]:
     """Merge pre-sorted scan findings with bulk hub pages without O(table) work.
 
@@ -1627,6 +1629,11 @@ def _merged_scan_bulk_page(
     bulk_buf: list[dict[str, Any]] = []
     bulk_i = 0
 
+    # Only the current-state store path carries the ``since`` predicate; when a
+    # window is active pass it through, otherwise stay byte-compatible with the
+    # legacy ``list_page`` bulk path that has no window kwarg.
+    since_kwargs = {"since": since} if since else {}
+
     def _refill_bulk() -> bool:
         nonlocal bulk_buf, bulk_i, bulk_remote_offset
         bulk_result = bulk_list(
@@ -1638,6 +1645,7 @@ def _merged_scan_bulk_page(
             scan_id=scan_id,
             origin="bulk_ingest",
             include_total=False,
+            **since_kwargs,
         )
         bulk_buf = bulk_result[0]
         bulk_remote_offset += len(bulk_buf)
@@ -1708,6 +1716,7 @@ async def list_findings(
     account: Annotated[str | None, Query(max_length=256)] = None,
     environment: Annotated[str | None, Query(max_length=64)] = None,
     domain: Annotated[str | None, Query(max_length=32)] = None,
+    window_days: Annotated[int | None, Query(ge=0, le=3650)] = None,
 ) -> dict:
     """List vulnerability findings aggregated from completed scan results.
 
@@ -1742,6 +1751,7 @@ async def list_findings(
                 account,
                 environment,
                 domain,
+                window_days,
             )
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -1764,6 +1774,7 @@ def _list_findings_impl(
     account: str | None = None,
     environment: str | None = None,
     domain: str | None = None,
+    window_days: int | None = None,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
@@ -1784,10 +1795,15 @@ def _list_findings_impl(
     keyset pagination through bulk-ingested hub findings (avoids deep
     ``OFFSET`` cost). ``cursor`` and non-zero ``offset`` cannot be combined.
     """
+    from agent_bom.api import time_window
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
     from agent_bom.api.finding_cursor import decode_finding_cursor
 
     tenant_id = _tenant_id(request)
+    # Default read-window (≈90d): bound counts to a recent, honestly-labelled
+    # window at scale. ``window_days=0`` widens to all history (#4009).
+    resolved_window = time_window.normalize_window_days(window_days)
+    window_since = time_window.window_since_iso(resolved_window)
     sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
     if sort_key not in _ALLOWED_FINDING_SORTS:
         # Silently falling back masked typos as "wrong order"; reject clearly.
@@ -1821,8 +1837,11 @@ def _list_findings_impl(
         tenant_id=tenant_id,
         severity=severity,
         scan_id=scan_id,
+        window_days=resolved_window,
     )
-    cached_bulk_total = get_cached_total(cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest"))
+    cached_bulk_total = get_cached_total(
+        cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest", window_days=resolved_window)
+    )
     if approximate_total or effective_approximate_total:
         # Explicit ``approximate_total=true`` (and the auto-threshold path) must
         # NOT force the O(table) exact COUNT — reuse the cached/approximate total
@@ -1884,6 +1903,7 @@ def _list_findings_impl(
                 scan_id=scan_id,
                 origin="bulk_ingest",
                 include_total=include_bulk_total,
+                since=window_since,
             )
             bulk_total = bulk_result[1]
             page_rows = _merged_scan_bulk_page(
@@ -1895,6 +1915,7 @@ def _list_findings_impl(
                 scan_id=scan_id,
                 offset=offset,
                 limit=limit,
+                since=window_since,
             )
             resolved_bulk, total_approximate = _resolve_bulk_findings_total(
                 tenant_id=tenant_id,
@@ -1905,6 +1926,7 @@ def _list_findings_impl(
                 bulk_total=bulk_total,
                 page_len=len(page_rows),
                 limit=limit,
+                window_days=resolved_window,
             )
             total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
         else:
@@ -1918,6 +1940,7 @@ def _list_findings_impl(
                 origin="bulk_ingest",
                 include_total=include_bulk_total,
                 cursor=cursor,
+                since=window_since,
             )
             page_rows = bulk_result[0]
             bulk_total = bulk_result[1]
@@ -1931,6 +1954,7 @@ def _list_findings_impl(
                 bulk_total=bulk_total,
                 page_len=len(page_rows),
                 limit=limit,
+                window_days=resolved_window,
             )
     else:
         bulk_findings = _bulk_ingested_findings_for_tenant(tenant_id)
@@ -1947,7 +1971,7 @@ def _list_findings_impl(
         page_rows = combined[offset : offset + limit]
 
     page = _redact_finding_page(page_rows)
-    return finding_list_envelope(
+    envelope = finding_list_envelope(
         findings=page,
         total=total,
         limit=limit,
@@ -1959,6 +1983,10 @@ def _list_findings_impl(
         warnings=warnings,
         total_approximate=total_approximate,
     )
+    # Echo the applied read-window so clients label counts honestly as
+    # "last Nd" rather than "all" (#4009).
+    envelope["window"] = time_window.window_metadata(resolved_window)
+    return envelope
 
 
 @router.post("/findings/bulk", tags=["scan"], status_code=201)

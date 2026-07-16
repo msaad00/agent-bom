@@ -889,12 +889,18 @@ class PostgresComplianceHubStore:
         origin: str | None = None,
         include_total: bool = True,
         cursor: str | None = None,
+        since: str | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
         normalized_sort = sort if sort in ("effective_reach", "cvss", "severity", "ordinal") else "effective_reach"
         where = ["tenant_id = %s"]
         params: list[Any] = [tenant_id]
+        if since:
+            # Default read-window: bound to findings last observed within the
+            # window so counts stay honestly "last Nd" at scale (#4009).
+            where.append("last_seen >= %s")
+            params.append(since)
         if origin is not None:
             # Materialised column (backfilled) so the exact COUNT(*) rides the
             # (tenant_id, origin, …) index prefix instead of scanning every row

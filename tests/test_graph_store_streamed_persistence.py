@@ -285,9 +285,27 @@ def test_iter_graph_edges_dangling_edge_matches_documented_contract(tmp_path) ->
 
 # ── Memory: a streaming producer must stay flat as N grows ────────────────────
 
+# Node/edge counts for the memory-shape assertion. Kept modest so the subprocess
+# runs stay fast under the CI test matrix (no `slow` marker), while still large
+# enough that the full-graph path's Python heap dwarfs the streaming path's.
+_MEM_N_SMALL = 40_000
+_MEM_N_LARGE = 120_000
+
+# Measure the PYTHON HEAP peak with ``tracemalloc``, not whole-process RSS.
+#
+# An earlier version compared ``resource.getrusage().ru_maxrss`` across the two
+# modes. That is unreliable: ``ru_maxrss`` is a whole-process high-water mark and
+# is dominated by the fixed ~1 GB cost of importing ``agent_bom`` and its deps —
+# which is identical in both modes and swamps the graph's own footprint, so the
+# streamed and full paths report the *same* peak and the shape signal vanishes
+# (it also carries the bytes-vs-KB unit split and musl allocator accounting
+# differences across platforms). ``tracemalloc`` is started AFTER imports and
+# measures only Python-object allocations during the save — exactly the per-node
+# retention the streaming path is designed to bound — so it is deterministic and
+# platform-independent (no ru_maxrss units, no glibc/musl allocator variance).
 _MEM_SCRIPT = textwrap.dedent(
     """
-    import os, sys, tempfile, resource
+    import os, sys, tempfile, tracemalloc
     from agent_bom.db import graph_store as gs
     from agent_bom.graph.container import UnifiedGraph
     from agent_bom.graph.node import UnifiedNode
@@ -297,16 +315,14 @@ _MEM_SCRIPT = textwrap.dedent(
     N = int(sys.argv[1]); mode = sys.argv[2]
     db = os.path.join(tempfile.mkdtemp(), "g.db")
 
-    def maxrss_mb():
-        r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        return (r / 1024 / 1024) if sys.platform == "darwin" else (r / 1024)
-
     def mk_node(i):
         return UnifiedNode(id="n%d" % i, entity_type=EntityType.PACKAGE, label="pkg-%d" % i,
                            severity="high" if i % 5 == 0 else "low", risk_score=float(i % 10))
     def mk_edge(i):
         return UnifiedEdge(source="n%d" % i, target="n%d" % ((i + 1) % N), relationship=RelationshipType.DEPENDS_ON)
 
+    # Start tracing only around the work so the import baseline is excluded.
+    tracemalloc.start()
     if mode == "full":
         g = UnifiedGraph(scan_id="s", tenant_id="t")
         for i in range(N): g.add_node(mk_node(i))
@@ -320,12 +336,13 @@ _MEM_SCRIPT = textwrap.dedent(
                 nodes=(mk_node(i) for i in range(N)),
                 edges=(mk_edge(i) for i in range(N)),
             )
-    print(maxrss_mb())
+    _, peak = tracemalloc.get_traced_memory()
+    print(peak / 1024 / 1024)
     """
 )
 
 
-def _peak_rss_mb(n: int, mode: str) -> float:
+def _peak_pymem_mb(n: int, mode: str) -> float:
     env = dict(os.environ)
     # Ensure the subprocess imports the same in-tree agent_bom this test does,
     # not a stale site-packages copy.
@@ -334,15 +351,23 @@ def _peak_rss_mb(n: int, mode: str) -> float:
     return float(out.strip().splitlines()[-1])
 
 
-def test_streaming_persist_peak_rss_is_bounded() -> None:
-    """Streaming persist RSS stays ~flat while the full-graph path scales with N."""
-    stream_small = _peak_rss_mb(100_000, "stream")
-    stream_large = _peak_rss_mb(300_000, "stream")
+def test_streaming_persist_peak_python_heap_is_bounded() -> None:
+    """Streaming persist keeps its Python heap ~flat while the full-graph path scales with N.
 
-    # Streaming growth from 100k -> 300k (3x the data) must stay well under 2x RSS:
-    # peak is dominated by a bounded batch, not the graph size.
-    assert stream_large < stream_small * 1.5, f"streaming RSS grew with N: {stream_small:.0f} -> {stream_large:.0f} MB"
+    The streaming path flushes nodes/edges to SQLite in bounded batches and never
+    materialises the whole graph, so its peak Python-object footprint is decoupled
+    from N. The full-graph path holds every node/edge in RAM, so its heap grows
+    linearly with N. Assert on that SHAPE (streaming flat, and far below the full
+    path) with generous margins rather than a machine-specific absolute MB.
+    """
+    stream_small = _peak_pymem_mb(_MEM_N_SMALL, "stream")
+    stream_large = _peak_pymem_mb(_MEM_N_LARGE, "stream")
 
-    # And it must be a large win vs building the whole graph in RAM at the same N.
-    full_large = _peak_rss_mb(300_000, "full")
-    assert stream_large < full_large * 0.5, f"streaming ({stream_large:.0f}MB) not < half of full ({full_large:.0f}MB)"
+    # Streaming growth from N_SMALL -> N_LARGE (3x the data) must stay well under
+    # 1.5x: the peak is a bounded write batch, not the graph size.
+    assert stream_large < stream_small * 1.5, f"streaming heap grew with N: {stream_small:.1f} -> {stream_large:.1f} MB"
+
+    # And it must be a large win vs building the whole graph in RAM at the same N:
+    # the full path retains every node/edge, so its heap is orders of magnitude larger.
+    full_large = _peak_pymem_mb(_MEM_N_LARGE, "full")
+    assert stream_large < full_large * 0.5, f"streaming ({stream_large:.1f}MB) not < half of full ({full_large:.1f}MB)"

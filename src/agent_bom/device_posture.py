@@ -241,19 +241,35 @@ class CrowdStrikeConnector:
                 continue
             status = str(host.get("status") or "").strip().lower()
             rfm = _as_bool(host.get("reduced_functionality_mode"))
-            compliant = status in {"normal", ""} and rfm is not True
+            last_seen = str(host.get("last_seen") or "")
+            agent_version = str(host.get("agent_version") or "")
+            # Tri-state compliance — a missing/empty status is UNKNOWN, not
+            # compliant. Only assert compliant on an explicit "normal" that is
+            # not in reduced-functionality mode; RFM is a known-bad signal.
+            compliant: bool | None
+            if rfm is True:
+                compliant = False
+            elif status:
+                compliant = status == "normal"
+            else:
+                compliant = None
+            # Only assert managed when the payload actually evidences a reporting
+            # / enrolled sensor (status, a last-seen, or an agent version). A
+            # sparse device_id-only entry leaves managed unknown so a
+            # require_device_managed gate fails closed.
+            managed: bool | None = True if (status or last_seen or agent_version) else None
             out.append(
                 DeviceSignal(
                     tenant_id=tenant_id,
                     device_id=device_id,
                     source=self.source,
-                    managed=True,  # a host reporting to Falcon is under EDR management
+                    managed=managed,
                     compliant=compliant,
                     disk_encrypted=_as_bool(host.get("disk_encryption_status")),
                     os_version=str(host.get("os_version") or ""),
                     hostname=str(host.get("hostname") or ""),
                     risk_level=str(host.get("risk_level") or ""),
-                    last_seen=str(host.get("last_seen") or ""),
+                    last_seen=last_seen,
                     attributes={"platform": str(host.get("platform_name") or "")},
                 )
             )

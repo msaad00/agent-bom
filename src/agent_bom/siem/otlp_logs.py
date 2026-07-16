@@ -212,6 +212,11 @@ def build_audit_otlp_exporter(endpoint: str, headers: dict[str, str] | None = No
 _EXPORTER: AuditLogOtlpExporter | None = None
 _EXPORTER_LOCK = threading.Lock()
 _CONFIGURED = False
+# The endpoint whose env-config attempt already completed. Cached so a build
+# that yields no exporter (e.g. the ``otel`` extra is not installed) is attempted
+# once — not re-run (with its blocking ``validate_url`` → ``socket.getaddrinfo``)
+# on every audit-append. ``None`` = not yet attempted for the current endpoint.
+_ENV_ATTEMPTED_ENDPOINT: str | None = None
 
 
 def configure_audit_otlp_from_env() -> AuditLogOtlpExporter | None:
@@ -222,15 +227,20 @@ def configure_audit_otlp_from_env() -> AuditLogOtlpExporter | None:
     Cached after the first successful build so the batch processor / background
     exporter is created once per process.
     """
-    global _EXPORTER, _CONFIGURED
+    global _EXPORTER, _CONFIGURED, _ENV_ATTEMPTED_ENDPOINT
     endpoint = os.environ.get(ENDPOINT_ENV, "").strip()
     if not endpoint:
         return None
     with _EXPORTER_LOCK:
         if _CONFIGURED and _EXPORTER is not None:
             return _EXPORTER
+        # Already attempted this exact endpoint and it produced no exporter
+        # (otel extra missing): don't re-run the blocking build/URL validation.
+        if _ENV_ATTEMPTED_ENDPOINT == endpoint:
+            return None
         headers = _parse_headers(os.environ.get(HEADERS_ENV, "").strip())
         exporter = build_audit_otlp_exporter(endpoint, headers)
+        _ENV_ATTEMPTED_ENDPOINT = endpoint
         if exporter is not None:
             _EXPORTER = exporter
             _CONFIGURED = True
@@ -239,10 +249,11 @@ def configure_audit_otlp_from_env() -> AuditLogOtlpExporter | None:
 
 def set_audit_otlp_exporter(exporter: AuditLogOtlpExporter | None) -> None:
     """Override the process exporter (tests / explicit wiring)."""
-    global _EXPORTER, _CONFIGURED
+    global _EXPORTER, _CONFIGURED, _ENV_ATTEMPTED_ENDPOINT
     with _EXPORTER_LOCK:
         _EXPORTER = exporter
         _CONFIGURED = exporter is not None
+        _ENV_ATTEMPTED_ENDPOINT = None
 
 
 def export_governance_audit_record(record: "GovernanceAuditRecord") -> bool:

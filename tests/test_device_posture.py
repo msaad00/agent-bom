@@ -64,6 +64,44 @@ def test_crowdstrike_reduced_functionality_is_not_compliant():
     assert sig.compliant is False
 
 
+def test_crowdstrike_sparse_host_is_unknown_not_compliant():
+    # A partial/sparse CrowdStrike payload (device_id only, no status and no
+    # enrollment evidence) must NOT fail open: posture is unknown, not compliant,
+    # and managed is not asserted True — so a require_device_* gate fails closed.
+    conn = create_device_connector("crowdstrike")
+    payload = {"resources": [{"device_id": "cs-sparse"}]}
+    sig = conn.normalize(payload, tenant_id="t")[0]
+    assert sig.compliant is None  # unknown, NOT compliant
+    assert sig.managed is not True  # no enrollment evidence → not asserted managed
+
+    # And it must be denied by a require-compliant policy (fail closed).
+    policy = ConditionalAccessPolicy(
+        policy_id="p1",
+        tenant_id="t",
+        name="require compliant device",
+        effect="require",
+        status="active",
+        created_at="2026-07-16T00:00:00+00:00",
+        require_device_compliant=True,
+    )
+    store = InMemoryDevicePostureStore()
+    store.put(sig)
+    ctx = AccessContext(device_id="cs-sparse")
+    apply_device_posture(store, ctx, tenant_id="t")
+    denied, _reason, _pid = evaluate_conditional_access([policy], ctx)
+    assert denied is False
+
+
+def test_crowdstrike_empty_status_with_enrollment_evidence_is_managed_but_unknown_compliant():
+    # A host that evidences a reporting sensor (last_seen present) but reports no
+    # status is managed=True yet compliant=None (unknown, fails closed).
+    conn = create_device_connector("crowdstrike")
+    payload = {"resources": [{"device_id": "cs-seen", "last_seen": "2026-07-15T12:00:00Z"}]}
+    sig = conn.normalize(payload, tenant_id="t")[0]
+    assert sig.managed is True
+    assert sig.compliant is None
+
+
 def test_intune_mdm_payload_normalizes():
     conn = create_device_connector("intune")
     payload = {

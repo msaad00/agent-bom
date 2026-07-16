@@ -32,6 +32,7 @@ from agent_bom.siem.otlp_logs import (  # noqa: E402
     AuditLogOtlpExporter,
     audit_record_log_attributes,
     configure_audit_otlp_from_env,
+    export_governance_audit_record,
     set_audit_otlp_exporter,
     severity_for_action,
 )
@@ -167,6 +168,33 @@ def test_configure_from_env_builds_exporter(monkeypatch):
     assert n == 1
     exporter.shutdown()
     set_audit_otlp_exporter(None)
+
+
+def test_unavailable_exporter_is_attempted_once_not_on_every_append(monkeypatch):
+    # Endpoint set but the build returns None (e.g. the `otel` extra is not
+    # installed). The build path is where the blocking URL/DNS validation
+    # (`validate_url` → `socket.getaddrinfo`) runs under the exporter lock, so it
+    # must be attempted exactly once and cached as a no-op — NOT re-run on every
+    # audit-append call.
+    import agent_bom.siem.otlp_logs as otlp
+
+    monkeypatch.setenv("AGENT_BOM_OTEL_LOGS_ENDPOINT", "https://collector.example.com/v1/logs")
+    monkeypatch.delenv("AGENT_BOM_OTEL_LOGS_HEADERS", raising=False)
+    set_audit_otlp_exporter(None)  # clear cache + reset attempt sentinel
+
+    calls = {"n": 0}
+
+    def _counting_build(endpoint, headers=None):
+        calls["n"] += 1
+        return None  # simulate otel-unavailable no-op
+
+    monkeypatch.setattr(otlp, "build_audit_otlp_exporter", _counting_build)
+    try:
+        results = [export_governance_audit_record(_record()) for _ in range(5)]
+        assert results == [False] * 5  # no exporter → not enqueued
+        assert calls["n"] == 1  # build/validate attempted at most once
+    finally:
+        set_audit_otlp_exporter(None)
 
 
 def test_lifecycle_audit_append_triggers_otlp_export():

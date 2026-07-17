@@ -11,6 +11,9 @@ describe("product proof capture contract", () => {
     expect(source).toContain("DEMO-VULN-");
     expect(source).not.toContain('source: "nvd"');
     expect(source).not.toContain("is_kev: true");
+    expect(source).not.toMatch(/\b(?:epss_score|is_kev|cisa_kev|kev)\s*:/);
+    expect(source).not.toMatch(/function vuln\([^)]*epss/);
+    expect(source).not.toMatch(/cve:\s*\["DEMO-VULN-[^"]+",\s*"[^"]+",\s*\d+(?:\.\d+)?,\s*0\.\d+/);
   });
 
   it("fails capture on HTTP, browser, visible, or version errors", () => {

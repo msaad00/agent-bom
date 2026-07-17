@@ -144,11 +144,17 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """
     tags: set[str] = set()
 
-    # ── Initial Access ────────────────────────────────────────────────────
-    tags.add("AML.T0010")  # AI Supply Chain Compromise — always
-    tags.add("AML.T0010.001")  # AI Software sub-technique — always
-
     is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
+    has_confirmed_ai_path = is_ai_pkg or bool(br.affected_agents) or bool(br.affected_servers)
+
+    # ── Initial Access ────────────────────────────────────────────────────
+    # Generic vulnerable packages are only AI supply-chain findings when the
+    # scan proves they sit on an affected agent/MCP path. AI frameworks carry
+    # that context intrinsically, including in standalone package analysis.
+    if has_confirmed_ai_path:
+        tags.add("AML.T0010")  # AI Supply Chain Compromise
+        tags.add("AML.T0010.001")  # AI Software sub-technique
+
     is_high = br.vulnerability.severity in _HIGH_RISK
     has_creds = bool(br.exposed_credentials)
     has_exec = False

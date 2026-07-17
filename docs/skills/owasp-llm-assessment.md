@@ -32,7 +32,7 @@ pip install 'agent-bom[cloud]'  # Core providers; install mlflow separately if n
 
 | Technique | Name | agent-bom triggers when |
 |-----------|------|------------------------|
-| **AML.T0010** | ML Supply Chain Compromise | Any package CVE (always) |
+| **AML.T0010** | ML Supply Chain Compromise | Package CVE on a confirmed agent/MCP path, or in a known AI framework |
 | **AML.T0020** | Poison Training Data | AI framework + HIGH+ CVE |
 | **AML.T0043** | Craft Adversarial Data | Tools with shell/exec capability |
 | **AML.T0051** | LLM Prompt Injection | Tools can access prompts/context |

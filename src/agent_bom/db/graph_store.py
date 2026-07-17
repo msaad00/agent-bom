@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS attack_paths (
 
 CREATE INDEX IF NOT EXISTS idx_ap_risk ON attack_paths(composite_risk DESC);
 CREATE INDEX IF NOT EXISTS idx_ap_scan ON attack_paths(scan_id);
+CREATE INDEX IF NOT EXISTS idx_ap_tenant_scan ON attack_paths(tenant_id, scan_id);
 
 -- ── Interaction risks (per scan) ──
 CREATE TABLE IF NOT EXISTS interaction_risks (
@@ -180,6 +181,7 @@ CREATE TABLE IF NOT EXISTS interaction_risks (
     tenant_id       TEXT NOT NULL DEFAULT 'default',
     PRIMARY KEY (pattern, agents, scan_id, tenant_id)
 );
+CREATE INDEX IF NOT EXISTS idx_ir_tenant_scan ON interaction_risks(tenant_id, scan_id);
 
 -- ── Schema version ──
 CREATE TABLE IF NOT EXISTS graph_schema_version (
@@ -674,6 +676,17 @@ def save_graph_streaming(
             (tenant, previous_scan),
         ):
             previous_edges[(row["source_id"], row["target_id"], row["relationship"])] = row
+
+    # A scan id is one complete snapshot. Retries/replays must replace that
+    # snapshot atomically; upserts alone would retain rows absent from the
+    # retried producer and make graph_snapshots counts contradict graph rows.
+    # The first DELETE also takes SQLite's write lock, serializing concurrent
+    # writers before any streamed batch is consumed.
+    for table in ("attack_paths", "interaction_risks", "graph_edges", "graph_nodes", "graph_snapshots"):
+        conn.execute(
+            f"DELETE FROM {table} WHERE tenant_id = ? AND scan_id = ?",  # nosec B608 - static table list
+            (tenant, scan),
+        )
 
     # Incrementally accumulated snapshot stats — mirrors UnifiedGraph.stats()
     # (severity_counts only counts truthy severities; node_type_counts is every

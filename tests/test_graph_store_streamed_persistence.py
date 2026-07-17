@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import textwrap
@@ -235,6 +236,148 @@ def test_streaming_stats_count_yields_documented_precondition(tmp_path) -> None:
     # callers pass already-deduplicated iterables (as UnifiedGraph guarantees).
     assert snap["node_count"] == 3
     assert snap["edge_count"] == 2
+
+
+def test_streaming_replaces_same_scan_without_stale_rows(tmp_path) -> None:
+    """Retrying one scan id replaces, rather than merges, its snapshot."""
+    db = tmp_path / "same-scan-retry.db"
+    with gs.open_graph_db(db) as conn:
+        gs.save_graph_streaming(
+            conn,
+            scan_id="scan-retry",
+            tenant_id="acme",
+            nodes=iter(
+                [
+                    UnifiedNode(id="keep", entity_type=EntityType.PACKAGE, label="keep"),
+                    UnifiedNode(id="stale", entity_type=EntityType.PACKAGE, label="stale"),
+                ]
+            ),
+            edges=iter([UnifiedEdge(source="keep", target="stale", relationship=RelationshipType.DEPENDS_ON)]),
+        )
+        gs.save_graph_streaming(
+            conn,
+            scan_id="scan-retry",
+            tenant_id="acme",
+            nodes=iter([UnifiedNode(id="keep", entity_type=EntityType.PACKAGE, label="updated")]),
+            edges=iter(()),
+        )
+
+        node_ids = {
+            row[0]
+            for row in conn.execute(
+                "SELECT id FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?",
+                ("acme", "scan-retry"),
+            )
+        }
+        edge_count = conn.execute(
+            "SELECT COUNT(*) FROM graph_edges WHERE tenant_id = ? AND scan_id = ?",
+            ("acme", "scan-retry"),
+        ).fetchone()[0]
+        snapshot = conn.execute(
+            "SELECT node_count, edge_count FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
+            ("acme", "scan-retry"),
+        ).fetchone()
+
+    assert node_ids == {"keep"}
+    assert edge_count == 0
+    assert tuple(snapshot) == (1, 0)
+
+
+def test_delta_digest_queries_use_tenant_snapshot_indexes(tmp_path) -> None:
+    """Digest projections must not scan other tenants' path/risk history."""
+    db = tmp_path / "digest-query-plan.db"
+    with gs.open_graph_db(db) as conn:
+        queries = (
+            "SELECT source_node, target_node FROM attack_paths WHERE tenant_id = ? AND scan_id = ?",
+            "SELECT pattern, agents FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?",
+        )
+        plans = [
+            " ".join(
+                row["detail"]
+                for row in conn.execute(
+                    f"EXPLAIN QUERY PLAN {query}",
+                    ("acme", "scan-1"),
+                )
+            )
+            for query in queries
+        ]
+
+    assert all("tenant_id=? AND scan_id=?" in plan for plan in plans), plans
+
+
+def test_sqlite_api_retry_rebuilds_search_index_without_stale_rows(tmp_path) -> None:
+    """The API wrapper refreshes its optional search mirror after replacement."""
+    from agent_bom.api.graph_store import SQLiteGraphStore
+
+    db = tmp_path / "api-search-retry.db"
+    store = SQLiteGraphStore(db)
+    store.save_graph_streaming(
+        scan_id="retry",
+        tenant_id="acme",
+        nodes=iter(
+            [
+                UnifiedNode(id="keep", entity_type=EntityType.PACKAGE, label="keep"),
+                UnifiedNode(id="stale", entity_type=EntityType.PACKAGE, label="stale"),
+            ]
+        ),
+        edges=iter(()),
+    )
+    store.save_graph_streaming(
+        scan_id="retry",
+        tenant_id="acme",
+        nodes=iter([UnifiedNode(id="keep", entity_type=EntityType.PACKAGE, label="updated")]),
+        edges=iter(()),
+    )
+
+    with sqlite3.connect(db) as conn:
+        ids = {
+            row[0]
+            for row in conn.execute(
+                "SELECT node_id FROM graph_node_search WHERE tenant_id = ? AND scan_id = ?",
+                ("acme", "retry"),
+            )
+        }
+    assert ids == {"keep"}
+
+
+def test_sqlite_stream_retry_rolls_back_after_flushed_batch(tmp_path, monkeypatch) -> None:
+    """A producer failure restores the prior complete snapshot, including search."""
+    from agent_bom.api.graph_store import SQLiteGraphStore
+
+    monkeypatch.setenv("AGENT_BOM_GRAPH_WRITE_BATCH_SIZE", "1")
+    db = tmp_path / "api-rollback.db"
+    store = SQLiteGraphStore(db)
+    store.save_graph_streaming(
+        scan_id="retry",
+        tenant_id="acme",
+        nodes=iter([UnifiedNode(id="original", entity_type=EntityType.PACKAGE, label="original")]),
+        edges=iter(()),
+    )
+
+    def failing_nodes():
+        yield UnifiedNode(id="partial", entity_type=EntityType.PACKAGE, label="partial")
+        raise RuntimeError("producer failed after flush")
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="producer failed after flush"):
+        store.save_graph_streaming(
+            scan_id="retry",
+            tenant_id="acme",
+            nodes=failing_nodes(),
+            edges=iter(()),
+        )
+
+    with sqlite3.connect(db) as conn:
+        graph_ids = {row[0] for row in conn.execute("SELECT id FROM graph_nodes WHERE tenant_id='acme' AND scan_id='retry'")}
+        search_ids = {
+            row[0] for row in conn.execute("SELECT node_id FROM graph_node_search WHERE tenant_id='acme' AND scan_id='retry'")
+        }
+        count = conn.execute(
+            "SELECT node_count FROM graph_snapshots WHERE tenant_id='acme' AND scan_id='retry'"
+        ).fetchone()[0]
+    assert graph_ids == search_ids == {"original"}
+    assert count == 1
 
 
 def test_iter_graph_edges_dangling_edge_matches_documented_contract(tmp_path) -> None:

@@ -323,7 +323,7 @@ function CampaignCard({
       {versionConflict ? (
         <button type="button" onClick={onReload} className="mt-2 rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Reload campaigns</button>
       ) : null}
-      {connections.length === 0 ? <p className="mt-3 text-xs text-[color:var(--text-tertiary)]"><Link href="/connections">Connect ticketing</Link> to create or sync campaign tickets.</p> : null}
+      {connections.length === 0 ? <p className="mt-3 text-xs text-[color:var(--text-tertiary)]"><Link href="/connections">Connect ticketing</Link> to create new campaign tickets. Existing ticket links can still be synced.</p> : null}
     </article>
   );
 }

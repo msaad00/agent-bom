@@ -1465,6 +1465,7 @@ function GraphPageInner() {
     sourceNodeCount: flow.nodes.length,
     renderedNodeCount: aggregated.nodes.length,
     clusterCount: aggregated.clusters.size,
+    rollupActive: rollupNavigationActive,
   });
 
   const lineageLayoutNodes = layoutNodes as Node<LineageNodeData>[];

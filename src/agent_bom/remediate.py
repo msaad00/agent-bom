@@ -430,8 +430,10 @@ def export_remediation_sh(plan: RemediationPlan, path: str) -> None:
             lines.append("")
 
     Path(path).write_text("\n".join(lines))
-    # Make executable
-    Path(path).chmod(0o755)
+    # Generated commands require explicit review before invocation.  Keep the
+    # artifact private and non-executable; operators can run it with ``bash``
+    # after review or deliberately change its mode.
+    Path(path).chmod(0o600)
 
 
 # ─── Auto-apply fixes ──────────────────────────────────────────────────────

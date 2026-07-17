@@ -172,8 +172,9 @@ def test_export_sh(tmp_path):
     content = out.read_text()
     assert content.startswith("#!/usr/bin/env bash")
     assert "npm install axios@0.21.1" in content
-    # Verify file is executable
+    # Generated commands require explicit review/invocation and are not executable by default.
     import stat
 
     mode = out.stat().st_mode
-    assert mode & stat.S_IXUSR
+    assert not mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    assert stat.S_IMODE(mode) == 0o600

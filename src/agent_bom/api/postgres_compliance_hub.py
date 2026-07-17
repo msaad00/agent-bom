@@ -836,24 +836,65 @@ class PostgresComplianceHubStore:
             counts[key] = counts.get(key, 0) + int(count)
         return counts
 
+    def current_severity_breakdown(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+    ) -> dict[str, int]:
+        # GROUP BY the materialised ``severity`` on the current-state table with
+        # the SAME tenant/since/origin predicates ``list_current_page`` counts on,
+        # so the exec headline reconciles exactly with the ``/v1/findings``
+        # drill-down and retired/aged ledger rows never inflate it (#3961/#4009).
+        where = ["tenant_id = %s"]
+        params: list[Any] = [tenant_id]
+        if since:
+            where.append("last_seen >= %s")
+            params.append(since)
+        if origin is not None:
+            where.append("origin = %s")
+            params.append(origin)
+        where_sql = " AND ".join(where)
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT LOWER(COALESCE(NULLIF(severity, ''), 'unknown')) AS sev, COUNT(*)
+                FROM hub_findings_current
+                WHERE {where_sql}
+                GROUP BY sev
+                """,  # nosec B608
+                tuple(params),
+            ).fetchall()
+        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+        for sev, count in rows:
+            key = str(sev or "unknown").lower()
+            counts[key] = counts.get(key, 0) + int(count)
+        return counts
+
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
         from agent_bom.compliance_coverage import normalize_framework_slug
 
+        # Unnest + aggregate the denormalised CSV IN SQL so the query returns
+        # O(distinct slugs) rows instead of pulling every ledger row into Python
+        # to count on the event loop (#3963). Raw tokens are folded to canonical
+        # slugs (alias/underscore normalisation) over the handful of results.
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                "SELECT applicable_frameworks_csv FROM compliance_hub_findings WHERE tenant_id = %s",
+                """
+                SELECT TRIM(token) AS slug, COUNT(*) AS n
+                FROM compliance_hub_findings,
+                     unnest(string_to_array(applicable_frameworks_csv, ',')) AS token
+                WHERE tenant_id = %s AND applicable_frameworks_csv <> ''
+                GROUP BY TRIM(token)
+                HAVING TRIM(token) <> ''
+                """,
                 (tenant_id,),
             ).fetchall()
         counts: dict[str, int] = {}
-        for (csv_value,) in rows:
-            if not csv_value:
-                continue
-            for slug in str(csv_value).split(","):
-                slug = slug.strip()
-                if not slug:
-                    continue
-                canonical = normalize_framework_slug(slug)
-                counts[canonical] = counts.get(canonical, 0) + 1
+        for slug, n in rows:
+            canonical = normalize_framework_slug(str(slug))
+            counts[canonical] = counts.get(canonical, 0) + int(n)
         return counts
 
     def count(self, tenant_id: str) -> int:

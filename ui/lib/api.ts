@@ -142,7 +142,13 @@ import type {
   TicketingConnectionsResponse,
   TicketsListResponse,
   TicketActionResult,
-  TicketCreateBody
+  TicketCreateBody,
+  RiskCampaign,
+  RiskCampaignsResponse,
+  RiskCampaignUpdate,
+  RiskCampaignTicketRequest,
+  RiskCampaignTicketCreateResult,
+  RiskCampaignTicketSyncResult
 } from "./api-types";
 export type {
   AccountSummaryResponse,
@@ -385,6 +391,12 @@ export type {
   TicketProvider,
   TicketTransport,
   TicketConnectionStatus,
+  RiskCampaign,
+  RiskCampaignsResponse,
+  RiskCampaignUpdate,
+  RiskCampaignTicketRequest,
+  RiskCampaignTicketCreateResult,
+  RiskCampaignTicketSyncResult,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 export type { ReadWindow } from "./api-types";
@@ -1289,6 +1301,28 @@ export const api = {
   syncTicket: (ticketId: string) =>
     post<TicketActionResult>(
       `/v1/ticketing/tickets/${encodeURIComponent(ticketId)}/sync`,
+      {},
+    ),
+
+  // ── Risk campaigns ──
+  // Priorities and modeled risk reduction are authoritative server outputs.
+  listRiskCampaigns: () => get<RiskCampaignsResponse>("/v1/campaigns"),
+  updateRiskCampaign: (campaignId: string, body: RiskCampaignUpdate) =>
+    patch<RiskCampaign>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}`,
+      body,
+    ),
+  createRiskCampaignTickets: (
+    campaignId: string,
+    body: RiskCampaignTicketRequest,
+  ) =>
+    post<RiskCampaignTicketCreateResult>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}/tickets`,
+      body,
+    ),
+  syncRiskCampaignTickets: (campaignId: string) =>
+    post<RiskCampaignTicketSyncResult>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}/tickets/sync`,
       {},
     ),
 

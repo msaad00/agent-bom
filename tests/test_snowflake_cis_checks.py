@@ -1,4 +1,4 @@
-"""Snowflake CIS checks must handle boolean ACCOUNT_USAGE columns + real column names."""
+"""Snowflake CIS checks must handle boolean SHOW columns and real column names."""
 
 from __future__ import annotations
 
@@ -41,13 +41,30 @@ def test_check_1_1_does_not_crash_on_boolean_columns() -> None:
 
 
 def test_check_1_1_all_mfa_passes() -> None:
-    cur = _FakeCursor(["name", "ext_authn_duo"], [("U1", True), ("U2", "true")])
+    cur = _FakeCursor(
+        ["name", "ext_authn_duo", "has_password", "disabled"],
+        [("U1", True, True, False), ("U2", "true", "true", "false")],
+    )
     assert _check_1_1(cur).status.value == "pass"
 
 
 def test_check_1_2_uses_name_column() -> None:
-    # PASSWORD_POLICIES exposes NAME (not policy_name); a weak policy must flag.
-    cur = _FakeCursor(["name", "password_min_length"], [("WEAK_POL", 8)])
+    class _PolicyCursor:
+        description = None
+        rows: list[tuple] = []
+
+        def execute(self, sql: str):
+            if sql.startswith("SHOW PASSWORD"):
+                self.description = [(column,) for column in ("database_name", "schema_name", "name")]
+                self.rows = [("SECURITY", "POLICIES", "WEAK_POL")]
+            else:
+                self.description = [(column,) for column in ("property", "value")]
+                self.rows = [("PASSWORD_MIN_LENGTH", 8)]
+
+        def fetchall(self):
+            return self.rows
+
+    cur = _PolicyCursor()
     res = _check_1_2(cur)
     assert res.status.value == "fail"
     assert "WEAK_POL" in res.evidence

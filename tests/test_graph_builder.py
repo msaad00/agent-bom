@@ -1545,3 +1545,19 @@ class TestEdgeEvidenceMerge:
         assert kept.evidence.get("data_source") == "package-path"
         # Conflict on existing key: kept side wins (no overwrite).
         assert kept.evidence.get("is_direct") is True
+
+
+def test_attack_path_analysis_failure_is_recorded_without_exception_text(monkeypatch):
+    import agent_bom.graph.attack_path_fusion as fusion
+
+    def fail(_graph):
+        raise RuntimeError("secret-bearing analyzer detail")
+
+    monkeypatch.setattr(fusion, "apply_attack_path_fusion", fail)
+
+    g = build_unified_graph_from_report({"agents": []}, scan_id="failed-analysis", tenant_id="tenant-a")
+
+    status = g.analysis_status["attack_path_fusion"].to_dict()
+    assert status["status"] == "failed"
+    assert status["reason_codes"] == ["analysis_error"]
+    assert "secret-bearing" not in str(status)

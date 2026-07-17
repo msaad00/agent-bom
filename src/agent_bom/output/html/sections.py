@@ -462,7 +462,7 @@ def _non_cve_findings(report: "AIBOMReport") -> list["Finding"]:
             continue
         evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
         if (
-            finding.finding_type == FindingType.CIS_FAIL
+            finding.finding_type in {FindingType.CIS_FAIL, FindingType.CIS_ERROR}
             and evidence.get("benchmark") == "CIS"
             and evidence.get("provider") in _CIS_CLOUD_LABELS
         ):
@@ -746,8 +746,8 @@ def _cis_evidence_html(check: dict) -> str:
 def _cis_benchmark_section(report: "AIBOMReport") -> str:
     """Build the CIS benchmark posture section (issue #665).
 
-    Renders one sub-panel per cloud with a CIS benchmark bundle. Each
-    failed check surfaces its structured remediation dict (``fix_cli``,
+    Renders one sub-panel per cloud with a CIS benchmark bundle. Each failed
+    or unevaluable check surfaces its structured remediation dict (``fix_cli``,
     ``fix_console``, ``priority``, ``guardrails``, human-review flag).
     Returns an empty string when no CIS data is present.
     """
@@ -768,6 +768,8 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
         if not checks:
             continue
         failed = [c for c in checks if c.get("status") == "fail"]
+        errored = [c for c in checks if c.get("status") == "error"]
+        actionable = failed + errored
         evaluated = [c for c in checks if c.get("status") in ("pass", "fail")]
         passed_n = bundle.get("passed", sum(1 for c in checks if c.get("status") == "pass"))
         pass_rate = bundle.get("pass_rate", 0.0)
@@ -777,7 +779,11 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
         sev_counts = {
             s: sum(1 for c in failed if (c.get("severity") or "").lower() == s) for s in SEVERITY_THRESHOLD_LABELS
         }
-        if not failed:
+        if errored and not evaluated:
+            verdict_text, verdict_color = "ERROR", "#dc2626"
+        elif errored:
+            verdict_text, verdict_color = "INCOMPLETE", "#d97706"
+        elif not failed:
             verdict_text, verdict_color = "PASS", "#16a34a"
         else:
             worst_check = min(failed, key=lambda c: severity_worst_first_rank(c.get("severity")))
@@ -788,7 +794,7 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
             verdict_text = f"{worst_band} GAPS"
             verdict_color = _SEV_COLOR.get(worst_sev, "#ef4444")
 
-        top = sorted(failed, key=_sort_key)[:3]
+        top = sorted(actionable, key=_sort_key)[:3]
         top_html = ""
         if top:
             chips = "".join(
@@ -803,26 +809,32 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
             for s, n in sev_counts.items()
             if n
         )
+        pass_html = (
+            f'<div style="color:{band_color};font-weight:700">{pass_rate:.0f}% pass</div>'
+            if evaluated
+            else '<div style="color:#94a3b8;font-weight:700">pass rate unavailable</div>'
+        )
 
         header = (
             f'<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:4px">'
             f'<div style="font-weight:700;color:#f1f5f9;font-size:.95rem">{_esc(label)}</div>'
             f'<span style="background:{verdict_color};color:#fff;padding:2px 9px;border-radius:4px;'
             f'font-size:.7rem;font-weight:700;letter-spacing:.04em">{verdict_text}</span>'
-            f'<div style="color:{band_color};font-weight:700">{pass_rate:.0f}% pass</div>'
+            f"{pass_html}"
             f'<div style="color:#64748b;font-size:.78rem">'
-            f"{passed_n}/{len(evaluated)} checks &middot; "
+            f"{passed_n}/{len(evaluated)} evaluated &middot; "
             f'<strong style="color:#f97316">{len(failed)} failed</strong>'
+            f' &middot; <strong style="color:#d97706">{len(errored)} unevaluable</strong>'
             f"</div>"
             f'<div style="display:flex;gap:10px">{counts_html}</div>'
             f"</div>"
             f"{top_html}"
         )
 
-        if not failed:
+        if not actionable:
             panels.append(
                 f'<div class="panel" style="margin-bottom:16px">{header}'
-                f'<div class="empty-state" style="margin-top:12px">&#x2705; No failed CIS checks.</div></div>'
+                f'<div class="empty-state" style="margin-top:12px">&#x2705; No failed security checks.</div></div>'
             )
             continue
 
@@ -847,7 +859,7 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
         )
 
         rows = []
-        for check in sorted(failed, key=_sort_key):
+        for check in sorted(actionable, key=_sort_key):
             sev = (check.get("severity") or "").lower()
             rem = check.get("remediation") or {}
             fix_cli = rem.get("fix_cli")
@@ -921,7 +933,7 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
     )
 
     return (
-        '<section id="cisbenchmarks"><div class="sec-title">&#x1f6e1;&#xfe0f; CIS Benchmark Posture</div>'
+        '<section id="cisbenchmarks"><div class="sec-title">&#x1f6e1;&#xfe0f; Cloud Security Posture</div>'
         + "".join(panels)
         + filter_script
         + "</section>"

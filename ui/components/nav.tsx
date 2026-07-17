@@ -42,6 +42,7 @@ import {
   Scale,
   Cog,
   ListChecks,
+  ShieldCheck,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
@@ -147,6 +148,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
       { href: "/drift", label: "Drift", icon: Radar, desc: "Config drift from approved baselines" },
       { href: "/audit", label: "Audit Log", icon: FileText },
+      { href: "/self-posture", label: "Self-Audit", icon: ShieldCheck, desc: "This control plane's own security & governance hardening posture" },
     ],
     secondary: [
       { href: "/blueprints", label: "Blueprints", icon: Boxes },
@@ -211,6 +213,7 @@ const NAV_LINK_ICON_CLASS: Record<string, string> = {
   "/compliance": "text-emerald-400",
   "/governance": "text-amber-400",
   "/audit": "text-teal-400",
+  "/self-posture": "text-emerald-400",
   "/registry": "text-amber-400",
   "/cost": "text-yellow-400",
   "/jobs": "text-orange-400",

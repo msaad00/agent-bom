@@ -75,6 +75,25 @@ def test_build_remediation_cis_returns_fix_privilege_and_artifact() -> None:
     assert "s3:PutBucketPublicAccessBlock" in rem.artifact.content
 
 
+def test_cis_error_uses_review_guidance_not_control_fix() -> None:
+    finding = cloud_cis_check_to_finding(
+        {
+            "check_id": "1.1",
+            "title": "MFA",
+            "status": "ERROR",
+            "severity": "critical",
+            "evidence": "ACCOUNT_USAGE unavailable",
+            "recommendation": "Restore read-only evidence access and rerun.",
+        },
+        provider="snowflake",
+    )
+    remediation = build_remediation(finding)
+    assert finding.finding_type == FindingType.CIS_ERROR
+    assert remediation.fix.cli is None
+    assert remediation.fix.requires_human_review is True
+    assert "rerun" in remediation.fix.summary.lower()
+
+
 def test_advisory_flags_always_set() -> None:
     rem = build_remediation(_cis_finding())
     assert rem.applied is False

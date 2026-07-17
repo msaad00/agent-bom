@@ -60,11 +60,13 @@ class DatabricksSecurityReport:
         return (self.passed / evaluated * 100) if evaluated else 0.0
 
     def to_dict(self) -> dict:
+        from agent_bom.cloud.benchmark_manifests import benchmark_manifest
         from agent_bom.mitre_attack import tag_cis_check
 
         return {
             "benchmark": "Databricks Security Best Practices",
             "benchmark_version": self.benchmark_version,
+            "benchmark_manifest": benchmark_manifest("databricks"),
             "workspace_host": self.workspace_host,
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
@@ -567,7 +569,8 @@ def run_security_checks(
         from databricks.sdk import WorkspaceClient
     except ImportError:
         raise CloudDiscoveryError(
-            "databricks-sdk is required for Databricks CIS benchmark. Install with: pip install 'agent-bom[databricks]'"
+            "databricks-sdk is required for Databricks security best-practices checks. "
+            "Install with: pip install 'agent-bom[databricks]'"
         )
 
     ws_kwargs: dict = {}

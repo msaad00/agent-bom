@@ -116,6 +116,7 @@ export interface GraphSnapshot {
   node_count: number;
   edge_count: number;
   risk_summary: Record<string, number>;
+  analysis_status?: import("./graph-schema").GraphStats["analysis_status"] | undefined;
 }
 
 export interface GraphAttackPath extends AttackPath {
@@ -2577,6 +2578,42 @@ export interface GovernanceReport {
     status: string;
   }>;
   warnings: string[];
+}
+
+// ── Operator self-posture (GET /v1/self-posture) ────────────────────────────
+// agent-bom auditing its OWN control-plane hardening. Honest four-way per-check
+// status; `unknown` is a first-class outcome (never a silent pass). Mirrors
+// agent_bom.self_posture.self_posture — see src/agent_bom/self_posture.py.
+export type SelfPostureStatus = "pass" | "fail" | "warn" | "unknown";
+export type SelfPostureOverall =
+  | "hardened"
+  | "action_advised"
+  | "needs_review"
+  | "at_risk";
+
+export interface SelfPostureCheck {
+  id: string;
+  category: string;
+  title: string;
+  status: SelfPostureStatus;
+  detail: string;
+  remediation?: string;
+}
+
+export interface SelfPostureCounts {
+  pass: number;
+  fail: number;
+  warn: number;
+  unknown: number;
+}
+
+export interface SelfPostureReport {
+  schema_version: number;
+  overall_status: SelfPostureOverall;
+  hardened: boolean;
+  deployment_env: string;
+  counts: SelfPostureCounts;
+  checks: SelfPostureCheck[];
 }
 
 export interface ActivityTimeline {

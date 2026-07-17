@@ -100,6 +100,17 @@ def test_kill_chain_produces_one_ranked_fused_path():
     assert path.summary.startswith("Internet-exposed public-ec2")
 
 
+def test_complete_fusion_records_snapshot_analysis_status():
+    g = _kill_chain_graph()
+
+    stats = apply_attack_path_fusion(g)
+
+    assert stats["analysis_status"]["status"] == "complete"
+    assert stats["analysis_status"]["reason_codes"] == []
+    assert stats["analysis_status"]["observed"]["result_count"] == 1
+    assert g.analysis_status["attack_path_fusion"].status.value == "complete"
+
+
 def test_benign_graph_produces_no_fused_paths():
     assert compute_fused_attack_paths(_benign_graph()) == []
 
@@ -195,6 +206,23 @@ def test_returned_path_count_is_capped():
     assert len(paths) == _MAX_PATHS
 
 
+def test_path_cap_records_limited_snapshot_analysis_status():
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    for i in range(_MAX_PATHS + 20):
+        eid = f"entry{i}"
+        did = f"data_store:{i}"
+        g.add_node(UnifiedNode(id=eid, entity_type=EntityType.CLOUD_RESOURCE, label=f"e{i}", attributes={"internet_exposed": True}))
+        g.add_node(UnifiedNode(id=did, entity_type=EntityType.DATA_STORE, label=f"d{i}", attributes={"data_sensitivity": "sensitive"}))
+        g.add_edge(UnifiedEdge(source=eid, target=did, relationship=RelationshipType.STORES))
+
+    stats = apply_attack_path_fusion(g)
+
+    assert stats["analysis_status"]["status"] == "limited"
+    assert "path_cap_reached" in stats["analysis_status"]["reason_codes"]
+    assert stats["analysis_status"]["observed"]["candidate_path_count"] == _MAX_PATHS + 20
+    assert len(g.attack_paths) == _MAX_PATHS
+
+
 def test_apply_materialises_and_is_idempotent():
     g = _kill_chain_graph()
     stats = apply_attack_path_fusion(g)
@@ -274,3 +302,6 @@ def test_oversized_graph_surfaces_skipped_signal():
     assert stats["fused_attack_paths"] == 0
     assert stats["skipped"] is True
     assert "node_cap_exceeded" in stats["skipped_reason"]
+    assert stats["analysis_status"]["status"] == "skipped"
+    assert stats["analysis_status"]["reason_codes"] == ["node_cap_exceeded"]
+    assert g.analysis_status["attack_path_fusion"].status.value == "skipped"

@@ -23,6 +23,7 @@ from agent_bom.cloud.snowflake_cis_benchmark import (
     _check_4_2,
     _check_5_1,
     _check_5_2,
+    _preflight_account_usage_source,
     run_benchmark,
 )
 
@@ -130,18 +131,24 @@ class TestCheck11:
 
 class TestCheck12:
     def test_pass_strong_policy(self):
-        cursor = _mock_cursor([{"name": "DEFAULT", "password_min_length": 14}])
-        result = _check_1_2(cursor)
+        with patch(
+            "agent_bom.cloud.snowflake_cis_benchmark._live_password_policies",
+            return_value=[{"name": "DEFAULT", "password_min_length": 14}],
+        ):
+            result = _check_1_2(MagicMock())
         assert result.status == CheckStatus.PASS
 
     def test_fail_weak_policy(self):
-        cursor = _mock_cursor([{"name": "DEFAULT", "password_min_length": 8}])
-        result = _check_1_2(cursor)
+        with patch(
+            "agent_bom.cloud.snowflake_cis_benchmark._live_password_policies",
+            return_value=[{"name": "DEFAULT", "password_min_length": 8}],
+        ):
+            result = _check_1_2(MagicMock())
         assert result.status == CheckStatus.FAIL
 
     def test_fail_no_policies(self):
-        cursor = _empty_cursor()
-        result = _check_1_2(cursor)
+        with patch("agent_bom.cloud.snowflake_cis_benchmark._live_password_policies", return_value=[]):
+            result = _check_1_2(MagicMock())
         assert result.status == CheckStatus.FAIL
 
 
@@ -171,8 +178,8 @@ class TestCheck14:
     def test_pass_two_admins(self):
         cursor = _mock_cursor(
             [
-                {"grantee_name": "ADMIN1"},
-                {"grantee_name": "ADMIN2"},
+                {"grantee_name": "ADMIN1", "granted_to": "USER"},
+                {"grantee_name": "ADMIN2", "granted_to": "USER"},
             ]
         )
         result = _check_1_4(cursor)
@@ -181,13 +188,24 @@ class TestCheck14:
     def test_fail_too_many_admins(self):
         cursor = _mock_cursor(
             [
-                {"grantee_name": "ADMIN1"},
-                {"grantee_name": "ADMIN2"},
-                {"grantee_name": "ADMIN3"},
+                {"grantee_name": "ADMIN1", "granted_to": "USER"},
+                {"grantee_name": "ADMIN2", "granted_to": "USER"},
+                {"grantee_name": "ADMIN3", "granted_to": "USER"},
             ]
         )
         result = _check_1_4(cursor)
         assert result.status == CheckStatus.FAIL
+
+    def test_role_hierarchy_grant_is_not_counted_as_a_user(self):
+        cursor = _mock_cursor(
+            [
+                {"grantee_name": "ADMIN1", "granted_to": "USER"},
+                {"grantee_name": "SECURITYADMIN", "granted_to": "ROLE"},
+            ]
+        )
+        result = _check_1_4(cursor)
+        assert result.status == CheckStatus.PASS
+        assert "1 user" in result.evidence
 
 
 # ---------------------------------------------------------------------------
@@ -197,18 +215,24 @@ class TestCheck14:
 
 class TestCheck15:
     def test_pass_history_strong(self):
-        cursor = _mock_cursor([{"name": "DEFAULT", "password_history": 24}])
-        result = _check_1_5(cursor)
+        with patch(
+            "agent_bom.cloud.snowflake_cis_benchmark._live_password_policies",
+            return_value=[{"name": "DEFAULT", "password_history": 24}],
+        ):
+            result = _check_1_5(MagicMock())
         assert result.status == CheckStatus.PASS
 
     def test_fail_history_weak(self):
-        cursor = _mock_cursor([{"name": "DEFAULT", "password_history": 5}])
-        result = _check_1_5(cursor)
+        with patch(
+            "agent_bom.cloud.snowflake_cis_benchmark._live_password_policies",
+            return_value=[{"name": "DEFAULT", "password_history": 5}],
+        ):
+            result = _check_1_5(MagicMock())
         assert result.status == CheckStatus.FAIL
 
     def test_fail_no_policies(self):
-        cursor = _empty_cursor()
-        result = _check_1_5(cursor)
+        with patch("agent_bom.cloud.snowflake_cis_benchmark._live_password_policies", return_value=[]):
+            result = _check_1_5(MagicMock())
         assert result.status == CheckStatus.FAIL
 
 
@@ -219,18 +243,27 @@ class TestCheck15:
 
 class TestCheck16:
     def test_pass_max_age_strong(self):
-        cursor = _mock_cursor([{"name": "DEFAULT", "password_max_age_days": 90}])
-        result = _check_1_6(cursor)
+        with patch(
+            "agent_bom.cloud.snowflake_cis_benchmark._live_password_policies",
+            return_value=[{"name": "DEFAULT", "password_max_age_days": 90}],
+        ):
+            result = _check_1_6(MagicMock())
         assert result.status == CheckStatus.PASS
 
     def test_fail_max_age_too_high(self):
-        cursor = _mock_cursor([{"name": "DEFAULT", "password_max_age_days": 180}])
-        result = _check_1_6(cursor)
+        with patch(
+            "agent_bom.cloud.snowflake_cis_benchmark._live_password_policies",
+            return_value=[{"name": "DEFAULT", "password_max_age_days": 180}],
+        ):
+            result = _check_1_6(MagicMock())
         assert result.status == CheckStatus.FAIL
 
     def test_fail_max_age_zero(self):
-        cursor = _mock_cursor([{"name": "DEFAULT", "password_max_age_days": 0}])
-        result = _check_1_6(cursor)
+        with patch(
+            "agent_bom.cloud.snowflake_cis_benchmark._live_password_policies",
+            return_value=[{"name": "DEFAULT", "password_max_age_days": 0}],
+        ):
+            result = _check_1_6(MagicMock())
         assert result.status == CheckStatus.FAIL
 
 
@@ -324,11 +357,13 @@ class TestCheck41:
         cursor = _mock_cursor([{"cnt": 500}])
         result = _check_4_1(cursor)
         assert result.status == CheckStatus.PASS
+        assert "ending 3 hours before scan time" in result.evidence
 
     def test_fail_no_records(self):
         cursor = _mock_cursor([{"cnt": 0}])
         result = _check_4_1(cursor)
         assert result.status == CheckStatus.FAIL
+        assert "ending 3 hours before scan time" in result.evidence
 
     def test_error_on_exception(self):
         cursor = MagicMock()
@@ -347,12 +382,14 @@ class TestCheck42:
         cursor = _empty_cursor()
         result = _check_4_2(cursor)
         assert result.status == CheckStatus.PASS
+        assert "ending 2 hours before scan time" in result.evidence
 
     def test_fail_excessive_failures(self):
         cursor = _mock_cursor([{"user_name": "BADUSER", "fail_count": 25}])
         result = _check_4_2(cursor)
         assert result.status == CheckStatus.FAIL
         assert "BADUSER" in result.evidence
+        assert "ending 2 hours before scan time" in result.evidence
 
 
 # ---------------------------------------------------------------------------
@@ -459,3 +496,201 @@ class TestRunBenchmark:
                 report = run_benchmark(account="test_acct", user="u", checks=["1.1", "2.1"], authenticator="externalbrowser")
 
         assert report.total == 2
+
+
+class _SourceAwareCursor:
+    def __init__(self, *, source_rows=1, show_rows=None, show_data=None, denied=False, filtered_rows=None, check_rows=None):
+        self.source_rows = source_rows
+        self.show_rows = source_rows if show_rows is None else show_rows
+        self.show_data = show_data
+        self.denied = denied
+        self.filtered_rows = filtered_rows or []
+        self.check_rows = check_rows
+        self.description = None
+        self._rows = []
+
+    def execute(self, sql):
+        normalized = " ".join(sql.lower().split())
+        if "source-preflight:" in normalized:
+            if self.denied:
+                raise RuntimeError("insufficient privileges")
+            self.description = [("ROW_COUNT",)]
+            self._rows = [(self.source_rows,)]
+        elif normalized.startswith("show "):
+            if self.show_data is not None:
+                columns = list(self.show_data[0]) if self.show_data else ["NAME"]
+                self.description = [(column.upper(),) for column in columns]
+                self._rows = [tuple(row[column] for column in columns) for row in self.show_data]
+            else:
+                self.description = [("NAME",), ("DISABLED",)]
+                self._rows = [(f"ROW_{index}", "false") for index in range(self.show_rows)]
+        elif self.check_rows is not None:
+            columns = list(self.check_rows[0]) if self.check_rows else ["CNT"]
+            self.description = [(column.upper(),) for column in columns]
+            self._rows = [tuple(row[column] for column in columns) for row in self.check_rows]
+        else:
+            self.description = [("NAME",), ("EXT_AUTHN_DUO",), ("HAS_PASSWORD",), ("DISABLED",)]
+            self._rows = [tuple(row[key] for key in ("name", "ext_authn_duo", "has_password", "disabled")) for row in self.filtered_rows]
+
+    def fetchall(self):
+        return self._rows
+
+
+def _run_selected_with_source(cursor, check_id="1.1"):
+    import sys
+
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    mock_errors = MagicMock()
+    mock_errors.DatabaseError = Exception
+    with patch.dict(
+        sys.modules,
+        {
+            "snowflake": MagicMock(),
+            "snowflake.connector": MagicMock(),
+            "snowflake.connector.errors": mock_errors,
+        },
+    ):
+        return run_benchmark(account="test", checks=[check_id], conn=conn)
+
+
+def _run_check_11_with_source(cursor):
+    return _run_selected_with_source(cursor)
+
+
+def test_empty_account_usage_source_is_error_not_pass():
+    report = _run_check_11_with_source(_SourceAwareCursor(source_rows=0))
+    assert report.checks[0].status == CheckStatus.ERROR
+    assert report.source_health["users"]["coverage"] == "empty"
+
+
+def test_source_preflight_does_not_invent_a_current_time_watermark():
+    from agent_bom.cloud.snowflake_cis_benchmark import _SOURCE_PROBES
+
+    for sql, _minimum_rows in _SOURCE_PROBES.values():
+        assert "AS observed_at" not in sql
+        assert "QUERY_HISTORY" not in sql
+        assert "LOGIN_HISTORY" not in sql or "MAX(" not in sql
+
+
+def test_denied_account_usage_source_is_error_not_pass():
+    report = _run_check_11_with_source(_SourceAwareCursor(denied=True))
+    assert report.checks[0].status == CheckStatus.ERROR
+    assert report.source_health["users"]["privilege"] == "unknown"
+    assert report.source_health["users"]["query_status"] == "error"
+
+
+def test_clean_filtered_empty_passes_when_source_is_covered_and_fresh():
+    report = _run_check_11_with_source(_SourceAwareCursor(source_rows=2, filtered_rows=[]))
+    assert report.checks[0].status == CheckStatus.PASS
+    assert "All 0 password-authenticated users" in report.checks[0].evidence
+
+
+def test_same_count_stale_account_usage_values_cannot_produce_false_pass():
+    report = _run_check_11_with_source(
+        _SourceAwareCursor(
+            source_rows=1,
+            show_data=[
+                {
+                    "name": "ADMIN",
+                    "disabled": "false",
+                    "has_password": "true",
+                    "ext_authn_duo": "false",
+                }
+            ],
+        )
+    )
+    assert report.source_health["users"]["freshness"] == "control_plane_reconciled"
+    assert report.checks[0].status == CheckStatus.FAIL
+    assert "ADMIN" in report.checks[0].evidence
+
+
+def test_empty_login_history_window_is_covered_not_stale():
+    health = _preflight_account_usage_source(_SourceAwareCursor(source_rows=0), "login_history")
+    assert health["usable"] is True
+    assert health["coverage"] == "covered"
+    assert health["freshness"] == "bounded_as_of_empty_window"
+
+
+def test_nonempty_login_history_reports_bounded_as_of_freshness():
+    health = _preflight_account_usage_source(_SourceAwareCursor(source_rows=2), "login_history")
+    assert health["usable"] is True
+    assert health["freshness"] == "bounded_as_of"
+    assert health["provider_lag_bound_hours"] == 2
+
+
+def test_snapshot_source_requires_live_control_plane_reconciliation():
+    health = _preflight_account_usage_source(_SourceAwareCursor(source_rows=1), "users")
+    assert health["usable"] is True
+    assert health["freshness"] == "control_plane_reconciled"
+    assert health["provider_lag_bound_hours"] == 2
+
+    stale = _preflight_account_usage_source(_SourceAwareCursor(source_rows=1, show_rows=2), "users")
+    assert stale["usable"] is False
+    assert stale["freshness"] == "stale"
+
+
+def test_password_policy_and_access_history_sources_are_preflight_gated():
+    from agent_bom.cloud.snowflake_cis_benchmark import _CHECK_SOURCES, _SOURCE_PROBES
+
+    assert _CHECK_SOURCES["1.2"] == "password_policies"
+    assert _CHECK_SOURCES["4.1"] == "access_history"
+    for source in ("password_policies", "access_history"):
+        denied = _preflight_account_usage_source(_SourceAwareCursor(denied=True), source)
+        current = _preflight_account_usage_source(_SourceAwareCursor(source_rows=0), source)
+        assert denied["usable"] is False
+        assert current["usable"] is True
+        assert current["freshness"] == (
+            "control_plane_reconciled" if source == "password_policies" else "bounded_as_of"
+        )
+        assert source in _SOURCE_PROBES
+
+
+def test_password_policy_denied_stale_empty_and_current_semantics():
+    denied = _run_selected_with_source(_SourceAwareCursor(denied=True), "1.2")
+    assert denied.checks[0].status == CheckStatus.ERROR
+
+    stale = _run_selected_with_source(_SourceAwareCursor(source_rows=1, show_rows=2), "1.2")
+    assert stale.checks[0].status == CheckStatus.ERROR
+    assert stale.source_health["password_policies"]["freshness"] == "stale"
+
+    empty = _run_selected_with_source(_SourceAwareCursor(source_rows=0, check_rows=[]), "1.2")
+    assert empty.checks[0].status == CheckStatus.FAIL
+    assert empty.source_health["password_policies"]["freshness"] == "control_plane_reconciled"
+
+    current = _run_selected_with_source(
+        _SourceAwareCursor(
+            source_rows=1,
+            show_data=[
+                {
+                    "database_name": "SECURITY",
+                    "schema_name": "POLICIES",
+                    "name": "STRONG",
+                }
+            ],
+            check_rows=[{"property": "PASSWORD_MIN_LENGTH", "value": 14}],
+        ),
+        "1.2",
+    )
+    assert current.checks[0].status == CheckStatus.PASS
+
+
+def test_access_history_denied_empty_and_bounded_current_semantics():
+    denied = _run_selected_with_source(_SourceAwareCursor(denied=True), "4.1")
+    assert denied.checks[0].status == CheckStatus.ERROR
+
+    empty = _run_selected_with_source(_SourceAwareCursor(source_rows=0, check_rows=[{"cnt": 0}]), "4.1")
+    assert empty.checks[0].status == CheckStatus.FAIL
+    assert empty.source_health["access_history"]["freshness"] == "bounded_as_of"
+
+    current = _run_selected_with_source(_SourceAwareCursor(source_rows=5, check_rows=[{"cnt": 5}]), "4.1")
+    assert current.checks[0].status == CheckStatus.PASS
+    assert current.source_health["access_history"]["freshness"] == "bounded_as_of"
+
+
+def test_snowflake_report_exposes_error_and_evaluation_counts():
+    report = _run_check_11_with_source(_SourceAwareCursor(source_rows=0))
+    payload = report.to_dict()
+    assert payload["errored"] == 1
+    assert payload["evaluated"] == 0
+    assert payload["not_applicable"] == 0

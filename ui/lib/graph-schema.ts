@@ -384,6 +384,20 @@ export interface InteractionRisk {
   owasp_agentic_tag?: string;
 }
 
+export type GraphAnalysisState =
+  | "complete"
+  | "limited"
+  | "skipped"
+  | "failed"
+  | "not_recorded";
+
+export interface GraphAnalysisStatus {
+  status: GraphAnalysisState;
+  reason_codes: string[];
+  limits: Record<string, number>;
+  observed: Record<string, number>;
+}
+
 export interface GraphStats {
   total_nodes: number;
   total_edges: number;
@@ -394,6 +408,7 @@ export interface GraphStats {
   interaction_risk_count: number;
   max_attack_path_risk: number;
   highest_interaction_risk: number;
+  analysis_status?: Record<string, GraphAnalysisStatus>;
 }
 
 export interface UnifiedGraphData {

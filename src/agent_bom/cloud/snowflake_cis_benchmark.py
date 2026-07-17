@@ -40,6 +40,7 @@ class SnowflakeCISReport:
     benchmark_version: str = "1.0"
     checks: list[CISCheckResult] = field(default_factory=list)
     account: str = ""
+    source_health: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def passed(self) -> int:
@@ -50,25 +51,42 @@ class SnowflakeCISReport:
         return sum(1 for c in self.checks if c.status == CheckStatus.FAIL)
 
     @property
+    def errored(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.ERROR)
+
+    @property
+    def not_applicable(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.NOT_APPLICABLE)
+
+    @property
+    def evaluated(self) -> int:
+        return self.passed + self.failed
+
+    @property
     def total(self) -> int:
         return len(self.checks)
 
     @property
     def pass_rate(self) -> float:
-        evaluated = sum(1 for c in self.checks if c.status in (CheckStatus.PASS, CheckStatus.FAIL))
-        return (self.passed / evaluated * 100) if evaluated else 0.0
+        return (self.passed / self.evaluated * 100) if self.evaluated else 0.0
 
     def to_dict(self) -> dict:
+        from agent_bom.cloud.benchmark_manifests import benchmark_manifest
         from agent_bom.mitre_attack import tag_cis_check
 
         return {
             "benchmark": "CIS Snowflake Foundations",
             "benchmark_version": self.benchmark_version,
+            "benchmark_manifest": benchmark_manifest("snowflake"),
             "account": self.account,
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
             "failed": self.failed,
+            "errored": self.errored,
+            "not_applicable": self.not_applicable,
+            "evaluated": self.evaluated,
             "total": self.total,
+            "source_health": self.source_health,
             "checks": [
                 {
                     "check_id": c.check_id,
@@ -101,6 +119,233 @@ def _run_query(cursor: Any, sql: str) -> list[dict]:
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
+def _quote_identifier(value: Any) -> str:
+    """Quote one Snowflake identifier component returned by Snowflake itself."""
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("Snowflake returned an empty password-policy identifier")
+    return f'"{text.replace(chr(34), chr(34) * 2)}"'
+
+
+def _live_password_policies(cursor: Any) -> list[dict[str, Any]]:
+    """Read password-policy configuration from live SHOW/DESCRIBE commands."""
+    policies = _run_query(cursor, "SHOW PASSWORD POLICIES IN ACCOUNT")
+    live: list[dict[str, Any]] = []
+    for policy in policies:
+        identifier = ".".join(
+            _quote_identifier(policy[key]) for key in ("database_name", "schema_name", "name")
+        )
+        properties = {
+            str(row.get("property", "")).upper(): row.get("value")
+            for row in _run_query(cursor, f"DESCRIBE PASSWORD POLICY {identifier}")
+        }
+        live.append(
+            {
+                "name": str(policy["name"]),
+                "password_min_length": properties.get("PASSWORD_MIN_LENGTH"),
+                "password_history": properties.get("PASSWORD_HISTORY"),
+                "password_max_age_days": properties.get("PASSWORD_MAX_AGE_DAYS"),
+            }
+        )
+    return live
+
+
+# ACCOUNT_USAGE has no universal ingestion watermark. Snapshot-style sources
+# are usable only when their scoped row count reconciles with a live SHOW
+# command. Temporal sources use an explicit upper cutoff at the documented lag
+# bound; neither mechanism fabricates a current-time watermark.
+_ACCOUNT_USAGE_LAG_BOUND_HOURS = {
+    "users": 2,
+    "grants_to_users": 2,
+    "shares": 3,
+    "login_history": 2,
+    "grants_to_roles": 2,
+    "password_policies": 2,
+    "access_history": 3,
+}
+
+
+_SOURCE_PROBES: dict[str, tuple[str, int]] = {
+    "users": (
+        """/* source-preflight:users */
+        SELECT COUNT(*) AS row_count
+        FROM SNOWFLAKE.ACCOUNT_USAGE.USERS
+        WHERE deleted_on IS NULL AND disabled = 'false'""",
+        1,
+    ),
+    "grants_to_users": (
+        """/* source-preflight:grants_to_users */
+        SELECT COUNT(*) AS row_count
+        FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS
+        WHERE role = 'ACCOUNTADMIN' AND deleted_on IS NULL""",
+        1,
+    ),
+    "shares": (
+        """/* source-preflight:shares */
+        SELECT COUNT(*) AS row_count
+        FROM SNOWFLAKE.ACCOUNT_USAGE.SHARES
+        WHERE deleted_on IS NULL AND target_accounts IS NOT NULL""",
+        0,
+    ),
+    "login_history": (
+        """/* source-preflight:login_history */
+        SELECT COUNT(*) AS row_count
+        FROM SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY
+        WHERE event_timestamp >= DATEADD(day, -8, CURRENT_TIMESTAMP())
+          AND event_timestamp <= DATEADD(hour, -2, CURRENT_TIMESTAMP())""",
+        0,
+    ),
+    "grants_to_roles": (
+        """/* source-preflight:grants_to_roles */
+        SELECT COUNT(*) AS row_count
+        FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
+        WHERE grantee_name = 'PUBLIC'
+          AND deleted_on IS NULL
+          AND granted_on NOT IN ('ROLE')
+          AND privilege != 'USAGE'""",
+        0,
+    ),
+    "password_policies": (
+        """/* source-preflight:password_policies */
+        SELECT COUNT(*) AS row_count FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
+        WHERE deleted IS NULL""",
+        0,
+    ),
+    "access_history": (
+        """/* source-preflight:access_history */
+        SELECT COUNT(*) AS row_count FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY
+        WHERE query_start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+          AND query_start_time <= DATEADD(hour, -3, CURRENT_TIMESTAMP())""",
+        0,
+    ),
+}
+
+_SHOW_PROBES = {
+    "users": "SHOW USERS",
+    "grants_to_users": "SHOW GRANTS OF ROLE ACCOUNTADMIN",
+    "shares": "SHOW SHARES",
+    "grants_to_roles": "SHOW GRANTS TO ROLE PUBLIC",
+    "password_policies": "SHOW PASSWORD POLICIES IN ACCOUNT",
+}
+
+
+def _control_plane_count(source: str, rows: list[dict[str, Any]]) -> int:
+    """Count the live SHOW rows with the same scope as the ACCOUNT_USAGE probe."""
+    if source == "users":
+        return sum(not _sf_truthy(row.get("disabled")) for row in rows)
+    if source == "shares":
+        return sum(str(row.get("kind", "")).upper() == "OUTBOUND" for row in rows)
+    if source == "grants_to_users":
+        return sum(str(row.get("granted_to", "")).upper() == "USER" for row in rows)
+    if source == "grants_to_roles":
+        return sum(
+            str(row.get("granted_on", "")).upper() != "ROLE"
+            and str(row.get("privilege", "")).upper() != "USAGE"
+            for row in rows
+        )
+    return len(rows)
+
+_CHECK_SOURCES = {
+    "1.1": "users",
+    "1.4": "grants_to_users",
+    "3.2": "shares",
+    "4.2": "login_history",
+    "5.1": "grants_to_roles",
+    "5.2": "users",
+    "1.2": "password_policies",
+    "1.5": "password_policies",
+    "1.6": "password_policies",
+    "4.1": "access_history",
+}
+
+_CHECK_ERROR_METADATA = {
+    "1.1": (
+        "Ensure MFA is enabled for all users with password authentication",
+        "critical",
+        "1 - Account and Authentication",
+    ),
+    "1.4": ("Ensure ACCOUNTADMIN role is granted to no more than 2 users", "critical", "1 - Account and Authentication"),
+    "3.2": ("Ensure data sharing is restricted to authorized accounts only", "medium", "3 - Data Protection"),
+    "4.2": ("Ensure login history shows no excessive failed authentication attempts", "medium", "4 - Monitoring and Logging"),
+    "5.1": ("Ensure the PUBLIC role has no direct privilege grants on objects", "high", "5 - Access Control"),
+    "5.2": ("Ensure no users have ACCOUNTADMIN as their default role", "high", "5 - Access Control"),
+    "1.2": ("Ensure minimum password length is set to 14 or greater", "medium", "1 - Account and Authentication"),
+    "1.5": ("Ensure password reuse is limited by password history of 24 or greater", "medium", "1 - Account and Authentication"),
+    "1.6": ("Ensure password maximum age is set to 90 days or less", "medium", "1 - Account and Authentication"),
+    "4.1": ("Ensure access history is enabled and being collected", "high", "4 - Monitoring and Logging"),
+}
+
+
+def _preflight_account_usage_source(cursor: Any, source: str) -> dict[str, Any]:
+    sql, minimum_rows = _SOURCE_PROBES[source]
+    try:
+        rows = _run_query(cursor, sql)
+    except Exception:
+        return {
+            "privilege": "unknown",
+            "query_status": "error",
+            "coverage": "unknown",
+            "freshness": "unknown",
+            "row_count": None,
+            "provider_lag_bound_hours": _ACCOUNT_USAGE_LAG_BOUND_HOURS[source],
+            "usable": False,
+        }
+    if not rows:
+        return {
+            "privilege": "granted",
+            "query_status": "empty_result",
+            "coverage": "empty",
+            "freshness": "unknown",
+            "row_count": 0,
+            "provider_lag_bound_hours": _ACCOUNT_USAGE_LAG_BOUND_HOURS[source],
+            "usable": False,
+        }
+    row_count = int(rows[0].get("row_count") or 0)
+    coverage = "covered" if row_count >= minimum_rows else "empty"
+    show_sql = _SHOW_PROBES.get(source)
+    if show_sql:
+        try:
+            control_plane_count = _control_plane_count(source, _run_query(cursor, show_sql))
+        except Exception:
+            control_plane_count = None
+        reconciled = control_plane_count == row_count
+        freshness = "control_plane_reconciled" if reconciled else "stale"
+    else:
+        control_plane_count = None
+        reconciled = True
+        freshness = "bounded_as_of"
+    if source == "login_history" and row_count == 0:
+        coverage = "covered"
+        freshness = "bounded_as_of_empty_window"
+    return {
+        "privilege": "granted",
+        "query_status": "success",
+        "coverage": coverage,
+        "freshness": freshness,
+        "row_count": row_count,
+        "provider_lag_bound_hours": _ACCOUNT_USAGE_LAG_BOUND_HOURS[source],
+        "provider_lag": "provider_managed",
+        "control_plane_count": control_plane_count,
+        "usable": coverage == "covered" and reconciled,
+    }
+
+
+def _source_error_result(check_id: str, source: str, health: dict[str, Any]) -> CISCheckResult:
+    title, severity, section = _CHECK_ERROR_METADATA[check_id]
+    return CISCheckResult(
+        check_id=check_id,
+        title=title,
+        status=CheckStatus.ERROR,
+        severity=severity,
+        cis_section=section,
+        recommendation=("Verify IMPORTED PRIVILEGES on the SNOWFLAKE database and rerun after the documented ACCOUNT_USAGE lag bound."),
+        evidence=(
+            f"Cannot evaluate control: ACCOUNT_USAGE.{source.upper()} source "
+            f"privilege={health['privilege']}, coverage={health['coverage']}, freshness={health['freshness']}."
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Individual checks — CIS 1.x (Account and Authentication)
 # ---------------------------------------------------------------------------
@@ -118,16 +363,11 @@ def _check_1_1(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Enable MFA for all users: ALTER USER <user> SET EXT_AUTHN_DUO = TRUE;",
     )
-    rows = _run_query(
-        cursor,
-        """
-        SELECT name, ext_authn_duo, has_password, disabled
-        FROM SNOWFLAKE.ACCOUNT_USAGE.USERS
-        WHERE deleted_on IS NULL
-          AND disabled = 'false'
-          AND has_password = 'true'
-    """,
-    )
+    rows = [
+        row
+        for row in _run_query(cursor, "SHOW USERS")
+        if not _sf_truthy(row.get("disabled")) and _sf_truthy(row.get("has_password"))
+    ]
     no_mfa = [r["name"] for r in rows if not _sf_truthy(r.get("ext_authn_duo"))]
 
     if no_mfa:
@@ -151,18 +391,14 @@ def _check_1_2(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Set password policy: CREATE OR REPLACE PASSWORD POLICY ... PASSWORD_MIN_LENGTH = 14;",
     )
-    rows = _run_query(
-        cursor,
-        """
-        SELECT name, password_min_length
-        FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
-        WHERE deleted IS NULL
-    """,
-    )
+    rows = _live_password_policies(cursor)
     if not rows:
         result.status = CheckStatus.FAIL
         result.evidence = "No password policies configured."
         return result
+
+    if any(row.get("password_min_length") is None for row in rows):
+        raise ValueError("Snowflake password-policy description omitted PASSWORD_MIN_LENGTH")
 
     weak = [r for r in rows if int(r.get("password_min_length") or 0) < 14]
     if weak:
@@ -207,15 +443,11 @@ def _check_1_4(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Limit ACCOUNTADMIN grants to a maximum of 2 users.",
     )
-    rows = _run_query(
-        cursor,
-        """
-        SELECT grantee_name
-        FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS
-        WHERE role = 'ACCOUNTADMIN'
-          AND deleted_on IS NULL
-    """,
-    )
+    rows = [
+        row
+        for row in _run_query(cursor, "SHOW GRANTS OF ROLE ACCOUNTADMIN")
+        if str(row.get("granted_to", "")).upper() == "USER"
+    ]
     count = len(rows)
     users = [r["grantee_name"] for r in rows]
     if count > 2:
@@ -239,18 +471,14 @@ def _check_1_5(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Set password policy: CREATE OR REPLACE PASSWORD POLICY ... PASSWORD_HISTORY = 24;",
     )
-    rows = _run_query(
-        cursor,
-        """
-        SELECT name, password_history
-        FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
-        WHERE deleted IS NULL
-    """,
-    )
+    rows = _live_password_policies(cursor)
     if not rows:
         result.status = CheckStatus.FAIL
         result.evidence = "No password policies configured."
         return result
+
+    if any(row.get("password_history") is None for row in rows):
+        raise ValueError("Snowflake password-policy description omitted PASSWORD_HISTORY")
 
     weak = [r for r in rows if int(r.get("password_history", 0) or 0) < 24]
     if weak:
@@ -272,18 +500,14 @@ def _check_1_6(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Set password policy: CREATE OR REPLACE PASSWORD POLICY ... PASSWORD_MAX_AGE_DAYS = 90;",
     )
-    rows = _run_query(
-        cursor,
-        """
-        SELECT name, password_max_age_days
-        FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
-        WHERE deleted IS NULL
-    """,
-    )
+    rows = _live_password_policies(cursor)
     if not rows:
         result.status = CheckStatus.FAIL
         result.evidence = "No password policies configured."
         return result
+
+    if any(row.get("password_max_age_days") is None for row in rows):
+        raise ValueError("Snowflake password-policy description omitted PASSWORD_MAX_AGE_DAYS")
 
     weak = [r for r in rows if int(r.get("password_max_age_days", 0) or 0) == 0 or int(r.get("password_max_age_days", 0) or 0) > 90]
     if weak:
@@ -443,14 +667,17 @@ def _check_4_1(cursor: Any) -> CISCheckResult:
             SELECT COUNT(*) as cnt
             FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY
             WHERE query_start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+              AND query_start_time <= DATEADD(hour, -3, CURRENT_TIMESTAMP())
         """,
         )
         count = rows[0]["cnt"] if rows else 0
         if count == 0:
             result.status = CheckStatus.FAIL
-            result.evidence = "No access history records in the last 7 days."
+            result.evidence = "No access history records in the 7-day lookback window ending 3 hours before scan time."
         else:
-            result.evidence = f"Access history active: {count} records in the last 7 days."
+            result.evidence = (
+                f"Access history active: {count} records in the 7-day lookback window ending 3 hours before scan time."
+            )
     except Exception:
         result.status = CheckStatus.ERROR
         result.evidence = "Cannot query ACCESS_HISTORY. Ensure IMPORTED PRIVILEGES on SNOWFLAKE database."
@@ -474,6 +701,7 @@ def _check_4_2(cursor: Any) -> CISCheckResult:
         FROM SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY
         WHERE is_success = 'NO'
           AND event_timestamp >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+          AND event_timestamp <= DATEADD(hour, -2, CURRENT_TIMESTAMP())
         GROUP BY user_name
         HAVING COUNT(*) > 10
         ORDER BY fail_count DESC
@@ -482,10 +710,12 @@ def _check_4_2(cursor: Any) -> CISCheckResult:
     if rows:
         result.status = CheckStatus.FAIL
         users = [f"{r['user_name']} ({r['fail_count']} failures)" for r in rows[:5]]
-        result.evidence = f"Users with >10 failed logins (7d): {', '.join(users)}"
+        result.evidence = f"Users with >10 failed logins in the 7-day lookback ending 2 hours before scan time: {', '.join(users)}"
         result.resource_ids = [r["user_name"] for r in rows[:20]]
     else:
-        result.evidence = "No users with excessive failed login attempts in the last 7 days."
+        result.evidence = (
+            "No users with excessive failed login attempts in the 7-day lookback ending 2 hours before scan time."
+        )
     return result
 
 
@@ -506,17 +736,12 @@ def _check_5_1(cursor: Any) -> CISCheckResult:
         cis_section=_ACCESS_SECTION,
         recommendation="Revoke all grants from the PUBLIC role: REVOKE ALL ON <object> FROM ROLE PUBLIC;",
     )
-    rows = _run_query(
-        cursor,
-        """
-        SELECT privilege, granted_on, name
-        FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
-        WHERE grantee_name = 'PUBLIC'
-          AND deleted_on IS NULL
-          AND granted_on NOT IN ('ROLE')
-          AND privilege != 'USAGE'
-    """,
-    )
+    rows = [
+        row
+        for row in _run_query(cursor, "SHOW GRANTS TO ROLE PUBLIC")
+        if str(row.get("granted_on", "")).upper() != "ROLE"
+        and str(row.get("privilege", "")).upper() != "USAGE"
+    ]
     if rows:
         result.status = CheckStatus.FAIL
         grants = [f"{r['privilege']} on {r['granted_on']} {r['name']}" for r in rows[:5]]
@@ -538,16 +763,11 @@ def _check_5_2(cursor: Any) -> CISCheckResult:
         cis_section=_ACCESS_SECTION,
         recommendation="Change default role: ALTER USER <user> SET DEFAULT_ROLE = '<other_role>';",
     )
-    rows = _run_query(
-        cursor,
-        """
-        SELECT name, default_role
-        FROM SNOWFLAKE.ACCOUNT_USAGE.USERS
-        WHERE deleted_on IS NULL
-          AND disabled = 'false'
-          AND default_role = 'ACCOUNTADMIN'
-    """,
-    )
+    rows = [
+        row
+        for row in _run_query(cursor, "SHOW USERS")
+        if not _sf_truthy(row.get("disabled")) and str(row.get("default_role", "")).upper() == "ACCOUNTADMIN"
+    ]
     if rows:
         result.status = CheckStatus.FAIL
         users = [r["name"] for r in rows]
@@ -642,8 +862,15 @@ def run_benchmark(
 
     try:
         cursor = conn.cursor()
+        selected_ids = {check_id for check_id, _check_fn in all_checks if not checks or check_id in checks}
+        selected_sources = {_CHECK_SOURCES[check_id] for check_id in selected_ids if check_id in _CHECK_SOURCES}
+        report.source_health = {source: _preflight_account_usage_source(cursor, source) for source in sorted(selected_sources)}
         for check_id, check_fn in all_checks:
             if checks and check_id not in checks:
+                continue
+            source = _CHECK_SOURCES.get(check_id)
+            if source is not None and not report.source_health[source]["usable"]:
+                report.checks.append(_source_error_result(check_id, source, report.source_health[source]))
                 continue
             try:
                 check_result = check_fn(cursor)

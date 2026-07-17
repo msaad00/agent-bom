@@ -12,6 +12,7 @@ VERSIONS_DIR = ALEMBIC_DIR / "versions"
 BASELINE = VERSIONS_DIR / "20260416_01_control_plane_baseline.py"
 GRAPH_HOT_PATH_INDEXES = VERSIONS_DIR / "20260513_01_graph_hot_path_indexes.py"
 POSTGRES_STORE_PARITY = VERSIONS_DIR / "20260717_01_postgres_store_parity.py"
+GRAPH_ANALYSIS_STATUS = VERSIONS_DIR / "20260717_02_graph_analysis_status.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
 
 
@@ -79,3 +80,10 @@ def test_postgres_store_parity_migration_is_idempotent_and_chained():
     assert "ALTER TABLE %s DROP CONSTRAINT %I" in sql
     assert "n.nspname = current_schema()" not in sql
     assert "ALTER TABLE IF EXISTS cloud_connections ADD COLUMN IF NOT EXISTS last_scan_id" in sql
+
+
+def test_graph_analysis_status_migration_is_idempotent_and_chained():
+    sql = GRAPH_ANALYSIS_STATUS.read_text()
+    assert re.search(r'revision\s*=\s*"20260717_02"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260717_01"', sql)
+    assert "ADD COLUMN IF NOT EXISTS analysis_status JSONB NOT NULL" in sql

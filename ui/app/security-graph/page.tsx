@@ -27,6 +27,7 @@ import { DeployGatePanel } from "@/components/deploy-gate-panel";
 import { ExposurePathLens } from "@/components/exposure-path-lens";
 import { Collapsible } from "@/components/collapsible";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
+import { GraphAnalysisStatusBanner, graphAnalysisStatusCopy } from "@/components/graph-analysis-status";
 import {
   api,
   formatDate,
@@ -326,6 +327,30 @@ function SecurityGraphPageContent() {
   );
 
   const emptyGraphState = useMemo(() => {
+    const analysis = graphData?.stats.analysis_status?.attack_path_fusion;
+    const executionCopy = graphAnalysisStatusCopy(analysis);
+    if (analysis?.status === "skipped" || analysis?.status === "failed") {
+      return {
+        title: executionCopy.label,
+        detail: executionCopy.detail,
+        suggestions: [
+          "Run a fresh scan after reviewing the recorded analysis limit or failure.",
+          "Open the full graph to inspect the inventory and findings that did persist.",
+          "Do not treat this snapshot as proof that no attack paths exist.",
+        ],
+      };
+    }
+    if (analysis?.status === "limited") {
+      return {
+        title: "No paths in the retained partial result",
+        detail: executionCopy.detail,
+        suggestions: [
+          "Review the recorded execution limits before relying on this result.",
+          "Open the full graph to inspect topology outside the retained path set.",
+          "Run a narrower or higher-capacity scan for complete path coverage.",
+        ],
+      };
+    }
     if (hasFocusContext) {
       return {
         title: "No attack paths matched the current focus",
@@ -348,7 +373,7 @@ function SecurityGraphPageContent() {
         "Check the vulnerabilities page if you need fix context before the next scan completes.",
       ],
     };
-  }, [focusLabel, hasFocusContext]);
+  }, [focusLabel, graphData?.stats.analysis_status, hasFocusContext]);
 
   const graphErrorState = useMemo(() => {
     const detail = graphLoadError ?? "The graph API did not return attack-path data for this snapshot.";
@@ -642,6 +667,9 @@ function SecurityGraphPageContent() {
         </section>
       ) : attackPaths.length === 0 ? (
         <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+          <div className="mb-4">
+            <GraphAnalysisStatusBanner status={graphData?.stats.analysis_status?.attack_path_fusion} />
+          </div>
           <GraphEmptyState
             title={emptyGraphState.title}
             detail={emptyGraphState.detail}

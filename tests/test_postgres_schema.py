@@ -141,6 +141,11 @@ def test_graph_tables_have_rls_policies():
         assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
 
 
+def test_graph_snapshot_analysis_status_is_in_baseline():
+    assert "analysis_status" in _columns_for("graph_snapshots")
+    assert "analysis_status JSONB NOT NULL DEFAULT '{}'::jsonb" in SQL
+
+
 def test_graph_edges_has_versioning_columns():
     """graph_edges baseline must define the schema-v3 versioning + provenance
     columns. Regression: these were only created by the app bootstrap in

@@ -1347,13 +1347,13 @@ class AIBOMReport:
         return findings
 
     def _cloud_cis_findings(self) -> "list[Finding]":
-        """Cloud CIS benchmark FAILures lifted into the unified findings stream.
+        """Cloud CIS failures and evaluation errors lifted into findings.
 
         Each provider's CIS results live in a side block (``*_cis_benchmark_data``)
-        and never reached the unified stream — so ``cloud`` scans exited 0 even on
-        HIGH/CRITICAL misconfigurations and ``--fail-on-severity`` was blind to
-        cloud posture. Convert every FAILED check to a CLOUD_CIS Finding so the
-        gate, SARIF, and severity rollups converge across all providers.
+        and never reached the unified stream. Convert FAILED controls and ERROR
+        controls to distinct CLOUD_CIS findings so severity gates fail closed on
+        unevaluable high-risk controls. Genuine NOT_APPLICABLE controls remain
+        outside the findings stream.
         """
         from agent_bom.finding import cloud_cis_check_to_finding
 
@@ -1368,7 +1368,7 @@ class AIBOMReport:
             if not isinstance(data, dict):
                 continue
             for check in data.get("checks", []) or []:
-                if isinstance(check, dict) and str(check.get("status", "")).upper() == "FAIL":
+                if isinstance(check, dict) and str(check.get("status", "")).upper() in {"FAIL", "ERROR"}:
                     findings.append(cloud_cis_check_to_finding(check, provider))
         return findings
 

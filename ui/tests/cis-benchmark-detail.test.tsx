@@ -62,7 +62,7 @@ describe("CISBenchmarkDetail", () => {
   it("renders an empty state when no checks exist", async () => {
     apiMock.listCisBenchmarkChecks.mockResolvedValue({ checks: [], count: 0, source: "scan_jobs" });
     render(<CISBenchmarkDetail />);
-    expect(await screen.findByText(/no cloud cis benchmark checks yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no cloud security checks yet/i)).toBeInTheDocument();
   });
 
   it("renders an error state with the fallback copy when the fetch fails opaquely", async () => {
@@ -78,22 +78,24 @@ describe("CISBenchmarkDetail", () => {
     expect(await screen.findByText(/backend unavailable/i)).toBeInTheDocument();
   });
 
-  it("renders failing checks by default with id, title, and badges", async () => {
+  it("renders all statuses by default so unevaluable checks are never hidden", async () => {
     apiMock.listCisBenchmarkChecks.mockResolvedValue({
       checks: [
         makeCheck({ check_id: "1.4", title: "Eliminate root access keys", priority: 1, guardrails: ["identity"] }),
         makeCheck({ check_id: "3.1", title: "Ensure CloudTrail enabled", status: "pass" }),
+        makeCheck({ check_id: "4.1", title: "Account usage unavailable", status: "error" }),
       ],
-      count: 2,
+      count: 3,
       source: "scan_jobs",
     });
     render(<CISBenchmarkDetail />);
 
     expect(await screen.findByText("Eliminate root access keys")).toBeInTheDocument();
     expect(screen.getByText("1.4")).toBeInTheDocument();
-    // Default status filter is "fail", so the passing check is hidden.
-    expect(screen.queryByText("Ensure CloudTrail enabled")).not.toBeInTheDocument();
-    expect(screen.getByText(/1 of 2 checks shown/i)).toBeInTheDocument();
+    expect(screen.getByText("Ensure CloudTrail enabled")).toBeInTheDocument();
+    expect(screen.getByText("Account usage unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/3 of 3 checks shown/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Error" })).toBeInTheDocument();
   });
 
   it("copies fix_cli and warns when the check requires human review", async () => {

@@ -364,6 +364,7 @@ def _persist_graph_snapshot(
             edges=graph.edges,
             attack_paths=graph.attack_paths,
             interaction_risks=graph.interaction_risks,
+            analysis_status=graph.analysis_status,
             created_at=graph.created_at,
         )
     finally:

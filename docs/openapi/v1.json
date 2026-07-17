@@ -17953,6 +17953,52 @@
                     },
                     "stats": {
                       "additionalProperties": true,
+                      "properties": {
+                        "analysis_status": {
+                          "additionalProperties": {
+                            "properties": {
+                              "limits": {
+                                "additionalProperties": {
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "type": "object"
+                              },
+                              "observed": {
+                                "additionalProperties": {
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "type": "object"
+                              },
+                              "reason_codes": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "status": {
+                                "enum": [
+                                  "complete",
+                                  "limited",
+                                  "skipped",
+                                  "failed",
+                                  "not_recorded"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "status",
+                              "reason_codes",
+                              "limits",
+                              "observed"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "object"
+                        }
+                      },
                       "type": "object"
                     },
                     "tenant_id": {

@@ -1073,7 +1073,14 @@ def build_unified_graph_from_report(
 
         apply_attack_path_fusion(graph)
     except Exception:  # noqa: BLE001
-        _logger.warning("attack-path fusion failed", exc_info=True)
+        from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
+
+        graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+            status=GraphAnalysisState.FAILED,
+            reason_codes=("analysis_error",),
+            observed={"node_count": len(graph.nodes), "result_count": 0},
+        )
+        _logger.warning("attack-path fusion failed: analysis_error")
 
     # Cost (FinOps) fusion: attach LLM spend to agent/resource nodes, roll it up
     # the CONTAINS hierarchy, and flag nodes that are BOTH high-cost AND

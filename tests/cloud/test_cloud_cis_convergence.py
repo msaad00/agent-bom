@@ -96,6 +96,60 @@ def test_clean_cis_does_not_trip_gate() -> None:
     assert _gate(r) == 0
 
 
+def test_high_cis_error_is_distinct_and_trips_gate() -> None:
+    r = AIBOMReport(scan_id="t")
+    r.snowflake_cis_benchmark_data = {
+        "checks": [{"check_id": "1.1", "title": "MFA", "status": "ERROR", "severity": "high", "evidence": "source stale"}]
+    }
+    findings = r.to_findings()
+    assert [finding.finding_type.value for finding in findings] == ["CIS_ERROR"]
+    assert _gate(r) == 1
+
+
+def test_azure_unevaluable_privileged_identity_control_trips_gate() -> None:
+    r = AIBOMReport(scan_id="azure-identity")
+    r.azure_cis_benchmark_data = {
+        "checks": [
+            {
+                "check_id": "1.1",
+                "title": "Guest Owner assignments",
+                "status": "ERROR",
+                "severity": "high",
+                "evidence": "Microsoft Graph identity evidence unavailable",
+            }
+        ]
+    }
+    findings = r.to_findings()
+    assert [finding.finding_type.value for finding in findings] == ["CIS_ERROR"]
+    assert _gate(r) == 1
+
+
+def test_cis_not_applicable_remains_non_gating() -> None:
+    r = AIBOMReport(scan_id="t")
+    r.snowflake_cis_benchmark_data = {
+        "checks": [{"check_id": "2.2", "title": "Networks", "status": "NOT_APPLICABLE", "severity": "critical"}]
+    }
+    assert r.to_findings() == []
+    assert _gate(r) == 0
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_type"),
+    [("FAIL", "CLOUD_BEST_PRACTICE_FAIL"), ("ERROR", "CLOUD_BEST_PRACTICE_ERROR")],
+)
+def test_databricks_findings_are_vendor_best_practices_and_still_gate(status: str, expected_type: str) -> None:
+    r = AIBOMReport(scan_id="databricks")
+    r.databricks_cis_benchmark_data = {"checks": [{"check_id": "1.1", "title": "Admin access", "status": status, "severity": "high"}]}
+    finding = r.to_findings()[0]
+    assert finding.finding_type.value == expected_type
+    assert finding.source.value == "CLOUD_SECURITY"
+    assert finding.title.startswith("Databricks best practice")
+    assert finding.evidence["benchmark"] == "Databricks Security Best Practices"
+    assert not any(tag.startswith("CIS-") for tag in finding.compliance_tags)
+    assert "cis" not in finding.applicable_frameworks
+    assert _gate(r) == 1
+
+
 def test_cis_fail_posture_and_gate_agree() -> None:
     """The compact headline and the --fail-on-severity gate read the same report
     consistently: CIS HIGH fails are both non-CLEAN and gate-failing."""

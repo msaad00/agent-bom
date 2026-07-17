@@ -38,6 +38,9 @@ class FindingType(str, Enum):
 
     CVE = "CVE"  # Software vulnerability (from OSV/GHSA/NVIDIA)
     CIS_FAIL = "CIS_FAIL"  # CIS benchmark control failure
+    CIS_ERROR = "CIS_ERROR"  # CIS control could not be evaluated reliably
+    CLOUD_BEST_PRACTICE_FAIL = "CLOUD_BEST_PRACTICE_FAIL"
+    CLOUD_BEST_PRACTICE_ERROR = "CLOUD_BEST_PRACTICE_ERROR"
     CREDENTIAL_EXPOSURE = "CREDENTIAL_EXPOSURE"  # Credential found in environment/config
     TOOL_DRIFT = "TOOL_DRIFT"  # MCP tool description changed (rug pull)
     INJECTION = "INJECTION"  # Prompt/argument injection in MCP tool
@@ -61,6 +64,7 @@ class FindingSource(str, Enum):
     CONTAINER = "CONTAINER"  # container image scan (Syft/Grype/Trivy ingestion)
     SBOM = "SBOM"  # SBOM ingest (CycloneDX / SPDX)
     CLOUD_CIS = "CLOUD_CIS"  # cloud CIS benchmark (AWS/Azure/GCP/Snowflake)
+    CLOUD_SECURITY = "CLOUD_SECURITY"  # vendor-authored cloud security best practices
     PROXY = "PROXY"  # runtime proxy detector
     SAST = "SAST"  # static analysis (Semgrep)
     SKILL = "SKILL"  # skill file auditor
@@ -761,12 +765,13 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
 
 
 def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
-    """Convert one FAILED cloud CIS check into a unified CLOUD_CIS Finding.
+    """Convert one failed or unevaluable cloud posture check into a Finding.
 
-    Lifts cloud CIS failures out of the side-block (``*_cis_benchmark_data``) into
+    Lifts cloud posture failures out of the side-block (``*_cis_benchmark_data``) into
     the unified findings stream so ``--fail-on-severity``, SARIF, and severity
     rollups see them — previously a ``cloud`` scan exited 0 even with HIGH/CRITICAL
-    misconfigurations. Carries the check's MITRE ATT&CK techniques + CIS tag.
+    misconfigurations. CIS providers retain CIS identity; vendor best-practice
+    providers remain explicitly non-CIS.
     """
     from agent_bom.security import sanitize_text
 
@@ -778,8 +783,17 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
     resource_ids = [sanitize_text(str(r), max_len=300) for r in (check.get("resource_ids") or []) if str(r).strip()]
     primary = resource_ids[0] if resource_ids else f"{provider}-account"
     attack = [str(t) for t in (check.get("attack_techniques") or []) if str(t).strip()]
-    compliance = [f"CIS-{check_id}"] + [str(t) for t in (check.get("compliance_tags") or []) if str(t).strip()]
+    is_vendor_best_practice = provider.lower() == "databricks"
+    compliance = ([] if is_vendor_best_practice else [f"CIS-{check_id}"]) + [
+        str(t) for t in (check.get("compliance_tags") or []) if str(t).strip()
+    ]
     cis_section = sanitize_text(str(check.get("cis_section", "") or ""), max_len=200)
+    status = str(check.get("status", "FAIL") or "FAIL").upper()
+    if is_vendor_best_practice:
+        finding_type = FindingType.CLOUD_BEST_PRACTICE_ERROR if status == "ERROR" else FindingType.CLOUD_BEST_PRACTICE_FAIL
+    else:
+        finding_type = FindingType.CIS_ERROR if status == "ERROR" else FindingType.CIS_FAIL
+    benchmark_label = "Security best-practice" if is_vendor_best_practice else "CIS benchmark"
 
     # Explicit scope (issue #3946): the converter already knows the provider and
     # the resource id/ARN — parse the account/region out of the ARN, prefer an
@@ -792,8 +806,8 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
     environment = sanitize_text(str(check.get("environment") or ""), max_len=64) or None
 
     finding = Finding(
-        finding_type=FindingType.CIS_FAIL,
-        source=FindingSource.CLOUD_CIS,
+        finding_type=finding_type,
+        source=FindingSource.CLOUD_SECURITY if is_vendor_best_practice else FindingSource.CLOUD_CIS,
         asset=Asset(
             name=primary,
             asset_type="cloud_resource",
@@ -809,17 +823,23 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
         account_ref=account_ref,
         region=region,
         environment=environment,
-        title=f"CIS {check_id}: {title}",
-        description=evidence_text or f"CIS benchmark control {check_id} failed for {provider}.",
+        title=f"{'Databricks best practice' if is_vendor_best_practice else 'CIS'} {check_id}: {title}",
+        description=evidence_text
+        or (
+            f"{benchmark_label} control {check_id} could not be evaluated for {provider}."
+            if status == "ERROR"
+            else f"{benchmark_label} control {check_id} failed for {provider}."
+        ),
         remediation_guidance=recommendation or None,
         compliance_tags=sorted(set(compliance)),
         attack_tags=sorted(set(attack)),
         evidence={
             "provider": provider,
             "check_id": check_id,
+            "status": status,
             "cis_section": cis_section,
             "resource_ids": resource_ids,
-            "benchmark": "CIS",
+            "benchmark": "Databricks Security Best Practices" if is_vendor_best_practice else "CIS",
         },
     )
     # Reference pattern for the advisory-remediation foundation: attach the

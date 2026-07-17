@@ -7,6 +7,7 @@ import pytest
 from agent_bom.api import stores as api_stores
 from agent_bom.api.neptune_graph import NeptuneGraphConfig, NeptuneGraphStore, NeptuneGraphStoreConfigError
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 
 
 class FakeGremlinClient:
@@ -57,6 +58,12 @@ def test_neptune_graph_store_writes_graph_with_tenant_scan_bindings() -> None:
     graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
     graph.add_node(UnifiedNode(id="server:a", entity_type=EntityType.SERVER, label="Server A"))
     graph.add_edge(UnifiedEdge(source="agent:a", target="server:a", relationship=RelationshipType.USES))
+    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+        status=GraphAnalysisState.SKIPPED,
+        reason_codes=("node_cap_exceeded",),
+        limits={"max_nodes": 5000},
+        observed={"node_count": 5001},
+    )
 
     store.save_graph(graph)
 
@@ -71,6 +78,7 @@ def test_neptune_graph_store_writes_graph_with_tenant_scan_bindings() -> None:
     assert edge_call["target_key"] == "tenant-a|scan-1|server:a"
     assert snapshot_call["node_count"] == 2
     assert snapshot_call["edge_count"] == 1
+    assert json.loads(snapshot_call["analysis_status_json"])["attack_path_fusion"]["status"] == "skipped"
 
 
 def test_neptune_graph_store_reads_snapshots_graph_and_active_edges() -> None:
@@ -90,6 +98,18 @@ def test_neptune_graph_store_reads_snapshots_graph_and_active_edges() -> None:
             "node_count": [1],
             "edge_count": [1],
             "risk_summary_json": ['{"severity_counts": {}}'],
+            "analysis_status_json": [
+                json.dumps(
+                    {
+                        "attack_path_fusion": {
+                            "status": "limited",
+                            "reason_codes": ["path_cap_reached"],
+                            "limits": {"max_paths": 50},
+                            "observed": {"candidate_path_count": 75, "result_count": 50},
+                        }
+                    }
+                )
+            ],
         }
     ]
     client.nodes = [_node_record(node), _node_record(UnifiedNode(id="server:a", entity_type=EntityType.SERVER, label="Server A"))]
@@ -103,6 +123,9 @@ def test_neptune_graph_store_reads_snapshots_graph_and_active_edges() -> None:
     assert sorted(graph.nodes) == ["agent:a", "server:a"]
     assert [(item.source, item.target, item.relationship) for item in graph.edges] == [("agent:a", "server:a", RelationshipType.USES)]
     assert active_edges[0]["valid_from"] == "2026-05-14T00:00:00Z"
+    status = graph.analysis_status["attack_path_fusion"]
+    assert status.status is GraphAnalysisState.LIMITED
+    assert status.reason_codes == ("path_cap_reached",)
 
 
 def test_neptune_backend_selection_is_explicit_and_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:

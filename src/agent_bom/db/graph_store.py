@@ -17,7 +17,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Mapping, Sequence
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
@@ -34,6 +34,12 @@ from agent_bom.graph import (
     UnifiedGraph,
     UnifiedNode,
     _now_iso,
+)
+from agent_bom.graph.analysis import (
+    GraphAnalysisStatus,
+    analysis_status_map_from_dict,
+    analysis_status_map_to_dict,
+    not_recorded_analysis_status,
 )
 from agent_bom.security import sanitize_text
 
@@ -144,6 +150,7 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     edge_count      INTEGER DEFAULT 0,
     risk_summary    TEXT DEFAULT '{}',
     node_type_counts TEXT DEFAULT NULL,
+    analysis_status TEXT DEFAULT '{}',
     PRIMARY KEY (scan_id, tenant_id)
 );
 CREATE INDEX IF NOT EXISTS idx_gs_recent ON graph_snapshots(tenant_id, created_at DESC);
@@ -318,6 +325,8 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     snapshot_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_snapshots)").fetchall()}
     if "node_type_counts" not in snapshot_columns:
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN node_type_counts TEXT DEFAULT NULL")
+    if "analysis_status" not in snapshot_columns:
+        conn.execute("ALTER TABLE graph_snapshots ADD COLUMN analysis_status TEXT DEFAULT '{}'")
     if backfill_legacy_tenants:
         _backfill_empty_tenant_ids(conn)
     conn.commit()
@@ -622,6 +631,7 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
         edges=graph.edges,
         attack_paths=graph.attack_paths,
         interaction_risks=graph.interaction_risks,
+        analysis_status=graph.analysis_status,
     )
 
 
@@ -634,6 +644,7 @@ def save_graph_streaming(
     edges: Iterable[UnifiedEdge],
     attack_paths: Iterable[AttackPath] = (),
     interaction_risks: Iterable[InteractionRisk] = (),
+    analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
     created_at: str = "",
 ) -> dict[str, int]:
     """Persist a graph snapshot from streamed node/edge iterables.
@@ -856,8 +867,8 @@ def save_graph_streaming(
     conn.execute(
         """
         INSERT OR REPLACE INTO graph_snapshots
-            (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary, node_type_counts)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary, node_type_counts, analysis_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             scan,
@@ -867,6 +878,7 @@ def save_graph_streaming(
             edge_count,
             json.dumps(dict(severity_counts)),
             json.dumps(dict(type_counts)),
+            json.dumps(analysis_status_map_to_dict(analysis_status or {})),
         ),
     )
 
@@ -912,6 +924,16 @@ def load_graph(
     graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
     if not effective_scan_id:
         return graph
+
+    snapshot_row = conn.execute(
+        "SELECT analysis_status FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
+        (tenant_id, effective_scan_id),
+    ).fetchone()
+    if snapshot_row is not None:
+        raw_status = json.loads(snapshot_row["analysis_status"] or "{}")
+        graph.analysis_status = analysis_status_map_from_dict(raw_status)
+        if not graph.analysis_status:
+            graph.analysis_status["attack_path_fusion"] = not_recorded_analysis_status()
 
     query = "SELECT * FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?"
     params: list[Any] = [tenant_id, effective_scan_id]
@@ -1372,7 +1394,7 @@ def list_snapshots(
     params.append(limit)
     rows = conn.execute(
         f"""\
-        SELECT scan_id, created_at, node_count, edge_count, risk_summary
+        SELECT scan_id, created_at, node_count, edge_count, risk_summary, analysis_status
         FROM graph_snapshots
         {where}
         ORDER BY created_at DESC LIMIT ?
@@ -1386,6 +1408,7 @@ def list_snapshots(
             "node_count": r["node_count"],
             "edge_count": r["edge_count"],
             "risk_summary": json.loads(r["risk_summary"]),
+            "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(json.loads(r["analysis_status"] or "{}"))),
         }
         for r in rows
     ]

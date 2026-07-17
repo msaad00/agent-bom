@@ -12,9 +12,10 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterable, NoReturn, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, NoReturn, Protocol
 
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
@@ -230,7 +231,8 @@ class NeptuneGraphStore:
               property('created_at', created_at).
               property('node_count', node_count).
               property('edge_count', edge_count).
-              property('risk_summary_json', risk_summary_json)
+              property('risk_summary_json', risk_summary_json).
+              property('analysis_status_json', analysis_status_json)
             """,
             {
                 "snapshot_key": _graph_key(tenant_id, scan_id, "snapshot"),
@@ -240,6 +242,7 @@ class NeptuneGraphStore:
                 "node_count": len(graph.nodes),
                 "edge_count": len(graph.edges),
                 "risk_summary_json": json.dumps(graph.stats(), sort_keys=True),
+                "analysis_status_json": json.dumps(analysis_status_map_to_dict(graph.analysis_status), sort_keys=True),
             },
         )
 
@@ -252,6 +255,7 @@ class NeptuneGraphStore:
         edges: Iterable[UnifiedEdge],
         attack_paths: Iterable[Any] = (),
         interaction_risks: Iterable[Any] = (),
+        analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
         created_at: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables.
@@ -269,6 +273,7 @@ class NeptuneGraphStore:
             graph.add_edge(edge)
         graph.attack_paths.extend(attack_paths)
         graph.interaction_risks.extend(interaction_risks)
+        graph.analysis_status.update(analysis_status or {})
         self.save_graph(graph)
         return {"nodes": len(graph.nodes), "edges": len(graph.edges)}
 
@@ -334,6 +339,12 @@ class NeptuneGraphStore:
         tenant = tenant_id or "default"
         scan = scan_id or self.latest_snapshot_id(tenant_id=tenant)
         graph = UnifiedGraph(scan_id=scan, tenant_id=tenant)
+        snapshot_rows = self._submit(
+            "g.V().hasLabel('abom_snapshot').has('tenant_id', tenant_id).has('scan_id', scan_id).limit(1).valueMap()",
+            {"tenant_id": tenant, "scan_id": scan},
+        )
+        if snapshot_rows:
+            graph.analysis_status = analysis_status_map_from_dict(_json_loads(snapshot_rows[0].get("analysis_status_json"), {}))
         node_rows = self._submit(
             "g.V().hasLabel('abom_node').has('tenant_id', tenant_id).has('scan_id', scan_id).valueMap()",
             {"tenant_id": tenant, "scan_id": scan},
@@ -435,12 +446,7 @@ class NeptuneGraphStore:
             entity_types=entity_types,
             min_severity_rank=min_severity_rank,
         )
-        return {
-            "scan_id": graph.scan_id,
-            "node_count": len(graph.nodes),
-            "edge_count": len(graph.edges),
-            "severity_counts": graph.stats().get("severity_counts", {}),
-        }
+        return graph.stats()
 
     def _edge_rows(self, *, tenant_id: str, scan_id: str) -> list[Any]:
         return self._submit(
@@ -461,6 +467,7 @@ class NeptuneGraphStore:
             "node_count": int(_first(row.get("node_count"), 0) or 0),
             "edge_count": int(_first(row.get("edge_count"), 0) or 0),
             "risk_summary": _json_loads(row.get("risk_summary_json"), {}),
+            "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(_json_loads(row.get("analysis_status_json"), {}))),
         }
 
     @staticmethod

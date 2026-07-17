@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import get_type_hints
 
@@ -1987,10 +1988,7 @@ jobs:
 """)
     agents, warnings = scan_github_actions(str(tmp_path))
     assert agents == []
-    assert warnings == [
-        "CI hardening in ci.yml: missing top-level permissions: policy; "
-        "declare least-privilege GITHUB_TOKEN permissions"
-    ]
+    assert warnings == ["CI hardening in ci.yml: missing top-level permissions: policy; declare least-privilege GITHUB_TOKEN permissions"]
 
 
 def test_gha_detects_ai_sdk_in_run_step(tmp_path):
@@ -4335,11 +4333,12 @@ def test_api_posture_counts_with_data():
 
     tenant_id = "counts-with-data"
     client = TestClient(app)
+    observed_at = datetime.now(timezone.utc).isoformat()
     job = ScanJob(
         job_id="counts-test-001",
         tenant_id=tenant_id,
         status=JobStatus.DONE,
-        created_at="2026-01-01T00:00:00Z",
+        created_at=observed_at,
         request=ScanRequest(),
         result={
             "blast_radius": [

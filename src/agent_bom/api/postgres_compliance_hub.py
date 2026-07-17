@@ -754,6 +754,9 @@ class PostgresComplianceHubStore:
                 )
             conn.commit()
         _invalidate_overview_severity(tenant_id)
+        from agent_bom.api.findings_count_cache import invalidate_tenant
+
+        invalidate_tenant(tenant_id)
         new_total = self._bump_tenant_total(tenant_id, new_rows)
         return new_total, reconciled
 
@@ -1056,9 +1059,7 @@ class PostgresComplianceHubStore:
         # One lookup for every ledger ordinal pointer.
         ordinal_map: dict[str, int] = {}
         if has_ledger_col:
-            ordinal_map = _fetch_ledger_ordinals_postgres(
-                conn, tenant_id, [meta[3] for meta in to_process if meta[3]]
-            )
+            ordinal_map = _fetch_ledger_ordinals_postgres(conn, tenant_id, [meta[3] for meta in to_process if meta[3]])
 
         ledger_upsert_params: list[tuple[Any, ...]] = []
         plain_upsert_params: list[tuple[Any, ...]] = []
@@ -1096,9 +1097,7 @@ class PostgresComplianceHubStore:
                 # idx_hub_findings_current_tenant_ordinal instead of a per-row
                 # correlated ledger subquery (#3984).
                 ledger_ordinal_val = ordinal_map.get(ledger_finding_id, _LEDGER_ORDINAL_SENTINEL)
-                ledger_upsert_params.append(
-                    (*base, ledger_finding_id or None, origin_val, scan_id_val, ledger_ordinal_val)
-                )
+                ledger_upsert_params.append((*base, ledger_finding_id or None, origin_val, scan_id_val, ledger_ordinal_val))
             else:
                 plain_upsert_params.append((*base, origin_val, scan_id_val))
 

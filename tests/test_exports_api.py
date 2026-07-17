@@ -15,8 +15,13 @@ from cryptography.fernet import Fernet
 from starlette.testclient import TestClient
 
 from agent_bom.api import connection_crypto
-from agent_bom.api.export_destination_store import InMemoryExportDestinationStore, set_export_destination_store
+from agent_bom.api.export_destination_store import (
+    InMemoryExportDestinationStore,
+    get_export_destination_store,
+    set_export_destination_store,
+)
 from agent_bom.api.export_schedule_store import InMemoryExportScheduleStore, set_export_schedule_store
+from agent_bom.export.destinations import ExportPublicationIndeterminateError
 
 PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 _TEST_KEY = Fernet.generate_key().decode("ascii")
@@ -94,6 +99,66 @@ def test_create_destination_rejects_unsupported_kind():
     body = {"kind": "kafka", "display_name": "K", "config": {}}
     resp = client.post("/v1/exports/destinations", json=body, headers=_headers())
     assert resp.status_code == 400
+
+
+@pytest.mark.parametrize(
+    ("raised", "expected_status"),
+    [
+        (ExportPublicationIndeterminateError("late marker possible"), "indeterminate"),
+        (RuntimeError("secret backend detail"), "error"),
+    ],
+)
+def test_one_off_export_persists_honest_failure_state(monkeypatch, caplog, raised, expected_status):
+    client = TestClient(_app())
+    created = client.post(
+        "/v1/exports/destinations",
+        json={"kind": "s3", "display_name": "Lake", "config": {"bucket": "b"}},
+        headers=_headers(),
+    ).json()
+
+    def fail_export(**kwargs):
+        raise raised
+
+    monkeypatch.setattr("agent_bom.export.runner.run_findings_export", fail_export)
+    from agent_bom.api.routes.exports import _run_export_sync
+
+    _run_export_sync("tenant-alpha", created["id"], "run-1")
+
+    record = get_export_destination_store().get("tenant-alpha", created["id"])
+    assert record is not None
+    assert record.status == expected_status
+    assert record.last_run_status == expected_status
+    assert record.last_run_at
+    if expected_status == "indeterminate":
+        assert record.status_detail == "Publication status is indeterminate; verify the destination marker before retrying"
+    else:
+        assert record.status_detail
+    assert "secret backend detail" not in caplog.text
+    assert "Traceback" not in caplog.text
+
+
+@pytest.mark.parametrize("kind", ["snowflake", "databricks"])
+def test_create_secret_only_warehouse_fails_closed_without_secret(kind):
+    client = TestClient(_app())
+    resp = client.post(
+        "/v1/exports/destinations",
+        json={"kind": kind, "display_name": "Warehouse", "config": {}},
+        headers=_headers(),
+    )
+    assert resp.status_code == 422
+    assert "requires a write-only secret" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize("kind", ["snowflake", "databricks"])
+def test_create_secret_only_warehouse_fails_closed_with_whitespace_secret(kind):
+    client = TestClient(_app())
+    resp = client.post(
+        "/v1/exports/destinations",
+        json={"kind": kind, "display_name": "Warehouse", "config": {}, "secret": "  \n\t"},
+        headers=_headers(),
+    )
+    assert resp.status_code == 422
+    assert "requires a write-only secret" in resp.json()["detail"]
 
 
 def test_schedule_requires_existing_destination_and_valid_cron():

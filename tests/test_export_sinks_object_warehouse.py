@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import gzip
 import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -28,6 +29,7 @@ from agent_bom.export.destinations import (
     BigQueryWarehouseDestination,
     DatabricksWarehouseDestination,
     ExportDestinationError,
+    ExportPublicationIndeterminateError,
     GcsObjectStoreDestination,
     build_destination,
 )
@@ -102,11 +104,17 @@ class FakeGcsClient:
 # Warehouse test doubles (BigQuery + Databricks)
 # --------------------------------------------------------------------------
 class FakeBqLoadJob:
-    def __init__(self, owner: "FakeBqClient") -> None:
+    def __init__(self, owner: "FakeBqClient", rows: list[dict[str, Any]] | None = None) -> None:
         self._owner = owner
+        self._rows = rows
 
-    def result(self) -> None:
+    def result(self) -> Any:
         self._owner.result_calls += 1
+        return self._rows
+
+
+class NotFound(Exception):  # noqa: N818 - mirrors google.api_core.exceptions.NotFound
+    pass
 
 
 class FakeBqClient:
@@ -114,6 +122,16 @@ class FakeBqClient:
         self.loads: list[dict[str, Any]] = []
         self.datasets: list[tuple[str, bool]] = []
         self.result_calls = 0
+        self.queries: list[dict[str, Any]] = []
+
+    def query(self, sql: str, job_config: Any = None) -> FakeBqLoadJob:
+        self.queries.append({"sql": sql, "job_config": job_config})
+        return FakeBqLoadJob(self)
+
+    def get_table(self, ref: str) -> object:
+        if not any(load["destination"] == ref for load in self.loads):
+            raise NotFound(ref)
+        return object()
 
     def create_dataset(self, ref: str, exists_ok: bool = False) -> None:
         self.datasets.append((ref, exists_ok))
@@ -129,6 +147,12 @@ class FakeDatabricksCursor:
 
     def execute(self, sql: str, params: Any = None) -> None:
         self._owner.executed.append((sql, params))
+        upper = sql.lstrip().upper()
+        if upper.startswith("INSERT INTO") and "_RUNS`" in upper:
+            self._owner.manifest_rows.append(tuple(params))
+        elif upper.startswith("SELECT 1"):
+            scope = tuple(params)
+            self._owner.fetchone_value = (1,) if any(row[:3] == scope for row in self._owner.manifest_rows) else None
 
     def executemany(self, sql: str, seq_of_params: Any) -> None:
         self._owner.executemany_calls.append((sql, [tuple(row) for row in seq_of_params]))
@@ -136,20 +160,29 @@ class FakeDatabricksCursor:
     def close(self) -> None:
         self._owner.cursor_closed += 1
 
+    def fetchone(self) -> Any:
+        return self._owner.fetchone_value
+
 
 class FakeDatabricksConnection:
     def __init__(self) -> None:
         self.executed: list[tuple[str, Any]] = []
         self.executemany_calls: list[tuple[str, list[tuple[Any, ...]]]] = []
         self.committed = 0
+        self.rolled_back = 0
         self.closed = 0
         self.cursor_closed = 0
+        self.manifest_rows: list[tuple[Any, ...]] = []
+        self.fetchone_value: Any = None
 
     def cursor(self) -> FakeDatabricksCursor:
         return FakeDatabricksCursor(self)
 
     def commit(self) -> None:
         self.committed += 1
+
+    def rollback(self) -> None:
+        self.rolled_back += 1
 
     def close(self) -> None:
         self.closed += 1
@@ -247,6 +280,42 @@ def test_gcs_requires_a_bucket():
 # --------------------------------------------------------------------------
 # BigQuery warehouse
 # --------------------------------------------------------------------------
+@pytest.mark.parametrize("warehouse", ["clickhouse", "bigquery", "databricks"])
+def test_manifest_pointer_latest_tenant_snapshot_hides_findings_omitted_by_later_run(warehouse):
+    """All manifest-backed consumers select one latest attempt per tenant, not per run."""
+    staged = [
+        {"tenant_id": "tenant", "run_id": "run-a", "publication_attempt_id": "attempt-a", "finding_id": "old"}
+    ]
+    manifests = [
+        {
+            "tenant_id": "tenant",
+            "run_id": "run-a",
+            "publication_attempt_id": "attempt-a",
+            "committed_at": 1,
+            "commit_version": 1,
+        },
+        {
+            "tenant_id": "tenant",
+            "run_id": "run-b",
+            "publication_attempt_id": "attempt-b",
+            "committed_at": 2,
+            "commit_version": 2,
+        },
+    ]
+
+    latest = max(manifests, key=lambda row: (row["committed_at"], row["commit_version"], row["publication_attempt_id"]))
+    visible = [
+        row
+        for row in staged
+        if (row["tenant_id"], row["run_id"], row["publication_attempt_id"])
+        == (latest["tenant_id"], latest["run_id"], latest["publication_attempt_id"])
+    ]
+
+    assert warehouse in {"clickhouse", "bigquery", "databricks"}
+    assert latest["run_id"] == "run-b"
+    assert visible == []
+
+
 def test_bigquery_loads_in_bounded_batches_into_partitioned_table():
     client = FakeBqClient()
     dest = BigQueryWarehouseDestination(client, project="proj", dataset="sec", table="findings_feed", batch_rows=500)
@@ -256,12 +325,14 @@ def test_bigquery_loads_in_bounded_batches_into_partitioned_table():
     # Dataset ensured once (table auto-created by the load's CREATE_IF_NEEDED).
     assert client.datasets == [("proj.sec", True)]
     # 1200 rows -> 500 + 500 + 200 loads, never one giant in-memory load.
-    assert [len(load["rows"]) for load in client.loads] == [500, 500, 200]
-    assert client.result_calls == 3
-    assert all(load["destination"] == "proj.sec.findings_feed" for load in client.loads)
+    feed_loads = [load for load in client.loads if load["destination"] == "proj.sec.findings_feed_staged"]
+    assert [len(load["rows"]) for load in feed_loads] == [500, 500, 200]
+    assert client.result_calls == 6  # two DDL jobs + three feed batches + server-clock manifest INSERT
+    assert all(load["destination"] == "proj.sec.findings_feed_staged" for load in feed_loads)
     assert result.kind == "bigquery"
     assert result.row_count == 1200
     assert result.destination_uri == "bigquery://proj/sec/findings_feed"
+    assert "UNIX_MICROS(CURRENT_TIMESTAMP())" in client.queries[-1]["sql"]
 
 
 def test_bigquery_row_shape_carries_tenant_run_and_finding_fields():
@@ -279,6 +350,15 @@ def test_bigquery_row_shape_carries_tenant_run_and_finding_fields():
     assert row["exported_at"]  # run export timestamp stamped for latest-row-per-finding
 
 
+def test_bigquery_zero_row_run_still_materializes_staging_before_publication():
+    client = FakeBqClient()
+    result = BigQueryWarehouseDestination(client, project="p", dataset="d").write_findings([], tenant_id="t", run_id="empty")
+    assert result.row_count == 0
+    assert client.loads == []
+    assert any("CREATE TABLE IF NOT EXISTS `p.d.findings_feed_staged`" in query["sql"] for query in client.queries)
+    assert "UNIX_MICROS(CURRENT_TIMESTAMP())" in client.queries[-1]["sql"]
+
+
 def test_bigquery_skips_dataset_creation_when_ensure_schema_false():
     client = FakeBqClient()
     dest = BigQueryWarehouseDestination(client, project="p", dataset="d", ensure_schema=False)
@@ -291,6 +371,147 @@ def test_bigquery_requires_project_and_dataset():
         BigQueryWarehouseDestination(FakeBqClient(), project="", dataset="d")
     with pytest.raises(ExportDestinationError):
         BigQueryWarehouseDestination(FakeBqClient(), project="p", dataset="")
+
+
+def test_bigquery_failed_later_batch_is_cleaned_without_commit_marker():
+    class FailingJob(FakeBqLoadJob):
+        def result(self) -> None:
+            if len(self._owner.loads) == 2:
+                raise RuntimeError("later batch failed")
+            super().result()
+
+    class FailingClient(FakeBqClient):
+        def load_table_from_json(self, rows, destination, job_config=None):
+            self.loads.append({"destination": destination, "rows": [dict(r) for r in rows], "job_config": job_config})
+            return FailingJob(self)
+
+    client = FailingClient()
+    dest = BigQueryWarehouseDestination(client, project="p", dataset="d", batch_rows=1)
+    with pytest.raises(RuntimeError):
+        dest.write_findings([_finding(1), _finding(2)], tenant_id="tenant-a", run_id="run-failed")
+    assert sum("DELETE FROM" in query["sql"] for query in client.queries) == 1
+    assert not any(load["destination"].endswith("_runs") for load in client.loads)
+
+
+def test_bigquery_manifest_failure_preserves_complete_staging_for_late_commit():
+    class Client(FakeBqClient):
+        def get_table(self, ref):
+            return object()
+
+        def query(self, sql, job_config=None):
+            self.queries.append({"sql": sql, "job_config": job_config})
+            if sql.lstrip().upper().startswith("INSERT INTO"):
+                raise RuntimeError("manifest failed")
+            return FakeBqLoadJob(self)
+
+    client = Client()
+    with pytest.raises(ExportPublicationIndeterminateError, match="indeterminate"):
+        BigQueryWarehouseDestination(client, project="p", dataset="d").write_findings(
+            [_finding(1)], tenant_id="t", run_id="r"
+        )
+    assert not any("DELETE FROM `p.d.findings_feed_staged`" in query["sql"] for query in client.queries)
+    assert any(load["destination"].endswith("_staged") for load in client.loads)
+
+
+def test_bigquery_staging_cleanup_failure_preserves_primary_error():
+    class FailingJob(FakeBqLoadJob):
+        def result(self):
+            raise RuntimeError("primary batch failure")
+
+    class Client(FakeBqClient):
+        def load_table_from_json(self, rows, destination, job_config=None):
+            self.loads.append({"destination": destination, "rows": [dict(r) for r in rows], "job_config": job_config})
+            return FailingJob(self)
+
+        def query(self, sql, job_config=None):
+            raise RuntimeError("cleanup failure")
+
+    with pytest.raises(RuntimeError, match="primary batch failure"):
+        BigQueryWarehouseDestination(Client(), project="p", dataset="d", ensure_schema=False).write_findings(
+            [_finding(1)], tenant_id="t", run_id="r"
+        )
+
+
+def test_bigquery_cleanup_uses_validated_identifiers_and_bound_scope_parameters():
+    class FailingJob(FakeBqLoadJob):
+        def result(self):
+            raise RuntimeError("load failed")
+
+    class FailingClient(FakeBqClient):
+        def load_table_from_json(self, rows, destination, job_config=None):
+            self.loads.append({"destination": destination, "rows": [dict(r) for r in rows], "job_config": job_config})
+            return FailingJob(self)
+
+    client = FailingClient()
+    destination = BigQueryWarehouseDestination(
+        client,
+        project="safe-project",
+        dataset="security_data",
+        cleanup_job_config_factory=lambda tenant, run, attempt: {"tenant": tenant, "run": run, "attempt": attempt},
+    )
+    with pytest.raises(RuntimeError, match="load failed"):
+        destination.write_findings([_finding(1)], tenant_id="tenant' OR TRUE --", run_id="run\\value")
+
+    cleanup = [query for query in client.queries if "DELETE FROM" in query["sql"]]
+    assert all("@tenant_id" in query["sql"] and "@run_id" in query["sql"] for query in cleanup)
+    assert all("tenant' OR TRUE" not in query["sql"] and "run\\value" not in query["sql"] for query in cleanup)
+    assert all(query["job_config"]["tenant"] == "tenant' OR TRUE --" for query in cleanup)
+    assert all(query["job_config"]["run"] == "run\\value" for query in cleanup)
+    with pytest.raises(ExportDestinationError, match="project"):
+        BigQueryWarehouseDestination(client, project="safe`; DROP TABLE x; --", dataset="security_data")
+    with pytest.raises(ExportDestinationError, match="dataset"):
+        BigQueryWarehouseDestination(client, project="safe-project", dataset="bad`dataset")
+    with pytest.raises(ExportDestinationError, match="table"):
+        BigQueryWarehouseDestination(client, project="safe-project", dataset="security_data", table="bad`table")
+
+
+def test_bigquery_ambiguous_manifest_timeout_is_reconciled_as_committed():
+    class Client(FakeBqClient):
+        def get_table(self, ref):
+            return object()
+
+        def query(self, sql, job_config=None):
+            self.queries.append({"sql": sql, "job_config": job_config})
+            if sql.lstrip().upper().startswith("INSERT INTO"):
+                raise TimeoutError("response lost after commit")
+            if sql.lstrip().upper().startswith("SELECT 1"):
+                return FakeBqLoadJob(self, rows=[{"present": 1}])
+            return FakeBqLoadJob(self)
+
+    client = Client()
+    result = BigQueryWarehouseDestination(client, project="proj", dataset="sec").write_findings(
+        [_finding(1)], tenant_id="tenant", run_id="run"
+    )
+    assert result.row_count == 1
+    assert not any(query["sql"].lstrip().upper().startswith("DELETE") for query in client.queries)
+
+
+def test_bigquery_concurrent_same_run_attempts_publish_only_complete_snapshots():
+    class ConcurrentClient(FakeBqClient):
+        def __init__(self):
+            super().__init__()
+            self.staged_barrier = __import__("threading").Barrier(2)
+
+        def load_table_from_json(self, rows, destination, job_config=None):
+            if destination.endswith("_staged"):
+                self.staged_barrier.wait(timeout=2)
+            return super().load_table_from_json(rows, destination, job_config)
+
+    client = ConcurrentClient()
+    scope = lambda tenant, run, attempt: {"tenant": tenant, "run": run, "attempt": attempt}  # noqa: E731
+    destinations = [
+        BigQueryWarehouseDestination(client, project="proj", dataset="sec", cleanup_job_config_factory=scope)
+        for _ in range(2)
+    ]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda dest: dest.write_findings([_finding(1)], tenant_id="t", run_id="same"), destinations))
+    staged = [load for load in client.loads if load["destination"].endswith("_staged")]
+    manifests = [query for query in client.queries if query["sql"].lstrip().upper().startswith("INSERT INTO")]
+    assert len(manifests) == 2
+    attempts = {query["job_config"]["attempt"] for query in manifests}
+    assert len(attempts) == 2
+    assert {load["rows"][0]["publication_attempt_id"] for load in staged} == attempts
+    assert all("UNIX_MICROS(CURRENT_TIMESTAMP())" in query["sql"] for query in manifests)
 
 
 # --------------------------------------------------------------------------
@@ -308,8 +529,8 @@ def test_databricks_creates_table_and_inserts_in_bounded_batches():
     assert [len(params) for _, params in conn.executemany_calls] == [500, 500, 200]
     insert_sql = conn.executemany_calls[0][0]
     assert insert_sql.lstrip().upper().startswith("INSERT INTO")
-    assert "`main`.`sec`.`findings_feed`" in insert_sql
-    assert conn.committed == 1
+    assert "`main`.`sec`.`findings_feed_staged`" in insert_sql
+    assert len(conn.manifest_rows) == 1
     assert conn.closed == 1
     assert conn.cursor_closed == 1
     assert result.kind == "databricks"
@@ -329,6 +550,20 @@ def test_databricks_insert_values_carry_tenant_run_and_finding_fields():
     # cvss_score / epss_score are the trailing float columns.
     assert isinstance(row[-1], float)
     assert isinstance(row[-2], float)
+
+
+def test_databricks_same_run_retry_publishes_one_complete_attempt_pointer():
+    conn = FakeDatabricksConnection()
+    destination = DatabricksWarehouseDestination(lambda: conn, catalog="main", schema="sec")
+    destination.write_findings([_finding(1)], tenant_id="tenant", run_id="same-run")
+    destination.write_findings([_finding(2)], tenant_id="tenant", run_id="same-run")
+
+    assert len(conn.manifest_rows) == 2
+    assert len({row[2] for row in conn.manifest_rows}) == 2
+    staged_attempts = {params[0][-3] for _, params in conn.executemany_calls}
+    assert staged_attempts == {row[2] for row in conn.manifest_rows}
+    assert all(row[:2] == ("tenant", "same-run") for row in conn.manifest_rows)
+    assert any("UNIX_MICROS(CURRENT_TIMESTAMP())" in sql for sql, _ in conn.executed)
 
 
 def test_databricks_skips_ddl_when_ensure_schema_false():
@@ -353,6 +588,67 @@ def test_databricks_closes_connection_on_error():
         dest.write_findings([_finding(1)], tenant_id="t", run_id="r")
     assert conn.closed == 1
     assert conn.committed == 0
+    assert conn.rolled_back == 0
+    assert any(sql.lstrip().upper().startswith("DELETE FROM") for sql, _ in conn.executed)
+
+
+def test_databricks_ambiguous_manifest_timeout_is_reconciled_as_committed():
+    class TimeoutCursor(FakeDatabricksCursor):
+        def execute(self, sql, params=None):
+            result = super().execute(sql, params)
+            if sql.lstrip().upper().startswith("INSERT INTO") and "_RUNS`" in sql.upper():
+                raise TimeoutError("response lost after commit")
+            return result
+
+    class Connection(FakeDatabricksConnection):
+        def cursor(self):
+            return TimeoutCursor(self)
+
+    conn = Connection()
+    result = DatabricksWarehouseDestination(lambda: conn, catalog="main", schema="sec").write_findings(
+        [_finding(1)], tenant_id="tenant", run_id="run"
+    )
+    assert result.row_count == 1
+    assert len(conn.manifest_rows) == 1
+    assert not any(sql.lstrip().upper().startswith("DELETE FROM") for sql, _ in conn.executed)
+
+
+def test_databricks_staging_cleanup_failure_preserves_primary_error():
+    class Cursor(FakeDatabricksCursor):
+        def executemany(self, sql, params):
+            raise RuntimeError("primary batch failure")
+
+        def execute(self, sql, params=None):
+            if sql.lstrip().upper().startswith("DELETE FROM"):
+                raise RuntimeError("cleanup failure")
+            return super().execute(sql, params)
+
+    class Conn(FakeDatabricksConnection):
+        def cursor(self):
+            return Cursor(self)
+
+    with pytest.raises(RuntimeError, match="primary batch failure"):
+        DatabricksWarehouseDestination(lambda: Conn(), catalog="main", schema="sec").write_findings(
+            [_finding(1)], tenant_id="t", run_id="r"
+        )
+
+
+def test_secret_only_warehouse_builds_fail_closed_without_secret():
+    with pytest.raises(ExportDestinationError, match="private-key secret"):
+        build_destination("snowflake", {"account": "a", "user": "u", "database": "d"})
+    with pytest.raises(ExportDestinationError, match="access-token secret"):
+        build_destination(
+            "databricks",
+            {"server_hostname": "h", "http_path": "/sql", "catalog": "main", "schema": "sec"},
+        )
+    with pytest.raises(ExportDestinationError, match="private-key secret"):
+        build_destination("snowflake", {"account": "a", "user": "u", "database": "d"}, secret="   \n")
+    with pytest.raises(ExportDestinationError, match="access-token secret"):
+        build_destination(
+            "databricks",
+            {"server_hostname": "h", "http_path": "/sql", "catalog": "main", "schema": "sec"},
+            secret="\t ",
+        )
 
 
 def test_databricks_streams_a_lazy_generator_without_materializing():
@@ -436,11 +732,12 @@ def test_build_destination_bigquery_wires_project_dataset(monkeypatch):
 
     monkeypatch.setattr("agent_bom.export.destinations._default_bigquery_client", fake_default)
     monkeypatch.setattr("agent_bom.export.destinations._default_bigquery_job_config", lambda: None)
+    monkeypatch.setattr("agent_bom.export.destinations._default_bigquery_scope_job_config", lambda *_: None)
     dest = build_destination("bigquery", {"project": "proj", "dataset": "sec", "table": "findings_feed"})
     assert isinstance(dest, BigQueryWarehouseDestination)
     dest.write_findings([_finding(1)], tenant_id="t", run_id="r")
     assert captured["project"] == "proj"
-    assert client.loads[0]["destination"] == "proj.sec.findings_feed"
+    assert client.loads[0]["destination"] == "proj.sec.findings_feed_staged"
 
 
 def test_build_destination_bigquery_requires_project_and_dataset():

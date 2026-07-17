@@ -27,7 +27,8 @@ from agent_bom.export.destinations import SUPPORTED_EXPORT_KINDS
 STATUS_PENDING = "pending"
 STATUS_ACTIVE = "active"
 STATUS_ERROR = "error"
-VALID_STATUSES: tuple[str, ...] = (STATUS_PENDING, STATUS_ACTIVE, STATUS_ERROR)
+STATUS_INDETERMINATE = "indeterminate"
+VALID_STATUSES: tuple[str, ...] = (STATUS_PENDING, STATUS_ACTIVE, STATUS_ERROR, STATUS_INDETERMINATE)
 
 
 @dataclass

@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -18,6 +21,7 @@ from agent_bom.export.destinations import (
     SUPPORTED_EXPORT_KINDS,
     ClickHouseWarehouseDestination,
     ExportDestinationError,
+    ExportPublicationIndeterminateError,
     S3ObjectStoreDestination,
     SnowflakeWarehouseDestination,
     build_destination,
@@ -62,11 +66,20 @@ class FakeClickHouseClient:
     def __init__(self) -> None:
         self.batches: list[list[dict[str, Any]]] = []
         self.ensured = 0
+        self.commands: list[str] = []
+        self.committed_runs: list[dict[str, Any]] = []
 
     def ensure_tables(self) -> None:
         self.ensured += 1
 
+    def execute(self, sql: str) -> str:
+        self.commands.append(sql)
+        return ""
+
     def insert_json(self, table: str, rows: list[dict[str, Any]]) -> None:
+        if table.endswith("_runs"):
+            self.committed_runs.extend(dict(r) for r in rows)
+            return
         self.table = table
         # Copy so later mutation of the caller's buffer can't corrupt the record.
         self.batches.append([dict(r) for r in rows])
@@ -78,9 +91,14 @@ class FakeSnowflakeCursor:
     def __init__(self, owner: "FakeSnowflakeConnection") -> None:
         self._owner = owner
 
-    def execute(self, sql: str) -> "FakeSnowflakeCursor":
+    def execute(self, sql: str, params: Any = None) -> "FakeSnowflakeCursor":
         self._owner.executed.append(sql)
+        self._owner.execute_params.append(params)
         stripped = sql.lstrip()
+        if stripped.upper() == "COMMIT":
+            self._owner.committed += 1
+        elif stripped.upper() == "ROLLBACK":
+            self._owner.rolled_back += 1
         if stripped[:4].upper() == "PUT ":
             # PUT 'file://<abspath>' @%table ... — read the staged file the same
             # way a real Snowflake PUT would, proving the stream landed on disk.
@@ -100,8 +118,10 @@ class FakeSnowflakeConnection:
 
     def __init__(self) -> None:
         self.executed: list[str] = []
+        self.execute_params: list[Any] = []
         self.staged_rows: list[dict[str, Any]] = []
         self.committed = 0
+        self.rolled_back = 0
         self.closed = 0
         self.cursor_closed = 0
 
@@ -110,6 +130,9 @@ class FakeSnowflakeConnection:
 
     def commit(self) -> None:
         self.committed += 1
+
+    def rollback(self) -> None:
+        self.rolled_back += 1
 
     def close(self) -> None:
         self.closed += 1
@@ -201,7 +224,7 @@ def test_clickhouse_destination_flushes_in_bounded_batches():
     assert [len(b) for b in client.batches] == [500, 500, 200]
     assert all(len(b) <= 500 for b in client.batches)
     assert result.row_count == 1200
-    assert client.table == "findings_feed"
+    assert client.table == "findings_feed_staged"
 
 
 def test_clickhouse_row_shape_carries_tenant_run_and_finding_fields():
@@ -269,6 +292,12 @@ def test_snowflake_destination_stages_and_copies_into_findings_feed():
     assert conn.committed == 1
     assert conn.closed == 1
     assert conn.cursor_closed == 1
+    put_index = next(i for i, sql in enumerate(conn.executed) if sql.lstrip().upper().startswith("PUT "))
+    begin_index = conn.executed.index("BEGIN")
+    delete_index = next(i for i, sql in enumerate(conn.executed) if sql.lstrip().upper().startswith("DELETE FROM"))
+    copy_index = next(i for i, sql in enumerate(conn.executed) if sql.lstrip().upper().startswith("COPY INTO"))
+    commit_index = conn.executed.index("COMMIT")
+    assert put_index < begin_index < delete_index < copy_index < commit_index
     # Staged rows carry tenant/run scope and the finding fields.
     assert {r["finding_id"] for r in conn.staged_rows} == {"f-1", "f-2"}
     assert all(r["tenant_id"] == "tenant-a" and r["run_id"] == "run77" for r in conn.staged_rows)
@@ -307,12 +336,22 @@ def test_snowflake_destination_closes_connection_on_error():
     """A failure mid-load still closes the connection (no leaked session)."""
 
     class BoomCursor(FakeSnowflakeCursor):
-        def execute(self, sql: str):
+        def execute(self, sql: str, params: Any = None):
             if sql.lstrip().upper().startswith("COPY INTO"):
                 raise RuntimeError("copy failed")
-            return super().execute(sql)
+            result = super().execute(sql, params)
+            if sql.lstrip().upper().startswith("DELETE FROM"):
+                self._owner.visible_rows = []
+            elif sql.lstrip().upper() == "ROLLBACK":
+                self._owner.visible_rows = list(self._owner.prior_rows)
+            return result
 
     class BoomConn(FakeSnowflakeConnection):
+        def __init__(self):
+            super().__init__()
+            self.visible_rows = ["prior-snapshot"]
+            self.prior_rows = list(self.visible_rows)
+
         def cursor(self):
             return BoomCursor(self)
 
@@ -322,6 +361,237 @@ def test_snowflake_destination_closes_connection_on_error():
         dest.write_findings([_finding(1)], tenant_id="t", run_id="r")
     assert conn.closed == 1
     assert conn.committed == 0
+    assert conn.rolled_back == 1
+    assert conn.visible_rows == ["prior-snapshot"]
+    assert any(sql.lstrip().upper().startswith("REMOVE ") for sql in conn.executed)
+
+
+def test_snowflake_same_run_retry_deletes_then_replaces_in_one_transaction():
+    conn = FakeSnowflakeConnection()
+    destination = SnowflakeWarehouseDestination(lambda: conn, database="DB", schema="S")
+    destination.write_findings([_finding(1)], tenant_id="tenant", run_id="same-run")
+    destination.write_findings([_finding(2)], tenant_id="tenant", run_id="same-run")
+
+    deletes = [
+        (sql, params)
+        for sql, params in zip(conn.executed, conn.execute_params, strict=True)
+        if sql.lstrip().upper().startswith("DELETE FROM")
+    ]
+    assert len(deletes) == 2
+    assert all(params == ("tenant",) for _, params in deletes)
+    assert conn.committed == 2
+    for start in (0, conn.executed.index("BEGIN", 1)):
+        begin = conn.executed.index("BEGIN", start)
+        delete = next(i for i in range(begin + 1, len(conn.executed)) if conn.executed[i].lstrip().upper().startswith("DELETE FROM"))
+        commit = conn.executed.index("COMMIT", delete)
+        assert begin < delete < commit
+
+
+def test_snowflake_zero_row_snapshot_replaces_whole_tenant_and_commits_marker():
+    conn = FakeSnowflakeConnection()
+    result = SnowflakeWarehouseDestination(lambda: conn, database="DB").write_findings(
+        [], tenant_id="tenant", run_id="empty-run"
+    )
+    assert result.row_count == 0
+    delete_idx = next(i for i, sql in enumerate(conn.executed) if sql.lstrip().upper().startswith("DELETE FROM"))
+    marker_idx = next(
+        i for i, sql in enumerate(conn.executed) if sql.lstrip().upper().startswith("INSERT INTO") and "_RUNS" in sql.upper()
+    )
+    commit_idx = conn.executed.index("COMMIT")
+    assert conn.execute_params[delete_idx] == ("tenant",)
+    assert conn.execute_params[marker_idx][:2] == ("tenant", "empty-run")
+    assert conn.execute_params[marker_idx][3] == 0
+    assert delete_idx < marker_idx < commit_idx
+    assert not any(sql.lstrip().upper().startswith("COPY INTO") for sql in conn.executed)
+    assert any(sql.lstrip().upper().startswith("REMOVE ") for sql in conn.executed)
+
+
+def test_snowflake_lost_commit_response_reconciles_durable_marker():
+    markers: set[tuple[str, str, str]] = set()
+
+    class Cursor(FakeSnowflakeCursor):
+        def execute(self, sql, params=None):
+            result = super().execute(sql, params)
+            upper = sql.lstrip().upper()
+            if upper.startswith("INSERT INTO") and "_RUNS" in upper:
+                markers.add(tuple(params[:3]))
+            if upper == "COMMIT":
+                raise TimeoutError("commit response lost")
+            if upper.startswith("SELECT 1"):
+                self._selected = tuple(params) in markers
+            return result
+
+        def fetchone(self):
+            return (1,) if getattr(self, "_selected", False) else None
+
+    class Conn(FakeSnowflakeConnection):
+        def cursor(self):
+            return Cursor(self)
+
+    connections: list[Conn] = []
+
+    def factory():
+        conn = Conn()
+        connections.append(conn)
+        return conn
+
+    result = SnowflakeWarehouseDestination(factory, database="DB").write_findings(
+        [_finding(1)], tenant_id="tenant", run_id="run"
+    )
+    assert result.row_count == 1
+    assert len(connections) == 2
+    assert markers
+    assert connections[0].rolled_back == 0
+
+
+def test_snowflake_rollback_and_remove_failures_preserve_primary_error():
+    class Cursor(FakeSnowflakeCursor):
+        def execute(self, sql, params=None):
+            upper = sql.lstrip().upper()
+            if upper.startswith("COPY INTO"):
+                raise RuntimeError("primary copy failure")
+            if upper == "ROLLBACK" or upper.startswith("REMOVE"):
+                raise RuntimeError("cleanup failure")
+            return super().execute(sql, params)
+
+    class Conn(FakeSnowflakeConnection):
+        def cursor(self):
+            return Cursor(self)
+
+    with pytest.raises(RuntimeError, match="primary copy failure"):
+        SnowflakeWarehouseDestination(lambda: Conn(), database="DB").write_findings(
+            [_finding(1)], tenant_id="t", run_id="r"
+        )
+
+
+def test_clickhouse_failed_later_batch_is_cleaned_without_commit_marker():
+    class Boom(FakeClickHouseClient):
+        def insert_json(self, table, rows):
+            if table == "findings_feed_staged" and self.batches:
+                raise RuntimeError("later batch failed")
+            super().insert_json(table, rows)
+
+    client = Boom()
+    dest = ClickHouseWarehouseDestination(client, batch_rows=1)
+    with pytest.raises(RuntimeError):
+        dest.write_findings([_finding(1), _finding(2)], tenant_id="tenant-a", run_id="run-failed")
+    assert client.committed_runs == []
+    assert any(command.startswith("ALTER TABLE findings_feed_staged DELETE") for command in client.commands)
+    assert all("mutations_sync = 1" in command for command in client.commands if command.startswith("ALTER TABLE"))
+
+
+def test_clickhouse_custom_table_creates_matching_manifest_and_escapes_scope():
+    client = FakeClickHouseClient()
+    dest = ClickHouseWarehouseDestination(client, table="custom_feed")
+
+    def rows():
+        yield _finding(1)
+        raise RuntimeError("producer failed")
+
+    with pytest.raises(RuntimeError, match="producer failed"):
+        dest.write_findings(rows(), tenant_id="tenant\\x\n'", run_id="run\t\\'")
+    assert any("CREATE TABLE IF NOT EXISTS custom_feed_runs" in command for command in client.commands)
+    cleanup = next(command for command in client.commands if command.startswith("ALTER TABLE custom_feed_staged DELETE"))
+    assert "tenant\\\\x\\n\\'" in cleanup
+    assert "run\\t\\\\\\'" in cleanup
+
+
+def test_clickhouse_manifest_failure_preserves_complete_staging_for_late_commit():
+    class Boom(FakeClickHouseClient):
+        def insert_json(self, table, rows):
+            if table.endswith("_runs"):
+                raise RuntimeError("manifest failed")
+            super().insert_json(table, rows)
+
+    client = Boom()
+    with pytest.raises(ExportPublicationIndeterminateError, match="indeterminate"):
+        ClickHouseWarehouseDestination(client).write_findings([_finding(1)], tenant_id="t", run_id="r")
+    assert client.committed_runs == []
+    assert not any(command.startswith("ALTER TABLE findings_feed_staged DELETE") for command in client.commands)
+    assert client.batches
+
+
+def test_clickhouse_staging_cleanup_failure_preserves_primary_error():
+    class Boom(FakeClickHouseClient):
+        def insert_json(self, table, rows):
+            if table.endswith("_staged"):
+                raise RuntimeError("primary batch failure")
+            super().insert_json(table, rows)
+
+        def execute(self, sql):
+            if sql.startswith("ALTER TABLE"):
+                raise RuntimeError("cleanup failure")
+            return super().execute(sql)
+
+    with pytest.raises(RuntimeError, match="primary batch failure"):
+        ClickHouseWarehouseDestination(Boom()).write_findings([_finding(1)], tenant_id="t", run_id="r")
+
+
+def test_clickhouse_concurrent_same_run_attempts_publish_only_complete_snapshots():
+    class ConcurrentClient(FakeClickHouseClient):
+        def __init__(self):
+            super().__init__()
+            self.staged_barrier = __import__("threading").Barrier(2)
+
+        def insert_json(self, table, rows):
+            if table.endswith("_staged"):
+                self.staged_barrier.wait(timeout=2)
+            return super().insert_json(table, rows)
+
+    client = ConcurrentClient()
+    destinations = [ClickHouseWarehouseDestination(client) for _ in range(2)]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda dest: dest.write_findings([_finding(1)], tenant_id="t", run_id="same"), destinations))
+    assert len(client.committed_runs) == 2
+    assert len({run["publication_attempt_id"] for run in client.committed_runs}) == 2
+    assert {batch[0]["publication_attempt_id"] for batch in client.batches} == {
+        run["publication_attempt_id"] for run in client.committed_runs
+    }
+    assert all("commit_version" not in run for run in client.committed_runs)
+    assert any("DEFAULT toUnixTimestamp64Nano(now64(9))" in command for command in client.commands)
+
+
+def test_clickhouse_runs_ddl_is_identical_across_runtime_client_and_deployment_init():
+    from agent_bom.cloud.clickhouse import _TABLE_DDL
+
+    client = FakeClickHouseClient()
+    ClickHouseWarehouseDestination(client).write_findings([], tenant_id="t", run_id="r")
+    runtime = next(command for command in client.commands if command.startswith("CREATE TABLE IF NOT EXISTS findings_feed_runs"))
+    client_ddl = next(ddl for ddl in _TABLE_DDL if ddl.startswith("CREATE TABLE IF NOT EXISTS findings_feed_runs"))
+    init_sql = (Path(__file__).parents[1] / "deploy/supabase/clickhouse/init.sql").read_text()
+    deployed = re.search(
+        r"CREATE TABLE IF NOT EXISTS agent_bom\.findings_feed_runs \(.*?ORDER BY \(tenant_id, run_id\)",
+        init_sql,
+        re.DOTALL,
+    )
+    assert deployed is not None
+
+    def normalize(ddl: str) -> str:
+        compact = " ".join(ddl.replace("agent_bom.", "").split())
+        return compact.replace("( ", "(").replace(" )", ")")
+
+    assert normalize(runtime) == normalize(client_ddl) == normalize(deployed.group(0))
+    assert "commit_version UInt64 DEFAULT toUnixTimestamp64Nano(now64(9))" in runtime
+    assert "committed_at DateTime64(6) DEFAULT now64(6)" in runtime
+
+
+def test_clickhouse_ambiguous_manifest_timeout_is_reconciled_as_committed():
+    class Client(FakeClickHouseClient):
+        def insert_json(self, table, rows):
+            super().insert_json(table, rows)
+            if table.endswith("_runs"):
+                raise TimeoutError("response lost after commit")
+
+        def execute(self, sql):
+            self.commands.append(sql)
+            if sql.lstrip().upper().startswith("SELECT COUNT()"):
+                return "1\n"
+            return ""
+
+    client = Client()
+    result = ClickHouseWarehouseDestination(client).write_findings([_finding(1)], tenant_id="t", run_id="r")
+    assert result.row_count == 1
+    assert not any(command.startswith("ALTER TABLE findings_feed_staged DELETE") for command in client.commands)
 
 
 def test_build_destination_snowflake_wires_keypair_connection_from_stored_secret(monkeypatch):
@@ -431,3 +701,21 @@ def test_run_findings_export_audits_failure_and_reraises(monkeypatch):
     with pytest.raises(RuntimeError):
         run_findings_export(tenant_id="t", kind="clickhouse", config={}, destination=Boom(), findings=[])
     assert captured[0]["details"]["outcome"] == "failure"
+
+
+def test_run_findings_export_audits_ambiguous_publish_as_indeterminate(monkeypatch):
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        "agent_bom.api.audit_log.log_action",
+        lambda action, actor="system", resource="", **details: captured.append({"action": action, **details}),
+    )
+
+    class Ambiguous:
+        kind = "bigquery"
+
+        def write_findings(self, rows, *, tenant_id, run_id):
+            raise ExportPublicationIndeterminateError("manifest may still commit")
+
+    with pytest.raises(ExportPublicationIndeterminateError):
+        run_findings_export(tenant_id="t", kind="bigquery", config={}, destination=Ambiguous(), findings=[])
+    assert captured[0]["details"]["outcome"] == "indeterminate"

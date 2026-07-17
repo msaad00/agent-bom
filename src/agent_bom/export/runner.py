@@ -13,7 +13,7 @@ import secrets
 from collections.abc import Iterable, Iterator
 from typing import Any
 
-from agent_bom.export.destinations import ExportDestination, ExportResult, build_destination
+from agent_bom.export.destinations import ExportDestination, ExportPublicationIndeterminateError, ExportResult, build_destination
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,16 @@ def run_findings_export(
 
     try:
         result = dest.write_findings(rows, tenant_id=tenant_id, run_id=resolved_run_id)
+    except ExportPublicationIndeterminateError:
+        _audit(
+            actor,
+            tenant_id,
+            destination_id=destination_id,
+            kind=kind,
+            run_id=resolved_run_id,
+            outcome="indeterminate",
+        )
+        raise
     except Exception:
         _audit(
             actor,

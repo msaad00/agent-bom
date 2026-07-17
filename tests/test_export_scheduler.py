@@ -18,6 +18,7 @@ from agent_bom.api.export_destination_store import (
 )
 from agent_bom.api.export_schedule_store import ExportSchedule, InMemoryExportScheduleStore
 from agent_bom.api.export_scheduler import claim_due_schedules, run_due_exports_once
+from agent_bom.export.destinations import ExportPublicationIndeterminateError
 
 
 def _now() -> datetime:
@@ -155,3 +156,42 @@ def test_run_due_exports_missing_destination_marks_error(monkeypatch):
     assert count == 1
     latest = sched_store.get("sched-1", "tenant-a")
     assert latest is not None and latest.last_run_status == "error"
+
+
+def test_run_due_exports_preserves_indeterminate_publication_status(monkeypatch):
+    def ambiguous_run(**kwargs):
+        raise ExportPublicationIndeterminateError("safe constant")
+
+    monkeypatch.setattr("agent_bom.api.export_scheduler.run_findings_export", ambiguous_run)
+    sched_store = InMemoryExportScheduleStore()
+    sched_store.put(_schedule())
+    dest_store = InMemoryExportDestinationStore()
+    dest_store.put(_destination(secret_encrypted=""))
+
+    count = asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
+
+    assert count == 1
+    latest = sched_store.get("sched-1", "tenant-a")
+    destination = dest_store.get("tenant-a", "dest-1")
+    assert latest is not None and latest.last_run_status == "indeterminate"
+    assert latest.last_row_count is None
+    assert destination is not None
+    assert destination.status == "indeterminate"
+    assert destination.last_run_status == "indeterminate"
+    assert destination.status_detail == "Publication status is indeterminate; verify the destination marker before retrying"
+
+
+def test_run_due_exports_failure_log_does_not_emit_exception_text_or_traceback(monkeypatch, caplog):
+    def failed_run(**kwargs):
+        raise RuntimeError("credential=do-not-log")
+
+    monkeypatch.setattr("agent_bom.api.export_scheduler.run_findings_export", failed_run)
+    sched_store = InMemoryExportScheduleStore()
+    sched_store.put(_schedule())
+    dest_store = InMemoryExportDestinationStore()
+    dest_store.put(_destination(secret_encrypted=""))
+
+    asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
+
+    assert "credential=do-not-log" not in caplog.text
+    assert "Traceback" not in caplog.text

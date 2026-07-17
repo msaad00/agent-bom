@@ -170,9 +170,8 @@ ORDER BY (tenant_id, scan_id, check_key)
 PARTITION BY toYYYYMM(measured_at)
 TTL measured_at + INTERVAL 2 YEAR;
 
--- Scheduled findings-feed export sink (#4040). Idempotent per finding via
--- ReplacingMergeTree on the (tenant, finding) key so re-exporting a snapshot
--- collapses to the latest row rather than duplicating.
+-- Legacy direct findings-feed table. Scheduled exports publish through the
+-- attempt-scoped staging and run-manifest tables below.
 CREATE TABLE IF NOT EXISTS agent_bom.findings_feed (
     tenant_id String,
     run_id String,
@@ -195,6 +194,41 @@ CREATE TABLE IF NOT EXISTS agent_bom.findings_feed (
 ) ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (tenant_id, finding_id)
 PARTITION BY toYYYYMM(exported_at);
+
+-- Publication manifest: consumers join through this table so rows from a
+-- failed multi-batch export never become visible as a completed snapshot.
+CREATE TABLE IF NOT EXISTS agent_bom.findings_feed_staged (
+    tenant_id String,
+    run_id String,
+    publication_attempt_id String,
+    exported_at DateTime DEFAULT now(),
+    finding_id String,
+    canonical_id String,
+    severity LowCardinality(String),
+    cvss_score Float32,
+    epss_score Float32,
+    package_name String,
+    package_version String,
+    ecosystem LowCardinality(String),
+    cve_id String,
+    source LowCardinality(String),
+    status LowCardinality(String),
+    effective_reach String,
+    first_seen String,
+    last_seen String
+) ENGINE = MergeTree()
+ORDER BY (tenant_id, run_id, publication_attempt_id, finding_id)
+PARTITION BY toYYYYMM(exported_at);
+
+CREATE TABLE IF NOT EXISTS agent_bom.findings_feed_runs (
+    tenant_id String,
+    run_id String,
+    publication_attempt_id String,
+    row_count UInt64,
+    commit_version UInt64 DEFAULT toUnixTimestamp64Nano(now64(9)),
+    committed_at DateTime64(6) DEFAULT now64(6)
+) ENGINE = ReplacingMergeTree(commit_version)
+ORDER BY (tenant_id, run_id);
 
 -- Forward-compatible migrations for deployments created from older init.sql
 -- revisions. These mirror the runtime ClickHouse client migrations.

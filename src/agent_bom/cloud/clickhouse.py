@@ -271,10 +271,8 @@ CREATE TABLE IF NOT EXISTS audit_events (
 ORDER BY (tenant_id, entry_id)
 PARTITION BY toYYYYMM(event_timestamp)
 TTL event_timestamp + INTERVAL 2 YEAR""",
-    # 9. Scheduled findings-feed export sink (#4040). Idempotent per finding via
-    #    ReplacingMergeTree on the (tenant, finding) key so re-exporting a snapshot
-    #    collapses to the latest row rather than duplicating. This is the warehouse
-    #    landing table the scheduled-export destination writes to.
+    # 9. Legacy direct findings-feed table plus attempt-scoped staging and the
+    #    atomic publication manifest used by scheduled warehouse exports.
     """\
 CREATE TABLE IF NOT EXISTS findings_feed (
     tenant_id String,
@@ -298,6 +296,39 @@ CREATE TABLE IF NOT EXISTS findings_feed (
 ) ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (tenant_id, finding_id)
 PARTITION BY toYYYYMM(exported_at)""",
+    """\
+CREATE TABLE IF NOT EXISTS findings_feed_staged (
+    tenant_id String,
+    run_id String,
+    publication_attempt_id String,
+    exported_at DateTime DEFAULT now(),
+    finding_id String,
+    canonical_id String,
+    severity LowCardinality(String),
+    cvss_score Float32,
+    epss_score Float32,
+    package_name String,
+    package_version String,
+    ecosystem LowCardinality(String),
+    cve_id String,
+    source LowCardinality(String),
+    status LowCardinality(String),
+    effective_reach String,
+    first_seen String,
+    last_seen String
+) ENGINE = MergeTree()
+ORDER BY (tenant_id, run_id, publication_attempt_id, finding_id)
+PARTITION BY toYYYYMM(exported_at)""",
+    """\
+CREATE TABLE IF NOT EXISTS findings_feed_runs (
+    tenant_id String,
+    run_id String,
+    publication_attempt_id String,
+    row_count UInt64,
+    commit_version UInt64 DEFAULT toUnixTimestamp64Nano(now64(9)),
+    committed_at DateTime64(6) DEFAULT now64(6)
+) ENGINE = ReplacingMergeTree(commit_version)
+ORDER BY (tenant_id, run_id)""",
     # 8. CIS benchmark check observations with remediation fields indexed
     """\
 CREATE TABLE IF NOT EXISTS cis_benchmark_checks (

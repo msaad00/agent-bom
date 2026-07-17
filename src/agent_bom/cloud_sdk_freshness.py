@@ -32,9 +32,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from typing import Any
 
 SCHEMA_VERSION = 1
+
+# How far ahead a scheduled retirement is still surfaced as a live "deprecating"
+# signal when a legacy SDK is present. Purely cosmetic today (any not-yet-removed
+# exposed entry warns); kept as a named constant so the horizon is explicit.
+DEPRECATION_HORIZON_DAYS = 365
 
 
 @dataclass(frozen=True)
@@ -257,5 +263,260 @@ def cloud_sdk_freshness_summary(
             for s in posture["sdks"]
             if s["status"] == "outdated"
         ],
+        "warnings": [w["message"] for w in posture["warnings"]],
+        # Provider-API retirement posture (Azure AD Graph, oauth2client, …):
+        # a legacy-SDK exposure signal that complements the version-floor check.
+        "deprecations": cloud_api_deprecation_summary(installed=installed),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Provider-API deprecation / removal posture
+# ---------------------------------------------------------------------------
+#
+# The version-floor check above answers "is my SDK current?". This second
+# signal answers a different, complementary question: "does my install still
+# depend on a provider API the vendor has *retired* (or scheduled to retire)?"
+# A retired API returns errors (e.g. Azure AD Graph → HTTP 403), so a check that
+# still routes through it silently under-covers or fails — the same
+# gap-that-looks-like-coverage failure mode.
+#
+# Modeled as a small, deterministic, offline watchlist keyed by the *legacy*
+# distribution that speaks the retired API. agent-bom itself already uses the
+# modern replacement for each entry (Azure identities/roles via Azure Resource
+# Manager, GCP auth via google-auth), so the honest default posture is "clear".
+# The signal fires only when a legacy SDK is actually present in the tree — a
+# supply-chain / coverage guard, evaluated against an injected clock so the
+# removed / deprecating / clear states are all reproducible.
+
+
+@dataclass(frozen=True)
+class ProviderApiDeprecation:
+    """One retired or deprecated provider API on the watchlist.
+
+    Attributes:
+        provider: Provider id (``aws`` / ``azure`` / ``gcp`` / ``snowflake``).
+        api: Human label of the provider API being retired.
+        distribution: The *legacy* PyPI distribution that speaks the retired
+            API — the exposure probe. ``None`` means there is no distinct SDK to
+            detect (the entry is informational only).
+        replacement: The modern SDK/API agent-bom uses instead.
+        retirement_date: ISO ``YYYY-MM-DD`` the API stops working, or ``None``
+            for a deprecation with no scheduled removal date.
+        note: Short, honest description of the impact and agent-bom's posture.
+        reference: Official first-party source URL for the retirement.
+    """
+
+    provider: str
+    api: str
+    distribution: str | None
+    replacement: str
+    retirement_date: str | None
+    note: str
+    reference: str
+
+
+# Real, first-party-sourced entries only. Verified against vendor docs; each
+# carries its source URL. agent-bom uses the modern replacement for all of
+# these, so the shipped posture is "clear" unless a legacy SDK is dragged in.
+PROVIDER_API_DEPRECATIONS: tuple[ProviderApiDeprecation, ...] = (
+    ProviderApiDeprecation(
+        provider="azure",
+        api="Azure AD Graph API (graph.windows.net)",
+        distribution="azure-graphrbac",
+        replacement="Microsoft Graph (azure-identity + msgraph-sdk)",
+        # Extended-access apps lose Azure AD Graph access in early September 2025;
+        # calls then return HTTP 403. Microsoft Entra blog, ref below.
+        retirement_date="2025-09-01",
+        note=(
+            "Azure AD Graph is retired — dependent apps receive HTTP 403. "
+            "agent-bom reads Azure identities/roles via Azure Resource Manager "
+            "(azure-mgmt-authorization), so it is clear unless a legacy "
+            "azure-graphrbac dependency is present."
+        ),
+        reference=("https://techcommunity.microsoft.com/blog/microsoft-entra-blog/important-update-azure-ad-graph-api-retirement/4090534"),
+    ),
+    ProviderApiDeprecation(
+        provider="gcp",
+        api="oauth2client auth library",
+        distribution="oauth2client",
+        replacement="google-auth",
+        # Deprecated by Google in favor of google-auth; no scheduled removal.
+        retirement_date=None,
+        note=(
+            "oauth2client is deprecated by Google in favor of google-auth. "
+            "agent-bom uses google-auth; a transitive oauth2client would be a "
+            "supply-chain and coverage risk."
+        ),
+        reference="https://google-auth.readthedocs.io/en/latest/oauth2client-deprecation.html",
+    ),
+)
+
+
+def _as_date(value: date | datetime | None) -> date:
+    """Normalize an injected reference time to a ``date`` (UTC ``today`` default)."""
+    if value is None:
+        return datetime.now(timezone.utc).date()
+    if isinstance(value, datetime):
+        return value.date()
+    return value
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def cloud_api_deprecation_posture(
+    *,
+    now: date | datetime | None = None,
+    installed: Callable[[str], str | None] | Mapping[str, str | None] | None = None,
+    deprecations: Iterable[ProviderApiDeprecation] = PROVIDER_API_DEPRECATIONS,
+    horizon_days: int = DEPRECATION_HORIZON_DAYS,
+) -> dict[str, Any]:
+    """Compute the provider-API deprecation / removal posture.
+
+    For each watchlist entry the ``distribution`` is probed against the
+    installed environment (``exposed``) and the ``retirement_date`` compared to
+    ``now``:
+
+    * ``lifecycle`` is ``removed`` once ``now`` is at or past the retirement
+      date, otherwise ``deprecating`` (a future-dated or undated deprecation).
+    * ``status`` folds in exposure: ``gated`` (removed **and** a legacy SDK is
+      installed — a dependent check must be skipped honestly), ``at_risk``
+      (deprecating and exposed), or ``clear`` (not exposed — agent-bom uses the
+      modern replacement).
+
+    Deterministic for a fixed ``now`` + ``installed``; never raises. Non-blocking
+    — a signal, never a gate on the process exit code.
+    """
+    resolve = _make_resolver(installed)
+    today = _as_date(now)
+
+    apis: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    gated: list[dict[str, Any]] = []
+
+    for dep in deprecations:
+        exposed = dep.distribution is not None and resolve(dep.distribution) is not None
+        retire = _parse_iso_date(dep.retirement_date)
+        removed = retire is not None and today >= retire
+        lifecycle = "removed" if removed else "deprecating"
+
+        days_until = (retire - today).days if retire is not None and not removed else None
+
+        if exposed and removed:
+            status = "gated"
+        elif exposed:
+            status = "at_risk"
+        else:
+            status = "clear"
+
+        entry = {
+            "provider": dep.provider,
+            "api": dep.api,
+            "distribution": dep.distribution,
+            "installed": exposed,
+            "replacement": dep.replacement,
+            "retirement_date": dep.retirement_date,
+            "days_until_retirement": days_until,
+            "lifecycle": lifecycle,
+            "status": status,
+            "reference": dep.reference,
+        }
+
+        if status == "gated":
+            entry["message"] = (
+                f"{dep.api} is retired but reachable via installed {dep.distribution} — "
+                f"checks using it are skipped (not silently passed). Migrate to {dep.replacement}."
+            )
+            warnings.append(
+                {
+                    "code": "api_removed",
+                    "provider": dep.provider,
+                    "api": dep.api,
+                    "distribution": dep.distribution,
+                    "message": entry["message"],
+                    "reference": dep.reference,
+                }
+            )
+            gated.append(entry)
+        elif status == "at_risk":
+            when = f" on {dep.retirement_date}" if dep.retirement_date else ""
+            entry["message"] = (
+                f"{dep.api} is deprecated{when} and reachable via installed {dep.distribution} — "
+                f"migrate to {dep.replacement} before it is removed."
+            )
+            warnings.append(
+                {
+                    "code": "api_deprecating",
+                    "provider": dep.provider,
+                    "api": dep.api,
+                    "distribution": dep.distribution,
+                    "message": entry["message"],
+                    "reference": dep.reference,
+                }
+            )
+        else:
+            entry["message"] = (
+                f"clear of {dep.api} — agent-bom uses {dep.replacement} (no {dep.distribution} in the tree)."
+                if dep.distribution
+                else f"clear of {dep.api} — agent-bom uses {dep.replacement}."
+            )
+
+        apis.append(entry)
+
+    removed_count = sum(1 for a in apis if a["status"] == "gated")
+    at_risk_count = sum(1 for a in apis if a["status"] == "at_risk")
+
+    _ = horizon_days  # reserved: today every not-yet-removed exposed entry warns
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "status": "degraded" if warnings else "ok",
+        "check": "installed-legacy-SDK-vs-provider-API-retirement (offline)",
+        "apis": apis,
+        "warnings": warnings,
+        "gated": gated,
+        "removed_count": removed_count,
+        "at_risk_count": at_risk_count,
+    }
+
+
+def removed_provider_apis(
+    *,
+    now: date | datetime | None = None,
+    installed: Callable[[str], str | None] | Mapping[str, str | None] | None = None,
+    deprecations: Iterable[ProviderApiDeprecation] = PROVIDER_API_DEPRECATIONS,
+) -> dict[str, dict[str, Any]]:
+    """Provider APIs that are retired **and** still reachable via a legacy SDK.
+
+    Returns a mapping ``{api_label: posture_entry}``. A scanner/check bound to
+    one of these APIs must skip it and report the skip honestly, rather than
+    silently passing or emitting an empty result that looks like coverage.
+
+    Empty in a normal agent-bom install (it uses the modern replacements) — this
+    is a guard against a legacy SDK being pulled into the environment.
+    """
+    posture = cloud_api_deprecation_posture(now=now, installed=installed, deprecations=deprecations)
+    return {a["api"]: a for a in posture["gated"]}
+
+
+def cloud_api_deprecation_summary(
+    *,
+    now: date | datetime | None = None,
+    installed: Callable[[str], str | None] | Mapping[str, str | None] | None = None,
+) -> dict[str, Any]:
+    """Compact provider-API deprecation block for ``--agent-mode`` metadata."""
+    posture = cloud_api_deprecation_posture(now=now, installed=installed)
+    return {
+        "status": posture["status"],
+        "removed_count": posture["removed_count"],
+        "at_risk_count": posture["at_risk_count"],
+        "gated": [a["api"] for a in posture["gated"]],
         "warnings": [w["message"] for w in posture["warnings"]],
     }

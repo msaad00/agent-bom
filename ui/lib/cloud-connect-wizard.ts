@@ -403,6 +403,67 @@ export function buildCloudShellGrantScript(provider: string, externalId?: string
   return `${header}${body}`;
 }
 
+/**
+ * Consistent read-only role name minted in every member account by the org
+ * StackSet — the same name the org fan-out assumes per account
+ * (`AGENT_BOM_AWS_ORG_ROLE_NAME`, default `agent-bom-readonly` in
+ * `src/agent_bom/cloud/aws_organizations.py`). Keep the two in lockstep.
+ */
+export const DEFAULT_AWS_ORG_ROLE_NAME = "agent-bom-readonly";
+
+/**
+ * Whole-AWS-Organization onboarding via a CloudFormation StackSet — the
+ * org-scale path (deploy ONCE from the management / delegated-admin account,
+ * every member account gets an identical read-only role, and new accounts
+ * auto-enroll) instead of onboarding accounts one at a time.
+ *
+ * Mirrors the commands in `deploy/cloudformation/README.md` and deploys the
+ * shipped `deploy/cloudformation/agent-bom-readonly-role.yaml` template. The
+ * ExternalId round-trips into the StackSet parameters so the SAME value the
+ * wizard stores guards every per-account AssumeRole. Read-only only
+ * (SecurityAudit / ViewOnlyAccess), short-lived STS, no static keys.
+ */
+export function buildAwsOrgStackSetScript(
+  externalId?: string,
+  roleName: string = DEFAULT_AWS_ORG_ROLE_NAME,
+): string {
+  const eid = (externalId ?? "").trim() || "<EXTERNAL_ID>";
+  const name = roleName.trim() || DEFAULT_AWS_ORG_ROLE_NAME;
+  return [
+    `# agent-bom read-only role across your WHOLE AWS Organization (CloudFormation StackSet).`,
+    `# Run from the org MANAGEMENT account (or a delegated StackSets admin) with`,
+    `# service-managed StackSets trusted access enabled. Deploy ONCE — every member`,
+    `# account gets an identical read-only "${name}" role and new accounts auto-enroll.`,
+    `# Never onboard accounts one by one.`,
+    `EXTERNAL_ID=${eid}`,
+    `ROLE_NAME=${name}`,
+    `CONTROL_PLANE_PRINCIPAL_ARN=<CONTROL_PLANE_PRINCIPAL_ARN>  # the identity agent-bom assumes from`,
+    `ROOT_OU_ID=<ROOT_OR_TARGET_OU_ID>                          # org root r-xxxx or an ou-xxxx-... id`,
+    ``,
+    `# 1. Create the StackSet (service-managed, auto-deploy to new accounts).`,
+    `aws cloudformation create-stack-set \\`,
+    `  --stack-set-name "$ROLE_NAME" \\`,
+    `  --template-body file://deploy/cloudformation/agent-bom-readonly-role.yaml \\`,
+    `  --permission-model SERVICE_MANAGED \\`,
+    `  --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \\`,
+    `  --capabilities CAPABILITY_NAMED_IAM \\`,
+    `  --parameters ParameterKey=ExternalId,ParameterValue="$EXTERNAL_ID" \\`,
+    `               ParameterKey=TrustedPrincipalArn,ParameterValue="$CONTROL_PLANE_PRINCIPAL_ARN" \\`,
+    `               ParameterKey=RoleName,ParameterValue="$ROLE_NAME"`,
+    ``,
+    `# 2. Roll it out to every account under the org root / target OU.`,
+    `aws cloudformation create-stack-instances \\`,
+    `  --stack-set-name "$ROLE_NAME" \\`,
+    `  --deployment-targets OrganizationalUnitIds="\${ROOT_OU_ID}" \\`,
+    `  --regions us-east-1 \\`,
+    `  --operation-preferences MaxConcurrentPercentage=100,FailureTolerancePercentage=20`,
+    ``,
+    `# 3. Register THIS management account's ${name} role ARN in the next step.`,
+    `#    agent-bom enumerates the org and assumes the same read-only role in each`,
+    `#    member account (short-lived STS + this ExternalId) — read-only, no keys.`,
+  ].join("\n");
+}
+
 export function buildGrantScript(
   provider: string,
   method: CloudGrantMethod,

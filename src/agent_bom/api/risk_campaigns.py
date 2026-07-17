@@ -1,0 +1,166 @@
+"""Derive explainable remediation campaigns from the canonical findings spine."""
+
+from __future__ import annotations
+
+import hashlib
+import math
+from collections import defaultdict
+from typing import Any, Mapping
+
+from agent_bom.api.campaign_store import CampaignWorkflow
+
+_SEVERITY_SCORE = {"critical": 9.0, "high": 7.0, "medium": 4.0, "low": 1.5, "info": 0.5}
+
+
+def _finding_id(row: Mapping[str, Any]) -> str:
+    return str(row.get("id") or row.get("canonical_id") or row.get("finding_id") or row.get("vulnerability_id") or "").strip()
+
+
+def _risk(row: Mapping[str, Any]) -> float:
+    try:
+        explicit = row.get("risk_score")
+        if explicit is not None:
+            parsed = float(explicit)
+            if math.isfinite(parsed):
+                return round(min(10.0, max(0.0, parsed)), 1)
+    except (TypeError, ValueError):
+        pass
+    return _SEVERITY_SCORE.get(str(row.get("severity") or "").lower(), 0.5)
+
+
+def _group_key(row: Mapping[str, Any]) -> str:
+    purl = _canonical_purl(str(row.get("purl") or ""))
+    package = str(row.get("package") or row.get("component") or "").strip().lower()
+    ecosystem = str(row.get("ecosystem") or "unknown").strip().lower()
+    fixed = str(row.get("fixed_version") or "").strip().lower()
+    if purl and fixed:
+        return f"upgrade:purl:{purl}:{fixed}"
+    if package and fixed:
+        return f"upgrade:package:{ecosystem}:{package}:{fixed}"
+    return f"finding:{_finding_id(row)}"
+
+
+def _canonical_purl(value: str) -> str:
+    """Return the package identity portion of a purl, excluding installation detail."""
+    purl = value.strip().lower().split("#", 1)[0].split("?", 1)[0]
+    if not purl.startswith("pkg:"):
+        return purl
+    head, separator, name = purl.rpartition("/")
+    if not separator:
+        head, name = "pkg:", purl[4:]
+    name = name.rsplit("@", 1)[0]
+    return f"{head}{separator}{name}" if separator else f"{head}{name}"
+
+
+def _campaign_id(group_key: str) -> str:
+    return f"campaign-{hashlib.sha256(group_key.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _asset_value(row: Mapping[str, Any], key: str) -> str:
+    asset = row.get("asset")
+    if isinstance(asset, Mapping):
+        return str(asset.get(key) or "").strip()
+    return ""
+
+
+def _common_value(rows: list[dict[str, Any]], key: str) -> str | None:
+    values = {_asset_value(row, key) or str(row.get(key) or "").strip() for row in rows}
+    values.discard("")
+    return next(iter(values)) if len(values) == 1 else None
+
+
+def _factor_status(value: Any, *, observed: bool = False) -> dict[str, Any]:
+    if value is None or value == "":
+        return {"value": None, "status": "unknown"}
+    return {"value": value, "status": "observed" if observed else "modeled"}
+
+
+def derive_campaigns(
+    findings: list[dict[str, Any]],
+    *,
+    tenant_id: str,
+    workflow_by_id: Mapping[str, CampaignWorkflow],
+    window_days: int = 90,
+    finding_limit: int = 1000,
+    truncated: bool = False,
+) -> list[dict[str, Any]]:
+    """Group findings only when they share an explicit remediation target."""
+    by_id: dict[str, dict[str, Any]] = {}
+    for row in findings:
+        if isinstance(row, dict) and (identity := _finding_id(row)):
+            incumbent = by_id.get(identity)
+            if incumbent is None or _risk(row) > _risk(incumbent):
+                by_id[identity] = row
+    usable = list(by_id.values())
+    total_modeled_risk = sum(_risk(row) for row in usable)
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in usable:
+        groups[_group_key(row)].append(row)
+
+    campaigns: list[dict[str, Any]] = []
+    for group_key, rows in groups.items():
+        rows.sort(key=lambda row: _finding_id(row))
+        campaign_id = _campaign_id(group_key)
+        membership_fingerprint = hashlib.sha256("\x1f".join(_finding_id(row) for row in rows).encode()).hexdigest()
+        workflow = workflow_by_id.get(campaign_id)
+        highest = max(rows, key=_risk)
+        priority = _risk(highest)
+        campaign_risk = sum(_risk(row) for row in rows)
+        severities = [str(row.get("severity") or "unknown").lower() for row in rows]
+        severity = str(highest.get("severity") or "unknown").lower()
+        kev = any(bool(row.get("is_kev") or row.get("cisa_kev")) for row in rows)
+        epss = [
+            float(row["epss_score"])
+            for row in rows
+            if isinstance(row.get("epss_score"), (int, float)) and math.isfinite(float(row["epss_score"]))
+        ]
+        reachable = any(row.get("is_reachable") is True or bool(row.get("reachable_functions")) for row in rows)
+        reachability_known = reachable or any(row.get("is_reachable") is False for row in rows)
+        business_context = _common_value(rows, "business_context")
+        derived_owner = _common_value(rows, "owner")
+        package = str(highest.get("package") or highest.get("component") or "").strip()
+        fixed = str(highest.get("fixed_version") or "").strip()
+        title = f"Upgrade {package} to {fixed}" if package and fixed else f"Remediate {_finding_id(highest)}"
+        exploitability: dict[str, Any] = (
+            {"value": "known_exploited", "status": "observed", "signals": ["kev"]}
+            if kev
+            else ({"value": max(epss), "status": "modeled", "signals": ["epss"]} if epss else _factor_status(None))
+        )
+        campaigns.append(
+            {
+                "id": campaign_id,
+                "tenant_id": tenant_id,
+                "title": title,
+                "finding_ids": [_finding_id(row) for row in rows],
+                "finding_count": len(rows),
+                "severity": severity,
+                "priority_score": priority,
+                "priority_score_method": "maximum finding risk; context factors do not modify the score",
+                "score_factors": {
+                    "severity": {"value": severity, "status": "observed", "bands_present": sorted(set(severities))},
+                    "exploitability": exploitability,
+                    "reachability": _factor_status(reachable if reachability_known else None, observed=reachability_known),
+                    "business_context": _factor_status(business_context, observed=business_context is not None),
+                },
+                "expected_risk_reduction": {
+                    "modeled_window_percent": round((campaign_risk / total_modeled_risk) * 100, 1) if total_modeled_risk else 0.0,
+                    "modeled_risk_points": round(campaign_risk, 1),
+                    "assumption": "all campaign findings are remediated and verified",
+                    "method": "campaign modeled risk divided by modeled risk in the bounded findings window",
+                    "scope": f"last {window_days} days, first {finding_limit} findings",
+                    "portfolio_complete": not truncated,
+                },
+                "owner": workflow.owner if workflow and workflow.owner is not None else derived_owner,
+                "sla_due_at": workflow.sla_due_at if workflow else None,
+                "state": workflow.state if workflow else "open",
+                "verification_status": workflow.verification_status if workflow else "unverified",
+                "updated_at": workflow.updated_at if workflow else None,
+                "membership_fingerprint": membership_fingerprint,
+                "generation": workflow.generation if workflow else 1,
+                "active": workflow.active if workflow else True,
+                "version": workflow.version if workflow else 1,
+                "source": "canonical_findings_spine",
+            }
+        )
+    campaigns.sort(key=lambda item: (-float(item["priority_score"]), -int(item["finding_count"]), str(item["id"])))
+    return campaigns

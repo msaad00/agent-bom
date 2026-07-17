@@ -201,8 +201,8 @@ components:
       type: object
     CampaignPriorityComponents:
       properties:
-        base_finding_risk:
-          title: Base Finding Risk
+        base_risk:
+          title: Base Risk
           type: number
         cap:
           title: Cap
@@ -217,7 +217,7 @@ components:
           title: Reachability Boost
           type: number
       required:
-      - base_finding_risk
+      - base_risk
       - exploitability_boost
       - reachability_boost
       - crown_jewel_boost

@@ -91,7 +91,7 @@ def test_derivation_groups_only_shared_remediation_and_explains_score() -> None:
     assert campaign["finding_ids"] == ["finding-a", "finding-b"]
     assert campaign["priority_score"] == 10.0
     assert campaign["priority_score_components"] == {
-            "base_risk": 9.4,
+        "base_risk": 9.4,
         "exploitability_boost": 1.0,
         "reachability_boost": 0.5,
         "crown_jewel_boost": 0.0,
@@ -180,7 +180,7 @@ def test_priority_rejects_truthy_and_boolean_values_as_security_signals() -> Non
     }
     campaign = derive_campaigns([malformed], tenant_id="t", workflow_by_id={})[0]
     assert campaign["priority_score"] == 4.0
-    assert campaign["priority_score_components"]["base_finding_risk"] == 4.0
+    assert campaign["priority_score_components"]["base_risk"] == 4.0
     assert campaign["priority_score_components"]["exploitability_boost"] == 0.0
     assert campaign["score_factors"]["exploitability"]["status"] == "unknown"
 

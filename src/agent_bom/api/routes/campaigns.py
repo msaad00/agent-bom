@@ -96,7 +96,7 @@ class CampaignListResponse(BaseModel):
 
 
 class CampaignPriorityComponents(BaseModel):
-    base_finding_risk: float
+    base_risk: float
     exploitability_boost: float
     reachability_boost: float
     crown_jewel_boost: float

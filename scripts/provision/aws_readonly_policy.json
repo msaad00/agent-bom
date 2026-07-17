@@ -122,7 +122,9 @@
         "iam:GetRole",
         "iam:ListAttachedRolePolicies",
         "iam:ListRolePolicies",
-        "iam:GetRolePolicy"
+        "iam:GetRolePolicy",
+        "iam:GenerateServiceLastAccessedDetails",
+        "iam:GetServiceLastAccessedDetails"
       ],
       "Resource": "*"
     }

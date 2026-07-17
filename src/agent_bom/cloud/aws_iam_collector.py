@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from agent_bom.cloud.aws_iam_evidence import (
     EvidenceCompleteness,
     IamPrincipalEvidence,
+    IamRoleUsageEvidence,
     IamServiceUsageEvidence,
     NormalizedIamPolicy,
     UsageEvidenceState,
@@ -16,6 +17,9 @@ from agent_bom.cloud.aws_iam_evidence import (
 
 _DENIED_CODES = {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}
 _UNSUPPORTED_CODES = {"NotSupported", "NotSupportedException", "UnsupportedOperation"}
+_ACCESS_ADVISOR_PAGE_SIZE = 100
+_ACCESS_ADVISOR_HARD_MAX_POLLS = 10
+_ACCESS_ADVISOR_HARD_MAX_PAGES = 10
 
 
 def _error_code(exc: Exception) -> str:
@@ -104,67 +108,106 @@ def _collect_policies(client: Any, role_name: str) -> tuple[tuple[NormalizedIamP
     return tuple(policies), state
 
 
-def _usage_failure(exc: Exception) -> UsageEvidenceState:
+def _usage_failure(exc: Exception) -> tuple[UsageEvidenceState, str]:
     code = _error_code(exc)
     if code in _DENIED_CODES:
-        return UsageEvidenceState.ACCESS_DENIED
+        return UsageEvidenceState.ACCESS_DENIED, "access_advisor_denied"
     if code in _UNSUPPORTED_CODES:
-        return UsageEvidenceState.NOT_SUPPORTED
-    return UsageEvidenceState.UNAVAILABLE
+        return UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
+    return UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
 
 
 def _collect_access_advisor(
-    client: Any, principal_arn: str, *, max_polls: int
-) -> tuple[tuple[IamServiceUsageEvidence, ...], UsageEvidenceState]:
+    client: Any,
+    principal_arn: str,
+    *,
+    max_polls: int,
+    max_pages: int,
+    collected_at: datetime,
+) -> tuple[tuple[IamServiceUsageEvidence, ...], UsageEvidenceState, str]:
     try:
         started = client.generate_service_last_accessed_details(Arn=principal_arn, Granularity="SERVICE_LEVEL")
         job_id = started.get("JobId")
         if not isinstance(job_id, str) or not job_id:
-            return (), UsageEvidenceState.UNAVAILABLE
+            return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
         response: Mapping[str, Any] = {}
-        for _ in range(max(1, max_polls)):
-            candidate = client.get_service_last_accessed_details(JobId=job_id)
+        poll_budget = min(_ACCESS_ADVISOR_HARD_MAX_POLLS, max(1, max_polls))
+        for _ in range(poll_budget):
+            candidate = client.get_service_last_accessed_details(JobId=job_id, MaxItems=_ACCESS_ADVISOR_PAGE_SIZE)
             if not isinstance(candidate, Mapping):
-                return (), UsageEvidenceState.UNAVAILABLE
+                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
             response = candidate
             if response.get("JobStatus") == "COMPLETED":
                 break
             if response.get("JobStatus") == "FAILED":
-                return (), UsageEvidenceState.UNAVAILABLE
+                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
         else:
-            return (), UsageEvidenceState.PENDING
-        services = response.get("ServicesLastAccessed", [])
-        if not isinstance(services, list):
-            return (), UsageEvidenceState.UNAVAILABLE
-        evidence: list[IamServiceUsageEvidence] = []
-        for service in services:
-            if not isinstance(service, Mapping):
-                continue
-            namespace = service.get("ServiceNamespace")
-            if not isinstance(namespace, str) or not namespace:
-                continue
-            accessed = service.get("LastAuthenticated")
-            region = service.get("LastAuthenticatedRegion")
-            evidence.append(
-                IamServiceUsageEvidence(
-                    service_namespace=namespace,
-                    state=UsageEvidenceState.AVAILABLE,
-                    last_accessed_at=accessed if isinstance(accessed, datetime) else None,
-                    last_accessed_region=region if isinstance(region, str) else None,
-                )
+            return (), UsageEvidenceState.PENDING, "access_advisor_pending"
+
+        pages: list[Mapping[str, Any]] = [response]
+        page_budget = min(_ACCESS_ADVISOR_HARD_MAX_PAGES, max(1, max_pages))
+        while bool(pages[-1].get("IsTruncated")):
+            if len(pages) >= page_budget:
+                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_page_budget_exhausted"
+            marker = pages[-1].get("Marker")
+            if not isinstance(marker, str) or not marker:
+                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
+            candidate = client.get_service_last_accessed_details(
+                JobId=job_id,
+                MaxItems=_ACCESS_ADVISOR_PAGE_SIZE,
+                Marker=marker,
             )
-        return tuple(evidence), UsageEvidenceState.AVAILABLE
+            if not isinstance(candidate, Mapping) or candidate.get("JobStatus") not in {None, "COMPLETED"}:
+                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
+            pages.append(candidate)
+
+        evidence: list[IamServiceUsageEvidence] = []
+        for page in pages:
+            services = page.get("ServicesLastAccessed", [])
+            if not isinstance(services, list):
+                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
+            for service in services:
+                if not isinstance(service, Mapping):
+                    continue
+                namespace = service.get("ServiceNamespace")
+                if not isinstance(namespace, str) or not namespace:
+                    continue
+                accessed = service.get("LastAuthenticated")
+                region = service.get("LastAuthenticatedRegion")
+                evidence.append(
+                    IamServiceUsageEvidence(
+                        service_namespace=namespace,
+                        state=UsageEvidenceState.AVAILABLE,
+                        last_accessed_at=accessed if isinstance(accessed, datetime) else None,
+                        last_accessed_region=region if isinstance(region, str) else None,
+                        collected_at=collected_at,
+                    )
+                )
+        return tuple(evidence), UsageEvidenceState.AVAILABLE, "access_advisor_available"
     except Exception as exc:
-        return (), _usage_failure(exc)
+        state, diagnostic = _usage_failure(exc)
+        return (), state, diagnostic
 
 
-def _role_last_used(client: Any, role_name: str) -> IamServiceUsageEvidence | None:
-    try:
-        response = client.get_role(RoleName=role_name)
-    except Exception:
-        return None
-    role = response.get("Role", {})
-    last_used = role.get("RoleLastUsed", {}) if isinstance(role, Mapping) else {}
+def _role_last_used(
+    client: Any,
+    role_name: str,
+    *,
+    role_snapshot: Mapping[str, Any] | None,
+    collected_at: datetime,
+) -> IamServiceUsageEvidence | None:
+    # AWS ListRoles intentionally omits RoleLastUsed. Reuse a richer caller
+    # snapshot only when it actually contains that field; otherwise GetRole is
+    # required to avoid turning missing telemetry into a false "never used".
+    if role_snapshot is None or "RoleLastUsed" not in role_snapshot:
+        try:
+            response = client.get_role(RoleName=role_name)
+        except Exception:
+            return None
+        role = response.get("Role", {})
+    else:
+        role = role_snapshot
+    last_used = role.get("RoleLastUsed") if isinstance(role, Mapping) else None
     if not isinstance(last_used, Mapping):
         return None
     accessed = last_used.get("LastUsedDate")
@@ -175,6 +218,49 @@ def _role_last_used(client: Any, role_name: str) -> IamServiceUsageEvidence | No
         last_accessed_at=accessed if isinstance(accessed, datetime) else None,
         last_accessed_region=region if isinstance(region, str) else None,
         source="role_last_used",
+        collected_at=collected_at,
+    )
+
+
+def collect_iam_role_usage_evidence(
+    client: Any,
+    *,
+    principal_arn: str,
+    role_name: str,
+    role_snapshot: Mapping[str, Any] | None = None,
+    max_access_advisor_polls: int = 3,
+    max_access_advisor_pages: int = 5,
+    collected_at: datetime | None = None,
+) -> IamRoleUsageEvidence:
+    """Collect usage facts only, with fixed poll/page budgets.
+
+    This entry point intentionally performs no policy-list or policy-document
+    calls. Inventory already owns those reads. A caller may supply a richer
+    ``role_snapshot`` that already contains ``RoleLastUsed``; ordinary
+    ``ListRoles`` snapshots omit it, so the collector falls back to ``GetRole``.
+    """
+    observed_at = collected_at or datetime.now(timezone.utc)
+    usage, usage_state, diagnostic = _collect_access_advisor(
+        client,
+        principal_arn,
+        max_polls=max_access_advisor_polls,
+        max_pages=max_access_advisor_pages,
+        collected_at=observed_at,
+    )
+    role_usage = _role_last_used(
+        client,
+        role_name,
+        role_snapshot=role_snapshot,
+        collected_at=observed_at,
+    )
+    if role_usage is not None:
+        usage = (*usage, role_usage)
+    return IamRoleUsageEvidence(
+        principal_arn=principal_arn,
+        usage_state=usage_state,
+        records=usage,
+        diagnostic=diagnostic,
+        collected_at=observed_at,
     )
 
 
@@ -184,18 +270,22 @@ def collect_iam_role_evidence(
     principal_arn: str,
     role_name: str,
     max_access_advisor_polls: int = 3,
+    max_access_advisor_pages: int = 5,
 ) -> IamPrincipalEvidence:
     """Collect policy and usage facts without interpreting authorization."""
     policies, policy_state = _collect_policies(client, role_name)
 
-    usage, usage_state = _collect_access_advisor(client, principal_arn, max_polls=max_access_advisor_polls)
-    role_usage = _role_last_used(client, role_name)
-    if role_usage is not None:
-        usage = (*usage, role_usage)
+    usage_evidence = collect_iam_role_usage_evidence(
+        client,
+        principal_arn=principal_arn,
+        role_name=role_name,
+        max_access_advisor_polls=max_access_advisor_polls,
+        max_access_advisor_pages=max_access_advisor_pages,
+    )
     return IamPrincipalEvidence(
         principal_arn=principal_arn,
         policies=policies,
-        usage=usage,
+        usage=usage_evidence.records,
         policy_completeness=policy_state,
-        usage_state=usage_state,
+        usage_state=usage_evidence.usage_state,
     )

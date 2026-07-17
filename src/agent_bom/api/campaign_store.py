@@ -12,6 +12,8 @@ from typing import Any, List, Protocol
 from agent_bom.api.durable_store import select_backend, sqlite_path
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 
+MembershipEvidence = str | tuple[str, tuple[str, ...]] | tuple[str, tuple[str, ...], str]
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -25,6 +27,7 @@ class CampaignWorkflow:
     sla_due_at: str | None = None
     state: str = "open"
     verification_status: str = "unverified"
+    title: str = ""
     member_ids: tuple[str, ...] = ()
     membership_fingerprint: str = ""
     generation: int = 1
@@ -40,7 +43,7 @@ class CampaignStore(Protocol):
     def get(self, tenant_id: str, campaign_id: str) -> CampaignWorkflow | None: ...
     def list(self, tenant_id: str) -> List[CampaignWorkflow]: ...
     def reconcile_memberships(
-        self, tenant_id: str, memberships: dict[str, str | tuple[str, tuple[str, ...]]], *, complete: bool = True
+        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True
     ) -> List[CampaignWorkflow]: ...
     def patch(
         self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]
@@ -98,29 +101,37 @@ class InMemoryCampaignStore:
         return replace(row)
 
     def reconcile_memberships(
-        self, tenant_id: str, memberships: dict[str, str | tuple[str, tuple[str, ...]]], *, complete: bool = True
+        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True
     ) -> List[CampaignWorkflow]:
         if not complete:
             return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         with self._lock:
             tenant_rows = {cid: row for (tid, cid), row in self._rows.items() if tid == tenant_id}
             for campaign_id, evidence in memberships.items():
-                fingerprint, member_ids = _membership(evidence)
+                fingerprint, member_ids, title = _membership(evidence)
                 row = tenant_rows.get(campaign_id)
                 if row is None:
                     row = CampaignWorkflow(
-                        tenant_id, campaign_id, member_ids=member_ids, membership_fingerprint=fingerprint, updated_at=_now()
+                        tenant_id,
+                        campaign_id,
+                        title=title,
+                        member_ids=member_ids,
+                        membership_fingerprint=fingerprint,
+                        updated_at=_now(),
                     )
                     self._rows[(tenant_id, campaign_id)] = row
                 elif not row.active or row.membership_fingerprint != fingerprint or row.member_ids != member_ids:
                     row.membership_fingerprint = fingerprint
                     row.member_ids = member_ids
+                    row.title = title
                     row.generation += 1
                     row.active = True
                     row.state = "open"
                     row.verification_status = "unverified"
                     row.version += 1
                     row.updated_at = _now()
+                elif row.title != title:
+                    row.title = title
             for campaign_id, row in tenant_rows.items():
                 if complete and campaign_id not in memberships and row.active:
                     row.active = False
@@ -177,6 +188,7 @@ class SQLiteCampaignStore:
                 sla_due_at TEXT,
                 state TEXT NOT NULL,
                 verification_status TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
                 member_ids TEXT NOT NULL DEFAULT '[]',
                 membership_fingerprint TEXT NOT NULL DEFAULT '',
                 generation INTEGER NOT NULL DEFAULT 1,
@@ -190,6 +202,7 @@ class SQLiteCampaignStore:
         columns = {str(row[1]) for row in self._conn.execute("PRAGMA table_info(risk_campaign_workflows)").fetchall()}
         for name, ddl in (
             ("membership_fingerprint", "TEXT NOT NULL DEFAULT ''"),
+            ("title", "TEXT NOT NULL DEFAULT ''"),
             ("member_ids", "TEXT NOT NULL DEFAULT '[]'"),
             ("generation", "INTEGER NOT NULL DEFAULT 1"),
             ("active", "INTEGER NOT NULL DEFAULT 1"),
@@ -207,14 +220,14 @@ class SQLiteCampaignStore:
         if not value:
             return None
         values = list(value)
-        values[6] = tuple(json.loads(values[6] or "[]"))
-        values[9] = bool(values[9])
+        values[7] = tuple(json.loads(values[7] or "[]"))
+        values[10] = bool(values[10])
         return CampaignWorkflow(*values)
 
     def get(self, tenant_id: str, campaign_id: str) -> CampaignWorkflow | None:
         row = self._conn.execute(
             "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
-            "member_ids, membership_fingerprint, generation, active, version, updated_at "
+            "title, member_ids, membership_fingerprint, generation, active, version, updated_at "
             "FROM risk_campaign_workflows WHERE tenant_id = ? AND campaign_id = ?",
             (tenant_id, campaign_id),
         ).fetchone()
@@ -223,7 +236,7 @@ class SQLiteCampaignStore:
     def list(self, tenant_id: str) -> List[CampaignWorkflow]:
         rows = self._conn.execute(
             "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
-            "member_ids, membership_fingerprint, generation, active, version, updated_at "
+            "title, member_ids, membership_fingerprint, generation, active, version, updated_at "
             "FROM risk_campaign_workflows WHERE tenant_id = ? ORDER BY updated_at DESC, campaign_id",
             (tenant_id,),
         ).fetchall()
@@ -261,7 +274,7 @@ class SQLiteCampaignStore:
         return row
 
     def reconcile_memberships(
-        self, tenant_id: str, memberships: dict[str, str | tuple[str, tuple[str, ...]]], *, complete: bool = True
+        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True
     ) -> List[CampaignWorkflow]:
         if not complete:
             return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
@@ -271,23 +284,29 @@ class SQLiteCampaignStore:
             existing = {row.campaign_id: row for row in self.list(tenant_id)}
             now = _now()
             for campaign_id, evidence in memberships.items():
-                fingerprint, member_ids = _membership(evidence)
+                fingerprint, member_ids, title = _membership(evidence)
                 encoded_ids = json.dumps(member_ids, separators=(",", ":"))
                 row = existing.get(campaign_id)
                 if row is None:
                     conn.execute(
                         "INSERT INTO risk_campaign_workflows "
-                        "(tenant_id,campaign_id,state,verification_status,member_ids,membership_fingerprint,"
+                        "(tenant_id,campaign_id,state,verification_status,title,member_ids,membership_fingerprint,"
                         "generation,active,version,updated_at) "
-                        "VALUES (?,?, 'open','unverified',?,?,1,1,1,?)",
-                        (tenant_id, campaign_id, encoded_ids, fingerprint, now),
+                        "VALUES (?,?, 'open','unverified',?,?,?,1,1,1,?)",
+                        (tenant_id, campaign_id, title, encoded_ids, fingerprint, now),
                     )
                 elif not row.active or row.membership_fingerprint != fingerprint or row.member_ids != member_ids:
                     conn.execute(
-                        "UPDATE risk_campaign_workflows SET member_ids=?, membership_fingerprint=?, generation=generation+1, active=1, "
+                        "UPDATE risk_campaign_workflows SET title=?, member_ids=?, membership_fingerprint=?, "
+                        "generation=generation+1, active=1, "
                         "state='open', verification_status='unverified', version=version+1, updated_at=? "
                         "WHERE tenant_id=? AND campaign_id=?",
-                        (encoded_ids, fingerprint, now, tenant_id, campaign_id),
+                        (title, encoded_ids, fingerprint, now, tenant_id, campaign_id),
+                    )
+                elif row.title != title:
+                    conn.execute(
+                        "UPDATE risk_campaign_workflows SET title=? WHERE tenant_id=? AND campaign_id=?",
+                        (title, tenant_id, campaign_id),
                     )
             if complete:
                 for campaign_id in set(existing) - set(memberships):
@@ -366,7 +385,8 @@ def set_campaign_store(store: CampaignStore | None) -> None:
     _store = store
 
 
-def _membership(value: str | tuple[str, tuple[str, ...]]) -> tuple[str, tuple[str, ...]]:
+def _membership(value: MembershipEvidence) -> tuple[str, tuple[str, ...], str]:
     if isinstance(value, tuple):
-        return value[0], tuple(sorted(set(value[1])))
-    return value, ()
+        title = value[2][:300] if len(value) == 3 else ""
+        return value[0], tuple(sorted(set(value[1]))), title
+    return value, (), ""

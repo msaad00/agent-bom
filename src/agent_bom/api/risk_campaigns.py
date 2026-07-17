@@ -19,7 +19,7 @@ def _finding_id(row: Mapping[str, Any]) -> str:
 def _risk(row: Mapping[str, Any]) -> float:
     try:
         explicit = row.get("risk_score")
-        if explicit is not None:
+        if explicit is not None and not isinstance(explicit, bool):
             parsed = float(explicit)
             if math.isfinite(parsed):
                 return round(min(10.0, max(0.0, parsed)), 1)
@@ -149,11 +149,12 @@ def derive_campaigns(
         campaign_risk = sum(_risk(row) for row in rows)
         severities = [str(row.get("severity") or "unknown").lower() for row in rows]
         severity = str(highest.get("severity") or "unknown").lower()
-        kev = any(bool(row.get("is_kev") or row.get("cisa_kev")) for row in rows)
+        kev = any(row.get("is_kev") is True or row.get("cisa_kev") is True for row in rows)
         epss = [
             float(row["epss_score"])
             for row in rows
             if isinstance(row.get("epss_score"), (int, float))
+            and not isinstance(row.get("epss_score"), bool)
             and math.isfinite(float(row["epss_score"]))
             and 0.0 <= float(row["epss_score"]) <= 1.0
         ]
@@ -169,7 +170,7 @@ def derive_campaigns(
         exploitability: dict[str, Any] = (
             {"value": "known_exploited", "status": "observed", "signals": ["kev"]}
             if kev
-            else ({"value": max(epss), "status": "observed", "signals": ["epss"]} if epss else _factor_status(None))
+            else ({"value": max(epss), "status": "modeled", "signals": ["epss"]} if epss else _factor_status(None))
         )
         exploitability_boost = 1.0 if kev else (max(epss) if epss else 0.0)
         reachability_boost = 0.5 if reachable is True else 0.0

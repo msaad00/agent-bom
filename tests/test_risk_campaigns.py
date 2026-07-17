@@ -163,10 +163,26 @@ def test_priority_observed_signals_are_bounded_ordered_and_unknown_neutral() -> 
     assert out_of_range_epss["priority_score_components"]["exploitability_boost"] == 0.0
     assert out_of_range_epss["score_factors"]["exploitability"]["status"] == "unknown"
     assert epss["priority_score_components"]["base_risk"] == 4.0
-    assert epss["score_factors"]["exploitability"]["status"] == "observed"
+    assert epss["score_factors"]["exploitability"]["status"] == "modeled"
     assert enriched["score_factors"]["reachability"]["status"] == "observed"
     assert enriched["score_factors"]["crown_jewel"]["value"] is True
     assert capped["priority_score"] == 10.0
+
+
+def test_priority_rejects_truthy_and_boolean_values_as_security_signals() -> None:
+    malformed = {
+        "id": "a",
+        "severity": "medium",
+        "risk_score": True,
+        "epss_score": True,
+        "is_kev": "false",
+        "cisa_kev": "true",
+    }
+    campaign = derive_campaigns([malformed], tenant_id="t", workflow_by_id={})[0]
+    assert campaign["priority_score"] == 4.0
+    assert campaign["priority_score_components"]["base_finding_risk"] == 4.0
+    assert campaign["priority_score_components"]["exploitability_boost"] == 0.0
+    assert campaign["score_factors"]["exploitability"]["status"] == "unknown"
 
 
 def test_campaign_ids_are_deterministic_across_derivations() -> None:
@@ -354,6 +370,13 @@ def test_campaign_openapi_has_typed_responses_and_partial_status() -> None:
         "$ref"
     ]
     assert verify_ref.endswith("CampaignVerificationResponse")
+    response_schema = schema["components"]["schemas"]["CampaignResponse"]["properties"]
+    assert response_schema["score_factors"]["$ref"].endswith("CampaignScoreFactors")
+    assert response_schema["expected_risk_reduction"]["$ref"].endswith("CampaignExpectedRiskReduction")
+    queue_ref = schema["paths"]["/v1/campaigns/verification-queue"]["get"]["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ]
+    assert queue_ref.endswith("CampaignVerificationQueueResponse")
 
 
 def test_sqlite_campaign_store_persists_same_logical_id_per_tenant(tmp_path) -> None:
@@ -380,12 +403,14 @@ def test_sqlite_campaign_store_persists_same_logical_id_per_tenant(tmp_path) -> 
 def test_sqlite_campaign_store_persists_original_member_ids_across_restart(tmp_path) -> None:
     path = str(tmp_path / "campaign-members.db")
     store = SQLiteCampaignStore(path)
-    row = store.reconcile_memberships("tenant-alpha", {"campaign-1": ("fingerprint", ("finding-b", "finding-a"))})[0]
+    row = store.reconcile_memberships("tenant-alpha", {"campaign-1": ("fingerprint", ("finding-b", "finding-a"), "Upgrade acme-lib")})[0]
     assert row.member_ids == ("finding-a", "finding-b")
+    assert row.title == "Upgrade acme-lib"
     reopened = SQLiteCampaignStore(path)
     assert reopened.get("tenant-alpha", "campaign-1").member_ids == ("finding-a", "finding-b")
+    assert reopened.get("tenant-alpha", "campaign-1").title == "Upgrade acme-lib"
     columns = {item[1] for item in reopened._conn.execute("PRAGMA table_info(risk_campaign_workflows)").fetchall()}
-    assert "member_ids" in columns
+    assert {"member_ids", "title"} <= columns
 
 
 def test_campaign_store_selects_postgres_for_multi_replica(monkeypatch) -> None:
@@ -414,6 +439,7 @@ def test_postgres_campaign_store_uses_tenant_key_rls_and_scoped_upsert(monkeypat
         None,
         "in_progress",
         "pending",
+        "Campaign campaign-1",
         "[]",
         "fingerprint",
         1,
@@ -455,6 +481,7 @@ def test_postgres_campaign_store_uses_tenant_key_rls_and_scoped_upsert(monkeypat
     schema_sql = "\n".join(sql for sql, _ in executed)
     assert "PRIMARY KEY (tenant_id, campaign_id)" in schema_sql
     assert "member_ids TEXT NOT NULL DEFAULT '[]'" in schema_sql
+    assert "title TEXT NOT NULL DEFAULT ''" in schema_sql
     assert rls == [("risk_campaign_workflows", "tenant_id")]
     upsert = next(params for sql, params in executed if "ON CONFLICT (tenant_id, campaign_id)" in sql)
     assert upsert[:2] == ("tenant-alpha", "campaign-1")
@@ -666,6 +693,64 @@ def test_campaign_verify_survives_restart_and_disappeared_campaign(monkeypatch, 
     assert response.json()["verification_status"] == "verified"
     assert response.json()["state"] == "done"
     assert response.json()["remaining_count"] == 0
+
+
+def test_verification_queue_rediscovers_retired_campaign_after_reload(monkeypatch, tmp_path) -> None:
+    from agent_bom.api.server import app
+
+    path = str(tmp_path / "verification-queue.db")
+    set_campaign_store(SQLiteCampaignStore(path))
+    findings = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: findings)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    set_campaign_store(SQLiteCampaignStore(path))
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: [findings[2]])
+    client.get("/v1/campaigns", headers=_headers())
+
+    queue = client.get("/v1/campaigns/verification-queue", headers=_headers())
+    assert queue.status_code == 200
+    entry = next(item for item in queue.json()["entries"] if item["campaign_id"] == campaign["id"])
+    assert entry["title"] == campaign["title"]
+    assert entry["original_member_count"] == 2
+    assert entry["active"] is False and entry["verification_status"] == "unverified"
+    assert client.get("/v1/campaigns/verification-queue", headers=_headers(tenant="tenant-beta")).json()["entries"] == []
+    assert client.get("/v1/campaigns/verification-queue").status_code == 401
+
+    verified = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": entry["version"]}, headers=_headers())
+    assert verified.status_code == 200 and verified.json()["verification_status"] == "verified"
+    assert client.get("/v1/campaigns/verification-queue", headers=_headers()).json()["entries"] == []
+
+
+@pytest.mark.parametrize("persistent", (False, True), ids=("memory", "sqlite-restart"))
+def test_campaign_verify_fails_for_same_target_replacement_membership(monkeypatch, tmp_path, persistent: bool) -> None:
+    from agent_bom.api.server import app
+
+    if persistent:
+        path = str(tmp_path / "replacement.db")
+        set_campaign_store(SQLiteCampaignStore(path))
+    original = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    if persistent:
+        set_campaign_store(SQLiteCampaignStore(path))
+    replacement = [
+        {
+            "id": "finding-replacement",
+            "package": "acme-lib",
+            "fixed_version": "2.0",
+            "severity": "high",
+            "risk_score": 7.0,
+        }
+    ]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: replacement)
+    response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
+    assert response.status_code == 200
+    assert response.json()["verification_status"] == "failed"
+    assert response.json()["remaining_finding_ids"] == ["finding-replacement"]
+    stale = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
+    assert stale.status_code == 409
 
 
 @pytest.mark.parametrize(

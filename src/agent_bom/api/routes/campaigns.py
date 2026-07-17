@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_bom.api.audit_log import log_action
-from agent_bom.api.campaign_store import get_campaign_store
+from agent_bom.api.campaign_store import MembershipEvidence, get_campaign_store
 from agent_bom.api.risk_campaigns import derive_campaigns
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
@@ -65,9 +65,9 @@ class CampaignResponse(BaseModel):
     severity: str
     priority_score: float
     priority_score_method: str
-    priority_score_components: dict[str, float]
-    score_factors: dict[str, Any]
-    expected_risk_reduction: dict[str, Any]
+    priority_score_components: CampaignPriorityComponents
+    score_factors: CampaignScoreFactors
+    expected_risk_reduction: CampaignExpectedRiskReduction
     owner: str | None
     sla_due_at: str | None
     state: str
@@ -93,6 +93,58 @@ class CampaignListResponse(BaseModel):
     total_findings: int | None
     total_approximate: bool
     membership_complete: bool
+
+
+class CampaignPriorityComponents(BaseModel):
+    base_finding_risk: float
+    exploitability_boost: float
+    reachability_boost: float
+    crown_jewel_boost: float
+    cap: float
+
+
+class CampaignScoreFactor(BaseModel):
+    value: str | float | bool | None
+    status: Literal["unknown", "observed", "modeled"]
+    signals: list[str] = Field(default_factory=list)
+    bands_present: list[str] = Field(default_factory=list)
+
+
+class CampaignScoreFactors(BaseModel):
+    severity: CampaignScoreFactor
+    exploitability: CampaignScoreFactor
+    reachability: CampaignScoreFactor
+    business_context: CampaignScoreFactor
+    crown_jewel: CampaignScoreFactor
+
+
+class CampaignExpectedRiskReduction(BaseModel):
+    modeled_window_percent: float
+    modeled_risk_points: float
+    assumption: str
+    method: str
+    scope: str
+    portfolio_complete: bool
+
+
+class CampaignVerificationQueueItem(BaseModel):
+    campaign_id: str
+    title: str
+    original_member_count: int
+    owner: str | None
+    sla_due_at: str | None
+    state: str
+    verification_status: Literal["unverified", "failed"]
+    active: Literal[False]
+    version: int
+    updated_at: str
+
+
+class CampaignVerificationQueueResponse(BaseModel):
+    schema_version: Literal["risk-campaign-verification-queue.v1"]
+    tenant_id: str
+    entries: list[CampaignVerificationQueueItem]
+    count: int
 
 
 class CampaignActionResponse(BaseModel):
@@ -224,8 +276,12 @@ def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]
     findings = source["findings"]
     incomplete = _source_incomplete(source)
     initial = derive_campaigns(findings, tenant_id=tenant_id, workflow_by_id={}, window_days=90, finding_limit=1000, truncated=incomplete)
-    memberships: dict[str, str | tuple[str, tuple[str, ...]]] = {
-        str(item["id"]): (str(item["membership_fingerprint"]), tuple(sorted(str(value) for value in item["finding_ids"])))
+    memberships: dict[str, MembershipEvidence] = {
+        str(item["id"]): (
+            str(item["membership_fingerprint"]),
+            tuple(sorted(str(value) for value in item["finding_ids"])),
+            str(item["title"])[:300],
+        )
         for item in initial
     }
     before = {row.campaign_id: row for row in get_campaign_store().list(tenant_id)}
@@ -354,6 +410,38 @@ async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]
     }
 
 
+@router.get("/campaigns/verification-queue", response_model=CampaignVerificationQueueResponse)
+async def campaign_verification_queue(request: Request, _role: Any = _READ) -> dict[str, Any]:
+    tenant_id = _tenant(request)
+    rows = [
+        row
+        for row in get_campaign_store().list(tenant_id)
+        if not row.active and row.member_ids and row.verification_status in {"unverified", "failed"}
+    ]
+    rows.sort(key=lambda row: (row.updated_at, row.campaign_id), reverse=True)
+    entries = [
+        {
+            "campaign_id": row.campaign_id,
+            "title": row.title or f"Campaign {row.campaign_id[-8:]}",
+            "original_member_count": len(row.member_ids),
+            "owner": row.owner,
+            "sla_due_at": row.sla_due_at,
+            "state": row.state,
+            "verification_status": row.verification_status,
+            "active": False,
+            "version": row.version,
+            "updated_at": row.updated_at,
+        }
+        for row in rows[:1000]
+    ]
+    return {
+        "schema_version": "risk-campaign-verification-queue.v1",
+        "tenant_id": tenant_id,
+        "entries": entries,
+        "count": len(entries),
+    }
+
+
 @router.patch("/campaigns/{campaign_id}", response_model=CampaignResponse)
 async def update_campaign(request: Request, campaign_id: str, body: CampaignUpdate, _role: Any = _WRITE) -> dict[str, Any]:
     tenant_id = _tenant(request)
@@ -381,9 +469,16 @@ async def verify_campaign(request: Request, campaign_id: str, body: CampaignVeri
     stored = store.get(tenant_id, campaign_id)
     if stored is None or not stored.member_ids:
         raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
-    current_ids = {_canonical_finding_id(row) for row in source["findings"]}
-    current_ids.discard("")
-    remaining = tuple(sorted(set(stored.member_ids) & current_ids))
+    current_campaigns = derive_campaigns(
+        source["findings"],
+        tenant_id=tenant_id,
+        workflow_by_id={},
+        window_days=90,
+        finding_limit=1000,
+        truncated=False,
+    )
+    current = next((item for item in current_campaigns if item["id"] == campaign_id), None)
+    remaining = tuple(sorted(str(value) for value in current["finding_ids"])) if current else ()
     verified = store.verify(tenant_id, campaign_id, expected_version=body.version, remaining_ids=remaining)
     if verified is None:
         raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")

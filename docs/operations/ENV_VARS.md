@@ -234,7 +234,9 @@ so they cannot regress silently, but they are not part of this reference.
 | Env var | Type | Default | Description |
 |---|---|---|---|
 | `AGENT_BOM_AI_DETERMINISTIC` | `bool` | `False` | Deterministic mode: temperature 0 + cache, so AI-derived findings are stable enough to (optionally, explicitly) gate on. Default temperature stays 0.3 for richer narratives when determinism is not required. |
+| `AGENT_BOM_AI_FINDING_BATCH_SIZE` | `int` | `20` | — |
 | `AGENT_BOM_AI_MAX_CALLS` | `int` | `50` | Per-run cap on total LLM calls (cost/latency control). 0 disables the cap. |
+| `AGENT_BOM_AI_MAX_FINDINGS` | `int` | `100` | Bound the amount of finding material sent for advisory triage in one run. |
 | `AGENT_BOM_AI_MAX_RETRIES` | `int` | `2` | Reliability: bounded retries with exponential backoff around remote provider calls, and a per-call timeout. Graceful degradation is preserved — exhausted retries return None (no model) rather than raising. |
 | `AGENT_BOM_AI_MODEL_CHEAP` | `str` | `''` | tagging, summaries |
 | `AGENT_BOM_AI_MODEL_STRONG` | `str` | `''` | detection, remediation |

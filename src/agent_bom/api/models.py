@@ -118,6 +118,15 @@ class ScanRequest(BaseModel):
     enrich: bool = False
     """Enrich with NVD CVSS, EPSS, and CISA KEV data."""
 
+    ai_enrich: bool = False
+    """Add advisory AI classification/triage and narratives without changing deterministic findings."""
+
+    ai_model: str = Field(default="openai/gpt-4o-mini", max_length=256)
+    """Provider/model identifier used when ``ai_enrich`` is enabled."""
+
+    ai_deterministic: bool = False
+    """Run AI enrichment at temperature zero for reproducible advisory output."""
+
     offline: bool = False
     """Use the local vulnerability DB only; do not perform network vulnerability lookups."""
 

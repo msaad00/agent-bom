@@ -395,6 +395,9 @@ AI_REQUEST_TIMEOUT = _float("AGENT_BOM_AI_REQUEST_TIMEOUT", 120.0)
 
 # Per-run cap on total LLM calls (cost/latency control). 0 disables the cap.
 AI_MAX_CALLS_PER_RUN = _int("AGENT_BOM_AI_MAX_CALLS", 50)
+# Bound the amount of finding material sent for advisory triage in one run.
+AI_MAX_FINDINGS_PER_RUN = _int("AGENT_BOM_AI_MAX_FINDINGS", 100)
+AI_FINDING_BATCH_SIZE = _int("AGENT_BOM_AI_FINDING_BATCH_SIZE", 20)
 
 
 # ── OIDC discovery shim ──────────────────────────────────────────────────

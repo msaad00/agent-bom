@@ -1098,6 +1098,7 @@ class AIBOMReport:
     ai_threat_chains: list[str] = field(default_factory=list)  # LLM-generated threat chain analyses
     mcp_config_analysis: Optional[dict] = None  # LLM-powered MCP config security analysis
     ai_enrichment_metadata: Optional[dict] = None  # Non-secret provider/model provenance for AI-generated fields
+    ai_finding_assessments: list[dict] = field(default_factory=list)  # Advisory-only AI classification/triage by finding ID
     skill_audit_data: Optional[dict] = None  # Serialized SkillAuditResult (set by CLI)
     trust_assessment_data: Optional[dict] = None  # Serialized TrustAssessmentResult (set by CLI)
     prompt_scan_data: Optional[dict] = None  # Serialized PromptScanResult (set by CLI)

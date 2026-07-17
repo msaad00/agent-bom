@@ -459,9 +459,20 @@ def ai_remediation_options(fn):
                 "--ai-enrich",
                 is_flag=True,
                 help=(
-                    "Enrich findings with LLM-generated risk narratives, executive summary, and threat chains."
+                    "Add advisory LLM triage, risk narratives, executive summary, and threat chains; "
+                    "deterministic findings stay authoritative."
                     " Auto-detects Ollama (free, local) or uses litellm (pip install 'agent-bom[ai-enrich]')"
                 ),
+            ),
+            click.option(
+                "--ai-deterministic",
+                is_flag=True,
+                help="Run AI enrichment at temperature 0 for reproducible advisory output.",
+            ),
+            click.option(
+                "--ai-gate-findings",
+                is_flag=True,
+                help="Explicitly allow deterministic-mode AI skill reviews to affect pass/fail; requires --ai-deterministic.",
             ),
             click.option(
                 "--ai-model",

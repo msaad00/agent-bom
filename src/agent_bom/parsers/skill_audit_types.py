@@ -40,6 +40,8 @@ class SkillAuditResult:
     servers_checked: int = 0
     credentials_checked: int = 0
     passed: bool = True  # no critical/high findings
+    deterministic_passed: bool | None = None  # pass/fail before optional AI advice is applied
+    ai_gate_enabled: bool = False  # true only for explicit deterministic-mode opt-in
     behavioral_summary: dict[str, object] = field(default_factory=dict)
     ai_skill_summary: str | None = None  # LLM-generated overall narrative
     ai_overall_risk_level: str | None = None  # "critical"|"high"|"medium"|"low"|"safe"

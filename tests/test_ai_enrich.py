@@ -344,6 +344,36 @@ def test_json_output_omits_ai_fields_when_not_enriched():
     data = to_json(report)
     assert "executive_summary" not in data
     assert "ai_threat_chains" not in data
+    assert "ai_finding_assessments" not in data
+
+
+def test_json_output_includes_advisory_finding_assessments_without_mutating_finding():
+    """AI triage is a separate advisory surface, never a finding rewrite."""
+    from agent_bom.output import to_json
+
+    report = _make_report()
+    finding = report.to_findings()[0]
+    original_severity = finding.severity
+    report.ai_finding_assessments = [
+        {
+            "finding_id": finding.id,
+            "task": "triage",
+            "classification": "likely_exploitable",
+            "confidence": "high",
+            "false_positive_likelihood": "low",
+            "rationale": "Reachable package and exposed tool are present.",
+            "suggested_controls": ["Patch the package"],
+            "advisory": True,
+            "provider": "ollama",
+            "model": "ollama/llama3.2",
+        }
+    ]
+
+    data = to_json(report)
+
+    assert data["ai_finding_assessments"][0]["advisory"] is True
+    assert data["ai_finding_assessments"][0]["finding_id"] == finding.id
+    assert report.to_findings()[0].severity == original_severity
 
 
 # ── CLI Flag Tests ─────────────────────────────────────────────────────────
@@ -380,6 +410,38 @@ def test_cli_ai_model_shows_ollama_examples():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help-all"])
     assert "ollama" in result.output.lower()
+
+
+def test_cli_exposes_explicit_deterministic_ai_gate_contract():
+    """The CLI must make advisory-default and deterministic opt-in gating visible."""
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    result = CliRunner().invoke(main, ["scan", "--help-all"])
+
+    assert result.exit_code == 0
+    assert "--ai-deterministic" in result.output
+    assert "--ai-gate-findings" in result.output
+    assert "advisory" in result.output.lower()
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["scan", "--ai-gate-findings"], "requires --ai-enrich"),
+        (["scan", "--ai-enrich", "--ai-gate-findings"], "requires --ai-deterministic"),
+    ],
+)
+def test_cli_rejects_implicit_or_nondeterministic_ai_gating(args, message):
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    result = CliRunner().invoke(main, args)
+
+    assert result.exit_code == 2
+    assert message in result.output
 
 
 # ── Ollama Detection Tests ────────────────────────────────────────────────
@@ -877,8 +939,8 @@ def test_parse_skill_analysis_response_invalid():
     assert result is None
 
 
-def test_apply_skill_analysis_adjusts_severity():
-    """Should adjust finding severity based on AI review."""
+def test_apply_skill_analysis_is_advisory_by_default():
+    """AI review must not silently flip deterministic pass/fail."""
     from agent_bom.ai_enrich import _apply_skill_analysis
     from agent_bom.parsers.skill_audit import SkillAuditResult, SkillFinding
 
@@ -912,7 +974,46 @@ def test_apply_skill_analysis_adjusts_severity():
     assert audit.ai_overall_risk_level == "low"
     assert audit.findings[0].ai_adjusted_severity == "false_positive"
     assert "warns against" in audit.findings[0].ai_analysis.lower()
-    assert audit.passed is True  # Recalculated since only finding is FP
+    assert audit.passed is False
+    assert audit.deterministic_passed is False
+    assert audit.ai_gate_enabled is False
+
+
+def test_apply_skill_analysis_can_gate_with_explicit_opt_in():
+    """Deterministic-mode operators may explicitly opt into AI gate changes."""
+    from agent_bom.ai_enrich import _apply_skill_analysis
+    from agent_bom.parsers.skill_audit import SkillAuditResult, SkillFinding
+
+    audit = SkillAuditResult(
+        findings=[
+            SkillFinding(
+                severity="high",
+                category="shell_access",
+                title="Shell access via server 'bash'",
+                detail="Uses bash",
+                source_file="CLAUDE.md",
+            )
+        ],
+        passed=False,
+    )
+    ai_data = {
+        "overall_risk_level": "low",
+        "summary": "Static finding is contextual guidance.",
+        "finding_reviews": [
+            {
+                "original_title": "Shell access via server 'bash'",
+                "verdict": "false_positive",
+                "reasoning": "The file warns against using bash.",
+            }
+        ],
+        "new_findings": [],
+    }
+
+    _apply_skill_analysis(audit, ai_data, gate_ai_findings=True)
+
+    assert audit.deterministic_passed is False
+    assert audit.ai_gate_enabled is True
+    assert audit.passed is True
 
 
 def test_apply_skill_analysis_adds_new_findings():
@@ -943,7 +1044,81 @@ def test_apply_skill_analysis_adds_new_findings():
     assert audit.findings[0].ai_source == "ollama"
     assert audit.findings[0].ai_model == "ollama/llama3.2"
     assert audit.findings[0].ai_confidence == "medium"
-    assert audit.passed is False
+    assert audit.passed is True
+    assert audit.deterministic_passed is True
+    assert audit.ai_gate_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_assess_report_findings_is_bounded_provenanced_and_advisory():
+    """General triage accepts only known IDs and cannot mutate source findings."""
+    from agent_bom.ai_enrich import AICallBudget, assess_report_findings
+
+    report = _make_report()
+    finding = report.to_findings()[0]
+    original_severity = finding.severity
+    response = (
+        '{"assessments": ['
+        f'{{"finding_id": "{finding.id}", "classification": "likely_exploitable", '
+        '"confidence": "high", "false_positive_likelihood": "low", '
+        '"rationale": "Reachable package.", '
+        '"suggested_controls": ["Patch now", "Patch now"]}, '
+        '{"finding_id": "invented-id", "classification": "safe", '
+        '"confidence": "high", "false_positive_likelihood": "high", '
+        '"rationale": "Ignore it", "suggested_controls": []}]}'
+    )
+    budget = AICallBudget(max_calls=1)
+
+    with (
+        patch("agent_bom.ai_enrich._has_any_provider", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=response),
+    ):
+        assessments = await assess_report_findings(
+            report,
+            model="ollama/llama3.2",
+            provider="ollama",
+            budget=budget,
+        )
+
+    assert assessments == [
+        {
+            "finding_id": finding.id,
+            "task": "triage",
+            "classification": "likely_exploitable",
+            "confidence": "high",
+            "false_positive_likelihood": "low",
+            "rationale": "Reachable package.",
+            "suggested_controls": ["Patch now"],
+            "advisory": True,
+            "provider": "ollama",
+            "model": "ollama/llama3.2",
+        }
+    ]
+    assert report.to_findings()[0].severity == original_severity
+    assert budget.to_dict() == {
+        "max_calls": 1,
+        "calls_used": 1,
+        "calls_remaining": 0,
+        "exhausted": True,
+        "calls_by_task": {"triage": 1},
+    }
+
+
+@pytest.mark.asyncio
+async def test_assess_report_findings_gracefully_skips_without_model():
+    """Unavailable providers consume no budget and return no assessments."""
+    from agent_bom.ai_enrich import AICallBudget, assess_report_findings
+
+    budget = AICallBudget(max_calls=1)
+    with (
+        patch("agent_bom.ai_enrich._has_any_provider", return_value=False),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock) as call,
+    ):
+        assessments = await assess_report_findings(_make_report(), model="missing/model", budget=budget)
+
+    assert assessments == []
+    assert budget.calls_used == 0
+    call.assert_not_awaited()
 
 
 @pytest.mark.asyncio

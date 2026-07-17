@@ -39,6 +39,14 @@ def test_scan_config_from_api_request_maps_overlap() -> None:
     assert config.compliance is False
 
 
+def test_scan_request_accepts_advisory_ai_enrichment_controls() -> None:
+    request = ScanRequest(ai_enrich=True, ai_model="ollama/llama3.2", ai_deterministic=True)
+
+    assert request.ai_enrich is True
+    assert request.ai_model == "ollama/llama3.2"
+    assert request.ai_deterministic is True
+
+
 def test_cli_scan_runner_reexports_shared_scan_config() -> None:
     from agent_bom.cli._scan_runner import ScanConfig as RunnerScanConfig
 

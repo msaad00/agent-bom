@@ -192,14 +192,28 @@ def test_overview_reads_compacted_scan_summary() -> None:
 
 
 def _ingest_hub_findings(findings: list[dict], *, tenant_id: str = "default") -> None:
-    """Append normalized findings straight into the compliance-hub ledger.
+    """Append normalized findings the way POST /v1/findings/bulk persists them.
 
-    Mirrors what POST /v1/findings/bulk persists (hub_store.add) so the overview
-    can be exercised against ingested evidence without a full HTTP round-trip.
+    The real bulk path writes BOTH the append-only ledger (``hub_store.add``,
+    which ``/hub/posture`` + the top-risk strip read) AND the current-state table
+    (``upsert_current_batch``, tagged ``origin=bulk_ingest``, which ``/v1/findings``
+    and the reconciled exec headline read). Seeding only the ledger would leave
+    the current-state empty, so mirror both here.
     """
+    from datetime import datetime, timezone
+
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
-    get_compliance_hub_store().add(tenant_id, findings)
+    store = get_compliance_hub_store()
+    store.add(tenant_id, findings)
+    now = datetime.now(timezone.utc).isoformat()
+    current = []
+    for idx, row in enumerate(findings):
+        payload = dict(row)
+        payload.setdefault("id", str(row.get("finding_id") or row.get("id") or f"hub-{idx}"))
+        payload["origin"] = "bulk_ingest"
+        current.append(payload)
+    store.upsert_current_batch(tenant_id, current, observed_at=now, batch_id="hub-test-batch", source="test")
 
 
 def test_overview_counts_bulk_ingested_findings() -> None:

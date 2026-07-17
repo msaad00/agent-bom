@@ -190,6 +190,20 @@ def _severity_breakdown_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str, i
     return counts
 
 
+def _severity_breakdown_from_current_rows(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
+    """Per-severity counts over current-state rows.
+
+    Resolves severity the same way :func:`_filter_current_rows` does (top-level
+    column first, then ``payload``) so the buckets match ``list_current_page``'s
+    ``severity=`` COUNT exactly.
+    """
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+    for row in rows:
+        sev = str(row.get("severity") or (row.get("payload") or {}).get("severity") or "unknown").lower()
+        counts[sev] = counts.get(sev, 0) + 1
+    return counts
+
+
 def _framework_slug_counts_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
     from agent_bom.compliance_coverage import normalize_framework_slug
 
@@ -277,6 +291,25 @@ class ComplianceHubStore(Protocol):
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
         """Return per-severity counts for hub findings without loading payloads."""
+        ...
+
+    def current_severity_breakdown(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+    ) -> dict[str, int]:
+        """Per-severity counts over CURRENT-STATE rows matching the drill-down.
+
+        Mirrors :meth:`list_current_page`'s COUNT filters (tenant + ``origin``
+        + ``since`` read-window) so the exec headline reconciles EXACTLY with
+        ``/v1/findings`` — a click-through can never disagree with the headline.
+        Unlike :meth:`severity_breakdown` (which scans the append-only ledger,
+        all-origin and unbounded), this reads ``hub_findings_current`` so retired
+        / aged findings that linger in the ledger never inflate the exec numbers.
+        An indexed ``GROUP BY`` — no payload hydration.
+        """
         ...
 
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
@@ -839,6 +872,18 @@ class InMemoryComplianceHubStore:
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
         return _severity_breakdown_from_rows(rows)
+
+    def current_severity_breakdown(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+    ) -> dict[str, int]:
+        with self._lock:
+            rows = list(self._current.get(tenant_id, {}).values())
+        rows = _filter_current_rows(rows, severity=None, scan_id=None, origin=origin, since=since)
+        return _severity_breakdown_from_current_rows(rows)
 
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
         with self._lock:
@@ -1608,23 +1653,71 @@ class SQLiteComplianceHubStore:
             counts[key] = counts.get(key, 0) + int(count)
         return counts
 
+    def current_severity_breakdown(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+    ) -> dict[str, int]:
+        # GROUP BY the materialised ``severity`` column on the current-state
+        # table, applying the SAME tenant/since/origin predicates
+        # ``list_current_page`` counts on, so the exec headline reconciles
+        # exactly with the ``/v1/findings`` drill-down (#3961/#4009).
+        where = ["tenant_id = ?"]
+        params: list[Any] = [tenant_id]
+        if since:
+            where.append("last_seen >= ?")
+            params.append(since)
+        if origin is not None:
+            where.append("origin = ?")
+            params.append(origin)
+        where_sql = " AND ".join(where)
+        rows = self._conn.execute(
+            f"""
+            SELECT LOWER(COALESCE(NULLIF(severity, ''), 'unknown')) AS sev, COUNT(*)
+            FROM hub_findings_current
+            WHERE {where_sql}
+            GROUP BY sev
+            """,  # nosec B608
+            params,
+        ).fetchall()
+        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+        for sev, count in rows:
+            key = str(sev or "unknown").lower()
+            counts[key] = counts.get(key, 0) + int(count)
+        return counts
+
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
         from agent_bom.compliance_coverage import normalize_framework_slug
 
+        # Split + aggregate the denormalised CSV IN SQL via a recursive CTE so
+        # the query returns O(distinct slugs) rows, never the full tenant ledger
+        # pulled into Python (#3963). The handful of raw tokens are then folded
+        # to canonical slugs (alias/underscore normalisation) in Python.
         rows = self._conn.execute(
-            "SELECT applicable_frameworks_csv FROM compliance_hub_findings WHERE tenant_id = ?",
+            """
+            WITH RECURSIVE split(rest, token) AS (
+                SELECT applicable_frameworks_csv || ',', ''
+                  FROM compliance_hub_findings
+                 WHERE tenant_id = ? AND applicable_frameworks_csv <> ''
+                UNION ALL
+                SELECT substr(rest, instr(rest, ',') + 1),
+                       substr(rest, 1, instr(rest, ',') - 1)
+                  FROM split
+                 WHERE rest <> ''
+            )
+            SELECT TRIM(token) AS slug, COUNT(*) AS n
+              FROM split
+             WHERE TRIM(token) <> ''
+             GROUP BY TRIM(token)
+            """,
             (tenant_id,),
         ).fetchall()
         counts: dict[str, int] = {}
-        for (csv_value,) in rows:
-            if not csv_value:
-                continue
-            for slug in str(csv_value).split(","):
-                slug = slug.strip()
-                if not slug:
-                    continue
-                canonical = normalize_framework_slug(slug)
-                counts[canonical] = counts.get(canonical, 0) + 1
+        for slug, n in rows:
+            canonical = normalize_framework_slug(str(slug))
+            counts[canonical] = counts.get(canonical, 0) + int(n)
         return counts
 
     def count(self, tenant_id: str) -> int:

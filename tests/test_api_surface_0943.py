@@ -15,18 +15,24 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import pytest
 from starlette.testclient import TestClient
 
+from agent_bom.api import compliance_hub_store as hub_store_mod
 from agent_bom.api.compliance_hub_store import (
     InMemoryComplianceHubStore,
+    get_compliance_hub_store,
     set_compliance_hub_store,
 )
+from agent_bom.api.findings_count_cache import cache_key, get_cached_total, reset_findings_count_cache
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_graph_store, set_job_store
+from agent_bom.api.time_window import normalize_window_days
 from agent_bom.backpressure import _controller_for, reset_backpressure_for_tests
 
 TENANT = "default"
@@ -65,14 +71,26 @@ def _seed_repeated_scans(store: InMemoryJobStore, *, scans: int, findings: list[
     return last_scan_id
 
 
+@contextmanager
+def _client_with_scans_context() -> Iterator[tuple[TestClient, str, int]]:
+    original_hub_store = hub_store_mod._HUB_STORE
+    reset_findings_count_cache()
+    set_compliance_hub_store(InMemoryComplianceHubStore())
+    try:
+        job_store = InMemoryJobStore()
+        set_job_store(job_store)
+        findings = _make_findings(106)
+        last_scan_id = _seed_repeated_scans(job_store, scans=6, findings=findings)
+        yield TestClient(app), last_scan_id, len(findings)
+    finally:
+        set_compliance_hub_store(original_hub_store)
+        reset_findings_count_cache()
+
+
 @pytest.fixture
 def client_with_scans():
-    job_store = InMemoryJobStore()
-    set_job_store(job_store)
-    set_compliance_hub_store(InMemoryComplianceHubStore())
-    findings = _make_findings(106)
-    last_scan_id = _seed_repeated_scans(job_store, scans=6, findings=findings)
-    yield TestClient(app), last_scan_id, len(findings)
+    with _client_with_scans_context() as client_state:
+        yield client_state
 
 
 # ── Fix 1: default findings view dedupes across re-scans ─────────────────────
@@ -102,6 +120,39 @@ def test_scan_id_filter_still_returns_that_scan(client_with_scans) -> None:
     assert body["total"] == unique
     assert body["count"] == unique
     assert body["scan_id"] == last_scan_id
+
+
+def test_findings_fixture_ignores_and_restores_unrelated_bulk_state() -> None:
+    unrelated_store = InMemoryComplianceHubStore()
+    set_compliance_hub_store(unrelated_store)
+    unrelated = [{"id": "unrelated:bulk", "severity": "low", "origin": "bulk_ingest"}]
+    unrelated_store.add(TENANT, unrelated)
+    unrelated_store.upsert_current_batch(
+        TENANT,
+        unrelated,
+        observed_at="2026-07-17T00:00:00Z",
+        batch_id="unrelated-batch",
+        source="test_api_surface_0943",
+    )
+    warm = TestClient(app).get("/v1/findings?limit=1000")
+    assert warm.status_code == 200
+    assert warm.json()["total"] == 1
+
+    with _client_with_scans_context() as (client, _last_scan_id, unique):
+        response = client.get("/v1/findings?limit=1000")
+        assert response.status_code == 200
+        assert response.json()["total"] == unique
+
+    assert get_compliance_hub_store() is unrelated_store
+    assert unrelated_store.count(TENANT) == 1
+    restored_cache_key = cache_key(
+        tenant_id=TENANT,
+        severity=None,
+        scan_id=None,
+        origin="bulk_ingest",
+        window_days=normalize_window_days(None),
+    )
+    assert get_cached_total(restored_cache_key) is None
 
 
 # ── Fix 3: invalid sort / severity are rejected ──────────────────────────────

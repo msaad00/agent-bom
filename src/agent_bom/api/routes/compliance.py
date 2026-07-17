@@ -23,6 +23,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
@@ -36,6 +37,7 @@ from agent_bom.api.stores import (
     _get_store,
 )
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
@@ -2074,7 +2076,25 @@ async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0)
     findings were imported; pagination is ``limit`` / ``offset``. Keyset
     pagination over the same durable hub store is available (keyset-safe sort)
     through ``/v1/findings?cursor=`` for scale reads.
+
+    The synchronous store read (page fetch + count) runs in a worker thread
+    under adaptive backpressure so a deep page against a large tenant cannot
+    block the event loop and starve ``/health`` (mirrors ``/v1/findings``);
+    under saturation it sheds with ``429 + Retry-After``.
     """
+    try:
+        async with adaptive_backpressure("compliance"):
+            return await anyio.to_thread.run_sync(_list_hub_findings_impl, request, limit, offset)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+
+def _list_hub_findings_impl(request: Request, limit: int, offset: int) -> dict:
+    """Synchronous body of :func:`list_hub_findings` (runs in a worker thread)."""
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
     from agent_bom.api.finding_list_envelope import finding_list_envelope
 
@@ -2114,7 +2134,26 @@ async def get_hub_posture(request: Request) -> dict:
     Returns per-framework counts, severity breakdown, and source mix
     (native vs external) so the dashboard /compliance page can render a
     single posture story across every entry point.
+
+    The synchronous store aggregates (severity GROUP BY, SQL-side framework
+    counts, tenant total) plus the native-job fold run in a worker thread under
+    adaptive backpressure so this O(table) read cannot block the event loop and
+    starve ``/health`` (mirrors ``/v1/findings``); under saturation it sheds with
+    ``429 + Retry-After``.
     """
+    try:
+        async with adaptive_backpressure("compliance"):
+            return await anyio.to_thread.run_sync(_get_hub_posture_impl, request)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+
+def _get_hub_posture_impl(request: Request) -> dict:
+    """Synchronous body of :func:`get_hub_posture` (runs in a worker thread)."""
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
     from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, normalize_framework_slug
 

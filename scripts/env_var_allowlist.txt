@@ -113,6 +113,8 @@ AGENT_BOM_CONNECTIONS_KEY_REF
 AGENT_BOM_VAULT_TOKEN
 # opt-in flag (default OFF) enabling the background loop that re-scans due cloud connections (Phase B.2); read live in api/connection_scheduler.py
 AGENT_BOM_CONNECTIONS_SCHEDULER
+# opt-in flag (default OFF) enabling the scheduled findings-export loop (#4040); read live in api/export_scheduler.py
+AGENT_BOM_EXPORT_SCHEDULER
 # CLI profile config path override; read at command invocation time.
 AGENT_BOM_CONFIG
 # Optional cosign signer-boundary overrides for internal non-release signing;

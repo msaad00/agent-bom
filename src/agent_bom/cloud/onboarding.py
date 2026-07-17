@@ -43,6 +43,45 @@ _AWS_MANAGED_POLICY_ARNS = [
 
 _AWS_ROLE_LOGICAL_ID = "AgentBomReadOnlyRole"
 
+# Deep-scan content-read statements — the read-only Get/List/Describe actions the
+# AWS-managed SecurityAudit / ViewOnlyAccess policies structurally exclude
+# (content, not metadata). Kept byte-for-byte in step with
+# ``deploy/terraform/connect-aws/deep-scan.tf`` so the emitted CloudFormation and
+# the Terraform module provision the SAME least-privilege deep-scan grant.
+_AWS_DEEP_SCAN_STATEMENTS: list[dict[str, Any]] = [
+    {"Sid": "LambdaCodeRead", "Effect": "Allow", "Action": ["lambda:GetFunction", "lambda:GetLayerVersion"], "Resource": "*"},
+    {
+        "Sid": "EcrImagePull",
+        "Effect": "Allow",
+        "Action": [
+            "ecr:GetAuthorizationToken",
+            "ecr:GetDownloadUrlForLayer",
+            "ecr:BatchGetImage",
+            "ecr:BatchCheckLayerAvailability",
+            "ecr:DescribeImageScanFindings",
+        ],
+        "Resource": "*",
+    },
+    {"Sid": "InspectorSbom", "Effect": "Allow", "Action": ["inspector2:ListFindings"], "Resource": "*"},
+    {
+        "Sid": "CisAccountContacts",
+        "Effect": "Allow",
+        "Action": ["account:GetContactInformation", "account:GetAlternateContact"],
+        "Resource": "*",
+    },
+    {
+        "Sid": "BedrockAgentInventory",
+        "Effect": "Allow",
+        "Action": ["bedrock:ListAgents", "bedrock:GetAgent", "bedrock:GetAgentActionGroup"],
+        "Resource": "*",
+    },
+]
+
+# S3 bucket ARN allowlist — validated before interpolation into the emitted
+# artifact so a hostile "arn" cannot break out of the JSON/scope. Standard,
+# GovCloud, and China partitions; bucket names per S3 naming rules.
+_S3_BUCKET_ARN_RE = re.compile(r"arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]")
+
 DEFAULT_AWS_ROLE_NAME = "agent-bom-readonly"
 DEFAULT_AZURE_APP_NAME = "agent-bom-readonly"
 DEFAULT_GCP_SERVICE_ACCOUNT = "agent-bom-readonly"
@@ -89,6 +128,18 @@ def _validate_snowflake_identifier(value: str, *, field: str) -> str:
     return value
 
 
+# Snowflake account identifier: org-account (``ORG-ACCT``) or a locator like
+# ``xy12345.us-east-1.aws``. Letters/digits/underscore, plus ``-`` and ``.`` as
+# separators — enough for interpolation into a comment without SQL metacharacters.
+_SNOWFLAKE_ACCOUNT_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.\-]{0,127}")
+
+
+def _validate_snowflake_account(value: str) -> str:
+    if not _SNOWFLAKE_ACCOUNT_RE.fullmatch(value):
+        raise ValueError(f"invalid Snowflake account {value!r}: allowed characters are letters, digits, '_', '-', '.' (max 128 chars)")
+    return value
+
+
 def _validate_azure_subscription_id(value: str) -> str:
     if value and not _AZURE_SUBSCRIPTION_RE.fullmatch(value):
         raise ValueError(f"invalid Azure subscription id {value!r}: expected a GUID (e.g. 00000000-0000-0000-0000-000000000000)")
@@ -109,6 +160,50 @@ def _validate_gcp_id(value: str, *, field: str) -> str:
     return value
 
 
+def _validate_s3_bucket_arns(arns: Any) -> list[str]:
+    """Return the validated, deduped bucket-ARN list (empty when none supplied)."""
+    if not arns:
+        return []
+    cleaned: list[str] = []
+    for raw in arns:
+        arn = str(raw).strip()
+        if not arn:
+            continue
+        if not _S3_BUCKET_ARN_RE.fullmatch(arn):
+            raise ValueError(f"invalid S3 bucket ARN {arn!r}: expected arn:aws:s3:::<bucket-name> (no wildcards, no object path)")
+        if arn not in cleaned:
+            cleaned.append(arn)
+    return cleaned
+
+
+def _aws_deep_scan_policies(*, enable_deep_scan_reads: bool, dspm_s3_bucket_arns: Any) -> list[dict[str, Any]]:
+    """Build the opt-in deep-scan inline policy block for the read-only role.
+
+    Baseline (both off) returns ``[]`` so the role stays SecurityAudit+ViewOnly
+    only. DSPM implies deep-scan (matches the Terraform, where the whole
+    ``deep_scan`` policy is count-gated on ``enable_deep_scan_reads``).
+    """
+    buckets = _validate_s3_bucket_arns(dspm_s3_bucket_arns)
+    if not enable_deep_scan_reads and not buckets:
+        return []
+    statements: list[dict[str, Any]] = [dict(s) for s in _AWS_DEEP_SCAN_STATEMENTS]
+    if buckets:
+        statements.append(
+            {
+                "Sid": "DspmS3ObjectSample",
+                "Effect": "Allow",
+                "Action": ["s3:GetObject", "s3:ListBucket"],
+                "Resource": [*buckets, *(f"{arn}/*" for arn in buckets)],
+            }
+        )
+    return [
+        {
+            "PolicyName": "agent-bom-deep-scan",
+            "PolicyDocument": {"Version": "2012-10-17", "Statement": statements},
+        }
+    ]
+
+
 # ── AWS: CloudFormation ────────────────────────────────────────────────────────
 
 
@@ -117,6 +212,8 @@ def aws_cloudformation_template(
     external_id: str,
     role_name: str = DEFAULT_AWS_ROLE_NAME,
     trusted_principal_arn: str = "",
+    enable_deep_scan_reads: bool = False,
+    dspm_s3_bucket_arns: Any = (),
 ) -> str:
     """Return a CloudFormation template (JSON) that creates the read-only role.
 
@@ -128,7 +225,39 @@ def aws_cloudformation_template(
 
     ``trusted_principal_arn`` — when supplied — is baked as the parameter default
     so the stack is fully turnkey; otherwise the operator supplies it at deploy.
+
+    ``enable_deep_scan_reads`` / ``dspm_s3_bucket_arns`` are opt-in read-only
+    additions (default off = least privilege): deep-scan attaches the same
+    content-read statements as ``connect-aws/deep-scan.tf`` (Lambda code, ECR
+    pull, Inspector, CIS contacts, Bedrock), and DSPM adds a bucket-scoped
+    ``s3:GetObject``/``s3:ListBucket`` grant for object sampling.
     """
+    deep_scan_policies = _aws_deep_scan_policies(
+        enable_deep_scan_reads=enable_deep_scan_reads,
+        dspm_s3_bucket_arns=dspm_s3_bucket_arns,
+    )
+    role_properties: dict[str, Any] = {
+        "RoleName": {"Ref": "RoleName"},
+        "Description": ("Read-only role assumed by agent-bom (SecurityAudit + ViewOnlyAccess). No write permissions."),
+        "ManagedPolicyArns": list(_AWS_MANAGED_POLICY_ARNS),
+        "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": {"Ref": "TrustedPrincipalArn"}},
+                    "Action": "sts:AssumeRole",
+                    "Condition": {"StringEquals": {"sts:ExternalId": {"Ref": "ExternalId"}}},
+                }
+            ],
+        },
+        "Tags": [
+            {"Key": "agent-bom.io/managed-by", "Value": "cloudformation"},
+            {"Key": "agent-bom.io/access", "Value": "read-only"},
+        ],
+    }
+    if deep_scan_policies:
+        role_properties["Policies"] = deep_scan_policies
     template: dict[str, Any] = {
         "AWSTemplateFormatVersion": "2010-09-09",
         "Description": (
@@ -157,26 +286,7 @@ def aws_cloudformation_template(
         "Resources": {
             _AWS_ROLE_LOGICAL_ID: {
                 "Type": "AWS::IAM::Role",
-                "Properties": {
-                    "RoleName": {"Ref": "RoleName"},
-                    "Description": ("Read-only role assumed by agent-bom (SecurityAudit + ViewOnlyAccess). No write permissions."),
-                    "ManagedPolicyArns": list(_AWS_MANAGED_POLICY_ARNS),
-                    "AssumeRolePolicyDocument": {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Principal": {"AWS": {"Ref": "TrustedPrincipalArn"}},
-                                "Action": "sts:AssumeRole",
-                                "Condition": {"StringEquals": {"sts:ExternalId": {"Ref": "ExternalId"}}},
-                            }
-                        ],
-                    },
-                    "Tags": [
-                        {"Key": "agent-bom.io/managed-by", "Value": "cloudformation"},
-                        {"Key": "agent-bom.io/access", "Value": "read-only"},
-                    ],
-                },
+                "Properties": role_properties,
             }
         },
         "Outputs": {
@@ -200,6 +310,7 @@ def azure_bootstrap_script(
     *,
     subscription_id: str = "",
     app_name: str = DEFAULT_AZURE_APP_NAME,
+    enable_deep_scan_reads: bool = False,
 ) -> str:
     """Return a bash script that creates a Reader service principal.
 
@@ -207,10 +318,32 @@ def azure_bootstrap_script(
     the subscription — read-only, no write/delete. ``az`` prints the appId /
     tenant / client secret to the operator's own terminal at run time; the secret
     is never written into this artifact.
+
+    ``enable_deep_scan_reads`` (opt-in, read-only) also assigns the built-in
+    **Key Vault Reader** and **AcrPull** data-plane roles — the same data-plane
+    reads ``connect-azure/deep-scan.tf`` grants for CIS 8.1/8.2 key/secret expiry
+    and ACR image SBOM — neither of which the control-plane Reader role covers.
     """
     _validate_azure_subscription_id(subscription_id)
     _validate_azure_app_name(app_name)
     sub = subscription_id or "<YOUR_SUBSCRIPTION_ID>"
+    deep_scan_block = (
+        """
+# Deep-scan (opt-in, read-only): data-plane reads the Reader role does not cover.
+# Key Vault Reader → CIS 8.1/8.2 key/secret expiry metadata (not secret values).
+# AcrPull → container-image SBOM extraction. Both read-only.
+az role assignment create \\
+  --assignee "$APP_ID" \\
+  --role "Key Vault Reader" \\
+  --scope "/subscriptions/$SUBSCRIPTION_ID"
+az role assignment create \\
+  --assignee "$APP_ID" \\
+  --role "AcrPull" \\
+  --scope "/subscriptions/$SUBSCRIPTION_ID"
+"""
+        if enable_deep_scan_reads
+        else ""
+    )
     return f"""#!/usr/bin/env bash
 # agent-bom Azure read-only onboarding — creates a Reader service principal.
 # Read-only: the built-in Reader role grants no write/delete permission.
@@ -232,7 +365,7 @@ CREDS="$(az ad sp create-for-rbac \\
 APP_ID="$(echo "$CREDS" | python3 -c 'import sys,json;print(json.load(sys.stdin)["appId"])')"
 TENANT_ID="$(echo "$CREDS" | python3 -c 'import sys,json;print(json.load(sys.stdin)["tenant"])')"
 CLIENT_SECRET="$(echo "$CREDS" | python3 -c 'import sys,json;print(json.load(sys.stdin)["password"])')"
-
+{deep_scan_block}
 echo
 echo "Reader service principal created. Establish the read-only connection with:"
 echo
@@ -251,6 +384,7 @@ def gcp_bootstrap_script(
     *,
     project_id: str = "",
     service_account: str = DEFAULT_GCP_SERVICE_ACCOUNT,
+    enable_deep_scan_reads: bool = False,
 ) -> str:
     """Return a bash script that creates a read-only viewer service account.
 
@@ -258,10 +392,25 @@ def gcp_bootstrap_script(
     both read-only. Workload Identity Federation is recommended; a key file is
     minted only when the operator opts in, and the key is written to their own
     disk, never into this artifact.
+
+    ``enable_deep_scan_reads`` (opt-in, read-only) also binds
+    ``roles/artifactregistry.reader`` — the Artifact Registry data-plane pull the
+    primitive viewer role does not guarantee, needed for GAR image SBOM
+    extraction — matching ``connect-gcp/deep-scan.tf``.
     """
     _validate_gcp_id(project_id, field="project id")
     _validate_gcp_id(service_account, field="service account id")
     proj = project_id or "<YOUR_PROJECT_ID>"
+    deep_scan_block = (
+        """
+# 2b. Deep-scan (opt-in, read-only): Artifact Registry image pull for GAR SBOM.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \\
+  --member="serviceAccount:$SA_EMAIL" \\
+  --role="roles/artifactregistry.reader"
+"""
+        if enable_deep_scan_reads
+        else ""
+    )
     return f"""#!/usr/bin/env bash
 # agent-bom GCP read-only onboarding — creates a viewer service account.
 # Read-only: roles/viewer + roles/iam.securityReviewer grant no write access.
@@ -283,7 +432,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \\
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \\
   --member="serviceAccount:$SA_EMAIL" \\
   --role="roles/iam.securityReviewer"
-
+{deep_scan_block}
 # 3. (Optional) Mint a key file for non-GCP runners. Prefer Workload Identity
 #    Federation (keyless) in production. The key is written to your own disk.
 #    gcloud iam service-accounts keys create agent-bom-key.json \\
@@ -365,6 +514,55 @@ ALTER USER {user} SET RSA_PUBLIC_KEY='<PASTE_PUBLIC_KEY_CONTENT_HERE>';
 """
 
 
+def snowflake_spcs_setup(*, account: str = "") -> str:
+    """Return the Snowpark Container Services / Native App install recipe.
+
+    The flagship "run agent-bom INSIDE Snowflake" path — an alternative to the
+    read-only metadata role. Reuses the shipped native-app package
+    (``deploy/snowflake/native-app/``: ``manifest.yml`` + setup/grant/key-pair
+    scripts) via the dev-path install; it does NOT reimplement the app.
+
+    Read-only + no data egress by default: the app requests SELECT on
+    customer-bound tables and READ on stages only, and runs its services inside
+    the account. Run as ACCOUNTADMIN for the initial install; the app then
+    operates least-privilege.
+
+    Out of scope here (documented in ``docs/snowflake-native-app/INSTALL.md``):
+    building + pushing the four container images to the app image repository and
+    the Marketplace listing — pre-existing release/deploy steps.
+    """
+    acct = _validate_snowflake_account(account) if account else "<your-account-locator>"
+    # The recipe is a review-and-run SQL comment block; the only interpolation is
+    # ``acct``, validated to [A-Za-z0-9_.-] above (no SQL/shell metacharacters).
+    recipe = f"""-- agent-bom on Snowflake — Snowpark Container Services / Native App
+-- Runs the platform INSIDE your account: findings stay in Snowflake, no egress.
+-- Read-only: the app requests SELECT on the tables YOU bind + READ on stages —
+-- never write access, MANAGE GRANTS, or ACCOUNTADMIN after install.
+-- Full package (review before install):
+--   deploy/snowflake/native-app/manifest.yml         (privileges, references, EAIs)
+--   deploy/snowflake/native-app/scripts/setup.sql     (install-time DDL)
+-- Account: {acct}
+-- Run as ACCOUNTADMIN once; the app then runs under a less-privileged role.
+
+-- 1. Create the application package and stage the native-app source.
+CREATE APPLICATION PACKAGE IF NOT EXISTS agent_bom_pkg;
+-- Upload deploy/snowflake/native-app/** to @agent_bom_stage/v1, then:
+ALTER APPLICATION PACKAGE agent_bom_pkg ADD VERSION v1 USING '@agent_bom_stage/v1';
+
+-- 2. Create the application from the package.
+CREATE APPLICATION agent_bom FROM APPLICATION PACKAGE agent_bom_pkg USING VERSION v1;
+
+-- 3. Bind the read-only customer grants the app requests (review first):
+--    deploy/snowflake/native-app/scripts/customer_grants_template.sql
+-- 4. Key-pair auth only (no passwords):
+--    deploy/snowflake/native-app/scripts/auth_keypair_setup.sql
+
+-- See docs/snowflake-native-app/INSTALL.md for the end-to-end walkthrough,
+-- including building + pushing the container images to the app repository.
+"""  # nosec B608 — SQL comment recipe; only the validated account is interpolated
+    return recipe
+
+
 # ── registry / dispatch ────────────────────────────────────────────────────────
 
 _DEFAULT_FORMATS: dict[str, str] = {
@@ -375,6 +573,25 @@ _DEFAULT_FORMATS: dict[str, str] = {
 }
 
 
+_TRUTHY_STRINGS = {"1", "true", "yes", "on"}
+
+
+def _coerce_bool(value: Any) -> bool:
+    """Interpret an option value (bool or string) as a boolean opt-in flag."""
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in _TRUTHY_STRINGS
+
+
+def _coerce_arn_list(value: Any) -> list[str]:
+    """Interpret an option value (list or comma/space-separated string) as ARNs."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in re.split(r"[\s,]+", value) if part.strip()]
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
 def default_emit_format(provider: str) -> str:
     """Return the natural artifact format for ``provider``."""
     try:
@@ -383,37 +600,50 @@ def default_emit_format(provider: str) -> str:
         raise ValueError(f"unknown provider: {provider!r}") from None
 
 
-def emit_artifact(provider: str, fmt: str, *, options: Mapping[str, str]) -> str:
+def emit_artifact(provider: str, fmt: str, *, options: Mapping[str, Any]) -> str:
     """Dispatch to the right generator and return the artifact text.
 
     ``options`` carries provider-specific inputs (all optional):
-      aws:       external_id, role_name, trusted_principal_arn
-      azure:     subscription_id, app_name
-      gcp:       project_id, service_account
+      aws:       external_id, role_name, trusted_principal_arn,
+                 enable_deep_scan_reads, dspm_s3_bucket_arns
+      azure:     subscription_id, app_name, enable_deep_scan_reads
+      gcp:       project_id, service_account, enable_deep_scan_reads
       snowflake: role, user, warehouse
+
+    ``enable_deep_scan_reads`` accepts a bool or a truthy string ("true"/"1"/
+    "yes"/"on"); ``dspm_s3_bucket_arns`` accepts a list or a comma-separated
+    string of bucket ARNs. Both default off (baseline = least privilege).
     """
     if provider not in _DEFAULT_FORMATS:
         raise ValueError(f"unknown provider: {provider!r}")
     if fmt != _DEFAULT_FORMATS[provider]:
         raise ValueError(f"unsupported format {fmt!r} for {provider!r}; expected {_DEFAULT_FORMATS[provider]!r}")
     opts = dict(options)
+    deep_scan = _coerce_bool(opts.get("enable_deep_scan_reads"))
     if provider == "aws":
         return aws_cloudformation_template(
             external_id=opts.get("external_id") or generate_external_id(),
             role_name=opts.get("role_name") or DEFAULT_AWS_ROLE_NAME,
             trusted_principal_arn=opts.get("trusted_principal_arn", ""),
+            enable_deep_scan_reads=deep_scan,
+            dspm_s3_bucket_arns=_coerce_arn_list(opts.get("dspm_s3_bucket_arns")),
         )
     if provider == "azure":
         return azure_bootstrap_script(
             subscription_id=opts.get("subscription_id", ""),
             app_name=opts.get("app_name") or DEFAULT_AZURE_APP_NAME,
+            enable_deep_scan_reads=deep_scan,
         )
     if provider == "gcp":
         return gcp_bootstrap_script(
             project_id=opts.get("project_id", ""),
             service_account=opts.get("service_account") or DEFAULT_GCP_SERVICE_ACCOUNT,
+            enable_deep_scan_reads=deep_scan,
         )
-    # snowflake
+    # snowflake — "role" (read-only metadata role, default) or "spcs" (run the
+    # native app inside the account, reusing the shipped native-app package).
+    if str(opts.get("mode") or "role").strip().lower() == "spcs":
+        return snowflake_spcs_setup(account=str(opts.get("account") or "").strip())
     return snowflake_sql(
         role=opts.get("role") or DEFAULT_SNOWFLAKE_ROLE,
         user=opts.get("user") or DEFAULT_SNOWFLAKE_USER,
@@ -427,6 +657,7 @@ __all__ = [
     "azure_bootstrap_script",
     "gcp_bootstrap_script",
     "snowflake_sql",
+    "snowflake_spcs_setup",
     "default_emit_format",
     "emit_artifact",
 ]

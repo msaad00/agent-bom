@@ -1,5 +1,58 @@
 export type CloudProviderId = "aws" | "azure" | "gcp" | "snowflake";
 
+/**
+ * Connect depth — baseline (default, least privilege) vs opt-in read-only
+ * deep-scan content reads, plus an optional bucket-scoped DSPM object read
+ * (AWS S3). Threaded into every generated grant artifact and the Terraform vars
+ * (`enable_deep_scan_reads`, `dspm_s3_bucket_arns`) so the wizard choice is what
+ * the module provisions. All additions are read-only.
+ */
+export type ConnectDepth = {
+  deepScan?: boolean;
+  /** AWS-only: bucket ARNs to grant s3:GetObject/ListBucket for DSPM. Implies deep-scan. */
+  dspmBuckets?: string[];
+};
+
+function cleanBuckets(depth?: ConnectDepth): string[] {
+  return (depth?.dspmBuckets ?? []).map((b) => b.trim()).filter(Boolean);
+}
+
+/** Whether any read-only deep-scan grant is requested (deep-scan flag or DSPM buckets). */
+export function depthEnabled(depth?: ConnectDepth): boolean {
+  return Boolean(depth?.deepScan) || cleanBuckets(depth).length > 0;
+}
+
+/** Extra read-only grant lines appended to a CLI/CloudShell grant script for deep-scan. */
+function deepScanCliLines(provider: string, depth?: ConnectDepth): string[] {
+  if (!depthEnabled(depth)) return [];
+  switch (provider) {
+    case "azure":
+      return [
+        "",
+        "# Deep-scan (opt-in, read-only): data-plane reads the Reader role omits.",
+        "# Key Vault Reader → CIS 8.1/8.2 key/secret expiry; AcrPull → image SBOM.",
+        `APP_ID=$(az ad sp list --display-name agent-bom-readonly --query "[0].appId" -o tsv)`,
+        `az role assignment create --assignee "$APP_ID" --role "Key Vault Reader" \\`,
+        `  --scope "/subscriptions/${"${SUBSCRIPTION_ID}"}"`,
+        `az role assignment create --assignee "$APP_ID" --role "AcrPull" \\`,
+        `  --scope "/subscriptions/${"${SUBSCRIPTION_ID}"}"`,
+      ];
+    case "gcp":
+      return [
+        "",
+        "# Deep-scan (opt-in, read-only): Artifact Registry image pull for GAR SBOM.",
+        `gcloud projects add-iam-policy-binding \${PROJECT_ID} \\`,
+        `  --member="serviceAccount:\${SA_EMAIL}" \\`,
+        `  --role="roles/artifactregistry.reader"`,
+      ];
+    default:
+      // AWS deep-scan content reads already ride in the inlined base policy; the
+      // only additive AWS grant is the DSPM S3 statement, injected into the
+      // policy JSON itself (see awsReadonlyPolicy).
+      return [];
+  }
+}
+
 /** How the operator mints the read-only grant — pick what their rights allow. */
 export type CloudGrantMethod = "cli" | "cloudshell" | "terraform";
 
@@ -227,6 +280,29 @@ export const AWS_READONLY_POLICY = {
   ],
 } as const;
 
+/**
+ * The AWS read-only policy, optionally extended with a bucket-scoped DSPM
+ * `s3:GetObject`/`s3:ListBucket` statement (opt-in object sampling). Mirrors the
+ * `DspmS3ObjectSample` statement in `connect-aws/deep-scan.tf` — scoped to the
+ * named buckets, never a wildcard.
+ */
+export function awsReadonlyPolicy(dspmBuckets: string[] = []): Record<string, unknown> {
+  const buckets = dspmBuckets.map((b) => b.trim()).filter(Boolean);
+  if (buckets.length === 0) return AWS_READONLY_POLICY as unknown as Record<string, unknown>;
+  return {
+    ...AWS_READONLY_POLICY,
+    Statement: [
+      ...AWS_READONLY_POLICY.Statement,
+      {
+        Sid: "DspmS3ObjectSample",
+        Effect: "Allow",
+        Action: ["s3:GetObject", "s3:ListBucket"],
+        Resource: [...buckets, ...buckets.map((b) => `${b}/*`)],
+      },
+    ],
+  };
+}
+
 function grantFooter(provider: string, inventoryEnv: string): string[] {
   return [
     "",
@@ -238,14 +314,25 @@ function grantFooter(provider: string, inventoryEnv: string): string[] {
 }
 
 /** Terraform module apply — for operators with IaC rights. */
-export function buildTerraformDeployScript(provider: string): string {
+export function buildTerraformDeployScript(provider: string, depth?: ConnectDepth): string {
   const meta = cloudProviderMeta(provider);
   if (!meta) return "";
   const terraformModule = meta.terraformModule;
+  const buckets = cleanBuckets(depth);
+  // Only clouds whose module carries the var take the depth flag; the choice is
+  // made explicit (true/false) so the wizard — not the module default — wins.
+  const varFlags: string[] = [];
+  if (depth && provider !== "snowflake") {
+    varFlags.push(`-var enable_deep_scan_reads=${depthEnabled(depth) ? "true" : "false"}`);
+  }
+  if (provider === "aws" && buckets.length > 0) {
+    varFlags.push(`-var 'dspm_s3_bucket_arns=[${buckets.map((b) => `"${b}"`).join(",")}]'`);
+  }
+  const applyLine = [`terraform -chdir=${terraformModule} apply`, ...varFlags].join(" ");
   return [
     `# ${provider} read-only connector for agent-bom (Terraform)`,
     `terraform -chdir=${terraformModule} init`,
-    `terraform -chdir=${terraformModule} apply`,
+    applyLine,
     "",
     "# After apply, read outputs for role/account references:",
     `terraform -chdir=${terraformModule} output`,
@@ -257,10 +344,11 @@ export function buildTerraformDeployScript(provider: string): string {
  * Cloud CLI grant recipes (aws / az / gcloud / snow).
  * Aligned with scripts/provision — operators paste and adapt ACCOUNT/PROJECT IDs.
  */
-export function buildCliGrantScript(provider: string, externalId?: string): string {
+export function buildCliGrantScript(provider: string, externalId?: string, depth?: ConnectDepth): string {
   const meta = cloudProviderMeta(provider);
   if (!meta) return "";
   const eid = (externalId ?? "").trim() || "<EXTERNAL_ID>";
+  const dspmBuckets = cleanBuckets(depth);
 
   switch (provider) {
     case "aws":
@@ -268,13 +356,16 @@ export function buildCliGrantScript(provider: string, externalId?: string): stri
         `# AWS read-only grant for agent-bom (CLI)`,
         `# Requires IAM permissions to create roles/policies. Prefer ExternalId trust.`,
         `# Idempotent + self-contained: safe to re-run, no repo checkout needed.`,
+        ...(dspmBuckets.length > 0
+          ? [`# DSPM opt-in: read-only s3:GetObject/ListBucket scoped to ${dspmBuckets.length} bucket(s).`]
+          : []),
         `ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)`,
         `EXTERNAL_ID=${eid}`,
         `POLICY_ARN="arn:aws:iam::\${ACCOUNT_ID}:policy/agent-bom-readonly"`,
         "",
         `# Read-only permission policy (inlined — CloudShell has no repo checkout).`,
         `cat > /tmp/agent-bom-readonly.json <<'EOF'`,
-        JSON.stringify(AWS_READONLY_POLICY, null, 2),
+        JSON.stringify(awsReadonlyPolicy(dspmBuckets), null, 2),
         `EOF`,
         "",
         `# Trust policy: this account's root may assume the role only with the ExternalId.`,
@@ -338,6 +429,7 @@ export function buildCliGrantScript(provider: string, externalId?: string): stri
         "",
         `# Custom role definition (optional, tighter than Reader):`,
         `# az role definition create --role-definition ${meta.provisionScript}`,
+        ...deepScanCliLines(provider, depth),
         ...grantFooter(provider, meta.inventoryEnv),
       ].join("\n");
 
@@ -365,6 +457,7 @@ export function buildCliGrantScript(provider: string, externalId?: string): stri
         `  --iam-account="\${SA_EMAIL}"`,
         "",
         `# Optional custom role: gcloud iam roles create … --file=${meta.provisionScript}`,
+        ...deepScanCliLines(provider, depth),
         ...grantFooter(provider, meta.inventoryEnv),
       ].join("\n");
 
@@ -388,10 +481,10 @@ export function buildCliGrantScript(provider: string, externalId?: string): stri
  * Same grant as CLI, framed for paste into the vendor CloudShell / console.
  * No local Terraform; uses the cloud's browser shell.
  */
-export function buildCloudShellGrantScript(provider: string, externalId?: string): string {
+export function buildCloudShellGrantScript(provider: string, externalId?: string, depth?: ConnectDepth): string {
   const meta = cloudProviderMeta(provider);
   if (!meta) return "";
-  const cli = buildCliGrantScript(provider, externalId);
+  const cli = buildCliGrantScript(provider, externalId, depth);
   const header = [
     `# ${provider} read-only grant for agent-bom — paste into ${meta.cloudShellLabel}`,
     `# Open ${meta.cloudShellLabel} in the cloud console, then paste below.`,
@@ -464,18 +557,65 @@ export function buildAwsOrgStackSetScript(
   ].join("\n");
 }
 
+/**
+ * Snowpark Container Services / Native App install recipe — the flagship
+ * "run agent-bom INSIDE Snowflake" path, as an alternative to the read-only
+ * metadata role. Reuses the shipped native-app package
+ * (`deploy/snowflake/native-app/`, its `manifest.yml` + setup/grant/key-pair
+ * scripts) via the dev-path install; it does NOT reimplement the app.
+ *
+ * Read-only + no data egress by default: the app reads customer-bound tables
+ * (SELECT only) and runs its services inside the account. Run as ACCOUNTADMIN
+ * for the initial install; the app then operates least-privilege.
+ *
+ * Remaining (out of the wizard's scope, documented in docs/snowflake-native-app):
+ * building + pushing the four container images to the app image repository and
+ * the Marketplace listing — pre-existing release/deploy steps.
+ */
+export function buildSnowflakeSpcsScript(options?: { account?: string }): string {
+  const account = (options?.account ?? "").trim() || "<your-account-locator>";
+  return [
+    `-- agent-bom on Snowflake — Snowpark Container Services / Native App`,
+    `-- Runs the platform INSIDE your account: findings stay in Snowflake, no egress.`,
+    `-- Read-only: the app requests SELECT on the tables YOU bind + READ on stages —`,
+    `-- never write access, MANAGE GRANTS, or ACCOUNTADMIN after install.`,
+    `-- Full package (review before install):`,
+    `--   deploy/snowflake/native-app/manifest.yml         (privileges, references, EAIs)`,
+    `--   deploy/snowflake/native-app/scripts/setup.sql     (install-time DDL)`,
+    `-- Account: ${account}`,
+    `-- Run as ACCOUNTADMIN once; the app then runs under a less-privileged role.`,
+    ``,
+    `-- 1. Create the application package and stage the native-app source.`,
+    `CREATE APPLICATION PACKAGE IF NOT EXISTS agent_bom_pkg;`,
+    `-- Upload deploy/snowflake/native-app/** to @agent_bom_stage/v1, then:`,
+    `ALTER APPLICATION PACKAGE agent_bom_pkg ADD VERSION v1 USING '@agent_bom_stage/v1';`,
+    ``,
+    `-- 2. Create the application from the package.`,
+    `CREATE APPLICATION agent_bom FROM APPLICATION PACKAGE agent_bom_pkg USING VERSION v1;`,
+    ``,
+    `-- 3. Bind the read-only customer grants the app requests (review first):`,
+    `--    deploy/snowflake/native-app/scripts/customer_grants_template.sql`,
+    `-- 4. Key-pair auth only (no passwords):`,
+    `--    deploy/snowflake/native-app/scripts/auth_keypair_setup.sql`,
+    ``,
+    `-- See docs/snowflake-native-app/INSTALL.md for the end-to-end walkthrough,`,
+    `-- including building + pushing the container images to the app repository.`,
+  ].join("\n");
+}
+
 export function buildGrantScript(
   provider: string,
   method: CloudGrantMethod,
   externalId?: string,
+  depth?: ConnectDepth,
 ): string {
   switch (method) {
     case "cli":
-      return buildCliGrantScript(provider, externalId);
+      return buildCliGrantScript(provider, externalId, depth);
     case "cloudshell":
-      return buildCloudShellGrantScript(provider, externalId);
+      return buildCloudShellGrantScript(provider, externalId, depth);
     case "terraform":
-      return buildTerraformDeployScript(provider);
+      return buildTerraformDeployScript(provider, depth);
   }
 }
 

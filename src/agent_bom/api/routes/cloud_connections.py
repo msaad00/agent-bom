@@ -175,7 +175,19 @@ def _validate_auth_params(auth_params: dict[str, str]) -> dict[str, str]:
 
 
 def _validate_regions(regions: list[str]) -> list[str]:
+    from agent_bom.cloud.aws_inventory import ALL_REGIONS_SENTINEL
+
     cleaned = [r.strip() for r in regions if r.strip()]
+    # Explicit "All regions" affordance: the sentinel resolves to an estate-wide
+    # multi-region scan. It is exclusive — never mixed with specific regions —
+    # and normalized to lowercase so the scan dispatch can detect it reliably.
+    if any(r.lower() == ALL_REGIONS_SENTINEL for r in cleaned):
+        if len(cleaned) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="'all' regions is exclusive — do not combine it with specific regions.",
+            )
+        return [ALL_REGIONS_SENTINEL]
     if len(cleaned) > _MAX_REGIONS:
         raise HTTPException(status_code=400, detail=f"Too many regions (max {_MAX_REGIONS}).")
     for region in cleaned:
@@ -480,11 +492,17 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     from agent_bom.mcp_tools.posture import _summarize_inventory_payload
     from agent_bom.models import AIBOMReport
 
-    region = record.regions[0] if record.regions else None
+    all_regions = aws_inventory.is_all_regions(record.regions)
+    # For an all-regions scan the session has no single home region; discovery
+    # enumerates the enabled set from the brokered credentials.
+    region = None if all_regions else (record.regions[0] if record.regions else None)
     session = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
 
     # Same read-only discovery the cloud routes run, against the brokered role.
-    inventory_payload = aws_inventory.discover_inventory(region=region, force=True, session=session)
+    if all_regions:
+        inventory_payload = aws_inventory.discover_inventory_all_regions(force=True, session=session)
+    else:
+        inventory_payload = aws_inventory.discover_inventory(region=region, force=True, session=session)
     cis_report = run_aws_cis(region=region, session=session)
     cis_dict = cis_report.to_dict()
 

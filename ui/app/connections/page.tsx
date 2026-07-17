@@ -85,6 +85,7 @@ import { deploymentModeLabel } from "@/lib/deployment-context";
 import {
   buildAwsOrgStackSetScript,
   buildGrantScript,
+  buildSnowflakeSpcsScript,
   cloudGrantMethodHint,
   cloudGrantMethodLabel,
   cloudProviderMeta,
@@ -93,6 +94,7 @@ import {
   DEFAULT_AWS_ORG_ROLE_NAME,
   generateConnectionExternalId,
   type CloudGrantMethod,
+  type ConnectDepth,
 } from "@/lib/cloud-connect-wizard";
 import { serviceEntry } from "@/lib/service-registry";
 import { vendorLogo } from "@/lib/vendor-logos";
@@ -2314,6 +2316,107 @@ function GrantMethodPicker({
   );
 }
 
+// Snowflake packaging: read-only metadata role (default) vs the Snowpark
+// Container Services / Native App (run agent-bom inside the account).
+function SnowflakePackagingPicker({ spcs, onChange }: { spcs: boolean; onChange: (spcs: boolean) => void }) {
+  return (
+    <div
+      role="group"
+      aria-label="Snowflake packaging"
+      className="grid grid-cols-2 gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
+    >
+      {[
+        { value: false, label: "Read-only role", hint: "Metadata scan" },
+        { value: true, label: "Native app (SPCS)", hint: "Runs in your account" },
+      ].map((option) => {
+        const active = spcs === option.value;
+        return (
+          <button
+            key={option.label}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.value)}
+            className={`rounded-lg px-2.5 py-1.5 text-left transition ${
+              active ? "bg-emerald-500 text-black" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            <span className="block text-[11px] font-medium">{option.label}</span>
+            <span className={`block text-[10px] ${active ? "text-black/70" : "text-[var(--text-tertiary)]"}`}>
+              {option.hint}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Connect depth (progressive disclosure, collapsed by default): baseline stays
+// least-privilege; deep-scan + DSPM are explicit read-only opt-ins.
+function ConnectDepthControl({
+  provider,
+  deepScan,
+  onDeepScanChange,
+  dspmBucketsText,
+  onDspmBucketsChange,
+}: {
+  provider: string;
+  deepScan: boolean;
+  onDeepScanChange: (value: boolean) => void;
+  dspmBucketsText: string;
+  onDspmBucketsChange: (value: string) => void;
+}) {
+  const grantsNote =
+    provider === "aws"
+      ? "Adds read-only Lambda code, ECR image, Inspector, CIS-contact & Bedrock-agent reads."
+      : provider === "azure"
+        ? "Adds read-only Key Vault Reader (CIS 8.1/8.2) & AcrPull (image SBOM)."
+        : "Adds read-only Artifact Registry reader (image SBOM).";
+  return (
+    <Collapsible
+      title="Scan depth (advanced)"
+      defaultOpen={false}
+      bare
+      className="mt-3"
+      titleClassName="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]"
+    >
+      <div className="mt-2 space-y-2.5">
+        <label className="flex cursor-pointer items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={deepScan}
+            onChange={(event) => onDeepScanChange(event.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-500"
+            data-testid="wizard-deep-scan"
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium text-[var(--foreground)]">Deep-scan content reads (read-only)</span>
+            <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">{grantsNote}</span>
+          </span>
+        </label>
+        {provider === "aws" ? (
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-medium text-[var(--foreground)]">
+              DSPM object sampling — S3 bucket ARNs (optional)
+            </span>
+            <input
+              value={dspmBucketsText}
+              onChange={(event) => onDspmBucketsChange(event.target.value)}
+              placeholder="arn:aws:s3:::my-data-lake, arn:aws:s3:::logs"
+              data-testid="wizard-dspm-buckets"
+              className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-[11px] text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+            />
+            <span className="mt-1 block text-[10px] text-[var(--text-tertiary)]">
+              Grants read-only s3:GetObject/ListBucket scoped to these buckets only. Implies deep-scan. Leave empty to
+              disable object reads.
+            </span>
+          </label>
+        ) : null}
+      </div>
+    </Collapsible>
+  );
+}
+
 function ConnectorGallery({
   activeCategory,
   onCategoryChange,
@@ -3195,6 +3298,16 @@ function AddConnectionWizard({
   // AWS onboarding scope: a single account, or the whole AWS Organization via a
   // CloudFormation StackSet (deploy once, every member account auto-enrolls).
   const [awsScope, setAwsScope] = useState<"account" | "organization">("account");
+  // Connect depth (progressive disclosure): baseline (least privilege, default)
+  // vs opt-in read-only deep-scan + optional bucket-scoped DSPM object read.
+  const [deepScan, setDeepScan] = useState(false);
+  const [dspmBucketsText, setDspmBucketsText] = useState("");
+  // Explicit "All regions" affordance (AWS): scan every enabled region instead of
+  // a single free-text region.
+  const [allRegions, setAllRegions] = useState(false);
+  // Snowflake packaging: read-only metadata role (default) vs the Snowpark
+  // Container Services / Native App (run agent-bom inside the account).
+  const [snowflakeSpcs, setSnowflakeSpcs] = useState(false);
   // Verify step: the created connection + the live connectivity/permission check
   // and optional first scan run against the real /test and /scan endpoints.
   const [createdRecord, setCreatedRecord] = useState<CloudConnectionRecord | null>(null);
@@ -3238,6 +3351,10 @@ function AddConnectionWizard({
       if (current.provider === value) return current;
       setGeneratedExternalId("");
       setAwsScope("account");
+      setDeepScan(false);
+      setDspmBucketsText("");
+      setAllRegions(false);
+      setSnowflakeSpcs(false);
       return {
         ...current,
         provider: value,
@@ -3295,11 +3412,20 @@ function AddConnectionWizard({
   }, [step, createdRecord, verifyState, runVerify]);
 
   const providerMeta = cloudProviderMeta(provider.value);
+  const isSnowflake = provider.value === "snowflake";
+  const supportsDepth = provider.value === "aws" || provider.value === "azure" || provider.value === "gcp";
+  const dspmBuckets = dspmBucketsText
+    .split(/[\s,]+/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  const depth: ConnectDepth = { deepScan: deepScan || dspmBuckets.length > 0, dspmBuckets };
   const deployScript = buildGrantScript(
     provider.value,
     grantMethod,
     isAws ? generatedExternalId || undefined : undefined,
+    supportsDepth ? depth : undefined,
   );
+  const snowflakeSpcsScript = buildSnowflakeSpcsScript({ account: form.role_ref.trim() });
   const isOrgScope = isAws && awsScope === "organization";
   const orgStackSetScript = buildAwsOrgStackSetScript(
     generatedExternalId || undefined,
@@ -3316,12 +3442,14 @@ function AddConnectionWizard({
     const displayName = form.display_name.trim();
     const roleRef = form.role_ref.trim();
     const externalId = form.external_id;
-    const regions = provider.usesRegions
-      ? form.regions
-          .split(/[\s,]+/)
-          .map((region) => region.trim())
-          .filter(Boolean)
-      : [];
+    const regions = !provider.usesRegions
+      ? []
+      : allRegions
+        ? ["all"]
+        : form.regions
+            .split(/[\s,]+/)
+            .map((region) => region.trim())
+            .filter(Boolean);
 
     if (!displayName) {
       setFormError("A display name is required.");
@@ -3520,16 +3648,47 @@ function AddConnectionWizard({
                     </div>
                   ) : (
                     <div className="mt-4 space-y-2">
-                      <GrantMethodPicker method={grantMethod} onChange={setGrantMethod} provider={provider.value} />
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                          {cloudGrantMethodLabel(grantMethod)} grant script
-                        </p>
-                        {deployScript ? <CopyTextButton text={deployScript} label="Copy script" /> : null}
-                      </div>
-                      <pre className="max-h-40 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]">
-                        {deployScript || provider.cli}
-                      </pre>
+                      {isSnowflake ? (
+                        <SnowflakePackagingPicker spcs={snowflakeSpcs} onChange={setSnowflakeSpcs} />
+                      ) : null}
+                      {isSnowflake && snowflakeSpcs ? (
+                        <>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                              Snowpark native-app install (SQL)
+                            </p>
+                            <CopyTextButton text={snowflakeSpcsScript} label="Copy script" />
+                          </div>
+                          <pre
+                            data-testid="wizard-snowflake-spcs"
+                            className="max-h-52 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]"
+                          >
+                            {snowflakeSpcsScript}
+                          </pre>
+                        </>
+                      ) : (
+                        <>
+                          <GrantMethodPicker method={grantMethod} onChange={setGrantMethod} provider={provider.value} />
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                              {cloudGrantMethodLabel(grantMethod)} grant script
+                            </p>
+                            {deployScript ? <CopyTextButton text={deployScript} label="Copy script" /> : null}
+                          </div>
+                          <pre className="max-h-40 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]">
+                            {deployScript || provider.cli}
+                          </pre>
+                        </>
+                      )}
+                      {supportsDepth ? (
+                        <ConnectDepthControl
+                          provider={provider.value}
+                          deepScan={deepScan}
+                          onDeepScanChange={setDeepScan}
+                          dspmBucketsText={dspmBucketsText}
+                          onDspmBucketsChange={setDspmBucketsText}
+                        />
+                      ) : null}
                     </div>
                   )}
                   {isAws ? (
@@ -3671,17 +3830,39 @@ function AddConnectionWizard({
                   </span>
                 </label>
                 {provider.usesRegions ? (
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                      Regions (optional)
+                  <div className="space-y-2">
+                    <span className="block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                      Regions
                     </span>
-                    <input
-                      value={form.regions}
-                      onChange={(event) => update("regions", event.target.value)}
-                      placeholder="us-east-1, us-west-2"
-                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
-                    />
-                  </label>
+                    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={allRegions}
+                        onChange={(event) => setAllRegions(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-500"
+                        data-testid="wizard-all-regions"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-[var(--foreground)]">All enabled regions</span>
+                        <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
+                          Fan the scan across every region enabled in the account. Leave off to scan specific regions.
+                        </span>
+                      </span>
+                    </label>
+                    {!allRegions ? (
+                      <label className="block">
+                        <span className="mb-1.5 block text-[11px] text-[var(--text-tertiary)]">
+                          Specific regions (optional — defaults to the account default region)
+                        </span>
+                        <input
+                          value={form.regions}
+                          onChange={(event) => update("regions", event.target.value)}
+                          placeholder="us-east-1, us-west-2"
+                          className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                        />
+                      </label>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             ) : null}

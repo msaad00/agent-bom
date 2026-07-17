@@ -224,6 +224,155 @@ class TestEmitRegistry:
             onboarding.emit_artifact("aws", "terraform", options={})
 
 
+# ── depth: baseline vs deep-scan + opt-in DSPM (issue #3736) ─────────────────────
+
+
+def _aws_role(text: str) -> dict:
+    tpl = json.loads(text)
+    return next(r for r in tpl["Resources"].values() if r["Type"] == "AWS::IAM::Role")
+
+
+class TestAwsDeepScanDepth:
+    """Depth is an explicit opt-in threaded into the emitted artifact. Baseline
+    stays SecurityAudit+ViewOnly only (least privilege); deep-scan adds the same
+    read-only content-read statements as ``deploy/terraform/connect-aws/deep-scan.tf``;
+    DSPM S3 object read is separately opt-in and bucket-scoped."""
+
+    def test_baseline_has_no_inline_policies(self) -> None:
+        role = _aws_role(onboarding.aws_cloudformation_template(external_id="x", role_name="r"))
+        assert "Policies" not in role["Properties"]
+
+    def test_deep_scan_adds_readonly_content_reads(self) -> None:
+        text = onboarding.aws_cloudformation_template(external_id="x", role_name="r", enable_deep_scan_reads=True)
+        role = _aws_role(text)
+        policies = role["Properties"]["Policies"]
+        actions = {a for p in policies for s in p["PolicyDocument"]["Statement"] for a in _as_list(s["Action"])}
+        # Mirrors deep-scan.tf: Lambda code, ECR pull, Inspector, CIS contacts, Bedrock.
+        assert "lambda:GetFunction" in actions
+        assert "ecr:GetDownloadUrlForLayer" in actions
+        assert "inspector2:ListFindings" in actions
+        assert "account:GetContactInformation" in actions
+        assert "bedrock:GetAgent" in actions
+        # No S3 object read unless DSPM buckets are supplied.
+        assert "s3:GetObject" not in actions
+        # Still read-only — no mutating verb anywhere in the serialized template.
+        assert not _WRITE_ACTION_RE.search(text)
+
+    def test_dspm_grants_bucket_scoped_object_read(self) -> None:
+        text = onboarding.aws_cloudformation_template(
+            external_id="x",
+            role_name="r",
+            enable_deep_scan_reads=True,
+            dspm_s3_bucket_arns=["arn:aws:s3:::my-lake"],
+        )
+        role = _aws_role(text)
+        dspm = [s for p in role["Properties"]["Policies"] for s in p["PolicyDocument"]["Statement"] if s.get("Sid") == "DspmS3ObjectSample"]
+        assert dspm, "expected a DSPM S3 statement"
+        assert set(_as_list(dspm[0]["Action"])) == {"s3:GetObject", "s3:ListBucket"}
+        # Scoped to the named bucket + its objects — never a wildcard.
+        assert set(dspm[0]["Resource"]) == {"arn:aws:s3:::my-lake", "arn:aws:s3:::my-lake/*"}
+
+    def test_dspm_implies_deep_scan(self) -> None:
+        # Supplying DSPM buckets alone still yields the deep-scan policy container,
+        # matching the terraform (whole deep_scan policy count-gated on the flag).
+        text = onboarding.aws_cloudformation_template(external_id="x", role_name="r", dspm_s3_bucket_arns=["arn:aws:s3:::data-lake"])
+        role = _aws_role(text)
+        assert "Policies" in role["Properties"]
+
+    def test_dspm_rejects_hostile_bucket_arn(self) -> None:
+        with pytest.raises(ValueError):
+            onboarding.aws_cloudformation_template(
+                external_id="x", role_name="r", dspm_s3_bucket_arns=['arn:aws:s3:::b", "Effect": "Allow']
+            )
+
+
+class TestAzureDeepScanDepth:
+    def test_baseline_is_reader_only(self) -> None:
+        text = onboarding.azure_bootstrap_script(subscription_id=_VALID_AZURE_SUB)
+        assert "Key Vault Reader" not in text
+        assert "AcrPull" not in text
+
+    def test_deep_scan_adds_dataplane_readers(self) -> None:
+        text = onboarding.azure_bootstrap_script(subscription_id=_VALID_AZURE_SUB, enable_deep_scan_reads=True)
+        assert "az role assignment create" in text
+        assert "Key Vault Reader" in text
+        assert "AcrPull" in text
+        assert not _WRITE_ACTION_RE.search(text)
+
+
+class TestGcpDeepScanDepth:
+    def test_baseline_has_no_artifact_registry(self) -> None:
+        text = onboarding.gcp_bootstrap_script(project_id="proj-123")
+        assert "roles/artifactregistry.reader" not in text
+
+    def test_deep_scan_adds_artifact_registry_reader(self) -> None:
+        text = onboarding.gcp_bootstrap_script(project_id="proj-123", enable_deep_scan_reads=True)
+        assert "roles/artifactregistry.reader" in text
+        assert not _WRITE_ACTION_RE.search(text)
+
+
+class TestEmitDepthThreading:
+    def test_emit_aws_threads_deep_scan_and_dspm(self) -> None:
+        text = onboarding.emit_artifact(
+            "aws",
+            "cloudformation",
+            options={"enable_deep_scan_reads": "true", "dspm_s3_bucket_arns": "arn:aws:s3:::lake, arn:aws:s3:::logs"},
+        )
+        role = _aws_role(text)
+        actions = {a for p in role["Properties"]["Policies"] for s in p["PolicyDocument"]["Statement"] for a in _as_list(s["Action"])}
+        assert "lambda:GetFunction" in actions
+        assert "s3:GetObject" in actions
+        resources = {
+            r
+            for p in role["Properties"]["Policies"]
+            for s in p["PolicyDocument"]["Statement"]
+            if s.get("Sid") == "DspmS3ObjectSample"
+            for r in s["Resource"]
+        }
+        assert "arn:aws:s3:::logs" in resources
+
+    def test_emit_aws_baseline_default_is_least_privilege(self) -> None:
+        role = _aws_role(onboarding.emit_artifact("aws", "cloudformation", options={}))
+        assert "Policies" not in role["Properties"]
+
+    def test_emit_azure_threads_deep_scan(self) -> None:
+        text = onboarding.emit_artifact("azure", "bash", options={"subscription_id": _VALID_AZURE_SUB, "enable_deep_scan_reads": "1"})
+        assert "Key Vault Reader" in text
+
+    def test_emit_gcp_threads_deep_scan(self) -> None:
+        text = onboarding.emit_artifact("gcp", "bash", options={"project_id": "proj-123", "enable_deep_scan_reads": "yes"})
+        assert "roles/artifactregistry.reader" in text
+
+
+def _as_list(value: object) -> list:
+    return list(value) if isinstance(value, list) else [value]
+
+
+class TestSnowflakeSpcs:
+    """The wizard/CLI can generate the SPCS native-app install inline, reusing the
+    shipped ``deploy/snowflake/native-app/`` package (issue #3736)."""
+
+    def test_spcs_recipe_reuses_shipped_package(self) -> None:
+        text = onboarding.snowflake_spcs_setup()
+        assert "deploy/snowflake/native-app" in text
+        assert "CREATE APPLICATION PACKAGE" in text
+        assert "CREATE APPLICATION agent_bom" in text
+        assert "customer_grants_template.sql" in text
+        assert "auth_keypair_setup.sql" in text
+
+    def test_spcs_bakes_account(self) -> None:
+        assert "ORG-ACCT" in onboarding.snowflake_spcs_setup(account="ORG-ACCT")
+
+    def test_emit_snowflake_spcs_mode(self) -> None:
+        text = onboarding.emit_artifact("snowflake", "sql", options={"mode": "spcs"})
+        assert "CREATE APPLICATION PACKAGE" in text
+
+    def test_emit_snowflake_role_mode_is_default(self) -> None:
+        text = onboarding.emit_artifact("snowflake", "sql", options={})
+        assert "CREATE ROLE IF NOT EXISTS" in text
+        assert "CREATE APPLICATION PACKAGE" not in text
+
+
 # ── adversarial input hardening (injection defense) ─────────────────────────────
 
 

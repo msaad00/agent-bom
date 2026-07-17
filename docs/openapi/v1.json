@@ -295,6 +295,13 @@
             "title": "Priority Score",
             "type": "number"
           },
+          "priority_score_components": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Priority Score Components",
+            "type": "object"
+          },
           "priority_score_method": {
             "title": "Priority Score Method",
             "type": "string"
@@ -364,6 +371,7 @@
           "severity",
           "priority_score",
           "priority_score_method",
+          "priority_score_components",
           "score_factors",
           "expected_risk_reduction",
           "owner",
@@ -429,6 +437,50 @@
         "title": "CampaignTicketAction",
         "type": "object"
       },
+      "CampaignTicketAuditMetadata": {
+        "properties": {
+          "connect_once": {
+            "default": true,
+            "title": "Connect Once",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "per_action_credential": {
+            "default": false,
+            "title": "Per Action Credential",
+            "type": "boolean"
+          }
+        },
+        "title": "CampaignTicketAuditMetadata",
+        "type": "object"
+      },
+      "CampaignTicketCreateError": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "code",
+          "detail"
+        ],
+        "title": "CampaignTicketCreateError",
+        "type": "object"
+      },
       "CampaignTicketCreateResponse": {
         "properties": {
           "action_limit": {
@@ -445,10 +497,7 @@
           },
           "errors": {
             "items": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
+              "$ref": "#/components/schemas/CampaignTicketCreateError"
             },
             "title": "Errors",
             "type": "array"
@@ -486,8 +535,7 @@
           },
           "tickets": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/CampaignTicketResult"
             },
             "title": "Tickets",
             "type": "array"
@@ -502,16 +550,142 @@
           "campaign_id",
           "failed",
           "tickets",
-          "errors",
           "per_action_credential",
           "total",
           "processed",
           "next_cursor",
           "has_more",
           "action_limit",
-          "created"
+          "created",
+          "errors"
         ],
         "title": "CampaignTicketCreateResponse",
+        "type": "object"
+      },
+      "CampaignTicketRecord": {
+        "properties": {
+          "connection_id": {
+            "default": "",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dedupe_key": {
+            "default": "",
+            "title": "Dedupe Key",
+            "type": "string"
+          },
+          "external_id": {
+            "default": "",
+            "title": "External Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "default": "",
+            "title": "Key",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "default": "",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "default": "",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "CampaignTicketRecord",
+        "type": "object"
+      },
+      "CampaignTicketResult": {
+        "properties": {
+          "audit_metadata": {
+            "$ref": "#/components/schemas/CampaignTicketAuditMetadata"
+          },
+          "connection_id": {
+            "default": "",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "deduplicated": {
+            "default": false,
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": "ticketing.ticket.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/CampaignTicketRecord"
+          },
+          "transport": {
+            "default": "",
+            "title": "Transport",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket"
+        ],
+        "title": "CampaignTicketResult",
+        "type": "object"
+      },
+      "CampaignTicketSyncError": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "ticket_id": {
+            "title": "Ticket Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id",
+          "code",
+          "detail"
+        ],
+        "title": "CampaignTicketSyncError",
         "type": "object"
       },
       "CampaignTicketSyncResponse": {
@@ -526,10 +700,7 @@
           },
           "errors": {
             "items": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
+              "$ref": "#/components/schemas/CampaignTicketSyncError"
             },
             "title": "Errors",
             "type": "array"
@@ -571,8 +742,7 @@
           },
           "tickets": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/CampaignTicketResult"
             },
             "title": "Tickets",
             "type": "array"
@@ -587,14 +757,14 @@
           "campaign_id",
           "failed",
           "tickets",
-          "errors",
           "per_action_credential",
           "total",
           "processed",
           "next_cursor",
           "has_more",
           "action_limit",
-          "synced"
+          "synced",
+          "errors"
         ],
         "title": "CampaignTicketSyncResponse",
         "type": "object"
@@ -643,23 +813,6 @@
             ],
             "title": "State"
           },
-          "verification_status": {
-            "anyOf": [
-              {
-                "enum": [
-                  "unverified",
-                  "pending",
-                  "verified",
-                  "failed"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Verification Status"
-          },
           "version": {
             "minimum": 1.0,
             "title": "Version",
@@ -670,6 +823,116 @@
           "version"
         ],
         "title": "CampaignUpdate",
+        "type": "object"
+      },
+      "CampaignVerificationEvidence": {
+        "properties": {
+          "finding_limit": {
+            "title": "Finding Limit",
+            "type": "integer"
+          },
+          "finding_window_days": {
+            "title": "Finding Window Days",
+            "type": "integer"
+          },
+          "membership_complete": {
+            "const": true,
+            "title": "Membership Complete",
+            "type": "boolean"
+          },
+          "source": {
+            "const": "canonical_findings_spine",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "finding_window_days",
+          "finding_limit",
+          "membership_complete"
+        ],
+        "title": "CampaignVerificationEvidence",
+        "type": "object"
+      },
+      "CampaignVerificationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "CampaignVerificationRequest",
+        "type": "object"
+      },
+      "CampaignVerificationResponse": {
+        "properties": {
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "evidence_scope": {
+            "$ref": "#/components/schemas/CampaignVerificationEvidence"
+          },
+          "original_member_count": {
+            "title": "Original Member Count",
+            "type": "integer"
+          },
+          "remaining_count": {
+            "title": "Remaining Count",
+            "type": "integer"
+          },
+          "remaining_finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Remaining Finding Ids",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "risk-campaign-verification.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "verification_status": {
+            "enum": [
+              "verified",
+              "failed"
+            ],
+            "title": "Verification Status",
+            "type": "string"
+          },
+          "verified_at": {
+            "title": "Verified At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "schema_version",
+          "campaign_id",
+          "verification_status",
+          "state",
+          "remaining_finding_ids",
+          "remaining_count",
+          "original_member_count",
+          "evidence_scope",
+          "version",
+          "verified_at"
+        ],
+        "title": "CampaignVerificationResponse",
         "type": "object"
       },
       "CloudConnectionCreate": {
@@ -7566,6 +7829,106 @@
           }
         },
         "summary": "Sync Campaign Tickets",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/v1/campaigns/{campaign_id}/verify": {
+      "post": {
+        "operationId": "verify_campaign_v1_campaigns__campaign_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignVerificationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Campaign",
         "tags": [
           "campaigns"
         ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from dataclasses import asdict, dataclass, replace
@@ -24,6 +25,7 @@ class CampaignWorkflow:
     sla_due_at: str | None = None
     state: str = "open"
     verification_status: str = "unverified"
+    member_ids: tuple[str, ...] = ()
     membership_fingerprint: str = ""
     generation: int = 1
     active: bool = True
@@ -37,9 +39,14 @@ class CampaignWorkflow:
 class CampaignStore(Protocol):
     def get(self, tenant_id: str, campaign_id: str) -> CampaignWorkflow | None: ...
     def list(self, tenant_id: str) -> List[CampaignWorkflow]: ...
-    def reconcile_memberships(self, tenant_id: str, memberships: dict[str, str], *, complete: bool = True) -> List[CampaignWorkflow]: ...
+    def reconcile_memberships(
+        self, tenant_id: str, memberships: dict[str, str | tuple[str, tuple[str, ...]]], *, complete: bool = True
+    ) -> List[CampaignWorkflow]: ...
     def patch(
         self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]
+    ) -> CampaignWorkflow | None: ...
+    def verify(
+        self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]
     ) -> CampaignWorkflow | None: ...
     def upsert(
         self,
@@ -90,18 +97,24 @@ class InMemoryCampaignStore:
             self._rows[(tenant_id, campaign_id)] = row
         return replace(row)
 
-    def reconcile_memberships(self, tenant_id: str, memberships: dict[str, str], *, complete: bool = True) -> List[CampaignWorkflow]:
+    def reconcile_memberships(
+        self, tenant_id: str, memberships: dict[str, str | tuple[str, tuple[str, ...]]], *, complete: bool = True
+    ) -> List[CampaignWorkflow]:
         if not complete:
             return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         with self._lock:
             tenant_rows = {cid: row for (tid, cid), row in self._rows.items() if tid == tenant_id}
-            for campaign_id, fingerprint in memberships.items():
+            for campaign_id, evidence in memberships.items():
+                fingerprint, member_ids = _membership(evidence)
                 row = tenant_rows.get(campaign_id)
                 if row is None:
-                    row = CampaignWorkflow(tenant_id, campaign_id, membership_fingerprint=fingerprint, updated_at=_now())
+                    row = CampaignWorkflow(
+                        tenant_id, campaign_id, member_ids=member_ids, membership_fingerprint=fingerprint, updated_at=_now()
+                    )
                     self._rows[(tenant_id, campaign_id)] = row
-                elif not row.active or row.membership_fingerprint != fingerprint:
+                elif not row.active or row.membership_fingerprint != fingerprint or row.member_ids != member_ids:
                     row.membership_fingerprint = fingerprint
+                    row.member_ids = member_ids
                     row.generation += 1
                     row.active = True
                     row.state = "open"
@@ -115,12 +128,25 @@ class InMemoryCampaignStore:
                     row.updated_at = _now()
             return [replace(self._rows[(tenant_id, cid)]) for cid in memberships]
 
+    def verify(self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]) -> CampaignWorkflow | None:
+        with self._lock:
+            row = self._rows.get((tenant_id, campaign_id))
+            if row is None or row.version != expected_version:
+                return None
+            row.verification_status = "failed" if remaining_ids else "verified"
+            row.state = "open" if remaining_ids else "done"
+            row.version += 1
+            row.updated_at = _now()
+            return replace(row)
+
     def patch(self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]) -> CampaignWorkflow | None:
         with self._lock:
             row = self._rows.get((tenant_id, campaign_id))
             if row is None or row.version != expected_version or not row.active:
                 return None
             for key, value in fields.items():
+                if key not in {"owner", "sla_due_at", "state"}:
+                    continue
                 setattr(row, key, value)
             row.version += 1
             row.updated_at = _now()
@@ -151,6 +177,7 @@ class SQLiteCampaignStore:
                 sla_due_at TEXT,
                 state TEXT NOT NULL,
                 verification_status TEXT NOT NULL,
+                member_ids TEXT NOT NULL DEFAULT '[]',
                 membership_fingerprint TEXT NOT NULL DEFAULT '',
                 generation INTEGER NOT NULL DEFAULT 1,
                 active INTEGER NOT NULL DEFAULT 1,
@@ -163,6 +190,7 @@ class SQLiteCampaignStore:
         columns = {str(row[1]) for row in self._conn.execute("PRAGMA table_info(risk_campaign_workflows)").fetchall()}
         for name, ddl in (
             ("membership_fingerprint", "TEXT NOT NULL DEFAULT ''"),
+            ("member_ids", "TEXT NOT NULL DEFAULT '[]'"),
             ("generation", "INTEGER NOT NULL DEFAULT 1"),
             ("active", "INTEGER NOT NULL DEFAULT 1"),
             ("version", "INTEGER NOT NULL DEFAULT 1"),
@@ -179,13 +207,14 @@ class SQLiteCampaignStore:
         if not value:
             return None
         values = list(value)
-        values[8] = bool(values[8])
+        values[6] = tuple(json.loads(values[6] or "[]"))
+        values[9] = bool(values[9])
         return CampaignWorkflow(*values)
 
     def get(self, tenant_id: str, campaign_id: str) -> CampaignWorkflow | None:
         row = self._conn.execute(
             "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
-            "membership_fingerprint, generation, active, version, updated_at "
+            "member_ids, membership_fingerprint, generation, active, version, updated_at "
             "FROM risk_campaign_workflows WHERE tenant_id = ? AND campaign_id = ?",
             (tenant_id, campaign_id),
         ).fetchone()
@@ -194,7 +223,7 @@ class SQLiteCampaignStore:
     def list(self, tenant_id: str) -> List[CampaignWorkflow]:
         rows = self._conn.execute(
             "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
-            "membership_fingerprint, generation, active, version, updated_at "
+            "member_ids, membership_fingerprint, generation, active, version, updated_at "
             "FROM risk_campaign_workflows WHERE tenant_id = ? ORDER BY updated_at DESC, campaign_id",
             (tenant_id,),
         ).fetchall()
@@ -231,7 +260,9 @@ class SQLiteCampaignStore:
         assert row is not None
         return row
 
-    def reconcile_memberships(self, tenant_id: str, memberships: dict[str, str], *, complete: bool = True) -> List[CampaignWorkflow]:
+    def reconcile_memberships(
+        self, tenant_id: str, memberships: dict[str, str | tuple[str, tuple[str, ...]]], *, complete: bool = True
+    ) -> List[CampaignWorkflow]:
         if not complete:
             return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         conn = self._conn
@@ -239,21 +270,24 @@ class SQLiteCampaignStore:
         try:
             existing = {row.campaign_id: row for row in self.list(tenant_id)}
             now = _now()
-            for campaign_id, fingerprint in memberships.items():
+            for campaign_id, evidence in memberships.items():
+                fingerprint, member_ids = _membership(evidence)
+                encoded_ids = json.dumps(member_ids, separators=(",", ":"))
                 row = existing.get(campaign_id)
                 if row is None:
                     conn.execute(
                         "INSERT INTO risk_campaign_workflows "
-                        "(tenant_id,campaign_id,state,verification_status,membership_fingerprint,generation,active,version,updated_at) "
-                        "VALUES (?,?, 'open','unverified',?,1,1,1,?)",
-                        (tenant_id, campaign_id, fingerprint, now),
+                        "(tenant_id,campaign_id,state,verification_status,member_ids,membership_fingerprint,"
+                        "generation,active,version,updated_at) "
+                        "VALUES (?,?, 'open','unverified',?,?,1,1,1,?)",
+                        (tenant_id, campaign_id, encoded_ids, fingerprint, now),
                     )
-                elif not row.active or row.membership_fingerprint != fingerprint:
+                elif not row.active or row.membership_fingerprint != fingerprint or row.member_ids != member_ids:
                     conn.execute(
-                        "UPDATE risk_campaign_workflows SET membership_fingerprint=?, generation=generation+1, active=1, "
+                        "UPDATE risk_campaign_workflows SET member_ids=?, membership_fingerprint=?, generation=generation+1, active=1, "
                         "state='open', verification_status='unverified', version=version+1, updated_at=? "
                         "WHERE tenant_id=? AND campaign_id=?",
-                        (fingerprint, now, tenant_id, campaign_id),
+                        (encoded_ids, fingerprint, now, tenant_id, campaign_id),
                     )
             if complete:
                 for campaign_id in set(existing) - set(memberships):
@@ -268,6 +302,17 @@ class SQLiteCampaignStore:
             raise
         return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
 
+    def verify(self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]) -> CampaignWorkflow | None:
+        status = "failed" if remaining_ids else "verified"
+        state = "open" if remaining_ids else "done"
+        cursor = self._conn.execute(
+            "UPDATE risk_campaign_workflows SET verification_status=?, state=?, version=version+1, updated_at=? "
+            "WHERE tenant_id=? AND campaign_id=? AND version=?",
+            (status, state, _now(), tenant_id, campaign_id, expected_version),
+        )
+        self._conn.commit()
+        return self.get(tenant_id, campaign_id) if cursor.rowcount == 1 else None
+
     def patch(self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]) -> CampaignWorkflow | None:
         current = self.get(tenant_id, campaign_id)
         if current is None:
@@ -276,17 +321,15 @@ class SQLiteCampaignStore:
             "owner": current.owner,
             "sla_due_at": current.sla_due_at,
             "state": current.state,
-            "verification_status": current.verification_status,
             **fields,
         }
         cursor = self._conn.execute(
-            "UPDATE risk_campaign_workflows SET owner=?, sla_due_at=?, state=?, verification_status=?, "
+            "UPDATE risk_campaign_workflows SET owner=?, sla_due_at=?, state=?, "
             "version=version+1, updated_at=? WHERE tenant_id=? AND campaign_id=? AND version=? AND active=1",
             (
                 values["owner"],
                 values["sla_due_at"],
                 values["state"],
-                values["verification_status"],
                 _now(),
                 tenant_id,
                 campaign_id,
@@ -321,3 +364,9 @@ def get_campaign_store() -> CampaignStore:
 def set_campaign_store(store: CampaignStore | None) -> None:
     global _store
     _store = store
+
+
+def _membership(value: str | tuple[str, tuple[str, ...]]) -> tuple[str, tuple[str, ...]]:
+    if isinstance(value, tuple):
+        return value[0], tuple(sorted(set(value[1])))
+    return value, ()

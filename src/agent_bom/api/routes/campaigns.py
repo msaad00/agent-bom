@@ -33,7 +33,6 @@ class CampaignUpdate(BaseModel):
     owner: str | None = Field(default=None, max_length=200)
     sla_due_at: str | None = Field(default=None, max_length=64)
     state: Literal["open", "in_progress", "blocked", "done"] | None = None
-    verification_status: Literal["unverified", "pending", "verified", "failed"] | None = None
     version: int = Field(ge=1)
 
     @field_validator("sla_due_at")
@@ -66,6 +65,7 @@ class CampaignResponse(BaseModel):
     severity: str
     priority_score: float
     priority_score_method: str
+    priority_score_components: dict[str, float]
     score_factors: dict[str, Any]
     expected_risk_reduction: dict[str, Any]
     owner: str | None
@@ -99,8 +99,7 @@ class CampaignActionResponse(BaseModel):
     schema_version: str
     campaign_id: str
     failed: int
-    tickets: list[dict[str, Any]]
-    errors: list[dict[str, str]]
+    tickets: list[CampaignTicketResult]
     per_action_credential: bool
     total: int
     processed: int
@@ -111,10 +110,79 @@ class CampaignActionResponse(BaseModel):
 
 class CampaignTicketCreateResponse(CampaignActionResponse):
     created: int
+    errors: list[CampaignTicketCreateError]
 
 
 class CampaignTicketSyncResponse(CampaignActionResponse):
     synced: int
+    errors: list[CampaignTicketSyncError]
+
+
+class CampaignTicketRecord(BaseModel):
+    id: str
+    tenant_id: str = ""
+    connection_id: str = ""
+    dedupe_key: str = ""
+    provider: str = ""
+    status: str = ""
+    external_id: str = ""
+    key: str = ""
+    url: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class CampaignTicketAuditMetadata(BaseModel):
+    connect_once: bool = True
+    per_action_credential: bool = False
+    note: str = ""
+
+
+class CampaignTicketResult(BaseModel):
+    schema_version: str = "ticketing.ticket.v1"
+    ticket: CampaignTicketRecord
+    connection_id: str = ""
+    provider: str = ""
+    transport: str = ""
+    deduplicated: bool = False
+    audit_metadata: CampaignTicketAuditMetadata = Field(default_factory=CampaignTicketAuditMetadata)
+
+
+class CampaignTicketCreateError(BaseModel):
+    finding_id: str
+    code: str
+    detail: str
+
+
+class CampaignTicketSyncError(BaseModel):
+    ticket_id: str
+    code: str
+    detail: str
+
+
+class CampaignVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: int = Field(ge=1)
+
+
+class CampaignVerificationEvidence(BaseModel):
+    source: Literal["canonical_findings_spine"]
+    finding_window_days: int
+    finding_limit: int
+    membership_complete: Literal[True]
+
+
+class CampaignVerificationResponse(BaseModel):
+    schema_version: Literal["risk-campaign-verification.v1"]
+    campaign_id: str
+    verification_status: Literal["verified", "failed"]
+    state: str
+    remaining_finding_ids: list[str]
+    remaining_count: int
+    original_member_count: int
+    evidence_scope: CampaignVerificationEvidence
+    version: int
+    verified_at: str
 
 
 def _tenant(request: Request) -> str:
@@ -139,21 +207,33 @@ def _source_payload(value: Any) -> dict[str, Any]:
     return value
 
 
+def _source_incomplete(source: dict[str, Any]) -> bool:
+    findings = source["findings"]
+    total = source.get("total")
+    return bool(
+        total is None or source.get("has_more") or source.get("total_approximate") or (isinstance(total, int) and total > len(findings))
+    )
+
+
+def _canonical_finding_id(row: dict[str, Any]) -> str:
+    return str(row.get("id") or row.get("canonical_id") or row.get("finding_id") or row.get("vulnerability_id") or "").strip()
+
+
 def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]:
     tenant_id = _tenant(request)
     findings = source["findings"]
-    total = source.get("total")
-    incomplete = bool(
-        total is None or source.get("has_more") or source.get("total_approximate") or (isinstance(total, int) and total > len(findings))
-    )
+    incomplete = _source_incomplete(source)
     initial = derive_campaigns(findings, tenant_id=tenant_id, workflow_by_id={}, window_days=90, finding_limit=1000, truncated=incomplete)
-    memberships = {item["id"]: item["membership_fingerprint"] for item in initial}
+    memberships: dict[str, str | tuple[str, tuple[str, ...]]] = {
+        str(item["id"]): (str(item["membership_fingerprint"]), tuple(sorted(str(value) for value in item["finding_ids"])))
+        for item in initial
+    }
     before = {row.campaign_id: row for row in get_campaign_store().list(tenant_id)}
     if incomplete:
         workflows = {
             campaign_id: row
             for campaign_id, row in before.items()
-            if row.active and row.membership_fingerprint == memberships.get(campaign_id)
+            if row.active and row.membership_fingerprint == (memberships.get(campaign_id) or (None, ()))[0]
         }
         campaigns = derive_campaigns(
             findings,
@@ -257,12 +337,9 @@ def _audit(action: str, request: Request, campaign_id: str, **details: Any) -> N
 async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]:
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
-    findings = source["findings"]
     campaigns = _campaigns(request, source)
     total = source.get("total")
-    truncated = bool(
-        total is None or source.get("has_more") or source.get("total_approximate") or (isinstance(total, int) and total > len(findings))
-    )
+    truncated = _source_incomplete(source)
     return {
         "schema_version": "risk-campaigns.v1",
         "tenant_id": tenant_id,
@@ -293,6 +370,48 @@ async def update_campaign(request: Request, campaign_id: str, body: CampaignUpda
     return campaign
 
 
+@router.post("/campaigns/{campaign_id}/verify", response_model=CampaignVerificationResponse)
+async def verify_campaign(request: Request, campaign_id: str, body: CampaignVerificationRequest, _role: Any = _WRITE) -> dict[str, Any]:
+    tenant_id = _tenant(request)
+    source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
+    if _source_incomplete(source):
+        raise HTTPException(status_code=409, detail="Campaign verification requires a complete findings snapshot.")
+    store = get_campaign_store()
+    stored = store.get(tenant_id, campaign_id)
+    if stored is None or not stored.member_ids:
+        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
+    current_ids = {_canonical_finding_id(row) for row in source["findings"]}
+    current_ids.discard("")
+    remaining = tuple(sorted(set(stored.member_ids) & current_ids))
+    verified = store.verify(tenant_id, campaign_id, expected_version=body.version, remaining_ids=remaining)
+    if verified is None:
+        raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")
+    _audit(
+        "risk_campaign.verify",
+        request,
+        campaign_id,
+        verification_status=verified.verification_status,
+        remaining_count=len(remaining),
+    )
+    return {
+        "schema_version": "risk-campaign-verification.v1",
+        "campaign_id": campaign_id,
+        "verification_status": verified.verification_status,
+        "state": verified.state,
+        "remaining_finding_ids": list(remaining),
+        "remaining_count": len(remaining),
+        "original_member_count": len(stored.member_ids),
+        "evidence_scope": {
+            "source": "canonical_findings_spine",
+            "finding_window_days": 90,
+            "finding_limit": 1000,
+            "membership_complete": True,
+        },
+        "version": verified.version,
+        "verified_at": verified.updated_at,
+    }
+
+
 @router.post(
     "/campaigns/{campaign_id}/tickets",
     response_model=CampaignTicketCreateResponse,
@@ -313,7 +432,7 @@ async def create_campaign_tickets(
     _require_complete_membership(campaign)
     rows: dict[str, dict[str, Any]] = {}
     for row in findings:
-        identity = str(row.get("id") or row.get("canonical_id") or row.get("finding_id") or row.get("vulnerability_id") or "")
+        identity = _canonical_finding_id(row)
         if identity and identity not in rows:
             rows[identity] = row
     tickets: list[dict[str, Any]] = []
@@ -389,9 +508,10 @@ async def sync_campaign_tickets(
     campaign = _find_campaign(_campaigns(request, source), campaign_id)
     _require_complete_membership(campaign)
     finding_ids = set(campaign["finding_ids"])
-    links = sorted(
-        (link for link in get_ticketing_store().list_ticket_links(tenant_id) if link.dedupe_key in finding_ids), key=lambda link: link.id
-    )
+    links = get_ticketing_store().list_ticket_links_for_findings(tenant_id, finding_ids, limit=1001)
+    if len(links) > 1000:
+        raise HTTPException(status_code=409, detail="Campaign has too many linked tickets for one bounded sync snapshot.")
+    links.sort(key=lambda link: link.id)
     link_ids = [f"{link.id}:{link.dedupe_key}:{link.connection_id}" for link in links]
     cursor_context = {
         "action": "sync",

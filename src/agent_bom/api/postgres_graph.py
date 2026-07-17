@@ -8,7 +8,10 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Sequence
+
+if TYPE_CHECKING:
+    from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 from agent_bom.api.graph_store import (
     MAX_NODE_PAGE_OFFSET,
@@ -518,12 +521,86 @@ class PostgresGraphStore:
         return total
 
     def save_graph(self, graph) -> None:
+        """Persist a fully built ``UnifiedGraph`` via the streamed write path."""
+        self.save_graph_streaming(
+            scan_id=graph.scan_id or "",
+            tenant_id=graph.tenant_id,
+            nodes=graph.nodes.values(),
+            edges=graph.edges,
+            attack_paths=graph.attack_paths,
+            interaction_risks=graph.interaction_risks,
+            created_at=graph.created_at,
+        )
+
+    def save_graph_streaming(
+        self,
+        *,
+        scan_id: str,
+        tenant_id: str = "",
+        nodes: Iterable[Any],
+        edges: Iterable[Any],
+        attack_paths: Iterable[Any] = (),
+        interaction_risks: Iterable[Any] = (),
+        created_at: str = "",
+    ) -> dict[str, int]:
+        """Persist a snapshot from node/edge iterables without materialising a graph.
+
+        Bounded-memory equivalent of :meth:`save_graph` (#4055/#4075). The single
+        producer over ``nodes`` is consumed exactly once and fans out to BOTH the
+        ``graph_nodes`` row and its ``graph_node_search`` mirror in interleaved,
+        bounded batches — so a lazy producer never needs a second pass and peak
+        RSS is decoupled from graph size. Node/edge/severity tallies accumulate
+        incrementally in place of ``graph.stats()`` over a materialised graph, so
+        the persisted snapshot row is byte-identical to :meth:`save_graph`.
+        """
+        from collections import defaultdict
+
         from agent_bom.graph import RelationshipType
 
-        scan = graph.scan_id or ""
-        tenant = normalize_graph_tenant_id(graph.tenant_id)
-        now = graph.created_at or datetime.now(timezone.utc).isoformat()
+        scan = scan_id or ""
+        tenant = normalize_graph_tenant_id(tenant_id)
+        now = created_at or datetime.now(timezone.utc).isoformat()
         batch_size = _graph_write_batch_size()
+
+        node_count = 0
+        edge_count = 0
+        severity_counts: dict[str, int] = defaultdict(int)
+
+        node_insert = """
+            INSERT INTO graph_nodes (
+                id, entity_type, label, category_uid, class_uid, type_uid,
+                status, risk_score, severity, severity_id,
+                first_seen, last_seen, attributes, compliance_tags,
+                data_sources, dimensions, scan_id, tenant_id
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id, scan_id, tenant_id) DO UPDATE SET
+                entity_type = EXCLUDED.entity_type,
+                label = EXCLUDED.label,
+                category_uid = EXCLUDED.category_uid,
+                class_uid = EXCLUDED.class_uid,
+                type_uid = EXCLUDED.type_uid,
+                status = EXCLUDED.status,
+                risk_score = EXCLUDED.risk_score,
+                severity = EXCLUDED.severity,
+                severity_id = EXCLUDED.severity_id,
+                first_seen = EXCLUDED.first_seen,
+                last_seen = EXCLUDED.last_seen,
+                attributes = EXCLUDED.attributes,
+                compliance_tags = EXCLUDED.compliance_tags,
+                data_sources = EXCLUDED.data_sources,
+                dimensions = EXCLUDED.dimensions
+            """
+        search_insert = """
+            INSERT INTO graph_node_search (
+                node_id, tenant_id, scan_id, entity_type, severity, compliance_tags, data_sources, search_text
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (node_id, scan_id, tenant_id) DO UPDATE SET
+                entity_type = EXCLUDED.entity_type,
+                severity = EXCLUDED.severity,
+                compliance_tags = EXCLUDED.compliance_tags,
+                data_sources = EXCLUDED.data_sources,
+                search_text = EXCLUDED.search_text
+            """
 
         with _tenant_connection(self._pool) as conn:
             previous_row = conn.execute(
@@ -551,11 +628,31 @@ class PostgresGraphStore:
                 ).fetchall():
                     previous_edges[(row[0], row[1], row[2])] = row
 
-            def node_rows() -> Iterator[tuple[Any, ...]]:
-                for node in graph.nodes.values():
-                    yield (
+            # ── Nodes + node-search: single-pass, interleaved bounded batches ──
+            # The producer is consumed exactly once; each node contributes one
+            # graph_nodes row and one graph_node_search row, flushed together when
+            # the batch fills, so at most ``batch_size`` rows of each are buffered.
+            node_batch: list[tuple[Any, ...]] = []
+            search_batch: list[tuple[Any, ...]] = []
+
+            def _flush_nodes() -> None:
+                if node_batch:
+                    _execute_many_batched(conn, node_insert, node_batch, batch_size=batch_size)
+                    node_batch.clear()
+                if search_batch:
+                    _execute_many_batched(conn, search_insert, search_batch, batch_size=batch_size)
+                    search_batch.clear()
+
+            for node in nodes:
+                node_count += 1
+                et = node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type
+                et_search = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+                if node.severity:
+                    severity_counts[node.severity] += 1
+                node_batch.append(
+                    (
                         node.id,
-                        node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type,
+                        et,
                         node.label,
                         node.category_uid,
                         node.class_uid,
@@ -573,19 +670,22 @@ class PostgresGraphStore:
                         scan,
                         tenant,
                     )
-
-            def node_search_rows() -> Iterator[tuple[Any, ...]]:
-                for node in graph.nodes.values():
-                    yield (
+                )
+                search_batch.append(
+                    (
                         node.id,
                         tenant,
                         scan,
-                        node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type),
+                        et_search,
                         (node.severity or "").lower(),
                         " ".join(node.compliance_tags).lower(),
                         " ".join(node.data_sources).lower(),
                         _node_search_text(node),
                     )
+                )
+                if len(node_batch) >= batch_size:
+                    _flush_nodes()
+            _flush_nodes()
 
             # Retired-edge detection: start from the prior snapshot's edge keys
             # and discard each one still present in the incoming stream. This
@@ -594,7 +694,9 @@ class PostgresGraphStore:
             removed_edge_keys: set[tuple[str, str, str]] = set(previous_edges)
 
             def edge_rows() -> Iterator[tuple[Any, ...]]:
-                for edge in graph.edges:
+                nonlocal edge_count
+                for edge in edges:
+                    edge_count += 1
                     rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
                     removed_edge_keys.discard((edge.source, edge.target, rel))
                     previous = previous_edges.get((edge.source, edge.target, rel))
@@ -627,7 +729,7 @@ class PostgresGraphStore:
                     )
 
             def attack_path_rows() -> Iterator[tuple[Any, ...]]:
-                for ap in graph.attack_paths:
+                for ap in attack_paths:
                     yield (
                         ap.source,
                         ap.target,
@@ -645,7 +747,7 @@ class PostgresGraphStore:
                     )
 
             def interaction_risk_rows() -> Iterator[tuple[Any, ...]]:
-                for ir in graph.interaction_risks:
+                for ir in interaction_risks:
                     yield (
                         ir.pattern,
                         json.dumps(sorted(ir.agents)),
@@ -656,51 +758,6 @@ class PostgresGraphStore:
                         tenant,
                     )
 
-            _execute_many_batched(
-                conn,
-                """
-                INSERT INTO graph_nodes (
-                    id, entity_type, label, category_uid, class_uid, type_uid,
-                    status, risk_score, severity, severity_id,
-                    first_seen, last_seen, attributes, compliance_tags,
-                    data_sources, dimensions, scan_id, tenant_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (id, scan_id, tenant_id) DO UPDATE SET
-                    entity_type = EXCLUDED.entity_type,
-                    label = EXCLUDED.label,
-                    category_uid = EXCLUDED.category_uid,
-                    class_uid = EXCLUDED.class_uid,
-                    type_uid = EXCLUDED.type_uid,
-                    status = EXCLUDED.status,
-                    risk_score = EXCLUDED.risk_score,
-                    severity = EXCLUDED.severity,
-                    severity_id = EXCLUDED.severity_id,
-                    first_seen = EXCLUDED.first_seen,
-                    last_seen = EXCLUDED.last_seen,
-                    attributes = EXCLUDED.attributes,
-                    compliance_tags = EXCLUDED.compliance_tags,
-                    data_sources = EXCLUDED.data_sources,
-                    dimensions = EXCLUDED.dimensions
-                """,
-                node_rows(),
-                batch_size=batch_size,
-            )
-            _execute_many_batched(
-                conn,
-                """
-                INSERT INTO graph_node_search (
-                    node_id, tenant_id, scan_id, entity_type, severity, compliance_tags, data_sources, search_text
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (node_id, scan_id, tenant_id) DO UPDATE SET
-                    entity_type = EXCLUDED.entity_type,
-                    severity = EXCLUDED.severity,
-                    compliance_tags = EXCLUDED.compliance_tags,
-                    data_sources = EXCLUDED.data_sources,
-                    search_text = EXCLUDED.search_text
-                """,
-                node_search_rows(),
-                batch_size=batch_size,
-            )
             _execute_many_batched(
                 conn,
                 """
@@ -781,7 +838,6 @@ class PostgresGraphStore:
                 batch_size=batch_size,
             )
 
-            stats = graph.stats()
             conn.execute(
                 """
                 INSERT INTO graph_snapshots (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary)
@@ -796,9 +852,9 @@ class PostgresGraphStore:
                     scan,
                     tenant,
                     now,
-                    stats["total_nodes"],
-                    stats["total_edges"],
-                    json.dumps(stats.get("severity_counts", {})),
+                    node_count,
+                    edge_count,
+                    json.dumps(dict(severity_counts)),
                 ),
             )
             conn.commit()
@@ -807,6 +863,47 @@ class PostgresGraphStore:
             # snapshot history does not grow unbounded. Best-effort: a purge
             # failure must never fail the durable save that already committed.
             self._purge_expired_snapshots(conn, tenant)
+
+        return {"nodes": node_count, "edges": edge_count}
+
+    def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = "") -> "PriorSnapshotDigest":
+        """Bounded prior-snapshot digest for delta alerts (see #4055/#4075).
+
+        Streams only the columns ``compute_delta_alerts`` reads from the prior
+        graph — node ids, agent refs, and attack-path / interaction-risk keys —
+        rather than loading a full ``UnifiedGraph``.
+        """
+        from agent_bom.graph.delta_digest import PriorSnapshotDigestBuilder
+
+        tenant = normalize_graph_tenant_id(tenant_id)
+        builder = PriorSnapshotDigestBuilder()
+        if not scan_id:
+            return builder.build()
+        with _tenant_connection(self._pool) as conn:
+            for row in conn.execute(
+                "SELECT id, entity_type, label, severity, status, risk_score FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s",
+                (tenant, scan_id),
+            ):
+                builder.add_node(
+                    row[0],
+                    row[1],
+                    label=row[2],
+                    severity=row[3] or "",
+                    status=row[4],
+                    risk_score=row[5],
+                )
+            for row in conn.execute(
+                "SELECT source_node, target_node FROM attack_paths WHERE tenant_id = %s AND scan_id = %s",
+                (tenant, scan_id),
+            ):
+                builder.add_attack_path(row[0], row[1])
+            for row in conn.execute(
+                "SELECT pattern, agents FROM interaction_risks WHERE tenant_id = %s AND scan_id = %s",
+                (tenant, scan_id),
+            ):
+                agents = row[1]
+                builder.add_interaction_risk(row[0], json.loads(agents) if isinstance(agents, str) else agents)
+        return builder.build()
 
     def _purge_expired_snapshots(self, conn, tenant: str) -> None:
         """Delete this tenant's graph snapshots older than the retention window.

@@ -14,8 +14,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol
 
 from agent_bom.event_normalization import build_event_ref, build_event_relationships
 from agent_bom.graph.container import UnifiedGraph
@@ -27,8 +27,27 @@ from agent_bom.security import sanitize_error
 logger = logging.getLogger(__name__)
 
 
+class PriorGraphView(Protocol):
+    """Structural view of a prior snapshot as read by :func:`compute_delta_alerts`.
+
+    Both a full :class:`~agent_bom.graph.container.UnifiedGraph` and a bounded
+    :class:`~agent_bom.graph.delta_digest.PriorSnapshotDigest` satisfy this — the
+    delta walk only needs the node mapping (membership + agent refs) and the
+    attack-path / interaction-risk collections, never the full node/edge payload.
+    """
+
+    @property
+    def nodes(self) -> Mapping[str, Any]: ...
+
+    @property
+    def attack_paths(self) -> Sequence[Any]: ...
+
+    @property
+    def interaction_risks(self) -> Sequence[Any]: ...
+
+
 def _graph_node_ref(
-    graph: UnifiedGraph | None,
+    graph: PriorGraphView | None,
     node_id: str,
     *,
     role: str,
@@ -54,7 +73,7 @@ def _graph_node_ref(
 
 def _graph_relationships(
     *,
-    graph: UnifiedGraph | None,
+    graph: PriorGraphView | None,
     targets: list[tuple[str, str]],
     source: str = "graph_delta",
 ) -> dict[str, Any] | None:
@@ -76,7 +95,7 @@ def _dispatch_outbound_alert(dispatcher: Any, alert: dict[str, Any], outbound_ch
 
 
 def compute_delta_alerts(
-    old_graph: UnifiedGraph | None,
+    old_graph: PriorGraphView | None,
     new_graph: UnifiedGraph,
 ) -> list[dict[str, Any]]:
     """Compare two graph snapshots and return alert dicts for critical changes.

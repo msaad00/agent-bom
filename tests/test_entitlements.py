@@ -96,7 +96,7 @@ def test_entitlement_admin_api_and_health_summary(monkeypatch, tmp_path: Path) -
     monkeypatch.setenv("AGENT_BOM_ENTITLEMENT_FILE", str(entitlement))
     client = _admin_client()
 
-    health = client.get("/health")
+    health = client.get("/v1/system/health")
     assert health.status_code == 200
     assert health.json()["entitlements"] == {
         "status": "valid",

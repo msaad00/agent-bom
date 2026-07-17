@@ -15,6 +15,11 @@ controlPlane:
         value: /var/lib/agent-bom/vulns.db
       - name: AGENT_BOM_VULN_DB_OFFLINE
         value: "1"
+      # Swagger UI and ReDoc fetch assets from public CDNs. Disable those
+      # interactive routes in disconnected deployments; use the checked-in
+      # OpenAPI contract referenced by the deployment guide instead.
+      - name: AGENT_BOM_DISABLE_DOCS
+        value: "1"
     extraVolumes:
       - name: vuln-db
         secret:

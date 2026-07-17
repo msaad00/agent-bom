@@ -208,7 +208,7 @@ A SAML-only deployment is a valid, fail-closed posture: browser users authentica
 
 **Dashboard Snowflake OAuth sign-in:** Snowflake exposes a non-standard OAuth 2.0 authorization server — no OIDC discovery document, no JWKS, and no `userinfo` endpoint — so it uses a dedicated path rather than the generic OIDC flow. Configure it with the account's OAuth security integration (`AGENT_BOM_SNOWFLAKE_OAUTH_ACCOUNT_URL` = your `https://<org>-<account>.snowflakecomputing.com` URL, `AGENT_BOM_SNOWFLAKE_OAUTH_CLIENT_ID`, `AGENT_BOM_SNOWFLAKE_OAUTH_CLIENT_SECRET` [file-first via the secrets loader, write-only], `AGENT_BOM_SNOWFLAKE_OAUTH_REDIRECT_URI` = `https://cp.example/v1/auth/snowflake/callback`, and — if you want a role-scoped consent — `AGENT_BOM_SNOWFLAKE_OAUTH_SCOPE`). The dashboard then shows **Sign in with Snowflake**, which navigates same-origin to `GET /v1/auth/snowflake/login`, drives Snowflake's `/oauth/authorize` + `/oauth/token-request` authorization-code flow with PKCE S256, and mints the usual httpOnly session + CSRF cookies. Because Snowflake has no ID token, identity is the `username` the token endpoint returns (a missing username fails closed); role defaults to the least-privilege `AGENT_BOM_SNOWFLAKE_OAUTH_DEFAULT_ROLE` (`viewer`) and is only elevated by an explicit SCIM mapping for that user. Endpoint shapes verified against Snowflake's [Configure Snowflake OAuth for custom clients](https://docs.snowflake.com/en/user-guide/oauth-custom) docs.
 
-**Tracing:** every API response includes `X-Request-ID`, `X-Trace-ID`, `X-Span-ID`, and W3C `traceparent`. If your ingress or collector already sends `traceparent`, `tracestate`, or bounded W3C `baggage`, `agent-bom` preserves the upstream trace context and continues the chain. `GET /health` also reports the current tracing contract (`w3c_trace_context`, `w3c_tracestate`, `w3c_baggage`) plus OTLP export state so operators can confirm whether tracing is merely available or actively exported. Set `AGENT_BOM_OTEL_TRACES_ENDPOINT` to export API request spans over OTLP/HTTP, and use `AGENT_BOM_OTEL_TRACES_HEADERS` for collector auth headers when needed.
+**Tracing:** every API response includes `X-Request-ID`, `X-Trace-ID`, `X-Span-ID`, and W3C `traceparent`. If your ingress or collector already sends `traceparent`, `tracestate`, or bounded W3C `baggage`, `agent-bom` preserves the upstream trace context and continues the chain. Authenticated `GET /v1/system/health` reports the current tracing contract (`w3c_trace_context`, `w3c_tracestate`, `w3c_baggage`) plus OTLP export state so operators can confirm whether tracing is merely available or actively exported. Set `AGENT_BOM_OTEL_TRACES_ENDPOINT` to export API request spans over OTLP/HTTP, and use `AGENT_BOM_OTEL_TRACES_HEADERS` for collector auth headers when needed.
 
 For OIDC-backed enterprise deployments, keep tenant scoping explicit in the token contract:
 
@@ -546,7 +546,7 @@ agent-bom api \
   --clickhouse-url "http://clickhouse.internal:8123"
 ```
 
-Server mode enables buffered ClickHouse writes by default so scan and runtime paths do not block on OLAP round-trips. `GET /health` now reports the active analytics contract (`backend`, `enabled`, `buffered`, `flush_interval_seconds`, `max_batch`) alongside tracing so operators can confirm both observability and analytics posture from one probe. The ClickHouse analytics path stores scan metadata, vulnerability rows, runtime events, posture snapshots, fleet trust/lifecycle snapshots, compliance control measurements, and audit-event trends so the fleet backend matches the operator story more closely.
+Server mode enables buffered ClickHouse writes by default so scan and runtime paths do not block on OLAP round-trips. Authenticated `GET /v1/system/health` reports the active analytics contract (`backend`, `enabled`, `buffered`, `flush_interval_seconds`, `max_batch`) alongside tracing so operators can confirm both observability and analytics posture from one probe. The ClickHouse analytics path stores scan metadata, vulnerability rows, runtime events, posture snapshots, fleet trust/lifecycle snapshots, compliance control measurements, and audit-event trends so the fleet backend matches the operator story more closely.
 
 For a packaged self-hosted EKS pilot, use the shipped Helm profile installer instead of hand-assembling the values stack:
 
@@ -629,6 +629,11 @@ you mount at `AGENT_BOM_DB_PATH` (default `~/.agent-bom/db/vulns.db`).
 service volume — seed that volume with a pre-synced `vulns.db` before bringing
 the stack up. Image import for disconnected registries is documented in
 [`site-docs/deployment/airgapped-image-bundle.md`](../site-docs/deployment/airgapped-image-bundle.md).
+
+The air-gap Helm profile disables `/docs` and `/redoc` because their interactive
+renderers load browser assets from public CDNs. Use the checked-in
+[`docs/openapi/v1.yaml`](openapi/v1.yaml) contract with an approved offline API
+viewer, or inspect the YAML directly.
 
 ## Output Integration
 

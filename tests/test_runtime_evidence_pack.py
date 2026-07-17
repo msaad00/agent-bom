@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from agent_bom import __version__
 from scripts.generate_runtime_evidence_pack import generate
 
 
@@ -57,5 +58,5 @@ def test_runtime_evidence_pack_covers_release_gate_without_docker() -> None:
     assert evidence["docker_runtime_proxy_smoke"] == {
         "ran": False,
         "reason": "pass --docker-smoke to build and run the runtime proxy image",
-        "expected_image": "agent-bom-runtime-evidence:0.86.3",
+        "expected_image": f"agent-bom-runtime-evidence:{__version__}",
     }

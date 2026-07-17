@@ -35,8 +35,8 @@ def test_provider_capabilities_do_not_claim_unshipped_executors() -> None:
 
     assert capabilities["aws"].executor == "shipped"
     assert capabilities["aws"].cli_available is True
-    assert capabilities["azure"].executor == "contract_only"
-    assert capabilities["gcp"].executor == "contract_only"
+    assert capabilities["azure"].executor == "shipped"
+    assert capabilities["gcp"].executor == "shipped"
     assert capabilities["azure"].cli_available is False
     assert capabilities["gcp"].cli_available is False
 

@@ -152,8 +152,8 @@ def side_scan_provider_capabilities() -> dict[SideScanProvider, SideScanProvider
     """Return the shipped side-scan surface without inferring adapter availability."""
     return {
         "aws": SideScanProviderCapability("aws", True, True, "shipped", True, False),
-        "azure": SideScanProviderCapability("azure", True, True, "contract_only", False, False),
-        "gcp": SideScanProviderCapability("gcp", True, True, "contract_only", False, False),
+        "azure": SideScanProviderCapability("azure", True, True, "shipped", False, False),
+        "gcp": SideScanProviderCapability("gcp", True, True, "shipped", False, False),
     }
 
 

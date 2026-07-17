@@ -121,6 +121,205 @@ components:
       - findings
       title: BulkFindingsRequest
       type: object
+    CampaignActionResponse:
+      additionalProperties: true
+      properties:
+        action_limit:
+          title: Action Limit
+          type: integer
+        campaign_id:
+          title: Campaign Id
+          type: string
+        errors:
+          items:
+            additionalProperties:
+              type: string
+            type: object
+          title: Errors
+          type: array
+        failed:
+          title: Failed
+          type: integer
+        has_more:
+          title: Has More
+          type: boolean
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+        per_action_credential:
+          title: Per Action Credential
+          type: boolean
+        processed:
+          title: Processed
+          type: integer
+        schema_version:
+          title: Schema Version
+          type: string
+        tickets:
+          items:
+            additionalProperties: true
+            type: object
+          title: Tickets
+          type: array
+        total:
+          title: Total
+          type: integer
+      required:
+      - schema_version
+      - campaign_id
+      - failed
+      - tickets
+      - errors
+      - per_action_credential
+      - total
+      - processed
+      - next_cursor
+      - has_more
+      - action_limit
+      title: CampaignActionResponse
+      type: object
+    CampaignListResponse:
+      properties:
+        campaigns:
+          items:
+            $ref: '#/components/schemas/CampaignResponse'
+          title: Campaigns
+          type: array
+        count:
+          title: Count
+          type: integer
+        finding_limit:
+          title: Finding Limit
+          type: integer
+        finding_window_days:
+          title: Finding Window Days
+          type: integer
+        schema_version:
+          title: Schema Version
+          type: string
+        tenant_id:
+          title: Tenant Id
+          type: string
+        total_approximate:
+          title: Total Approximate
+          type: boolean
+        total_findings:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Total Findings
+        truncated:
+          title: Truncated
+          type: boolean
+      required:
+      - schema_version
+      - tenant_id
+      - campaigns
+      - count
+      - finding_window_days
+      - finding_limit
+      - truncated
+      - total_findings
+      - total_approximate
+      title: CampaignListResponse
+      type: object
+    CampaignResponse:
+      properties:
+        active:
+          title: Active
+          type: boolean
+        expected_risk_reduction:
+          additionalProperties: true
+          title: Expected Risk Reduction
+          type: object
+        finding_count:
+          title: Finding Count
+          type: integer
+        finding_ids:
+          items:
+            type: string
+          title: Finding Ids
+          type: array
+        generation:
+          title: Generation
+          type: integer
+        id:
+          title: Id
+          type: string
+        membership_fingerprint:
+          title: Membership Fingerprint
+          type: string
+        owner:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner
+        priority_score:
+          title: Priority Score
+          type: number
+        priority_score_method:
+          title: Priority Score Method
+          type: string
+        score_factors:
+          additionalProperties: true
+          title: Score Factors
+          type: object
+        severity:
+          title: Severity
+          type: string
+        sla_due_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sla Due At
+        source:
+          title: Source
+          type: string
+        state:
+          title: State
+          type: string
+        tenant_id:
+          title: Tenant Id
+          type: string
+        title:
+          title: Title
+          type: string
+        updated_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Updated At
+        verification_status:
+          title: Verification Status
+          type: string
+        version:
+          title: Version
+          type: integer
+      required:
+      - id
+      - tenant_id
+      - title
+      - finding_ids
+      - finding_count
+      - severity
+      - priority_score
+      - priority_score_method
+      - score_factors
+      - expected_risk_reduction
+      - owner
+      - sla_due_at
+      - state
+      - verification_status
+      - updated_at
+      - source
+      - membership_fingerprint
+      - generation
+      - active
+      - version
+      title: CampaignResponse
+      type: object
     CampaignTicketAction:
       additionalProperties: false
       properties:
@@ -129,11 +328,23 @@ components:
           minLength: 1
           title: Connection Id
           type: string
+        cursor:
+          anyOf:
+          - maxLength: 512
+            type: string
+          - type: 'null'
+          title: Cursor
         issue_type:
           default: ''
           maxLength: 100
           title: Issue Type
           type: string
+        limit:
+          default: 25
+          maximum: 25.0
+          minimum: 1.0
+          title: Limit
+          type: integer
         project:
           default: ''
           maxLength: 200
@@ -178,6 +389,12 @@ components:
             type: string
           - type: 'null'
           title: Verification Status
+        version:
+          minimum: 1.0
+          title: Version
+          type: integer
+      required:
+      - version
       title: CampaignUpdate
       type: object
     CloudConnectionCreate:
@@ -4530,9 +4747,7 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties: true
-                title: Response List Campaigns V1 Campaigns Get
-                type: object
+                $ref: '#/components/schemas/CampaignListResponse'
           description: Successful Response
         '422':
           content:
@@ -4588,9 +4803,7 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties: true
-                title: Response Update Campaign V1 Campaigns  Campaign Id  Patch
-                type: object
+                $ref: '#/components/schemas/CampaignResponse'
           description: Successful Response
         '422':
           content:
@@ -4646,11 +4859,14 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties: true
-                title: Response Create Campaign Tickets V1 Campaigns  Campaign Id  Tickets
-                  Post
-                type: object
+                $ref: '#/components/schemas/CampaignActionResponse'
           description: Successful Response
+        '207':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignActionResponse'
+          description: Multi-Status
         '422':
           content:
             application/json:
@@ -4670,6 +4886,23 @@ paths:
         schema:
           title: Campaign Id
           type: string
+      - in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 25
+          maximum: 25
+          minimum: 1
+          title: Limit
+          type: integer
       - in: header
         name: X-Agent-Bom-Role
         required: false
@@ -4699,11 +4932,14 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties: true
-                title: Response Sync Campaign Tickets V1 Campaigns  Campaign Id  Tickets
-                  Sync Post
-                type: object
+                $ref: '#/components/schemas/CampaignActionResponse'
           description: Successful Response
+        '207':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignActionResponse'
+          description: Multi-Status
         '422':
           content:
             application/json:

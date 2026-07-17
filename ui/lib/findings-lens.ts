@@ -52,7 +52,7 @@ export function findingsPageSubtitle(lens: FindingsLens, countLabel: string, sco
     lens === "trust"
       ? "Shared with engineering — filter by issue type for misconfigs and secrets, then record disposition for audit packs."
       : "Shared with compliance and audit — triage decisions and OpenVEX export feed trust reviews.";
-  return `${countLabel} ${scopeLine} ${audience}`;
+  return `${countLabel} · ${scopeLine} ${audience}`;
 }
 
 export function findingsQueueTitle(lens: FindingsLens): string {

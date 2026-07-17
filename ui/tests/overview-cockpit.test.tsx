@@ -168,15 +168,16 @@ describe("OverviewCockpit", () => {
   });
 
   it("surfaces risk themes and links into findings / compliance", () => {
-    render(<OverviewCockpit {...baseProps} />);
+    render(<OverviewCockpit {...baseProps} findingsScopeLabel="Current findings · configured window" />);
 
     expect(screen.getByText(/2 critical findings need attention/i)).toBeInTheDocument();
     expect(screen.getByText("CVE-2020-14343")).toBeInTheDocument();
     expect(screen.getByText("cursor")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Critical findings" })).toHaveAttribute(
       "href",
-      "/findings?severity=critical",
+      "/findings?scope=all&severity=critical",
     );
+    expect(screen.getByText("Current findings · configured window")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Compliance evidence" })).toHaveAttribute(
       "href",
       "/compliance",

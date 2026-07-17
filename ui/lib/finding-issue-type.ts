@@ -147,11 +147,13 @@ export function buildIssueSeverityMatrix(
 }
 
 export function findingsHref(opts: {
+  scope?: "latest" | "all";
   severity?: SeverityBand | "all";
   issue?: IssueTypeFilter;
   kev?: boolean;
 }): string {
   const params = new URLSearchParams();
+  if (opts.scope === "all") params.set("scope", "all");
   if (opts.severity && opts.severity !== "all") params.set("severity", opts.severity);
   if (opts.issue && opts.issue !== "all") params.set("issue", opts.issue);
   if (opts.kev) params.set("kev", "1");

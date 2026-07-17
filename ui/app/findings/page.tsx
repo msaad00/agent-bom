@@ -361,8 +361,11 @@ function FindingsPage() {
     const parsed = Number(paramPage ?? "1");
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
   });
-  const [findingsTotal, setFindingsTotal] = useState(0);
+  const [findingsTotal, setFindingsTotal] = useState<number | null>(0);
   const [findingsTotalApproximate, setFindingsTotalApproximate] = useState(false);
+  const [hasMoreFindings, setHasMoreFindings] = useState(false);
+  const [nextFindingsCursor, setNextFindingsCursor] = useState("");
+  const [pageCursors, setPageCursors] = useState<string[]>([""]);
   const PAGE_SIZE = 25;
   const useServerPaging = groupBy === "none" && !search.trim();
   const showLifecycleColumns = useMemo(() => hasLifecycleMetadata(vulns), [vulns]);
@@ -719,6 +722,8 @@ function FindingsPage() {
 
   useEffect(() => {
     async function loadLegacyFindings() {
+      setHasMoreFindings(false);
+      setNextFindingsCursor("");
       if (paramScan) {
         try {
           const findings = await api.listFindings({ scanId: paramScan, limit: 1000 });
@@ -774,6 +779,7 @@ function FindingsPage() {
         if (useServerPaging) {
           const scanId =
             paramScan ?? (scope === "latest" && jobs[0] ? jobs[0].job_id : undefined);
+          const currentCursor = pageCursors[page - 1] || undefined;
           const response = await api.listFindings({
             ...(scanId ? { scanId } : {}),
             ...(filter !== "all" ? { severity: filter } : {}),
@@ -783,15 +789,18 @@ function FindingsPage() {
             ...(environmentFilter.trim() ? { environment: environmentFilter.trim() } : {}),
             sort: serverFindingsSort(sortKey),
             limit: PAGE_SIZE,
-            offset: (page - 1) * PAGE_SIZE,
+            ...(!currentCursor ? { offset: (page - 1) * PAGE_SIZE } : {}),
+            ...(currentCursor ? { cursor: currentCursor } : {}),
             approximateTotal: true,
             windowDays,
           });
           setAppliedWindow(response.window ?? null);
-          if (response.total > 0 || response.findings.length > 0) {
+          if ((response.total ?? 0) > 0 || response.findings.length > 0) {
             setVulns(collectUnifiedFindings(response.findings));
-            setFindingsTotal(response.total);
+            setFindingsTotal(typeof response.total === "number" ? response.total : null);
             setFindingsTotalApproximate(Boolean(response.total_approximate));
+            setHasMoreFindings(Boolean(response.has_more || response.next_cursor));
+            setNextFindingsCursor(response.next_cursor ?? "");
             return;
           }
         }
@@ -821,6 +830,7 @@ function FindingsPage() {
     environmentFilter,
     windowDays,
     sortKey,
+    pageCursors,
   ]);
 
   function handleSort(field: SortKey) {
@@ -870,10 +880,18 @@ function FindingsPage() {
   }, [vulns, filter, issueTypeFilter, search, sortKey, sortDir, useServerPaging]);
 
   // Reset page when filters change
-  useEffect(() => { setPage(1); }, [filter, issueTypeFilter, search, sortKey, sortDir, groupBy, scope, paramScan, domainFilter, providerFilter, accountFilter, environmentFilter]);
+  useEffect(() => {
+    setPage(1);
+    setPageCursors((existing) =>
+      existing.length === 1 && existing[0] === "" ? existing : [""],
+    );
+    setNextFindingsCursor("");
+  }, [filter, issueTypeFilter, search, sortKey, sortDir, groupBy, scope, paramScan, domainFilter, providerFilter, accountFilter, environmentFilter, windowDays]);
 
   const totalPages = useServerPaging
-    ? Math.max(1, Math.ceil(findingsTotal / PAGE_SIZE))
+    ? findingsTotal == null
+      ? null
+      : Math.max(1, Math.ceil(findingsTotal / PAGE_SIZE))
     : Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
   const paged = useServerPaging
     ? displayed
@@ -929,10 +947,13 @@ function FindingsPage() {
     return c;
   }, [vulns]);
 
-  const findingsTotalLabel = formatFindingsTotal(
-    findingsTotal,
-    useServerPaging && findingsTotalApproximate,
-  );
+  const findingsTotalLabel = findingsTotal == null
+    ? "Total unavailable"
+    : formatFindingsTotal(findingsTotal, useServerPaging && findingsTotalApproximate);
+  const findingsFilterTotalLabel = findingsTotal == null ? "unknown total" : findingsTotalLabel;
+  const findingsWindowLabel = appliedWindow?.label ??
+    WINDOW_OPTIONS.find((option) => option.value === windowDays)?.label ??
+    "Last 90 days";
 
   // Advanced filters live behind the "Filters (n)" popover. ``n`` counts the
   // non-default ones; each active filter is also surfaced as a removable chip so
@@ -968,7 +989,7 @@ function FindingsPage() {
   const FILTERS: { key: SeverityFilter; label: string; color: string }[] = [
     {
       key: "all",
-      label: `All (${useServerPaging ? findingsTotalLabel : vulns.length})`,
+      label: `All (${useServerPaging ? findingsFilterTotalLabel : vulns.length})`,
       color: "text-[var(--text-secondary)]",
     },
     { key: "critical", label: `Critical${useServerPaging ? "" : ` (${counts.critical})`}`, color: "text-red-400" },
@@ -991,16 +1012,16 @@ function FindingsPage() {
         title="Findings"
         subtitle={findingsPageSubtitle(
           lens,
-          `${useServerPaging ? findingsTotalLabel : vulns.length} findings`,
+          `${useServerPaging ? findingsTotalLabel : vulns.length}${findingsTotal == null ? "" : " findings"}`,
           scope === "latest"
             ? paramScan
               ? `from scan ${paramScan.slice(0, 8)}.`
               : "from the latest completed scan."
-            : "aggregated across completed scans.",
+            : `current state across completed scans · ${findingsWindowLabel}.`,
         )}
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-200">
-            Shared · Engineering &amp; Compliance
+            {scope === "all" ? `Current state · ${findingsWindowLabel}` : "Latest scan"}
           </span>
         }
         actions={
@@ -1455,9 +1476,19 @@ function FindingsPage() {
               page={page}
               totalPages={totalPages}
               totalItems={useServerPaging ? findingsTotal : displayed.length}
+              hasMore={hasMoreFindings}
               itemLabel={useServerPaging && findingsTotalApproximate ? "findings (approx.)" : "findings"}
               onPrevious={() => setPage((p) => Math.max(1, p - 1))}
-              onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onNext={() => {
+                if (nextFindingsCursor) {
+                  setPageCursors((existing) => {
+                    const next = [...existing];
+                    next[page] = nextFindingsCursor;
+                    return next;
+                  });
+                }
+                setPage((current) => totalPages == null ? current + 1 : Math.min(totalPages, current + 1));
+              }}
             />
           )}
 
@@ -1482,4 +1513,3 @@ function FindingsPage() {
     </div>
   );
 }
-

@@ -3,18 +3,27 @@
 The Google SDKs are per-service distributions, so a missing one only surfaces as
 a live ImportError that degrades a whole discovery class to empty. This test
 scrapes every ``from google.cloud import <mod>`` in the cloud code and asserts
-each resolves under the installed gcp extra — failing fast in CI instead.
+each maps to a distribution declared by the gcp extra — failing fast without
+depending on which optional extras happen to be installed in the test process.
 """
 
 from __future__ import annotations
 
-import importlib
 import re
+import tomllib
 from pathlib import Path
 
-import pytest
-
 _CLOUD_DIR = Path(__file__).resolve().parents[1] / "src" / "agent_bom" / "cloud"
+_PYPROJECT = _CLOUD_DIR.parents[2] / "pyproject.toml"
+_MODULE_DISTRIBUTIONS = {
+    "asset_v1": "google-cloud-asset",
+    "compute_v1": "google-cloud-compute",
+    "iam_admin_v1": "google-cloud-iam",
+    "iam_v2": "google-cloud-iam",
+    "iam_v3": "google-cloud-iam",
+    "resourcemanager_v3": "google-cloud-resource-manager",
+    "storage": "google-cloud-storage",
+}
 
 
 def _imported_google_cloud_modules() -> set[str]:
@@ -28,22 +37,15 @@ def _imported_google_cloud_modules() -> set[str]:
     return mods
 
 
-def test_every_google_cloud_module_imported_is_installed() -> None:
-    # Gate on compute_v1 (extra-only, not a leaky transitive dep) so the guard
-    # skips cleanly when the gcp extra is not installed and runs only when it is.
-    pytest.importorskip("google.cloud.compute_v1")
+def test_every_google_cloud_module_imported_is_declared_in_gcp_extra() -> None:
     used = _imported_google_cloud_modules()
-    assert used, "no google.cloud imports found \u2014 scraper regex may be stale"
-    # These modules are hard dependencies of inventory or decision-oriented IAM
-    # collection. In particular, iam_v3 requires google-cloud-iam>=2.19.
-    core = {"asset_v1", "compute_v1", "iam_admin_v1", "iam_v2", "iam_v3", "resourcemanager_v3", "storage"} & used
-    missing = [m for m in sorted(core) if not _importable(f"google.cloud.{m}")]
-    assert not missing, f"core google.cloud modules missing from the gcp extra: {missing} \u2014 add the distribution to pyproject.toml"
-
-
-def _importable(name: str) -> bool:
-    try:
-        importlib.import_module(name)
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+    assert used, "no google.cloud imports found — scraper regex may be stale"
+    metadata = tomllib.loads(_PYPROJECT.read_text())
+    declarations = metadata["project"]["optional-dependencies"]["gcp"]
+    declared_names = {re.split(r"[<>=!~; ]", item, maxsplit=1)[0].casefold() for item in declarations}
+    missing = {
+        module: distribution
+        for module, distribution in _MODULE_DISTRIBUTIONS.items()
+        if module in used and distribution.casefold() not in declared_names
+    }
+    assert not missing, f"google.cloud modules missing from the gcp extra: {missing}"

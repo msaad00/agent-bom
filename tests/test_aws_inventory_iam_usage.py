@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agent_bom.cloud import aws_inventory
+from agent_bom.cloud import aws_iam_collector, aws_inventory
 
 
 class _Paginator:
@@ -108,6 +108,25 @@ class _Session:
         return self.iam
 
 
+class _DelayedInventoryIam(_InventoryIam):
+    def __init__(self, *, role_count: int = 2) -> None:
+        super().__init__(role_count=role_count)
+        self.polls_by_job: dict[str, int] = {}
+
+    def get_service_last_accessed_details(self, **kwargs: Any) -> dict[str, Any]:
+        job_id = str(kwargs["JobId"])
+        poll = self.polls_by_job.get(job_id, 0)
+        self.polls_by_job[job_id] = poll + 1
+        status = ("RUNNING", "PENDING", "COMPLETED")[min(poll, 2)]
+        if status != "COMPLETED":
+            return {"JobStatus": status}
+        return {
+            "JobStatus": "COMPLETED",
+            "ServicesLastAccessed": [{"ServiceNamespace": f"service-{job_id}"}],
+            "IsTruncated": False,
+        }
+
+
 def test_role_inventory_threads_usage_evidence_without_repeating_policy_reads() -> None:
     iam = _InventoryIam()
     role = {
@@ -139,6 +158,24 @@ def test_role_usage_collection_has_an_estate_budget_and_marks_skips_unavailable(
     assert [role["usage_evidence"]["state"] for role in roles] == ["available", "unavailable"]
     assert roles[1]["usage_evidence"]["diagnostic"] == "role_collection_budget_exhausted"
     assert iam.generate_calls == 1
+
+
+def test_role_usage_jobs_are_polled_in_shared_backoff_rounds(monkeypatch: Any) -> None:
+    """Slow Access Advisor jobs remain useful without sleeping once per role."""
+    iam = _DelayedInventoryIam(role_count=2)
+    delays: list[float] = []
+    monkeypatch.setattr(aws_iam_collector.time, "sleep", delays.append)
+
+    roles, users, groups = aws_inventory._discover_iam(
+        _Session(iam),
+        account_id="123456789012",
+        warnings=[],
+    )
+
+    assert users == [] and groups == []
+    assert [role["usage_evidence"]["state"] for role in roles] == ["available", "available"]
+    assert delays == [1.0, 2.0]
+    assert iam.polls_by_job == {"job-1": 3, "job-2": 3}
 
 
 def test_inventory_permission_envelope_declares_only_usage_reads_added_for_ciem() -> None:

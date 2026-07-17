@@ -42,6 +42,7 @@ class CampaignWorkflow:
 class CampaignStore(Protocol):
     def get(self, tenant_id: str, campaign_id: str) -> CampaignWorkflow | None: ...
     def list(self, tenant_id: str) -> List[CampaignWorkflow]: ...
+    def list_verification_queue(self, tenant_id: str, *, after: str, limit: int) -> List[CampaignWorkflow]: ...
     def reconcile_memberships(
         self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True
     ) -> List[CampaignWorkflow]: ...
@@ -76,6 +77,20 @@ class InMemoryCampaignStore:
     def list(self, tenant_id: str) -> List[CampaignWorkflow]:
         with self._lock:
             return [replace(row) for (row_tenant, _), row in self._rows.items() if row_tenant == tenant_id]
+
+    def list_verification_queue(self, tenant_id: str, *, after: str, limit: int) -> List[CampaignWorkflow]:
+        with self._lock:
+            rows = [
+                replace(row)
+                for (row_tenant, campaign_id), row in self._rows.items()
+                if row_tenant == tenant_id
+                and campaign_id > after
+                and not row.active
+                and bool(row.member_ids)
+                and row.verification_status in {"unverified", "failed"}
+            ]
+        rows.sort(key=lambda row: row.campaign_id)
+        return rows[: max(0, min(limit, 101))]
 
     def upsert(
         self,
@@ -242,6 +257,17 @@ class SQLiteCampaignStore:
         ).fetchall()
         result = [self._row(row) for row in rows if row]
         return [row for row in result if row is not None]
+
+    def list_verification_queue(self, tenant_id: str, *, after: str, limit: int) -> List[CampaignWorkflow]:
+        rows = self._conn.execute(
+            "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
+            "title, member_ids, membership_fingerprint, generation, active, version, updated_at "
+            "FROM risk_campaign_workflows WHERE tenant_id=? AND campaign_id>? AND active=0 "
+            "AND verification_status IN ('unverified','failed') AND member_ids <> '[]' "
+            "ORDER BY campaign_id LIMIT ?",
+            (tenant_id, after, max(0, min(limit, 101))),
+        ).fetchall()
+        return [row for value in rows if (row := self._row(value)) is not None]
 
     def upsert(
         self,

@@ -777,6 +777,17 @@ components:
             $ref: '#/components/schemas/CampaignVerificationQueueItem'
           title: Entries
           type: array
+        has_more:
+          title: Has More
+          type: boolean
+        limit:
+          title: Limit
+          type: integer
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
         schema_version:
           const: risk-campaign-verification-queue.v1
           title: Schema Version
@@ -789,6 +800,9 @@ components:
       - tenant_id
       - entries
       - count
+      - has_more
+      - next_cursor
+      - limit
       title: CampaignVerificationQueueResponse
       type: object
     CampaignVerificationRequest:
@@ -5248,6 +5262,23 @@ paths:
     get:
       operationId: campaign_verification_queue_v1_campaigns_verification_queue_get
       parameters:
+      - in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 100
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
       - in: header
         name: X-Agent-Bom-Role
         required: false

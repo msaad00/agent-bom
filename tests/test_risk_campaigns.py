@@ -477,6 +477,7 @@ def test_postgres_campaign_store_uses_tenant_key_rls_and_scoped_upsert(monkeypat
     monkeypatch.setattr(module, "_tenant_connection", _tenant_connection)
     store = module.PostgresCampaignStore(pool=_Pool())
     row = store.upsert("tenant-alpha", "campaign-1", owner="alice", state="in_progress", verification_status="pending")
+    store.list_verification_queue("tenant-alpha", after="campaign-0", limit=101)
 
     schema_sql = "\n".join(sql for sql, _ in executed)
     assert "PRIMARY KEY (tenant_id, campaign_id)" in schema_sql
@@ -486,6 +487,9 @@ def test_postgres_campaign_store_uses_tenant_key_rls_and_scoped_upsert(monkeypat
     upsert = next(params for sql, params in executed if "ON CONFLICT (tenant_id, campaign_id)" in sql)
     assert upsert[:2] == ("tenant-alpha", "campaign-1")
     assert row.tenant_id == "tenant-alpha"
+    queue_sql, queue_params = next((sql, params) for sql, params in executed if "verification_status IN" in sql)
+    assert "active=FALSE" in queue_sql and "ORDER BY campaign_id LIMIT" in queue_sql
+    assert queue_params == ("tenant-alpha", "campaign-0", 101)
 
 
 def test_postgres_campaign_reconcile_locks_tenant_before_read(monkeypatch) -> None:
@@ -720,6 +724,51 @@ def test_verification_queue_rediscovers_retired_campaign_after_reload(monkeypatc
     verified = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": entry["version"]}, headers=_headers())
     assert verified.status_code == 200 and verified.json()["verification_status"] == "verified"
     assert client.get("/v1/campaigns/verification-queue", headers=_headers()).json()["entries"] == []
+
+
+def test_verification_queue_uses_filtered_keyset_pagination(tmp_path) -> None:
+    from agent_bom.api.server import app
+
+    store = SQLiteCampaignStore(str(tmp_path / "queue-pages.db"))
+    memberships = {
+        f"campaign-{index:03d}": (f"fingerprint-{index}", (f"finding-{index}",), f"Campaign title {index}") for index in range(205)
+    }
+    memberships["campaign-verified"] = ("verified-fingerprint", ("finding-verified",), "Verified campaign")
+    rows = store.reconcile_memberships("tenant-alpha", memberships)
+    verified = next(row for row in rows if row.campaign_id == "campaign-verified")
+    store.verify("tenant-alpha", verified.campaign_id, expected_version=verified.version, remaining_ids=())
+    store.reconcile_memberships("tenant-alpha", {})
+    store.reconcile_memberships("tenant-alpha", {"campaign-active": ("active-fingerprint", ("finding-active",), "Active campaign")})
+    store.reconcile_memberships("tenant-beta", {"campaign-other": ("other", ("finding-other",), "Other tenant")})
+    store.reconcile_memberships("tenant-beta", {})
+    set_campaign_store(store)
+    client = TestClient(app)
+
+    seen: list[str] = []
+    cursor = None
+    while True:
+        params = {"limit": 37}
+        if cursor:
+            params["cursor"] = cursor
+        body = client.get("/v1/campaigns/verification-queue", params=params, headers=_headers()).json()
+        assert body["count"] <= 37 and body["limit"] == 37
+        seen.extend(item["campaign_id"] for item in body["entries"])
+        if not body["has_more"]:
+            assert body["next_cursor"] is None
+            break
+        cursor = body["next_cursor"]
+    assert seen == sorted(seen)
+    assert len(seen) == len(set(seen)) == 205
+    assert "campaign-active" not in seen and "campaign-verified" not in seen and "campaign-other" not in seen
+
+    assert client.get("/v1/campaigns/verification-queue?cursor=malformed", headers=_headers()).status_code == 400
+    first = client.get("/v1/campaigns/verification-queue?limit=1", headers=_headers()).json()
+    cross_tenant = client.get(
+        "/v1/campaigns/verification-queue",
+        params={"cursor": first["next_cursor"]},
+        headers=_headers(tenant="tenant-beta"),
+    )
+    assert cross_tenant.status_code == 400
 
 
 @pytest.mark.parametrize("persistent", (False, True), ids=("memory", "sqlite-restart"))

@@ -99,6 +99,15 @@ def test_literal_secret_in_env_is_a_warning() -> None:
     assert "s0me-literal-secret" not in check["remediation"]
 
 
+def test_literal_secret_is_not_hidden_by_a_file_reference() -> None:
+    env = _hardened_env() | {"AGENT_BOM_AUDIT_HMAC_KEY": "still-exposed"}
+    report = self_posture(env, distribution_count=10)
+    check = _by_id(report)["secrets.audit_hmac_key"]
+    assert check["status"] == STATUS_WARN
+    assert "still-exposed" not in check["detail"]
+    assert report["hardened"] is False
+
+
 def test_ephemeral_audit_hmac_acknowledged_is_a_warning() -> None:
     env = {
         "AGENT_BOM_DEPLOYMENT_ENV": "production",

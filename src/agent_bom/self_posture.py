@@ -260,17 +260,7 @@ def _check_secret_sealing(env: Mapping[str, str]) -> list[PostureCheck]:
         has_literal = bool((env.get(literal_var) or "").strip())
         has_file = bool((env.get(file_var) or "").strip())
         title = f"Secret sealed via file/provider — {label}"
-        if has_file:
-            checks.append(
-                PostureCheck(
-                    id=f"secrets.{check_id}",
-                    category="secrets",
-                    title=title,
-                    status=STATUS_PASS,
-                    detail=f"The {label} is configured through a file reference, not a literal environment value.",
-                )
-            )
-        elif has_literal:
+        if has_literal:
             checks.append(
                 PostureCheck(
                     id=f"secrets.{check_id}",
@@ -281,7 +271,17 @@ def _check_secret_sealing(env: Mapping[str, str]) -> list[PostureCheck]:
                         f"The {label} is set as a literal environment value ({literal_var}) — "
                         "readable to anything that can inspect the process environment."
                     ),
-                    remediation=f"Move it to {file_var} (mounted secret file) or enable AGENT_BOM_EXTERNAL_SECRETS_ENABLED.",
+                    remediation=f"Remove {literal_var} and use only {file_var} (mounted secret file).",
+                )
+            )
+        elif has_file:
+            checks.append(
+                PostureCheck(
+                    id=f"secrets.{check_id}",
+                    category="secrets",
+                    title=title,
+                    status=STATUS_PASS,
+                    detail=f"The {label} is configured through a file reference, not a literal environment value.",
                 )
             )
         else:

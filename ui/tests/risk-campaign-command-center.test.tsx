@@ -30,6 +30,7 @@ const response: RiskCampaignsResponse = {
   truncated: true,
   total_findings: 1200,
   total_approximate: true,
+  membership_complete: false,
   campaigns: [
     {
       id: "campaign-1",
@@ -64,6 +65,8 @@ const response: RiskCampaignsResponse = {
       generation: 2,
       version: 4,
       active: true,
+      membership_complete: true,
+      membership_provisional: false,
     },
   ],
 };
@@ -125,6 +128,43 @@ describe("RiskCampaignCommandCenter", () => {
     expect(await screen.findByText(/No prioritized campaigns yet/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Run a scan/i })).toHaveAttribute("href", "/scan");
     expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
+  });
+
+  it("pauses workflow and ticket actions for provisional membership", async () => {
+    vi.mocked(api.listRiskCampaigns).mockResolvedValue({
+      ...response,
+      campaigns: [{
+        ...response.campaigns[0]!,
+        membership_complete: false,
+        membership_provisional: true,
+      }],
+      membership_complete: false,
+      truncated: true,
+    });
+
+    render(<RiskCampaignCommandCenter />);
+
+    expect(await screen.findByText(/Workflow actions are paused/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Create campaign tickets/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Sync tickets/i })).toBeDisabled();
+    expect(screen.getByLabelText(/Campaign state/i)).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Edit owner and SLA/i })).toBeDisabled();
+  });
+
+  it("requires a stored active connection for ticket creation but still permits sync", async () => {
+    vi.mocked(api.listTicketingConnections).mockResolvedValue({
+      schema_version: "ticketing.connections.v1",
+      tenant_id: "tenant-a",
+      count: 0,
+      connections: [],
+    });
+
+    render(<RiskCampaignCommandCenter />);
+
+    await screen.findByText(response.campaigns[0]!.title);
+    expect(screen.getByRole("button", { name: /Create campaign tickets/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Sync tickets/i })).toBeEnabled();
+    expect(screen.getByRole("link", { name: /Connect ticketing/i })).toHaveAttribute("href", "/connections");
   });
 
   it("surfaces API errors and retries", async () => {

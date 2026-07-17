@@ -3832,6 +3832,8 @@ export interface RiskCampaign {
   generation: number;
   version: number;
   active: boolean;
+  membership_complete: boolean;
+  membership_provisional: boolean;
 }
 
 export interface RiskCampaignsResponse {
@@ -3844,6 +3846,7 @@ export interface RiskCampaignsResponse {
   truncated: boolean;
   total_findings: number | null;
   total_approximate: boolean;
+  membership_complete: boolean;
 }
 
 export interface RiskCampaignUpdate {

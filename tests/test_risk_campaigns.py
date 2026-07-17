@@ -716,6 +716,34 @@ def test_provisional_campaign_actions_fail_before_ticket_audit_or_transport_side
     assert audits == [] and transport == [] and ticket_store_reads == []
 
 
+def test_provisional_campaign_patch_has_zero_workflow_or_audit_side_effects(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    store = InMemoryCampaignStore()
+    set_campaign_store(store)
+    full = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: full)
+    client = TestClient(app)
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    before = store.get("tenant-alpha", campaign["id"])
+    audits: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._audit", lambda *args, **kwargs: audits.append("audit"))
+    monkeypatch.setattr(
+        "agent_bom.api.routes.campaigns._load_findings",
+        lambda request: {"findings": full, "total": len(full) + 1, "has_more": True, "total_approximate": False},
+    )
+
+    response = client.patch(
+        f"/v1/campaigns/{campaign['id']}",
+        json={"version": campaign["version"], "state": "done", "verification_status": "verified"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 409
+    assert store.get("tenant-alpha", campaign["id"]) == before
+    assert audits == []
+
+
 def test_campaign_audit_failure_does_not_log_raw_exception() -> None:
     from agent_bom.api.routes.campaigns import _audit
 

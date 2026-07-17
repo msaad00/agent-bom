@@ -94,6 +94,7 @@ function CampaignCard({
   const [slaDate, setSlaDate] = useState(campaign.sla_due_at?.slice(0, 10) ?? "");
   const [versionConflict, setVersionConflict] = useState(false);
   const [ticketProgress, setTicketProgress] = useState<TicketProgress | null>(null);
+  const workflowActionable = campaign.membership_complete && !campaign.membership_provisional;
 
   useEffect(() => {
     if (!connectionId || !connections.some((connection) => connection.id === connectionId)) {
@@ -278,7 +279,7 @@ function CampaignCard({
             id={`campaign-state-${campaign.id}`}
             aria-label="Campaign state"
             value={campaign.state}
-            disabled={busy}
+            disabled={busy || !workflowActionable}
             onChange={(event) => void updateState(event.target.value as RiskCampaignState)}
             className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--background)] px-2.5 py-1.5 text-xs text-[color:var(--foreground)]"
           >
@@ -287,7 +288,7 @@ function CampaignCard({
           <span className="rounded-full border border-[color:var(--border-subtle)] px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[color:var(--text-secondary)]">
             {VERIFICATION_LABELS[campaign.verification_status]}
           </span>
-          <button type="button" onClick={() => setEditingAssignment((current) => !current)} className="text-xs font-medium text-[color:var(--accent)]">
+          <button type="button" disabled={!workflowActionable} onClick={() => setEditingAssignment((current) => !current)} className="text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
             Edit owner and SLA
           </button>
         </div>
@@ -297,14 +298,19 @@ function CampaignCard({
               {connections.map((connection) => <option key={connection.id} value={connection.id}>{connection.display_name || connection.provider}</option>)}
             </select>
           ) : null}
-          <button type="button" disabled={busy} onClick={() => void ticketAction("create")} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:opacity-50">
+          <button type="button" disabled={busy || !workflowActionable || !connectionId} onClick={() => void ticketAction("create")} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
             <Ticket className="h-3.5 w-3.5" /> {ticketProgress?.mode === "create" && ticketProgress.hasMore ? `Continue tickets (${ticketProgress.processed}/${ticketProgress.total})` : "Create campaign tickets"}
           </button>
-          <button type="button" disabled={busy} onClick={() => void ticketAction("sync")} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--text-secondary)] disabled:opacity-50">
+          <button type="button" disabled={busy || !workflowActionable} onClick={() => void ticketAction("sync")} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">
             <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} /> {ticketProgress?.mode === "sync" && ticketProgress.hasMore ? `Continue sync (${ticketProgress.processed}/${ticketProgress.total})` : "Sync tickets"}
           </button>
         </div>
       </div>
+      {!workflowActionable ? (
+        <p role="status" className="mt-3 rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+          Workflow actions are paused until the complete campaign membership is available. No partial ticket or verification state will be written.
+        </p>
+      ) : null}
       {editingAssignment ? (
         <div className="mt-3 grid gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3 sm:grid-cols-[1fr_12rem_auto] sm:items-end">
           <label className="text-xs text-[color:var(--text-secondary)]">

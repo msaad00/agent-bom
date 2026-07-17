@@ -282,6 +282,7 @@ async def update_campaign(request: Request, campaign_id: str, body: CampaignUpda
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
     campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    _require_complete_membership(campaign)
     fields = body.model_dump(exclude_unset=True, exclude={"version"})
     if "owner" in fields:
         fields["owner"] = body.owner.strip() if body.owner else None

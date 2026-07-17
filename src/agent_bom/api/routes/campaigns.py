@@ -150,7 +150,11 @@ def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]
     memberships = {item["id"]: item["membership_fingerprint"] for item in initial}
     before = {row.campaign_id: row for row in get_campaign_store().list(tenant_id)}
     if incomplete:
-        workflows = before
+        workflows = {
+            campaign_id: row
+            for campaign_id, row in before.items()
+            if row.active and row.membership_fingerprint == memberships.get(campaign_id)
+        }
         campaigns = derive_campaigns(
             findings,
             tenant_id=tenant_id,
@@ -228,6 +232,14 @@ def _find_campaign(campaigns: list[dict[str, Any]], campaign_id: str) -> dict[st
     return campaign
 
 
+def _require_complete_membership(campaign: dict[str, Any]) -> None:
+    if not campaign.get("membership_complete") or campaign.get("membership_provisional"):
+        raise HTTPException(
+            status_code=409,
+            detail="Campaign membership is provisional; refresh after the complete findings snapshot is available.",
+        )
+
+
 def _audit(action: str, request: Request, campaign_id: str, **details: Any) -> None:
     try:
         log_action(
@@ -298,6 +310,7 @@ async def create_campaign_tickets(
     decoded_cursor = _decode_cursor(body.cursor)
     findings = source["findings"]
     campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    _require_complete_membership(campaign)
     rows: dict[str, dict[str, Any]] = {}
     for row in findings:
         identity = str(row.get("id") or row.get("canonical_id") or row.get("finding_id") or row.get("vulnerability_id") or "")
@@ -374,6 +387,7 @@ async def sync_campaign_tickets(
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
     decoded_cursor = _decode_cursor(cursor)
     campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    _require_complete_membership(campaign)
     finding_ids = set(campaign["finding_ids"])
     links = sorted(
         (link for link in get_ticketing_store().list_ticket_links(tenant_id) if link.dedupe_key in finding_ids), key=lambda link: link.id

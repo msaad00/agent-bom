@@ -145,10 +145,16 @@ function NodeCard({
   // node and its legend row are always the same icon — even for the renderers
   // shared across several types (e.g. CredentialNode serves role/policy/grants).
   const Icon = entityIcon(data.nodeType);
+  const isRollupContainer = data.attributes?.rollup_is_container === true;
   return (
     <div
       title={data.label}
-      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[300px] shadow-xl backdrop-blur transition-opacity ${borderClass} ${bgClass} ${
+      data-rollup-container={isRollupContainer ? "true" : undefined}
+      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[300px] shadow-xl backdrop-blur transition-opacity ${
+        isRollupContainer
+          ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)]"
+          : `${borderClass} ${bgClass}`
+      } ${
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? `ring-2 ${ringClass}` : ""}`}
     >

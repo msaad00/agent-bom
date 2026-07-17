@@ -333,7 +333,7 @@ export default function Dashboard() {
       <PageLaneHeader
         lane="command"
         title="Overview"
-        subtitle="Exec briefing: posture, open issues, compliance evidence, and live surfaces. Use Findings, Security graph, and Agent mesh for engineer drill-down."
+        subtitle="Exec briefing: posture, open issues, compliance evidence, and live surfaces. Use Findings and Investigation for engineer drill-down."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-200">
             {deploymentModeLabel(counts?.deployment_mode)} · {countActiveServices(counts?.services)} services live
@@ -353,7 +353,7 @@ export default function Dashboard() {
               href="/security-graph"
               className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
             >
-              Security graph <GitBranch className="h-4 w-4" />
+              Investigation <GitBranch className="h-4 w-4" />
             </Link>
             {(displayedAgentCount ?? 0) > 0 ? (
               <Link

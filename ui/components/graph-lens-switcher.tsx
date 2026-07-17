@@ -60,6 +60,38 @@ const GRAPH_LENSES: GraphLens[] = [
   },
 ];
 
+const SHARED_INVESTIGATION_PARAMS = [
+  "scan",
+  "agent",
+  "cve",
+  "package",
+  "root",
+  "root_label",
+  "investigate",
+  "q",
+  "rollup",
+  "rollup_node",
+] as const;
+
+export function buildInvestigationLensHref(
+  targetHref: string,
+  current: { get(name: string): string | null },
+): string {
+  const [pathname, targetQuery = ""] = targetHref.split("?", 2);
+  const params = new URLSearchParams();
+  for (const key of SHARED_INVESTIGATION_PARAMS) {
+    const value = current.get(key);
+    if (value) params.set(key, value);
+  }
+  // Target-owned parameters (for example the Asset Drift scope) are
+  // authoritative and replace any context inherited from the current lens.
+  for (const [key, value] of new URLSearchParams(targetQuery)) {
+    params.set(key, value);
+  }
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : (pathname ?? targetHref);
+}
+
 interface GraphLensSwitcherProps {
   variant?: "inline" | "floating" | "compact";
   legendItems?: LegendItem[];
@@ -86,7 +118,7 @@ export function GraphLensSwitcher({
   const onToggle = (id: string) => {
     const lens = GRAPH_LENSES.find((l) => l.id === id);
     if (!lens || lens.match(path, scope)) return;
-    router.push(lens.href);
+    router.push(buildInvestigationLensHref(lens.href, searchParams));
   };
 
   const content = (

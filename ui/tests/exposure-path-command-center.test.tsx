@@ -83,6 +83,14 @@ describe("ExposurePathCommandCenter", () => {
     expect(screen.getByText("Validate the lead finding")).toBeInTheDocument();
   });
 
+  it("gives the title a full mobile row and keeps the summary readable", () => {
+    render(<ExposurePathCommandCenter path={basePath} />);
+
+    const title = screen.getByRole("heading", { level: 2 });
+    expect(title.parentElement).toHaveClass("w-full");
+    expect(screen.getByText(basePath.summary!)).toHaveClass("line-clamp-3");
+  });
+
   it("shows one representation at a time and defaults to the path view", () => {
     render(<ExposurePathCommandCenter path={basePath} />);
 

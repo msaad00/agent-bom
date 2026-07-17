@@ -76,7 +76,7 @@ function edge(source: string, target: string, relationship: string, weight = 1):
   };
 }
 
-function buildCockpitGraph() {
+function buildCockpitGraph(nodeCount = 5) {
   const nodes: GraphNode[] = [
     node("agent:desktop", "agent", "claude-desktop"),
     node("server:github", "server", "github"),
@@ -90,6 +90,9 @@ function buildCockpitGraph() {
     edge("pkg:form-data", "cve:form-data", "vulnerable_to", 1.5),
     edge("server:github", "cred:gh-token", "exposes_cred"),
   ];
+  for (let index = nodes.length; index < nodeCount; index += 1) {
+    nodes.push(node(`resource:${index}`, "cloud_resource", `production-resource-${index}`, index % 17 === 0 ? "high" : "none", index % 17 === 0 ? 7.1 : 0));
+  }
 
   return {
     scan_id: scanId,
@@ -130,8 +133,8 @@ function buildCockpitGraph() {
   };
 }
 
-async function routeCockpit(page: Page) {
-  const graph = buildCockpitGraph();
+async function routeCockpit(page: Page, snapshotNodeCount?: number) {
+  const graph = buildCockpitGraph(snapshotNodeCount);
 
   await page.route("**/health", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok" }) });
@@ -169,7 +172,7 @@ async function routeCockpit(page: Page) {
         {
           scan_id: scanId,
           created_at: createdAt,
-          node_count: graph.nodes.length,
+          node_count: snapshotNodeCount ?? graph.nodes.length,
           edge_count: graph.edges.length,
           risk_summary: graph.stats.severity_counts,
         },
@@ -242,10 +245,65 @@ async function routeCockpit(page: Page) {
   await page.route("**/v1/graph?**", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
   });
+  await page.route("**/v1/graph/rollup?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        scan_id: scanId,
+        tenant_id: "default",
+        created_at: createdAt,
+        mode: "rollup",
+        filters: {},
+        top_level: [
+          {
+            id: "account:production",
+            label: "Production account",
+            entity_type: "cloud_account",
+            severity: "critical",
+            is_container: true,
+            has_children: true,
+            direct_child_count: 900,
+            aggregate: {
+              descendant_count: 900,
+              by_type: { cloud_resource: 900 },
+              severity_counts: { critical: 1, high: 53, none: 846 },
+              worst_severity: "critical",
+              worst_severity_rank: 4,
+              internet_exposed: true,
+              toxic_combo: true,
+              exposed_count: 8,
+              toxic_count: 1,
+            },
+          },
+          {
+            id: "account:development",
+            label: "Development account",
+            entity_type: "cloud_account",
+            severity: "high",
+            is_container: true,
+            has_children: true,
+            direct_child_count: 341,
+            aggregate: {
+              descendant_count: 341,
+              by_type: { cloud_resource: 341 },
+              severity_counts: { high: 20, none: 321 },
+              worst_severity: "high",
+              worst_severity_rank: 3,
+              internet_exposed: false,
+              toxic_combo: false,
+              exposed_count: 0,
+              toxic_count: 0,
+            },
+          },
+        ],
+        summary: { total_nodes: 1241, total_edges: 4, top_level_count: 2, container_count: 2 },
+      }),
+    });
+  });
 }
 
 async function expectCockpitVisible(page: Page) {
-  await expect(page.getByRole("heading", { name: "Security graph" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Investigation" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: /Claude Desktop.*form-data.*CVE-2025-7783/ }),
   ).toBeVisible();
@@ -277,6 +335,49 @@ test("security-graph cockpit stays usable on a mobile viewport", async ({ page }
   await page.goto("/security-graph");
   await page.waitForLoadState("networkidle");
   await expectCockpitVisible(page);
+  const overflows = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(overflows).toBe(false);
 
   await page.screenshot({ path: testInfo.outputPath("security-graph-cockpit-mobile.png"), fullPage: true });
 });
+
+for (const theme of ["dark", "light"] as const) {
+test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ page }, testInfo: TestInfo) => {
+  await routeCockpit(page, 1_241);
+  await page.addInitScript((selectedTheme) => {
+    window.localStorage.setItem("agent-bom-theme", selectedTheme);
+  }, theme);
+
+  await page.goto("/security-graph");
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText("Large estate · 1,241 nodes")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Explore clusters" })).toHaveAttribute(
+    "href",
+    "/graph?scan=scan-cockpit-fixture&rollup=1",
+  );
+  await expect(page.getByRole("link", { name: "Open raw topology" })).toHaveAttribute(
+    "href",
+    "/graph?scan=scan-cockpit-fixture&rollup=0",
+  );
+  await page.screenshot({ path: testInfo.outputPath(`investigation-large-estate-${theme}.png`), fullPage: true });
+
+  const rollupRequest = page.waitForRequest((request) => request.url().includes("/v1/graph/rollup"));
+  await page.getByRole("link", { name: "Explore clusters" }).click();
+  await expect(page).toHaveURL(/scan=scan-cockpit-fixture/);
+  await expect(page).toHaveURL(/rollup=1/);
+  await rollupRequest;
+  await expect(page.getByText("Scope roll-up")).toBeVisible();
+  await expect(page.getByText(/2 containers at this level.*1241 nodes in snapshot/)).toBeVisible();
+  const cards = page.locator('[data-rollup-container="true"]');
+  await expect(cards).toHaveCount(2);
+  const [firstBox, secondBox] = await Promise.all([cards.nth(0).boundingBox(), cards.nth(1).boundingBox()]);
+  expect(firstBox).not.toBeNull();
+  expect(secondBox).not.toBeNull();
+  expect(firstBox!.x + firstBox!.width).toBeLessThanOrEqual(secondBox!.x);
+  await page.screenshot({ path: testInfo.outputPath(`investigation-large-estate-clustered-${theme}.png`), fullPage: true });
+
+  await page.getByRole("button", { name: "Open node view" }).click();
+  await expect(page).toHaveURL(/rollup=0/);
+});
+}

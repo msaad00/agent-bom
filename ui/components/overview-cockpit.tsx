@@ -987,6 +987,11 @@ function PostureHero({
         <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
           {latestScan ? `Last scan · ${latestScan}` : graded ? "Scan complete" : "No completed scans"}
         </p>
+        {graded ? (
+          <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
+            Trend unavailable · history for the current score model is not recorded
+          </p>
+        ) : null}
         <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">{blurb}</p>
       </div>
     </div>

@@ -78,7 +78,11 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
 };
 
 const DEFAULT_COLUMNS = 3;
-const NODE_WIDTH = 268;
+// NodeCard renders up to 300px wide. Position columns by the rendered maximum
+// plus a deliberate gutter so long roll-up labels never overlap their neighbor.
+const NODE_CARD_MAX_WIDTH = 300;
+const NODE_COLUMN_GAP = 32;
+const NODE_WIDTH = NODE_CARD_MAX_WIDTH + NODE_COLUMN_GAP;
 const NODE_HEIGHT = 112;
 
 export function rollupEntityToNodeType(entityType: string): LineageNodeType {

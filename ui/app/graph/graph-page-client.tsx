@@ -788,6 +788,16 @@ function GraphPageInner() {
         )
       : ("default" as const),
   );
+  // Client-side lens navigation can mount this page before
+  // `window.location.search` reflects the destination URL. Reconcile from
+  // Next's route state before the later URL-sync effect runs so an explicit
+  // `rollup=1` cannot be silently deleted on entry.
+  useEffect(() => {
+    const preference = parseGraphRollupUrlPreference(searchParams);
+    rollupPreferenceRef.current = preference;
+    if (preference === "force") setRollupDismissed(false);
+    if (preference === "off") setRollupDismissed(true);
+  }, [searchParams]);
   const firstScanSelectionRef = useRef(true);
   // Last URL the filter→URL sync effect wrote, used to break an infinite
   // router.replace loop (see the sync effect below for the full rationale).

@@ -71,6 +71,44 @@ def test_postgres_job_store_real_roundtrip_and_tenant_filter():
     assert any(item.job_id == job_id for item in results)
 
 
+def test_budget_pk_migration_targets_visible_relation_across_search_path():
+    """The inspected and altered table must be the same visible relation."""
+    import psycopg
+
+    from agent_bom.api.postgres_cost import BUDGET_PK_MIGRATION_SQL
+
+    dsn = os.environ["AGENT_BOM_POSTGRES_URL"]
+    suffix = uuid4().hex[:12]
+    first_schema = f"empty_{suffix}"
+    data_schema = f"budget_{suffix}"
+    try:
+        with psycopg.connect(dsn) as conn:
+            try:
+                conn.execute(f'CREATE SCHEMA "{first_schema}"')
+                conn.execute(f'CREATE SCHEMA "{data_schema}"')
+            except psycopg.errors.InsufficientPrivilege:
+                pytest.skip("Postgres integration role cannot create schemas")
+            conn.execute(
+                f'CREATE TABLE "{data_schema}".llm_cost_budgets ('
+                "tenant_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT '', "
+                "cost_center TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL DEFAULT '', "
+                "workflow TEXT NOT NULL DEFAULT '', PRIMARY KEY (tenant_id, agent, cost_center))"
+            )
+            conn.execute(f'SET LOCAL search_path TO "{first_schema}", "{data_schema}"')
+            conn.execute(BUDGET_PK_MIGRATION_SQL)
+            columns = conn.execute(
+                "SELECT a.attname FROM pg_constraint c "
+                "JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ON TRUE "
+                "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum "
+                "WHERE c.conrelid = to_regclass('llm_cost_budgets') AND c.contype = 'p' ORDER BY k.ord"
+            ).fetchall()
+            assert [row[0] for row in columns] == ["tenant_id", "agent", "cost_center", "owner", "workflow"]
+    finally:
+        with psycopg.connect(dsn, autocommit=True) as cleanup:
+            cleanup.execute(f'DROP SCHEMA IF EXISTS "{first_schema}" CASCADE')
+            cleanup.execute(f'DROP SCHEMA IF EXISTS "{data_schema}" CASCADE')
+
+
 def test_postgres_cis_checks_dedupe_latest_per_check_across_scans():
     """Re-scanning a cloud must surface one row per check, not one-per-scan.
 

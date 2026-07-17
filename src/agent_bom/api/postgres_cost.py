@@ -17,6 +17,40 @@ from agent_bom.api.cost_store import CostBudget, LLMCostRecord, _decode_tags
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
+BUDGET_PK_MIGRATION_SQL = """
+    DO $$
+    DECLARE
+        target_table REGCLASS := to_regclass('llm_cost_budgets');
+        current_pk TEXT;
+    BEGIN
+        IF target_table IS NULL THEN
+            RAISE EXCEPTION 'visible relation llm_cost_budgets does not exist';
+        END IF;
+        SELECT c.conname INTO current_pk
+        FROM pg_constraint c
+        WHERE c.conrelid = target_table
+          AND c.contype = 'p';
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint c
+            WHERE c.conrelid = target_table
+              AND c.contype = 'p'
+              AND pg_get_constraintdef(c.oid) =
+                  'PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)'
+        ) THEN
+            IF current_pk IS NOT NULL THEN
+                EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', target_table, current_pk);
+            END IF;
+            EXECUTE format(
+                'ALTER TABLE %s ADD PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)',
+                target_table
+            );
+        END IF;
+    END
+    $$;
+"""
+
 
 class PostgresCostStore:
     """Shared LLM cost + budget store backed by Postgres with tenant RLS."""
@@ -61,7 +95,7 @@ class PostgresCostStore:
                     cost_center TEXT NOT NULL DEFAULT '',
                     owner       TEXT NOT NULL DEFAULT '',
                     workflow    TEXT NOT NULL DEFAULT '',
-                    PRIMARY KEY (tenant_id, agent, cost_center)
+                    PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)
                 )
             """)
             # Allocation columns (#2925) added additively for pre-migration
@@ -73,6 +107,12 @@ class PostgresCostStore:
             # default to '' (not owner-scoped).
             conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN IF NOT EXISTS owner TEXT NOT NULL DEFAULT ''")
             conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN IF NOT EXISTS workflow TEXT NOT NULL DEFAULT ''")
+            # The legacy primary key stopped at cost_center, so Postgres rejected
+            # valid owner/workflow siblings before the canonical unique index
+            # could arbitrate the full scope. Replace it transactionally after
+            # additive backfills; the surrounding connection commits all schema
+            # changes together and the block is a no-op once migrated.
+            conn.execute(BUDGET_PK_MIGRATION_SQL)
             # Back the full-scope upsert conflict target with a unique index so it
             # works on pre-migration tables whose PK omits owner/workflow. The
             # widened scope (agent, cost_center, owner, workflow) keeps an owner

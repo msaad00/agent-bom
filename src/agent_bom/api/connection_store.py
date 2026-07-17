@@ -194,12 +194,10 @@ def _decode_auth_params(raw: Any) -> dict[str, Any]:
 def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
     """Map a ``cloud_connections`` row tuple to a record (shared by backends).
 
-    The two durable backends select slightly different column shapes: the SQLite
-    SELECT carries ``last_scan_id`` (16 columns) while the Postgres SELECT omits
-    it (15 columns). ``last_scan_id`` therefore only exists in the wider SQLite
-    shape; every other column keeps the same relative order in both, so a single
-    length check distinguishes them and the trailing columns are read positionally
-    from the correct index in each shape.
+    Durable backends use the canonical 16-column shape with ``last_scan_id``.
+    The legacy 15-column shape remains readable for compatibility with older
+    adapters and persisted test fixtures; every trailing column keeps the same
+    relative order, so a length check selects the correct positional indexes.
     """
     has_last_scan_id = len(row) >= 16
     interval_idx = 13 if has_last_scan_id else 12

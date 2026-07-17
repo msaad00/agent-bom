@@ -38,14 +38,16 @@ export interface GraphRollupEligibilityInput {
 export function graphRollupEligible(input: GraphRollupEligibilityInput): boolean {
   if (!input.hasSelectedScan) return false;
   if (input.rollupPreference === "off" || input.rollupDismissed) return false;
-  // An explicit `?rollup=1` is an operator decision. It must win over the
-  // attack-path-first automatic default; otherwise the large-estate CTA lies.
-  if (input.rollupPreference === "force") return true;
+  // Detail overlays require their focused/raw node set regardless of the
+  // estate default or an explicit cluster preference.
   if (input.investigationMode) return false;
   if (input.selectedAttackPath) return false;
-  if ((input.attackPathCount ?? 0) > 0) return false;
   if (input.reachabilityActive) return false;
   if (input.blastRadiusActive) return false;
+  // An explicit `?rollup=1` is an operator decision. It must win over the
+  // automatic attack-path-count default, but not the detail overlays above.
+  if (input.rollupPreference === "force") return true;
+  if ((input.attackPathCount ?? 0) > 0) return false;
   return true;
 }
 

@@ -341,8 +341,12 @@ test("security-graph cockpit stays usable on a mobile viewport", async ({ page }
   await page.screenshot({ path: testInfo.outputPath("security-graph-cockpit-mobile.png"), fullPage: true });
 });
 
-test("large estates lead with clusters and keep raw topology as drill-down", async ({ page }, testInfo: TestInfo) => {
+for (const theme of ["dark", "light"] as const) {
+test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ page }, testInfo: TestInfo) => {
   await routeCockpit(page, 1_241);
+  await page.addInitScript((selectedTheme) => {
+    window.localStorage.setItem("agent-bom-theme", selectedTheme);
+  }, theme);
 
   await page.goto("/security-graph");
   await page.waitForLoadState("networkidle");
@@ -356,7 +360,7 @@ test("large estates lead with clusters and keep raw topology as drill-down", asy
     "href",
     "/graph?scan=scan-cockpit-fixture&rollup=0",
   );
-  await page.screenshot({ path: testInfo.outputPath("investigation-large-estate.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath(`investigation-large-estate-${theme}.png`), fullPage: true });
 
   const rollupRequest = page.waitForRequest((request) => request.url().includes("/v1/graph/rollup"));
   await page.getByRole("link", { name: "Explore clusters" }).click();
@@ -365,8 +369,15 @@ test("large estates lead with clusters and keep raw topology as drill-down", asy
   await rollupRequest;
   await expect(page.getByText("Scope roll-up")).toBeVisible();
   await expect(page.getByText(/2 containers at this level.*1241 nodes in snapshot/)).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("investigation-large-estate-clustered.png"), fullPage: true });
+  const cards = page.locator('[data-rollup-container="true"]');
+  await expect(cards).toHaveCount(2);
+  const [firstBox, secondBox] = await Promise.all([cards.nth(0).boundingBox(), cards.nth(1).boundingBox()]);
+  expect(firstBox).not.toBeNull();
+  expect(secondBox).not.toBeNull();
+  expect(firstBox!.x + firstBox!.width).toBeLessThanOrEqual(secondBox!.x);
+  await page.screenshot({ path: testInfo.outputPath(`investigation-large-estate-clustered-${theme}.png`), fullPage: true });
 
   await page.getByRole("button", { name: "Open node view" }).click();
   await expect(page).toHaveURL(/rollup=0/);
 });
+}

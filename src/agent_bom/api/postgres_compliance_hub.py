@@ -47,6 +47,18 @@ from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _g
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
+def _invalidate_overview_severity(tenant_id: str) -> None:
+    """Drop the memoised /v1/overview severity histogram after a ledger change.
+
+    Any mutation of ``compliance_hub_findings`` (the ``severity_breakdown``
+    source) must invalidate the per-tenant overview cache so the headline never
+    goes stale relative to the ledger (wave-2 residual #3).
+    """
+    from agent_bom.api import hub_overview_cache
+
+    hub_overview_cache.invalidate_tenant(tenant_id)
+
+
 def _migrate_lifecycle_observations_l2_postgres(conn: Any) -> None:
     """Upgrade L1 observation rows (PK on observed_at) to L2 (PK on scan_id)."""
     conn.execute(
@@ -163,6 +175,28 @@ def _resolve_current_ledger_ordinal_postgres(
         (tenant_id, ledger_finding_id),
     ).fetchone()
     return int(row[0]) if row else _LEDGER_ORDINAL_SENTINEL
+
+
+def _fetch_ledger_ordinals_postgres(
+    conn: Any,
+    tenant_id: str,
+    finding_ids: Sequence[str],
+) -> dict[str, int]:
+    """Bulk variant of :func:`_resolve_current_ledger_ordinal_postgres`.
+
+    One ``= ANY`` lookup on the ledger primary key for a whole batch instead of a
+    per-row point SELECT, so the current-state bulk upsert resolves every ledger
+    ordinal in a single round-trip. Missing pointers simply stay out of the map;
+    the caller falls back to the sort sentinel.
+    """
+    ids = [str(fid) for fid in finding_ids if fid]
+    if not ids:
+        return {}
+    rows = conn.execute(
+        "SELECT finding_id, ordinal FROM compliance_hub_findings WHERE tenant_id = %s AND finding_id = ANY(%s)",
+        (tenant_id, ids),
+    ).fetchall()
+    return {str(finding_id): int(ordinal) for finding_id, ordinal in rows}
 
 
 def _fetch_ledger_payloads_postgres(
@@ -591,33 +625,57 @@ class PostgresComplianceHubStore:
             """
         )
 
-    def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+    def _write_ledger_batch(self, conn: Any, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        """Append/refresh ledger rows on ``conn`` — no commit, no stats bump.
+
+        Returns the count of genuinely-new rows so the caller can bump the
+        cached tenant total AFTER the shared transaction commits. Bootstraps the
+        ingest-stats counter (a read) inside the same connection. Shared by the
+        committing :meth:`add` and the single-transaction :meth:`ingest_batch_atomic`.
+        """
+        self._bootstrap_ingest_stats(conn, tenant_id)
         if not findings:
-            with _tenant_connection(self._pool) as conn:
-                self._bootstrap_ingest_stats(conn, tenant_id)
-            with self._ingest_stats_lock:
-                if tenant_id in self._finding_count_by_tenant:
-                    return self._finding_count_by_tenant[tenant_id]
-            return self.count(tenant_id)
+            return 0
         now = _now_utc_iso()
         rows_to_insert: list[tuple[str, str, dict[str, Any]]] = []
-        with _tenant_connection(self._pool) as conn:
-            self._bootstrap_ingest_stats(conn, tenant_id)
-            for original in findings:
-                if not isinstance(original, dict):
-                    continue
-                frameworks_csv = _frameworks_csv(original)
-                slim = persist_finding_references_postgres(conn, tenant_id, original)
-                payload = _redact_finding(slim)
-                finding_id = str(payload.get("id") or f"hub-{now}-{id(original)}")
-                rows_to_insert.append((finding_id, frameworks_csv, payload))
-            existing_ids = self._existing_finding_ids(conn, tenant_id, [row[0] for row in rows_to_insert])
-            new_rows = sum(1 for finding_id, _, _ in rows_to_insert if finding_id not in existing_ids)
-            for finding_id, frameworks_csv, payload in rows_to_insert:
-                # Idempotent ingest: a resend of the same (tenant_id, finding_id)
-                # refreshes payload/metadata and keeps the original ``ordinal``
-                # (the BIGSERIAL default only advances on genuine inserts).
-                conn.execute(
+        # Hoist the reference-table existence probe to once per batch (it is
+        # otherwise two CREATE-IF-NOT-EXISTS round-trips per row).
+        ensure_postgres_reference_tables(conn)
+        for original in findings:
+            if not isinstance(original, dict):
+                continue
+            frameworks_csv = _frameworks_csv(original)
+            slim = persist_finding_references_postgres(conn, tenant_id, original, ensure_tables=False)
+            payload = _redact_finding(slim)
+            finding_id = str(payload.get("id") or f"hub-{now}-{id(original)}")
+            rows_to_insert.append((finding_id, frameworks_csv, payload))
+        existing_ids = self._existing_finding_ids(conn, tenant_id, [row[0] for row in rows_to_insert])
+        new_rows = sum(1 for finding_id, _, _ in rows_to_insert if finding_id not in existing_ids)
+        # Idempotent ingest: a resend of the same (tenant_id, finding_id) refreshes
+        # payload/metadata and keeps the original ``ordinal`` (the BIGSERIAL default
+        # only advances on genuine inserts). Batched via ``executemany`` (psycopg
+        # pipelines the round-trips) so a connector initial-sync of millions is not
+        # a per-row execute loop — same SQL, same ON CONFLICT idempotency, same
+        # tenant scope, ~10x the row/s of the per-row loop (wave-2 residual #2).
+        insert_params = [
+            (
+                tenant_id,
+                finding_id,
+                now,
+                str(payload.get("source") or ""),
+                frameworks_csv,
+                encode_hub_payload(payload),
+                compute_effective_reach_score(payload),
+                str(payload.get("origin") or ""),
+                str(payload.get("severity") or ""),
+                _severity_rank(payload),
+                _cvss_value(payload),
+            )
+            for finding_id, frameworks_csv, payload in rows_to_insert
+        ]
+        if insert_params:
+            with conn.cursor() as cur:
+                cur.executemany(
                     """
                     INSERT INTO compliance_hub_findings
                         (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
@@ -634,24 +692,70 @@ class PostgresComplianceHubStore:
                         severity_rank = EXCLUDED.severity_rank,
                         cvss_score = EXCLUDED.cvss_score
                     """,
-                    (
-                        tenant_id,
-                        finding_id,
-                        now,
-                        str(payload.get("source") or ""),
-                        frameworks_csv,
-                        encode_hub_payload(payload),
-                        compute_effective_reach_score(payload),
-                        str(payload.get("origin") or ""),
-                        str(payload.get("severity") or ""),
-                        _severity_rank(payload),
-                        _cvss_value(payload),
-                    ),
+                    insert_params,
+                )
+        return new_rows
+
+    def _bump_tenant_total(self, tenant_id: str, new_rows: int) -> int:
+        """Advance the cached tenant total by ``new_rows`` (called post-commit)."""
+        with self._ingest_stats_lock:
+            if tenant_id in self._finding_count_by_tenant:
+                self._finding_count_by_tenant[tenant_id] += new_rows
+                return self._finding_count_by_tenant[tenant_id]
+        return self.count(tenant_id)
+
+    def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        with _tenant_connection(self._pool) as conn:
+            new_rows = self._write_ledger_batch(conn, tenant_id, findings)
+            conn.commit()
+        _invalidate_overview_severity(tenant_id)
+        return self._bump_tenant_total(tenant_id, new_rows)
+
+    def ingest_batch_atomic(
+        self,
+        tenant_id: str,
+        findings: list[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str,
+        reconcile_absent: bool,
+        present_canonical_ids: set[str],
+    ) -> tuple[int, int]:
+        """Ledger append + current upsert (+ reconcile) in ONE transaction.
+
+        Each write method used to open its own tenant connection and commit
+        independently, so a failure between the ledger ``add`` and the
+        current-state upsert left the ledger committed but current-state not:
+        the ledger inflated while the findings stayed invisible (wave-2 residual
+        #1). Threading a single ``_tenant_connection`` through all three writes
+        and committing once makes a mid-batch failure roll BOTH back. The cached
+        tenant total is bumped only after the commit succeeds so a rolled-back
+        batch does not inflate it. Returns ``(new_total, reconciled)``.
+        """
+        with _tenant_connection(self._pool) as conn:
+            new_rows = self._write_ledger_batch(conn, tenant_id, findings)
+            self._write_current_batch(
+                conn,
+                tenant_id,
+                findings,
+                observed_at=observed_at,
+                batch_id=batch_id,
+                source=source,
+            )
+            reconciled = 0
+            if reconcile_absent:
+                reconciled = self._reconcile_current_absent_conn(
+                    conn,
+                    tenant_id,
+                    present_canonical_ids=present_canonical_ids,
+                    observed_at=observed_at,
+                    scope_source=source,
                 )
             conn.commit()
-        with self._ingest_stats_lock:
-            self._finding_count_by_tenant[tenant_id] += new_rows
-            return self._finding_count_by_tenant[tenant_id]
+        _invalidate_overview_severity(tenant_id)
+        new_total = self._bump_tenant_total(tenant_id, new_rows)
+        return new_total, reconciled
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
         with _tenant_connection(self._pool) as conn:
@@ -771,6 +875,7 @@ class PostgresComplianceHubStore:
             conn.commit()
         removed = cur.rowcount or 0
         self._reset_ingest_stats(tenant_id)
+        _invalidate_overview_severity(tenant_id)
         if removed:
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
@@ -786,6 +891,32 @@ class PostgresComplianceHubStore:
         batch_id: str,
         source: str = "",
     ) -> None:
+        with _tenant_connection(self._pool) as conn:
+            self._write_current_batch(
+                conn,
+                tenant_id,
+                findings,
+                observed_at=observed_at,
+                batch_id=batch_id,
+                source=source,
+            )
+            conn.commit()
+
+    def _write_current_batch(
+        self,
+        conn: Any,
+        tenant_id: str,
+        findings: Sequence[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str = "",
+    ) -> None:
+        """Upsert current-state rows on ``conn`` — no commit.
+
+        Shared by the committing :meth:`upsert_current_batch` and the
+        single-transaction :meth:`ingest_batch_atomic`.
+        """
         from agent_bom.api.finding_lifecycle import (
             apply_observation_to_current,
             lifecycle_metrics,
@@ -796,157 +927,196 @@ class PostgresComplianceHubStore:
         if not clean:
             return
         now = _now_utc_iso()
-        with _tenant_connection(self._pool) as conn:
-            # observed_at is batch-level: ensure its monthly partition exists once
-            # per batch so a backdated bulk import (older than the pre-provisioned
-            # behind=1 window) does not raise a raw CheckViolation -> 500. Out of
-            # the bounded window raises ObservationPartitionRangeError -> 4xx.
-            from agent_bom.api.hub_observations_partition import ensure_observation_partition_for
+        # observed_at is batch-level: ensure its monthly partition exists once
+        # per batch so a backdated bulk import (older than the pre-provisioned
+        # behind=1 window) does not raise a raw CheckViolation -> 500. Out of
+        # the bounded window raises ObservationPartitionRangeError -> 4xx.
+        from agent_bom.api.hub_observations_partition import ensure_observation_partition_for
 
-            ensure_observation_partition_for(conn, observed_at)
-            # Probe the ledger column ONCE per batch/connection — the schema does
-            # not change mid-batch. It was previously an information_schema query
-            # per row, the dominant write-path amplifier at scale.
-            has_ledger_col = _postgres_current_has_ledger_col(conn)
-            payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
-            for payload in clean:
-                canonical = resolve_canonical_id(payload, source=source)
-                metrics = lifecycle_metrics(payload)
-                ledger_finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
-                overlay = current_state_overlay(payload) if ledger_finding_id else dict(payload)
-                inserted = conn.execute(
-                    """
-                    INSERT INTO hub_findings_current_observations
-                        (tenant_id, canonical_id, scan_id, observed_at)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (tenant_id, canonical, batch_id, observed_at),
-                ).rowcount
-                if not inserted:
-                    continue
-                existing_row = conn.execute(
-                    f"""
-                    SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                           cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                           updated_at, {payload_select}
-                    FROM hub_findings_current
-                    WHERE tenant_id = %s AND canonical_id = %s
-                    """,  # nosec B608
-                    (tenant_id, canonical),
-                ).fetchone()
-                existing: dict[str, Any] | None
-                if existing_row is None:
-                    existing = None
-                else:
-                    existing = _postgres_current_row_from_db(existing_row, has_ledger_col=has_ledger_col)
-                    existing = _hydrate_postgres_current_rows(conn, tenant_id, [existing])[0]
-                merged = apply_observation_to_current(
-                    existing,
-                    canonical_id=canonical,
-                    observed_at=observed_at,
-                    metrics=metrics,
-                    payload=payload,
-                    updated_at=now,
+        ensure_observation_partition_for(conn, observed_at)
+        # Probe the ledger column ONCE per batch/connection — the schema does
+        # not change mid-batch. It was previously an information_schema query
+        # per row, the dominant write-path amplifier at scale.
+        has_ledger_col = _postgres_current_has_ledger_col(conn)
+        payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
+
+        # ── Bulk current-state upsert (wave-2 residual #2) ───────────────────
+        # The per-row loop issued up to four round-trips per finding (observation
+        # insert, existing-current SELECT, ledger-ordinal SELECT, current upsert),
+        # so a connector initial-sync of millions crawled. This batches each of
+        # those into ONE round-trip while preserving the EXACT lifecycle
+        # semantics: the observation ``ON CONFLICT DO NOTHING RETURNING`` yields
+        # precisely the canonicals newly observed this batch (idempotent replay of
+        # the same batch_id returns none), first-occurrence-per-canonical is kept
+        # (later in-batch duplicates were skipped by the observation dedup), the
+        # prior-batch current row still feeds ``apply_observation_to_current``, and
+        # the final upsert is byte-identical SQL.
+        row_meta: list[tuple[str, dict[str, Any], Any, str, dict[str, Any]]] = []
+        obs_params: list[tuple[str, str, str, str]] = []
+        for payload in clean:
+            canonical = resolve_canonical_id(payload, source=source)
+            metrics = lifecycle_metrics(payload)
+            ledger_finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
+            overlay = current_state_overlay(payload) if ledger_finding_id else dict(payload)
+            row_meta.append((canonical, payload, metrics, ledger_finding_id or "", overlay))
+            obs_params.append((tenant_id, canonical, batch_id, observed_at))
+
+        inserted_canonicals: set[str] = set()
+        with conn.cursor() as obs_cur:
+            obs_cur.executemany(
+                """
+                INSERT INTO hub_findings_current_observations
+                    (tenant_id, canonical_id, scan_id, observed_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                RETURNING canonical_id
+                """,
+                obs_params,
+                returning=True,
+            )
+            while True:
+                if obs_cur.pgresult is not None and obs_cur.pgresult.ntuples:
+                    inserted_canonicals.update(str(row[0]) for row in obs_cur.fetchall())
+                if not obs_cur.nextset():
+                    break
+        if not inserted_canonicals:
+            return
+
+        # First occurrence per newly-observed canonical, in ingest order — mirrors
+        # the per-row loop that processed the first and skipped later duplicates.
+        to_process: list[tuple[str, dict[str, Any], Any, str, dict[str, Any]]] = []
+        seen_canonical: set[str] = set()
+        for meta in row_meta:
+            canonical = meta[0]
+            if canonical not in inserted_canonicals or canonical in seen_canonical:
+                continue
+            seen_canonical.add(canonical)
+            to_process.append(meta)
+
+        # One SELECT for every prior-batch current row this batch touches, hydrated
+        # in bulk, so ``apply_observation_to_current`` merges against real history.
+        canonical_list = [meta[0] for meta in to_process]
+        existing_rows = conn.execute(
+            f"""
+            SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                   cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                   updated_at, {payload_select}
+            FROM hub_findings_current
+            WHERE tenant_id = %s AND canonical_id = ANY(%s)
+            """,  # nosec B608
+            (tenant_id, canonical_list),
+        ).fetchall()
+        existing_map: dict[str, dict[str, Any]] = {}
+        if existing_rows:
+            parsed = [_postgres_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in existing_rows]
+            for hydrated in _hydrate_postgres_current_rows(conn, tenant_id, parsed):
+                existing_map[str(hydrated["canonical_id"])] = hydrated
+
+        # One lookup for every ledger ordinal pointer.
+        ordinal_map: dict[str, int] = {}
+        if has_ledger_col:
+            ordinal_map = _fetch_ledger_ordinals_postgres(
+                conn, tenant_id, [meta[3] for meta in to_process if meta[3]]
+            )
+
+        ledger_upsert_params: list[tuple[Any, ...]] = []
+        plain_upsert_params: list[tuple[Any, ...]] = []
+        for canonical, payload, metrics, ledger_finding_id, overlay in to_process:
+            existing = existing_map.get(canonical)
+            merged = apply_observation_to_current(
+                existing,
+                canonical_id=canonical,
+                observed_at=observed_at,
+                metrics=metrics,
+                payload=payload,
+                updated_at=now,
+            )
+            origin_val = str(payload.get("origin") or "")
+            # Canonical ``batch_id or scan_id`` scan filter key (#3926).
+            scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")
+            base = (
+                tenant_id,
+                canonical,
+                merged["first_seen"],
+                merged["last_seen"],
+                merged["status"],
+                merged["severity"],
+                merged["severity_rank"],
+                merged["cvss_score"],
+                merged["effective_reach_score"],
+                merged["scan_count"],
+                merged["resolved_at"],
+                merged["reopened_at"],
+                merged["updated_at"],
+                encode_hub_payload(overlay),
+            )
+            if has_ledger_col:
+                # Materialise the ledger ingest ordinal so ``sort=ordinal`` rides
+                # idx_hub_findings_current_tenant_ordinal instead of a per-row
+                # correlated ledger subquery (#3984).
+                ledger_ordinal_val = ordinal_map.get(ledger_finding_id, _LEDGER_ORDINAL_SENTINEL)
+                ledger_upsert_params.append(
+                    (*base, ledger_finding_id or None, origin_val, scan_id_val, ledger_ordinal_val)
                 )
-                origin_val = str(payload.get("origin") or "")
-                # Canonical ``batch_id or scan_id`` scan filter key (#3926).
-                scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")
-                if has_ledger_col:
-                    # Materialise the ledger ingest ordinal so ``sort=ordinal``
-                    # rides idx_hub_findings_current_tenant_ordinal instead of a
-                    # per-row correlated ledger subquery (#3984).
-                    ledger_ordinal_val = _resolve_current_ledger_ordinal_postgres(conn, tenant_id, ledger_finding_id or "")
-                    conn.execute(
-                        """
-                        INSERT INTO hub_findings_current
-                            (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                             cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                             updated_at, payload, ledger_finding_id, origin, scan_id, ledger_ordinal)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
-                        ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
-                            first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
-                            last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
-                            status = EXCLUDED.status,
-                            severity = EXCLUDED.severity,
-                            severity_rank = EXCLUDED.severity_rank,
-                            cvss_score = EXCLUDED.cvss_score,
-                            effective_reach_score = EXCLUDED.effective_reach_score,
-                            scan_count = EXCLUDED.scan_count,
-                            resolved_at = EXCLUDED.resolved_at,
-                            reopened_at = EXCLUDED.reopened_at,
-                            updated_at = EXCLUDED.updated_at,
-                            payload = EXCLUDED.payload,
-                            ledger_finding_id = EXCLUDED.ledger_finding_id,
-                            origin = EXCLUDED.origin,
-                            scan_id = EXCLUDED.scan_id,
-                            ledger_ordinal = EXCLUDED.ledger_ordinal
-                        """,
-                        (
-                            tenant_id,
-                            canonical,
-                            merged["first_seen"],
-                            merged["last_seen"],
-                            merged["status"],
-                            merged["severity"],
-                            merged["severity_rank"],
-                            merged["cvss_score"],
-                            merged["effective_reach_score"],
-                            merged["scan_count"],
-                            merged["resolved_at"],
-                            merged["reopened_at"],
-                            merged["updated_at"],
-                            encode_hub_payload(overlay),
-                            ledger_finding_id or None,
-                            origin_val,
-                            scan_id_val,
-                            ledger_ordinal_val,
-                        ),
-                    )
-                else:
-                    conn.execute(
-                        """
-                        INSERT INTO hub_findings_current
-                            (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                             cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                             updated_at, payload, origin, scan_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-                        ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
-                            first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
-                            last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
-                            status = EXCLUDED.status,
-                            severity = EXCLUDED.severity,
-                            severity_rank = EXCLUDED.severity_rank,
-                            cvss_score = EXCLUDED.cvss_score,
-                            effective_reach_score = EXCLUDED.effective_reach_score,
-                            scan_count = EXCLUDED.scan_count,
-                            resolved_at = EXCLUDED.resolved_at,
-                            reopened_at = EXCLUDED.reopened_at,
-                            updated_at = EXCLUDED.updated_at,
-                            payload = EXCLUDED.payload,
-                            origin = EXCLUDED.origin,
-                            scan_id = EXCLUDED.scan_id
-                        """,
-                        (
-                            tenant_id,
-                            canonical,
-                            merged["first_seen"],
-                            merged["last_seen"],
-                            merged["status"],
-                            merged["severity"],
-                            merged["severity_rank"],
-                            merged["cvss_score"],
-                            merged["effective_reach_score"],
-                            merged["scan_count"],
-                            merged["resolved_at"],
-                            merged["reopened_at"],
-                            merged["updated_at"],
-                            encode_hub_payload(overlay),
-                            origin_val,
-                            scan_id_val,
-                        ),
-                    )
-            conn.commit()
+            else:
+                plain_upsert_params.append((*base, origin_val, scan_id_val))
+
+        if ledger_upsert_params:
+            with conn.cursor() as up_cur:
+                up_cur.executemany(
+                    """
+                    INSERT INTO hub_findings_current
+                        (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                         cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                         updated_at, payload, ledger_finding_id, origin, scan_id, ledger_ordinal)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+                    ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
+                        first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
+                        last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
+                        status = EXCLUDED.status,
+                        severity = EXCLUDED.severity,
+                        severity_rank = EXCLUDED.severity_rank,
+                        cvss_score = EXCLUDED.cvss_score,
+                        effective_reach_score = EXCLUDED.effective_reach_score,
+                        scan_count = EXCLUDED.scan_count,
+                        resolved_at = EXCLUDED.resolved_at,
+                        reopened_at = EXCLUDED.reopened_at,
+                        updated_at = EXCLUDED.updated_at,
+                        payload = EXCLUDED.payload,
+                        ledger_finding_id = EXCLUDED.ledger_finding_id,
+                        origin = EXCLUDED.origin,
+                        scan_id = EXCLUDED.scan_id,
+                        ledger_ordinal = EXCLUDED.ledger_ordinal
+                    """,
+                    ledger_upsert_params,
+                )
+        if plain_upsert_params:
+            with conn.cursor() as up_cur:
+                up_cur.executemany(
+                    """
+                    INSERT INTO hub_findings_current
+                        (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                         cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                         updated_at, payload, origin, scan_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
+                        first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
+                        last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
+                        status = EXCLUDED.status,
+                        severity = EXCLUDED.severity,
+                        severity_rank = EXCLUDED.severity_rank,
+                        cvss_score = EXCLUDED.cvss_score,
+                        effective_reach_score = EXCLUDED.effective_reach_score,
+                        scan_count = EXCLUDED.scan_count,
+                        resolved_at = EXCLUDED.resolved_at,
+                        reopened_at = EXCLUDED.reopened_at,
+                        updated_at = EXCLUDED.updated_at,
+                        payload = EXCLUDED.payload,
+                        origin = EXCLUDED.origin,
+                        scan_id = EXCLUDED.scan_id
+                    """,
+                    plain_upsert_params,
+                )
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         with _tenant_connection(self._pool) as conn:
@@ -1069,6 +1239,31 @@ class PostgresComplianceHubStore:
         observed_at: str,
         scope_source: str | None = None,
     ) -> int:
+        with _tenant_connection(self._pool) as conn:
+            total = self._reconcile_current_absent_conn(
+                conn,
+                tenant_id,
+                present_canonical_ids=present_canonical_ids,
+                observed_at=observed_at,
+                scope_source=scope_source,
+            )
+            conn.commit()
+        return total
+
+    def _reconcile_current_absent_conn(
+        self,
+        conn: Any,
+        tenant_id: str,
+        *,
+        present_canonical_ids: set[str],
+        observed_at: str,
+        scope_source: str | None = None,
+    ) -> int:
+        """Resolve open findings absent from the batch on ``conn`` — no commit.
+
+        Shared by the committing :meth:`reconcile_current_absent` and the
+        single-transaction :meth:`ingest_batch_atomic`.
+        """
         now = _now_utc_iso()
         where = ["tenant_id = %s", "status IN ('open', 'reopened')"]
         params: list[Any] = [tenant_id]
@@ -1077,26 +1272,24 @@ class PostgresComplianceHubStore:
             params.append(scope_source)
         where_sql = " AND ".join(where)
         total = 0
-        with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                f"SELECT canonical_id FROM hub_findings_current WHERE {where_sql}",  # nosec B608
-                tuple(params),
-            ).fetchall()
-            open_ids = {str(row[0]) for row in rows}
-            absent = sorted(open_ids - present_canonical_ids)
-            if not absent:
-                return 0
-            for offset in range(0, len(absent), RECONCILE_ABSENT_CHUNK):
-                chunk = absent[offset : offset + RECONCILE_ABSENT_CHUNK]
-                placeholders = ",".join("%s" for _ in chunk)
-                cur = conn.execute(
-                    f"""
-                    UPDATE hub_findings_current
-                    SET status = 'resolved', resolved_at = %s, updated_at = %s
-                    WHERE {where_sql} AND canonical_id IN ({placeholders})
-                    """,  # nosec B608
-                    (observed_at, now, *params, *chunk),
-                )
-                total += int(cur.rowcount or 0)
-            conn.commit()
+        rows = conn.execute(
+            f"SELECT canonical_id FROM hub_findings_current WHERE {where_sql}",  # nosec B608
+            tuple(params),
+        ).fetchall()
+        open_ids = {str(row[0]) for row in rows}
+        absent = sorted(open_ids - present_canonical_ids)
+        if not absent:
+            return 0
+        for offset in range(0, len(absent), RECONCILE_ABSENT_CHUNK):
+            chunk = absent[offset : offset + RECONCILE_ABSENT_CHUNK]
+            placeholders = ",".join("%s" for _ in chunk)
+            cur = conn.execute(
+                f"""
+                UPDATE hub_findings_current
+                SET status = 'resolved', resolved_at = %s, updated_at = %s
+                WHERE {where_sql} AND canonical_id IN ({placeholders})
+                """,  # nosec B608
+                (observed_at, now, *params, *chunk),
+            )
+            total += int(cur.rowcount or 0)
         return total

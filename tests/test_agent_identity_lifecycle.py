@@ -508,6 +508,73 @@ def test_conditional_access_blocks_at_gateway(store):
     assert allowed.status_code == 200 and allowed.json()["result"] == {"ok": True}
 
 
+def _gateway_client_with_audit(store, audit_events):
+    from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+    from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+
+    async def ok_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://fs.local:8100")]),
+        policy={},
+        upstream_caller=ok_caller,
+        audit_sink=audit_sink,
+    )
+    return TestClient(create_gateway_app(settings))
+
+
+def test_conditional_access_eval_error_fails_closed_when_policy_exists(store, monkeypatch):
+    """A conditional-access evaluation error must NOT silently open the gate when
+    the tenant has a require/deny policy configured (§7 fail-closed)."""
+    from agent_bom.api import agent_identity_store as ais
+
+    issue_identity(store, agent_id="agent-a", tenant_id="default")
+    # A require-prod policy that would DENY a dev-context request.
+    create_conditional_policy(store, tenant_id="default", name="prod-only", effect="require", allowed_environments=["prod"])
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("conditional-access store unavailable")
+
+    monkeypatch.setattr(ais, "evaluate_conditional_access_for_request", boom)
+
+    audit_events: list[dict] = []
+    client = _gateway_client_with_audit(store, audit_events)
+    message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_files", "arguments": {}}}
+
+    blocked = client.post("/mcp/filesystem", json=message, headers={"x-agent-environment": "dev"})
+    assert blocked.json().get("error", {}).get("code") == -32001, blocked.text
+    assert blocked.json()["error"]["data"]["policy_source"] == "conditional_access"
+    events = [e for e in audit_events if e.get("action") == "gateway.conditional_access_blocked"]
+    assert events, audit_events
+    assert "fail" in events[0]["reason"].lower()
+
+
+def test_conditional_access_eval_error_allows_when_no_policy(store, monkeypatch):
+    """An eval error for a tenant with NO conditional-access policy has no gate to
+    bypass → allow (don't manufacture denials for tenants not using the feature)."""
+    from agent_bom.api import agent_identity_store as ais
+
+    issue_identity(store, agent_id="agent-a", tenant_id="default")
+    # No conditional-access policy created for the tenant.
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("conditional-access store unavailable")
+
+    monkeypatch.setattr(ais, "evaluate_conditional_access_for_request", boom)
+
+    audit_events: list[dict] = []
+    client = _gateway_client_with_audit(store, audit_events)
+    message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_files", "arguments": {}}}
+
+    allowed = client.post("/mcp/filesystem", json=message, headers={"x-agent-environment": "dev"})
+    assert allowed.status_code == 200 and allowed.json()["result"] == {"ok": True}
+    assert not any(e.get("action") == "gateway.conditional_access_blocked" for e in audit_events)
+
+
 def test_conditional_access_api_crud(client):
     created = client.post(
         "/v1/conditional-access-policies",

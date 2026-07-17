@@ -69,6 +69,13 @@ OS_DISTRO_COMPARATOR_FAMILIES: dict[str, str] = {
 # Base ecosystem family → human coverage label, in display order. Includes the
 # pre-existing Alpine/Debian/Ubuntu families so a single call reports the full
 # active OS-advisory surface.
+#
+# Honesty rule: only families that host routing can actually resolve to belong
+# here. SUSE Linux Enterprise (SLES) is intentionally absent — no resolver in
+# this module emits a bare ``SUSE`` ecosystem key, so a ``SUSE`` advisory row in
+# the DB can never be matched by a scanned package. Advertising "SUSE" coverage
+# would be aspirational. openSUSE Leap IS routed (``rpm_advisory_ecosystems``),
+# so it stays. Wiring SLES routing is tracked as a follow-up.
 _BASE_TO_LABEL: tuple[tuple[str, str], ...] = (
     ("alpine", "Alpine"),
     ("debian", "Debian"),
@@ -77,7 +84,6 @@ _BASE_TO_LABEL: tuple[tuple[str, str], ...] = (
     ("rocky linux", "Rocky Linux"),
     ("almalinux", "AlmaLinux"),
     ("opensuse", "openSUSE"),
-    ("suse", "SUSE"),
     ("wolfi", "Wolfi"),
     ("chainguard", "Chainguard"),
 )

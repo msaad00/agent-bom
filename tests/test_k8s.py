@@ -371,3 +371,85 @@ def test_scan_live_cluster_posture_clean_cluster(monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     assert scan_live_cluster_posture(namespace="prod") == []
+
+
+def _posture_with_pod_spec(monkeypatch, pod_spec: dict):
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/" + cmd)
+    payloads = {
+        ("get", "pods"): {
+            "items": [
+                {
+                    "metadata": {"name": "api", "namespace": "prod"},
+                    "spec": pod_spec,
+                    "status": {
+                        "phase": "Running",
+                        "containerStatuses": [{"name": "api", "ready": True, "state": {"running": {}}}],
+                    },
+                }
+            ]
+        },
+        ("get", "networkpolicies"): {"items": [{"metadata": {"name": "default-deny", "namespace": "prod"}}]},
+        ("get", "clusterrolebindings"): {"items": []},
+        ("get", "clusterroles"): {"items": []},
+        ("get", "roles"): {"items": []},
+        ("get", "nodes"): {"items": []},
+    }
+
+    def fake_run(cmd, **kwargs):
+        class R:
+            pass
+
+        r = R()
+        r.returncode = 0
+        r.stderr = ""
+        r.stdout = json.dumps(payloads[tuple(cmd[1:3])])
+        return r
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return scan_live_cluster_posture(namespace="prod")
+
+
+def _hardened_containers() -> list[dict]:
+    return [
+        {
+            "name": "api",
+            "securityContext": {
+                "privileged": False,
+                "runAsNonRoot": True,
+                "allowPrivilegeEscalation": False,
+                "readOnlyRootFilesystem": True,
+                "capabilities": {"drop": ["ALL"]},
+            },
+        }
+    ]
+
+
+def test_automount_implicit_default_is_low_severity(monkeypatch):
+    # A pod that does not set automountServiceAccountToken inherits the on-by-
+    # default behaviour. That is nearly every normal pod, so it must not read
+    # as a MEDIUM finding — contextualize it as low-severity signal.
+    findings = _posture_with_pod_spec(
+        monkeypatch,
+        {
+            "securityContext": {"runAsNonRoot": True, "seccompProfile": {"type": "RuntimeDefault"}},
+            "containers": _hardened_containers(),
+        },
+    )
+    automount = [f for f in findings if f.rule_id == "K8S-LIVE-004"]
+    assert len(automount) == 1
+    assert automount[0].severity == "low"
+
+
+def test_automount_explicit_enable_is_medium_severity(monkeypatch):
+    # An explicit opt-in is an intentional choice and keeps MEDIUM weight.
+    findings = _posture_with_pod_spec(
+        monkeypatch,
+        {
+            "automountServiceAccountToken": True,
+            "securityContext": {"runAsNonRoot": True, "seccompProfile": {"type": "RuntimeDefault"}},
+            "containers": _hardened_containers(),
+        },
+    )
+    automount = [f for f in findings if f.rule_id == "K8S-LIVE-004"]
+    assert len(automount) == 1
+    assert automount[0].severity == "medium"

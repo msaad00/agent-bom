@@ -590,7 +590,7 @@ class DatabricksWarehouseDestination:
         columns = _SF_STRING_COLUMNS + _SF_FLOAT_COLUMNS
         col_list = ", ".join(_dbx_ident(c) for c in columns)
         placeholders = ", ".join("?" for _ in columns)
-        return f"INSERT INTO {self._full_table()} ({col_list}) VALUES ({placeholders})"
+        return f"INSERT INTO {self._full_table()} ({col_list}) VALUES ({placeholders})"  # nosec B608 - table/columns are backtick-escaped via _dbx_ident and columns are a fixed constant; row values use "?" placeholders (parameterized)
 
     @staticmethod
     def _row_tuple(feed: dict[str, Any]) -> tuple[Any, ...]:

@@ -12,9 +12,12 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, NoReturn, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, NoReturn, Protocol
 
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+
+if TYPE_CHECKING:
+    from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 
 class NeptuneGraphStoreError(RuntimeError):
@@ -239,6 +242,47 @@ class NeptuneGraphStore:
                 "risk_summary_json": json.dumps(graph.stats(), sort_keys=True),
             },
         )
+
+    def save_graph_streaming(
+        self,
+        *,
+        scan_id: str,
+        tenant_id: str = "",
+        nodes: Iterable[UnifiedNode],
+        edges: Iterable[UnifiedEdge],
+        attack_paths: Iterable[Any] = (),
+        interaction_risks: Iterable[Any] = (),
+        created_at: str = "",
+    ) -> dict[str, int]:
+        """Persist a snapshot from node/edge iterables.
+
+        TODO(scale): Neptune has no batched Gremlin bulk-load path yet, so this
+        fallback materialises the producer into a ``UnifiedGraph`` and delegates
+        to :meth:`save_graph`. Writes stay byte-identical, but this backend does
+        NOT yet realise the #4055 peak-RSS bound the SQLite/Postgres streaming
+        paths do — see the PR notes. Neptune is not the millions-of-nodes target.
+        """
+        graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id, created_at=created_at)
+        for node in nodes:
+            graph.add_node(node)
+        for edge in edges:
+            graph.add_edge(edge)
+        graph.attack_paths.extend(attack_paths)
+        graph.interaction_risks.extend(interaction_risks)
+        self.save_graph(graph)
+        return {"nodes": len(graph.nodes), "edges": len(graph.edges)}
+
+    def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = "") -> "PriorSnapshotDigest":
+        """Bounded prior-snapshot digest for delta alerts.
+
+        TODO(scale): Neptune has no bounded projection read yet, so this fallback
+        loads the snapshot via :meth:`load_graph` and projects it. Correct, but
+        it does not realise the #4055 read-side bound.
+        """
+        from agent_bom.graph.delta_digest import digest_from_graph
+
+        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        return digest_from_graph(graph)
 
     def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
         snapshots = self.list_snapshots(tenant_id=tenant_id, limit=1)

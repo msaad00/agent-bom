@@ -23,26 +23,77 @@ def _identity_matches(left: str, right: str) -> bool:
     return left.strip().casefold() == right.strip().casefold()
 
 
-def _principal_matches(bundle: AuthorizationEvidenceBundle, binding: AuthorizationBinding, principal_id: str) -> bool:
-    if _identity_matches(binding.principal_id, principal_id):
+def _principal_identifier_matches(bundle: AuthorizationEvidenceBundle, identifier: str, principal_id: str) -> bool:
+    normalized = identifier.strip()
+    if normalized == "*":
+        return True
+    if bundle.provider is AuthorizationProvider.GCP and normalized.casefold() in {
+        "allusers",
+        "principalset://goog/public:all",
+    }:
+        return True
+    if _identity_matches(normalized, principal_id):
         return True
     return any(
-        _identity_matches(membership.principal_id, principal_id) and _identity_matches(membership.group_id, binding.principal_id)
+        _identity_matches(membership.principal_id, principal_id) and _identity_matches(membership.group_id, normalized)
         for membership in bundle.memberships
     )
 
 
-def _scope_matches(provider: AuthorizationProvider, binding: AuthorizationBinding, resource: str) -> bool:
-    scope = binding.scope.strip().rstrip("/")
+def _principal_matches(bundle: AuthorizationEvidenceBundle, binding: AuthorizationBinding, principal_id: str) -> bool:
+    return _principal_identifier_matches(bundle, binding.principal_id, principal_id)
+
+
+def _principal_is_excluded(bundle: AuthorizationEvidenceBundle, binding: AuthorizationBinding, principal_id: str) -> bool:
+    return any(_principal_identifier_matches(bundle, excluded, principal_id) for excluded in binding.excluded_principals)
+
+
+def _scope_contains(
+    provider: AuthorizationProvider,
+    scope: str,
+    resource: str,
+    *,
+    applies_to_children: bool,
+    allow_wildcard: bool,
+) -> bool:
+    normalized_scope = scope.strip().rstrip("/")
     candidate = resource.strip().rstrip("/")
-    if scope == "*":
+    if allow_wildcard and normalized_scope == "*":
         return True
+    if not normalized_scope or normalized_scope == "*" or not candidate:
+        return False
     if provider is AuthorizationProvider.AZURE:
-        scope = scope.casefold()
+        normalized_scope = normalized_scope.casefold()
         candidate = candidate.casefold()
-    if candidate == scope:
+    if candidate == normalized_scope:
         return True
-    return binding.applies_to_children and candidate.startswith(f"{scope}/")
+    return applies_to_children and candidate.startswith(f"{normalized_scope}/")
+
+
+def _resource_within_bundle(bundle: AuthorizationEvidenceBundle, resource: str) -> bool:
+    """Constrain every decision to the concrete evidence boundary.
+
+    A binding-level ``*`` means every resource *inside* the bundle, never every
+    tenant/account. Cross-hierarchy ancestry must be normalized by a provider
+    adapter before reaching this foundation evaluator.
+    """
+    return _scope_contains(
+        bundle.provider,
+        bundle.scope,
+        resource,
+        applies_to_children=True,
+        allow_wildcard=False,
+    )
+
+
+def _scope_matches(provider: AuthorizationProvider, binding: AuthorizationBinding, resource: str) -> bool:
+    return _scope_contains(
+        provider,
+        binding.scope,
+        resource,
+        applies_to_children=binding.applies_to_children,
+        allow_wildcard=True,
+    )
 
 
 def _plane_matches(binding_plane: AuthorizationPlane, request_plane: AuthorizationPlane) -> bool:
@@ -94,15 +145,51 @@ def _applicable(
     binding: AuthorizationBinding,
     request: AuthorizationRequest,
 ) -> tuple[bool, RoleDefinitionEvidence | None]:
-    if not _principal_matches(bundle, binding, request.principal_id):
-        return False, None
-    if any(_identity_matches(excluded, request.principal_id) for excluded in binding.excluded_principals):
-        return False, None
-    if not _scope_matches(bundle.provider, binding, request.resource):
-        return False, None
-    if not _plane_matches(binding.plane, request.plane):
+    if not _context_applies(bundle, binding, request):
         return False, None
     return _action_matches(bundle, binding, request)
+
+
+def _context_applies(
+    bundle: AuthorizationEvidenceBundle,
+    binding: AuthorizationBinding,
+    request: AuthorizationRequest,
+) -> bool:
+    if not _principal_matches(bundle, binding, request.principal_id):
+        return False
+    if _principal_is_excluded(bundle, binding, request.principal_id):
+        return False
+    if not _scope_matches(bundle.provider, binding, request.resource):
+        return False
+    return _plane_matches(binding.plane, request.plane)
+
+
+def _target_principal_applies(
+    bundle: AuthorizationEvidenceBundle,
+    binding: AuthorizationBinding,
+    request: AuthorizationRequest,
+) -> bool:
+    return _principal_matches(bundle, binding, request.principal_id) and not _principal_is_excluded(
+        bundle,
+        binding,
+        request.principal_id,
+    )
+
+
+def _record_role_diagnostic(
+    diagnostics: list[str],
+    duplicate_role_ids: set[str],
+    binding: AuthorizationBinding,
+    role: RoleDefinitionEvidence | None,
+) -> None:
+    if not binding.role_id:
+        return
+    if binding.role_id in duplicate_role_ids:
+        diagnostics.append(f"role:{binding.role_id}:duplicate")
+    elif role is None:
+        diagnostics.append(f"role:{binding.role_id}:missing")
+    elif role.completeness is not EvidenceSourceState.COMPLETE:
+        diagnostics.append(f"role:{role.role_id}:{role.completeness.value}")
 
 
 def evaluate_authorization(bundle: AuthorizationEvidenceBundle, request: AuthorizationRequest) -> AuthorizationEvaluation:
@@ -119,16 +206,36 @@ def evaluate_authorization(bundle: AuthorizationEvidenceBundle, request: Authori
         or not request.resource.strip()
     ):
         return AuthorizationEvaluation(AuthorizationDecision.INDETERMINATE, diagnostics=("invalid_request",))
+    if not _resource_within_bundle(bundle, request.resource):
+        return AuthorizationEvaluation(
+            AuthorizationDecision.INDETERMINATE,
+            diagnostics=("resource_outside_bundle_scope",),
+        )
+    if bundle.provider is not AuthorizationProvider.GCP and any(
+        binding.effect is AuthorizationEffect.BOUNDARY for binding in bundle.bindings
+    ):
+        return AuthorizationEvaluation(
+            AuthorizationDecision.INDETERMINATE,
+            diagnostics=("unsupported_boundary_provider",),
+        )
+
+    duplicate_role_ids = set(bundle.duplicate_role_ids())
+    diagnostics = [f"source:{name}:duplicate" for name in bundle.duplicate_source_names()]
+    diagnostics.extend(f"role:{role_id}:duplicate" for role_id in duplicate_role_ids)
+    diagnostics.extend(item for item in bundle.incomplete_required_sources() if not item.endswith(":duplicate"))
 
     uncertain_deny = False
     matched_denies: list[str] = []
     for binding in bundle.bindings:
         if binding.effect is not AuthorizationEffect.DENY:
             continue
-        matches, _role = _applicable(bundle, binding, request)
+        if not _context_applies(bundle, binding, request):
+            continue
+        matches, role = _action_matches(bundle, binding, request)
+        _record_role_diagnostic(diagnostics, duplicate_role_ids, binding, role)
         if not matches:
             continue
-        if binding.condition is None or bundle.provider is AuthorizationProvider.GCP:
+        if binding.condition is None:
             matched_denies.append(binding.binding_id)
         else:
             uncertain_deny = True
@@ -138,7 +245,6 @@ def evaluate_authorization(bundle: AuthorizationEvidenceBundle, request: Authori
             matched_deny_bindings=tuple(sorted(set(matched_denies))),
         )
 
-    diagnostics = list(bundle.incomplete_required_sources())
     if uncertain_deny:
         diagnostics.append("unevaluated_deny_condition")
 
@@ -148,10 +254,12 @@ def evaluate_authorization(bundle: AuthorizationEvidenceBundle, request: Authori
     for binding in bundle.bindings:
         if binding.effect not in {AuthorizationEffect.ALLOW, AuthorizationEffect.BOUNDARY}:
             continue
+        if binding.effect is AuthorizationEffect.BOUNDARY and not _target_principal_applies(bundle, binding, request):
+            continue
         matches, role = _applicable(bundle, binding, request)
-        if role is not None and role.completeness is not EvidenceSourceState.COMPLETE:
-            diagnostics.append(f"role:{role.role_id}:{role.completeness.value}")
-        if binding.effect is AuthorizationEffect.BOUNDARY and _principal_matches(bundle, binding, request.principal_id):
+        if _context_applies(bundle, binding, request):
+            _record_role_diagnostic(diagnostics, duplicate_role_ids, binding, role)
+        if binding.effect is AuthorizationEffect.BOUNDARY:
             applicable_boundaries.append((binding, matches))
         if not matches or binding.effect is not AuthorizationEffect.ALLOW:
             continue
@@ -160,8 +268,12 @@ def evaluate_authorization(bundle: AuthorizationEvidenceBundle, request: Authori
         else:
             matched_allows.append(binding.binding_id)
 
+    # GCP PABs are additive. One matching unconditional boundary establishes
+    # resource eligibility. If none does, an unevaluated conditional binding
+    # prevents a hard boundary decision even when its allowed scope did not
+    # match: the condition might be false, in which case the PAB does not apply.
     if applicable_boundaries and not any(matches and binding.condition is None for binding, matches in applicable_boundaries):
-        if any(matches and binding.condition is not None for binding, matches in applicable_boundaries):
+        if any(binding.condition is not None for binding, _matches in applicable_boundaries):
             diagnostics.append("unevaluated_boundary_condition")
         elif not diagnostics:
             return AuthorizationEvaluation(AuthorizationDecision.IMPLICIT_DENY, diagnostics=("boundary_excluded",))

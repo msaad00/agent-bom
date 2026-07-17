@@ -69,3 +69,34 @@ def test_missing_required_source_is_not_complete() -> None:
     )
 
     assert bundle.incomplete_required_sources() == ("deny_assignments:missing",)
+
+
+def test_duplicate_source_state_is_deterministic_and_incomplete() -> None:
+    bundle = AuthorizationEvidenceBundle(
+        provider=AuthorizationProvider.GCP,
+        scope="projects/proj-1",
+        sources=(
+            EvidenceSource("deny_policies", EvidenceSourceState.COMPLETE),
+            EvidenceSource("deny_policies", EvidenceSourceState.PARTIAL),
+        ),
+        required_sources=("deny_policies",),
+    )
+
+    assert bundle.source_state("deny_policies") is EvidenceSourceState.PARTIAL
+    assert bundle.incomplete_required_sources() == ("deny_policies:duplicate",)
+
+
+def test_duplicate_role_definition_is_not_selected_by_position() -> None:
+    role = RoleDefinitionEvidence(
+        role_id="roles/storage.objectViewer",
+        data_permissions=("storage.objects.get",),
+        completeness=EvidenceSourceState.COMPLETE,
+    )
+    bundle = AuthorizationEvidenceBundle(
+        provider=AuthorizationProvider.GCP,
+        scope="projects/proj-1",
+        role_definitions=(role, role),
+    )
+
+    assert bundle.role_definition(role.role_id) is None
+    assert bundle.duplicate_role_ids() == (role.role_id,)

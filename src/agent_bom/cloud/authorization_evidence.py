@@ -30,6 +30,19 @@ class EvidenceSourceState(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+_SOURCE_STATE_SEVERITY: dict[EvidenceSourceState, int] = {
+    EvidenceSourceState.COMPLETE: 0,
+    EvidenceSourceState.PARTIAL: 1,
+    EvidenceSourceState.STALE: 2,
+    EvidenceSourceState.TRUNCATED: 3,
+    EvidenceSourceState.UNSUPPORTED: 4,
+    EvidenceSourceState.DISABLED: 5,
+    EvidenceSourceState.SDK_MISSING: 6,
+    EvidenceSourceState.UNAVAILABLE: 7,
+    EvidenceSourceState.ACCESS_DENIED: 8,
+}
+
+
 class AuthorizationDecision(StrEnum):
     ALLOW = "allow"
     EXPLICIT_DENY = "explicit_deny"
@@ -38,6 +51,14 @@ class AuthorizationDecision(StrEnum):
 
 
 class AuthorizationEffect(StrEnum):
+    """Normalized effects.
+
+    ``BOUNDARY`` represents Google Cloud principal access boundaries only.
+    Multiple matching GCP boundaries are additive: any unconditional boundary
+    that establishes eligibility is sufficient. Other providers must not emit
+    this effect until their boundary semantics have a dedicated evaluator.
+    """
+
     ALLOW = "allow"
     DENY = "deny"
     BOUNDARY = "boundary"
@@ -173,16 +194,31 @@ class AuthorizationEvidenceBundle:
     diagnostics: tuple[str, ...] = ()
 
     def source_state(self, name: str) -> EvidenceSourceState | None:
+        matches = tuple(source.state for source in self.sources if source.name == name)
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return matches[0]
+        # Duplicate source records are an invalid/partial contract even when
+        # both claim COMPLETE. Preserve a more severe explicit failure state
+        # deterministically when one exists.
+        worst = max(matches, key=lambda state: (_SOURCE_STATE_SEVERITY[state], state.value))
+        return EvidenceSourceState.PARTIAL if worst is EvidenceSourceState.COMPLETE else worst
+
+    def duplicate_source_names(self) -> tuple[str, ...]:
+        counts: dict[str, int] = {}
         for source in self.sources:
-            if source.name == name:
-                return source.state
-        return None
+            counts[source.name] = counts.get(source.name, 0) + 1
+        return tuple(sorted(name for name, count in counts.items() if count > 1))
 
     def incomplete_required_sources(self) -> tuple[str, ...]:
-        states = {source.name: source.state for source in self.sources}
+        duplicate_names = set(self.duplicate_source_names())
         incomplete: list[str] = []
         for name in self.required_sources:
-            state = states.get(name)
+            if name in duplicate_names:
+                incomplete.append(f"{name}:duplicate")
+                continue
+            state = self.source_state(name)
             if state is None:
                 incomplete.append(f"{name}:missing")
             elif state is not EvidenceSourceState.COMPLETE:
@@ -190,10 +226,14 @@ class AuthorizationEvidenceBundle:
         return tuple(sorted(set(incomplete)))
 
     def role_definition(self, role_id: str) -> RoleDefinitionEvidence | None:
+        matches = tuple(role for role in self.role_definitions if role.role_id == role_id)
+        return matches[0] if len(matches) == 1 else None
+
+    def duplicate_role_ids(self) -> tuple[str, ...]:
+        counts: dict[str, int] = {}
         for role in self.role_definitions:
-            if role.role_id == role_id:
-                return role
-        return None
+            counts[role.role_id] = counts.get(role.role_id, 0) + 1
+        return tuple(sorted(role_id for role_id, count in counts.items() if count > 1))
 
     def to_dict(self) -> dict[str, Any]:
         return {

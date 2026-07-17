@@ -392,6 +392,7 @@ def test_campaign_ticket_sync_is_tenant_and_finding_scoped(monkeypatch) -> None:
 
     assert result.status_code == 200
     assert result.json()["synced"] == 1
+    assert result.json()["per_action_credential"] is False
     assert called == ["ticket-a"]
 
 

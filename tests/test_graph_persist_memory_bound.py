@@ -166,7 +166,11 @@ def test_streamed_persist_is_content_identical_to_full_save(tmp_path: Path, repo
     full_store.save_graph(graph)
     loaded_full = full_store.load_graph(tenant_id="t1", scan_id="s")
 
-    graph2 = build_unified_graph_from_report(report, scan_id="s", tenant_id="t1")
+    # Exercise both persistence implementations with the exact same graph.
+    # Building twice makes the equivalence assertion depend on whether the wall
+    # clock crosses a second between builds because node timestamps are created
+    # at build time; that is input drift, not persistence drift.
+    graph2 = graph
     stream_store = SQLiteGraphStore(tmp_path / "stream.db")
     stream_store.save_graph_streaming(
         scan_id=graph2.scan_id,

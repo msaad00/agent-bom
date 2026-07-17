@@ -31,6 +31,7 @@ describe("product proof capture contract", () => {
 
   it("mocks the campaign-first remediation contracts", () => {
     expect(source).toContain('page.route("**/v1/campaigns"');
+    expect(source).toContain('page.route("**/v1/campaigns/verification-queue**"');
     expect(source).toContain('schema_version: "risk-campaigns.v1"');
     expect(source).toContain('page.route("**/v1/ticketing/connections"');
   });

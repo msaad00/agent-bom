@@ -1178,6 +1178,15 @@ async function installRoutes(page) {
     connections: [],
     count: 0,
   }));
+  await page.route("**/v1/campaigns/verification-queue**", (route) => fulfill(route, {
+    schema_version: "risk-campaign-verification-queue.v1",
+    tenant_id: "tenant-proof",
+    entries: [],
+    count: 0,
+    limit: 25,
+    has_more: false,
+    next_cursor: null,
+  }));
   await page.route("**/v1/campaigns", (route) => fulfill(route, {
     schema_version: "risk-campaigns.v1",
     tenant_id: "default",

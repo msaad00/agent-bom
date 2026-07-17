@@ -56,6 +56,7 @@ from agent_bom.governance import (
 )
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 from agent_bom.security import sanitize_error
+from agent_bom.snowflake_spcs_auth import apply_spcs_workload_identity
 
 from .base import CloudDiscoveryError
 from .normalization import (
@@ -174,6 +175,9 @@ def _resolve_snowflake_auth(
     key-pair (SNOWFLAKE_PRIVATE_KEY_PATH) → SNOWFLAKE_PASSWORD (deprecated) →
     externalbrowser SSO (safe default).
     """
+    if apply_spcs_workload_identity(conn_kwargs):
+        return
+
     if not authenticator:
         authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
     if authenticator:

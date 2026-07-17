@@ -520,16 +520,17 @@ def snowflake_spcs_setup(*, account: str = "") -> str:
     The flagship "run agent-bom INSIDE Snowflake" path — an alternative to the
     read-only metadata role. Reuses the shipped native-app package
     (``deploy/snowflake/native-app/``: ``manifest.yml`` + setup/grant/key-pair
-    scripts) via the dev-path install; it does NOT reimplement the app.
+    scripts) via the Snowflake CLI dev path; it does NOT reimplement the app.
 
     Read-only + no data egress by default: the app requests SELECT on
     customer-bound tables and READ on stages only, and runs its services inside
     the account. Run as ACCOUNTADMIN for the initial install; the app then
     operates least-privilege.
 
-    Out of scope here (documented in ``docs/snowflake-native-app/INSTALL.md``):
-    building + pushing the four container images to the app image repository and
-    the Marketplace listing — pre-existing release/deploy steps.
+    The repository's protected release workflow builds and pushes the four
+    immutable linux/amd64 images before publishing a release directive. External
+    Marketplace availability remains subject to Snowflake approval and is never
+    implied by this generated private-preview recipe.
     """
     acct = _validate_snowflake_account(account) if account else "<your-account-locator>"
     # The recipe is a review-and-run SQL comment block; the only interpolation is
@@ -543,22 +544,24 @@ def snowflake_spcs_setup(*, account: str = "") -> str:
 --   deploy/snowflake/native-app/scripts/setup.sql     (install-time DDL)
 -- Account: {acct}
 -- Run as ACCOUNTADMIN once; the app then runs under a less-privileged role.
+-- The provider must push the four version-pinned images before this dev install.
 
--- 1. Create the application package and stage the native-app source.
-CREATE APPLICATION PACKAGE IF NOT EXISTS agent_bom_pkg;
--- Upload deploy/snowflake/native-app/** to @agent_bom_stage/v1, then:
-ALTER APPLICATION PACKAGE agent_bom_pkg ADD VERSION v1 USING '@agent_bom_stage/v1';
+-- First command (provider/private-preview account, Snowflake CLI 3.23.0):
+--   snow app run --project deploy/snowflake/native-app \\
+--     --connection <snowflake-cli-connection>
+-- Artifact: Snowflake CLI bundles deploy/snowflake/native-app/output/deploy,
+-- stages the declared allowlist, and creates or upgrades application agent_bom.
+-- It does not upload images, secrets, images.yml, or provider bootstrap SQL.
 
--- 2. Create the application from the package.
-CREATE APPLICATION agent_bom FROM APPLICATION PACKAGE agent_bom_pkg USING VERSION v1;
-
--- 3. Bind the read-only customer grants the app requests (review first):
+-- Next step: bind the read-only customer grants the app requests (review first):
 --    deploy/snowflake/native-app/scripts/customer_grants_template.sql
--- 4. Key-pair auth only (no passwords):
+-- Then verify the installed app with: CALL agent_bom.core.health_check();
+-- Key-pair auth only (no passwords):
 --    deploy/snowflake/native-app/scripts/auth_keypair_setup.sql
 
--- See docs/snowflake-native-app/INSTALL.md for the end-to-end walkthrough,
--- including building + pushing the container images to the app repository.
+-- Marketplace customers install from the approved Snowsight listing only after
+-- Snowflake publishes it; there is no fabricated one-line Marketplace SQL.
+-- See docs/snowflake-native-app/INSTALL.md for the end-to-end walkthrough.
 """  # nosec B608 — SQL comment recipe; only the validated account is interpolated
     return recipe
 

@@ -183,11 +183,14 @@ describe("cloud-connect-wizard", () => {
     // shipped package (deploy/snowflake/native-app/) — not the read-only role.
     const script = buildSnowflakeSpcsScript();
     expect(script).toContain("deploy/snowflake/native-app");
-    expect(script).toContain("CREATE APPLICATION PACKAGE");
-    expect(script).toContain("CREATE APPLICATION agent_bom");
+    expect(script).toContain("snow app run --project deploy/snowflake/native-app");
+    expect(script).toContain("Artifact:");
+    expect(script).toContain("Next step:");
     // Reuses the shipped grant + key-pair scripts (never a password).
     expect(script).toContain("customer_grants_template.sql");
     expect(script).toContain("auth_keypair_setup.sql");
+    expect(script).not.toContain("Upload deploy/snowflake/native-app");
+    expect(script).not.toContain("INSTALL_FROM_MARKETPLACE");
     // Honest: read-only, runs inside the account (no data egress).
     expect(script.toLowerCase()).toContain("read-only");
   });

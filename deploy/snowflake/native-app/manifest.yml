@@ -1,8 +1,9 @@
 manifest_version: 1
 
 version:
-  name: agent-bom
-  label: "agent-bom"
+  name: v0_96_3
+  patch: 0
+  label: "agent-bom 0.96.3"
   comment: >-
     Map the full trust chain from AI agents and MCP servers to CVEs,
     credentials, and blast radius. Discover, scan, and secure your
@@ -10,15 +11,17 @@ version:
 
 artifacts:
   setup_script: scripts/setup.sql
+  readme: README.md
   default_web_endpoint:
     service: core.agent_bom_api
     endpoint: ui
   container_services:
+    uses_gpu: false
     images:
-      - /db/schema/agent_bom_repo/agent-bom:v0_96_3
-      - /db/schema/agent_bom_repo/agent-bom-ui:v0_96_3
-      - /db/schema/agent_bom_repo/agent-bom-scanner:v0_96_3
-      - /db/schema/agent_bom_repo/agent-bom-mcp-runtime:v0_96_3
+      - /agent_bom_provider/spcs/agent_bom_repo/agent-bom:v0_96_3
+      - /agent_bom_provider/spcs/agent_bom_repo/agent-bom-ui:v0_96_3
+      - /agent_bom_provider/spcs/agent_bom_repo/agent-bom-scanner:v0_96_3
+      - /agent_bom_provider/spcs/agent_bom_repo/agent-bom-mcp-runtime:v0_96_3
   service_roles:
     - name: api
       comment: >-

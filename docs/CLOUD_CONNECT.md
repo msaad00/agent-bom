@@ -69,10 +69,13 @@ three-step wizard: **Provider → Setup → Details**.
 - **Snowflake packaging.** The Snowflake Setup step chooses between the read-only
   **metadata role** (default) and the **Snowpark Container Services / Native App**
   — "run agent-bom inside your account." The native-app option generates the
-  install recipe inline, reusing the shipped package under
+  provider/private-preview install recipe inline, reusing the shipped package under
   `deploy/snowflake/native-app/` (see
   [`docs/snowflake-native-app/INSTALL.md`](snowflake-native-app/INSTALL.md) for
-  the end-to-end walkthrough, including building + pushing the container images).
+  the exact first command, artifact, and next step). The protected release lane
+  builds and pushes all four SPCS images; external Marketplace availability still
+  requires Snowflake Product Security and listing approval and is not claimed by
+  the generated recipe.
   Headless parity: `agent-bom connect snowflake --emit --spcs`.
 
 ### Self-host defaults ("just works" on the shipped compose)

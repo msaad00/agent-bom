@@ -1,60 +1,97 @@
-# Snowflake Marketplace release lane
+# Snowflake Native App distribution lane
 
-This is the provider-side checklist for publishing agent-bom as a Snowflake
-Native App. It is intentionally dry-run first: the GitHub Actions lane packages
-the app and validates the manifest, but live publish remains blocked until the
-Marketplace listing has been reviewed and explicit Snowflake publisher secrets
-are configured.
+This is the provider-side build, validation, image, and release contract for the
+agent-bom Snowflake Native App with Snowpark Container Services (SPCS). The
+repository can make a release review-ready and publish a release directive after
+the protected environment is configured. Snowflake alone can approve the
+provider and Marketplace listing for external consumers.
 
-## Listing draft
+## Repository-controlled dry run
 
-| Field | Draft value |
-|---|---|
-| Listing name | agent-bom |
-| Category | Security and Governance |
-| Delivery method | Snowflake Native App with Snowpark Container Services |
-| Data boundary | Customer account only; no customer data leaves Snowflake |
-| Default egress | Off |
-| Optional egress | OSV.dev, CISA KEV, FIRST EPSS, GitHub Advisory Database |
-| Runtime services | API/UI by default; scanner and MCP runtime are opt-in |
-
-## Required proof before publish
-
-- Manifest review proves references are customer-bound and read-only.
-- Service specs validate as YAML and declare internal-only endpoints.
-- Advisory egress is attached only to `core.enable_scanner_service()`.
-- MCP runtime is not created during install and requires a caller-supplied
-  bearer token.
-- The release workflow is manually dispatched and defaults to `dry_run: true`.
-- If no version input is supplied, the workflow derives the Snowflake package
-  label from `pyproject.toml` (for example, `0.87.0` -> `v0_87_0`) so package labels do not
-  drift from the release version.
-- Live publish requires the protected `snowflake-marketplace` environment plus
-  `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PRIVATE_KEY`, and
-  `SNOWFLAKE_APPLICATION_PACKAGE`.
-
-## Manual dry run
+First command:
 
 ```bash
-python - <<'PY'
-from pathlib import Path
-import yaml
-
-root = Path("deploy/snowflake/native-app")
-yaml.safe_load((root / "manifest.yml").read_text())
-for spec in sorted((root / "service-specs").glob("*.yaml")):
-    data = yaml.safe_load(spec.read_text())
-    assert data.get("spec", {}).get("containers"), spec
-PY
-
-mkdir -p dist
-tar -czf dist/agent-bom-snowflake-v0_87_0.tgz -C deploy/snowflake/native-app .
+python scripts/release/snowflake_native_app.py validate
 ```
 
-## Customer smoke checklist
+Build the reproducible package:
 
-Run this checklist in a private-preview account before requesting Marketplace
-review:
+```bash
+python scripts/release/snowflake_native_app.py package \
+  --output dist/agent-bom-snowflake-v0_96_3.tgz
+```
+
+Artifact: the command prints the SHA-256 digest of a deterministic archive that
+contains only the files declared by `snowflake.yml`. The package excludes image
+archives, credentials, provider bootstrap SQL, `images.yml`, and `snowflake.yml`.
+
+Next step: dispatch `.github/workflows/release-snowflake.yml` with
+`dry_run=true`. It validates the Snowflake CLI project, packages the app, builds
+all four `linux/amd64` images from `images.yml`, and uploads immutable workflow
+artifacts without contacting Snowflake.
+
+## Protected provider release
+
+The `snowflake-marketplace` GitHub environment owns the only live path. Configure
+these protected values:
+
+- secrets: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PRIVATE_KEY`
+- variables: `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`,
+  `SNOWFLAKE_IMAGE_REPOSITORY_URL`
+
+Use a dedicated Snowflake service user with key-pair authentication. The workflow
+writes the key to an ephemeral `0600` file, never prints it, and removes it in an
+`always()` step.
+
+With `dry_run=false`, the workflow:
+
+1. creates the provider database, schema, and image repository if absent;
+2. authenticates Docker with `snow spcs image-registry login`;
+3. loads and pushes all four version-pinned images;
+4. deploys the package from `deploy/snowflake/native-app/snowflake.yml`; and
+5. publishes the selected `QA`, `ALPHA`, or `DEFAULT` release channel through
+   `snow app publish`.
+
+The default remains `dry_run=true`; live publication also requires approval for
+the protected GitHub environment.
+
+## Exact external-only boundary
+
+Repository work cannot complete these account- and Snowflake-controlled steps:
+
+1. Accept the Snowflake Provider Terms of Service for an application package
+   using `DISTRIBUTION=EXTERNAL`.
+2. Obtain Snowflake Product Security approval to publish an app with containers.
+   This is mandatory before creating a public or private listing. An unapproved
+   provider receives Snowflake error `093197` and must submit Snowflake's security
+   questionnaire.
+3. Pass Snowflake's automated/manual security review for the exact application
+   version and its four images.
+4. Configure the provider profile and legal terms, create the listing in
+   Provider Studio, attach the application package, select targets, and submit
+   the listing for Snowflake review.
+5. Wait for Snowflake approval and confirm availability from a separate consumer
+   account before describing the app as Marketplace-published.
+
+Authoritative Snowflake references:
+
+- [Secure a Native App with SPCS](https://docs.snowflake.com/en/developer-guide/native-apps/security-na-spcs)
+- [Native App security review](https://docs.snowflake.com/en/developer-guide/native-apps/security-overview)
+- [Marketplace app listing requirements](https://docs.snowflake.com/collaboration/guidelines-reqs-for-listing-apps)
+- [Declare app resources in marketplace.yml](https://docs.snowflake.com/en/developer-guide/native-apps/marketplace-file)
+- [Publish with release channels](https://docs.snowflake.com/en/developer-guide/native-apps/release-channels)
+- [Snowflake CLI `snow app publish`](https://docs.snowflake.com/en/developer-guide/snowflake-cli/command-reference/native-apps-commands/publish-app)
+
+## Listing and consumer evidence
+
+The review-ready listing content is versioned at
+`docs/snowflake-native-app/listing-template.yml`. The consumer-visible resource
+contract is `deploy/snowflake/native-app/marketplace.yml`; it declares the
+`AGENT_BOM_CONSUMER_POOL` compute requirement, and `scripts/setup.sql` creates that pool
+during installation.
+
+Before submitting a listing, install in a private-preview account and retain the
+output of:
 
 ```sql
 CALL agent_bom.core.health_check();
@@ -62,17 +99,10 @@ SHOW SERVICES IN APPLICATION agent_bom;
 SHOW EXTERNAL ACCESS INTEGRATIONS LIKE 'AGENT_BOM_%';
 ```
 
-Expected state after install:
+Expected state:
 
-- `core.agent_bom_api` exists and exposes the UI endpoint.
-- `core.agent_bom_scanner` does not run until
-  `core.enable_scanner_service()` is called.
-- `core.agent_bom_mcp_runtime` does not run until
-  `core.enable_mcp_runtime_service('<token>')` is called.
-- Advisory-feed EAIs remain disabled/unbound until the customer explicitly
-  approves OSV, CISA KEV, FIRST EPSS, and GHSA.
-
-## Live publish status
-
-Not enabled in this PR. The workflow stops before calling Snowflake when
-`dry_run` is false, so no Marketplace channel can be mutated by accident.
+- API/UI service is present and authenticated through Snowflake.
+- scanner and MCP runtime services remain absent until their enable procedures
+  are called;
+- advisory EAIs remain unbound until the consumer approves them; and
+- bound customer objects have read-only grants only.

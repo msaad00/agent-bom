@@ -1041,6 +1041,12 @@ jobs:
       - name: Install dependencies for CLI smoke checks
         run: uv sync --frozen --extra dev --extra api --extra mcp-server
 
+      - name: Verify Snowflake Native App distribution contract
+        run: |
+          uv run python scripts/release/snowflake_native_app.py validate
+          uv run --with snowflake-cli==3.23.0 snow app bundle \
+            --project deploy/snowflake/native-app
+
       - name: Verify v1 schemas match Pydantic models
         # Drift gate for #1963: any change to agent_bom.api.models must be
         # accompanied by a refreshed docs/schemas/v1/ so SDK consumers are

@@ -85,6 +85,16 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
         r"\g<1>{v_underscore}",
     ),
     (
+        "deploy/snowflake/native-app/manifest.yml",
+        re.compile(r"^(  name: v)\d+_\d+_\d+$", re.M),
+        r"\g<1>{v_underscore}",
+    ),
+    (
+        "deploy/snowflake/native-app/manifest.yml",
+        re.compile(r'^(  label: "agent-bom )\d+\.\d+\.\d+("$)', re.M),
+        r"\g<1>{v}\g<2>",
+    ),
+    (
         "deploy/snowflake/native-app/service-spec.yaml",
         re.compile(r"(:v)\d+_\d+_\d+"),
         r"\g<1>{v_underscore}",

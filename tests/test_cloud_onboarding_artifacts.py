@@ -355,22 +355,25 @@ class TestSnowflakeSpcs:
     def test_spcs_recipe_reuses_shipped_package(self) -> None:
         text = onboarding.snowflake_spcs_setup()
         assert "deploy/snowflake/native-app" in text
-        assert "CREATE APPLICATION PACKAGE" in text
-        assert "CREATE APPLICATION agent_bom" in text
+        assert "snow app run --project deploy/snowflake/native-app" in text
+        assert "Artifact:" in text
+        assert "Next step:" in text
         assert "customer_grants_template.sql" in text
         assert "auth_keypair_setup.sql" in text
+        assert "Upload deploy/snowflake/native-app" not in text
+        assert "INSTALL_FROM_MARKETPLACE" not in text
 
     def test_spcs_bakes_account(self) -> None:
         assert "ORG-ACCT" in onboarding.snowflake_spcs_setup(account="ORG-ACCT")
 
     def test_emit_snowflake_spcs_mode(self) -> None:
         text = onboarding.emit_artifact("snowflake", "sql", options={"mode": "spcs"})
-        assert "CREATE APPLICATION PACKAGE" in text
+        assert "snow app run --project deploy/snowflake/native-app" in text
 
     def test_emit_snowflake_role_mode_is_default(self) -> None:
         text = onboarding.emit_artifact("snowflake", "sql", options={})
         assert "CREATE ROLE IF NOT EXISTS" in text
-        assert "CREATE APPLICATION PACKAGE" not in text
+        assert "snow app run --project" not in text
 
 
 # ── adversarial input hardening (injection defense) ─────────────────────────────

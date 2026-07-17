@@ -1,0 +1,16 @@
+schema_version: 1
+platform: linux/amd64
+repository_path: agent_bom_provider/spcs/agent_bom_repo
+images:
+  - name: agent-bom
+    context: .
+    dockerfile: deploy/docker/Dockerfile.snowpark
+  - name: agent-bom-ui
+    context: ui
+    dockerfile: ui/Dockerfile
+  - name: agent-bom-scanner
+    context: .
+    dockerfile: Dockerfile
+  - name: agent-bom-mcp-runtime
+    context: .
+    dockerfile: deploy/docker/Dockerfile.mcp

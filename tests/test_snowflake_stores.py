@@ -75,6 +75,31 @@ def test_row_access_policy_duplicate_attachment_is_idempotent():
 
 
 class TestBuildConnectionParams:
+    def test_native_app_uses_spcs_oauth_token_file_and_ignores_external_credentials(self, monkeypatch, tmp_path):
+        token_file = tmp_path / "token"
+        token_file.write_text("short-lived-oauth-token", encoding="utf-8")
+        monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_NATIVE_APP", "1")
+        monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "org-account")
+        monkeypatch.setenv("SNOWFLAKE_HOST", "org-account.snowflakecomputing.com")
+        monkeypatch.setenv("SNOWFLAKE_DATABASE", "AGENT_BOM_APP")
+        monkeypatch.setenv("SNOWFLAKE_SCHEMA", "CORE")
+        monkeypatch.setenv("SNOWFLAKE_TOKEN_FILE_PATH", str(token_file))
+        monkeypatch.setenv("SNOWFLAKE_USER", "must-not-be-used")
+        monkeypatch.setenv("SNOWFLAKE_PASSWORD", "must-not-be-used")
+        monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", "/keys/must-not-be-used.p8")
+
+        from agent_bom.api.snowflake_store import build_connection_params
+
+        params = build_connection_params()
+        assert params == {
+            "account": "org-account",
+            "host": "org-account.snowflakecomputing.com",
+            "database": "AGENT_BOM_APP",
+            "schema": "CORE",
+            "authenticator": "oauth",
+            "token_file_path": str(token_file),
+        }
+
     def test_password_auth_deprecated(self, monkeypatch):
         """SNOWFLAKE_PASSWORD still works but emits DeprecationWarning."""
         monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "acct1")
@@ -153,6 +178,27 @@ class TestBuildConnectionParams:
 
 
 class TestResolveSnowflakeAuth:
+    def test_native_app_overrides_explicit_external_auth_with_spcs_oauth(self, monkeypatch, tmp_path):
+        token_file = tmp_path / "token"
+        token_file.write_text("short-lived-oauth-token", encoding="utf-8")
+        monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_NATIVE_APP", "true")
+        monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "org-account")
+        monkeypatch.setenv("SNOWFLAKE_HOST", "org-account.snowflakecomputing.com")
+        monkeypatch.setenv("SNOWFLAKE_TOKEN_FILE_PATH", str(token_file))
+        monkeypatch.setenv("SNOWFLAKE_PASSWORD", "must-not-be-used")
+        monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", "/keys/must-not-be-used.p8")
+
+        from agent_bom.cloud.snowflake import _resolve_snowflake_auth
+
+        kwargs = {"password": "caller-secret", "user": "caller-user"}
+        _resolve_snowflake_auth(kwargs, "snowflake_jwt")
+        assert kwargs == {
+            "account": "org-account",
+            "host": "org-account.snowflakecomputing.com",
+            "authenticator": "oauth",
+            "token_file_path": str(token_file),
+        }
+
     def test_explicit_authenticator(self, monkeypatch):
         monkeypatch.delenv("SNOWFLAKE_AUTHENTICATOR", raising=False)
         from agent_bom.cloud.snowflake import _resolve_snowflake_auth

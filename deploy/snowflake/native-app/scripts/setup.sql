@@ -223,22 +223,24 @@ END;
 
 GRANT USAGE ON PROCEDURE core.health_check() TO APPLICATION ROLE app_user;
 
--- 11. Auto-scan scheduled task (consumer starts with ALTER TASK ... RESUME)
-CREATE OR REPLACE TASK core.auto_scan_task
-    WAREHOUSE = 'COMPUTE_WH'
-    SCHEDULE = 'USING CRON 0 */6 * * * UTC'
-AS
-    CALL core.trigger_scan();
-
 -- Phase 2: Compliance Hub Snowpark proc (V002__compliance_proc.sql)
 -- Creates core.apply_compliance_hub() and core.compliance_posture view.
 EXECUTE IMMEDIATE FROM 'dcm/V002__compliance_proc.sql';
 
--- 12. SPCS service — API + Next.js UI (Phase 3)
--- Consumer must provision a compute pool and grant it to the app before this runs.
+-- 11. SPCS compute pool + service — API + Next.js UI (Phase 3)
+-- Marketplace apps with containers create their declared resources during
+-- installation. The requested CREATE COMPUTE POOL privilege is explicit in
+-- manifest.yml and the matching requirement is disclosed in marketplace.yml.
+CREATE COMPUTE POOL IF NOT EXISTS agent_bom_consumer_pool
+    MIN_NODES = 1
+    MAX_NODES = 1
+    INSTANCE_FAMILY = CPU_X64_XS
+    AUTO_SUSPEND_SECS = 300
+    INITIALLY_SUSPENDED = FALSE;
+
 -- manifest.yml default_web_endpoint → ui endpoint (port 3000) opens on app launch.
 CREATE SERVICE IF NOT EXISTS core.agent_bom_api
-    IN COMPUTE POOL consumer_pool  -- consumer must grant this
+    IN COMPUTE POOL agent_bom_consumer_pool
     FROM SPECIFICATION_FILE = '/service-spec.yaml'
     MIN_INSTANCES = 1
     MAX_INSTANCES = 1;
@@ -249,7 +251,7 @@ GRANT USAGE ON SERVICE core.agent_bom_api TO APPLICATION ROLE app_user;
 GRANT SERVICE ROLE core.agent_bom_api!api TO APPLICATION ROLE app_user;
 GRANT SERVICE ROLE core.agent_bom_api!ui  TO APPLICATION ROLE app_user;
 
--- 13. Phase 4 opt-in SPCS scanner service
+-- 12. Phase 4 opt-in SPCS scanner service
 -- Egress is not available to this container unless the customer binds all
 -- advisory-feed EAI references and explicitly calls this procedure.
 CREATE OR REPLACE PROCEDURE core.enable_scanner_service()
@@ -258,7 +260,7 @@ CREATE OR REPLACE PROCEDURE core.enable_scanner_service()
 AS
 BEGIN
     CREATE SERVICE IF NOT EXISTS core.agent_bom_scanner
-        IN COMPUTE POOL consumer_pool
+        IN COMPUTE POOL agent_bom_consumer_pool
         FROM SPECIFICATION_FILE = '/service-specs/scanner-service.yaml'
         EXTERNAL_ACCESS_INTEGRATIONS = (
             reference('osv_dev'),
@@ -283,7 +285,7 @@ END;
 
 GRANT USAGE ON PROCEDURE core.enable_scanner_service() TO APPLICATION ROLE app_user;
 
--- 14. Phase 4 optional MCP runtime service
+-- 13. Phase 4 optional MCP runtime service
 -- The runtime is default-off and requires a caller-provided bearer token.
 -- No advisory-feed EAI is attached here; this service has Snowflake-only
 -- networking unless a future procedure deliberately adds bounded egress.
@@ -297,7 +299,7 @@ BEGIN
     END IF;
 
     CREATE SERVICE IF NOT EXISTS core.agent_bom_mcp_runtime
-        IN COMPUTE POOL consumer_pool
+        IN COMPUTE POOL agent_bom_consumer_pool
         FROM SPECIFICATION_TEMPLATE_FILE = '/service-specs/mcp-runtime-service.yaml'
         USING (mcp_bearer_token => :mcp_bearer_token)
         MIN_INSTANCES = 1

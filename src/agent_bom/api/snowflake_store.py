@@ -22,6 +22,8 @@ import os
 import warnings
 from datetime import datetime, timezone
 
+from agent_bom.snowflake_spcs_auth import apply_spcs_workload_identity, native_app_mode
+
 from .exception_store import ExceptionStatus, VulnException
 from .fleet_store import FleetAgent, FleetLifecycleState
 from .policy_store import GatewayPolicy, PolicyAuditEntry
@@ -92,6 +94,14 @@ def _ensure_tenant_row_access_policy(cur, table_names: tuple[str, ...]) -> None:
 
 def build_connection_params() -> dict:
     """Build Snowflake connection params with auto-detected auth."""
+    if native_app_mode():
+        native_params: dict = {
+            "database": os.environ["SNOWFLAKE_DATABASE"],
+            "schema": os.environ["SNOWFLAKE_SCHEMA"],
+        }
+        apply_spcs_workload_identity(native_params)
+        return native_params
+
     params: dict = {
         "account": os.environ["SNOWFLAKE_ACCOUNT"],
         "user": os.environ.get("SNOWFLAKE_USER", ""),

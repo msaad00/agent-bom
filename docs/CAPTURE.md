@@ -36,7 +36,7 @@ before replacing any published product image.
    local workstation discovery:
 
    ```bash
-   agent-bom agents --demo --offline -f json -o /tmp/agent-bom-demo-report.json
+   agent-bom scan --demo --offline -f json -o /tmp/agent-bom-demo-report.json
    curl -X POST -H 'content-type: application/json' \
      --data-binary @/tmp/agent-bom-demo-report.json \
      http://127.0.0.1:8422/v1/results/push

@@ -29,6 +29,107 @@
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
+## First Run
+
+```bash
+pip install agent-bom
+agent-bom scan -p .
+```
+
+`agent-bom scan -p .` prints a posture grade, blast radius, and fix-first
+findings inline — nothing to open. Optional next steps:
+
+```bash
+agent-bom db update                     # local vuln DB for --offline package/image scans
+agent-bom quickstart --run --offline    # sample scan, gateway policy seed, dashboard data
+agent-bom scan -p . -f html -o agent-bom-report.html
+```
+
+Then review posture as a team: `pip install 'agent-bom[ui]' && agent-bom serve`.
+Guided path: [docs/FIRST_RUN.md](docs/FIRST_RUN.md) · UI screenshots:
+[docs/CAPTURE.md](docs/CAPTURE.md)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
+</p>
+
+<details>
+<summary><b>Product screenshots</b> — packaged dashboard on seeded demo data</summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview command center with posture ring, findings breakdown, scan coverage, and environment tabs" width="900" />
+  <br/><em>Overview command center — posture ring, findings breakdown, scan coverage, environment tabs</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-paths-live.png" alt="Overview lower frame with exposure path and feed and analytics tabs" width="900" />
+  <br/><em>Overview — exposure path with feed and analytics tabs</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Connections hub with connector gallery across cloud, code, AI, and data sources" width="900" />
+  <br/><em>Connections hub — connector gallery across cloud, code, AI, and data sources</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan form with connected account, ad-hoc, and public repo modes" width="900" />
+  <br/><em>New Scan — connected account, ad-hoc, and public repo modes</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Fix-first attack-path queue with graph evidence export" width="900" />
+  <br/><em>Security graph — fix-first attack-path queue with evidence export</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes" width="900" />
+  <br/><em>Lineage graph — bounded topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/context-map-live.png" alt="Agent-scoped context map with reachable MCP servers and lateral movement side panel" width="900" />
+  <br/><em>Context map — agent-scoped reachable MCP servers with lateral-movement panel</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent mesh graph across agents, MCP servers, packages, tools, and findings" width="900" />
+  <br/><em>Blast radius — agent → MCP server → package → tool → CVE</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway KPI rollup and live tool-call feed" width="900" />
+  <br/><em>Runtime gateway — KPI rollup and live tool-call feed</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/fleet-state-live.png" alt="Fleet lifecycle review state with owner and environment" width="900" />
+  <br/><em>Fleet — lifecycle review state, owner, and environment</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/identity-audit-live.png" alt="Audit log filtered to identity resources with HMAC integrity counters" width="900" />
+  <br/><em>Audit — identity lifecycle with tamper-evident HMAC counters</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with seeded package and CVE evidence" width="900" />
+  <br/><em>Findings — package and CVE evidence from the seeded demo estate</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Fix-first remediation table with prioritized packages" width="900" />
+  <br/><em>Remediation — prioritized fix list with framework context</em>
+</p>
+
+<sub>Synthetic seeded evidence for docs proof, captured from the real Next.js
+routes with a visible <strong>Demo data — sample environment</strong> label — not a
+claim these entities came from a buyer environment. Regenerate from the UI package
+with <code>npm run capture:product-proof</code> (see
+<a href="docs/CAPTURE.md">docs/CAPTURE.md</a>). CLI demo GIF:
+<code>bash scripts/render_demo_gif.sh</code>.</sub>
+
+</details>
+
 ## Who It's For
 
 <p align="center">
@@ -38,7 +139,7 @@
   </picture>
 </p>
 
-<p align="center"><em>Four buyer lanes · one evidence model (<code>Finding</code> + <code>UnifiedGraph</code>)</em></p>
+<p align="center"><em>Four buyer lanes · one shared evidence model from scan → graph → report</em></p>
 
 <details>
 <summary><b>Persona lane detail</b></summary>
@@ -245,11 +346,11 @@ repo yet.
 
 **Surfaces** — one real command each:
 
-- **CLI / CI** — `agent-bom agents -p .` (or the [GitHub Action](https://github.com/marketplace/actions/agent-bom)).
+- **CLI / CI** — `agent-bom scan -p .` (or the [GitHub Action](https://github.com/marketplace/actions/agent-bom)).
 - **Self-hosted platform** — `pip install 'agent-bom[ui]' && agent-bom serve` — dashboard + API on one host.
-- **Headless** — `agent-bom api` + `agent-bom mcp server` for agents and CI.
+- **Headless** — `agent-bom serve --no-ui` + `agent-bom mcp server` for agents and CI.
 - **Runtime proxy / gateway** — `agent-bom gateway serve` — allow/warn/block audit trail.
-- **Reports / exports** — `agent-bom agents -p . -f sarif -o findings.sarif`.
+- **Reports / exports** — `agent-bom scan -p . -f sarif -o findings.sarif`.
 
 **Deploy targets** — where the control plane runs, fastest → most-managed:
 
@@ -282,12 +383,12 @@ for all entry points, auth boundaries, and surface detail.
 
 | Need | Surface | First action | Main artifact |
 |---|---|---|---|
-| Scan a repo, image, or local agent config | CLI / CI | `agent-bom agents -p .` | JSON, SARIF, SBOM, HTML |
+| Scan a repo, image, or local agent config | CLI / CI | `agent-bom scan -p .` | JSON, SARIF, SBOM, HTML |
 | Connect cloud and data-estate evidence | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
 | Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
 | Give agents security tools | MCP server | `agent-bom mcp server` | strict MCP tool responses |
 | Govern runtime tool calls | Proxy / gateway | `agent-bom gateway serve` | allow/warn/block audit trail |
-| Package evidence for audit | Reports / exports | `agent-bom agents -p . -f html -o report.html` | SARIF, CycloneDX, SPDX, JSON, HTML/PDF, compliance bundle |
+| Package evidence for audit | Reports / exports | `agent-bom scan -p . -f html -o report.html` | SARIF, CycloneDX, SPDX, JSON, HTML/PDF, compliance bundle |
 
 | Goal | Command |
 |---|---|
@@ -302,79 +403,7 @@ Full command map: [docs/CLI_MAP.md](docs/CLI_MAP.md) · role routing:
 [docs/START_HERE.md](docs/START_HERE.md) · repo layout:
 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
 
-## First Run
 
-```bash
-pip install agent-bom
-agent-bom db update                      # populate ~/.agent-bom vuln DB before --offline scans
-agent-bom quickstart --run --offline    # sample scan, gateway policy seed, dashboard data
-agent-bom agents -p . -f html -o agent-bom-report.html
-```
-
-Run `agent-bom db update` before `--offline` image or package scans. Guided path:
-[docs/FIRST_RUN.md](docs/FIRST_RUN.md) · UI screenshots:
-[docs/CAPTURE.md](docs/CAPTURE.md)
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
-</p>
-
-<details>
-<summary><b>Product screenshots</b> — packaged dashboard on seeded demo data</summary>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Risk overview dashboard with posture grade and attack paths" width="900" />
-  <br/><em>Risk overview — posture grade, KPIs, and fix-first attack paths</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Cloud accounts onboarding with AWS, Azure, GCP, and Snowflake connectors" width="900" />
-  <br/><em>Cloud accounts — read-only onboarding and CIS discovery per account</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan form with connected account picker and public repo URL mode" width="900" />
-  <br/><em>New Scan — account vs ad-hoc scope with auto-detect surfaces</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Fix-first attack-path queue with graph evidence export" width="900" />
-  <br/><em>Security graph — fix-first attack-path queue with evidence export</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent mesh graph across agents, MCP servers, packages, tools, and findings" width="900" />
-  <br/><em>Blast radius — agent → MCP server → package → tool → CVE</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway policy posture with rules and bound agents" width="900" />
-  <br/><em>Runtime gateway — policy posture, rules, and bound agents</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/fleet-state-live.png" alt="Fleet lifecycle review state with owner and environment" width="900" />
-  <br/><em>Fleet — lifecycle review state, owner, and environment</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/identity-audit-live.png" alt="Audit log filtered to identity resources with HMAC integrity counters" width="900" />
-  <br/><em>Audit — identity lifecycle with tamper-evident HMAC counters</em>
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Fix-first remediation table with prioritized packages" width="900" />
-  <br/><em>Remediation — prioritized fix list with framework context</em>
-</p>
-
-<sub>Synthetic seeded evidence for docs proof, captured from the real Next.js
-routes with a visible <strong>Demo data — sample environment</strong> label — not a
-claim these entities came from a buyer environment. Regenerate from the UI package
-with <code>npm run capture:product-proof</code> (see
-<a href="docs/CAPTURE.md">docs/CAPTURE.md</a>). CLI demo GIF:
-<code>bash scripts/render_demo_gif.sh</code>.</sub>
-
-</details>
 
 ## Cloud, Deploy, Trust
 
@@ -389,7 +418,7 @@ network I/O until you opt in. Full intake map:
 | AWS | `AGENT_BOM_AWS_INVENTORY=1` | `agent-bom cloud aws` |
 | Azure | `AGENT_BOM_AZURE_INVENTORY=1` | `agent-bom cloud azure` |
 | GCP | `AGENT_BOM_GCP_INVENTORY=1` | `agent-bom cloud gcp` |
-| Snowflake | SSO or key-pair auth | `pip install 'agent-bom[snowflake]'` then `agent-bom agents --snowflake` |
+| Snowflake | SSO or key-pair auth | `pip install 'agent-bom[snowflake]'` then `agent-bom scan --snowflake` |
 
 Snowflake auth defaults to browser SSO (`externalbrowser`); use
 `SNOWFLAKE_AUTHENTICATOR=snowflake_jwt` with `SNOWFLAKE_PRIVATE_KEY_PATH` for

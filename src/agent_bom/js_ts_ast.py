@@ -1,11 +1,17 @@
-"""Parser-backed JS/TS analysis helpers.
+"""Parser-backed JS/TS AST engine (tree-sitter).
 
-This module provides a small, focused AST layer for JavaScript and
-TypeScript code blocks used in skills and future first-party SAST rules.
-It intentionally starts with import/require resolution plus call-site
-collection so higher layers can reason about dangerous capabilities using
-real syntax trees instead of regexes.
+Layering
+--------
+* **This module** (``js_ts_ast``) is the *engine*: real syntax trees for
+  imports, call sites, and tool registrations.
+* **``ast_js_ts``** is the *facade* used by ``ast_analyzer`` — it calls
+  ``analyze_js_ts_block`` here when the parser runtime is available, and
+  otherwise falls back to regex helpers.
+
+Higher layers (skills SAST, ``ast_analyzer``) should go through the facade
+unless they specifically need raw block AST output from this engine.
 """
+
 
 from __future__ import annotations
 

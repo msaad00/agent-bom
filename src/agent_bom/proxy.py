@@ -690,18 +690,6 @@ async def _fetch_enabled_gateway_policies(
     return policies, response.headers.get("ETag")
 
 
-def _evaluate_gateway_policy_bundle(policies: list["GatewayPolicy"], agent_name: str, tool_name: str, arguments: dict) -> tuple[bool, str]:
-    from agent_bom.gateway import evaluate_gateway_policies
-
-    scoped = []
-    for policy in policies:
-        if getattr(policy, "bound_agents", None) and agent_name not in getattr(policy, "bound_agents", []):
-            continue
-        scoped.append(policy)
-    allowed, reason, _policy_id = evaluate_gateway_policies(scoped, tool_name, arguments)
-    return allowed, reason
-
-
 def _resolve_control_plane_rate_limit_threshold(policies: list["GatewayPolicy"], agent_name: str | None = None) -> int | None:
     from agent_bom.gateway import gateway_policy_to_proxy_format
 
@@ -1426,7 +1414,9 @@ async def run_proxy(
         await _refresh_control_plane_policies(initial=True)
 
         def _control_plane_gateway_evaluator(agent_id, tool_name, arguments):
-            return _evaluate_gateway_policy_bundle(control_plane_policies, agent_id, tool_name, arguments)
+            from agent_bom.gateway import evaluate_gateway_policy_bundle
+
+            return evaluate_gateway_policy_bundle(control_plane_policies, agent_id, tool_name, arguments)
 
         set_gateway_evaluator(_control_plane_gateway_evaluator)
 

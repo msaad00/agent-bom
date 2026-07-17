@@ -16,6 +16,7 @@ __all__ = [
     "check_policy",
     "evaluate_gateway_policies",
     "evaluate_gateway_policies_detail",
+    "evaluate_gateway_policy_bundle",
     "gateway_policies_to_proxy_bundle",
     "gateway_policy_to_proxy_format",
     "summarize_gateway_policies",
@@ -82,6 +83,30 @@ def gateway_policies_to_proxy_bundle(policies: list["GatewayPolicy"]) -> dict:
 def summarize_gateway_policies(policies: list["GatewayPolicy"]) -> dict[str, object]:
     """Summarize the effective runtime posture of control-plane gateway policies."""
     return summarize_policy_bundle(gateway_policies_to_proxy_bundle(policies))
+
+
+def evaluate_gateway_policy_bundle(
+    policies: list["GatewayPolicy"],
+    agent_name: str,
+    tool_name: str,
+    arguments: dict,
+) -> tuple[bool, str]:
+    """Evaluate a GatewayPolicy bundle scoped to one calling agent.
+
+    Policies with a non-empty ``bound_agents`` list apply only when
+    ``agent_name`` is listed. Unbound policies apply to every agent.
+    Returns ``(allowed, reason)`` — the public entry point for both the
+    per-MCP proxy and the standalone gateway relay (do not reach into
+    private ``proxy._*`` helpers for this).
+    """
+    scoped: list[GatewayPolicy] = []
+    for policy in policies:
+        bound = getattr(policy, "bound_agents", None)
+        if bound and agent_name not in bound:
+            continue
+        scoped.append(policy)
+    allowed, reason, _policy_id = evaluate_gateway_policies(scoped, tool_name, arguments)
+    return allowed, reason
 
 
 def evaluate_gateway_policies(

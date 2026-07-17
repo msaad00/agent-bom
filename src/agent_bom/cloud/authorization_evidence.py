@@ -229,6 +229,11 @@ class AuthorizationEvidenceBundle:
         return tuple(sorted(name for name, count in counts.items() if count > 1))
 
     def incomplete_required_sources(self) -> tuple[str, ...]:
+        # An empty requirement set is not proof that no provider evidence is
+        # needed. Treat it as an incomplete contract so hand-built, restored,
+        # or future provider bundles cannot authorize from a thin allow record.
+        if not self.required_sources:
+            return ("required_sources:missing",)
         duplicate_names = set(self.duplicate_source_names())
         incomplete: list[str] = []
         for name in self.required_sources:

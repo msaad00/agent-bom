@@ -286,6 +286,8 @@ AGENT_BOM_OCI_MAX_LAYER_UNCOMPRESSED_BYTES
 AGENT_BOM_OFFLINE
 # TTL (seconds) for the per-tenant /v1/overview payload cache; read at call time so tests can vary it. 0 disables.
 AGENT_BOM_OVERVIEW_CACHE_TTL_SECONDS
+# TTL (seconds) for the hub-derived severity cache; read at call time so tests and operators can disable it with 0.
+AGENT_BOM_HUB_OVERVIEW_CACHE_TTL_SECONDS
 AGENT_BOM_SKIP_UPDATE_CHECK
 AGENT_BOM_OIDC_ALLOWED_JWKS_URIS
 AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT

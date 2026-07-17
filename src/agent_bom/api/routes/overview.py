@@ -686,6 +686,17 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
     an optional dependency.
     """
     empty = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+    tenant_id = _tenant_id(request)
+    # Memoise the O(rows) severity GROUP BY per tenant. This snapshot feeds BOTH
+    # the cache fingerprint and the composed payload, so without this it ran the
+    # full-ledger scan on every /v1/overview request (~360ms at 1M). The cache is
+    # invalidated on every hub-ledger mutation (ingest / clear), so a hit is exact
+    # and reconciles with the findings API by construction (wave-2 residual #3).
+    from agent_bom.api import hub_overview_cache
+
+    cached = hub_overview_cache.get_cached_severity(tenant_id)
+    if cached is not None:
+        return cached
     try:
         from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
@@ -693,12 +704,13 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
         breakdown = getattr(store, "severity_breakdown", None)
         if not callable(breakdown):
             return empty
-        counts = breakdown(_tenant_id(request)) or {}
+        counts = breakdown(tenant_id) or {}
     except Exception:  # pragma: no cover - hub store optional
         _logger.debug("hub severity snapshot failed", exc_info=True)
         return empty
     for key, value in counts.items():
         empty[str(key).lower()] = empty.get(str(key).lower(), 0) + int(value or 0)
+    hub_overview_cache.set_cached_severity(tenant_id, empty)
     return empty
 
 

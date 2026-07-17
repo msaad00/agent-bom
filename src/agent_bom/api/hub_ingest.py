@@ -62,25 +62,44 @@ def hub_ingest_store_writes(
     prior_snapshots: dict[str, Any] = {}
     if needs_hub_prior_snapshots(reconcile_absent=reconcile_absent):
         prior_snapshots = capture_hub_snapshots(hub_store, tenant_id, source=source)
-    new_total = hub_store.add(tenant_id, payloads)
-    hub_store.upsert_current_batch(
-        tenant_id,
-        payloads,
-        observed_at=observed_at,
-        batch_id=batch_id,
-        source=source,
-    )
-    reconciled = 0
-    resolved_ids: set[str] = set()
-    if reconcile_absent:
-        present = collect_present_canonical_ids(payloads, source=source)
-        resolved_ids = resolved_canonical_ids(prior_snapshots, present)
-        reconciled = hub_store.reconcile_current_absent(
+
+    # ``present_canonical_ids`` for absent-reconciliation (and the delta
+    # ``resolved_ids`` derived from it) is pure Python — computed before the
+    # write so the atomic seam can run the reconcile inside the same transaction.
+    present: set[str] = collect_present_canonical_ids(payloads, source=source) if reconcile_absent else set()
+
+    atomic = getattr(hub_store, "ingest_batch_atomic", None)
+    if callable(atomic):
+        # Ledger append + current upsert (+ reconcile) commit in ONE transaction
+        # so a mid-batch failure rolls back BOTH — the ledger can no longer
+        # inflate while findings stay invisible (wave-2 residual #1).
+        new_total, reconciled = atomic(
             tenant_id,
-            present_canonical_ids=present,
+            payloads,
             observed_at=observed_at,
-            scope_source=source,
+            batch_id=batch_id,
+            source=source,
+            reconcile_absent=reconcile_absent,
+            present_canonical_ids=present,
         )
+    else:
+        new_total = hub_store.add(tenant_id, payloads)
+        hub_store.upsert_current_batch(
+            tenant_id,
+            payloads,
+            observed_at=observed_at,
+            batch_id=batch_id,
+            source=source,
+        )
+        reconciled = 0
+        if reconcile_absent:
+            reconciled = hub_store.reconcile_current_absent(
+                tenant_id,
+                present_canonical_ids=present,
+                observed_at=observed_at,
+                scope_source=source,
+            )
+    resolved_ids: set[str] = resolved_canonical_ids(prior_snapshots, present) if reconcile_absent else set()
     delta_results = emit_hub_finding_deltas_if_enabled(
         tenant_id=tenant_id,
         hub_store=hub_store,

@@ -779,9 +779,11 @@ class InMemoryComplianceHubStore:
                 bucket.append(stored)
             total = len(bucket)
         if findings:
+            from agent_bom.api import hub_overview_cache
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
             invalidate_tenant(tenant_id)
+            hub_overview_cache.invalidate_tenant(tenant_id)
         return total
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
@@ -856,9 +858,11 @@ class InMemoryComplianceHubStore:
             self._current.pop(tenant_id, None)
             self._current_observations.pop(tenant_id, None)
         if removed:
+            from agent_bom.api import hub_overview_cache
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
             invalidate_tenant(tenant_id)
+            hub_overview_cache.invalidate_tenant(tenant_id)
         return removed
 
     def upsert_current_batch(
@@ -1512,9 +1516,11 @@ class SQLiteComplianceHubStore:
         )
         self._conn.commit()
         if rows:
+            from agent_bom.api import hub_overview_cache
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
             invalidate_tenant(tenant_id)
+            hub_overview_cache.invalidate_tenant(tenant_id)
         with self._ingest_stats_lock:
             self._next_ordinal_by_tenant[tenant_id] = next_ord + len(rows)
             self._finding_count_by_tenant[tenant_id] += new_rows
@@ -1639,9 +1645,11 @@ class SQLiteComplianceHubStore:
         removed = cur.rowcount or 0
         self._reset_ingest_stats(tenant_id)
         if removed:
+            from agent_bom.api import hub_overview_cache
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
             invalidate_tenant(tenant_id)
+            hub_overview_cache.invalidate_tenant(tenant_id)
         return removed
 
     def upsert_current_batch(

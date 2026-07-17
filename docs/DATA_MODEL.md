@@ -380,6 +380,18 @@ list/put plus session-scoped `app.current_tenant` for RLS.
 | `osv_cache` | OSV API response cache | TTL-bounded |
 | `api_rate_limits` | Sliding-window rate limit state | per-tenant bucket key |
 
+The `UnifiedGraph` family is written through a **streamed, bounded write path**
+(`save_graph_streaming`, SQLite and Postgres). Nodes and edges flush in bounded
+batches (a single producer fans out to both `graph_nodes` and its
+`graph_node_search` mirror in one pass on Postgres), the retired-edge
+reconciliation set is bounded by the *previous* snapshot, and the per-scan delta
+alerts are derived from a bounded `prior_delta_digest` (node ids + agent refs +
+attack-path/interaction-risk keys) instead of re-materialising the previous
+snapshot into a second full `UnifiedGraph`. Peak write-path memory is thereby
+decoupled from prior-graph size (#4055/#4075). `save_graph` is a thin wrapper
+over the streamed path; Neptune falls back to a materialising write that is not
+yet bounded. See `docs/GRAPH_MIGRATION.md`.
+
 ### ClickHouse — `src/agent_bom/cloud/clickhouse.py`
 
 OLAP-only. Canonical analytics rows for trends, runtime events, posture.

@@ -336,7 +336,8 @@ def _persist_graph_snapshot(
     export all derive from the same persisted graph state.
     """
     from agent_bom.graph.builder import build_unified_graph_from_report
-    from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
+    from agent_bom.graph.delta_digest import compute_delta_alerts_from_digest
+    from agent_bom.graph.webhooks import dispatch_delta_alerts
 
     tenant_id = job.tenant_id or "default"
     scan_id = report_json.get("scan_id") or job.job_id
@@ -346,29 +347,44 @@ def _persist_graph_snapshot(
 
     tenant_token = set_current_tenant(tenant_id)
     try:
-        previous_graph = None
+        prior_digest = None
         graph_store = _get_graph_store()
         previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id)
         if previous_scan_id and previous_scan_id != scan_id:
-            previous_graph = graph_store.load_graph(tenant_id=tenant_id, scan_id=previous_scan_id)
-        graph_store.save_graph(graph)
+            # Bounded prior-snapshot digest instead of a second full UnifiedGraph
+            # load — keeps peak RSS decoupled from the prior graph size (#4055/#4075).
+            prior_digest = graph_store.prior_delta_digest(tenant_id=tenant_id, scan_id=previous_scan_id)
+        # Persist via the streamed write path (node/edge iterables) so the write
+        # never buffers a second copy of the graph; counts come from the store's
+        # running tally, not len(graph.*).
+        counts = graph_store.save_graph_streaming(
+            scan_id=graph.scan_id,
+            tenant_id=graph.tenant_id,
+            nodes=graph.nodes.values(),
+            edges=graph.edges,
+            attack_paths=graph.attack_paths,
+            interaction_risks=graph.interaction_risks,
+            created_at=graph.created_at,
+        )
     finally:
         reset_current_tenant(tenant_token)
 
-    alerts = compute_delta_alerts(previous_graph, graph)
+    node_count = counts.get("nodes", len(graph.nodes))
+    edge_count = counts.get("edges", len(graph.edges))
+    alerts = compute_delta_alerts_from_digest(prior_digest, graph)
     delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
     _logger.info(
         "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d delta_delivered=%d",
         scan_id,
         tenant_id,
-        len(graph.nodes),
-        len(graph.edges),
+        node_count,
+        edge_count,
         len(alerts),
         delivery["delivered"] if delivery else 0,
     )
     if lock:
         with lock:
-            job.progress.append(f"Graph persisted: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+            job.progress.append(f"Graph persisted: {node_count} nodes, {edge_count} edges")
             if alerts:
                 job.progress.append(f"Graph delta alerts: {len(alerts)}")
                 if delivery and delivery["configured"]:

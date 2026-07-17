@@ -17,7 +17,10 @@ import time
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.graph import AttackPath, EntityType, NodeDimensions, NodeStatus, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
@@ -149,6 +152,20 @@ class GraphStoreProtocol(Protocol):
     def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str: ...
 
     def save_graph(self, graph: UnifiedGraph) -> None: ...
+
+    def save_graph_streaming(
+        self,
+        *,
+        scan_id: str,
+        tenant_id: str = "",
+        nodes: Iterable[UnifiedNode],
+        edges: Iterable[UnifiedEdge],
+        attack_paths: Iterable[AttackPath] = (),
+        interaction_risks: Iterable[Any] = (),
+        created_at: str = "",
+    ) -> dict[str, int]: ...
+
+    def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = "") -> "PriorSnapshotDigest": ...
 
     def load_graph(
         self,
@@ -1229,6 +1246,19 @@ class SQLiteGraphStore:
                 min_severity_rank=min_severity_rank,
                 relationship_types=relationship_types,
             )
+        finally:
+            conn.close()
+
+    def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = "") -> "PriorSnapshotDigest":
+        """Bounded prior-snapshot digest for delta alerts (see #4055/#4075)."""
+        from agent_bom.graph.delta_digest import PriorSnapshotDigestBuilder
+
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return PriorSnapshotDigestBuilder().build()
+        try:
+            return sqlite_graph_store.prior_delta_digest(conn, tenant_id=tenant_id, scan_id=scan_id)
         finally:
             conn.close()
 

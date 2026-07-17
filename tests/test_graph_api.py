@@ -2992,3 +2992,29 @@ class TestGraphStoreBackendSelection:
 
         assert response.status_code == 404
         assert response.json()["detail"]["missing_roots"] == ["agent:missing"]
+
+
+def test_removed_edge_route_emits_ocsf_close_activity(tmp_path) -> None:
+    """The edge-change API emits the same Close(3) activity as Postgres."""
+    store = SQLiteGraphStore(tmp_path / "edge-close-graph.db")
+    g1 = UnifiedGraph(scan_id="close-s1", created_at="2026-07-16T00:00:00Z")
+    g1.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+    g1.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+    g1.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+    store.save_graph(g1)
+
+    g2 = UnifiedGraph(scan_id="close-s2", created_at="2026-07-17T00:00:00Z")
+    g2.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+    g2.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+    store.save_graph(g2)
+
+    original = api_stores._graph_store
+    try:
+        set_graph_store(store)
+        response = TestClient(app).get("/v1/graph/edges/changes", params={"old": "close-s1", "new": "close-s2"})
+        assert response.status_code == 200
+        removed = response.json()["edges_removed"]
+        assert len(removed) == 1
+        assert removed[0]["activity_id"] == 3
+    finally:
+        set_graph_store(original)

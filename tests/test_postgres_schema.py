@@ -141,9 +141,10 @@ def test_graph_tables_have_rls_policies():
         assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
 
 
-def test_graph_snapshot_analysis_status_is_in_baseline():
+def test_graph_snapshot_json_fields_are_text_in_baseline():
     assert "analysis_status" in _columns_for("graph_snapshots")
-    assert "analysis_status JSONB NOT NULL DEFAULT '{}'::jsonb" in SQL
+    assert "risk_summary TEXT DEFAULT '{}'" in SQL
+    assert "analysis_status TEXT NOT NULL DEFAULT '{}'" in SQL
 
 
 def test_graph_edges_has_versioning_columns():

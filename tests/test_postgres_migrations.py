@@ -13,6 +13,7 @@ BASELINE = VERSIONS_DIR / "20260416_01_control_plane_baseline.py"
 GRAPH_HOT_PATH_INDEXES = VERSIONS_DIR / "20260513_01_graph_hot_path_indexes.py"
 POSTGRES_STORE_PARITY = VERSIONS_DIR / "20260717_01_postgres_store_parity.py"
 GRAPH_ANALYSIS_STATUS = VERSIONS_DIR / "20260717_02_graph_analysis_status.py"
+GRAPH_SNAPSHOT_JSON_PARITY = VERSIONS_DIR / "20260717_03_graph_snapshot_json_parity.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
 
 
@@ -87,3 +88,14 @@ def test_graph_analysis_status_migration_is_idempotent_and_chained():
     assert re.search(r'revision\s*=\s*"20260717_02"', sql)
     assert re.search(r'down_revision\s*=\s*"20260717_01"', sql)
     assert "ADD COLUMN IF NOT EXISTS analysis_status JSONB NOT NULL" in sql
+
+
+def test_graph_snapshot_json_parity_migration_is_idempotent_and_chained():
+    assert GRAPH_SNAPSHOT_JSON_PARITY.exists()
+    sql = GRAPH_SNAPSHOT_JSON_PARITY.read_text()
+    assert re.search(r'revision\s*=\s*"20260717_03"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260717_02"', sql)
+    for column in ("risk_summary", "analysis_status"):
+        assert f"ALTER COLUMN {column} DROP DEFAULT" in sql
+        assert f"ALTER COLUMN {column} TYPE TEXT" in sql
+        assert f"ALTER COLUMN {column} SET DEFAULT '{{}}'" in sql

@@ -134,8 +134,11 @@ def test_streaming_persist_preserves_temporal_reconciliation(tmp_path) -> None:
         assert kept["first_seen"] == t1
         assert kept["valid_from"] == t1
 
-        dropped = conn.execute("SELECT valid_to FROM graph_edges WHERE scan_id='v1' AND source_id='a' AND target_id='c'").fetchone()
+        dropped = conn.execute(
+            "SELECT valid_to, activity_id FROM graph_edges WHERE scan_id='v1' AND source_id='a' AND target_id='c'"
+        ).fetchone()
         assert dropped["valid_to"] == t2
+        assert dropped["activity_id"] == 3
 
 
 def test_streaming_load_iterators_match_load_graph(tmp_path) -> None:

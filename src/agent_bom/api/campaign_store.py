@@ -91,6 +91,8 @@ class InMemoryCampaignStore:
         return replace(row)
 
     def reconcile_memberships(self, tenant_id: str, memberships: dict[str, str], *, complete: bool = True) -> List[CampaignWorkflow]:
+        if not complete:
+            return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         with self._lock:
             tenant_rows = {cid: row for (tid, cid), row in self._rows.items() if tid == tenant_id}
             for campaign_id, fingerprint in memberships.items():
@@ -230,6 +232,8 @@ class SQLiteCampaignStore:
         return row
 
     def reconcile_memberships(self, tenant_id: str, memberships: dict[str, str], *, complete: bool = True) -> List[CampaignWorkflow]:
+        if not complete:
+            return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         conn = self._conn
         conn.execute("BEGIN IMMEDIATE")
         try:

@@ -170,87 +170,6 @@
         "title": "BulkFindingsRequest",
         "type": "object"
       },
-      "CampaignActionResponse": {
-        "additionalProperties": true,
-        "properties": {
-          "action_limit": {
-            "title": "Action Limit",
-            "type": "integer"
-          },
-          "campaign_id": {
-            "title": "Campaign Id",
-            "type": "string"
-          },
-          "errors": {
-            "items": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "failed": {
-            "title": "Failed",
-            "type": "integer"
-          },
-          "has_more": {
-            "title": "Has More",
-            "type": "boolean"
-          },
-          "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Cursor"
-          },
-          "per_action_credential": {
-            "title": "Per Action Credential",
-            "type": "boolean"
-          },
-          "processed": {
-            "title": "Processed",
-            "type": "integer"
-          },
-          "schema_version": {
-            "title": "Schema Version",
-            "type": "string"
-          },
-          "tickets": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Tickets",
-            "type": "array"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "schema_version",
-          "campaign_id",
-          "failed",
-          "tickets",
-          "errors",
-          "per_action_credential",
-          "total",
-          "processed",
-          "next_cursor",
-          "has_more",
-          "action_limit"
-        ],
-        "title": "CampaignActionResponse",
-        "type": "object"
-      },
       "CampaignListResponse": {
         "properties": {
           "campaigns": {
@@ -271,6 +190,10 @@
           "finding_window_days": {
             "title": "Finding Window Days",
             "type": "integer"
+          },
+          "membership_complete": {
+            "title": "Membership Complete",
+            "type": "boolean"
           },
           "schema_version": {
             "title": "Schema Version",
@@ -309,7 +232,8 @@
           "finding_limit",
           "truncated",
           "total_findings",
-          "total_approximate"
+          "total_approximate",
+          "membership_complete"
         ],
         "title": "CampaignListResponse",
         "type": "object"
@@ -344,9 +268,17 @@
             "title": "Id",
             "type": "string"
           },
+          "membership_complete": {
+            "title": "Membership Complete",
+            "type": "boolean"
+          },
           "membership_fingerprint": {
             "title": "Membership Fingerprint",
             "type": "string"
+          },
+          "membership_provisional": {
+            "title": "Membership Provisional",
+            "type": "boolean"
           },
           "owner": {
             "anyOf": [
@@ -443,7 +375,9 @@
           "membership_fingerprint",
           "generation",
           "active",
-          "version"
+          "version",
+          "membership_complete",
+          "membership_provisional"
         ],
         "title": "CampaignResponse",
         "type": "object"
@@ -493,6 +427,176 @@
           "connection_id"
         ],
         "title": "CampaignTicketAction",
+        "type": "object"
+      },
+      "CampaignTicketCreateResponse": {
+        "properties": {
+          "action_limit": {
+            "title": "Action Limit",
+            "type": "integer"
+          },
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "per_action_credential": {
+            "title": "Per Action Credential",
+            "type": "boolean"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "tickets": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tickets",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "schema_version",
+          "campaign_id",
+          "failed",
+          "tickets",
+          "errors",
+          "per_action_credential",
+          "total",
+          "processed",
+          "next_cursor",
+          "has_more",
+          "action_limit",
+          "created"
+        ],
+        "title": "CampaignTicketCreateResponse",
+        "type": "object"
+      },
+      "CampaignTicketSyncResponse": {
+        "properties": {
+          "action_limit": {
+            "title": "Action Limit",
+            "type": "integer"
+          },
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "per_action_credential": {
+            "title": "Per Action Credential",
+            "type": "boolean"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "synced": {
+            "title": "Synced",
+            "type": "integer"
+          },
+          "tickets": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tickets",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "schema_version",
+          "campaign_id",
+          "failed",
+          "tickets",
+          "errors",
+          "per_action_credential",
+          "total",
+          "processed",
+          "next_cursor",
+          "has_more",
+          "action_limit",
+          "synced"
+        ],
+        "title": "CampaignTicketSyncResponse",
         "type": "object"
       },
       "CampaignUpdate": {
@@ -7306,7 +7410,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CampaignActionResponse"
+                  "$ref": "#/components/schemas/CampaignTicketCreateResponse"
                 }
               }
             },
@@ -7316,7 +7420,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CampaignActionResponse"
+                  "$ref": "#/components/schemas/CampaignTicketCreateResponse"
                 }
               }
             },
@@ -7434,7 +7538,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CampaignActionResponse"
+                  "$ref": "#/components/schemas/CampaignTicketSyncResponse"
                 }
               }
             },
@@ -7444,7 +7548,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CampaignActionResponse"
+                  "$ref": "#/components/schemas/CampaignTicketSyncResponse"
                 }
               }
             },

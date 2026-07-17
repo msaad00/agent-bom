@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 from datetime import datetime
@@ -77,6 +78,8 @@ class CampaignResponse(BaseModel):
     generation: int
     active: bool
     version: int
+    membership_complete: bool
+    membership_provisional: bool
 
 
 class CampaignListResponse(BaseModel):
@@ -89,10 +92,10 @@ class CampaignListResponse(BaseModel):
     truncated: bool
     total_findings: int | None
     total_approximate: bool
+    membership_complete: bool
 
 
 class CampaignActionResponse(BaseModel):
-    model_config = ConfigDict(extra="allow")
     schema_version: str
     campaign_id: str
     failed: int
@@ -104,6 +107,14 @@ class CampaignActionResponse(BaseModel):
     next_cursor: str | None
     has_more: bool
     action_limit: int
+
+
+class CampaignTicketCreateResponse(CampaignActionResponse):
+    created: int
+
+
+class CampaignTicketSyncResponse(CampaignActionResponse):
+    synced: int
 
 
 def _tenant(request: Request) -> str:
@@ -138,7 +149,21 @@ def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]
     initial = derive_campaigns(findings, tenant_id=tenant_id, workflow_by_id={}, window_days=90, finding_limit=1000, truncated=incomplete)
     memberships = {item["id"]: item["membership_fingerprint"] for item in initial}
     before = {row.campaign_id: row for row in get_campaign_store().list(tenant_id)}
-    reconciled = get_campaign_store().reconcile_memberships(tenant_id, memberships, complete=not incomplete)
+    if incomplete:
+        workflows = before
+        campaigns = derive_campaigns(
+            findings,
+            tenant_id=tenant_id,
+            workflow_by_id=workflows,
+            window_days=90,
+            finding_limit=1000,
+            truncated=True,
+        )
+        for campaign in campaigns:
+            campaign["membership_complete"] = False
+            campaign["membership_provisional"] = True
+        return campaigns
+    reconciled = get_campaign_store().reconcile_memberships(tenant_id, memberships, complete=True)
     for row in reconciled:
         old = before.get(row.campaign_id)
         if old is None:
@@ -146,36 +171,54 @@ def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]
         elif row.generation != old.generation:
             _audit("risk_campaign.membership_reset", request, row.campaign_id, generation=row.generation)
     for campaign_id, old in before.items():
-        if not incomplete and old.active and campaign_id not in memberships:
+        if old.active and campaign_id not in memberships:
             _audit("risk_campaign.membership_retired", request, campaign_id, generation=old.generation)
     workflows = {row.campaign_id: row for row in reconciled}
-    return derive_campaigns(
+    campaigns = derive_campaigns(
         findings,
         tenant_id=tenant_id,
         workflow_by_id=workflows,
         window_days=90,
         finding_limit=1000,
-        truncated=incomplete,
+        truncated=False,
     )
+    for campaign in campaigns:
+        campaign["membership_complete"] = True
+        campaign["membership_provisional"] = False
+    return campaigns
 
 
-def _cursor(campaign_id: str, offset: int) -> str:
-    raw = json.dumps({"campaign": campaign_id, "offset": offset}, separators=(",", ":")).encode()
+def _item_fingerprint(items: list[str]) -> str:
+    return hashlib.sha256("\x1f".join(sorted(items)).encode()).hexdigest()
+
+
+def _cursor(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def _offset(cursor: str | None, campaign_id: str, total: int) -> int:
+def _decode_cursor(cursor: str | None) -> dict[str, Any] | None:
     if not cursor:
-        return 0
+        return None
     try:
         raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
         value = json.loads(raw)
-        offset = int(value["offset"])
-        if value["campaign"] != campaign_id or offset < 0 or offset >= total:
-            raise ValueError("cursor does not match campaign")
-        return offset
+        required_strings = ("action", "campaign", "membership", "items")
+        if not isinstance(value, dict) or any(not isinstance(value.get(key), str) for key in required_strings):
+            raise ValueError("invalid cursor shape")
+        if not isinstance(value.get("generation"), int) or not isinstance(value.get("offset"), int) or value["offset"] < 0:
+            raise ValueError("invalid cursor position")
+        return value
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid campaign action cursor.") from exc
+
+
+def _offset(cursor: dict[str, Any] | None, expected: dict[str, Any], total: int) -> int:
+    if cursor is None:
+        return 0
+    if any(cursor.get(key) != value for key, value in expected.items()) or cursor["offset"] >= total:
+        raise HTTPException(status_code=409, detail="Campaign action cursor is stale or does not match this action.")
+    return int(cursor["offset"])
 
 
 def _find_campaign(campaigns: list[dict[str, Any]], campaign_id: str) -> dict[str, Any]:
@@ -218,6 +261,7 @@ async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]
         "truncated": truncated,
         "total_findings": total,
         "total_approximate": bool(source.get("total_approximate")),
+        "membership_complete": not truncated,
     }
 
 
@@ -237,7 +281,11 @@ async def update_campaign(request: Request, campaign_id: str, body: CampaignUpda
     return campaign
 
 
-@router.post("/campaigns/{campaign_id}/tickets", response_model=CampaignActionResponse, responses={207: {"model": CampaignActionResponse}})
+@router.post(
+    "/campaigns/{campaign_id}/tickets",
+    response_model=CampaignTicketCreateResponse,
+    responses={207: {"model": CampaignTicketCreateResponse}},
+)
 async def create_campaign_tickets(
     request: Request,
     campaign_id: str,
@@ -247,6 +295,7 @@ async def create_campaign_tickets(
 ) -> dict[str, Any]:
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
+    decoded_cursor = _decode_cursor(body.cursor)
     findings = source["findings"]
     campaign = _find_campaign(_campaigns(request, source), campaign_id)
     rows: dict[str, dict[str, Any]] = {}
@@ -257,7 +306,17 @@ async def create_campaign_tickets(
     tickets: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
     all_ids = sorted(campaign["finding_ids"])
-    offset = _offset(body.cursor, campaign_id, len(all_ids))
+    cursor_context = {
+        "action": "create",
+        "campaign": campaign_id,
+        "membership": campaign["membership_fingerprint"],
+        "generation": campaign["generation"],
+        "items": _item_fingerprint(all_ids),
+        "connection": body.connection_id.strip(),
+        "project": body.project.strip(),
+        "issue_type": body.issue_type.strip(),
+    }
+    offset = _offset(decoded_cursor, cursor_context, len(all_ids))
     selected = all_ids[offset : offset + body.limit]
     for finding_id in selected:
         try:
@@ -290,14 +349,16 @@ async def create_campaign_tickets(
         "per_action_credential": False,
         "total": len(all_ids),
         "processed": len(selected),
-        "next_cursor": _cursor(campaign_id, next_offset) if next_offset < len(all_ids) else None,
+        "next_cursor": _cursor({**cursor_context, "offset": next_offset}) if next_offset < len(all_ids) else None,
         "has_more": next_offset < len(all_ids),
         "action_limit": 25,
     }
 
 
 @router.post(
-    "/campaigns/{campaign_id}/tickets/sync", response_model=CampaignActionResponse, responses={207: {"model": CampaignActionResponse}}
+    "/campaigns/{campaign_id}/tickets/sync",
+    response_model=CampaignTicketSyncResponse,
+    responses={207: {"model": CampaignTicketSyncResponse}},
 )
 async def sync_campaign_tickets(
     request: Request,
@@ -311,12 +372,21 @@ async def sync_campaign_tickets(
 
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
+    decoded_cursor = _decode_cursor(cursor)
     campaign = _find_campaign(_campaigns(request, source), campaign_id)
     finding_ids = set(campaign["finding_ids"])
     links = sorted(
         (link for link in get_ticketing_store().list_ticket_links(tenant_id) if link.dedupe_key in finding_ids), key=lambda link: link.id
     )
-    offset = _offset(cursor, campaign_id, len(links))
+    link_ids = [f"{link.id}:{link.dedupe_key}:{link.connection_id}" for link in links]
+    cursor_context = {
+        "action": "sync",
+        "campaign": campaign_id,
+        "membership": campaign["membership_fingerprint"],
+        "generation": campaign["generation"],
+        "items": _item_fingerprint(link_ids),
+    }
+    offset = _offset(decoded_cursor, cursor_context, len(links))
     selected = links[offset : offset + limit]
     synced: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
@@ -341,7 +411,7 @@ async def sync_campaign_tickets(
         "per_action_credential": False,
         "total": len(links),
         "processed": len(selected),
-        "next_cursor": _cursor(campaign_id, next_offset) if next_offset < len(links) else None,
+        "next_cursor": _cursor({**cursor_context, "offset": next_offset}) if next_offset < len(links) else None,
         "has_more": next_offset < len(links),
         "action_limit": 25,
     }

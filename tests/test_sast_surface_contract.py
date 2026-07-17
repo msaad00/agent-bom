@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 from pathlib import Path
 
@@ -39,11 +40,17 @@ def test_scanner_registry_keeps_three_distinct_driver_contracts() -> None:
 
     assert drivers["code-native"].capabilities.network_access is False
     assert drivers["code-native"].input_types == ("code_path",)
+    assert drivers["code-native"].output_types == ("ast_analysis",)
+    assert drivers["ai-component-source"].output_types == ("ai_components",)
     assert drivers["sast-semgrep"].capabilities.network_access is True
     assert "sarif" in drivers["sast-semgrep"].input_types  # compatibility input remains supported
     assert drivers["external-scan-ingest"].capabilities.network_access is False
     assert "sarif" in drivers["external-scan-ingest"].input_types
     assert "semgrep" not in drivers["external-scan-ingest"].summary.lower()
+
+    for name in ("code-native", "ai-component-source", "sast-semgrep", "external-scan-ingest"):
+        driver = drivers[name]
+        assert callable(getattr(importlib.import_module(driver.module), driver.run_attr))
 
 
 def test_mcp_catalog_distinguishes_semgrep_execution_from_generic_sarif_ingest() -> None:

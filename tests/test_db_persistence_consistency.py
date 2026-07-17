@@ -225,6 +225,16 @@ def test_pg_policy_audit_filters_before_limit(monkeypatch):
     assert [row.entry_id for row in rows] == ["older-match"]
 
 
+def test_pg_policy_empty_filters_match_sqlite_no_filter_semantics(monkeypatch):
+    store, _pool = _pg_policy_store(monkeypatch)
+    store.put_audit_entry(_audit_entry("one", "2026-07-17T00:00:01+00:00"))
+    store.put_audit_entry(_audit_entry("two", "2026-07-17T00:00:02+00:00"))
+
+    rows = store.list_audit_entries(policy_id="", agent_name="", tenant_id="acme")
+
+    assert [row.entry_id for row in rows] == ["two", "one"]
+
+
 # ─── Proxy replay captured_at + idempotency (PG) ─────────────────────────────
 
 

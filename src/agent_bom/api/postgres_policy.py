@@ -198,10 +198,10 @@ class PostgresPolicyStore:
         if tenant_id is not None:
             clauses.append("team_id = %s")
             params.append(tenant_id)
-        if policy_id is not None:
+        if policy_id:
             clauses.append("data ->> 'policy_id' = %s")
             params.append(policy_id)
-        if agent_name is not None:
+        if agent_name:
             clauses.append("data ->> 'agent_name' = %s")
             params.append(agent_name)
         if clauses:

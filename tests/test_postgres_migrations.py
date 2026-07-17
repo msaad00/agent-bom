@@ -74,4 +74,8 @@ def test_postgres_store_parity_migration_is_idempotent_and_chained():
     assert "ADD COLUMN IF NOT EXISTS owner" in sql
     assert "ADD COLUMN IF NOT EXISTS workflow" in sql
     assert "PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)" in sql
+    assert "target_table REGCLASS := to_regclass('llm_cost_budgets')" in sql
+    assert "c.conrelid = target_table" in sql
+    assert "ALTER TABLE %s DROP CONSTRAINT %I" in sql
+    assert "n.nspname = current_schema()" not in sql
     assert "ALTER TABLE IF EXISTS cloud_connections ADD COLUMN IF NOT EXISTS last_scan_id" in sql

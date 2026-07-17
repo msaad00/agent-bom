@@ -20,35 +20,32 @@ def upgrade() -> None:
     op.execute("""
         DO $$
         DECLARE
+            target_table REGCLASS := to_regclass('llm_cost_budgets');
             current_pk TEXT;
         BEGIN
+            IF target_table IS NULL THEN
+                RAISE EXCEPTION 'visible relation llm_cost_budgets does not exist';
+            END IF;
             SELECT c.conname INTO current_pk
             FROM pg_constraint c
-            JOIN pg_class t ON t.oid = c.conrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-            WHERE t.relname = 'llm_cost_budgets'
-              AND n.nspname = current_schema()
+            WHERE c.conrelid = target_table
               AND c.contype = 'p';
 
             IF NOT EXISTS (
                 SELECT 1
                 FROM pg_constraint c
-                JOIN pg_class t ON t.oid = c.conrelid
-                JOIN pg_namespace n ON n.oid = t.relnamespace
-                WHERE t.relname = 'llm_cost_budgets'
-                  AND n.nspname = current_schema()
+                WHERE c.conrelid = target_table
                   AND c.contype = 'p'
                   AND pg_get_constraintdef(c.oid) =
                       'PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)'
             ) THEN
                 IF current_pk IS NOT NULL THEN
-                    EXECUTE format(
-                        'ALTER TABLE llm_cost_budgets DROP CONSTRAINT %I',
-                        current_pk
-                    );
+                    EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', target_table, current_pk);
                 END IF;
-                ALTER TABLE llm_cost_budgets
-                    ADD PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow);
+                EXECUTE format(
+                    'ALTER TABLE %s ADD PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)',
+                    target_table
+                );
             END IF;
         END
         $$;

@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
+import {
+  decideGraphRenderer,
+  shouldVirtualizeReactFlowNodes,
+} from "@/lib/graph-renderer-switch";
 import {
   LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
   LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
 } from "@/lib/large-graph-overview";
 
 describe("graph renderer switch", () => {
+  it("renders bounded roll-up cards eagerly before the initial fitView", () => {
+    expect(shouldVirtualizeReactFlowNodes({ rollupActive: true })).toBe(false);
+    expect(shouldVirtualizeReactFlowNodes({ rollupActive: false })).toBe(true);
+  });
+
   it("keeps focused investigation modes on React Flow", () => {
     const broadGraph = {
       nodeCount: LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD + 10,

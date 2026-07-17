@@ -114,7 +114,10 @@ import {
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
   LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
 } from "@/lib/large-graph-overview";
-import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
+import {
+  decideGraphRenderer,
+  shouldVirtualizeReactFlowNodes,
+} from "@/lib/graph-renderer-switch";
 import {
   graphRollupEligible,
   parseGraphRollupUrlPreference,
@@ -3048,7 +3051,9 @@ function GraphPageInner() {
               zoomOnScroll={false}
               panOnScroll={false}
               preventScrolling={false}
-              onlyRenderVisibleElements
+              onlyRenderVisibleElements={shouldVirtualizeReactFlowNodes({
+                rollupActive: rollupNavigationActive,
+              })}
               defaultEdgeOptions={{ type: "smoothstep" }}
               proOptions={{ hideAttribution: true }}
               onNodeClick={onNodeClick}

@@ -116,6 +116,7 @@ export interface GraphSnapshot {
   node_count: number;
   edge_count: number;
   risk_summary: Record<string, number>;
+  analysis_status?: import("./graph-schema").GraphStats["analysis_status"] | undefined;
 }
 
 export interface GraphAttackPath extends AttackPath {

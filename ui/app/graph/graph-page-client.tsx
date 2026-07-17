@@ -18,6 +18,7 @@ import { AlertTriangle, Layers, Loader2, Radar, Route, ShieldAlert } from "lucid
 
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
+import { GraphAnalysisStatusBanner } from "@/components/graph-analysis-status";
 import {
   GraphEvidenceExportButton,
   FullscreenButton,
@@ -409,6 +410,7 @@ function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
       interaction_risk_count: 0,
       max_attack_path_risk: 0,
       highest_interaction_risk: 0,
+      analysis_status: {},
     },
     pagination: {
       total: 0,
@@ -2267,6 +2269,10 @@ function GraphPageInner() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <GraphAnalysisStatusBanner
+              status={graphData?.stats.analysis_status?.attack_path_fusion}
+              compact
+            />
             {flow.summary && (
               <>
                 <MetricCard value={flow.summary.agents} label="agents" />

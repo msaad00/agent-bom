@@ -986,7 +986,7 @@ def mcp_server_cmd(
       docs/MCP_WORKFLOWS.md
 
     \b
-    Exposes 73 security tools via MCP protocol, organized behind 8 workflow
+    Exposes 75 security tools via MCP protocol, organized behind 8 workflow
     prompts. Advanced direct tools include skill_scan, skill_verify,
     compliance, and remediate.
 

@@ -935,6 +935,7 @@ from agent_bom.api.routes.scan import router as _scan_router  # noqa: E402
 from agent_bom.api.routes.schedules import router as _schedules_router  # noqa: E402
 from agent_bom.api.routes.scim import router as _scim_router  # noqa: E402
 from agent_bom.api.routes.sources import router as _sources_router  # noqa: E402
+from agent_bom.api.routes.ticketing import router as _ticketing_router  # noqa: E402
 from agent_bom.api.routes.webhooks import router as _webhooks_router  # noqa: E402
 from agent_bom.api.versioning import create_v1_api_router  # noqa: E402
 
@@ -979,6 +980,7 @@ for _router in (
     _scan_router,
     _schedules_router,
     _sources_router,
+    _ticketing_router,
     _webhooks_router,
 ):
     _v1_api_router.include_router(_router)

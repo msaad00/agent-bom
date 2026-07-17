@@ -16,8 +16,8 @@ attack paths, compliance tags, and runtime audit chain.
 
 | Area | Shipped today |
 |---|---|
-| MCP security tools | 73 tools, 6 resources, 8 workflow prompts |
-| REST API | 350 operations across 40 route modules (+ 2 WebSocket routes) — see `docs/openapi/v1.json` |
+| MCP security tools | 75 tools, 6 resources, 8 workflow prompts |
+| REST API | 357 operations across 41 route modules (+ 2 WebSocket routes) — see `docs/openapi/v1.json` |
 | Package / SCA | 15 ecosystems, SARIF, CycloneDX, SPDX, HTML |
 | Graph / blast radius | UnifiedGraph, attack paths, hop counts, remediation handoff |
 | Runtime proxy | stdio/local MCP inline enforcement (7 detectors) |

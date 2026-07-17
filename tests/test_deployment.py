@@ -265,6 +265,10 @@ def test_server_card_tools_expose_capability_classes():
         # the fresh scan to history and prunes old reports.
         "access_review",
         "diff",
+        # Connect-once ITSM ticketing writes: file a ticket / refresh its status
+        # through a stored connection (no per-action credential).
+        "create_ticket",
+        "sync_ticket_status",
     }
     # Writes that tear down or invalidate state advertise destructiveHint; issuing
     # an identity or granting access creates state and is non-destructive.
@@ -279,6 +283,8 @@ def test_server_card_tools_expose_capability_classes():
         "identity_revoke_jit",
         "ingest_external_scan",
         "diff",
+        "create_ticket",
+        "sync_ticket_status",
     }
     card = build_server_card()
     for tool in card["tools"]:
@@ -341,6 +347,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     write_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
     assert sorted(write_tools) == [
         "access_review",
+        "create_ticket",
         "diff",
         "identity_grant_jit",
         "identity_issue",
@@ -351,6 +358,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "shield_break_glass",
         "shield_start",
         "shield_unblock",
+        "sync_ticket_status",
     ]
     for resource in card["resources"]:
         assert resource["uri"] in docs
@@ -363,7 +371,12 @@ def test_server_card_tool_count_matches_decorators():
     import inspect
     import re
 
-    from agent_bom import mcp_server_operator_tools, mcp_server_runtime_catalog, mcp_server_specialized
+    from agent_bom import (
+        mcp_server_operator_tools,
+        mcp_server_runtime_catalog,
+        mcp_server_specialized,
+        mcp_server_ticketing_tools,
+    )
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
 
     source = (
@@ -371,6 +384,7 @@ def test_server_card_tool_count_matches_decorators():
         + inspect.getsource(mcp_server_operator_tools)
         + inspect.getsource(mcp_server_runtime_catalog)
         + inspect.getsource(mcp_server_specialized)
+        + inspect.getsource(mcp_server_ticketing_tools)
     )
     decorator_count = len(re.findall(r"@mcp\.tool", source))
     card_count = len(_SERVER_CARD_TOOLS)
@@ -535,7 +549,7 @@ def test_refresh_latest_container_keeps_release_code_but_applies_runtime_securit
     workflow = (ROOT / ".github" / "workflows" / "refresh-latest-container.yml").read_text()
 
     assert "main_sha=$MAIN_SHA" in workflow
-    assert "git checkout \"$TAG\"" in workflow
+    assert 'git checkout "$TAG"' in workflow
     assert "Apply current runtime security overlay" in workflow
     assert 'git checkout "${{ steps.release.outputs.main_sha }}" -- \\' in workflow
     assert "deploy/docker/pip-requirements.txt \\" in workflow

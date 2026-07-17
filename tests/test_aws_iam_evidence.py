@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from agent_bom.cloud.aws_iam_evidence import (
     EvidenceCompleteness,
+    IamRoleUsageEvidence,
     IamServiceUsageEvidence,
     UsageEvidenceState,
     normalize_iam_policy_document,
@@ -80,3 +81,22 @@ def test_usage_evidence_preserves_unknown_instead_of_inventing_dormancy() -> Non
     assert denied.observed is None
     assert never_used.observed is False
     assert used.observed is True
+
+
+def test_role_usage_evidence_serializes_provenance_and_stable_diagnostic() -> None:
+    collected_at = datetime(2026, 7, 17, 15, 30, tzinfo=timezone.utc)
+    evidence = IamRoleUsageEvidence(
+        principal_arn="arn:aws:iam::123456789012:role/scanner",
+        usage_state=UsageEvidenceState.ACCESS_DENIED,
+        records=(),
+        diagnostic="access_advisor_denied",
+        collected_at=collected_at,
+    )
+
+    assert evidence.to_dict() == {
+        "principal_arn": "arn:aws:iam::123456789012:role/scanner",
+        "state": "access_denied",
+        "diagnostic": "access_advisor_denied",
+        "collected_at": "2026-07-17T15:30:00+00:00",
+        "records": [],
+    }

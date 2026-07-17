@@ -21,10 +21,13 @@ optional-feature gates (e.g. ``AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS``,
 ``AGENT_BOM_DISTRIBUTED_SCANS``).
 
 Trust posture: read-only (``ScanMode.CLOUD_READ_ONLY``), reference-only, and
-agentless. Only ``List*`` / ``Describe*`` / ``Get*Policy*`` APIs are called — no
-write APIs, no object-content reads, no credential exfiltration. Boto3 absence
-or missing credentials degrades to an empty inventory plus a clear status,
-never a crash.
+agentless. Resource discovery uses ``List*`` / ``Describe*`` / ``Get*Policy*``
+APIs; IAM role usage adds the read-only Access Advisor report pair
+``GenerateServiceLastAccessedDetails`` / ``GetServiceLastAccessedDetails`` plus
+``GetRole`` for the role-last-used timestamp that ``ListRoles`` omits. Neither
+path changes IAM or cloud-resource configuration, reads object content, or
+exfiltrates credentials. Boto3 absence or missing credentials degrades to an
+empty inventory plus a clear status, never a crash.
 
 Requires ``boto3``. Install with::
 
@@ -47,6 +50,8 @@ from .aws import (
     _policy_actions_from_document,
     _resolve_account_id,
 )
+from .aws_iam_collector import collect_iam_role_usage_evidence
+from .aws_iam_evidence import IamRoleUsageEvidence, UsageEvidenceState
 from .normalization import sanitize_discovery_warning
 
 logger = logging.getLogger(__name__)
@@ -69,6 +74,12 @@ REGIONS_ENV_VAR = "AGENT_BOM_AWS_REGIONS"
 # Defensive cap so an account with a large enabled-region set can't fan out
 # unbounded without an operator opting into a larger budget.
 _MAX_REGIONS = int(os.environ.get("AGENT_BOM_AWS_MAX_REGIONS", "32") or "32")
+# Access Advisor starts one bounded analysis job per role. Inventory remains
+# complete beyond this cap, but additional roles carry explicit unavailable
+# usage evidence instead of launching an unbounded number of jobs.
+_MAX_IAM_USAGE_ROLES = 100
+_MAX_ACCESS_ADVISOR_POLLS = 3
+_MAX_ACCESS_ADVISOR_PAGES = 5
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -88,6 +99,7 @@ _AWS_EC2_PERMISSIONS: tuple[str, ...] = (
 )
 _AWS_IAM_PERMISSIONS: tuple[str, ...] = (
     "iam:ListRoles",
+    "iam:GetRole",
     "iam:ListUsers",
     "iam:ListGroups",
     "iam:GetGroup",
@@ -103,6 +115,8 @@ _AWS_IAM_PERMISSIONS: tuple[str, ...] = (
     "iam:GetGroupPolicy",
     "iam:GetPolicy",
     "iam:GetPolicyVersion",
+    "iam:GenerateServiceLastAccessedDetails",
+    "iam:GetServiceLastAccessedDetails",
 )
 _AWS_DATA_PERMISSIONS: tuple[str, ...] = (
     "rds:DescribeDBInstances",
@@ -1266,7 +1280,15 @@ def _discover_iam(
         role_paginator = iam.get_paginator("list_roles")
         for page in role_paginator.paginate():
             for role in page.get("Roles", []):
-                roles.append(_normalize_role(iam, role, account_id=account_id, warnings=warnings))
+                roles.append(
+                    _normalize_role(
+                        iam,
+                        role,
+                        account_id=account_id,
+                        warnings=warnings,
+                        collect_usage=len(roles) < _MAX_IAM_USAGE_ROLES,
+                    )
+                )
     except Exception as exc:  # noqa: BLE001 — one failed IAM list must not sink the scan
         record_discovery_failure(
             exc=exc, resource_type="IAM roles", permission="iam:ListRoles", cloud="aws", warnings=warnings, missing=missing
@@ -1295,7 +1317,14 @@ def _discover_iam(
     return roles, users, groups
 
 
-def _normalize_role(iam: Any, role: dict[str, Any], *, account_id: str | None, warnings: list[str]) -> dict[str, Any]:
+def _normalize_role(
+    iam: Any,
+    role: dict[str, Any],
+    *,
+    account_id: str | None,
+    warnings: list[str],
+    collect_usage: bool = True,
+) -> dict[str, Any]:
     role_name = str(role.get("RoleName", "") or "")
     role_arn = str(role.get("Arn", "") or "")
     policies = _attached_policies(iam, "role", role_name, warnings=warnings)
@@ -1304,6 +1333,21 @@ def _normalize_role(iam: Any, role: dict[str, Any], *, account_id: str | None, w
         role.get("AssumeRolePolicyDocument"),
         account_id=account_id or _account_id_from_arn(role_arn),
     )
+    if collect_usage and role_name and role_arn:
+        usage_evidence = collect_iam_role_usage_evidence(
+            iam,
+            principal_arn=role_arn,
+            role_name=role_name,
+            role_snapshot=role,
+            max_access_advisor_polls=_MAX_ACCESS_ADVISOR_POLLS,
+            max_access_advisor_pages=_MAX_ACCESS_ADVISOR_PAGES,
+        )
+    else:
+        usage_evidence = IamRoleUsageEvidence(
+            principal_arn=role_arn,
+            usage_state=UsageEvidenceState.UNAVAILABLE,
+            diagnostic=("role_collection_budget_exhausted" if not collect_usage else "role_identity_unavailable"),
+        )
     return {
         "principal_type": "iam-role",
         "name": role_name,
@@ -1312,6 +1356,7 @@ def _normalize_role(iam: Any, role: dict[str, Any], *, account_id: str | None, w
         "path": str(role.get("Path", "") or ""),
         "policies": policies,
         "trust_principals": trust_principals,
+        "usage_evidence": usage_evidence.to_dict(),
         "privilege_level": _highest_privilege(policies),
         "created_at": _iso(role.get("CreateDate")),
     }

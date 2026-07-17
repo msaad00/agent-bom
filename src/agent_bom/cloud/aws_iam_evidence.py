@@ -158,6 +158,45 @@ class IamServiceUsageEvidence:
             return None
         return self.last_accessed_at is not None
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize one non-secret usage observation for inventory output."""
+        return {
+            "service_namespace": self.service_namespace,
+            "state": self.state.value,
+            "observed": self.observed,
+            "last_accessed_at": self.last_accessed_at.isoformat() if self.last_accessed_at else None,
+            "last_accessed_region": self.last_accessed_region,
+            "source": self.source,
+            "collected_at": self.collected_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True)
+class IamRoleUsageEvidence:
+    """Bounded AWS IAM role-usage collection result.
+
+    ``usage_state`` describes whether Access Advisor evidence is complete. Role
+    last-used records may still be present when Access Advisor is denied,
+    pending, or unavailable; callers must not reinterpret those narrower facts
+    as complete service-level usage.
+    """
+
+    principal_arn: str
+    usage_state: UsageEvidenceState
+    records: tuple[IamServiceUsageEvidence, ...] = ()
+    diagnostic: str = "access_advisor_unavailable"
+    collected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the stable, exception-free AWS inventory representation."""
+        return {
+            "principal_arn": self.principal_arn,
+            "state": self.usage_state.value,
+            "diagnostic": self.diagnostic,
+            "collected_at": self.collected_at.isoformat(),
+            "records": [record.to_dict() for record in self.records],
+        }
+
 
 @dataclass(frozen=True)
 class IamPrincipalEvidence:

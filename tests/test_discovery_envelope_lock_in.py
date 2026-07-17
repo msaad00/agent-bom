@@ -138,6 +138,13 @@ _READ_VERBS = {
     "watch",
 }
 
+# Provider operations whose leading verb sounds mutating but whose exact API
+# contract is read-only. Keep this at full-action granularity: allowing the
+# generic ``Generate`` verb would weaken the guard for unrelated APIs.
+_READ_ONLY_ACTION_EXCEPTIONS = {
+    "iam:GenerateServiceLastAccessedDetails",  # creates an IAM usage report job; changes no IAM/resource configuration
+}
+
 
 def _extract_verb(perm: str) -> str | None:
     """Pull the trailing verb out of a permission string.
@@ -265,7 +272,7 @@ def test_provider_permissions_are_read_only(module_path: str, scan_mode: ScanMod
         if verb is None:
             # If we can't extract a verb the shape test will catch it.
             continue
-        if verb not in _READ_VERBS:
+        if verb not in _READ_VERBS and perm not in _READ_ONLY_ACTION_EXCEPTIONS:
             write_verbs.append((perm, verb))
     assert not write_verbs, (
         f"{module_path} declares non-read permissions: {write_verbs}. "

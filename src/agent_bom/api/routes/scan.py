@@ -30,7 +30,6 @@ import logging
 import os
 import time
 import uuid
-from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import Annotated, Any
@@ -308,20 +307,6 @@ def _completed_jobs_for_tenant(tenant_id: str) -> list[ScanJob]:
     return [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
 
 
-def _job_in_window(job: ScanJob, since: str | None) -> bool:
-    if since is None:
-        return True
-    stamp = job.completed_at or job.created_at
-    try:
-        observed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-        cutoff = datetime.fromisoformat(since.replace("Z", "+00:00"))
-        if observed.tzinfo is None:
-            observed = observed.replace(tzinfo=timezone.utc)
-        return observed >= cutoff
-    except (TypeError, ValueError):
-        return False
-
-
 class BulkFindingsRequest(BaseModel):
     """Normalized finding ingest for headless clients and agent runtimes."""
 
@@ -450,10 +435,9 @@ def _finding_identity(finding: dict[str, Any]) -> str:
     Prefers the finding ``id`` (what Postgres' ``hub_findings_current`` keys on)
     and falls back to the vuln:package content key when a scan row omits ``id``.
     """
-    raw_id = finding.get("id")
-    if raw_id:
-        return str(raw_id)
-    return _finding_key(finding)
+    from agent_bom.api.findings_current import finding_identity
+
+    return finding_identity(finding)
 
 
 def _finding_key(finding: dict[str, Any]) -> str:
@@ -1883,18 +1867,14 @@ def _list_findings_impl(
     # ``hub_findings_current`` which already dedupes). Iterate jobs oldest-first
     # so the latest occurrence of each finding id wins; ``?scan_id=`` still
     # returns that scan's rows verbatim.
-    deduped: dict[str, dict[str, Any]] = {}
-    for job in sorted(
-        (job for job in _completed_jobs_for_tenant(tenant_id) if _job_in_window(job, window_since)),
-        key=lambda job: (job.completed_at or "", job.created_at or "", job.job_id),
-    ):
-        if scan_id and job.job_id != scan_id:
-            continue
-        if job.child_job_ids and job.job_id != scan_id:
-            continue
-        for row in _iter_scan_findings(job):
-            deduped[_finding_identity(row)] = row
-    scan_findings: list[dict[str, Any]] = list(deduped.values())
+    from agent_bom.api.findings_current import current_scan_findings
+
+    scan_findings = current_scan_findings(
+        _completed_jobs_for_tenant(tenant_id),
+        since=window_since,
+        scan_id=scan_id,
+        iter_findings=_iter_scan_findings,
+    )
     if severity:
         normalized = severity.lower()
         scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]

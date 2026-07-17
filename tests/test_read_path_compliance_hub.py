@@ -86,12 +86,64 @@ def _findings_total(client: TestClient, severity: str) -> int:
     return int(resp.json()["total"])
 
 
+def _put_scan(*, scan_id: str, completed_at: datetime, result: dict) -> None:
+    """Persist a completed scan without going through the asynchronous runner."""
+    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+    from agent_bom.api.stores import _get_store
+
+    stamp = completed_at.isoformat()
+    _get_store().put(
+        ScanJob(
+            job_id=scan_id,
+            tenant_id="tenant-alpha",
+            status=JobStatus.DONE,
+            created_at=stamp,
+            completed_at=stamp,
+            request=ScanRequest(),
+            result=result,
+        )
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # P1b — exec headline reconciles with the /v1/findings drill-down
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 class TestExecHeadlineReconciliation:
+    def test_stale_scan_is_excluded_from_all_exec_severity_surfaces(self) -> None:
+        """The default findings window also bounds scan-derived exec counts."""
+        client = _client()
+        _put_scan(
+            scan_id="stale-scan",
+            completed_at=_now() - timedelta(days=400),
+            result={"findings": [{"id": "stale-critical", "severity": "critical"}]},
+        )
+
+        assert _findings_total(client, "critical") == 0
+        assert client.get("/v1/overview").json()["headline"]["critical"] == 0
+        assert client.get("/v1/posture/counts").json()["critical"] == 0
+
+    def test_blast_radius_rescans_are_deduped_across_exec_surfaces(self) -> None:
+        """Repeated evidence for one CVE/package is one current finding."""
+        client = _client()
+        blast = {
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-2026-4106",
+                    "package": "shared-lib@1.0.0",
+                    "severity": "critical",
+                    "risk_score": 9.8,
+                }
+            ]
+        }
+        _put_scan(scan_id="rescan-1", completed_at=_now() - timedelta(days=2), result=blast)
+        _put_scan(scan_id="rescan-2", completed_at=_now() - timedelta(days=1), result=blast)
+
+        assert _findings_total(client, "critical") == 1
+        assert client.get("/v1/overview").json()["headline"]["critical"] == 1
+        assert client.get("/v1/posture/counts").json()["critical"] == 1
+
     def test_overview_headline_equals_findings_drilldown_for_same_window(self) -> None:
         """overview critical/high == /v1/findings critical/high (reconcile invariant).
 
@@ -302,9 +354,7 @@ class TestCurrentSeverityBreakdown:
         since = time_window.window_since_iso(90, now=now)
         breakdown = store.current_severity_breakdown("t1", origin="bulk_ingest", since=since)
         # Drill-down COUNT for the same window.
-        _rows, crit_total, _c = store.list_current_page(
-            "t1", limit=100, severity="critical", origin="bulk_ingest", since=since
-        )
+        _rows, crit_total, _c = store.list_current_page("t1", limit=100, severity="critical", origin="bulk_ingest", since=since)
         assert breakdown["critical"] == crit_total == 1
         assert breakdown["high"] == 1
 

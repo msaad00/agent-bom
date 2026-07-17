@@ -391,8 +391,8 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     created_at   TEXT NOT NULL,
     node_count   INTEGER DEFAULT 0,
     edge_count   INTEGER DEFAULT 0,
-    risk_summary JSONB DEFAULT '{}'::jsonb,
-    analysis_status JSONB NOT NULL DEFAULT '{}'::jsonb,
+    risk_summary TEXT DEFAULT '{}',
+    analysis_status TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (scan_id, tenant_id)
 );
 

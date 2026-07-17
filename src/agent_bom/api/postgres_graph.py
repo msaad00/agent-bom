@@ -178,6 +178,16 @@ def _digest_payload(payload: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _decode_json_object(value: Any) -> dict[str, Any]:
+    """Decode a JSON object from either TEXT or psycopg's native JSONB value."""
+    if value is None or value == "" or value == b"":
+        return {}
+    decoded = value if isinstance(value, Mapping) else json.loads(value)
+    if not isinstance(decoded, Mapping):
+        raise ValueError("Persisted graph snapshot JSON must be an object")
+    return dict(decoded)
+
+
 def _diff_summary_counts(diff: dict[str, Any]) -> dict[str, int]:
     return {
         "nodes_added": len(diff.get("nodes_added") or []),
@@ -305,7 +315,7 @@ class PostgresGraphStore:
                     node_count INTEGER DEFAULT 0,
                     edge_count INTEGER DEFAULT 0,
                     risk_summary TEXT DEFAULT '{}',
-                    analysis_status TEXT DEFAULT '{}',
+                    analysis_status TEXT NOT NULL DEFAULT '{}',
                     PRIMARY KEY (scan_id, tenant_id)
                 )
                 """
@@ -343,7 +353,7 @@ class PostgresGraphStore:
             )
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS summary TEXT DEFAULT ''")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS tool_exposure TEXT DEFAULT '[]'")
-            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS analysis_status TEXT DEFAULT '{}'")
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT '{}'")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_from TEXT DEFAULT ''")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_to TEXT DEFAULT NULL")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION DEFAULT 1.0")
@@ -1012,7 +1022,7 @@ class PostgresGraphStore:
             ).fetchone()
             graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=str(snapshot_row[0]) if snapshot_row else "")
             if snapshot_row:
-                graph.analysis_status = analysis_status_map_from_dict(json.loads(snapshot_row[1] or "{}"))
+                graph.analysis_status = analysis_status_map_from_dict(_decode_json_object(snapshot_row[1]))
 
             query = (
                 "SELECT id, entity_type, label, category_uid, class_uid, type_uid, status, risk_score, severity, severity_id, "
@@ -1586,8 +1596,8 @@ class PostgresGraphStore:
                     "created_at": row[1],
                     "node_count": row[2],
                     "edge_count": row[3],
-                    "risk_summary": json.loads(row[4]),
-                    "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(json.loads(row[5] or "{}"))),
+                    "risk_summary": _decode_json_object(row[4]),
+                    "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(_decode_json_object(row[5]))),
                 }
                 for row in rows
             ]
@@ -1819,7 +1829,7 @@ class PostgresGraphStore:
                 (effective_scan_id, tenant_id),
             ).fetchone()
             analysis_status = analysis_status_map_to_dict(
-                analysis_status_map_from_dict(json.loads((analysis_row[0] if analysis_row else "{}") or "{}"))
+                analysis_status_map_from_dict(_decode_json_object(analysis_row[0] if analysis_row else None))
             )
             # Unfiltered node/edge totals are already materialised on the snapshot
             # row at write time. Re-deriving the edge count here re-scans

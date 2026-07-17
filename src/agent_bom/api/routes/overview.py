@@ -14,14 +14,14 @@ function that another route already exposes:
       counts so findings ingested via ``POST /v1/findings/bulk`` move the
       grade/headline (not scan jobs alone)
 
-The exec headline severity counts, the five coverage lanes, and the risk grade
-are all built from one reconciled rollup over the unified ``findings`` stream
-(``_estate_rollup``) — never the CVE-only ``blast_radius``. That closes the
-divergence where a scan-produced non-CVE critical (malicious/blocklisted
-package, MCP/a2a auth, IaC) was visible in the coverage lanes and
-``/v1/findings`` but invisible in the headline critical/high and the grade
-(#3961). ``blast_radius`` / compact ``summary`` are used only as fallbacks when
-a completed scan carries no findings spine (e.g. post hot-cache compaction).
+The exec headline severity counts and risk grade use the exact default-window,
+parent-job exclusion, and cross-job replacement semantics of ``/v1/findings``.
+The five coverage lanes remain historical scan summaries. This separation is
+intentional: compact summaries can describe prior scan coverage, but cannot
+create executive severity counts whose underlying finding rows no longer exist
+for drill-down. The shared current-state fold includes non-CVE findings and
+canonicalized ``blast_radius`` evidence, so re-scans replace rather than inflate
+the executive count (#3961/#4106).
 
 Domain tiles (cloud / vuln / code / runtime / ...) remain scan-scoped by
 design; only the top-level posture + headline aggregate scan + ingested
@@ -813,11 +813,9 @@ def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]
     """The single exec-facing severity source of truth (#3961).
 
     Both the ``/v1/overview`` headline and ``/v1/posture/counts`` derive their
-    critical/high/… from THIS reconciliation of the unified findings spine
-    (``_estate_rollup``) with hub-ingested evidence, so the two exec surfaces
-    can never report a different open-severity count for the same estate. The
-    honest ``unrated`` bucket is carried through and the buckets sum to
-    ``total`` (no silent drop).
+    critical/high/… from THIS reconciliation of the canonical, windowed scan
+    current state with hub-ingested current evidence. The honest ``unrated``
+    bucket is carried through and the buckets sum to ``total`` (no silent drop).
     """
     combined = _combined_severity(estate["severity"], hub_severity)
     return {
@@ -832,15 +830,40 @@ def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]
     }
 
 
+def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
+    """Severity histogram with the exact scan semantics of ``/v1/findings``."""
+    from agent_bom.api import time_window
+    from agent_bom.api.findings_current import current_scan_findings
+    from agent_bom.api.routes.scan import _iter_scan_findings
+
+    since = time_window.window_since_iso(time_window.normalize_window_days(None))
+    findings = current_scan_findings(
+        jobs,
+        since=since,
+        scan_id=None,
+        iter_findings=_iter_scan_findings,
+    )
+    severity = _empty_severity()
+    for row in findings:
+        severity[_bucket(str(row.get("severity") or ""), severity)] += 1
+    return severity
+
+
+def _exec_estate(estate: dict[str, Any], jobs: list[Any]) -> dict[str, Any]:
+    """Overlay canonical current scan counts without changing domain history."""
+    return {**estate, "severity": _current_scan_severity(jobs)}
+
+
 def exec_severity_counts(request: Request, jobs: list[Any]) -> dict[str, int]:
-    """Reconciled exec severity counts for ``jobs`` (unified spine + hub).
+    """Reconciled current exec severity counts for ``jobs`` + hub evidence.
 
     Public entry point shared with ``/v1/posture/counts`` so nav badges and the
     overview headline read one number. Recomputes the estate rollup and hub
     snapshot; a caller that already holds them should use
     ``_reconciled_exec_counts`` directly to avoid a second pass.
     """
-    return _reconciled_exec_counts(_estate_rollup(jobs), _hub_severity_snapshot(request))
+    estate = _estate_rollup(jobs)
+    return _reconciled_exec_counts(_exec_estate(estate, jobs), _hub_severity_snapshot(request))
 
 
 def _exec_posture(
@@ -961,8 +984,9 @@ def _build_overview(request: Request) -> dict[str, Any]:
 def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_severity: dict[str, int]) -> dict[str, Any]:
     """Fold the estate into the overview payload (the O(estate) hot path)."""
     estate = _estate_rollup(jobs)
+    exec_estate = _exec_estate(estate, jobs)
     coverage = estate["coverage"]
-    posture = _exec_posture(request, _posture_snapshot(jobs), estate, hub_severity)
+    posture = _exec_posture(request, _posture_snapshot(jobs), exec_estate, hub_severity)
     runtime = _runtime_snapshot(request, jobs)
     cost = _cost_snapshot(request)
     identity = _identity_snapshot(request)
@@ -972,7 +996,7 @@ def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_sev
     # /v1/posture/counts reads — the unified spine folded with hub-ingested
     # evidence — never the CVE-only blast_radius (#3961). Both exec surfaces
     # route through ``_reconciled_exec_counts`` so they can never disagree.
-    exec_counts = _reconciled_exec_counts(estate, hub_severity)
+    exec_counts = _reconciled_exec_counts(exec_estate, hub_severity)
     headline_critical = exec_counts["critical"]
     headline_high = exec_counts["high"]
     critical_high = headline_critical + headline_high

@@ -11,6 +11,8 @@ connection (no live Postgres required).
 
 from __future__ import annotations
 
+import pytest
+
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, NodeStatus
@@ -265,3 +267,107 @@ def test_postgres_writer_lock_precedes_snapshot_reads_and_deletes(monkeypatch):
     prior_read_at = next(i for i, sql in enumerate(conn.sql_calls) if "from graph_snapshots" in sql and sql.startswith("select"))
     delete_at = next(i for i, sql in enumerate(conn.sql_calls) if sql.startswith("delete from"))
     assert lock_at < prior_read_at < delete_at
+
+
+@pytest.mark.parametrize(
+    ("risk_summary", "analysis_status"),
+    [
+        (
+            {"critical": 2},
+            {
+                "attack_path_fusion": {
+                    "status": "skipped",
+                    "reason_codes": ["node_cap_exceeded"],
+                    "limits": {"max_nodes": 5000},
+                    "observed": {"node_count": 5001},
+                }
+            },
+        ),
+        (
+            '{"critical": 2}',
+            '{"attack_path_fusion":{"status":"skipped","reason_codes":["node_cap_exceeded"],'
+            '"limits":{"max_nodes":5000},"observed":{"node_count":5001}}}',
+        ),
+    ],
+    ids=("native-jsonb", "text-json"),
+)
+def test_snapshot_history_accepts_psycopg_jsonb_objects_and_text(monkeypatch, risk_summary, analysis_status):
+    """Snapshot reads support both canonical TEXT and legacy/native JSONB rows."""
+
+    class _SnapshotConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("select scan_id, created_at, node_count, edge_count, risk_summary, analysis_status"):
+                return _FakeCursor([("scan-json", "2026-07-17T00:00:00Z", 3, 2, risk_summary, analysis_status)])
+            return super().execute(sql, params)
+
+    store = _make_store(_SnapshotConn(), monkeypatch)
+
+    snapshots = store.list_snapshots(tenant_id="tenant-a")
+
+    assert snapshots[0]["risk_summary"] == {"critical": 2}
+    assert snapshots[0]["analysis_status"]["attack_path_fusion"]["status"] == "skipped"
+
+
+def test_load_graph_accepts_native_jsonb_analysis_status(monkeypatch):
+    """A non-empty psycopg-decoded JSONB status cannot crash the graph read path."""
+    status = {
+        "attack_path_fusion": {
+            "status": "complete",
+            "reason_codes": [],
+            "limits": {"max_nodes": 5000},
+            "observed": {"node_count": 12, "result_count": 1},
+        }
+    }
+
+    class _GraphReadConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("select created_at, analysis_status from graph_snapshots"):
+                return _FakeCursor([("2026-07-17T00:00:00Z", status)])
+            return super().execute(sql, params)
+
+    store = _make_store(_GraphReadConn(), monkeypatch)
+
+    graph = store.load_graph(tenant_id="tenant-a", scan_id="scan-json")
+
+    assert graph.analysis_status["attack_path_fusion"].status is GraphAnalysisState.COMPLETE
+
+
+def test_retired_edge_update_records_ocsf_close_activity(monkeypatch):
+    """Postgres retirement matches SQLite's canonical OCSF Close activity."""
+
+    class _RetirementConn(_RecordingConn):
+        def __init__(self):
+            super().__init__()
+            self.retirement_sql = ""
+
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("select scan_id, created_at from graph_snapshots"):
+                return _FakeCursor([("scan-old", "2026-07-16T00:00:00Z")])
+            if low.startswith("select source_id, target_id, relationship, first_seen, valid_from, valid_to"):
+                return _FakeCursor([("agent:a", "server:b", "uses", "2026-07-16T00:00:00Z", "2026-07-16T00:00:00Z", None)])
+            return super().execute(sql, params)
+
+        def executemany(self, sql, seq):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("update graph_edges"):
+                self.retirement_sql = low
+                list(seq)
+                return _FakeCursor()
+            return super().executemany(sql, seq)
+
+    conn = _RetirementConn()
+    store = _make_store(conn, monkeypatch)
+
+    store.save_graph_streaming(
+        scan_id="scan-new",
+        tenant_id="tenant-a",
+        nodes=iter(()),
+        edges=iter(()),
+        created_at="2026-07-17T00:00:00Z",
+    )
+
+    assert "set valid_to = coalesce(valid_to, %s)" in conn.retirement_sql
+    assert "activity_id = case when activity_id = 1 then 3 else activity_id end" in conn.retirement_sql

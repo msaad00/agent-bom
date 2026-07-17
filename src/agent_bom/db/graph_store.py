@@ -811,7 +811,8 @@ def save_graph_streaming(
             conn,
             """
             UPDATE graph_edges
-            SET valid_to = COALESCE(valid_to, ?)
+            SET valid_to = COALESCE(valid_to, ?),
+                activity_id = CASE WHEN activity_id = 1 THEN 3 ELSE activity_id END
             WHERE tenant_id = ? AND scan_id = ? AND source_id = ? AND target_id = ? AND relationship = ?
             """,
             ((now, tenant, previous_scan, source, target, relationship) for source, target, relationship in sorted(removed_edge_keys)),

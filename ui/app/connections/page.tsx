@@ -83,12 +83,14 @@ import { useDemoMode } from "@/hooks/use-demo-mode";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { deploymentModeLabel } from "@/lib/deployment-context";
 import {
+  buildAwsOrgStackSetScript,
   buildGrantScript,
   cloudGrantMethodHint,
   cloudGrantMethodLabel,
   cloudProviderMeta,
   CLOUD_GRANT_METHODS,
   copyTextToClipboard,
+  DEFAULT_AWS_ORG_ROLE_NAME,
   generateConnectionExternalId,
   type CloudGrantMethod,
 } from "@/lib/cloud-connect-wizard";
@@ -3190,6 +3192,9 @@ function AddConnectionWizard({
   const [formError, setFormError] = useState<string | null>(null);
   const [generatedExternalId, setGeneratedExternalId] = useState("");
   const [grantMethod, setGrantMethod] = useState<CloudGrantMethod>("cli");
+  // AWS onboarding scope: a single account, or the whole AWS Organization via a
+  // CloudFormation StackSet (deploy once, every member account auto-enrolls).
+  const [awsScope, setAwsScope] = useState<"account" | "organization">("account");
   // Verify step: the created connection + the live connectivity/permission check
   // and optional first scan run against the real /test and /scan endpoints.
   const [createdRecord, setCreatedRecord] = useState<CloudConnectionRecord | null>(null);
@@ -3232,6 +3237,7 @@ function AddConnectionWizard({
     setForm((current) => {
       if (current.provider === value) return current;
       setGeneratedExternalId("");
+      setAwsScope("account");
       return {
         ...current,
         provider: value,
@@ -3293,6 +3299,11 @@ function AddConnectionWizard({
     provider.value,
     grantMethod,
     isAws ? generatedExternalId || undefined : undefined,
+  );
+  const isOrgScope = isAws && awsScope === "organization";
+  const orgStackSetScript = buildAwsOrgStackSetScript(
+    generatedExternalId || undefined,
+    DEFAULT_AWS_ORG_ROLE_NAME,
   );
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -3440,22 +3451,87 @@ function AddConnectionWizard({
                   Grant read-only access
                 </p>
                 <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-xs leading-6 text-[var(--text-secondary)]">
-                  <p className="text-[var(--foreground)]">
-                    Run this in your {provider.label} to create the read-only grant, then paste the{" "}
-                    {provider.roleField.label.toLowerCase()} in the next step.
-                  </p>
-                  <div className="mt-4 space-y-2">
-                    <GrantMethodPicker method={grantMethod} onChange={setGrantMethod} provider={provider.value} />
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                        {cloudGrantMethodLabel(grantMethod)} grant script
-                      </p>
-                      {deployScript ? <CopyTextButton text={deployScript} label="Copy script" /> : null}
+                  {isAws ? (
+                    <div
+                      role="group"
+                      aria-label="AWS onboarding scope"
+                      className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
+                    >
+                      {(["account", "organization"] as const).map((scope) => {
+                        const active = awsScope === scope;
+                        return (
+                          <button
+                            key={scope}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => setAwsScope(scope)}
+                            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
+                              active
+                                ? "bg-emerald-500 text-black"
+                                : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+                            }`}
+                          >
+                            {scope === "account" ? "Single account" : "Whole organization"}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <pre className="max-h-40 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]">
-                      {deployScript || provider.cli}
-                    </pre>
-                  </div>
+                  ) : null}
+                  <p className="text-[var(--foreground)]">
+                    {isOrgScope ? (
+                      "Deploy one CloudFormation StackSet from your AWS Organization management (or delegated-admin) account. It mints the read-only role in every member account and auto-enrolls new ones — then paste this management account's role ARN in the next step."
+                    ) : (
+                      <>
+                        Run this in your {provider.label} to create the read-only grant, then paste the{" "}
+                        {provider.roleField.label.toLowerCase()} in the next step.
+                      </>
+                    )}
+                  </p>
+                  {isOrgScope ? (
+                    <div className="mt-4 space-y-2" data-testid="wizard-org-explainer">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                          Organization StackSet
+                        </p>
+                        <CopyTextButton text={orgStackSetScript} label="Copy StackSet" />
+                      </div>
+                      <pre
+                        data-testid="wizard-org-stackset"
+                        className="max-h-52 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]"
+                      >
+                        {orgStackSetScript}
+                      </pre>
+                      <ul className="space-y-1 text-[11px] text-[var(--text-secondary)]">
+                        <li className="flex items-start gap-1.5">
+                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                          Deploy once from the management account or a delegated admin — every member account gets the
+                          same read-only <code className="font-mono">agent-bom-readonly</code> role.
+                        </li>
+                        <li className="flex items-start gap-1.5">
+                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                          New accounts added to the org or OU auto-enroll automatically — no per-account onboarding.
+                        </li>
+                        <li className="flex items-start gap-1.5">
+                          <Lock className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                          Read-only least-privilege (SecurityAudit / ViewOnlyAccess), assumed via short-lived STS with
+                          this ExternalId — no static keys, no per-action credentials.
+                        </li>
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-2">
+                      <GrantMethodPicker method={grantMethod} onChange={setGrantMethod} provider={provider.value} />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                          {cloudGrantMethodLabel(grantMethod)} grant script
+                        </p>
+                        {deployScript ? <CopyTextButton text={deployScript} label="Copy script" /> : null}
+                      </div>
+                      <pre className="max-h-40 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]">
+                        {deployScript || provider.cli}
+                      </pre>
+                    </div>
+                  )}
                   {isAws ? (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-900/50 bg-emerald-950/20 px-2.5 py-2">
                       <div className="min-w-0">

@@ -491,4 +491,8 @@ def test_release_workflow_builds_pushes_and_publishes_without_secret_echoes():
     assert "SNOWFLAKE_PRIVATE_KEY" in workflow
     assert 'echo "$SNOWFLAKE_PRIVATE_KEY"' not in workflow
     assert "snowflake-cli==" in workflow
+    # Snowflake CLI 3.23.0 pins PyYAML 6.0.2.  Keep the workflow's explicit
+    # dependency pin solver-compatible in both package and publish jobs.
+    assert workflow.count("pyyaml==6.0.2") == 2
+    assert "pyyaml==6.0.3" not in workflow
     assert "environment: snowflake-marketplace" in workflow

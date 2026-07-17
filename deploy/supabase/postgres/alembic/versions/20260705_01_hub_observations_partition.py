@@ -34,9 +34,14 @@ from agent_bom.api.hub_observations_partition import (  # noqa: E402
 
 def upgrade() -> None:
     bind = op.get_bind()
-    migrated = migrate_observations_to_partitioned(bind)
+    # The shared helper is also used by the runtime psycopg pool and therefore
+    # intentionally uses psycopg's ``execute(sql, tuple)`` contract.  Alembic
+    # exposes a SQLAlchemy Connection, whose parameter contract is different;
+    # unwrap the DBAPI connection while retaining Alembic's transaction.
+    driver_connection = bind.connection.driver_connection
+    migrated = migrate_observations_to_partitioned(driver_connection)
     if migrated:
-        ensure_observation_partitions(bind)
+        ensure_observation_partitions(driver_connection)
 
 
 def downgrade() -> None:

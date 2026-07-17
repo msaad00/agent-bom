@@ -516,12 +516,22 @@ snapshot implicitly.
 
 Azure Managed Disk and GCP Persistent Disk inventory also emits
 `side_scan_targets` records with provider, target id, location, size, encryption,
-and execution state. Those records are graph-visible workload-disk targets, and
-the provider-neutral side-scan runner can execute the same snapshot -> temp disk
--> collector mount -> metadata parse -> cleanup lifecycle through scoped Azure
-or GCP lifecycle adapters. The CLI command above remains AWS EBS-specific; Azure
-and GCP execution is wired for connection/scheduler integrations and must still
-use provider-scoped snapshot permissions plus an in-account collector.
+and execution state. Those records are graph-visible workload-disk targets.
+The repository defines a versioned provider-neutral lifecycle/evidence contract
+and a fixture-tested adapter runner, but it **does not ship Azure or GCP lifecycle executors**.
+Provider mutation credentials, scheduler wiring, and CLI commands are also not
+shipped. The command above and the Terraform snapshot role are AWS EBS-only.
+Azure/GCP execution remains roadmap work until provider adapters, least-privilege
+roles, cleanup fault injection, and disposable-resource smokes are shipped.
+
+All provider lifecycle implementations must persist explicit
+`disabled`/`denied`/`partial`/`failed`/`scan_complete` state and separate cleanup
+state. A scan is complete only after owned temporary resources are deleted;
+zero findings are scoped to the scanned disk and never assert that a workload is
+clean. Snapshot operations remain opt-in because they are not read-only.
+`side_scan_lifecycle.py` supplies the versioned records, deterministic ownership
+tags, stale-worker protection, and a tenant-scoped SQLite state store; no
+Azure/GCP executor or production scheduler consumes that foundation yet.
 
 ---
 

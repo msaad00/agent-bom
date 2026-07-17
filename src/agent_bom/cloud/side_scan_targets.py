@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Protocol, cast
 
 from agent_bom.filesystem import scan_disk_path_native
 from agent_bom.models import Package
@@ -26,8 +26,9 @@ from .side_scan import (
     is_sidescan_enabled,
     scan_workload_disk_findings,
 )
+from .side_scan_lifecycle import SideScanProvider
 
-CloudSideScanProvider = Literal["aws", "azure", "gcp"]
+CloudSideScanProvider = SideScanProvider
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,11 @@ class CloudSideScanTarget:
 
 @dataclass
 class CloudSideScanExecutionResult:
-    """Metadata-only side-scan result for Azure/GCP disk targets."""
+    """Metadata-only result returned by the fixture-tested adapter runner.
+
+    No production Azure or GCP lifecycle adapter currently ships. Durable
+    execution/evidence state belongs to :mod:`side_scan_lifecycle`.
+    """
 
     provider: CloudSideScanProvider
     target_type: str
@@ -187,12 +192,12 @@ async def run_cloud_side_scan_targets(
     scan_secrets_enabled: bool = True,
     max_targets: int = 10,
 ) -> list[CloudSideScanExecutionResult]:
-    """Run Azure/GCP snapshot side-scans through provider lifecycle adapters.
+    """Run Azure/GCP snapshot side-scans through caller-supplied adapters.
 
     The runner is opt-in, bounded, and metadata-only. Provider SDK calls stay
-    behind ``CloudSideScanLifecycle`` so production integrations can wrap Azure
-    Managed Disk or GCP Persistent Disk APIs while unit tests prove lifecycle and
-    cleanup behavior without real cloud credentials.
+    behind ``CloudSideScanLifecycle``. The repository uses fake adapters to
+    prove lifecycle shape and cleanup behavior; it does not ship production
+    Azure Managed Disk or GCP Persistent Disk executors or credentials.
     """
 
     if not is_sidescan_enabled():

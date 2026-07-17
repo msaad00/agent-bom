@@ -317,3 +317,30 @@ def test_authorization_decision_and_status_survive_persistence_and_graph_api(tmp
         and edge["evidence"].get("decision") == "allow"
         for edge in body["edges"]
     )
+
+
+def test_authoritative_gcp_evidence_suppresses_legacy_org_role_reachability() -> None:
+    inventory = _gcp_inventory(conditional=True)
+    inventory["gcp_organization"] = {
+        "status": "ok",
+        "org_id": "organizations/20",
+        "org_name": "example",
+        "folders": [],
+        "projects": [{"id": "proj-1", "name": "prod", "number": "123", "parent_id": "organizations/20"}],
+        "iam_bindings": [
+            {
+                "role": "roles/owner",
+                "scope_id": "organizations/20",
+                "scope_level": "organization",
+                "privilege_level": "admin",
+                "members": ["serviceAccount:reader@proj-1.iam.gserviceaccount.com"],
+            }
+        ],
+        "org_policies": [],
+    }
+
+    graph = build_unified_graph_from_report({"scan_id": "scan-gcp-org", "cloud_inventory": inventory})
+
+    assert not any(
+        edge.relationship is RelationshipType.HAS_PERMISSION and edge.evidence.get("source") == "gcp-organizations" for edge in graph.edges
+    )

@@ -960,7 +960,12 @@ def build_unified_graph_from_report(
         # GCP estate roll-up backbone (org → folders → projects), carried on the
         # GCP inventory payload. Promoted after the inventory so project nodes the
         # CONTAINS tree references already exist to stitch onto.
-        _add_gcp_organization(graph, inventory_payload.get("gcp_organization"), data_source_tag)
+        _add_gcp_organization(
+            graph,
+            inventory_payload.get("gcp_organization"),
+            data_source_tag,
+            allow_heuristic_authorization=not has_authoritative_authorization_evidence(inventory_payload),
+        )
 
     _add_aws_organization(graph, report_json.get("aws_organization"), data_source_tag)
     _add_snowflake_object_graph(graph, report_json.get("snowflake_object_graph"), data_source_tag)
@@ -3954,7 +3959,13 @@ def _add_aws_organization(graph: UnifiedGraph, payload: Any, data_source: str) -
                 _add_rel_edge(graph, scp_node, tgt_node, RelationshipType.GOVERNS, {"source": "aws-organizations"})
 
 
-def _add_gcp_organization(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+def _add_gcp_organization(
+    graph: UnifiedGraph,
+    payload: Any,
+    data_source: str,
+    *,
+    allow_heuristic_authorization: bool = True,
+) -> None:
     """Promote the GCP Organization (org → folders → projects) into the graph.
 
     The GCP analogue of :func:`_add_aws_organization` and the Azure
@@ -4047,7 +4058,7 @@ def _add_gcp_organization(graph: UnifiedGraph, payload: Any, data_source: str) -
         "user": EntityType.USER,
         "group": EntityType.USER,
     }
-    for binding in payload.get("iam_bindings", []) or []:
+    for binding in (payload.get("iam_bindings", []) or []) if allow_heuristic_authorization else ():
         if not isinstance(binding, dict):
             continue
         role = _clean_graph_part(binding.get("role"))

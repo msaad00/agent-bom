@@ -7,10 +7,17 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import click
 
-from agent_bom.sbom_attestation import sign_sbom_file, verify_sbom_attestation
+from agent_bom.sbom_attestation import (
+    AttestationSigningError,
+    AttestationTrustError,
+    AttestationTrustPolicy,
+    sign_sbom_file,
+    verify_sbom_attestation,
+)
 
 
 @click.group("attest")
@@ -31,7 +38,15 @@ def attest_group() -> None:
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
 def sign_cmd(sbom_path: str, sig_out: str | None, att_out: str | None, as_json: bool) -> None:
     """Sign a generated SBOM file: SHA-256 digest + signed in-toto attestation."""
-    result = sign_sbom_file(sbom_path, signature_path=sig_out, attestation_path=att_out)
+    try:
+        result = sign_sbom_file(sbom_path, signature_path=sig_out, attestation_path=att_out)
+    except AttestationSigningError as exc:
+        reason = str(exc)
+        if as_json:
+            click.echo(json.dumps({"sbom": sbom_path, "signed": False, "reason": reason}, indent=2))
+        else:
+            click.echo(f"FAILED: {sbom_path}\n  reason: {reason}")
+        raise SystemExit(1) from None
     if as_json:
         click.echo(
             json.dumps(
@@ -50,16 +65,11 @@ def sign_cmd(sbom_path: str, sig_out: str | None, att_out: str | None, as_json: 
         return
     click.echo(f"Signed SBOM:   {result.sbom_path}")
     click.echo(f"  sha256:      {result.sha256}")
-    click.echo(f"  algorithm:   {result.algorithm}" + ("" if result.cryptographic else "  (tamper-evident, not asymmetric)"))
+    click.echo(f"  algorithm:   {result.algorithm}")
     if result.key_id:
         click.echo(f"  key_id:      {result.key_id}")
     click.echo(f"  signature:   {result.signature_path}")
     click.echo(f"  attestation: {result.attestation_path}")
-    if not result.cryptographic:
-        click.echo(
-            "  note: HMAC-SHA256 mode — verifiers need the shared secret. "
-            "Set AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM for asymmetric, third-party-verifiable signatures."
-        )
 
 
 @attest_group.command("verify")
@@ -78,10 +88,45 @@ def sign_cmd(sbom_path: str, sig_out: str | None, att_out: str | None, as_json: 
     default=None,
     help="Detached signature path (default: <sbom>.sig).",
 )
+@click.option(
+    "--public-key",
+    "public_key_paths",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    multiple=True,
+    help="Trusted Ed25519 public-key PEM file. Repeat for key rotation; embedded envelope keys are never trusted.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
-def verify_cmd(sbom_path: str, att_path: str | None, sig_path: str | None, as_json: bool) -> None:
+def verify_cmd(
+    sbom_path: str,
+    att_path: str | None,
+    sig_path: str | None,
+    public_key_paths: tuple[str, ...],
+    as_json: bool,
+) -> None:
     """Verify a generated SBOM against its in-toto attestation and detached signature."""
-    result = verify_sbom_attestation(sbom_path, attestation_path=att_path, signature_path=sig_path)
+    trust_policy = None
+    if public_key_paths:
+        try:
+            pems: list[str] = []
+            for raw_path in public_key_paths:
+                path = Path(raw_path)
+                if path.stat().st_size > 64 * 1024:
+                    raise AttestationTrustError("trusted_public_key_file_too_large")
+                pems.append(path.read_text(encoding="utf-8"))
+            trust_policy = AttestationTrustPolicy.from_public_key_pems(pems)
+        except (OSError, UnicodeError, AttestationTrustError) as exc:
+            reason = str(exc) if isinstance(exc, AttestationTrustError) else "trusted_public_key_unreadable"
+            if as_json:
+                click.echo(json.dumps({"sbom": sbom_path, "verified": False, "reason": reason}, indent=2))
+            else:
+                click.echo(f"FAILED: {sbom_path}\n  reason: {reason}")
+            raise SystemExit(1) from None
+    result = verify_sbom_attestation(
+        sbom_path,
+        attestation_path=att_path,
+        signature_path=sig_path,
+        trust_policy=trust_policy,
+    )
     if as_json:
         click.echo(
             json.dumps(
@@ -96,6 +141,9 @@ def verify_cmd(sbom_path: str, att_path: str | None, sig_path: str | None, as_js
                     "checks": result.checks,
                     "expected_sha256": result.expected_sha256,
                     "actual_sha256": result.actual_sha256,
+                    "format_version": result.format_version,
+                    "legacy": result.legacy,
+                    "trust_status": result.trust_status,
                 },
                 indent=2,
             )

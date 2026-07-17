@@ -11,6 +11,7 @@ ALEMBIC_DIR = POSTGRES_DIR / "alembic"
 VERSIONS_DIR = ALEMBIC_DIR / "versions"
 BASELINE = VERSIONS_DIR / "20260416_01_control_plane_baseline.py"
 GRAPH_HOT_PATH_INDEXES = VERSIONS_DIR / "20260513_01_graph_hot_path_indexes.py"
+POSTGRES_STORE_PARITY = VERSIONS_DIR / "20260717_01_postgres_store_parity.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
 
 
@@ -64,3 +65,13 @@ def test_graph_hot_path_index_migration_chains_from_baseline():
     ):
         assert index_name in sql
     assert "CREATE EXTENSION IF NOT EXISTS pg_trgm" in sql
+
+
+def test_postgres_store_parity_migration_is_idempotent_and_chained():
+    sql = POSTGRES_STORE_PARITY.read_text()
+    assert re.search(r'revision\s*=\s*"20260717_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260705_01"', sql)
+    assert "ADD COLUMN IF NOT EXISTS owner" in sql
+    assert "ADD COLUMN IF NOT EXISTS workflow" in sql
+    assert "PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)" in sql
+    assert "ALTER TABLE IF EXISTS cloud_connections ADD COLUMN IF NOT EXISTS last_scan_id" in sql

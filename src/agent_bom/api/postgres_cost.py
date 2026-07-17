@@ -61,7 +61,7 @@ class PostgresCostStore:
                     cost_center TEXT NOT NULL DEFAULT '',
                     owner       TEXT NOT NULL DEFAULT '',
                     workflow    TEXT NOT NULL DEFAULT '',
-                    PRIMARY KEY (tenant_id, agent, cost_center)
+                    PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)
                 )
             """)
             # Allocation columns (#2925) added additively for pre-migration
@@ -73,6 +73,47 @@ class PostgresCostStore:
             # default to '' (not owner-scoped).
             conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN IF NOT EXISTS owner TEXT NOT NULL DEFAULT ''")
             conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN IF NOT EXISTS workflow TEXT NOT NULL DEFAULT ''")
+            # The legacy primary key stopped at cost_center, so Postgres rejected
+            # valid owner/workflow siblings before the canonical unique index
+            # could arbitrate the full scope. Replace it transactionally after
+            # additive backfills; the surrounding connection commits all schema
+            # changes together and the block is a no-op once migrated.
+            conn.execute("""
+                DO $$
+                DECLARE
+                    current_pk TEXT;
+                BEGIN
+                    SELECT c.conname INTO current_pk
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    WHERE t.relname = 'llm_cost_budgets'
+                      AND n.nspname = current_schema()
+                      AND c.contype = 'p';
+
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        JOIN pg_namespace n ON n.oid = t.relnamespace
+                        WHERE t.relname = 'llm_cost_budgets'
+                          AND n.nspname = current_schema()
+                          AND c.contype = 'p'
+                          AND pg_get_constraintdef(c.oid) =
+                              'PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)'
+                    ) THEN
+                        IF current_pk IS NOT NULL THEN
+                            EXECUTE format(
+                                'ALTER TABLE llm_cost_budgets DROP CONSTRAINT %I',
+                                current_pk
+                            );
+                        END IF;
+                        ALTER TABLE llm_cost_budgets
+                            ADD PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow);
+                    END IF;
+                END
+                $$;
+            """)
             # Back the full-scope upsert conflict target with a unique index so it
             # works on pre-migration tables whose PK omits owner/workflow. The
             # widened scope (agent, cost_center, owner, workflow) keeps an owner

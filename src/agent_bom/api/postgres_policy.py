@@ -198,6 +198,12 @@ class PostgresPolicyStore:
         if tenant_id is not None:
             clauses.append("team_id = %s")
             params.append(tenant_id)
+        if policy_id is not None:
+            clauses.append("data ->> 'policy_id' = %s")
+            params.append(policy_id)
+        if agent_name is not None:
+            clauses.append("data ->> 'agent_name' = %s")
+            params.append(agent_name)
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY ts DESC LIMIT %s"
@@ -211,16 +217,6 @@ class PostgresPolicyStore:
                     entry = PolicyAuditEntry.model_validate_json(raw)
                 except Exception:
                     entry = json.loads(raw)
-                if isinstance(entry, dict):
-                    entry_policy_id = entry.get("policy_id")
-                    entry_agent_name = entry.get("agent_name")
-                else:
-                    entry_policy_id = entry.policy_id
-                    entry_agent_name = entry.agent_name
-                if policy_id and entry_policy_id != policy_id:
-                    continue
-                if agent_name and entry_agent_name != agent_name:
-                    continue
                 results.append(entry)
             return results
 

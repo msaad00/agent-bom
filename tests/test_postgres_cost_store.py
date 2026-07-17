@@ -42,14 +42,14 @@ class _FakeConnection:
         s = " ".join(sql.lower().split())
         params = params or ()
         costs = self._state["costs"]  # (tenant, call_id) -> tuple
-        budgets = self._state["budgets"]  # (tenant, agent) -> tuple
+        budgets = self._state["budgets"]  # canonical full-scope key -> tuple
 
         if s.startswith("insert into llm_costs"):
             key = (params[0], params[1])
             costs.setdefault(key, tuple(params))  # ON CONFLICT DO NOTHING
             return _FakeCursor()
         if s.startswith("insert into llm_cost_budgets"):
-            budgets[(params[0], params[1])] = tuple(params)  # ON CONFLICT DO UPDATE
+            budgets[(params[0], params[1], params[5], params[6], params[7])] = tuple(params)
             return _FakeCursor()
         if "sum(cost_usd) from llm_costs" in s.replace("coalesce(", "").replace(", 0.0)", ""):
             tenant = params[0]
@@ -65,7 +65,7 @@ class _FakeConnection:
             )[: params[1]]
             return _FakeCursor(list(rows))
         if "from llm_cost_budgets where tenant_id" in s:
-            row = budgets.get((params[0], params[1]))
+            row = budgets.get(tuple(params))
             return _FakeCursor([row] if row else [])
         # DDL, RLS helpers, set_config, schema-version bookkeeping → no-op.
         return _FakeCursor()
@@ -123,6 +123,17 @@ def test_budget_upsert_and_get():
     b = store.get_budget("acme", "")
     assert b is not None and b.limit_usd == 5.0 and b.mode == "enforce"
     assert store.get_budget("acme", "missing") is None
+
+
+def test_sibling_owner_and_workflow_budget_scopes_do_not_collide():
+    store = PostgresCostStore(pool=_FakePool())
+    store.set_budget(CostBudget("acme", "agent-a", 10.0, "2026-07-17T00:00:00Z", "report", "cc", "alice", "daily"))
+    store.set_budget(CostBudget("acme", "agent-a", 20.0, "2026-07-17T00:00:01Z", "enforce", "cc", "bob", "daily"))
+    store.set_budget(CostBudget("acme", "agent-a", 30.0, "2026-07-17T00:00:02Z", "report", "cc", "alice", "weekly"))
+
+    assert store.get_budget("acme", "agent-a", cost_center="cc", owner="alice", workflow="daily").limit_usd == 10.0
+    assert store.get_budget("acme", "agent-a", cost_center="cc", owner="bob", workflow="daily").limit_usd == 20.0
+    assert store.get_budget("acme", "agent-a", cost_center="cc", owner="alice", workflow="weekly").limit_usd == 30.0
 
 
 def test_shared_pool_is_cluster_consistent():

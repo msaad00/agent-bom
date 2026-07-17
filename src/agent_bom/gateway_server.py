@@ -81,6 +81,7 @@ from agent_bom.proxy_policy import (
     summarize_policy_bundle,
 )
 from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan_tool_response
+from agent_bom.runtime.gateway_events import GatewayRuntimeEventType, build_gateway_runtime_event
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -336,30 +337,45 @@ def _agent_is_quarantined(tenant_id: str, source_agent: str) -> bool:
     return False
 
 
-def _open_drift_violates_tool(tenant_id: str, source_agent: str, tool_name: str) -> tuple[bool, str]:
-    """Return (violates, reason) if an open drift incident for ``source_agent``
-    names ``tool_name`` as an out-of-blueprint violation. Fail-open — any drift
-    store error returns ``(False, "")`` and never blocks the relay.
+@dataclass(frozen=True)
+class _DriftLookup:
+    violates: bool = False
+    unavailable: bool = False
+    reason: str = ""
+
+
+def _open_drift_violates_tool(tenant_id: str, blueprint_id: str, tool_name: str) -> _DriftLookup:
+    """Look up a tool violation for a caller's resolved role blueprint.
+
+    Drift incidents are keyed by ``blueprint_id``.  They are never keyed by an
+    agent id, so callers must resolve the managed identity -> blueprint binding
+    before invoking this function.  Store unavailability is returned explicitly
+    so secured enforce-mode callers can fail closed while development/audit
+    modes can remain observable without silently inventing a match.
     """
-    if not source_agent or not tool_name:
-        return False, ""
+    if not blueprint_id or not tool_name:
+        return _DriftLookup()
     try:
         from agent_bom.api.drift_incident_store import get_drift_incident_store
 
         incidents = get_drift_incident_store().list(tenant_id, include_resolved=False, limit=200)
     except Exception as exc:  # noqa: BLE001
         logger.warning("gateway drift check failed: %s", _sanitize_for_log(exc))
-        return False, ""
-    agent_key = source_agent.strip().lower()
+        return _DriftLookup(unavailable=True, reason="drift incident store unavailable")
+    blueprint_key = blueprint_id.strip().lower().replace("-", "_")
     for incident in incidents:
-        if (getattr(incident, "blueprint_id", "") or "").strip().lower() != agent_key:
+        incident_blueprint = (getattr(incident, "blueprint_id", "") or "").strip().lower().replace("-", "_")
+        if incident_blueprint != blueprint_key:
             continue
         drifted_tools = {
             str(v.get("tool_name", "")).strip() for v in (getattr(incident, "top_violations", None) or []) if isinstance(v, dict)
         }
         if tool_name in drifted_tools:
-            return True, (f"agent '{source_agent}' has an open drift incident; tool '{tool_name}' is outside its declared blueprint")
-    return False, ""
+            return _DriftLookup(
+                violates=True,
+                reason=f"tool '{tool_name}' is outside role blueprint '{blueprint_id}'",
+            )
+    return _DriftLookup()
 
 
 def _validate_gateway_rule_patterns(policies: list[Any]) -> tuple[bool, str]:
@@ -1570,6 +1586,16 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         identity_token = extract_identity_token(message)
         as_claims: dict[str, Any] | None = None
         token_scopes: set[str] = set()
+        scoped_identity: Any = None
+        managed_identity_lookup_unavailable = False
+        if identity_token:
+            try:
+                from agent_bom.api.agent_identity_store import get_agent_identity_store, identity_for_token
+
+                scoped_identity = identity_for_token(get_agent_identity_store(), identity_token)
+            except Exception as exc:  # noqa: BLE001
+                managed_identity_lookup_unavailable = True
+                logger.warning("gateway managed identity lookup failed: %s", _sanitize_for_log(exc))
         if settings.oauth_as is not None:
             for candidate in (identity_token, _extract_request_token(request)):
                 if candidate:
@@ -1578,7 +1604,20 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         identity_token = candidate
                         break
 
-        if as_claims is not None:
+        if scoped_identity is not None:
+            source_agent = scoped_identity.agent_id
+            token_present = True
+            identity_invalid_reason = None
+            identity_verified = True
+            if scoped_identity.tenant_id != tenant_id:
+                identity_invalid_reason = "managed identity tenant mismatch"
+            elif (
+                not scoped_identity.blueprint_id
+                and settings.drift_enforcement_mode == "enforce"
+                and not _gateway_allows_anonymous_agents(settings)
+            ):
+                identity_invalid_reason = "managed identity has no role blueprint binding"
+        elif as_claims is not None:
             source_agent = str(as_claims.get("sub") or "").strip() or ANONYMOUS
             token_present = True
             identity_invalid_reason = None
@@ -1612,6 +1651,34 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "token or set AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS for local development only"
                 )
 
+        profile_id = str(getattr(scoped_identity, "blueprint_id", "") or "")
+        event_tool = str((message.get("params") or {}).get("name") or message.get("method") or "")
+
+        def _typed_runtime_event(
+            event_type: GatewayRuntimeEventType,
+            *,
+            decision: str,
+            policy_source: str,
+            tool: str = event_tool,
+            data_action: str = "",
+            policy_id: str = "",
+            evidence_id: str = "",
+        ) -> dict[str, Any]:
+            return build_gateway_runtime_event(
+                event_type,
+                tenant_id=tenant_id,
+                agent_id=source_agent,
+                profile_id=profile_id,
+                upstream=upstream.name,
+                tool=tool,
+                decision=decision,
+                policy_source=policy_source,
+                trace_id=str(trace_meta["trace_id"]),
+                data_action=data_action,
+                policy_id=policy_id,
+                evidence_id=evidence_id,
+            )
+
         if identity_block_reason is not None:
             record_gateway_relay(upstream.name, "blocked")
             logger.info(
@@ -1629,6 +1696,11 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "tenant_id": tenant_id,
                         "source_agent": source_agent,
                         "reason": identity_block_reason,
+                        **_typed_runtime_event(
+                            GatewayRuntimeEventType.TOOL_CALL_BLOCKED,
+                            decision="deny",
+                            policy_source="identity",
+                        ),
                     }
                 )
             return JSONResponse(
@@ -2104,6 +2176,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     }
                 )
 
+        resolved_policy_source = "gateway"
         policy_subject = policy_subject_from_message(message)
         if policy_subject:
             tool_name, arguments = policy_subject
@@ -2117,45 +2190,35 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             quarantine = False
             quarantine_reason = ""
             policy_source = "file"
-            if allowed:
+            if allowed and scoped_identity is not None and not scoped_identity.tool_allowed(tool_name):
                 try:
-                    from agent_bom.api.agent_identity_store import (
-                        active_jit_grant_for_tool,
-                        get_agent_identity_store,
-                        identity_for_token,
-                    )
+                    from agent_bom.api.agent_identity_store import active_jit_grant_for_tool, get_agent_identity_store
 
-                    identity_token = extract_identity_token(message)
-                    scoped_identity = identity_for_token(get_agent_identity_store(), identity_token) if identity_token else None
+                    jit_grant = active_jit_grant_for_tool(
+                        get_agent_identity_store(),
+                        tenant_id=scoped_identity.tenant_id,
+                        identity_id=scoped_identity.identity_id,
+                        tool_name=tool_name,
+                    )
                 except Exception:  # noqa: BLE001
-                    scoped_identity = None
-                if scoped_identity is not None and not scoped_identity.tool_allowed(tool_name):
-                    try:
-                        jit_grant = active_jit_grant_for_tool(
-                            get_agent_identity_store(),
-                            tenant_id=scoped_identity.tenant_id,
-                            identity_id=scoped_identity.identity_id,
-                            tool_name=tool_name,
+                    jit_grant = None
+                if jit_grant is None:
+                    allowed, reason, policy_source = False, f"tool '{tool_name}' not in identity scope", "identity_scope"
+                else:
+                    policy_source = "identity_jit"
+                    if settings.audit_sink is not None:
+                        await settings.audit_sink(
+                            {
+                                "action": "gateway.identity_jit_grant_used",
+                                "upstream": upstream.name,
+                                "tenant_id": tenant_id,
+                                "source_agent": source_agent,
+                                "identity_id": scoped_identity.identity_id,
+                                "grant_id": jit_grant.grant_id,
+                                "tool": tool_name,
+                                "expires_at": jit_grant.expires_at,
+                            }
                         )
-                    except Exception:  # noqa: BLE001
-                        jit_grant = None
-                    if jit_grant is None:
-                        allowed, reason, policy_source = False, f"tool '{tool_name}' not in identity scope", "identity_scope"
-                    else:
-                        policy_source = "identity_jit"
-                        if settings.audit_sink is not None:
-                            await settings.audit_sink(
-                                {
-                                    "action": "gateway.identity_jit_grant_used",
-                                    "upstream": upstream.name,
-                                    "tenant_id": tenant_id,
-                                    "source_agent": source_agent,
-                                    "identity_id": scoped_identity.identity_id,
-                                    "grant_id": jit_grant.grant_id,
-                                    "tool": tool_name,
-                                    "expires_at": jit_grant.expires_at,
-                                }
-                            )
             # Context-aware (conditional) access: time-of-day / weekday window,
             # source CIDR, and environment guardrails scoped to the identity,
             # agent, or tool. Deny policies win; require policies deny when the
@@ -2234,15 +2297,48 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             # out-of-blueprint is blocked ("enforce") or flagged ("warn"). Off by
             # default so drift stays advisory unless the operator opts in.
             if allowed and settings.drift_enforcement_mode in ("warn", "enforce"):
-                drift_violates, drift_reason = _open_drift_violates_tool(tenant_id, source_agent, tool_name)
-                if drift_violates:
+                secured_enforce = settings.drift_enforcement_mode == "enforce" and (
+                    bool(current_policy.get("require_agent_identity")) or not _gateway_allows_anonymous_agents(settings)
+                )
+                blueprint_id = str(getattr(scoped_identity, "blueprint_id", "") or "")
+                if not blueprint_id or managed_identity_lookup_unavailable:
+                    drift_lookup = _DriftLookup(
+                        unavailable=True,
+                        reason=(
+                            "managed identity store unavailable"
+                            if managed_identity_lookup_unavailable
+                            else "managed identity has no role blueprint binding"
+                        ),
+                    )
+                else:
+                    drift_lookup = _open_drift_violates_tool(tenant_id, blueprint_id, tool_name)
+
+                if drift_lookup.unavailable and secured_enforce:
+                    allowed, reason, policy_source = False, drift_lookup.reason, "drift_enforcement"
+                elif drift_lookup.unavailable and settings.audit_sink is not None:
+                    await settings.audit_sink(
+                        {
+                            "action": "gateway.drift_binding_unavailable",
+                            "upstream": upstream.name,
+                            "tenant_id": tenant_id,
+                            "source_agent": source_agent,
+                            "tool": tool_name,
+                            "reason": drift_lookup.reason,
+                        }
+                    )
+                elif drift_lookup.violates:
                     if settings.drift_enforcement_mode == "enforce":
-                        allowed, reason, policy_source = False, drift_reason, "drift_enforcement"
+                        allowed, reason, policy_source = False, drift_lookup.reason, "drift_enforcement"
                         _emit_gateway_governance_event(
                             "drift.blocked",
                             tenant_id=tenant_id,
                             subject_id=source_agent,
-                            payload={"source_agent": source_agent, "tool": tool_name, "reason": drift_reason},
+                            payload={
+                                "source_agent": source_agent,
+                                "blueprint_id": blueprint_id,
+                                "tool": tool_name,
+                                "reason": drift_lookup.reason,
+                            },
                         )
                     elif settings.audit_sink is not None:
                         await settings.audit_sink(
@@ -2251,8 +2347,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 "upstream": upstream.name,
                                 "tenant_id": tenant_id,
                                 "source_agent": source_agent,
+                                "blueprint_id": blueprint_id,
                                 "tool": tool_name,
-                                "reason": drift_reason,
+                                "reason": drift_lookup.reason,
                             }
                         )
             # Graph reachability enforcement (consume direction): the unified
@@ -2403,7 +2500,25 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             # pii_action=redact. Audit-only otherwise.
             if allowed and dlp_config.enabled:
                 arg_findings = scan_tool_call(tool_name, arguments, dlp_config)
+                arg_blocked = dlp_config.mode == "enforce" and any(f.blocked for f in arg_findings)
+                arg_redacted = (
+                    dlp_config.mode == "enforce"
+                    and dlp_config.pii_action == "redact"
+                    and bool(arg_findings)
+                    and not arg_blocked
+                )
                 if arg_findings and settings.audit_sink is not None:
+                    typed_arg_event = (
+                        _typed_runtime_event(
+                            GatewayRuntimeEventType.DLP_ARGUMENTS_REDACTED,
+                            decision="allow",
+                            policy_source="dlp",
+                            tool=tool_name,
+                            data_action="pii_redacted",
+                        )
+                        if arg_redacted
+                        else {}
+                    )
                     await settings.audit_sink(
                         {
                             "action": "gateway.dlp_arguments",
@@ -2412,23 +2527,26 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                             "source_agent": source_agent,
                             "tool": tool_name,
                             "findings": sorted({f"{f.scanner}/{f.rule_id}" for f in arg_findings}),
-                            "blocked": any(f.blocked for f in arg_findings),
+                            "blocked": arg_blocked,
+                            **typed_arg_event,
                         }
                     )
-                if dlp_config.mode == "enforce" and any(f.blocked for f in arg_findings):
+                if arg_blocked:
                     first = next(f for f in arg_findings if f.blocked)
                     allowed, reason, policy_source = (
                         False,
                         f"DLP blocked tool arguments: {first.scanner}/{first.rule_id}",
                         "dlp",
                     )
-                elif dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and arg_findings:
+                elif arg_redacted:
                     # Redact PII in string arguments before forwarding upstream.
                     redacted_args = {k: _redact_obj_pii(v) for k, v in arguments.items()}
                     params = message.get("params")
                     if isinstance(params, dict):
                         params["arguments"] = redacted_args
 
+            if allowed:
+                resolved_policy_source = policy_source
             if not allowed:
                 record_gateway_relay(upstream.name, "blocked")
                 audit_event: dict[str, Any] = {
@@ -2440,6 +2558,12 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "reason": reason,
                     "source_agent": source_agent,
                     "policy_source": policy_source,
+                    **_typed_runtime_event(
+                        GatewayRuntimeEventType.TOOL_CALL_BLOCKED,
+                        decision="deny",
+                        policy_source=policy_source,
+                        tool=tool_name,
+                    ),
                 }
                 if settings.audit_sink is not None:
                     await settings.audit_sink(audit_event)
@@ -2667,6 +2791,13 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                     "tool": tool_name_for_scan,
                                     "alert_count": len(alerts),
                                     "leak_types": sorted({a.details.get("leak_type", "") for a in alerts}),
+                                    **_typed_runtime_event(
+                                        GatewayRuntimeEventType.VISUAL_REDACTED,
+                                        decision="allow",
+                                        policy_source="visual_dlp",
+                                        tool=str(tool_name_for_scan),
+                                        data_action="visual_redacted",
+                                    ),
                                 }
                             )
                         try:
@@ -2690,7 +2821,31 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             except (TypeError, ValueError):
                 result_text = str(upstream_response.get("result"))
             resp_findings = scan_tool_response(result_text, dlp_config)
+            result_blocked = dlp_config.mode == "enforce" and any(f.blocked for f in resp_findings)
+            result_redacted = (
+                dlp_config.mode == "enforce"
+                and dlp_config.pii_action == "redact"
+                and bool(resp_findings)
+                and not result_blocked
+            )
             if resp_findings and settings.audit_sink is not None:
+                typed_result_event: dict[str, Any] = {}
+                if result_blocked:
+                    typed_result_event = _typed_runtime_event(
+                        GatewayRuntimeEventType.DLP_RESULT_BLOCKED,
+                        decision="deny",
+                        policy_source="dlp",
+                        tool=str(tool_name_for_dlp),
+                        data_action="sensitive_result_blocked",
+                    )
+                elif result_redacted:
+                    typed_result_event = _typed_runtime_event(
+                        GatewayRuntimeEventType.DLP_RESULT_REDACTED,
+                        decision="allow",
+                        policy_source="dlp",
+                        tool=str(tool_name_for_dlp),
+                        data_action="pii_redacted",
+                    )
                 await settings.audit_sink(
                     {
                         "action": "gateway.dlp_result",
@@ -2699,10 +2854,11 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "source_agent": source_agent,
                         "tool": tool_name_for_dlp,
                         "findings": sorted({f"{f.scanner}/{f.rule_id}" for f in resp_findings}),
-                        "blocked": any(f.blocked for f in resp_findings),
+                        "blocked": result_blocked,
+                        **typed_result_event,
                     }
                 )
-            if dlp_config.mode == "enforce" and any(f.blocked for f in resp_findings):
+            if result_blocked:
                 record_gateway_relay(upstream.name, "blocked")
                 first = next(f for f in resp_findings if f.blocked)
                 return JSONResponse(
@@ -2722,7 +2878,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     status_code=200,
                     headers=rate_limit_headers or None,
                 )
-            if dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and resp_findings:
+            if result_redacted:
                 upstream_response["result"] = _redact_obj_pii(upstream_response.get("result"))
 
         if settings.audit_sink is not None:
@@ -2733,6 +2889,12 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "tenant_id": tenant_id,
                     "method": message.get("method"),
                     "tool": message.get("params", {}).get("name") if is_tools_call(message) else None,
+                    **_typed_runtime_event(
+                        GatewayRuntimeEventType.TOOL_CALL_ALLOWED,
+                        decision="allow",
+                        policy_source=resolved_policy_source,
+                        tool=str(message.get("params", {}).get("name") or message.get("method") or ""),
+                    ),
                 }
             )
         response_headers = dict(rate_limit_headers)

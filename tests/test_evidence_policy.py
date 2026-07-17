@@ -486,3 +486,33 @@ def test_redact_for_persistence_masks_email_in_retained_value():
     assert "bob@acme.io" not in flat
     assert out["actor"] == "a***@e***.com"
     assert out["package_name"] == "express"
+
+
+def test_tier_a_gateway_event_keeps_attribution_but_drops_runtime_payloads() -> None:
+    payload = {
+        "event_id": "gw_evt_1",
+        "event_type": "gateway.tool_call.allowed",
+        "event_timestamp": "2026-07-17T00:00:00Z",
+        "tenant_id": "tenant-a",
+        "agent_id": "agent-a",
+        "identity_id": "identity-a",
+        "profile_id": "finance",
+        "blueprint_id": "finance",
+        "upstream": "filesystem",
+        "tool": "read_file",
+        "decision": "allow",
+        "data_action": "pii_redacted",
+        "policy_source": "dlp",
+        "policy_id": "policy-1",
+        "evidence_id": "evidence-1",
+        "trace_id": "trace-1",
+        "correlation_id": "correlation-1",
+        "arguments": {"token": "secret-argument"},
+        "result": {"body": "secret-result"},
+        "token": "secret-token",
+        "preview": "secret-preview",
+    }
+
+    out = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
+
+    assert out == {key: value for key, value in payload.items() if key not in {"arguments", "result", "token", "preview"}}

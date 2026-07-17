@@ -2212,10 +2212,17 @@ export type GatewayFeedActionType =
   | "llm_call";
 
 export interface GatewayFeedEvent {
+  event_id?: string;
   ts: string;
   agent: string;
+  profile_id?: string;
   action_type: GatewayFeedActionType;
   target: string;
+  upstream?: string;
+  decision?: string;
+  data_action?: string;
+  policy_source?: string;
+  trace_id?: string;
   detail: string;
   tenant: string;
   shadow: boolean;

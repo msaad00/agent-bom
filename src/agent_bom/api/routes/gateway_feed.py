@@ -38,6 +38,11 @@ from fastapi import APIRouter, Query, Request
 
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.runtime.gateway_events import (
+    GATEWAY_ALLOWED_EVENT_TYPES,
+    GATEWAY_BLOCKED_EVENT_TYPES,
+    GATEWAY_DATA_FILTER_EVENT_TYPES,
+)
 
 router = APIRouter()
 
@@ -108,7 +113,7 @@ def _alert_agent(alert: dict[str, Any]) -> str:
     process identifier) and finally to ``"unknown"`` so every event in the feed
     carries a visible actor.
     """
-    for key in ("agent_name", "agent", "source_agent", "source_id"):
+    for key in ("agent_name", "agent", "agent_id", "source_agent", "source_id"):
         value = alert.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -186,6 +191,11 @@ def _data_filter_detail(alert: dict[str, Any]) -> str:
     already present on the alert. Never returns raw matched values — the source
     record only retains redacted previews.
     """
+    data_action = str(alert.get("data_action") or "").strip().lower()
+    if data_action == "pii_redacted":
+        return "PII redacted"
+    if data_action == "visual_redacted":
+        return "visual leak redacted"
     details = alert.get("details") if isinstance(alert.get("details"), dict) else {}
     detector = str(alert.get("detector") or "").lower()
     cred_type = ""
@@ -213,7 +223,17 @@ def _classify_alert_action(alert: dict[str, Any]) -> str | None:
     (``action`` / ``effective_decision`` / ``detector`` / ``message``) so this
     feed stays consistent with ``/v1/runtime/production-index``.
     """
-    action = str(alert.get("action") or alert.get("event_type") or alert.get("type") or "").lower()
+    event_type = str(alert.get("event_type") or "").lower()
+    if event_type in GATEWAY_DATA_FILTER_EVENT_TYPES or event_type == "gateway.visual_leak_blocked":
+        return ACTION_DATA_FILTER_APPLIED
+    if event_type in GATEWAY_BLOCKED_EVENT_TYPES:
+        return ACTION_TOOL_CALL_BLOCKED
+    if event_type in GATEWAY_ALLOWED_EVENT_TYPES:
+        return ACTION_TOOL_CALL_AUTHORIZED
+
+    # Backward-compatible inference for historical proxy-shaped events. New
+    # standalone-gateway events are classified only by the exact types above.
+    action = str(alert.get("action") or event_type or alert.get("type") or "").lower()
     detector = str(alert.get("detector") or "").lower()
     effective = str(alert.get("effective_decision") or alert.get("decision") or "").lower()
     message = str(alert.get("message") or "").lower()
@@ -247,10 +267,17 @@ def _normalize_alert_event(alert: dict[str, Any], tenant_id: str) -> dict[str, A
         detail = "authorized"
         shadow = False
     return {
+        "event_id": str(alert.get("event_id") or ""),
         "ts": _alert_timestamp(alert),
         "agent": agent,
+        "profile_id": str(alert.get("profile_id") or alert.get("blueprint_id") or ""),
         "action_type": action_type,
         "target": target,
+        "upstream": str(alert.get("upstream") or ""),
+        "decision": str(alert.get("decision") or alert.get("outcome") or ""),
+        "data_action": str(alert.get("data_action") or ""),
+        "policy_source": str(alert.get("policy_source") or ""),
+        "trace_id": str(alert.get("trace_id") or ""),
         "detail": detail,
         "tenant": tenant_id,
         "shadow": shadow,
@@ -273,10 +300,17 @@ def _normalize_llm_event(record: Any, tenant_id: str) -> dict[str, Any]:
     else:
         detail = f"{int(input_tokens) + int(output_tokens)} tokens"
     return {
+        "event_id": "",
         "ts": str(getattr(record, "observed_at", "") or ""),
         "agent": agent,
+        "profile_id": "",
         "action_type": ACTION_LLM_CALL,
         "target": target,
+        "upstream": "",
+        "decision": "allow",
+        "data_action": "",
+        "policy_source": "observability",
+        "trace_id": str(getattr(record, "trace_id", "") or ""),
         "detail": detail,
         "tenant": tenant_id,
         "shadow": False,

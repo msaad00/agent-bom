@@ -871,6 +871,13 @@ def test_relay_blocks_tool_by_policy() -> None:
     assert audit_events[0]["method"] == "tools/call"
     assert audit_events[0]["tool"] == "run_shell"
     assert "no-shell" in (audit_events[0]["reason"] or "")
+    assert audit_events[0]["event_type"] == "gateway.tool_call.blocked"
+    assert audit_events[0]["decision"] == "deny"
+    assert audit_events[0]["policy_source"] == "file"
+    assert audit_events[0]["tenant_id"] == "default"
+    assert audit_events[0]["agent_id"] == "anonymous"
+    assert audit_events[0]["profile_id"] == ""
+    assert audit_events[0]["upstream"] == "filesystem"
 
 
 def test_relay_policy_block_response_does_not_expose_internal_reason(monkeypatch) -> None:
@@ -1357,6 +1364,12 @@ def test_visual_leak_detection_scans_and_redacts_image_content() -> None:
         assert leak_events, "audit sink must receive a gateway.visual_leak_blocked event"
         assert leak_events[0]["tool"] == "take_screenshot"
         assert leak_events[0]["alert_count"] == 1
+        assert leak_events[0]["event_type"] == "gateway.visual.redacted"
+        assert leak_events[0]["decision"] == "allow"
+        assert leak_events[0]["data_action"] == "visual_redacted"
+        assert leak_events[0]["agent_id"] == "anonymous"
+        assert leak_events[0]["profile_id"] == ""
+        assert leak_events[0]["upstream"] == "filesystem"
     finally:
         gw._visual_detector_singleton = None
 
@@ -1480,20 +1493,28 @@ def test_relay_loopback_allows_anonymous_caller() -> None:
 
 def test_relay_non_loopback_denies_anonymous_by_default(monkeypatch) -> None:
     _no_key_store(monkeypatch)
+    audit_events: list[dict[str, Any]] = []
 
     async def fake_caller(upstream, message, extra_headers):
         raise AssertionError("anonymous caller must not relay upstream on a non-loopback bind")
+
+    async def audit_sink(event):
+        audit_events.append(event)
 
     settings = GatewaySettings(
         registry=_simple_registry(),
         policy={},
         upstream_caller=fake_caller,
+        audit_sink=audit_sink,
         listener_host="0.0.0.0",
         allow_insecure_no_auth=True,  # isolate the identity dimension from transport auth
     )
     client = TestClient(create_gateway_app(settings))
     resp = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read_file", arguments={}))
     _assert_identity_blocked(resp)
+    assert audit_events[0]["event_type"] == "gateway.tool_call.blocked"
+    assert audit_events[0]["decision"] == "deny"
+    assert audit_events[0]["policy_source"] == "identity"
 
 
 def test_relay_non_loopback_allows_anonymous_with_opt_out_flag(monkeypatch) -> None:

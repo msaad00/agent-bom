@@ -326,6 +326,79 @@ def test_dlp_redacts_pii_in_result() -> None:
     assert "[REDACTED:email]" in body["result"]["content"]
 
 
+def test_gateway_emits_typed_events_for_argument_and_result_redaction_then_allow() -> None:
+    caller, captured = _echo_caller(result={"content": "owner@example.com"})
+    audits: list[dict[str, Any]] = []
+
+    async def _sink(event: dict[str, Any]) -> None:
+        audits.append(event)
+
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        upstream_caller=caller,
+        audit_sink=_sink,
+        dlp_enabled=True,
+        dlp_mode="enforce",
+        dlp_pii_action="redact",
+        listener_host="127.0.0.1",
+    )
+    response = TestClient(create_gateway_app(settings)).post(
+        "/mcp/filesystem",
+        json=_tools_call("fs.lookup", {"email": "requester@example.com"}),
+    )
+
+    assert response.status_code == 200
+    assert "requester@example.com" not in repr(captured["message"])
+    assert "owner@example.com" not in response.text
+    typed = [event for event in audits if event.get("event_type")]
+    assert [event["event_type"] for event in typed] == [
+        "gateway.dlp.arguments_redacted",
+        "gateway.dlp.result_redacted",
+        "gateway.tool_call.allowed",
+    ]
+    assert all(event["decision"] == "allow" for event in typed)
+    assert all(event["tenant_id"] == "default" for event in typed)
+    assert all(event["agent_id"] == "anonymous" for event in typed)
+    assert all(event["profile_id"] == "" for event in typed)
+    assert all(event["upstream"] == "filesystem" for event in typed)
+    assert all(event["tool"] == "fs.lookup" for event in typed)
+    assert [event["policy_source"] for event in typed] == ["dlp", "dlp", "file"]
+    assert [event.get("data_action", "") for event in typed] == ["pii_redacted", "pii_redacted", ""]
+
+
+def test_gateway_emits_typed_sensitive_result_block_without_secret() -> None:
+    secret = "password=SuperSecretValue12345"
+    caller, _ = _echo_caller(result={"content": secret})
+    audits: list[dict[str, Any]] = []
+
+    async def _sink(event: dict[str, Any]) -> None:
+        audits.append(event)
+
+    settings = GatewaySettings(
+        registry=_registry(),
+        policy={},
+        upstream_caller=caller,
+        audit_sink=_sink,
+        dlp_enabled=True,
+        dlp_mode="enforce",
+        listener_host="127.0.0.1",
+    )
+    response = TestClient(create_gateway_app(settings)).post(
+        "/mcp/filesystem",
+        json=_tools_call("fs.read", {"path": "/safe"}),
+    )
+
+    assert response.json()["error"]["data"]["policy_source"] == "dlp"
+    blocked = [event for event in audits if event.get("event_type") == "gateway.dlp.result_blocked"]
+    assert len(blocked) == 1
+    assert blocked[0]["decision"] == "deny"
+    assert blocked[0]["upstream"] == "filesystem"
+    assert blocked[0]["tool"] == "fs.read"
+    assert blocked[0]["data_action"] == "sensitive_result_blocked"
+    assert secret not in repr(blocked[0])
+
+
 def test_dlp_audit_mode_does_not_block() -> None:
     caller, _ = _echo_caller()
     audits: list[dict[str, Any]] = []

@@ -1787,6 +1787,28 @@ def test_compliance_export_help_lists_supported_values():
     assert "pci-dss" in result.output
 
 
+def test_compliance_export_accepts_zip_output_as_bundle_path(tmp_path):
+    """A ZIP output belongs to the requested compliance bundle, not the report."""
+    out = tmp_path / "bundle.zip"
+
+    result = _run(
+        [
+            "scan",
+            "--demo",
+            "--no-scan",
+            "--compliance",
+            "--compliance-export",
+            "owasp-mcp",
+            "--output",
+            str(out),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes().startswith(b"PK")
+    assert "Compliance bundle" in result.output
+
+
 def test_scan_complete_closer_renders_severity_breakdown():
     """Regression: ``Scan complete -- N high · M medium`` must render content,
     not just an empty trailing dash.

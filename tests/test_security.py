@@ -445,6 +445,24 @@ def test_sanitize_sensitive_payload_preserves_safe_shape():
     assert result == {"package": "express", "version": "4.18.2", "count": 2}
 
 
+def test_sanitize_sensitive_payload_preserves_structured_graph_edge_ids():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    edge_id = "pkg:pypi:pyyaml@5.3->vulnerable_to->finding:CVE-2020-14343"
+    result = sanitize_sensitive_payload({"id": edge_id, "source": "pkg:pypi:pyyaml@5.3", "target": "finding:CVE-2020-14343"})
+
+    assert result == {"id": edge_id, "source": "pkg:pypi:pyyaml@5.3", "target": "finding:CVE-2020-14343"}
+
+
+def test_sanitize_sensitive_payload_still_redacts_credentials_in_id_fields():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    synthetic_credential = "sk_" + "live_" + "abcdefghijklmnopqrstuvwxyz0123456789"
+    result = sanitize_sensitive_payload({"id": synthetic_credential})
+
+    assert result == {"id": "***REDACTED***"}
+
+
 def test_sanitize_sensitive_payload_preserves_deep_inventory_metadata():
     from agent_bom.security import sanitize_sensitive_payload
 

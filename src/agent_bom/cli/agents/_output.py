@@ -596,15 +596,20 @@ def render_output(
                 raise SystemExit(2)
             con.print(f"\n  [green]✓[/green] Report: {output}")
 
-    with _enospc_report_fallback(
-        con,
-        report,
-        blast_radii,
-        output_format,
-        exclude_unfixable=exclude_unfixable,
-        offline_html=offline_html,
-    ):
-        _emit_report()
+    # ``--output *.zip`` names the compliance bundle when a compliance export
+    # is requested.  ZIP is not a normal report format, so do not send that
+    # path through report-format inference before the bundle exporter runs.
+    compliance_bundle_output = bool(compliance_export and output and output.lower().endswith(".zip"))
+    if not compliance_bundle_output:
+        with _enospc_report_fallback(
+            con,
+            report,
+            blast_radii,
+            output_format,
+            exclude_unfixable=exclude_unfixable,
+            offline_html=offline_html,
+        ):
+            _emit_report()
 
     # Step 5b: Push to Prometheus Pushgateway (if requested)
     if push_gateway:

@@ -210,6 +210,8 @@ _HIGH_ENTROPY_THRESHOLD = 4.5
 _HIGH_ENTROPY_MIN_LEN = 24
 _HIGH_ENTROPY_SHORT_THRESHOLD = 5.0  # stricter for shorter strings (24-39 chars)
 
+_STRUCTURED_EDGE_ID_RE = re.compile(r"^[^\s>]+->[A-Za-z][A-Za-z0-9_.:-]*->[^\s>]+$")
+
 
 def _shannon_entropy(s: str) -> float:
     """Return Shannon entropy (bits per character) of a string."""
@@ -530,6 +532,18 @@ def sanitize_sensitive_payload(value: object, *, key: object | None = None, max_
         if key is not None and _key_looks_like_cloud_identity(key):
             if _looks_sensitive_value(value):
                 return "***REDACTED***"
+            return sanitize_text(value, max_len=max_str_len)
+        # Graph edge identifiers are deterministic relationship coordinates,
+        # not opaque credentials.  Their punctuation and length can otherwise
+        # trip the entropy detector.  Keep the exception deliberately narrow:
+        # only ID fields with the canonical ``source->relation->target`` shape,
+        # and never values matching a known credential pattern.
+        key_text = str(key or "").strip().lower().replace("-", "_")
+        if (
+            key_text in {"id", "canonical_id"}
+            and _STRUCTURED_EDGE_ID_RE.fullmatch(value)
+            and not any(pattern.search(value) for pattern in _VALUE_CREDENTIAL_PATTERNS)
+        ):
             return sanitize_text(value, max_len=max_str_len)
         if "://" in value:
             return sanitize_text(value, max_len=max_str_len)

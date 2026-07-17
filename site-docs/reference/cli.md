@@ -72,7 +72,20 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `findings` | List normalized findings, manage the triage queue, record decisions, and export signed OpenVEX evidence |
 | `findings push` | Push normalized findings or Trivy / Grype / Syft JSON to `POST /v1/findings/bulk` on the control plane |
 | `findings list` | List findings from the control plane; prints lifecycle columns when bulk-ingest metadata is present |
-| `attest` | Sign and verify generated SBOM output (SHA-256 digest + in-toto attestation) |
+| `attest` | Sign generated SBOMs as Ed25519 DSSE-PAE attestations and verify them against explicit trusted public-key files |
+
+SBOM signing is fail-closed and does not reuse the compliance/audit HMAC
+fallback. Configure a persistent Ed25519 private key, preferably through the
+file-first secret boundary, then distribute only its public key to verifiers:
+
+```bash
+export AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE=/run/secrets/sbom-signing.pem
+agent-bom attest sign report.cdx.json
+agent-bom attest verify report.cdx.json --public-key trusted-sbom-signing.pub.pem
+```
+
+Verification never trusts a key embedded in an envelope. Older envelopes remain
+readable as `legacy_attestation_untrusted`, but cannot produce a verified result.
 
 ### Governance And Operations
 

@@ -273,6 +273,16 @@ def test_removed_provider_apis_gate_helper():
     assert clear == {}
 
 
+def test_retired_api_posture_does_not_claim_scanner_checks_are_skipped():
+    posture = cloud_api_deprecation_posture(
+        now=AFTER_AZURE_GRAPH,
+        installed={"azure-graphrbac": "0.61.1"},
+    )
+    entry = next(a for a in posture["apis"] if a["distribution"] == "azure-graphrbac")
+    assert "checks using it are skipped" not in entry["message"]
+    assert "environment posture signal" in entry["message"]
+
+
 def test_custom_future_dated_entry_within_horizon_warns():
     dep = ProviderApiDeprecation(
         provider="aws",

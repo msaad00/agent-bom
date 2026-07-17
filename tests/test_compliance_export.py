@@ -128,6 +128,41 @@ def test_summary_text(tmp_path: Path):
     assert "Evidence completeness:" in summary
 
 
+def test_bundle_distinguishes_unique_findings_from_inventory_occurrences(tmp_path: Path):
+    """Shared packages must not make the headline finding count contradict the scan."""
+    vuln = Vulnerability(id="CVE-2025-1", summary="test", severity=Severity.HIGH)
+    agents = []
+    for name in ("agent-a", "agent-b"):
+        package = Package(name="shared", version="1.0", ecosystem="pypi", vulnerabilities=[vuln])
+        server = MCPServer(name=f"{name}-server", packages=[package])
+        agents.append(Agent(name=name, agent_type=AgentType.CLAUDE_CODE, config_path="/tmp", mcp_servers=[server]))
+    blast_radius = BlastRadius(
+        vulnerability=vuln,
+        package=Package(name="shared", version="1.0", ecosystem="pypi"),
+        affected_servers=[server],
+        affected_agents=agents,
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    blast_radius.cmmc_tags = ["RA.L2-3.11.2"]
+    report = AIBOMReport(agents=agents, blast_radii=[blast_radius])
+    out = tmp_path / "evidence.zip"
+
+    export_compliance_bundle(report, "cmmc", str(out))
+
+    with zipfile.ZipFile(str(out)) as zf:
+        policy = json.loads(zf.read("policy_results.json"))
+        manifest = json.loads(zf.read("manifest.json"))
+        summary = zf.read("summary.txt").decode()
+    assert report.total_vulnerabilities == 2
+    assert policy["total_vulnerabilities"] == 1
+    assert policy["total_vulnerability_occurrences"] == 2
+    assert manifest["input_summary"]["vulnerabilities"] == 1
+    assert manifest["input_summary"]["vulnerability_occurrences"] == 2
+    assert "Vulnerabilities found: 1" in summary
+    assert "Vulnerability occurrences across inventory: 2" in summary
+
+
 def test_unified_findings_populate_vulnerability_report(tmp_path: Path):
     report = _make_report(with_vulns=False)
     report.findings = [

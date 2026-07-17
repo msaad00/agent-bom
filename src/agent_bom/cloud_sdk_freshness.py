@@ -387,7 +387,7 @@ def cloud_api_deprecation_posture(
     * ``lifecycle`` is ``removed`` once ``now`` is at or past the retirement
       date, otherwise ``deprecating`` (a future-dated or undated deprecation).
     * ``status`` folds in exposure: ``gated`` (removed **and** a legacy SDK is
-      installed — a dependent check must be skipped honestly), ``at_risk``
+      installed — the retired API remains reachable), ``at_risk``
       (deprecating and exposed), or ``clear`` (not exposed — agent-bom uses the
       modern replacement).
 
@@ -432,7 +432,8 @@ def cloud_api_deprecation_posture(
         if status == "gated":
             entry["message"] = (
                 f"{dep.api} is retired but reachable via installed {dep.distribution} — "
-                f"checks using it are skipped (not silently passed). Migrate to {dep.replacement}."
+                f"this is an environment posture signal, not proof that scanner checks use or skip it. "
+                f"Migrate to {dep.replacement}."
             )
             warnings.append(
                 {
@@ -495,9 +496,9 @@ def removed_provider_apis(
 ) -> dict[str, dict[str, Any]]:
     """Provider APIs that are retired **and** still reachable via a legacy SDK.
 
-    Returns a mapping ``{api_label: posture_entry}``. A scanner/check bound to
-    one of these APIs must skip it and report the skip honestly, rather than
-    silently passing or emitting an empty result that looks like coverage.
+    Returns a mapping ``{api_label: posture_entry}`` for callers that need to
+    inspect retired-API exposure. This helper does not itself gate scanner
+    execution and its presence is not evidence that a scanner consumed it.
 
     Empty in a normal agent-bom install (it uses the modern replacements) — this
     is a guard against a legacy SDK being pulled into the environment.

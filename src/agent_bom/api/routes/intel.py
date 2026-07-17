@@ -40,7 +40,8 @@ class IntelDailyBriefRequest(BaseModel):
 async def get_intel_sources() -> dict[str, Any]:
     """Return canonical threat-intel source and feed-run metadata."""
 
-    return list_intel_sources()
+    result: dict[str, Any] = list_intel_sources()
+    return result
 
 
 def _backpressure_429(exc: BackpressureRejectedError) -> HTTPException:
@@ -56,7 +57,8 @@ async def get_intel_advisory(advisory_id: str) -> dict[str, Any]:
     # inline would block the event loop and freeze /health under load.
     try:
         async with adaptive_backpressure("intel"):
-            return await anyio.to_thread.run_sync(lookup_advisory, advisory_id)
+            result: dict[str, Any] = await anyio.to_thread.run_sync(lookup_advisory, advisory_id)
+            return result
     except BackpressureRejectedError as exc:
         raise _backpressure_429(exc) from exc
     except ValueError as exc:
@@ -72,7 +74,7 @@ async def post_intel_match(
 
     try:
         async with adaptive_backpressure("intel"):
-            result = await anyio.to_thread.run_sync(partial(match_packages, body.packages, limit=body.limit))
+            result: dict[str, Any] = await anyio.to_thread.run_sync(partial(match_packages, body.packages, limit=body.limit))
     except BackpressureRejectedError as exc:
         raise _backpressure_429(exc) from exc
     except ValueError as exc:
@@ -90,7 +92,7 @@ async def post_intel_daily_brief(body: IntelDailyBriefRequest) -> dict[str, Any]
     # a large or wide-window brief never blocks the loop.
     try:
         async with adaptive_backpressure("intel"):
-            return await anyio.to_thread.run_sync(
+            result: dict[str, Any] = await anyio.to_thread.run_sync(
                 partial(
                     build_daily_brief,
                     body.packages,
@@ -103,6 +105,7 @@ async def post_intel_daily_brief(body: IntelDailyBriefRequest) -> dict[str, Any]
                     limit=body.limit,
                 )
             )
+            return result
     except BackpressureRejectedError as exc:
         raise _backpressure_429(exc) from exc
     except ValueError as exc:

@@ -156,7 +156,7 @@ def doctor_cmd() -> None:
             if api["status"] == "clear":
                 value = f"clear (uses {api['replacement']})"
             elif api["status"] == "gated":
-                value = f"retired + {api['distribution']} present — checks skipped; migrate to {api['replacement']}"
+                value = f"retired + {api['distribution']} present — exposure detected; migrate to {api['replacement']}"
             else:
                 when = f" on {api['retirement_date']}" if api["retirement_date"] else ""
                 value = f"deprecating{when} — {api['distribution']} present; migrate to {api['replacement']}"

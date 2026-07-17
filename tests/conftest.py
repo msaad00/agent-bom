@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import logging
 import os
 import sys
 import tempfile
@@ -454,8 +455,20 @@ def reset_global_test_state():
     config_auth_snapshot = _snapshot_config_auth()
     output_console_snapshot = _snapshot_output_console()
 
+    # Snapshot root-logger handlers + level. Several CLI/gateway paths call
+    # ``configure_logging``/``logging.basicConfig`` which ``addHandler`` to root
+    # without removing existing ones, so handlers ACCUMULATE across a worker's
+    # tests. A leaked handler (e.g. one writing to stdout) then contaminates a
+    # later test that parses a command's stdout as JSON — an xdist-order flake.
+    # Restore the exact handler set + level on teardown so no test can leak one.
+    root_logger = logging.getLogger()
+    logging_handlers_snapshot = root_logger.handlers[:]
+    logging_level_snapshot = root_logger.level
+
     yield
 
+    root_logger.handlers[:] = logging_handlers_snapshot
+    root_logger.setLevel(logging_level_snapshot)
     _restore_store_singletons(store_singleton_snapshot)
     _restore_config_auth(config_auth_snapshot)
     _restore_output_console(output_console_snapshot)

@@ -490,9 +490,7 @@ def _upsert_current_finding_sqlite(
     if has_ledger_col:
         # Materialise the ledger ingest ordinal so ``sort=ordinal`` reads an
         # index range scan instead of a per-row correlated subquery (#3984).
-        ledger_ordinal_val = resolve_current_ledger_ordinal_sqlite(
-            conn, tenant_id, ledger_finding_id or ""
-        )
+        ledger_ordinal_val = resolve_current_ledger_ordinal_sqlite(conn, tenant_id, ledger_finding_id or "")
         conn.execute(
             """
             INSERT INTO hub_findings_current
@@ -629,10 +627,7 @@ def _migrate_current_ledger_ordinal_sqlite(conn: sqlite3.Connection) -> None:
     """
     cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current)").fetchall()}
     if "ledger_ordinal" not in cols:
-        conn.execute(
-            "ALTER TABLE hub_findings_current ADD COLUMN ledger_ordinal INTEGER NOT NULL "
-            f"DEFAULT {_LEDGER_ORDINAL_SENTINEL}"
-        )
+        conn.execute(f"ALTER TABLE hub_findings_current ADD COLUMN ledger_ordinal INTEGER NOT NULL DEFAULT {_LEDGER_ORDINAL_SENTINEL}")
         conn.execute(
             """
             UPDATE hub_findings_current SET ledger_ordinal = COALESCE(
@@ -701,8 +696,7 @@ def _ensure_current_scale_indexes_sqlite(conn: sqlite3.Connection) -> None:
     ledger treatment in ``_ensure_scale_indexes``).
     """
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_scan "
-        "ON hub_findings_current(tenant_id, scan_id) WHERE scan_id != ''"
+        "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_scan ON hub_findings_current(tenant_id, scan_id) WHERE scan_id != ''"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_ci "
@@ -1437,8 +1431,7 @@ class SQLiteComplianceHubStore:
             "ON compliance_hub_findings(tenant_id, effective_reach_score DESC, ordinal)"
         )
         self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_cvss_all "
-            "ON compliance_hub_findings(tenant_id, cvss_score DESC, ordinal)"
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_cvss_all ON compliance_hub_findings(tenant_id, cvss_score DESC, ordinal)"
         )
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_severity_all "
@@ -1451,8 +1444,7 @@ class SQLiteComplianceHubStore:
         # default reach read, forcing a filesort. Real filters always query a
         # non-empty scan_id, so the partial index still serves them.
         self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan "
-            "ON compliance_hub_findings(tenant_id, scan_id) WHERE scan_id != ''"
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan ON compliance_hub_findings(tenant_id, scan_id) WHERE scan_id != ''"
         )
         # Expression index so the case-insensitive severity equality filter
         # (LOWER(severity) = ?) is sargable. Partial on severity != '' for the

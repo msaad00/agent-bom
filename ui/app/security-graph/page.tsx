@@ -54,6 +54,7 @@ import {
 import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
 import { tonedChipClass } from "@/lib/toned-chip";
+import { investigationEstateMode } from "@/lib/investigation-estate-mode";
 
 const ATTACK_PATH_QUEUE_LIMIT = 75;
 const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
@@ -205,6 +206,7 @@ function SecurityGraphPageContent() {
     return [...current, ...rest].slice(0, DEFAULT_SNAPSHOT_CHIP_COUNT);
   }, [activeSnapshots, showAllSnapshots, selectedScanId, snapshots]);
   const hiddenSnapshotCount = Math.max(0, snapshots.length - displayedSnapshots.length);
+  const estateMode = investigationEstateMode(selectedSnapshot?.node_count ?? 0, selectedScanId || undefined);
 
   const fixFirstCards = useMemo(() => fixFirstView?.cards ?? [], [fixFirstView?.cards]);
 
@@ -424,8 +426,8 @@ function SecurityGraphPageContent() {
     <div className="space-y-4">
       <PageLaneHeader
         lane="command"
-        title="Security graph"
-        subtitle="Ranked attack paths from persisted graph evidence — tuned for CISO review, AppSec triage, and GRC evidence export."
+        title="Investigation"
+        subtitle="Prioritized attack paths first, with lineage, agent mesh, context, and raw topology available as lenses."
         actions={
           <>
             <GraphEvidenceExportButton
@@ -436,7 +438,7 @@ function SecurityGraphPageContent() {
               href={fullGraphHref}
               className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
             >
-              Full graph
+              Open lineage lens
               <GitBranch className="h-4 w-4" />
             </Link>
             <Link
@@ -499,6 +501,30 @@ function SecurityGraphPageContent() {
                     {formatDate(selectedSnapshot.created_at)} · {selectedSnapshot.node_count} nodes · {selectedSnapshot.edge_count} edges
                   </p>
                 )}
+                {selectedSnapshot && estateMode.large ? (
+                  <div className="mt-3 max-w-2xl rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-[color:var(--text-secondary)]">
+                    <p className="font-semibold text-amber-800 dark:text-amber-200">
+                      Large estate · {estateMode.summary}
+                    </p>
+                    <p className="mt-1 leading-relaxed">
+                      Start with ranked attack paths or clustered estate groups. Raw topology is available as a drill-down and may be dense.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Link
+                        href={estateMode.clusteredHref}
+                        className="rounded-lg border border-amber-500/30 bg-[color:var(--surface)] px-2.5 py-1 font-medium text-[color:var(--foreground)]"
+                      >
+                        Explore clusters
+                      </Link>
+                      <Link
+                        href={estateMode.rawHref}
+                        className="rounded-lg px-2.5 py-1 text-[color:var(--text-secondary)] underline decoration-[color:var(--border-strong)] underline-offset-2"
+                      >
+                        Open raw topology
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
               </div>
               {posture && (
                 <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">

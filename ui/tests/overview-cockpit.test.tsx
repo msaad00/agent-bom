@@ -255,6 +255,13 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("Grade C")).toBeInTheDocument();
   });
 
+  it("labels trend unavailable when this score model has no matching history contract", () => {
+    render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
+
+    expect(screen.getByText(/trend unavailable.*current score model/i)).toBeInTheDocument();
+    expect(screen.queryByText(/improved|declined/i)).not.toBeInTheDocument();
+  });
+
   it("carries operational lane scope hints as tooltips, not visible sentences", () => {
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);
 

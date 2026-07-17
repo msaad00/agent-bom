@@ -44,7 +44,11 @@ const BUDGETS = {
   // off the canonical context graph with correlated findings and a master/detail
   // split): a full new IA surface, ~12 KiB of client JS, plus small CI variance
   // headroom. Legitimate feature work, not bloat.
-  totalClientJsBytes: 3_571_712,
+  // Includes the campaign command center, durable verification queue, and shared
+  // investigation-lens controls. The combined Linux build measured 3511 KiB
+  // (+23 KiB / 0.7% over the prior ceiling); 3536 KiB keeps bounded headroom
+  // without changing the largest-chunk or shared-runtime budgets.
+  totalClientJsBytes: 3_620_864,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

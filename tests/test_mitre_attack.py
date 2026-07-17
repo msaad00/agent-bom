@@ -256,6 +256,14 @@ def test_unknown_section_falls_back_to_initial_access():
     assert len(tags) > 0
 
 
+def test_unknown_cis_section_limits_broad_tactic_fallback():
+    """A context-only tactic must not imply every technique in that tactic."""
+    with _mock_catalog():
+        c = _check("99.99", "99 - Unrecognised Section")
+        tags = tag_cis_check(c)
+    assert len(tags) <= 3
+
+
 def test_mfa_keyword_in_title():
     with _mock_catalog():
         check = CISCheckResult(
@@ -307,6 +315,13 @@ def test_provenance_multiple_flags():
     with _mock_catalog():
         tags = tag_provenance_finding({"risk_flags": ["no_digest", "public_large"]})
     assert len(tags) > 0
+
+
+def test_provenance_limits_broad_tactic_fallbacks():
+    """Broad provenance signals select representatives, not whole tactics."""
+    with _mock_catalog():
+        tags = tag_provenance_finding({"risk_flags": ["unsafe_format:.pt"]})
+    assert len(tags) <= 6  # Two observed tactics, at most three representatives each.
 
 
 # ─── tag_blast_radius — CWE-based mapping ─────────────────────────────────────

@@ -44,6 +44,42 @@ describe("graphRollupEligible", () => {
     expect(graphRollupEligible({ ...base, attackPathCount: 3 })).toBe(false);
   });
 
+  it("honors an explicit rollup=1 preference even when attack paths exist", () => {
+    expect(
+      graphRollupEligible({
+        hasSelectedScan: true,
+        rollupPreference: "force",
+        rollupDismissed: false,
+        investigationMode: false,
+        selectedAttackPath: false,
+        reachabilityActive: false,
+        blastRadiusActive: false,
+        attackPathCount: 12,
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["investigation", { investigationMode: true }],
+    ["selected path", { selectedAttackPath: true }],
+    ["reachability", { reachabilityActive: true }],
+    ["blast radius", { blastRadiusActive: true }],
+  ])("keeps %s detail overlays ahead of explicit rollup", (_label, overlay) => {
+    expect(
+      graphRollupEligible({
+        hasSelectedScan: true,
+        rollupPreference: "force",
+        rollupDismissed: false,
+        investigationMode: false,
+        selectedAttackPath: false,
+        reachabilityActive: false,
+        blastRadiusActive: false,
+        attackPathCount: 12,
+        ...overlay,
+      }),
+    ).toBe(false);
+  });
+
   it("respects explicit opt-out and competing overlays", () => {
     expect(
       graphRollupEligible({ ...base, rollupPreference: "off" }),

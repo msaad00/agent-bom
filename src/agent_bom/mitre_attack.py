@@ -153,18 +153,6 @@ _PREFERRED_TACTIC_TECHNIQUES: dict[str, tuple[str, ...]] = {
 }
 
 
-def _techniques_for_tactics(tactic_phases: list[str]) -> list[str]:
-    """Return technique IDs from the catalog that belong to any of the given tactic phases."""
-    from agent_bom.mitre_fetch import get_techniques
-
-    all_techniques = get_techniques()
-    result: list[str] = []
-    for tid, meta in all_techniques.items():
-        if any(t in tactic_phases for t in meta.get("tactics", [])):
-            result.append(tid)
-    return result
-
-
 def _bounded_techniques_for_tactics(tactic_phases: list[str]) -> list[str]:
     """Return a small representative set for broad context-only tactic signals."""
     from agent_bom.mitre_fetch import get_techniques
@@ -194,7 +182,7 @@ def tag_cis_check(check: object) -> list[str]:
 
     Resolves techniques from the active ATT&CK catalog by
     mapping the check's section keywords and title keywords to tactic phases,
-    then returning all techniques in those tactics.
+    then returning a bounded representative set from those tactics.
 
     Only FAILED checks are tagged.  Passing/error checks produce no output.
 
@@ -231,7 +219,7 @@ def tag_cis_check(check: object) -> list[str]:
         # Default: any failed check is at minimum an initial-access signal
         tactic_phases.add("initial-access")
 
-    return sorted(set(_techniques_for_tactics(list(tactic_phases))))
+    return sorted(set(_bounded_techniques_for_tactics(list(tactic_phases))))
 
 
 def tag_provenance_finding(finding: dict) -> list[str]:
@@ -263,7 +251,7 @@ def tag_provenance_finding(finding: dict) -> list[str]:
         if "public_large" in flag:
             tactic_phases.update(["collection", "exfiltration"])
 
-    return sorted(set(_techniques_for_tactics(list(tactic_phases))))
+    return sorted(set(_bounded_techniques_for_tactics(list(tactic_phases))))
 
 
 def tag_blast_radius(br: BlastRadius) -> list[str]:

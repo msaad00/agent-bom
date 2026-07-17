@@ -2814,8 +2814,8 @@ def test_atlas_module_imports():
     assert len(ATLAS_TECHNIQUES) >= 50
 
 
-def test_atlas_supply_chain_always_present():
-    """AML.T0010 (ML Supply Chain Compromise) is always tagged on every blast radius."""
+def test_atlas_supply_chain_requires_ai_context():
+    """AML.T0010 is not inferred for a disconnected generic dependency."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
 
     br = BlastRadius(
@@ -2827,7 +2827,7 @@ def test_atlas_supply_chain_always_present():
         exposed_tools=[],
     )
     tags = tag_atlas(br)
-    assert "AML.T0010" in tags
+    assert "AML.T0010" not in tags
 
 
 def test_atlas_unsecured_credentials():
@@ -3423,8 +3423,8 @@ def test_json_framework_lm06_with_credentials(sample_report):
     assert owasp_entries["LLM06"]["triggered"] is True
 
 
-def test_json_framework_atlas_t0010_always(sample_report):
-    """AML.T0010 (ML Supply Chain Compromise) is always triggered."""
+def test_json_framework_atlas_t0010_for_confirmed_agent_path(sample_report):
+    """AML.T0010 is triggered for findings on the sample report's agent path."""
     from agent_bom.atlas import tag_blast_radius as tag_atlas
 
     for br in sample_report.blast_radii:

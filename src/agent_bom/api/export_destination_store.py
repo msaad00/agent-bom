@@ -102,7 +102,7 @@ _COLUMNS = (
     "last_run_at",
     "last_run_status",
 )
-_SELECT = f"SELECT {', '.join(_COLUMNS)} FROM export_destinations"
+_SELECT = f"SELECT {', '.join(_COLUMNS)} FROM export_destinations"  # nosec B608 — _COLUMNS is a static constant tuple, no user input
 
 
 def _row_to_record(row: Sequence[Any]) -> ExportDestinationRecord:

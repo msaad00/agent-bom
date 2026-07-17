@@ -1,10 +1,9 @@
 """Gateway acts on open behavioral-drift incidents (detection → enforcement).
 
-Drift incidents were advisory-only: the control plane recorded that an agent had
-drifted out of its declared blueprint but never blocked the drifted tool calls.
-These tests cover the opt-in enforcement: `enforce` blocks the named tool, `warn`
-audits it without blocking, `off` stays advisory, and a drift-store failure
-fails open (never breaks the relay).
+Drift incidents are keyed by role blueprint, while runtime calls are attributed
+to managed agent identities.  These tests prove the gateway resolves that
+binding before selecting incidents and never treats a role blueprint id as an
+agent id.
 """
 
 from __future__ import annotations
@@ -14,6 +13,15 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from agent_bom import agent_identity
+from agent_bom.api.agent_identity_store import (
+    InMemoryAgentIdentityStore,
+    get_agent_identity_store,
+    issue_identity,
+    revoke_identity,
+    set_agent_identity_store,
+    verify_token,
+)
 from agent_bom.api.drift_incident_store import (
     DriftIncident,
     InMemoryDriftIncidentStore,
@@ -40,7 +48,12 @@ async def _ok_caller(upstream, message, extra_headers):
     return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
 
 
-def _settings(mode: str, audit: list[dict[str, Any]] | None = None) -> GatewaySettings:
+def _settings(
+    mode: str,
+    audit: list[dict[str, Any]] | None = None,
+    *,
+    listener_host: str = "127.0.0.1",
+) -> GatewaySettings:
     async def _sink(event: dict[str, Any]) -> None:
         if audit is not None:
             audit.append(event)
@@ -51,16 +64,18 @@ def _settings(mode: str, audit: list[dict[str, Any]] | None = None) -> GatewaySe
         upstream_caller=_ok_caller,
         audit_sink=_sink if audit is not None else None,
         drift_enforcement_mode=mode,
+        listener_host=listener_host,
+        bearer_token="gateway-transport-token" if listener_host != "127.0.0.1" else None,
     )
 
 
-def _seed_drift(*, agent: str = "agent-a", tool: str = "run_shell") -> None:
+def _seed_drift(*, blueprint_id: str = "finance", tool: str = "run_shell") -> None:
     store = InMemoryDriftIncidentStore()
     store.upsert(
         DriftIncident(
             incident_id="d1",
             tenant_id="default",
-            blueprint_id=agent,
+            blueprint_id=blueprint_id,
             status="drift_detected",
             drift_score=0.8,
             violation_count=1,
@@ -73,6 +88,20 @@ def _seed_drift(*, agent: str = "agent-a", tool: str = "run_shell") -> None:
     set_drift_incident_store(store)
 
 
+def _managed_identity(*, agent_id: str = "agent-a", tenant_id: str = "default", blueprint_id: str = "finance") -> tuple[str, str]:
+    store = InMemoryAgentIdentityStore()
+    identity, token = issue_identity(
+        store,
+        agent_id=agent_id,
+        tenant_id=tenant_id,
+        blueprint_id=blueprint_id,
+        owner="security-team",
+    )
+    set_agent_identity_store(store)
+    agent_identity.set_local_identity_verifier(lambda raw: verify_token(store, raw))
+    return identity.identity_id, token
+
+
 def _is_blocked(resp) -> bool:
     body = resp.json()
     return resp.status_code == 200 and isinstance(body.get("error"), dict) and body["error"].get("code") == -32001
@@ -82,12 +111,15 @@ def _is_blocked(resp) -> bool:
 def _reset_store():
     yield
     set_drift_incident_store(None)
+    set_agent_identity_store(None)
+    agent_identity.set_local_identity_verifier(None)
 
 
-def test_enforce_blocks_drifted_tool():
+def test_enforce_blocks_tool_for_callers_managed_blueprint():
+    _identity_id, token = _managed_identity(blueprint_id="finance")
     _seed_drift(tool="run_shell")
     client = TestClient(create_gateway_app(_settings("enforce")))
-    resp = client.post("/mcp/filesystem", json=_call(tool="run_shell"))
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="run_shell"))
     assert _is_blocked(resp), resp.text
     assert resp.json()["error"]["data"] == {
         "reason": "Drift enforcement blocked this request",
@@ -96,43 +128,101 @@ def test_enforce_blocks_drifted_tool():
 
 
 def test_enforce_allows_non_drifted_tool():
+    _identity_id, token = _managed_identity(blueprint_id="finance")
     _seed_drift(tool="run_shell")  # only run_shell is in violation
+    audit: list[dict[str, Any]] = []
+    client = TestClient(create_gateway_app(_settings("enforce", audit=audit)))
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="read_file"))
+    assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
+    allowed = [event for event in audit if event.get("event_type") == "gateway.tool_call.allowed"]
+    assert len(allowed) == 1
+    assert allowed[0]["tenant_id"] == "default"
+    assert allowed[0]["agent_id"] == "agent-a"
+    assert allowed[0]["profile_id"] == "finance"
+    assert allowed[0]["upstream"] == "filesystem"
+    assert allowed[0]["tool"] == "read_file"
+    assert allowed[0]["policy_source"] == "file"
+
+
+def test_enforce_scopes_incident_to_the_bound_blueprint():
+    _identity_id, token = _managed_identity(agent_id="agent-b", blueprint_id="developer")
+    _seed_drift(blueprint_id="finance", tool="run_shell")
     client = TestClient(create_gateway_app(_settings("enforce")))
-    resp = client.post("/mcp/filesystem", json=_call(tool="read_file"))
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="run_shell"))
     assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
 
 
-def test_enforce_scoped_to_the_drifted_agent_only():
-    _seed_drift(agent="agent-a", tool="run_shell")
+def test_enforce_ignores_legacy_incident_that_stored_agent_id_as_blueprint_id():
+    _identity_id, token = _managed_identity(agent_id="agent-a", blueprint_id="finance")
+    _seed_drift(blueprint_id="agent-a", tool="run_shell")
     client = TestClient(create_gateway_app(_settings("enforce")))
-    # agent-b has no drift incident -> relays normally even for the same tool.
-    resp = client.post("/mcp/filesystem", json=_call(token="token-b", tool="run_shell"))
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="run_shell"))
     assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
 
 
 def test_warn_audits_but_does_not_block():
+    _identity_id, token = _managed_identity(blueprint_id="finance")
     _seed_drift(tool="run_shell")
     audit: list[dict[str, Any]] = []
     client = TestClient(create_gateway_app(_settings("warn", audit=audit)))
-    resp = client.post("/mcp/filesystem", json=_call(tool="run_shell"))
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="run_shell"))
     assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
     assert any(e.get("action") == "gateway.drift_warned" for e in audit)
 
 
 def test_off_is_advisory_no_block():
+    _identity_id, token = _managed_identity(blueprint_id="finance")
     _seed_drift(tool="run_shell")
     client = TestClient(create_gateway_app(_settings("off")))
-    resp = client.post("/mcp/filesystem", json=_call(tool="run_shell"))
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="run_shell"))
     assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
 
 
-def test_drift_store_failure_fails_open():
+def test_secured_enforce_fails_closed_when_drift_store_is_unavailable():
     class _Boom:
         def list(self, *a, **k):
             raise RuntimeError("store down")
 
+    _identity_id, token = _managed_identity(blueprint_id="finance")
     set_drift_incident_store(_Boom())  # type: ignore[arg-type]
+    client = TestClient(create_gateway_app(_settings("enforce", listener_host="0.0.0.0")))
+    resp = client.post(
+        "/mcp/filesystem",
+        headers={"Authorization": "Bearer gateway-transport-token"},
+        json=_call(token=token, tool="run_shell"),
+    )
+    assert _is_blocked(resp), resp.text
+    assert resp.json()["error"]["data"]["policy_source"] == "drift_enforcement"
+
+
+def test_secured_enforce_fails_closed_without_managed_profile_binding():
+    client = TestClient(create_gateway_app(_settings("enforce", listener_host="0.0.0.0")))
+    resp = client.post(
+        "/mcp/filesystem",
+        headers={"Authorization": "Bearer gateway-transport-token"},
+        json=_call(token="token-a", tool="run_shell"),
+    )
+    assert _is_blocked(resp), resp.text
+    assert resp.json()["error"]["data"]["policy_source"] == "drift_enforcement"
+
+
+def test_managed_identity_from_another_tenant_fails_closed():
+    _identity_id, token = _managed_identity(tenant_id="tenant-b", blueprint_id="finance")
     client = TestClient(create_gateway_app(_settings("enforce")))
-    resp = client.post("/mcp/filesystem", json=_call(tool="run_shell"))
-    # store error must never block the relay
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="run_shell"))
+    assert _is_blocked(resp), resp.text
+
+
+def test_revoked_managed_identity_fails_closed_before_drift_lookup():
+    identity_id, token = _managed_identity(blueprint_id="finance")
+    revoke_identity(get_agent_identity_store(), identity_id, tenant_id="default", reason="compromised")
+    client = TestClient(create_gateway_app(_settings("enforce")))
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="run_shell"))
+    assert _is_blocked(resp), resp.text
+    assert resp.json()["error"]["message"] == "Blocked by agent-bom gateway identity policy"
+
+
+def test_loopback_enforce_allows_legacy_unbound_identity_for_development():
+    client = TestClient(create_gateway_app(_settings("enforce")))
+    resp = client.post("/mcp/filesystem", json=_call(token="token-a", tool="run_shell"))
     assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}

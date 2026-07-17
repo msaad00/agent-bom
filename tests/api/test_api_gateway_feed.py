@@ -174,6 +174,20 @@ def test_pii_detector_maps_to_data_filter() -> None:
     assert feed["events"][0]["detail"] == "SSN PII redacted"
 
 
+def test_legacy_visual_leak_blocked_action_remains_a_redaction_event() -> None:
+    alert = {
+        "ts": 6.0,
+        "agent_name": "screen-agent",
+        "event_type": "gateway.visual_leak_blocked",
+        "tool_name": "take_screenshot",
+    }
+    feed = build_gateway_feed(tenant_id="t1", alerts=[alert], llm_records=[], limit=100)
+    assert feed["events"][0]["action_type"] == ACTION_DATA_FILTER_APPLIED
+    kpis = build_gateway_feed_kpis(tenant_id="t1", alerts=[alert], llm_records=[], uptime_seconds=None)
+    assert kpis["blocked_today"] == 0
+    assert kpis["data_filters_applied"] == 1
+
+
 # ── Shadow-AI rollup ─────────────────────────────────────────────────────────
 
 
@@ -287,12 +301,147 @@ def test_kpis_include_uptime_when_reported() -> None:
 # ── HTTP-level tenant isolation over the proxy ring buffer ───────────────────
 
 
-def _headers(tenant: str) -> dict[str, str]:
+def _headers(tenant: str, *, role: str = "viewer") -> dict[str, str]:
     return {
-        "X-Agent-Bom-Role": "viewer",
+        "X-Agent-Bom-Role": role,
         "X-Agent-Bom-Tenant-ID": tenant,
         "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
     }
+
+
+def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -> None:
+    os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
+    os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
+    tenant = "tenant-runtime"
+    leaked_secret = "sk-live-never-persist-this-value"
+    typed_alerts = [
+        {
+            "event_id": "evt-allow",
+            "event_type": "gateway.tool_call.allowed",
+            "agent_id": "agent-a",
+            "profile_id": "finance",
+            "upstream": "filesystem",
+            "tool": "read_file",
+            "decision": "allow",
+            "policy_source": "file",
+            "trace_id": "trace-allow",
+            "arguments": {"token": leaked_secret},
+        },
+        {
+            "event_id": "evt-args-redact",
+            "event_type": "gateway.dlp.arguments_redacted",
+            "agent_id": "agent-a",
+            "profile_id": "finance",
+            "upstream": "filesystem",
+            "tool": "lookup_user",
+            "decision": "allow",
+            "data_action": "pii_redacted",
+            "policy_source": "dlp",
+            "result": {"email": "raw@example.com"},
+        },
+        {
+            "event_id": "evt-result-redact",
+            "event_type": "gateway.dlp.result_redacted",
+            "agent_id": "agent-a",
+            "profile_id": "finance",
+            "upstream": "filesystem",
+            "tool": "search_users",
+            "decision": "allow",
+            "data_action": "pii_redacted",
+            "policy_source": "dlp",
+        },
+        {
+            "event_id": "evt-result-block",
+            "event_type": "gateway.dlp.result_blocked",
+            "agent_id": "agent-a",
+            "profile_id": "finance",
+            "upstream": "filesystem",
+            "tool": "export_secret",
+            "decision": "deny",
+            "data_action": "sensitive_result_blocked",
+            "policy_source": "dlp",
+            "preview": leaked_secret,
+        },
+        {
+            "event_id": "evt-visual-redact",
+            "event_type": "gateway.visual.redacted",
+            "agent_id": "agent-a",
+            "profile_id": "finance",
+            "upstream": "browser",
+            "tool": "take_screenshot",
+            "decision": "allow",
+            "data_action": "visual_redacted",
+            "policy_source": "visual_dlp",
+        },
+        {
+            "event_id": "evt-identity-block",
+            "event_type": "gateway.tool_call.blocked",
+            "agent_id": "unknown",
+            "profile_id": "",
+            "upstream": "filesystem",
+            "tool": "admin_write",
+            "decision": "deny",
+            "policy_source": "identity",
+        },
+    ]
+    try:
+        from agent_bom.api.routes import proxy as proxy_routes
+        from agent_bom.api.server import app, configure_api
+
+        configure_api(api_key=None)
+        proxy_routes._reset_proxy_runtime_for_tests()
+        client = TestClient(app)
+        payload = {
+            "source_id": "standalone-gateway",
+            "session_id": "gateway-session",
+            "idempotency_key": "typed-gateway-batch-1",
+            "alerts": typed_alerts,
+        }
+        ingest = client.post("/v1/proxy/audit", headers=_headers(tenant, role="admin"), json=payload)
+        assert ingest.status_code == 200, ingest.text
+        replay = client.post("/v1/proxy/audit", headers=_headers(tenant, role="admin"), json=payload)
+        assert replay.status_code == 200
+        assert replay.json()["idempotent_replay"] is True
+
+        readback = client.get("/v1/proxy/alerts", headers=_headers(tenant)).json()
+        encoded_readback = repr(readback)
+        assert leaked_secret not in encoded_readback
+        assert "raw@example.com" not in encoded_readback
+        assert readback["count"] == len(typed_alerts)
+
+        feed = client.get("/v1/gateway/feed", headers=_headers(tenant)).json()
+        assert feed["tenant_id"] == tenant, feed
+        by_id = {event["event_id"]: event for event in feed["events"]}
+        assert set(by_id) == {alert["event_id"] for alert in typed_alerts}
+        assert by_id["evt-allow"]["action_type"] == ACTION_TOOL_CALL_AUTHORIZED
+        assert by_id["evt-result-block"]["action_type"] == ACTION_TOOL_CALL_BLOCKED
+        assert by_id["evt-identity-block"]["action_type"] == ACTION_TOOL_CALL_BLOCKED
+        assert by_id["evt-visual-redact"]["action_type"] == ACTION_DATA_FILTER_APPLIED
+        assert by_id["evt-visual-redact"]["data_action"] == "visual_redacted"
+        assert by_id["evt-allow"]["agent"] == "agent-a"
+        assert by_id["evt-allow"]["profile_id"] == "finance"
+        assert by_id["evt-allow"]["profile_id"] != feed["tenant_id"]
+        assert by_id["evt-allow"]["upstream"] == "filesystem"
+        assert by_id["evt-allow"]["target"] == "read_file"
+        assert by_id["evt-allow"]["decision"] == "allow"
+        assert by_id["evt-allow"]["policy_source"] == "file"
+        assert by_id["evt-allow"]["trace_id"] == "trace-allow"
+
+        kpis = client.get("/v1/gateway/feed/kpis", headers=_headers(tenant)).json()
+        assert kpis["tool_calls_authorized"] == 1
+        assert kpis["blocked_today"] == 2
+        assert kpis["data_filters_applied"] == 3
+
+        other = client.get("/v1/gateway/feed", headers=_headers("tenant-other")).json()
+        assert other["events"] == []
+    finally:
+        os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH", None)
+        os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", None)
+        from agent_bom.api.routes import proxy as proxy_routes
+        from agent_bom.api.server import configure_api
+
+        proxy_routes._reset_proxy_runtime_for_tests()
+        configure_api(api_key=None)
 
 
 def test_feed_http_is_tenant_scoped() -> None:

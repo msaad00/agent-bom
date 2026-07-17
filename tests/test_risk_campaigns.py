@@ -208,6 +208,37 @@ def test_incomplete_api_snapshot_never_reconciles_or_reactivates(monkeypatch) ->
     assert all(item["membership_provisional"] is True for item in body["campaigns"])
 
 
+def test_provisional_campaign_does_not_inherit_changed_or_inactive_workflow(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    store = InMemoryCampaignStore()
+    set_campaign_store(store)
+    full = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: full)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    store.patch(
+        "tenant-alpha",
+        campaign["id"],
+        expected_version=campaign["version"],
+        fields={"state": "done", "verification_status": "verified"},
+    )
+
+    partial = {"findings": [full[0]], "total": 2, "has_more": True, "total_approximate": False}
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: partial)
+    changed = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    assert changed["id"] == campaign["id"]
+    assert changed["state"] == "open" and changed["verification_status"] == "unverified"
+
+    store.reconcile_memberships("tenant-alpha", {})
+    monkeypatch.setattr(
+        "agent_bom.api.routes.campaigns._load_findings",
+        lambda request: {"findings": full, "total": len(full) + 1, "has_more": True, "total_approximate": False},
+    )
+    reappeared = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["id"] == campaign["id"])
+    assert reappeared["state"] == "open" and reappeared["verification_status"] == "unverified"
+
+
 def test_sqlite_patch_cas_rejects_stale_writer(tmp_path) -> None:
     store = SQLiteCampaignStore(str(tmp_path / "cas.db"))
     row = store.reconcile_memberships("t", {"c": "one"})[0]
@@ -636,6 +667,53 @@ def test_malformed_cursor_has_zero_workflow_audit_or_transport_side_effects(monk
     response = TestClient(app).post("/v1/campaigns/any/tickets", json={"connection_id": "c", "cursor": "malformed"}, headers=_headers())
     assert response.status_code == 400
     assert store.list("tenant-alpha") == [] and audits == [] and calls == []
+
+
+@pytest.mark.parametrize(
+    "source_overrides",
+    (
+        {},
+        {"total": 3, "total_approximate": True, "has_more": False},
+        {"total": 4, "total_approximate": False, "has_more": True},
+    ),
+    ids=("missing-total", "approximate-total", "has-more"),
+)
+@pytest.mark.parametrize("action", ("create", "sync"))
+def test_provisional_campaign_actions_fail_before_ticket_audit_or_transport_side_effects(
+    monkeypatch, source_overrides: dict[str, Any], action: str
+) -> None:
+    from agent_bom.api.server import app
+
+    source = {"findings": _findings(), **source_overrides}
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: source)
+    audits: list[str] = []
+    transport: list[str] = []
+    ticket_store_reads: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._audit", lambda *args, **kwargs: audits.append("audit"))
+
+    async def _create(**kwargs):
+        transport.append("create")
+        return {}
+
+    async def _sync(**kwargs):
+        transport.append("sync")
+        return {}
+
+    def _ticket_store():
+        ticket_store_reads.append("read")
+        return get_ticketing_store()
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.create_ticket_for_finding", _create)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.sync_ticket_status", _sync)
+    monkeypatch.setattr("agent_bom.ticketing.connection_store.get_ticketing_store", _ticket_store)
+    client = TestClient(app)
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    if action == "create":
+        response = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "conn"}, headers=_headers())
+    else:
+        response = client.post(f"/v1/campaigns/{campaign['id']}/tickets/sync", headers=_headers())
+    assert response.status_code == 409
+    assert audits == [] and transport == [] and ticket_store_reads == []
 
 
 def test_campaign_audit_failure_does_not_log_raw_exception() -> None:

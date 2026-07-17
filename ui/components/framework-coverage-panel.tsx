@@ -253,7 +253,7 @@ export function FrameworkCoveragePanel({ items, onFocusFramework, cloudCisHref }
         <div className="mt-4 border-t border-[color:var(--border-subtle)] pt-3">
           <a href={cloudCisHref} className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300">
             <ChevronRight className="h-3.5 w-3.5" />
-            Cloud CIS benchmarks (AWS / Azure / GCP / Snowflake / Databricks)
+            Cloud security checks (CIS: AWS / Azure / GCP / Snowflake · Databricks best practices)
           </a>
         </div>
       ) : null}

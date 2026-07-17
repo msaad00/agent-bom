@@ -99,6 +99,7 @@ def _make_blast_radius(
 def test_finding_type_values():
     assert FindingType.CVE == "CVE"
     assert FindingType.CIS_FAIL == "CIS_FAIL"
+    assert FindingType.CIS_ERROR == "CIS_ERROR"
     assert FindingType.TOOL_DRIFT == "TOOL_DRIFT"
 
 

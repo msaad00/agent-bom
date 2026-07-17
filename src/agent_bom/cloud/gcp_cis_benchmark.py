@@ -216,11 +216,13 @@ class GCPCISReport:
         return (self.passed / self.evaluated * 100) if self.evaluated else 0.0
 
     def to_dict(self) -> dict:
+        from agent_bom.cloud.benchmark_manifests import benchmark_manifest
         from agent_bom.mitre_attack import tag_cis_check
 
         return {
             "benchmark": "CIS Google Cloud Platform Foundation",
             "benchmark_version": self.benchmark_version,
+            "benchmark_manifest": benchmark_manifest("gcp"),
             "project_id": self.project_id,
             "projects_scanned": self.projects_scanned,
             "warnings": self.warnings,

@@ -130,7 +130,7 @@ def security_domain_for(
 
     ev = evidence or {}
 
-    if source == FindingSource.CLOUD_CIS:
+    if source in {FindingSource.CLOUD_CIS, FindingSource.CLOUD_SECURITY}:
         provider = str(ev.get("provider") or "").strip().lower()
         # Snowflake governance findings carry a category + no CIS benchmark tag;
         # they describe data-access posture, not infra config → DSPM.
@@ -219,9 +219,7 @@ def _is_iac_misconfig(source: "FindingSource", ftype: "FindingType", ev: dict) -
         return False
     if ev.get("iac"):
         return True
-    marker = " ".join(
-        str(ev.get(key) or "") for key in ("category", "scan_type", "framework", "resource_type", "source_kind")
-    ).lower()
+    marker = " ".join(str(ev.get(key) or "") for key in ("category", "scan_type", "framework", "resource_type", "source_kind")).lower()
     return any(token in marker for token in ("iac", "terraform", "cloudformation", "k8s manifest", "kubernetes manifest"))
 
 

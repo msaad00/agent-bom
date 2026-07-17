@@ -190,7 +190,7 @@ def test_html_clean_scan_renders_no_failures():
     report = AIBOMReport(tool_version="0.77.1")
     report.cis_benchmark_data = bundle
     html = _cis_benchmark_section(report)
-    assert "No failed CIS checks" in html
+    assert "No failed security checks" in html
     assert "PASS" in html
 
 

@@ -9,6 +9,8 @@ import pytest
 from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISCheckResult
 from agent_bom.cloud.azure_cis_benchmark import (
     AzureCISReport,
+    _check_1_1,
+    _check_1_2,
     _check_1_3,
     _check_1_5,
     _check_1_7,
@@ -61,6 +63,53 @@ def _make_report(*statuses: CheckStatus) -> AzureCISReport:
             )
         )
     return report
+
+
+@pytest.mark.parametrize(
+    ("check", "role_id", "role_name"),
+    [
+        (_check_1_1, "8e3af657-a8ff-443c-a75c-2fe8c4bcb635", "Owner"),
+        (_check_1_2, "b24988ac-6180-42a0-ab88-20f7382dd24c", "Contributor"),
+    ],
+)
+def test_privileged_guest_identity_check_is_unevaluable_without_graph(check, role_id, role_name):
+    assignment = MagicMock()
+    assignment.role_definition_id = f"/subscriptions/sub-123/providers/Microsoft.Authorization/roleDefinitions/{role_id}"
+    assignment.principal_id = "principal-123"
+    auth_client = MagicMock()
+    auth_client.role_assignments.list_for_scope.return_value = [assignment]
+
+    result = check(auth_client, "sub-123")
+
+    assert result.status == CheckStatus.ERROR
+    assert role_name in result.evidence
+    assert "Microsoft Graph" in result.evidence
+    assert "1" in result.evidence
+
+
+@pytest.mark.parametrize("check", [_check_1_1, _check_1_2])
+def test_privileged_guest_identity_check_passes_when_no_matching_assignments(check):
+    auth_client = MagicMock()
+    auth_client.role_assignments.list_for_scope.return_value = []
+
+    result = check(auth_client, "sub-123")
+
+    assert result.status == CheckStatus.PASS
+    assert "No " in result.evidence
+
+
+def test_privileged_assignment_without_principal_id_remains_counted_but_not_emitted_as_empty_resource():
+    assignment = MagicMock()
+    assignment.role_definition_id = "/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635"
+    assignment.principal_id = None
+    auth_client = MagicMock()
+    auth_client.role_assignments.list_for_scope.return_value = [assignment]
+
+    result = _check_1_1(auth_client, "sub-123")
+
+    assert result.status == CheckStatus.ERROR
+    assert "1 Owner assignment" in result.evidence
+    assert result.resource_ids == []
 
 
 def test_report_pass_count():

@@ -202,6 +202,7 @@ def print_summary(report: AIBOMReport) -> None:
 
     coverage_warnings = getattr(report, "coverage_warnings", None) or []
     if coverage_warnings:
+
         def _coverage_line(w: dict) -> str:
             if w.get("reason") == "manifest_parse_error":
                 return (
@@ -536,9 +537,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
                 elif plevel == "medium":
                     priv_indicator = " [yellow]🛡 elevated[/yellow]"
 
-            registry_indicator = (
-                " [green]✓ registry[/green]" if server.registry_verified else " [dim]unknown registry[/dim]"
-            )
+            registry_indicator = " [green]✓ registry[/green]" if server.registry_verified else " [dim]unknown registry[/dim]"
 
             server_args = sanitize_command_args(server.args[:2])
             server_branch = agent_tree.add(
@@ -1663,13 +1662,14 @@ def print_cis_findings(report: AIBOMReport, *, show_passed: bool = False) -> Non
         return
 
     con.print()
-    con.print(Rule("CIS Benchmark Posture", style="bold bright_magenta"))
+    con.print(Rule("Cloud Security Posture", style="bold bright_magenta"))
 
     for _cloud, label, bundle in bundles:
         checks = bundle.get("checks") or []
         failed = [c for c in checks if str(c.get("status")) == "fail"]
         passed = [c for c in checks if str(c.get("status")) == "pass"]
         errored = [c for c in checks if str(c.get("status")) == "error"]
+        actionable = failed + errored
         evaluated = len(failed) + len(passed)
         pass_rate = bundle.get("pass_rate")
         if not isinstance(pass_rate, (int, float)):
@@ -1678,7 +1678,11 @@ def print_cis_findings(report: AIBOMReport, *, show_passed: bool = False) -> Non
         band = "green" if pass_rate >= 90 else "yellow" if pass_rate >= 70 else "red"
 
         # Verdict driven by the worst failing severity.
-        if not failed:
+        if errored and not failed:
+            verdict = "[bold red]ERROR[/bold red]"
+        elif errored:
+            verdict = "[bold yellow]INCOMPLETE[/bold yellow]"
+        elif not failed:
             verdict = "[bold green]PASS[/bold green]"
         else:
             worst_check = min(failed, key=lambda c: severity_worst_first_rank(c.get("severity")))
@@ -1696,28 +1700,33 @@ def print_cis_findings(report: AIBOMReport, *, show_passed: bool = False) -> Non
             + ")[/dim]"
         )
 
-        if not failed:
+        if not actionable:
             con.print(f"    [green]{safe_emoji('✓', 'OK')}[/green] [dim]no failed checks[/dim]")
             if show_passed and passed:
                 _print_cis_passed(con, passed)
             continue
 
         # Top risks: the highest-priority failing check ids, for the header.
-        top = sorted(failed, key=_cis_check_sort_key)[:3]
+        top = sorted(actionable, key=_cis_check_sort_key)[:3]
         top_str = ", ".join(str(c.get("check_id") or "?") for c in top)
         con.print(f"    [dim]top risks:[/dim] {top_str}")
 
         # Group failed checks by severity, then by CIS section.
         for sev in ("critical", "high", "medium", "low"):
-            sev_failed = [c for c in failed if _cis_sev(c) == sev]
-            if not sev_failed:
+            sev_actionable = [c for c in actionable if _cis_sev(c) == sev]
+            if not sev_actionable:
                 continue
             badge_style = _SEV_TABLE_STYLE[sev]
-            con.print(f"\n    [{badge_style}] {_SEV_LABEL[sev]} [/{badge_style}] [dim]{len(sev_failed)} failed[/dim]")
+            failed_n = sum(1 for c in sev_actionable if c.get("status") == "fail")
+            error_n = len(sev_actionable) - failed_n
+            summary = ", ".join(
+                part for part in (f"{failed_n} failed" if failed_n else "", f"{error_n} unevaluable" if error_n else "") if part
+            )
+            con.print(f"\n    [{badge_style}] {_SEV_LABEL[sev]} [/{badge_style}] [dim]{summary}[/dim]")
 
             # Group within severity by section for readability.
             sections: dict[str, list[dict]] = {}
-            for c in sorted(sev_failed, key=_cis_check_sort_key):
+            for c in sorted(sev_actionable, key=_cis_check_sort_key):
                 sections.setdefault(str(c.get("cis_section") or "Other"), []).append(c)
 
             for section in sorted(sections):

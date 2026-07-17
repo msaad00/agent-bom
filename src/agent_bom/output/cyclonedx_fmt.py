@@ -35,6 +35,37 @@ def _sanitize_bom_ref(raw: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]", "-", raw)
 
 
+def _unique_bom_ref_items(items: list[dict]) -> list[dict]:
+    """Return one item per ``bom-ref``, preserving first-observed evidence.
+
+    The same agent, server, tool service, model, or dataset can be discovered
+    through multiple configuration surfaces. CycloneDX requires those arrays
+    to be unique; their graph relationships carry the many-to-many context.
+    """
+    unique: list[dict] = []
+    seen_refs: set[str] = set()
+    for item in items:
+        ref = str(item.get("bom-ref") or "")
+        if ref and ref in seen_refs:
+            continue
+        if ref:
+            seen_refs.add(ref)
+        unique.append(item)
+    return unique
+
+
+def _merge_dependencies(dependencies: list[dict]) -> list[dict]:
+    """Merge repeated graph entries into a stable ref/dependsOn adjacency."""
+    by_ref: dict[str, set[str]] = {}
+    for dependency in dependencies:
+        ref = str(dependency.get("ref") or "")
+        if not ref:
+            continue
+        targets = by_ref.setdefault(ref, set())
+        targets.update(str(target) for target in dependency.get("dependsOn", []) if target)
+    return [{"ref": ref, "dependsOn": sorted(by_ref[ref])} for ref in sorted(by_ref)]
+
+
 def _append_discovery_provenance_properties(properties: list[dict], provenance: dict | None) -> None:
     """Append sanitized discovery provenance as CycloneDX component properties."""
     if not provenance:
@@ -415,9 +446,10 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     "bom-ref": pkg_ref,
                     "name": pkg.name,
                     "version": pkg.version,
-                    "purl": pkg.purl,
                     "properties": pkg_properties,
                 }
+                if pkg.purl:
+                    pkg_component["purl"] = pkg.purl
                 if pkg.license_expression or pkg.license:
                     lic_val = pkg.license_expression or pkg.license or ""
                     # CycloneDX 1.7: compound expressions (AND/OR/WITH) use
@@ -523,6 +555,13 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             comp_id += 1
             components.append(comp)
             ml_component_refs.append(ref)
+
+    # Discovery paths overlap by design. Normalize the document-level arrays
+    # once after all builders have contributed so uniqueness applies globally,
+    # not only to package components.
+    components = _unique_bom_ref_items(components)
+    services = _unique_bom_ref_items(services)
+    dependencies = _merge_dependencies(dependencies)
 
     cdx = {
         "bomFormat": "CycloneDX",

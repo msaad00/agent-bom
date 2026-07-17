@@ -170,6 +170,87 @@ def test_cyclonedx_conforms_to_1_7_schema(report: AIBOMReport) -> None:
     )
 
 
+def _shared_server_cyclonedx_report() -> AIBOMReport:
+    """Demo-equivalent overlap: repeated agent/server discovery and a package
+    without a package URL must still produce one strict-valid BOM graph."""
+    no_purl = Package(name="local-plugin", version="1.0", ecosystem="generic", purl=None)
+    left_pkg = Package(name="left", version="1.0", ecosystem="npm", purl="pkg:npm/left@1.0")
+    right_pkg = Package(name="right", version="2.0", ecosystem="npm", purl="pkg:npm/right@2.0")
+    left_server = MCPServer(
+        name="shared-server",
+        command="npx",
+        args=["shared-server"],
+        packages=[no_purl, left_pkg],
+        tools=[MCPTool(name="query", description="read data")],
+    )
+    right_server = MCPServer(
+        name="shared-server",
+        command="npx",
+        args=["shared-server"],
+        packages=[no_purl, right_pkg],
+        tools=[MCPTool(name="query", description="read data")],
+    )
+    first = Agent(
+        name="first",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/first.json",
+        mcp_servers=[left_server],
+    )
+    second = Agent(
+        name="second",
+        agent_type=AgentType.CURSOR,
+        config_path="/tmp/second.json",
+        mcp_servers=[right_server],
+    )
+    return AIBOMReport(
+        agents=[first, second, first],
+        scan_id="c95ee02e-5315-450e-a84d-6dbf17b26b68",
+        tool_version="0.0.0-test",
+        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def test_cyclonedx_shared_discovery_is_globally_unique_and_schema_valid() -> None:
+    cdx = to_cyclonedx(_shared_server_cyclonedx_report())
+    _assert_schema_valid(
+        "CycloneDX 1.7 shared discovery",
+        "cyclonedx-1.7.schema.json",
+        Draft7Validator,
+        cdx,
+        registry=_cyclonedx_registry(),
+    )
+
+    component_refs = [component["bom-ref"] for component in cdx["components"]]
+    service_refs = [service["bom-ref"] for service in cdx.get("services", [])]
+    dependency_refs = [dependency["ref"] for dependency in cdx["dependencies"]]
+    assemblies = cdx["compositions"][0]["assemblies"]
+    assert len(component_refs) == len(set(component_refs))
+    assert len(service_refs) == len(set(service_refs))
+    assert len(dependency_refs) == len(set(dependency_refs))
+    assert len(assemblies) == len(set(assemblies))
+
+    local_plugin = next(component for component in cdx["components"] if component["name"] == "local-plugin")
+    assert "purl" not in local_plugin
+
+
+def test_cyclonedx_merges_repeated_dependency_edges_deterministically() -> None:
+    report = _shared_server_cyclonedx_report()
+    first = to_cyclonedx(report)
+    second = to_cyclonedx(report)
+    assert first["dependencies"] == second["dependencies"]
+    assert first["dependencies"] == sorted(first["dependencies"], key=lambda dependency: dependency["ref"])
+    for dependency in first["dependencies"]:
+        assert dependency["dependsOn"] == sorted(set(dependency["dependsOn"]))
+
+    shared = next(dependency for dependency in first["dependencies"] if dependency["ref"].startswith("mcp-server-"))
+    package_names_by_ref = {
+        component["bom-ref"]: component["name"]
+        for component in first["components"]
+        if component["type"] == "library"
+    }
+    assert {package_names_by_ref[ref] for ref in shared["dependsOn"]} == {"local-plugin", "left", "right"}
+
+
 def test_cyclonedx_formulation_is_top_level(report: AIBOMReport) -> None:
     """CDX 1.7 defines ``formulation`` as a top-level BOM array — not a metadata
     field. Nesting it under metadata fails strict validation (regression guard)."""

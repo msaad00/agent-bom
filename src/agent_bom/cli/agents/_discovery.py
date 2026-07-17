@@ -81,6 +81,7 @@ def run_local_discovery(
     filesystem_paths: tuple,
     code_paths: tuple,
     sast_config: str,
+    offline: bool = False,
     tf_dirs: tuple,
     gha_path: Any,
     agent_projects: tuple,
@@ -463,14 +464,15 @@ def run_local_discovery(
     # Step 1d3: SAST code scan (--code)
     if not skill_only and code_paths:
         from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
-        from agent_bom.sast import SASTScanError, scan_code
+        from agent_bom.sast import SASTResult, SASTScanError, scan_code
 
         con.print(f"\n[bold blue]Running SAST scan on {len(code_paths)} path(s) via Semgrep...[/bold blue]\n")
         for code_path in code_paths:
             try:
-                sast_packages, sast_result = scan_code(code_path, config=sast_config)
+                sast_packages, sast_result = scan_code(code_path, config=sast_config, offline=offline)
+                outcome = sast_result.to_dict()["execution_status"]
                 con.print(
-                    f"  [green]v[/green] {code_path}: {sast_result.total_findings} finding(s) "
+                    f"  [green]v[/green] {code_path}: [{outcome}] {sast_result.total_findings} finding(s) "
                     f"in {sast_result.files_scanned} file(s) [dim]({sast_result.scan_time_seconds}s)[/dim]"
                 )
                 if sast_packages:
@@ -485,8 +487,18 @@ def run_local_discovery(
                     )
                     ctx.agents.append(sast_agent)
                 ctx.sast_data = sast_result.to_dict()
-            except SASTScanError as e:
-                con.print(f"  [yellow]![/yellow] {code_path}: {e}")
+            except SASTScanError as exc:
+                detail_by_reason = {
+                    "offline_remote_config": "Offline mode disallows registry-backed rules.",
+                    "offline_no_local_config": "Offline mode found no local Semgrep rule configuration.",
+                    "semgrep_unavailable": "Semgrep is unavailable; install it or import an existing SARIF report.",
+                }
+                ctx.sast_data = SASTResult(
+                    execution_status=exc.execution_status,
+                    status_reason=exc.reason_code,
+                    status_detail=detail_by_reason.get(exc.reason_code, "SAST execution failed."),
+                ).to_dict()
+                con.print(f"  [yellow]![/yellow] {code_path}: [{exc.execution_status.value}] {exc.reason_code}")
 
     # Step 1d3b: AI component source scan (--ai-inventory)
     ai_inventory_paths = kwargs.get("ai_inventory_paths", ())

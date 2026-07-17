@@ -504,12 +504,29 @@ async def code_scan_impl(
         raise ToolError(sanitize_error(exc)) from exc
 
     try:
-        from agent_bom.sast import SASTScanError, scan_code
+        from agent_bom.sast import SASTResult, SASTScanError, scan_code
 
         _packages, sast_result = scan_code(str(scan_path), config=config)
         return _truncate_response(json.dumps(sast_result.to_dict(), indent=2))
     except SASTScanError as exc:
-        raise ToolError(sanitize_error(exc)) from exc
-    except Exception as exc:
-        logger.error("code_scan error: %s", exc)
-        raise ToolError(sanitize_error(exc)) from exc
+        detail_by_reason = {
+            "offline_remote_config": "SAST skipped because offline mode disallows registry-backed rules.",
+            "offline_no_local_config": "SAST skipped because offline mode found no local rule configuration.",
+            "semgrep_unavailable": "SAST skipped because Semgrep is unavailable.",
+        }
+        payload = SASTResult(
+            execution_status=exc.execution_status,
+            status_reason=exc.reason_code,
+            status_detail=detail_by_reason.get(exc.reason_code, "SAST execution failed."),
+        ).to_dict()
+        return _truncate_response(json.dumps(payload, indent=2))
+    except Exception:
+        logger.error("code_scan failed")
+        from agent_bom.sast import SASTExecutionStatus, SASTResult
+
+        payload = SASTResult(
+            execution_status=SASTExecutionStatus.FAILED,
+            status_reason="unexpected_failure",
+            status_detail="SAST execution failed.",
+        ).to_dict()
+        return _truncate_response(json.dumps(payload, indent=2))

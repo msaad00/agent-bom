@@ -171,7 +171,9 @@ Compare two scan reports showing new, resolved, and persistent findings.
 Pre-install trust check combining registry lookup with integrity verification.
 
 ### code_scan
-SAST scanning via Semgrep with CWE-based compliance mapping.
+Execute Semgrep SAST with CWE-based compliance mapping. The response reports a
+typed `findings`, `clean`, `skipped`, or `failed` execution status; skipped and
+failed are never presented as a clean scan.
 
 ### where
 Show all MCP client config discovery paths and what was found.
@@ -363,9 +365,11 @@ license_compliance_scan()
 ```
 
 ### ingest_external_scan
-Import third-party scanner output (CycloneDX, SPDX, SARIF, or scanner-native JSON) and return packages with blast-radius analysis.
+Import tool-agnostic scanner output (CycloneDX, SPDX, SARIF, or scanner-native
+JSON) and return packages with blast-radius analysis. This parses an existing
+artifact and does not execute Semgrep or any other producer.
 ```
-ingest_external_scan(path="scan.json")
+ingest_external_scan(scan_json="<SARIF or scanner JSON>", parse_only=true)
 ```
 
 ## Resources

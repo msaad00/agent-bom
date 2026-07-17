@@ -77,7 +77,15 @@ def test_builtin_scanner_registry_declares_core_scanner_families() -> None:
     assert scanners["sca-vulnerability"].failure_mode is ScannerFailureMode.FAIL_CLOSED
     assert scanners["sca-vulnerability"].capabilities.network_access is True
     assert scanners["secret-patterns"].capabilities.network_access is False
-    assert scanners["sast-semgrep"].skip_when == ("semgrep_missing", "no_code_scope")
+    assert scanners["sast-semgrep"].capabilities.network_access is True
+    assert "semgrep_registry" in scanners["sast-semgrep"].capabilities.outbound_destinations
+    assert "offline_local_rules" in scanners["sast-semgrep"].capabilities.scan_modes
+    assert "remote_rules_disabled" not in scanners["sast-semgrep"].capabilities.guarantees
+    assert scanners["sast-semgrep"].skip_when == (
+        "semgrep_missing",
+        "no_code_scope",
+        "offline_without_local_rules",
+    )
     assert scanners["runtime-detectors"].phase is ScannerPhase.SCANNING
     assert scanners["yara-signature"].execution_state is ScannerExecutionState.PLANNED
     assert scanners["zero-day-heuristics"].enabled_by_default is False

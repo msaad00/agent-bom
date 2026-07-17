@@ -142,6 +142,7 @@ def scan_cloned_repo_tree(
     agents: list[Agent],
     warnings: list[str],
     update_progress: Callable[[str], None] | None = None,
+    offline: bool = False,
 ) -> RepoTreeScanResult:
     """Run static discovery passes on a cloned repository root.
 
@@ -408,13 +409,13 @@ def scan_cloned_repo_tree(
     warnings.extend(jupyter_warnings)
 
     try:
-        from agent_bom.sast import SASTScanError, scan_code
+        from agent_bom.sast import SASTResult, SASTScanError, scan_code
 
         if update_progress is not None:
             update_progress("Running SAST (Semgrep) when available on control plane")
-        sast_packages, sast_result = scan_code(str(root))
+        sast_packages, sast_result = scan_code(str(root), offline=offline)
+        result.sast_data = sast_result.to_dict()
         if sast_result.total_findings > 0:
-            result.sast_data = sast_result.to_dict()
             if sast_packages:
                 sast_provenance = {
                     "source_type": "repo_sast",
@@ -442,9 +443,41 @@ def scan_cloned_repo_tree(
                         discovery_provenance=sast_provenance,
                     )
                 )
-    except SASTScanError:
-        pass  # Semgrep not installed — optional on control plane
-    except Exception:
-        pass  # SAST must not block repo scans
+    except SASTScanError as exc:
+        from agent_bom.security import sanitize_error
+
+        known_reason_codes = {
+            "invalid_semgrep_output",
+            "offline_no_local_config",
+            "offline_remote_config",
+            "scan_failed",
+            "semgrep_failed",
+            "semgrep_unavailable",
+        }
+        reason_code = exc.reason_code if exc.reason_code in known_reason_codes else "scan_failed"
+        detail_by_reason = {
+            "offline_remote_config": "SAST skipped because offline mode disallows registry-backed rules.",
+            "offline_no_local_config": "SAST skipped because offline mode found no local rule configuration.",
+            "semgrep_unavailable": "SAST skipped because Semgrep is unavailable on the control plane.",
+        }
+        status_detail = detail_by_reason.get(reason_code)
+        if status_detail is None:
+            status_detail = sanitize_error(exc, generic=True)
+        result.sast_data = SASTResult(
+            execution_status=exc.execution_status,
+            status_reason=reason_code,
+            status_detail=status_detail,
+        ).to_dict()
+        warnings.append(f"SAST {exc.execution_status.value}: {reason_code}")
+    except Exception as exc:  # noqa: BLE001 — repo scans preserve a typed, sanitized partial result
+        from agent_bom.sast import SASTExecutionStatus, SASTResult
+        from agent_bom.security import sanitize_error
+
+        result.sast_data = SASTResult(
+            execution_status=SASTExecutionStatus.FAILED,
+            status_reason="unexpected_failure",
+            status_detail=sanitize_error(exc, generic=True),
+        ).to_dict()
+        warnings.append("SAST failed: unexpected_failure")
 
     return result

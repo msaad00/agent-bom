@@ -1071,6 +1071,7 @@ def scan(
         filesystem_paths=filesystem_paths,
         code_paths=code_paths,
         sast_config=sast_config,
+        offline=offline,
         ai_inventory_paths=ai_inventory_paths,
         tf_dirs=tf_dirs,
         gha_path=gha_path,

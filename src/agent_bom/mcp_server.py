@@ -62,7 +62,7 @@ Tools (75):
     model_file_scan     — Scan model files for serialization risks
     ai_inventory_scan   — Scan source code for AI SDK imports, model references, shadow AI
     license_compliance_scan — Evaluate package licenses against SPDX compliance policy
-    ingest_external_scan   — Ingest Trivy, Grype, or Syft JSON output with blast radius analysis
+    ingest_external_scan   — Ingest tool-agnostic SARIF, SBOM, or scanner JSON with blast radius analysis
     cost_forecast       — Project LLM spend burn rate and budget runway
     cost_allocation     — Chargeback / showback spend rollups by cost-center and tag
     credential_expiry   — Expiring / overdue credential and rotation posture

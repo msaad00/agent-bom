@@ -370,7 +370,7 @@ def iac_sast_options(fn):
                 multiple=True,
                 type=click.Path(exists=True),
                 metavar="PATH",
-                help="Source code directory to scan for security flaws via Semgrep (SAST). "
+                help="Execute Semgrep SAST against a source code directory. "
                 "Auto-detected when scanning --project or --repo when semgrep is installed. Repeatable.",
             ),
             click.option(

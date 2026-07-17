@@ -133,7 +133,7 @@ def register_operator_tools(
 
     # ── Tool 16: code_scan ────────────────────────────────────────
 
-    @mcp.tool(annotations=read_only, title="Code SAST Scan")
+    @mcp.tool(annotations=read_only, title="Semgrep SAST Scan")
     async def code_scan(
         path: Annotated[str, Field(description="Path to source code directory to scan.")],
         config: Annotated[
@@ -145,7 +145,8 @@ def register_operator_tools(
 
         Scans for security flaws: SQL injection, XSS, command injection,
         hardcoded credentials, insecure deserialization, path traversal, etc.
-        Returns findings with CWE classifications and severity levels.
+        Returns findings with CWE classifications and severity levels plus a
+        typed ``findings``, ``clean``, ``skipped``, or ``failed`` status.
 
         Requires ``semgrep`` on PATH (``pip install semgrep``).
         """

@@ -306,7 +306,7 @@ def register_specialized_ai_tools(
         scan_json: Annotated[
             str,
             Field(
-                description="JSON string from Trivy, Grype, or Syft scan output",
+                description=("JSON string containing tool-agnostic SARIF, CycloneDX, SPDX, Trivy, Grype, or Syft evidence"),
             ),
         ],
         parse_only: Annotated[
@@ -324,7 +324,7 @@ def register_specialized_ai_tools(
             Field(description="When pushing, mark findings absent from this batch as resolved."),
         ] = False,
     ) -> str:
-        """Ingest Trivy, Grype, or Syft JSON scan output and optionally push findings to the control plane.
+        """Ingest external SARIF, SBOM, or scanner JSON without executing its producer.
 
         This tool mutates the control plane when ``parse_only`` is false: it bulk-ingests
         findings and, with ``reconcile_absent``, resolves open findings absent from the batch.

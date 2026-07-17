@@ -30,4 +30,25 @@ describe("repo-scan-overview", () => {
     expect(repoGraphHref("job-abc")).toContain("directory");
     expect(repoGraphHref("job-abc")).toContain("framework");
   });
+
+  it.each(["findings", "clean", "skipped", "failed"] as const)(
+    "preserves the typed SAST %s outcome instead of treating it as no evidence",
+    (executionStatus) => {
+      const result = {
+        agents: [],
+        blast_radius: [],
+        sast: {
+          scanner_driver_id: "sast-semgrep",
+          execution_status: executionStatus,
+          status_reason: executionStatus === "failed" ? "semgrep_failed" : null,
+          status_detail: executionStatus === "failed" ? "SAST execution failed." : null,
+          findings: executionStatus === "findings" ? [{ rule_id: "CWE-89" }] : [],
+        },
+      } as unknown as ScanResult;
+
+      const sast = deriveRepoSurfaceEvidence(result).find((surface) => surface.id === "sast");
+      expect(sast?.state).toBe(executionStatus);
+      expect(sast?.statusReason).toBe(executionStatus === "failed" ? "semgrep_failed" : undefined);
+    },
+  );
 });

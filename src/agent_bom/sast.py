@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -45,8 +46,28 @@ _LOCAL_SAST_CONFIG_CANDIDATES = (
 )
 
 
+class SASTExecutionStatus(str, Enum):
+    """Typed outcome persisted for every SAST execution attempt."""
+
+    FINDINGS = "findings"
+    CLEAN = "clean"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
 class SASTScanError(Exception):
-    """Raised when SAST scanning fails."""
+    """Raised when SAST scanning cannot produce a complete result."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        execution_status: SASTExecutionStatus = SASTExecutionStatus.FAILED,
+        reason_code: str = "scan_failed",
+    ) -> None:
+        super().__init__(message)
+        self.execution_status = execution_status
+        self.reason_code = reason_code
 
 
 # ── Data models ─────────────────────────────────────────────────────────────
@@ -84,6 +105,10 @@ class SASTResult:
     scan_time_seconds: float = 0.0
     semgrep_version: Optional[str] = None
     config_used: str = "auto"
+    execution_status: SASTExecutionStatus | None = None
+    status_reason: str | None = None
+    status_detail: str | None = None
+    scanner_driver_id: str = "sast-semgrep"
 
     @property
     def total_findings(self) -> int:
@@ -99,7 +124,12 @@ class SASTResult:
 
     def to_dict(self) -> dict:
         """Serialize for AIBOMReport.sast_data."""
+        execution_status = self.execution_status or (SASTExecutionStatus.FINDINGS if self.findings else SASTExecutionStatus.CLEAN)
         return {
+            "scanner_driver_id": self.scanner_driver_id,
+            "execution_status": execution_status.value,
+            "status_reason": self.status_reason,
+            "status_detail": self.status_detail,
             "total_findings": self.total_findings,
             "files_scanned": self.files_scanned,
             "rules_loaded": self.rules_loaded,
@@ -165,8 +195,8 @@ def _get_semgrep_version() -> Optional[str]:
             timeout=10,
         )
         return result.stdout.strip() if result.returncode == 0 else None
-    except Exception as exc:  # noqa: BLE001
-        _logger.debug("Could not determine semgrep version: %s", exc)
+    except Exception:  # noqa: BLE001
+        _logger.debug("Could not determine Semgrep version")
         return None
 
 
@@ -191,14 +221,29 @@ def _discover_local_sast_configs(scan_root: Path) -> list[str]:
     return discovered
 
 
-def _resolve_sast_configs(scan_target: Path, config: str) -> list[str]:
+def _offline_config_error(*, no_local_config: bool = False) -> SASTScanError:
+    reason_code = "offline_no_local_config" if no_local_config else "offline_remote_config"
+    return SASTScanError(
+        "Offline SAST requires an explicit local Semgrep rule file or directory.",
+        execution_status=SASTExecutionStatus.SKIPPED,
+        reason_code=reason_code,
+    )
+
+
+def _resolve_sast_configs(scan_target: Path, config: str, *, offline: bool = False) -> list[str]:
     project_root = scan_target if scan_target.is_dir() else scan_target.parent
     normalized = config.strip()
 
     if normalized in {"default", ""}:
         local_configs = _discover_local_sast_configs(project_root)
+        if offline:
+            if not local_configs:
+                raise _offline_config_error(no_local_config=True)
+            return local_configs
         return [*local_configs, "auto"] if local_configs else ["auto"]
     if normalized == "auto":
+        if offline:
+            raise _offline_config_error()
         return ["auto"]
 
     resolved_configs: list[str] = []
@@ -212,9 +257,11 @@ def _resolve_sast_configs(scan_target: Path, config: str) -> list[str]:
                 "'p/<ruleset>', a local file path, or ~/.agent-bom/rules/."
             )
         if part == "default":
-            resolved_configs.extend(_resolve_sast_configs(scan_target, "default"))
+            resolved_configs.extend(_resolve_sast_configs(scan_target, "default", offline=offline))
             continue
         if part == "auto" or part.startswith("p/"):
+            if offline:
+                raise _offline_config_error()
             resolved_configs.append(part)
             continue
 
@@ -239,6 +286,8 @@ def _resolve_sast_configs(scan_target: Path, config: str) -> list[str]:
             continue
         seen_parts.add(part)
         deduped.append(part)
+    if not deduped and offline:
+        raise _offline_config_error(no_local_config=True)
     return deduped or ["auto"]
 
 
@@ -373,6 +422,8 @@ def scan_code(
     path: str,
     config: str = "auto",
     timeout: int = 600,
+    *,
+    offline: bool = False,
 ) -> tuple[list[Package], SASTResult]:
     """Run Semgrep SAST scan on source code or import a SARIF file.
 
@@ -383,6 +434,8 @@ def scan_code(
                 back to ``auto``. Can also be a local file/directory, a
                 ``p/<ruleset>`` registry ref, or a comma-separated list.
         timeout: Subprocess timeout in seconds.
+        offline: Require local Semgrep rules and prohibit registry-backed
+                 ``auto`` / ``p/<ruleset>`` configurations.
 
     Returns:
         Tuple of (packages_with_vulns, structured_sast_result).
@@ -398,13 +451,15 @@ def scan_code(
 
     if not _semgrep_available():
         raise SASTScanError(
-            "semgrep not found on PATH. Install with: pip install semgrep (or see https://semgrep.dev/docs/getting-started/)"
+            "semgrep not found on PATH. Install with: pip install semgrep (or see https://semgrep.dev/docs/getting-started/)",
+            execution_status=SASTExecutionStatus.SKIPPED,
+            reason_code="semgrep_unavailable",
         )
 
     if not resolved.exists():
         raise SASTScanError(f"Path does not exist: {path}")
 
-    resolved_configs = _resolve_sast_configs(resolved, config)
+    resolved_configs = _resolve_sast_configs(resolved, config, offline=offline)
 
     start = time.monotonic()
 
@@ -430,20 +485,29 @@ def scan_code(
     # Semgrep exit codes: 0 = clean, 1 = findings found (both are success)
     # Exit code 2+ = actual error
     if result.returncode > 1:
-        stderr = result.stderr.strip()
-        raise SASTScanError(f"semgrep exited {result.returncode}: {stderr[:300]}")
+        _logger.warning("Semgrep exited with a scanner error (code %d)", result.returncode)
+        raise SASTScanError(
+            f"semgrep exited {result.returncode}",
+            reason_code="semgrep_failed",
+        )
 
     try:
         sarif = json.loads(result.stdout)
-    except json.JSONDecodeError as e:
-        raise SASTScanError(f"semgrep produced invalid SARIF output: {e}")
+    except json.JSONDecodeError as exc:
+        raise SASTScanError(
+            "semgrep produced invalid SARIF output",
+            reason_code="invalid_semgrep_output",
+        ) from exc
 
     elapsed = time.monotonic() - start
 
     try:
         findings, rules_loaded, files_scanned = _parse_sarif_findings(sarif)
     except SarifValidationError as exc:
-        raise SASTScanError("semgrep produced structurally invalid SARIF output") from exc
+        raise SASTScanError(
+            "semgrep produced structurally invalid SARIF output",
+            reason_code="invalid_semgrep_output",
+        ) from exc
     packages = _findings_to_packages(findings)
 
     sast_result = SASTResult(

@@ -6,13 +6,15 @@
 import type { ScanResult } from "@/lib/api-types";
 import { REPO_SCAN_SURFACES, type RepoScanSurface } from "@/lib/repo-scan-surfaces";
 
-export type RepoSurfaceEvidenceState = "found" | "idle";
+export type RepoSurfaceEvidenceState = "found" | "idle" | "findings" | "clean" | "skipped" | "failed";
 
 export type RepoSurfaceEvidence = {
   id: string;
   label: string;
   detail: string;
   state: RepoSurfaceEvidenceState;
+  statusReason?: string | undefined;
+  statusDetail?: string | undefined;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -59,6 +61,10 @@ export function deriveRepoSurfaceEvidence(result: ScanResult | null | undefined)
   const warningBlob = warnings.join(" ").toLowerCase();
 
   const found = new Set<string>();
+  const sastStatus =
+    sast && ["findings", "clean", "skipped", "failed"].includes(String(sast.execution_status))
+      ? (String(sast.execution_status) as "findings" | "clean" | "skipped" | "failed")
+      : null;
 
   if (nonempty(inventory) || (result?.summary?.total_packages ?? 0) > 0) {
     found.add("dependencies");
@@ -119,12 +125,24 @@ export function deriveRepoSurfaceEvidence(result: ScanResult | null | undefined)
   }
 
   // Connectors are never part of git repo scans — always idle here.
-  return REPO_SCAN_SURFACES.filter((surface) => surface.id !== "connectors").map((surface: RepoScanSurface) => ({
-    id: surface.id,
-    label: surface.label,
-    detail: surface.detail,
-    state: found.has(surface.id) ? ("found" as const) : ("idle" as const),
-  }));
+  return REPO_SCAN_SURFACES.filter((surface) => surface.id !== "connectors").map((surface: RepoScanSurface) => {
+    if (surface.id === "sast" && sastStatus) {
+      return {
+        id: surface.id,
+        label: surface.label,
+        detail: surface.detail,
+        state: sastStatus,
+        statusReason: typeof sast?.status_reason === "string" ? sast.status_reason : undefined,
+        statusDetail: typeof sast?.status_detail === "string" ? sast.status_detail : undefined,
+      };
+    }
+    return {
+      id: surface.id,
+      label: surface.label,
+      detail: surface.detail,
+      state: found.has(surface.id) ? ("found" as const) : ("idle" as const),
+    };
+  });
 }
 
 export function repoInventoryStats(result: ScanResult | null | undefined): {

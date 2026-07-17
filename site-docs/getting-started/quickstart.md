@@ -53,12 +53,12 @@ agent-bom scan -f cyclonedx -o bom.json
 
 ## Ingest external scanner or SARIF evidence
 
-When Trivy, Grype, Syft, or a SAST tool (Semgrep, CodeQL, Bandit) already
+When an SCA, SBOM, or SAST tool already
 produced a report, run full local scan depth without a control plane:
 
 ```bash
 agent-bom scan --external-scan trivy.json -f json -o report.json
-agent-bom scan --external-scan findings.sarif -f json -o report.json
+agent-bom scan --external-scan findings.sarif -f json -o report.json  # tool-agnostic import; no producer execution
 ```
 
 For bulk push into a running control plane instead, use

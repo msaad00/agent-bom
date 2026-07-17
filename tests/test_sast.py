@@ -10,6 +10,7 @@ import pytest
 
 from agent_bom.models import Severity
 from agent_bom.sast import (
+    SASTExecutionStatus,
     SASTFinding,
     SASTResult,
     SASTScanError,
@@ -365,6 +366,8 @@ def test_scan_code_happy_path(monkeypatch, tmp_path):
     assert sast_result.files_scanned == 2
     assert sast_result.semgrep_version == "1.50.0"
     assert sast_result.config_used == "auto"
+    assert sast_result.to_dict()["execution_status"] == "findings"
+    assert sast_result.to_dict()["scanner_driver_id"] == "sast-semgrep"
 
     # Verify packages have correct ecosystem
     for pkg in packages:
@@ -483,6 +486,59 @@ def test_scan_code_clean(monkeypatch, tmp_path):
 
     assert packages == []
     assert sast_result.total_findings == 0
+    assert sast_result.to_dict()["execution_status"] == "clean"
+
+
+@pytest.mark.parametrize("config", ["auto", "p/security-audit", "local.yml,p/security-audit"])
+def test_scan_code_offline_rejects_network_backed_configs_without_running_semgrep(monkeypatch, tmp_path, config):
+    """Offline SAST must never pass registry-backed configs to Semgrep."""
+    monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: "/usr/bin/semgrep")
+    (tmp_path / "local.yml").write_text("rules: []", encoding="utf-8")
+    run_mock = MagicMock()
+    monkeypatch.setattr("agent_bom.sast.subprocess.run", run_mock)
+
+    with pytest.raises(SASTScanError) as exc_info:
+        scan_code(str(tmp_path), config=config, offline=True)
+
+    assert exc_info.value.execution_status is SASTExecutionStatus.SKIPPED
+    assert exc_info.value.reason_code == "offline_remote_config"
+    run_mock.assert_not_called()
+
+
+def test_scan_code_offline_default_uses_discovered_local_rules_only(monkeypatch, tmp_path):
+    """Offline default mode retains local rules while removing the auto fallback."""
+    monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: "/usr/bin/semgrep")
+    monkeypatch.setattr("agent_bom.sast._get_semgrep_version", lambda: "1.50.0")
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr("agent_bom.sast.Path.home", lambda: fake_home)
+    rules_dir = tmp_path / ".agent-bom" / "sast-rules"
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "custom.yaml").write_text("rules: []", encoding="utf-8")
+
+    mock_result = MagicMock(returncode=0, stdout=json.dumps(EMPTY_SARIF))
+    run_mock = MagicMock(return_value=mock_result)
+    monkeypatch.setattr("agent_bom.sast.subprocess.run", run_mock)
+
+    _, sast_result = scan_code(str(tmp_path), config="default", offline=True)
+
+    cmd = run_mock.call_args.args[0]
+    assert str(rules_dir.resolve()) in cmd
+    assert "auto" not in cmd
+    assert sast_result.config_used == str(rules_dir.resolve())
+
+
+def test_scan_code_offline_default_without_local_rules_is_explicitly_skipped(monkeypatch, tmp_path):
+    monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: "/usr/bin/semgrep")
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr("agent_bom.sast.Path.home", lambda: fake_home)
+
+    with pytest.raises(SASTScanError) as exc_info:
+        scan_code(str(tmp_path), config="default", offline=True)
+
+    assert exc_info.value.execution_status is SASTExecutionStatus.SKIPPED
+    assert exc_info.value.reason_code == "offline_no_local_config"
 
 
 def test_scan_code_imports_sarif_without_semgrep(monkeypatch, tmp_path):

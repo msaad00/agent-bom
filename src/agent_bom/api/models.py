@@ -805,19 +805,6 @@ class ExceptionRequest(BaseModel):
     tenant_id: str = "default"
 
 
-class JiraTicketRequest(BaseModel):
-    """Request body for POST /v1/findings/jira."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    jira_url: str
-    email: str
-    project_key: str
-    finding: dict[str, Any]
-    target_kind: str = Field("finding", pattern="^(finding|exposure_path)$")
-    target_id: str = Field("", max_length=256)
-
-
 class IssueStatusUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: str = Field(..., min_length=1, max_length=64)

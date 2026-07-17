@@ -871,7 +871,6 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/shield/break-glass", "admin"),
         ("DELETE", "/v1/scan/", "admin"),
         ("POST", "/v1/exceptions", "analyst"),
-        ("POST", "/v1/findings/jira", "analyst"),
         ("POST", "/v1/findings/bulk", "analyst"),
         ("POST", "/v1/reports", "analyst"),
         ("GET", "/v1/reports/", "analyst"),

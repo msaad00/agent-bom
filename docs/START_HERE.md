@@ -47,7 +47,7 @@ docker compose -f deploy/docker-compose.pilot.yml up -d
 
 - Deployment chooser (Docker / Helm / EKS / Postgres):
   [`../site-docs/deployment/overview.md`](../site-docs/deployment/overview.md)
-- API contract (358 operations): [`../docs/openapi/v1.json`](openapi/v1.json)
+- API contract (357 operations): [`../docs/openapi/v1.json`](openapi/v1.json)
 - Enterprise auth, tenancy, RBAC: [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md),
   [`PERMISSIONS.md`](PERMISSIONS.md)
 - Runtime proxy/gateway enforcement: [`MCP_SERVER.md`](MCP_SERVER.md) and the

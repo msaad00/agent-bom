@@ -132,11 +132,6 @@
       "schema": "IssueStatusUpdateRequest.json"
     },
     {
-      "doc": "Request body for POST /v1/findings/jira.",
-      "name": "JiraTicketRequest",
-      "schema": "JiraTicketRequest.json"
-    },
-    {
       "doc": "Request body for POST /v1/scan/model-files.",
       "name": "ModelFilesRequest",
       "schema": "ModelFilesRequest.json"

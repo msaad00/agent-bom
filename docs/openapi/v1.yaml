@@ -1616,40 +1616,6 @@ components:
       - status
       title: IssueStatusUpdateRequest
       type: object
-    JiraTicketRequest:
-      additionalProperties: false
-      description: Request body for POST /v1/findings/jira.
-      properties:
-        email:
-          title: Email
-          type: string
-        finding:
-          additionalProperties: true
-          title: Finding
-          type: object
-        jira_url:
-          title: Jira Url
-          type: string
-        project_key:
-          title: Project Key
-          type: string
-        target_id:
-          default: ''
-          maxLength: 256
-          title: Target Id
-          type: string
-        target_kind:
-          default: finding
-          pattern: ^(finding|exposure_path)$
-          title: Target Kind
-          type: string
-      required:
-      - jira_url
-      - email
-      - project_key
-      - finding
-      title: JiraTicketRequest
-      type: object
     JobStatus:
       enum:
       - pending
@@ -8261,43 +8227,6 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Remove Finding Feedback
-      tags:
-      - enterprise
-  /v1/findings/jira:
-    post:
-      description: Create a Jira ticket from a finding (admin/analyst only).
-      operationId: create_jira_ticket_route_v1_findings_jira_post
-      parameters:
-      - in: header
-        name: X-Jira-Api-Token
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Jira-Api-Token
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/JiraTicketRequest'
-        required: true
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                additionalProperties: true
-                title: Response Create Jira Ticket Route V1 Findings Jira Post
-                type: object
-          description: Successful Response
-        '422':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-          description: Validation Error
-      summary: Create Jira Ticket Route
       tags:
       - enterprise
   /v1/findings/triage:

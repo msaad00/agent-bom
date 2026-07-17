@@ -1,14 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import {
   api,
   RemediationItem,
+  TicketLink,
   severityColor,
   severityDot,
 } from "@/lib/api";
 import { PaginationBar } from "@/components/pagination-bar";
+import {
+  TicketModal,
+  TicketStatusChip,
+  findingKey,
+} from "@/components/ticket-modal";
 import {
   Wrench,
   Download,
@@ -16,7 +21,6 @@ import {
   ChevronUp,
   Loader2,
   Ticket,
-  ArrowRight,
 } from "lucide-react";
 import { severityRank } from "@/lib/severity";
 
@@ -101,10 +105,12 @@ function SortButton({
 
 function NarrativeRow({
   item,
-  onCreateJira,
+  ticket,
+  onCreateTicket,
 }: {
   item: RemediationItem;
-  onCreateJira: (item: RemediationItem) => void;
+  ticket: TicketLink | undefined;
+  onCreateTicket: (item: RemediationItem) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -246,12 +252,23 @@ function NarrativeRow({
         {/* Actions */}
         <td className="px-4 py-3">
           <button
-            onClick={() => onCreateJira(item)}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
-            title="Create Jira ticket"
+            onClick={() => onCreateTicket(item)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
+            title={ticket ? "View or sync ticket" : "Create a ticket"}
           >
-            <Ticket className="w-3 h-3" />
-            Jira
+            {ticket ? (
+              <>
+                <span className="font-mono text-[var(--foreground)]">
+                  {ticket.key || ticket.external_id || "Ticket"}
+                </span>
+                <TicketStatusChip status={ticket.status} />
+              </>
+            ) : (
+              <>
+                <Ticket className="w-3 h-3" />
+                Ticket
+              </>
+            )}
           </button>
         </td>
       </tr>
@@ -319,68 +336,6 @@ function NarrativeRow({
   );
 }
 
-// ─── Ticketing action modal ───────────────────────────────────────────────────
-
-// Pre-freeze hardening: this modal used to collect a Jira URL / email / static
-// API token / project key inline and POST them per action. Pasting a static
-// credential into an action form violates the no-creds-in-forms rule, so the
-// token entry is removed. The scoped ITSM connector — credentials brokered in
-// Connections, never typed into an action modal — is tracked in #4004. The
-// backend endpoint (api.createJiraTicket) is intentionally left in place for
-// that connector rework; only the plaintext-token UI flow is retired here.
-function JiraModal({
-  item,
-  onClose,
-}: {
-  item: RemediationItem;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-md bg-[var(--surface)] border border-[var(--border-subtle)]/60 rounded-xl shadow-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-[var(--border-subtle)]">
-          <h2 className="text-sm font-semibold text-[var(--foreground)]">
-            Create a ticket
-          </h2>
-          <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-            {item.package} {item.current_version}
-          </p>
-        </div>
-
-        <div className="px-5 py-5 space-y-4">
-          <p className="text-sm leading-6 text-[var(--text-secondary)]">
-            Ticketing runs through a managed integration configured in{" "}
-            <span className="font-medium text-[var(--foreground)]">Connections</span>{" "}
-            — credentials are brokered there, never entered per action. Direct
-            ticket creation from this row is coming soon.
-          </p>
-
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
-            >
-              Close
-            </button>
-            <Link
-              href="/connections"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              Open Connections
-              <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main page wrapper ────────────────────────────────────────────────────────
 
 export default function RemediationPageWrapper() {
@@ -409,7 +364,10 @@ function RemediationPage() {
   const [sortKey, setSortKey] = useState<SortKey>("impact_score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
-  const [jiraItem, setJiraItem] = useState<RemediationItem | null>(null);
+  const [ticketItem, setTicketItem] = useState<RemediationItem | null>(null);
+  const [ticketsByFinding, setTicketsByFinding] = useState<
+    Record<string, TicketLink>
+  >({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -431,11 +389,26 @@ function RemediationPage() {
 
       const remediation = await api.getRemediation(doneJob.job_id);
       setItems(remediation);
+
+      // Non-fatal: surface any tickets already filed for these findings so the
+      // rows show their key + status. A ticketing failure must not block the plan.
+      try {
+        const ticketsResp = await api.listTickets();
+        const byFinding: Record<string, TicketLink> = {};
+        for (const t of ticketsResp.tickets) byFinding[t.dedupe_key] = t;
+        setTicketsByFinding(byFinding);
+      } catch {
+        setTicketsByFinding({});
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const upsertTicket = useCallback((ticket: TicketLink) => {
+    setTicketsByFinding((prev) => ({ ...prev, [ticket.dedupe_key]: ticket }));
   }, []);
 
   useEffect(() => {
@@ -734,7 +707,8 @@ function RemediationPage() {
                   <NarrativeRow
                     key={`${item.package}-${item.current_version}`}
                     item={item}
-                    onCreateJira={setJiraItem}
+                    ticket={ticketsByFinding[findingKey(item)]}
+                    onCreateTicket={setTicketItem}
                   />
                 ))}
               </tbody>
@@ -757,9 +731,17 @@ function RemediationPage() {
         </>
       )}
 
-      {/* Jira modal */}
-      {jiraItem && (
-        <JiraModal item={jiraItem} onClose={() => setJiraItem(null)} />
+      {/* Ticket modal */}
+      {ticketItem && (
+        <TicketModal
+          item={ticketItem}
+          existingTickets={((): TicketLink[] => {
+            const t = ticketsByFinding[findingKey(ticketItem)];
+            return t ? [t] : [];
+          })()}
+          onClose={() => setTicketItem(null)}
+          onChanged={upsertTicket}
+        />
       )}
     </div>
   );

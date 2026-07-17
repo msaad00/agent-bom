@@ -36,8 +36,8 @@ It exists for a simple reason: the controls are real, but they should not requir
 | Exceptions and false positives persisted in Postgres | Exception workflow uses a tenant-aware Postgres store when configured | `src/agent_bom/api/server.py`, `src/agent_bom/api/postgres_store.py`, `src/agent_bom/api/routes/enterprise.py` |
 | Audit log integrity | Audit entries are chain-signed with HMAC and can be verified via API | `src/agent_bom/api/audit_log.py`, `src/agent_bom/api/routes/enterprise.py` |
 | Rate limiting | Read and scan endpoints have separate request budgets with shared Postgres-backed storage when configured | `src/agent_bom/api/middleware.py`, `src/agent_bom/api/postgres_store.py` |
-| Request tracing | API preserves W3C trace context and exposes tracing state on `/health` | `src/agent_bom/api/tracing.py`, `src/agent_bom/api/middleware.py`, `src/agent_bom/api/server.py` |
-| ClickHouse analytics backend | Server mode can buffer analytics writes and report backend state on `/health` | `src/agent_bom/api/server.py`, `src/agent_bom/api/clickhouse_store.py` |
+| Request tracing | API preserves W3C trace context and exposes tracing state on authenticated `/v1/system/health` | `src/agent_bom/api/tracing.py`, `src/agent_bom/api/middleware.py`, `src/agent_bom/api/server.py` |
+| ClickHouse analytics backend | Server mode can buffer analytics writes and report backend state on authenticated `/v1/system/health` | `src/agent_bom/api/server.py`, `src/agent_bom/api/clickhouse_store.py` |
 | Snowflake backend | Snowflake has native stores for selected enterprise data paths, not full transactional parity | `src/agent_bom/api/server.py`, `src/agent_bom/api/snowflake_store.py` |
 
 ## RBAC Matrix

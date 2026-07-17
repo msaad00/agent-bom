@@ -2777,6 +2777,47 @@
         "title": "ProxyAuditIngestRequest",
         "type": "object"
       },
+      "PublicHealthResponse": {
+        "description": "Non-sensitive liveness and UI bootstrap posture.",
+        "properties": {
+          "auth_configured": {
+            "default": false,
+            "title": "Auth Configured",
+            "type": "boolean"
+          },
+          "auth_required": {
+            "default": true,
+            "title": "Auth Required",
+            "type": "boolean"
+          },
+          "configured_auth_modes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Configured Auth Modes",
+            "type": "array"
+          },
+          "status": {
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "unauthenticated_allowed": {
+            "default": false,
+            "title": "Unauthenticated Allowed",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "PublicHealthResponse",
+        "type": "object"
+      },
       "PushPayload": {
         "additionalProperties": true,
         "properties": {
@@ -4102,7 +4143,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
+                  "$ref": "#/components/schemas/PublicHealthResponse"
                 }
               }
             },
@@ -4124,7 +4165,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
+                  "$ref": "#/components/schemas/PublicHealthResponse"
                 }
               }
             },
@@ -4146,7 +4187,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
+                  "$ref": "#/components/schemas/PublicHealthResponse"
                 }
               }
             },
@@ -27566,6 +27607,28 @@
         "summary": "Test Source",
         "tags": [
           "sources"
+        ]
+      }
+    },
+    "/v1/system/health": {
+      "get": {
+        "description": "Authenticated operator diagnostics for configured subsystems.",
+        "operationId": "system_health_v1_system_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "System Health",
+        "tags": [
+          "meta"
         ]
       }
     },

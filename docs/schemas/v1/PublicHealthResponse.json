@@ -1,0 +1,41 @@
+{
+  "description": "Non-sensitive liveness and UI bootstrap posture.",
+  "properties": {
+    "auth_configured": {
+      "default": false,
+      "title": "Auth Configured",
+      "type": "boolean"
+    },
+    "auth_required": {
+      "default": true,
+      "title": "Auth Required",
+      "type": "boolean"
+    },
+    "configured_auth_modes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Configured Auth Modes",
+      "type": "array"
+    },
+    "status": {
+      "default": "ok",
+      "title": "Status",
+      "type": "string"
+    },
+    "unauthenticated_allowed": {
+      "default": false,
+      "title": "Unauthenticated Allowed",
+      "type": "boolean"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "title": "PublicHealthResponse",
+  "type": "object"
+}

@@ -167,6 +167,11 @@
       "schema": "ProxyAuditIngestRequest.json"
     },
     {
+      "doc": "Non-sensitive liveness and UI bootstrap posture.",
+      "name": "PublicHealthResponse",
+      "schema": "PublicHealthResponse.json"
+    },
+    {
       "doc": "",
       "name": "PushPayload",
       "schema": "PushPayload.json"

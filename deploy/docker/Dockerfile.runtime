@@ -85,6 +85,6 @@ ENV PIP_CERT=${PIP_CERT}
 EXPOSE 8422
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD agent-bom --version || exit 1
+    CMD python -c "import pathlib,sys; cmd=pathlib.Path('/proc/1/cmdline').read_bytes().replace(b'\\0',b' ').decode(); sys.exit(0 if 'agent-bom proxy' in cmd else 1)"
 
 ENTRYPOINT ["agent-bom", "proxy"]

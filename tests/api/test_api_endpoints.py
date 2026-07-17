@@ -55,13 +55,21 @@ def _fresh_client():
 
 
 def test_health_endpoint():
-    """GET /health returns 200 with status='ok'."""
+    """Public liveness is minimal; authenticated status carries diagnostics."""
     client, _ = _fresh_client()
     resp = client.get("/health")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ok"
     assert "version" in body
+    assert "tracing" not in body
+    assert "analytics" not in body
+    assert "storage" not in body
+    assert "entitlements" not in body
+
+    resp = client.get("/v1/system/health")
+    assert resp.status_code == 200
+    body = resp.json()
     assert body["tracing"]["w3c_trace_context"] is True
     assert body["tracing"]["w3c_tracestate"] is True
     assert body["tracing"]["w3c_baggage"] is True

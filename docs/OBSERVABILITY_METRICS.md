@@ -120,7 +120,7 @@ emitted as an OTLP `LogRecord` through `src/agent_bom/siem/otlp_logs.py`:
   unless explicitly opened). Requires the `otel` extra; a graceful no-op
   otherwise.
 
-`GET /health` reports the export state under `tracing.otlp_logs_export`
+Authenticated `GET /v1/system/health` reports the export state under `tracing.otlp_logs_export`
 (`disabled` / `pending` / `configured`) so operators can confirm whether audit
 logs are merely available or actively exported.
 

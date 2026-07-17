@@ -1315,16 +1315,28 @@ export const api = {
   createRiskCampaignTickets: (
     campaignId: string,
     body: RiskCampaignTicketRequest,
-  ) =>
-    post<RiskCampaignTicketCreateResult>(
+  ) => {
+    const boundedBody = {
+      ...body,
+      limit: Math.min(25, Math.max(1, body.limit ?? 25)),
+    };
+    return post<RiskCampaignTicketCreateResult>(
       `/v1/campaigns/${encodeURIComponent(campaignId)}/tickets`,
-      body,
-    ),
-  syncRiskCampaignTickets: (campaignId: string) =>
-    post<RiskCampaignTicketSyncResult>(
-      `/v1/campaigns/${encodeURIComponent(campaignId)}/tickets/sync`,
+      boundedBody,
+    );
+  },
+  syncRiskCampaignTickets: (
+    campaignId: string,
+    options: { cursor?: string | null; limit?: number } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (options.cursor) params.set("cursor", options.cursor);
+    params.set("limit", String(Math.min(25, Math.max(1, options.limit ?? 25))));
+    return post<RiskCampaignTicketSyncResult>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}/tickets/sync?${params.toString()}`,
       {},
-    ),
+    );
+  },
 
   // ── False Positive Management ──
   markFalsePositive: (body: {

@@ -3828,6 +3828,10 @@ export interface RiskCampaign {
   verification_status: RiskCampaignVerificationStatus;
   updated_at: string | null;
   source: string;
+  membership_fingerprint: string;
+  generation: number;
+  version: number;
+  active: boolean;
 }
 
 export interface RiskCampaignsResponse {
@@ -3838,9 +3842,12 @@ export interface RiskCampaignsResponse {
   finding_window_days: 90;
   finding_limit: number;
   truncated: boolean;
+  total_findings: number | null;
+  total_approximate: boolean;
 }
 
 export interface RiskCampaignUpdate {
+  version: number;
   owner?: string | null;
   sla_due_at?: string | null;
   state?: RiskCampaignState;
@@ -3851,6 +3858,8 @@ export interface RiskCampaignTicketRequest {
   connection_id?: string;
   project?: string;
   issue_type?: string;
+  cursor?: string | null;
+  limit?: number;
 }
 
 export interface RiskCampaignTicketCreateError {
@@ -3873,6 +3882,11 @@ export interface RiskCampaignTicketCreateResult {
   tickets: TicketActionResult[];
   errors: RiskCampaignTicketCreateError[];
   per_action_credential: false;
+  total: number;
+  processed: number;
+  next_cursor: string | null;
+  has_more: boolean;
+  action_limit: number;
 }
 
 export interface RiskCampaignTicketSyncResult {
@@ -3883,4 +3897,9 @@ export interface RiskCampaignTicketSyncResult {
   tickets: TicketActionResult[];
   errors: RiskCampaignTicketSyncError[];
   per_action_credential: false;
+  total: number;
+  processed: number;
+  next_cursor: string | null;
+  has_more: boolean;
+  action_limit: number;
 }

@@ -16,11 +16,10 @@ import {
 
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
 import { api } from "@/lib/api";
+import { ApiConflictError } from "@/lib/api-errors";
 import type {
   RiskCampaign,
   RiskCampaignState,
-  RiskCampaignTicketCreateResult,
-  RiskCampaignTicketSyncResult,
   TicketingConnection,
 } from "@/lib/api-types";
 
@@ -50,24 +49,40 @@ function formatDate(value: string | null): string {
 }
 
 function resultMessage(
-  result: RiskCampaignTicketCreateResult | RiskCampaignTicketSyncResult,
+  successful: number,
+  failed: number,
   verb: "created" | "synced",
+  processed: number,
+  total: number,
 ): string {
-  const successful = "created" in result ? result.created : result.synced;
-  if (result.failed > 0) {
-    return `${successful} ticket${successful === 1 ? "" : "s"} ${verb}; ${result.failed} failed`;
+  if (failed > 0) {
+    return `${successful} ticket${successful === 1 ? "" : "s"} ${verb}; ${failed} failed · ${processed}/${total} processed`;
   }
-  return `${successful} ticket${successful === 1 ? "" : "s"} ${verb}`;
+  return `${successful} ticket${successful === 1 ? "" : "s"} ${verb} · ${processed}/${total} processed`;
 }
+
+type TicketProgress = {
+  mode: "create" | "sync";
+  successful: number;
+  failed: number;
+  processed: number;
+  total: number;
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
+const ACTION_BATCH_LIMIT = 25;
 
 function CampaignCard({
   campaign,
   onChanged,
   connections,
+  onReload,
 }: {
   campaign: RiskCampaign;
   onChanged: (campaign: RiskCampaign) => void;
   connections: TicketingConnection[];
+  onReload: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -77,6 +92,8 @@ function CampaignCard({
   const [editingAssignment, setEditingAssignment] = useState(false);
   const [owner, setOwner] = useState(campaign.owner ?? "");
   const [slaDate, setSlaDate] = useState(campaign.sla_due_at?.slice(0, 10) ?? "");
+  const [versionConflict, setVersionConflict] = useState(false);
+  const [ticketProgress, setTicketProgress] = useState<TicketProgress | null>(null);
 
   useEffect(() => {
     if (!connectionId || !connections.some((connection) => connection.id === connectionId)) {
@@ -88,20 +105,22 @@ function CampaignCard({
     async (state: RiskCampaignState) => {
       setBusy(true);
       setActionError("");
+      setVersionConflict(false);
       try {
-        onChanged(await api.updateRiskCampaign(campaign.id, { state }));
+        onChanged(await api.updateRiskCampaign(campaign.id, { version: campaign.version, state }));
       } catch (error: unknown) {
+        setVersionConflict(error instanceof ApiConflictError);
         setActionError(error instanceof Error ? error.message : "Campaign update failed");
       } finally {
         setBusy(false);
       }
     },
-    [campaign.id, onChanged],
+    [campaign.id, campaign.version, onChanged],
   );
 
   const ticketAction = useCallback(
     async (mode: "create" | "sync") => {
-      if (!connectionId) {
+      if (mode === "create" && !connectionId) {
         setActionError("Connect an active ticketing integration before creating campaign tickets");
         return;
       }
@@ -109,40 +128,66 @@ function CampaignCard({
       setActionError("");
       setActionMessage("");
       try {
+        const continuing = ticketProgress?.mode === mode && ticketProgress.hasMore;
+        const cursor = continuing ? ticketProgress.nextCursor : null;
         const result =
           mode === "create"
-            ? await api.createRiskCampaignTickets(campaign.id, { connection_id: connectionId })
-            : await api.syncRiskCampaignTickets(campaign.id);
+            ? await api.createRiskCampaignTickets(campaign.id, {
+                connection_id: connectionId,
+                ...(cursor ? { cursor } : {}),
+                limit: ACTION_BATCH_LIMIT,
+              })
+            : await api.syncRiskCampaignTickets(campaign.id, {
+                ...(cursor ? { cursor } : {}),
+                limit: ACTION_BATCH_LIMIT,
+              });
         if (result.per_action_credential !== false) {
           setActionError("Ticket action rejected: connect-once credential boundary was not confirmed");
           return;
         }
-        setActionMessage(resultMessage(result, mode === "create" ? "created" : "synced"));
+        const batchSuccessful = "created" in result ? result.created : result.synced;
+        const successful = (continuing ? ticketProgress.successful : 0) + batchSuccessful;
+        const failed = (continuing ? ticketProgress.failed : 0) + result.failed;
+        const processed = (continuing ? ticketProgress.processed : 0) + result.processed;
+        const nextProgress: TicketProgress = {
+          mode,
+          successful,
+          failed,
+          processed,
+          total: result.total,
+          nextCursor: result.next_cursor,
+          hasMore: result.has_more,
+        };
+        setTicketProgress(nextProgress);
+        setActionMessage(resultMessage(successful, failed, mode === "create" ? "created" : "synced", processed, result.total));
       } catch (error: unknown) {
         setActionError(error instanceof Error ? error.message : "Ticket action failed");
       } finally {
         setBusy(false);
       }
     },
-    [campaign.id, connectionId],
+    [campaign.id, connectionId, ticketProgress],
   );
 
   const saveAssignment = useCallback(async () => {
     setBusy(true);
     setActionError("");
+    setVersionConflict(false);
     try {
       const updated = await api.updateRiskCampaign(campaign.id, {
+        version: campaign.version,
         owner: owner.trim() || null,
         sla_due_at: slaDate ? new Date(`${slaDate}T00:00:00.000Z`).toISOString() : null,
       });
       onChanged(updated);
       setEditingAssignment(false);
     } catch (error: unknown) {
+      setVersionConflict(error instanceof ApiConflictError);
       setActionError(error instanceof Error ? error.message : "Campaign assignment failed");
     } finally {
       setBusy(false);
     }
-  }, [campaign.id, onChanged, owner, slaDate]);
+  }, [campaign.id, campaign.version, onChanged, owner, slaDate]);
 
   const factors = Object.entries(campaign.score_factors) as Array<
     [keyof RiskCampaign["score_factors"], RiskCampaign["score_factors"][keyof RiskCampaign["score_factors"]]]
@@ -159,7 +204,7 @@ function CampaignCard({
             <span className="text-xs text-[color:var(--text-tertiary)]">
               {campaign.finding_count} correlated finding{campaign.finding_count === 1 ? "" : "s"}
             </span>
-            <span className="text-xs text-[color:var(--text-tertiary)]">Source: {campaign.source}</span>
+            <span className="text-xs text-[color:var(--text-tertiary)]">Source: {campaign.source.replaceAll("_", " ")}</span>
           </div>
           <h3 className="mt-2 text-base font-semibold leading-6 text-[color:var(--foreground)] md:text-lg">
             {campaign.title}
@@ -253,10 +298,10 @@ function CampaignCard({
             </select>
           ) : null}
           <button type="button" disabled={busy} onClick={() => void ticketAction("create")} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:opacity-50">
-            <Ticket className="h-3.5 w-3.5" /> Create campaign tickets
+            <Ticket className="h-3.5 w-3.5" /> {ticketProgress?.mode === "create" && ticketProgress.hasMore ? `Continue tickets (${ticketProgress.processed}/${ticketProgress.total})` : "Create campaign tickets"}
           </button>
           <button type="button" disabled={busy} onClick={() => void ticketAction("sync")} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--text-secondary)] disabled:opacity-50">
-            <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} /> Sync tickets
+            <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} /> {ticketProgress?.mode === "sync" && ticketProgress.hasMore ? `Continue sync (${ticketProgress.processed}/${ticketProgress.total})` : "Sync tickets"}
           </button>
         </div>
       </div>
@@ -275,6 +320,9 @@ function CampaignCard({
       ) : null}
       {actionMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--text-secondary)]">{actionMessage}</p> : null}
       {actionError ? <p role="alert" className="mt-3 text-xs text-[color:var(--status-danger)]">{actionError}</p> : null}
+      {versionConflict ? (
+        <button type="button" onClick={onReload} className="mt-2 rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Reload campaigns</button>
+      ) : null}
       {connections.length === 0 ? <p className="mt-3 text-xs text-[color:var(--text-tertiary)]"><Link href="/connections">Connect ticketing</Link> to create or sync campaign tickets.</p> : null}
     </article>
   );
@@ -287,6 +335,8 @@ export function RiskCampaignCommandCenter() {
   const [truncated, setTruncated] = useState(false);
   const [windowDays, setWindowDays] = useState(90);
   const [connections, setConnections] = useState<TicketingConnection[]>([]);
+  const [totalFindings, setTotalFindings] = useState<number | null>(null);
+  const [totalApproximate, setTotalApproximate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -296,6 +346,8 @@ export function RiskCampaignCommandCenter() {
       setCampaigns(response.campaigns);
       setTruncated(response.truncated);
       setWindowDays(response.finding_window_days);
+      setTotalFindings(response.total_findings);
+      setTotalApproximate(response.total_approximate);
       try {
         const ticketing = await api.listTicketingConnections();
         setConnections(ticketing.connections.filter((connection) => connection.status === "active"));
@@ -311,7 +363,7 @@ export function RiskCampaignCommandCenter() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const totalFindings = useMemo(() => campaigns.reduce((sum, campaign) => sum + campaign.finding_count, 0), [campaigns]);
+  const campaignFindingCount = useMemo(() => campaigns.reduce((sum, campaign) => sum + campaign.finding_count, 0), [campaigns]);
   const updateCampaign = useCallback((updated: RiskCampaign) => {
     setCampaigns((current) => current.map((campaign) => campaign.id === updated.id ? updated : campaign));
   }, []);
@@ -326,7 +378,7 @@ export function RiskCampaignCommandCenter() {
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--accent)]">Prioritized remediation</div>
           <h2 id="risk-campaigns-title" className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--foreground)]">Risk campaigns</h2>
-          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">{campaigns.length} campaigns cluster {totalFindings} finding{totalFindings === 1 ? "" : "s"} into owner-ready work.</p>
+          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">{campaigns.length} campaigns cluster {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} into owner-ready work.</p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <Link href="/security-graph" className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[color:var(--text-secondary)]">Open investigation</Link>
@@ -336,11 +388,14 @@ export function RiskCampaignCommandCenter() {
       {truncated ? (
         <div role="status" className="flex items-start gap-2 rounded-xl border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2.5 text-xs text-[color:var(--text-secondary)]">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--status-warn)]" />
-          <span><strong className="text-[color:var(--foreground)]">Results may be incomplete.</strong> The server reached its findings limit; narrow the scope before treating this as the full estate.</span>
+          <span>
+            <strong className="text-[color:var(--foreground)]">Results may be incomplete.</strong>{" "}
+            The bounded window covers {totalFindings === null ? "an unknown total" : `${totalApproximate ? "approximately " : ""}${totalFindings.toLocaleString()} total findings`}; narrow the scope before treating this as the full estate.
+          </span>
         </div>
       ) : null}
       <div className="grid gap-4 2xl:grid-cols-2">
-        {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} />)}
+        {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} />)}
       </div>
       <div className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">
         <CheckCircle2 className="h-3.5 w-3.5" /> Priority and expected reduction are supplied by the server; ticket actions use stored connections.

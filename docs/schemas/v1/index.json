@@ -2,6 +2,16 @@
   "generator": "scripts/generate_v1_schemas.py",
   "models": [
     {
+      "doc": "Public schema contract for one advisory AI assessment.",
+      "name": "AIFindingAssessment",
+      "schema": "AIFindingAssessment.json"
+    },
+    {
+      "doc": "Public schema contract for model-derived scan evidence.",
+      "name": "AIProvenance",
+      "schema": "AIProvenance.json"
+    },
+    {
       "doc": "",
       "name": "AnalyticsHealth",
       "schema": "AnalyticsHealth.json"

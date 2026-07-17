@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -219,7 +220,7 @@ async def test_caching_avoids_duplicate_calls():
 
     call_count = 0
 
-    async def mock_call(prompt, model, max_tokens=500):
+    async def mock_call(prompt, model, max_tokens=500, **kwargs):
         nonlocal call_count
         call_count += 1
         return "Mocked analysis"
@@ -354,25 +355,36 @@ def test_json_output_includes_advisory_finding_assessments_without_mutating_find
     report = _make_report()
     finding = report.to_findings()[0]
     original_severity = finding.severity
+    from agent_bom.ai_schemas import AIFindingAssessment, AIProvenance
+
     report.ai_finding_assessments = [
-        {
-            "finding_id": finding.id,
-            "task": "triage",
-            "classification": "likely_exploitable",
-            "confidence": "high",
-            "false_positive_likelihood": "low",
-            "rationale": "Reachable package and exposed tool are present.",
-            "suggested_controls": ["Patch the package"],
-            "advisory": True,
-            "provider": "ollama",
-            "model": "ollama/llama3.2",
-        }
+        AIFindingAssessment(
+            finding_id=finding.id,
+            classification="likely_exploitable",
+            confidence="high",
+            false_positive_likelihood="low",
+            rationale="Reachable package and exposed tool are present.",
+            suggested_controls=["Patch the package"],
+            provenance=AIProvenance(
+                run_id="run-1",
+                provider="ollama",
+                model="ollama/llama3.2",
+                model_revision="sha256:model",
+                prompt_sha256="a" * 64,
+                response_sha256="b" * 64,
+                generated_at="2026-07-17T12:00:00Z",
+                deterministic=True,
+                redaction_applied=True,
+            ),
+        )
     ]
 
     data = to_json(report)
 
     assert data["ai_finding_assessments"][0]["advisory"] is True
     assert data["ai_finding_assessments"][0]["finding_id"] == finding.id
+    assert data["ai_finding_assessments"][0]["schema_version"] == "ai.finding-assessment.v1"
+    assert data["ai_finding_assessments"][0]["provenance"]["prompt_sha256"] == "a" * 64
     assert report.to_findings()[0].severity == original_severity
 
 
@@ -424,6 +436,14 @@ def test_cli_exposes_explicit_deterministic_ai_gate_contract():
     assert "--ai-deterministic" in result.output
     assert "--ai-gate-findings" in result.output
     assert "advisory" in result.output.lower()
+
+
+def test_cli_deterministic_option_inherits_environment_when_omitted():
+    from agent_bom.cli.agents import scan
+
+    option = next(param for param in scan.params if param.name == "ai_deterministic")
+
+    assert option.default is None
 
 
 @pytest.mark.parametrize(
@@ -600,8 +620,8 @@ async def test_call_llm_routes_openai_to_litellm():
 
 
 @pytest.mark.asyncio
-async def test_call_llm_ollama_falls_back_to_litellm():
-    """When Ollama direct fails and no HuggingFace, should fall back to litellm."""
+async def test_call_llm_ollama_does_not_fall_back_to_litellm():
+    """An explicit local provider selection never crosses to litellm."""
     from agent_bom.ai_enrich import _call_llm
 
     with (
@@ -611,7 +631,7 @@ async def test_call_llm_ollama_falls_back_to_litellm():
         patch("agent_bom.ai_enrich._call_llm_via_litellm", new_callable=AsyncMock, return_value="litellm fallback"),
     ):
         result = await _call_llm("test prompt", "ollama/llama3.2")
-        assert result == "litellm fallback"
+        assert result is None
 
 
 @pytest.mark.asyncio
@@ -1044,6 +1064,7 @@ def test_apply_skill_analysis_adds_new_findings():
     assert audit.findings[0].ai_source == "ollama"
     assert audit.findings[0].ai_model == "ollama/llama3.2"
     assert audit.findings[0].ai_confidence == "medium"
+    assert audit.findings[0].ai_detected is True
     assert audit.passed is True
     assert audit.deterministic_passed is True
     assert audit.ai_gate_enabled is False
@@ -1069,38 +1090,41 @@ async def test_assess_report_findings_is_bounded_provenanced_and_advisory():
     )
     budget = AICallBudget(max_calls=1)
 
+    async def fake_call(*args, **kwargs):
+        kwargs["budget"].try_provider_attempt(kwargs["task"])
+        return response
+
     with (
         patch("agent_bom.ai_enrich._has_any_provider", return_value=True),
-        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=response),
+        patch("agent_bom.ai_enrich._call_llm", new=fake_call),
     ):
         assessments = await assess_report_findings(
             report,
             model="ollama/llama3.2",
             provider="ollama",
             budget=budget,
+            run_id="run-1",
         )
 
-    assert assessments == [
-        {
-            "finding_id": finding.id,
-            "task": "triage",
-            "classification": "likely_exploitable",
-            "confidence": "high",
-            "false_positive_likelihood": "low",
-            "rationale": "Reachable package.",
-            "suggested_controls": ["Patch now"],
-            "advisory": True,
-            "provider": "ollama",
-            "model": "ollama/llama3.2",
-        }
-    ]
+    assert len(assessments) == 1
+    assessment = assessments[0]
+    assert assessment.finding_id == finding.id
+    assert assessment.advisory is True
+    assert assessment.provenance.provider == "ollama"
+    assert assessment.provenance.model == "ollama/llama3.2"
+    assert assessment.provenance.run_id == "run-1"
+    assert len(assessment.provenance.prompt_sha256) == 64
+    assert len(assessment.provenance.response_sha256) == 64
+    assert isinstance(assessment.provenance.generated_at, datetime)
     assert report.to_findings()[0].severity == original_severity
     assert budget.to_dict() == {
-        "max_calls": 1,
-        "calls_used": 1,
-        "calls_remaining": 0,
+        "max_provider_attempts": 1,
+        "provider_attempts": 1,
+        "provider_attempts_remaining": 0,
+        "cache_hits": 0,
+        "retries": 0,
         "exhausted": True,
-        "calls_by_task": {"triage": 1},
+        "attempts_by_task": {"triage": 1},
     }
 
 
@@ -1117,8 +1141,111 @@ async def test_assess_report_findings_gracefully_skips_without_model():
         assessments = await assess_report_findings(_make_report(), model="missing/model", budget=budget)
 
     assert assessments == []
-    assert budget.calls_used == 0
+    assert budget.provider_attempts == 0
     call.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_explicit_local_model_never_falls_back_to_remote_provider(monkeypatch):
+    """An Ollama request is a local-only data-boundary decision."""
+    from agent_bom.ai_enrich import _call_llm, _resolve_ai_provider
+
+    monkeypatch.setattr("agent_bom.ai_enrich._detect_ollama", lambda: False)
+    monkeypatch.setattr("agent_bom.ai_enrich._check_huggingface", lambda: True)
+    monkeypatch.setattr("agent_bom.ai_enrich._check_litellm", lambda: True)
+    monkeypatch.setenv("HF_TOKEN", "configured")
+
+    resolution = _resolve_ai_provider("ollama/llama3.2")
+    with (
+        patch("agent_bom.ai_enrich._call_huggingface", new_callable=AsyncMock) as hf,
+        patch("agent_bom.ai_enrich._call_llm_via_litellm", new_callable=AsyncMock) as litellm,
+    ):
+        result = await _call_llm("sensitive prompt", "ollama/llama3.2")
+
+    assert resolution.available is False
+    assert resolution.provider is not None and resolution.provider.local is True
+    assert result is None
+    hf.assert_not_awaited()
+    litellm.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_raw_skill_content_is_rejected_for_remote_provider():
+    """Raw skill instructions are only eligible for a local provider."""
+    from agent_bom.ai_enrich import AI_PROVIDER_DESCRIPTORS, AIProviderResolution, enrich_skill_audit
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+    from agent_bom.parsers.skills import SkillScanResult
+
+    resolution = AIProviderResolution(
+        requested_model="openai/fake",
+        model="openai/fake",
+        provider=AI_PROVIDER_DESCRIPTORS["litellm"],
+        available=True,
+        status="active",
+    )
+    skill_result = SkillScanResult(raw_content={"CLAUDE.md": "proprietary instructions"})
+    with (
+        patch("agent_bom.ai_enrich._resolve_ai_provider", return_value=resolution),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock) as call,
+    ):
+        enriched = await enrich_skill_audit(skill_result, SkillAuditResult(), model="openai/fake")
+
+    assert enriched is False
+    call.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_malformed_skill_provider_response_degrades_without_mutation():
+    from agent_bom.ai_enrich import AI_PROVIDER_DESCRIPTORS, AIProviderResolution, enrich_skill_audit
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+    from agent_bom.parsers.skills import SkillScanResult
+
+    resolution = AIProviderResolution(
+        requested_model="ollama/fake",
+        model="ollama/fake",
+        provider=AI_PROVIDER_DESCRIPTORS["ollama"],
+        available=True,
+        status="active",
+    )
+    audit = SkillAuditResult()
+    skill_result = SkillScanResult(raw_content={"CLAUDE.md": "safe instructions"})
+    malformed = '{"overall_risk_level":"low","finding_reviews":"malformed","new_findings":[]}'
+    with (
+        patch("agent_bom.ai_enrich._resolve_ai_provider", return_value=resolution),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=malformed),
+    ):
+        enriched = await enrich_skill_audit(skill_result, audit, model="ollama/fake")
+
+    assert enriched is False
+    assert audit == SkillAuditResult()
+
+
+def test_explicit_ai_gate_participates_in_cli_exit_contract():
+    from rich.console import Console
+
+    from agent_bom.cli.agents._context import ScanContext
+    from agent_bom.cli.agents._post import compute_exit_code
+
+    ctx = ScanContext(con=Console(), quiet=True, report=AIBOMReport())
+    ctx.skill_audit_data = {
+        "passed": False,
+        "deterministic_passed": True,
+        "ai_gate_enabled": True,
+        "findings": [{"severity": "critical", "ai_detected": True}],
+    }
+
+    code = compute_exit_code(
+        ctx,
+        fail_on_severity="high",
+        warn_on_severity=None,
+        fail_on_kev=False,
+        fail_if_ai_risk=False,
+        push_url=None,
+        push_api_key=None,
+        quiet=True,
+    )
+
+    assert code == 1
 
 
 @pytest.mark.asyncio
@@ -1145,11 +1272,20 @@ async def test_enrich_skill_audit_with_mock_llm():
         }
     )
 
+    from agent_bom.ai_enrich import AI_PROVIDER_DESCRIPTORS, AIProviderResolution
+
+    resolution = AIProviderResolution(
+        requested_model="ollama/fake",
+        model="ollama/fake",
+        provider=AI_PROVIDER_DESCRIPTORS["ollama"],
+        available=True,
+        status="active",
+    )
     with (
-        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch("agent_bom.ai_enrich._resolve_ai_provider", return_value=resolution),
         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=mock_response),
     ):
-        result = await enrich_skill_audit(skill_result, skill_audit)
+        result = await enrich_skill_audit(skill_result, skill_audit, model="ollama/fake")
         assert result is True
         assert skill_audit.ai_overall_risk_level == "safe"
         assert skill_audit.ai_skill_summary == "No security risks found in this skill file."
@@ -1284,8 +1420,8 @@ async def test_call_huggingface_success():
 
 
 @pytest.mark.asyncio
-async def test_call_llm_ollama_falls_back_to_huggingface():
-    """When Ollama fails and HuggingFace available, should use HF."""
+async def test_call_llm_ollama_does_not_fall_back_to_huggingface():
+    """An explicit local provider selection never crosses to HuggingFace."""
     from agent_bom.ai_enrich import _call_llm
 
     with (
@@ -1294,7 +1430,7 @@ async def test_call_llm_ollama_falls_back_to_huggingface():
         patch("agent_bom.ai_enrich._call_huggingface", new_callable=AsyncMock, return_value="HF response"),
     ):
         result = await _call_llm("test prompt", "ollama/llama3.2")
-        assert result == "HF response"
+        assert result is None
 
 
 @pytest.mark.asyncio
@@ -1308,7 +1444,7 @@ async def test_call_llm_routes_huggingface_model():
 
 
 def test_has_any_provider_with_huggingface(monkeypatch):
-    """Should return True for ollama/ model when HuggingFace is available as fallback."""
+    """Remote availability cannot satisfy an explicit local provider request."""
     from agent_bom.ai_enrich import _has_any_provider
 
     monkeypatch.setenv("HF_TOKEN", "hf_test_token")
@@ -1316,7 +1452,7 @@ def test_has_any_provider_with_huggingface(monkeypatch):
         patch("agent_bom.ai_enrich._detect_ollama", return_value=False),
         patch("agent_bom.ai_enrich._check_huggingface", return_value=True),
     ):
-        assert _has_any_provider("ollama/llama3.2") is True
+        assert _has_any_provider("ollama/llama3.2") is False
 
 
 def test_has_any_provider_huggingface_model(monkeypatch):

@@ -8,6 +8,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
+from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
 from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
@@ -30,6 +32,17 @@ class StepStatus(str, Enum):
 
 
 # ─── Scan Models ───────────────────────────────────────────────────────────
+
+
+class AIProvenance(_CoreAIProvenance):
+    """Public schema contract for model-derived scan evidence."""
+
+
+class AIFindingAssessment(_CoreAIFindingAssessment):
+    """Public schema contract for one advisory AI assessment."""
+
+    provenance: AIProvenance
+
 
 # Fields that fan out one child scan job per element when a request carries more
 # than one explicit target. Mirrors scan_batches.BATCH_*_TARGET_FIELDS (kept
@@ -124,8 +137,8 @@ class ScanRequest(BaseModel):
     ai_model: str = Field(default="openai/gpt-4o-mini", max_length=256)
     """Provider/model identifier used when ``ai_enrich`` is enabled."""
 
-    ai_deterministic: bool = False
-    """Run AI enrichment at temperature zero for reproducible advisory output."""
+    ai_deterministic: bool | None = None
+    """Optional per-request temperature-zero override; ``None`` inherits deployment policy."""
 
     offline: bool = False
     """Use the local vulnerability DB only; do not perform network vulnerability lookups."""

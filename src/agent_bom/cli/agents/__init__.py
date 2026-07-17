@@ -367,7 +367,7 @@ def scan(
     hc_timeout: float,
     ai_enrich: bool,
     ai_model: str,
-    ai_deterministic: bool,
+    ai_deterministic: Optional[bool],
     ai_gate_findings: bool,
     aws: bool,
     aws_region: Optional[str],
@@ -2452,6 +2452,7 @@ def scan(
                         "ai_source": f.ai_source,
                         "ai_model": f.ai_model,
                         "ai_confidence": f.ai_confidence,
+                        "ai_detected": f.ai_detected,
                     }
                     for f in _skill_audit_obj.findings
                 ],

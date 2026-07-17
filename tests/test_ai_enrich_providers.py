@@ -7,6 +7,7 @@ no real network or API calls.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -205,6 +206,109 @@ def test_effective_temperature_deterministic(monkeypatch):
     assert ai_enrich._effective_temperature() == 0.7
 
 
+@pytest.mark.asyncio
+async def test_public_enrichment_inherits_environment_determinism(monkeypatch):
+    """An omitted request override must not disable deployment policy."""
+    observed: list[float] = []
+
+    async def fake_impl(*args, **kwargs):
+        observed.append(ai_enrich._effective_temperature())
+
+    monkeypatch.setattr(config, "AI_DETERMINISTIC", True)
+    monkeypatch.setattr(config, "AI_TEMPERATURE", 0.7)
+    monkeypatch.setattr(ai_enrich, "_run_ai_enrichment_impl", fake_impl)
+
+    await ai_enrich.run_ai_enrichment(object(), deterministic=None)
+
+    assert observed == [0.0]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_deterministic_modes_have_isolated_cache_entries(monkeypatch):
+    """A nondeterministic response must never satisfy a deterministic request."""
+    ai_enrich._cache.clear()
+    temperatures: list[float] = []
+    both_started = asyncio.Event()
+
+    async def fake_acompletion(**kwargs):
+        temperatures.append(kwargs["temperature"])
+        if len(temperatures) == 2:
+            both_started.set()
+        await both_started.wait()
+
+        class _Message:
+            content = f"temperature={kwargs['temperature']}"
+
+        class _Choice:
+            message = _Message()
+
+        class _Response:
+            choices = [_Choice()]
+
+        return _Response()
+
+    fake_litellm = type("m", (), {"acompletion": staticmethod(fake_acompletion)})
+    monkeypatch.setattr(config, "AI_TEMPERATURE", 0.7)
+
+    async def call(deterministic: bool) -> str | None:
+        token = ai_enrich._AI_DETERMINISTIC_OVERRIDE.set(deterministic)
+        try:
+            return await ai_enrich._call_llm_via_litellm(
+                "same prompt",
+                "openai/fake",
+                task=EnrichmentTask.TRIAGE,
+            )
+        finally:
+            ai_enrich._AI_DETERMINISTIC_OVERRIDE.reset(token)
+
+    with patch.dict("sys.modules", {"litellm": fake_litellm}):
+        nondeterministic, deterministic = await asyncio.gather(call(False), call(True))
+
+    assert nondeterministic == "temperature=0.7"
+    assert deterministic == "temperature=0.0"
+    assert sorted(temperatures) == [0.0, 0.7]
+
+
+def test_cache_key_includes_execution_posture(monkeypatch):
+    monkeypatch.setattr(config, "AI_MODEL_REVISION", "revision-a")
+    monkeypatch.setattr(config, "AI_REDACT_PROMPTS", True)
+    monkeypatch.setattr(config, "AI_TEMPERATURE", 0.7)
+    baseline = ai_enrich._cache_key(
+        "prompt",
+        "openai/fake",
+        task=EnrichmentTask.TRIAGE,
+        provider="litellm",
+    )
+    token = ai_enrich._AI_DETERMINISTIC_OVERRIDE.set(True)
+    try:
+        deterministic = ai_enrich._cache_key(
+            "prompt",
+            "openai/fake",
+            task=EnrichmentTask.TRIAGE,
+            provider="litellm",
+        )
+    finally:
+        ai_enrich._AI_DETERMINISTIC_OVERRIDE.reset(token)
+
+    variants = {
+        deterministic,
+        ai_enrich._cache_key("prompt", "openai/other", task=EnrichmentTask.TRIAGE, provider="litellm"),
+        ai_enrich._cache_key("prompt", "openai/fake", task=EnrichmentTask.SUMMARY, provider="litellm"),
+        ai_enrich._cache_key("prompt", "openai/fake", task=EnrichmentTask.TRIAGE, provider="other"),
+    }
+    monkeypatch.setattr(config, "AI_MODEL_REVISION", "revision-b")
+    variants.add(ai_enrich._cache_key("prompt", "openai/fake", task=EnrichmentTask.TRIAGE, provider="litellm"))
+    monkeypatch.setattr(config, "AI_MODEL_REVISION", "revision-a")
+    monkeypatch.setattr(config, "AI_REDACT_PROMPTS", False)
+    variants.add(ai_enrich._cache_key("prompt", "openai/fake", task=EnrichmentTask.TRIAGE, provider="litellm"))
+    monkeypatch.setattr(config, "AI_REDACT_PROMPTS", True)
+    monkeypatch.setattr(ai_enrich, "AI_PROMPT_VERSION", "ai-enrichment.test-version")
+    variants.add(ai_enrich._cache_key("prompt", "openai/fake", task=EnrichmentTask.TRIAGE, provider="litellm"))
+
+    assert baseline not in variants
+    assert len(variants) == 7
+
+
 # ─── Retry / backoff ─────────────────────────────────────────────────────────
 
 
@@ -301,3 +405,98 @@ async def test_litellm_call_retries_transient(monkeypatch):
 
     assert out == "final answer"
     assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_provider_attempt_budget_caps_retries(monkeypatch):
+    """The advertised cap counts every provider request, including retries."""
+    attempts = 0
+
+    async def fake_acompletion(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise httpx.ConnectError("down")
+
+    fake_litellm = type("m", (), {"acompletion": staticmethod(fake_acompletion)})
+    monkeypatch.setattr(ai_enrich.asyncio, "sleep", AsyncMock())
+    ai_enrich._cache.clear()
+    budget = ai_enrich.AICallBudget(max_calls=1)
+
+    with patch.dict("sys.modules", {"litellm": fake_litellm}):
+        out = await ai_enrich._call_llm_via_litellm(
+            "prompt",
+            "openai/fake",
+            task=EnrichmentTask.TRIAGE,
+            budget=budget,
+        )
+
+    assert out is None
+    assert attempts == 1
+    assert budget.to_dict() == {
+        "max_provider_attempts": 1,
+        "provider_attempts": 1,
+        "provider_attempts_remaining": 0,
+        "cache_hits": 0,
+        "retries": 0,
+        "exhausted": True,
+        "attempts_by_task": {"triage": 1},
+    }
+
+
+@pytest.mark.asyncio
+async def test_provider_attempt_budget_counts_retry_and_cache_hit(monkeypatch):
+    """Successful retries count as requests; a later cache hit does not consume the cap."""
+    attempts = 0
+
+    async def fake_acompletion(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise httpx.TimeoutException("transient")
+
+        class _Message:
+            content = "cached result"
+
+        class _Choice:
+            message = _Message()
+
+        class _Response:
+            choices = [_Choice()]
+
+        return _Response()
+
+    fake_litellm = type("m", (), {"acompletion": staticmethod(fake_acompletion)})
+    monkeypatch.setattr(ai_enrich.asyncio, "sleep", AsyncMock())
+    ai_enrich._cache.clear()
+    budget = ai_enrich.AICallBudget(max_calls=2)
+
+    with patch.dict("sys.modules", {"litellm": fake_litellm}):
+        first = await ai_enrich._call_llm_via_litellm(
+            "prompt",
+            "openai/fake",
+            task=EnrichmentTask.TRIAGE,
+            budget=budget,
+        )
+        second = await ai_enrich._call_llm_via_litellm(
+            "prompt",
+            "openai/fake",
+            task=EnrichmentTask.TRIAGE,
+            budget=budget,
+        )
+
+    assert first == second == "cached result"
+    assert attempts == 2
+    assert budget.to_dict() == {
+        "max_provider_attempts": 2,
+        "provider_attempts": 2,
+        "provider_attempts_remaining": 0,
+        "cache_hits": 1,
+        "retries": 1,
+        "exhausted": True,
+        "attempts_by_task": {"triage": 2},
+    }
+
+
+def test_provider_attempt_budget_rejects_negative_limit():
+    with pytest.raises(ValueError, match="must be non-negative"):
+        ai_enrich.AICallBudget(max_calls=-1)

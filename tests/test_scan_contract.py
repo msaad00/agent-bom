@@ -47,6 +47,12 @@ def test_scan_request_accepts_advisory_ai_enrichment_controls() -> None:
     assert request.ai_deterministic is True
 
 
+def test_scan_request_inherits_deployment_determinism_when_omitted() -> None:
+    request = ScanRequest(ai_enrich=True, ai_model="ollama/llama3.2")
+
+    assert request.ai_deterministic is None
+
+
 def test_cli_scan_runner_reexports_shared_scan_config() -> None:
     from agent_bom.cli._scan_runner import ScanConfig as RunnerScanConfig
 

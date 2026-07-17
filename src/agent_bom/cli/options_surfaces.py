@@ -467,12 +467,13 @@ def ai_remediation_options(fn):
             click.option(
                 "--ai-deterministic",
                 is_flag=True,
-                help="Run AI enrichment at temperature 0 for reproducible advisory output.",
+                default=None,
+                help="Run AI enrichment at temperature 0; omitted inherits AGENT_BOM_AI_DETERMINISTIC.",
             ),
             click.option(
                 "--ai-gate-findings",
                 is_flag=True,
-                help="Explicitly allow deterministic-mode AI skill reviews to affect pass/fail; requires --ai-deterministic.",
+                help="Explicitly allow deterministic-mode AI skill reviews to affect the scan exit gate; requires --ai-deterministic.",
             ),
             click.option(
                 "--ai-model",

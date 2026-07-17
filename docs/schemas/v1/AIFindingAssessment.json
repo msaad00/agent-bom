@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "AIProvenance": {
+      "additionalProperties": false,
+      "description": "Public schema contract for model-derived scan evidence.",
+      "properties": {
+        "deterministic": {
+          "title": "Deterministic",
+          "type": "boolean"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "model_revision": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Model Revision",
+          "type": "string"
+        },
+        "prompt_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Prompt Sha256",
+          "type": "string"
+        },
+        "prompt_version": {
+          "default": "ai-enrichment.v2",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "redaction_applied": {
+          "title": "Redaction Applied",
+          "type": "boolean"
+        },
+        "response_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Response Sha256",
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ai.provenance.v1",
+          "default": "ai.provenance.v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "provider",
+        "model",
+        "prompt_sha256",
+        "response_sha256",
+        "generated_at",
+        "deterministic",
+        "redaction_applied"
+      ],
+      "title": "AIProvenance",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Public schema contract for one advisory AI assessment.",
+  "properties": {
+    "advisory": {
+      "const": true,
+      "default": true,
+      "title": "Advisory",
+      "type": "boolean"
+    },
+    "ai_detected": {
+      "const": false,
+      "default": false,
+      "title": "Ai Detected",
+      "type": "boolean"
+    },
+    "classification": {
+      "default": "needs_review",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Classification",
+      "type": "string"
+    },
+    "confidence": {
+      "default": "low",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
+    "false_positive_likelihood": {
+      "default": "low",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "False Positive Likelihood",
+      "type": "string"
+    },
+    "finding_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Finding Id",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/AIProvenance"
+    },
+    "rationale": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ai.finding-assessment.v1",
+      "default": "ai.finding-assessment.v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "suggested_controls": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "title": "Suggested Controls",
+      "type": "array"
+    },
+    "task": {
+      "const": "triage",
+      "default": "triage",
+      "title": "Task",
+      "type": "string"
+    }
+  },
+  "required": [
+    "finding_id",
+    "provenance"
+  ],
+  "title": "AIFindingAssessment",
+  "type": "object"
+}

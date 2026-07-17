@@ -30,8 +30,10 @@ import os
 import random
 import re
 import threading
+import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypeVar
 
@@ -41,12 +43,12 @@ from rich.console import Console
 from agent_bom import config
 from agent_bom.config import AI_CACHE_MAX_ENTRIES as _MAX_AI_CACHE
 from agent_bom.config import OLLAMA_BASE_URL
-from agent_bom.security import sanitize_command_args
+from agent_bom.security import sanitize_command_args, sanitize_error
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from agent_bom.ai_schemas import MCPConfigSecurityAnalysis
+    from agent_bom.ai_schemas import AIFindingAssessment, MCPConfigSecurityAnalysis
     from agent_bom.finding import Finding
     from agent_bom.models import AIBOMReport, BlastRadius
     from agent_bom.parsers.skill_audit import SkillAuditResult
@@ -83,6 +85,7 @@ def _ai_cache_put(key: str, value: str) -> None:
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 OLLAMA_DEFAULT_MODEL = "llama3.2"
 HF_DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+AI_PROMPT_VERSION = "ai-enrichment.v2"
 
 # Ranked preference for local Ollama models (best for security analysis first)
 OLLAMA_MODEL_PREFERENCE = [
@@ -303,28 +306,6 @@ def _resolve_ai_provider(model: str = DEFAULT_MODEL) -> AIProviderResolution:
             status="active",
         )
 
-    if preferred_name == "ollama":
-        hf_status = _provider_status("huggingface")
-        if hf_status.available:
-            return AIProviderResolution(
-                requested_model=requested_model,
-                model=f"huggingface/{HF_DEFAULT_MODEL}",
-                provider=hf_status.descriptor,
-                available=True,
-                status="active",
-                fallback_from=resolved_model,
-            )
-        litellm_status = _provider_status("litellm")
-        if litellm_status.available:
-            return AIProviderResolution(
-                requested_model=requested_model,
-                model=resolved_model,
-                provider=litellm_status.descriptor,
-                available=True,
-                status="active",
-                fallback_from=resolved_model,
-            )
-
     return AIProviderResolution(
         requested_model=requested_model,
         model=resolved_model,
@@ -501,14 +482,21 @@ async def retry_async(
             result = await func()
         except retry_on as exc:
             if attempt >= attempts - 1:
-                logger.warning("%s failed after %d attempt(s): %s", label, attempt + 1, exc)
+                logger.warning("%s failed after %d attempt(s): %s", label, attempt + 1, sanitize_error(str(exc), generic=True))
                 return None
             delay = min(base * (2**attempt), ceiling) + random.uniform(0, base)
-            logger.debug("%s retry %d/%d after %.2fs (%s)", label, attempt + 1, attempts - 1, delay, exc)
+            logger.debug(
+                "%s retry %d/%d after %.2fs (%s)",
+                label,
+                attempt + 1,
+                attempts - 1,
+                delay,
+                sanitize_error(str(exc), generic=True),
+            )
             await asyncio.sleep(delay)
             continue
         except Exception as exc:  # non-retryable — degrade, don't raise
-            logger.warning("%s failed (non-retryable): %s", label, exc)
+            logger.warning("%s failed (non-retryable): %s", label, sanitize_error(exc, generic=True))
             return None
         if result is not None:
             return result
@@ -537,28 +525,47 @@ class EnrichmentTask(str, Enum):
 
 @dataclass
 class AICallBudget:
-    """Run-wide LLM call budget shared by all enrichment tasks."""
+    """Run-wide cap and accounting for actual provider requests."""
 
     max_calls: int = 50
-    calls_used: int = 0
-    calls_by_task: dict[str, int] = field(default_factory=dict)
+    provider_attempts: int = 0
+    cache_hits: int = 0
+    retries: int = 0
+    attempts_by_task: dict[str, int] = field(default_factory=dict)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
-    def try_consume(self, task: EnrichmentTask) -> bool:
-        if self.max_calls > 0 and self.calls_used >= self.max_calls:
-            return False
-        self.calls_used += 1
-        self.calls_by_task[task.value] = self.calls_by_task.get(task.value, 0) + 1
-        return True
+    def __post_init__(self) -> None:
+        if self.max_calls < 0:
+            raise ValueError("AI provider-attempt budget must be non-negative")
+
+    def try_provider_attempt(self, task: EnrichmentTask | None, *, retry: bool = False) -> bool:
+        """Reserve one provider request before any network/provider call."""
+        task_name = task.value if task is not None else "unspecified"
+        with self._lock:
+            if self.max_calls > 0 and self.provider_attempts >= self.max_calls:
+                return False
+            self.provider_attempts += 1
+            if retry:
+                self.retries += 1
+            self.attempts_by_task[task_name] = self.attempts_by_task.get(task_name, 0) + 1
+            return True
+
+    def record_cache_hit(self) -> None:
+        with self._lock:
+            self.cache_hits += 1
 
     def to_dict(self) -> dict[str, object]:
-        remaining = None if self.max_calls <= 0 else max(self.max_calls - self.calls_used, 0)
-        return {
-            "max_calls": self.max_calls,
-            "calls_used": self.calls_used,
-            "calls_remaining": remaining,
-            "exhausted": self.max_calls > 0 and self.calls_used >= self.max_calls,
-            "calls_by_task": dict(sorted(self.calls_by_task.items())),
-        }
+        with self._lock:
+            remaining = None if self.max_calls == 0 else max(self.max_calls - self.provider_attempts, 0)
+            return {
+                "max_provider_attempts": self.max_calls,
+                "provider_attempts": self.provider_attempts,
+                "provider_attempts_remaining": remaining,
+                "cache_hits": self.cache_hits,
+                "retries": self.retries,
+                "exhausted": self.max_calls > 0 and self.provider_attempts >= self.max_calls,
+                "attempts_by_task": dict(sorted(self.attempts_by_task.items())),
+            }
 
 
 # Which tier each task prefers when tiered models are configured.
@@ -666,21 +673,52 @@ def provider_for_model(model: str) -> EnrichmentProvider:
 # ─── LLM calls ───────────────────────────────────────────────────────────────
 
 
-def _cache_key(prompt: str, model: str) -> str:
-    return hashlib.sha256(f"{model}:{prompt}".encode()).hexdigest()
+def _cache_key(
+    prompt: str,
+    model: str,
+    *,
+    task: EnrichmentTask | None = None,
+    provider: str | None = None,
+) -> str:
+    """Hash every execution posture field that can change model output."""
+    prepared_prompt = _prepare_prompt(prompt)
+    posture = {
+        "provider": provider or _provider_name_for_model(model),
+        "model": model,
+        "model_revision": str(getattr(config, "AI_MODEL_REVISION", "") or ""),
+        "task": task.value if task is not None else "unspecified",
+        "temperature": _effective_temperature(),
+        "redaction": bool(getattr(config, "AI_REDACT_PROMPTS", True)),
+        "prompt_version": AI_PROMPT_VERSION,
+        "prompt": prepared_prompt,
+    }
+    encoded = json.dumps(posture, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
-async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+async def _call_ollama_direct(
+    prompt: str,
+    model: str,
+    max_tokens: int = 500,
+    *,
+    task: EnrichmentTask | None = None,
+    budget: AICallBudget | None = None,
+) -> Optional[str]:
     """Call Ollama directly via HTTP API (no litellm dependency needed).
 
     The *model* parameter is the bare model name (e.g. ``llama3.2``).
     """
-    key = _cache_key(prompt, f"ollama/{model}")
+    full_model = f"ollama/{model}"
+    key = _cache_key(prompt, full_model, task=task, provider="ollama")
     cached = _ai_cache_get(key)
     if cached is not None:
+        if budget is not None:
+            budget.record_cache_hit()
         return cached
 
     outbound = _prepare_prompt(prompt)
+    if budget is not None and not budget.try_provider_attempt(task):
+        return None
     try:
         async with httpx.AsyncClient(timeout=_request_timeout()) as client:
             resp = await client.post(
@@ -706,23 +744,38 @@ async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) ->
             logger.warning("Ollama returned status %d", resp.status_code)
             return None
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("Ollama connection failed: %s", exc)
+        logger.warning("Ollama connection failed: %s", sanitize_error(exc, generic=True))
         return None
     except Exception as exc:
-        logger.warning("Ollama call failed: %s", exc)
+        logger.warning("Ollama call failed: %s", sanitize_error(exc, generic=True))
         return None
 
 
-async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+async def _call_llm_via_litellm(
+    prompt: str,
+    model: str,
+    max_tokens: int = 500,
+    *,
+    task: EnrichmentTask | None = None,
+    budget: AICallBudget | None = None,
+) -> Optional[str]:
     """Call LLM via litellm with caching and error handling."""
-    key = _cache_key(prompt, model)
+    key = _cache_key(prompt, model, task=task, provider="litellm")
     cached = _ai_cache_get(key)
     if cached is not None:
+        if budget is not None:
+            budget.record_cache_hit()
         return cached
 
     outbound = _prepare_prompt(prompt)
+    attempt_index = 0
 
     async def _once() -> Optional[str]:
+        nonlocal attempt_index
+        is_retry = attempt_index > 0
+        if budget is not None and not budget.try_provider_attempt(task, retry=is_retry):
+            return None
+        attempt_index += 1
         try:
             from litellm import acompletion
         except ImportError:
@@ -748,20 +801,32 @@ async def _call_huggingface(
     prompt: str,
     model: str = HF_DEFAULT_MODEL,
     max_tokens: int = 500,
+    *,
+    task: EnrichmentTask | None = None,
+    budget: AICallBudget | None = None,
 ) -> Optional[str]:
     """Call HuggingFace Inference API (free tier available).
 
     Uses ``huggingface_hub.InferenceClient.chat_completion()``.
     Requires ``HF_TOKEN`` env var for gated models.
     """
-    key = _cache_key(prompt, f"huggingface/{model}")
+    full_model = f"huggingface/{model}"
+    key = _cache_key(prompt, full_model, task=task, provider="huggingface")
     cached = _ai_cache_get(key)
     if cached is not None:
+        if budget is not None:
+            budget.record_cache_hit()
         return cached
 
     outbound = _prepare_prompt(prompt)
+    attempt_index = 0
 
     async def _once() -> Optional[str]:
+        nonlocal attempt_index
+        is_retry = attempt_index > 0
+        if budget is not None and not budget.try_provider_attempt(task, retry=is_retry):
+            return None
+        attempt_index += 1
         try:
             from huggingface_hub import InferenceClient
         except ImportError:
@@ -783,34 +848,28 @@ async def _call_huggingface(
     return text
 
 
-async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+async def _call_llm(
+    prompt: str,
+    model: str,
+    max_tokens: int = 500,
+    *,
+    task: EnrichmentTask | None = None,
+    budget: AICallBudget | None = None,
+) -> Optional[str]:
     """Call LLM via the best available provider.
 
-    Routing:
-    - ``ollama/*`` models → Ollama direct → HuggingFace → litellm
-    - ``huggingface/*`` models → HuggingFace directly
-    - Other models → litellm
+    Provider prefixes are strict data-boundary decisions. In particular, an
+    explicit ``ollama/*`` model never falls back to a remote provider.
     """
     if model.startswith("ollama/"):
         bare_model = model[len("ollama/") :]
-        result = await _call_ollama_direct(prompt, bare_model, max_tokens)
-        if result is not None:
-            return result
-        # Fallback to HuggingFace
-        if _check_huggingface():
-            result = await _call_huggingface(prompt, max_tokens=max_tokens)
-            if result is not None:
-                return result
-        # Fallback to litellm
-        if _check_litellm():
-            return await _call_llm_via_litellm(prompt, model, max_tokens)
-        return None
+        return await _call_ollama_direct(prompt, bare_model, max_tokens, task=task, budget=budget)
 
     if model.startswith("huggingface/"):
         hf_model = model[len("huggingface/") :]
-        return await _call_huggingface(prompt, model=hf_model, max_tokens=max_tokens)
+        return await _call_huggingface(prompt, model=hf_model, max_tokens=max_tokens, task=task, budget=budget)
 
-    return await _call_llm_via_litellm(prompt, model, max_tokens)
+    return await _call_llm_via_litellm(prompt, model, max_tokens, task=task, budget=budget)
 
 
 # ─── Structured output ──────────────────────────────────────────────────────
@@ -905,7 +964,10 @@ async def _call_ollama_structured(
                     return schema_cls.model_validate_json(text)
         return None
     except Exception as exc:
-        logger.debug("Structured Ollama call failed: %s, falling back to unstructured", exc)
+        logger.debug(
+            "Structured Ollama call failed: %s, falling back to unstructured",
+            sanitize_error(exc, generic=True),
+        )
         return None
 
 
@@ -1074,12 +1136,10 @@ async def enrich_blast_radii(
             )
             break
 
-        if budget is not None and not budget.try_consume(EnrichmentTask.NARRATIVE):
-            logger.warning("AI call budget exhausted before narrative enrichment completed")
-            break
-
         prompt = _build_blast_radius_prompt(br)
-        result = await _call_llm(prompt, model)
+        result = await _call_llm(prompt, model, task=EnrichmentTask.NARRATIVE, budget=budget)
+        if budget is not None and budget.to_dict()["exhausted"] and result is None:
+            logger.warning("AI provider-attempt budget exhausted before narrative enrichment completed")
         seen_packages[pkg_key] = result
         calls_made += 1
         if result:
@@ -1099,11 +1159,8 @@ async def generate_executive_summary(
         return None
     if not _has_any_provider(model):
         return None
-    if budget is not None and not budget.try_consume(EnrichmentTask.SUMMARY):
-        return None
-
     prompt = _build_executive_summary_prompt(report)
-    return await _call_llm(prompt, model, max_tokens=300)
+    return await _call_llm(prompt, model, max_tokens=300, task=EnrichmentTask.SUMMARY, budget=budget)
 
 
 async def generate_threat_chains(
@@ -1116,15 +1173,9 @@ async def generate_threat_chains(
         return []
     if not _has_any_provider(model):
         return []
-    if budget is not None and not budget.try_consume(EnrichmentTask.SUMMARY):
-        return []
-
     prompt = _build_threat_chain_prompt(report)
-    result = await _call_llm(prompt, model, max_tokens=800)
+    result = await _call_llm(prompt, model, max_tokens=800, task=EnrichmentTask.SUMMARY, budget=budget)
     return [result] if result else []
-
-
-_AI_CONFIDENCE = {"high", "medium", "low"}
 
 
 def _bounded_ai_text(value: object, limit: int, default: str = "") -> str:
@@ -1171,42 +1222,58 @@ def _parse_finding_assessments(
     known_ids: set[str],
     provider: str,
     model: str,
-) -> list[dict]:
+    run_id: str,
+    prompt: str,
+) -> list["AIFindingAssessment"]:
+    from pydantic import ValidationError
+
+    from agent_bom.ai_schemas import (
+        AIFindingAssessment,
+        AIFindingAssessmentResponse,
+        AIProvenance,
+    )
+
     data = _parse_json_response(response)
-    raw_assessments = data.get("assessments", []) if isinstance(data, dict) else []
-    if not isinstance(raw_assessments, list):
+    if not isinstance(data, dict):
         return []
-    accepted: list[dict] = []
+    try:
+        parsed = AIFindingAssessmentResponse.model_validate(data)
+    except ValidationError as exc:
+        logger.warning("AI finding assessment response rejected: %s", sanitize_error(exc, generic=True))
+        return []
+
+    accepted: list[AIFindingAssessment] = []
     seen_ids: set[str] = set()
-    for raw in raw_assessments:
-        if not isinstance(raw, dict):
-            continue
-        finding_id = _bounded_ai_text(raw.get("finding_id"), 128)
+    prompt_sha256 = hashlib.sha256(_prepare_prompt(prompt).encode()).hexdigest()
+    response_sha256 = hashlib.sha256(response.encode()).hexdigest()
+    generated_at = datetime.now(timezone.utc)
+    for candidate in parsed.assessments:
+        finding_id = candidate.finding_id
         if finding_id not in known_ids or finding_id in seen_ids:
             continue
         seen_ids.add(finding_id)
-        confidence = _bounded_ai_text(raw.get("confidence"), 16, "low").lower()
-        false_positive = _bounded_ai_text(raw.get("false_positive_likelihood"), 16, "low").lower()
-        controls: list[str] = []
-        for control in raw.get("suggested_controls", []) if isinstance(raw.get("suggested_controls"), list) else []:
-            normalized = _bounded_ai_text(control, 240)
-            if normalized and normalized not in controls:
-                controls.append(normalized)
-            if len(controls) >= 10:
-                break
+        controls = list(dict.fromkeys(candidate.suggested_controls))[:10]
         accepted.append(
-            {
-                "finding_id": finding_id,
-                "task": EnrichmentTask.TRIAGE.value,
-                "classification": _bounded_ai_text(raw.get("classification"), 64, "needs_review"),
-                "confidence": confidence if confidence in _AI_CONFIDENCE else "low",
-                "false_positive_likelihood": false_positive if false_positive in _AI_CONFIDENCE else "low",
-                "rationale": _bounded_ai_text(raw.get("rationale"), 1000),
-                "suggested_controls": controls,
-                "advisory": True,
-                "provider": provider,
-                "model": model,
-            }
+            AIFindingAssessment(
+                finding_id=finding_id,
+                classification=candidate.classification,
+                confidence=candidate.confidence,
+                false_positive_likelihood=candidate.false_positive_likelihood,
+                rationale=candidate.rationale,
+                suggested_controls=controls,
+                provenance=AIProvenance(
+                    run_id=run_id,
+                    provider=provider,
+                    model=model,
+                    model_revision=str(getattr(config, "AI_MODEL_REVISION", "") or ""),
+                    prompt_version=AI_PROMPT_VERSION,
+                    prompt_sha256=prompt_sha256,
+                    response_sha256=response_sha256,
+                    generated_at=generated_at,
+                    deterministic=_effective_temperature() == 0.0,
+                    redaction_applied=bool(getattr(config, "AI_REDACT_PROMPTS", True)),
+                ),
+            )
         )
     return accepted
 
@@ -1217,25 +1284,36 @@ async def assess_report_findings(
     *,
     provider: str = "unknown",
     budget: AICallBudget | None = None,
-) -> list[dict]:
+    run_id: str | None = None,
+) -> list["AIFindingAssessment"]:
     """Return immutable, provenance-scored AI triage for deterministic findings."""
     if not _has_any_provider(model):
         return []
-    max_findings = max(0, int(getattr(config, "AI_MAX_FINDINGS_PER_RUN", 100)))
+    max_findings = int(getattr(config, "AI_MAX_FINDINGS_PER_RUN", 100))
+    if max_findings < 0:
+        raise ValueError("AGENT_BOM_AI_MAX_FINDINGS must be non-negative")
     if max_findings == 0:
         return []
     findings = report.to_findings()[:max_findings]
     if not findings:
         return []
     batch_size = max(1, min(int(getattr(config, "AI_FINDING_BATCH_SIZE", 20)), 50))
-    assessments: list[dict] = []
+    assessments: list[AIFindingAssessment] = []
+    active_run_id = run_id or str(uuid.uuid4())
     for offset in range(0, len(findings), batch_size):
         batch = findings[offset : offset + batch_size]
-        if budget is not None and not budget.try_consume(EnrichmentTask.TRIAGE):
-            logger.warning("AI call budget exhausted before finding triage completed")
-            break
-        response = await _call_llm(_build_finding_assessment_prompt(batch), model, max_tokens=1800)
+        prompt = _build_finding_assessment_prompt(batch)
+        response = await _call_llm(
+            prompt,
+            model,
+            max_tokens=1800,
+            task=EnrichmentTask.TRIAGE,
+            budget=budget,
+        )
         if not response:
+            if budget is not None and budget.to_dict()["exhausted"]:
+                logger.warning("AI provider-attempt budget exhausted before finding triage completed")
+                break
             continue
         assessments.extend(
             _parse_finding_assessments(
@@ -1243,6 +1321,8 @@ async def assess_report_findings(
                 known_ids={finding.id for finding in batch},
                 provider=provider,
                 model=model,
+                run_id=active_run_id,
+                prompt=prompt,
             )
         )
     return assessments
@@ -1260,9 +1340,14 @@ async def _run_ai_enrichment_impl(
     gate_ai_findings: bool = False,
 ) -> None:
     """Run all AI enrichment steps on a report. Modifies report in-place."""
-    budget = AICallBudget(max_calls=max(0, int(getattr(config, "AI_MAX_CALLS_PER_RUN", 50))))
+    budget = AICallBudget(max_calls=int(getattr(config, "AI_MAX_CALLS_PER_RUN", 50)))
+    run_id = str(uuid.uuid4())
     resolution = _resolve_ai_provider(model)
-    report.ai_enrichment_metadata = {**resolution.to_metadata(), "call_budget": budget.to_dict()}
+    report.ai_enrichment_metadata = {
+        **resolution.to_metadata(),
+        "run_id": run_id,
+        "call_budget": budget.to_dict(),
+    }
     if not resolution.available:
         console.print("  [yellow]No LLM provider available. Skipping AI enrichment.[/yellow]")
         console.print("  [dim]Option 1: Install Ollama (free, local) — ollama.com[/dim]")
@@ -1284,6 +1369,9 @@ async def _run_ai_enrichment_impl(
     report.ai_enrichment_metadata = {
         **resolution.to_metadata(),
         "harness_version": "2",
+        "run_id": run_id,
+        "model_revision": str(getattr(config, "AI_MODEL_REVISION", "") or ""),
+        "prompt_version": AI_PROMPT_VERSION,
         "task_models": {
             "narrative": narrative_model,
             "summary": summary_model,
@@ -1308,7 +1396,16 @@ async def _run_ai_enrichment_impl(
         triage_resolution.model if triage_resolution.available else triage_model,
         provider=triage_resolution.provider.name if triage_resolution.provider else "unknown",
         budget=budget,
+        run_id=run_id,
     )
+    total_findings = len(report.to_findings())
+    max_findings = int(getattr(config, "AI_MAX_FINDINGS_PER_RUN", 100))
+    report.ai_enrichment_metadata["triage_scope"] = {
+        "findings_total": total_findings,
+        "findings_offered": min(total_findings, max_findings),
+        "findings_truncated": max(total_findings - max_findings, 0),
+        "assessments_generated": len(assessments),
+    }
     if assessments:
         report.ai_finding_assessments = assessments
         console.print(f"  [green]{len(assessments)} advisory finding assessment(s) generated[/green]")
@@ -1370,10 +1467,10 @@ async def run_ai_enrichment(
     gate_ai_findings: bool = False,
 ) -> None:
     """Run enrichment with a task-local deterministic-mode override."""
-    if gate_ai_findings and deterministic is not True and not getattr(config, "AI_DETERMINISTIC", False):
-        raise ValueError("AI finding gating requires deterministic mode")
     token = _AI_DETERMINISTIC_OVERRIDE.set(deterministic)
     try:
+        if gate_ai_findings and _effective_temperature() != 0.0:
+            raise ValueError("AI finding gating requires deterministic mode")
         await _run_ai_enrichment_impl(
             report,
             model,
@@ -1408,9 +1505,6 @@ def run_ai_enrichment_sync(
 
 
 # ─── Skill file AI analysis ──────────────────────────────────────────────────
-
-
-_VALID_SEVERITIES = {"critical", "high", "medium", "low"}
 
 
 def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: list[dict]) -> str:
@@ -1478,11 +1572,19 @@ def _parse_skill_analysis_response(response: str) -> dict | None:
     Uses the generic ``_parse_json_response`` and validates that the result
     contains the expected ``overall_risk_level`` key.
     """
+    from pydantic import ValidationError
+
+    from agent_bom.ai_schemas import SkillAnalysisResult
+
     data = _parse_json_response(response)
-    if data and "overall_risk_level" in data:
-        return data
-    logger.warning("Could not parse skill analysis LLM response as JSON")
-    return None
+    if not isinstance(data, dict):
+        logger.warning("Could not parse skill analysis LLM response as JSON")
+        return None
+    try:
+        return SkillAnalysisResult.model_validate(data).model_dump()
+    except ValidationError as exc:
+        logger.warning("Skill analysis response rejected: %s", sanitize_error(exc, generic=True))
+        return None
 
 
 def _apply_skill_analysis(
@@ -1499,7 +1601,10 @@ def _apply_skill_analysis(
     findings. Deterministic pass/fail is preserved unless the caller explicitly
     opts into AI gating after selecting deterministic model execution.
     """
+    from agent_bom.ai_schemas import SkillAnalysisResult
     from agent_bom.parsers.skill_audit import SkillFinding
+
+    parsed = SkillAnalysisResult.model_validate(ai_data)
 
     # Capture the deterministic result exactly once, before AI annotations.
     if audit.deterministic_passed is None:
@@ -1507,8 +1612,8 @@ def _apply_skill_analysis(
     audit.ai_gate_enabled = gate_ai_findings
 
     # Set top-level AI fields
-    audit.ai_overall_risk_level = ai_data.get("overall_risk_level")
-    audit.ai_skill_summary = ai_data.get("summary")
+    audit.ai_overall_risk_level = parsed.overall_risk_level
+    audit.ai_skill_summary = parsed.summary
 
     # Build a lookup of existing findings by title for matching
     findings_by_title: dict[str, SkillFinding] = {}
@@ -1516,51 +1621,43 @@ def _apply_skill_analysis(
         findings_by_title[finding.title] = finding
 
     # Apply finding reviews
-    for review in ai_data.get("finding_reviews", []):
-        title = review.get("title") or review.get("original_title", "")
+    for review in parsed.finding_reviews:
+        title = review.title or review.original_title
         matched = findings_by_title.get(title)
         if not matched:
             continue
 
-        verdict = review.get("verdict", "confirmed")
-        reasoning = review.get("reasoning", "")
-        matched.ai_analysis = reasoning
+        verdict = review.verdict
+        matched.ai_analysis = review.reasoning
         matched.ai_source = ai_source
         matched.ai_model = ai_model
-        confidence = review.get("confidence")
-        if isinstance(confidence, str) and confidence.lower() in {"high", "medium", "low"}:
-            matched.ai_confidence = confidence.lower()
+        if review.confidence is not None:
+            matched.ai_confidence = review.confidence
 
         if verdict == "false_positive":
             matched.ai_adjusted_severity = "false_positive"
         elif verdict == "severity_adjusted":
-            adjusted = review.get("adjusted_severity")
-            if adjusted and adjusted.lower() in _VALID_SEVERITIES:
-                matched.ai_adjusted_severity = adjusted.lower()
+            if review.adjusted_severity is not None:
+                matched.ai_adjusted_severity = review.adjusted_severity
 
     # Add new AI-detected findings
-    for new in ai_data.get("new_findings", []):
-        severity = new.get("severity", "medium").lower()
-        if severity not in _VALID_SEVERITIES:
-            severity = "medium"
-
+    for new in parsed.new_findings:
         source_file = next(iter(audit.findings), None)
         source = source_file.source_file if source_file else "unknown"
 
         audit.findings.append(
             SkillFinding(
-                severity=severity,
-                category=new.get("category", "ai_detected"),
-                title=new.get("title", "AI-detected finding"),
-                detail=new.get("detail", ""),
+                severity=new.severity,
+                category=new.category,
+                title=new.title,
+                detail=new.detail,
                 source_file=source,
-                recommendation=new.get("recommendation", ""),
+                recommendation=new.recommendation,
                 context="ai_analysis",
                 ai_source=ai_source,
                 ai_model=ai_model,
-                ai_confidence=str(new.get("confidence", "medium")).lower()
-                if str(new.get("confidence", "medium")).lower() in {"high", "medium", "low"}
-                else "medium",
+                ai_confidence=new.confidence,
+                ai_detected=True,
             )
         )
 
@@ -1597,9 +1694,10 @@ async def enrich_skill_audit(
     if not resolution.available:
         logger.debug("No LLM provider available for skill enrichment")
         return False
-    resolved_model = resolution.model
-    if budget is not None and not budget.try_consume(EnrichmentTask.DETECTION):
+    if resolution.provider is None or not resolution.provider.local:
+        logger.warning("Raw skill-file AI analysis skipped because the selected provider is not local")
         return False
+    resolved_model = resolution.model
 
     # Serialize static findings as list of dicts
     static_findings = [
@@ -1616,7 +1714,13 @@ async def enrich_skill_audit(
 
     # Build prompt and call LLM
     prompt = _build_skill_analysis_prompt(skill_result.raw_content, static_findings)
-    response = await _call_llm(prompt, resolved_model, max_tokens=1500)
+    response = await _call_llm(
+        prompt,
+        resolved_model,
+        max_tokens=1500,
+        task=EnrichmentTask.DETECTION,
+        budget=budget,
+    )
 
     if not response:
         logger.warning("LLM returned empty response for skill analysis")
@@ -1628,13 +1732,17 @@ async def enrich_skill_audit(
         logger.warning("Could not parse LLM skill analysis response")
         return False
 
-    _apply_skill_analysis(
-        skill_audit,
-        ai_data,
-        ai_source=resolution.provider.name if resolution.provider else None,
-        ai_model=resolved_model,
-        gate_ai_findings=gate_ai_findings,
-    )
+    try:
+        _apply_skill_analysis(
+            skill_audit,
+            ai_data,
+            ai_source=resolution.provider.name,
+            ai_model=resolved_model,
+            gate_ai_findings=gate_ai_findings,
+        )
+    except (TypeError, ValueError) as exc:
+        logger.warning("Skill analysis could not be applied: %s", sanitize_error(exc, generic=True))
+        return False
     return True
 
 
@@ -1713,15 +1821,19 @@ async def analyze_mcp_config_security(
     # Budgeted orchestration uses exactly one provider call. The legacy direct
     # function path retains native structured output plus its fallback.
     if budget is not None:
-        if not budget.try_consume(EnrichmentTask.CONFIG_ANALYSIS):
-            return None
-        raw = await _call_llm(prompt, model, max_tokens=1000)
+        raw = await _call_llm(
+            prompt,
+            model,
+            max_tokens=1000,
+            task=EnrichmentTask.CONFIG_ANALYSIS,
+            budget=budget,
+        )
         parsed = _parse_json_response(raw) if raw else None
         if parsed:
             try:
                 return MCPConfigSecurityAnalysis.model_validate(parsed)
             except (ValueError, TypeError, KeyError) as exc:
-                logger.debug("Failed to validate MCPConfigSecurityAnalysis: %s", exc)
+                logger.debug("Failed to validate MCPConfigSecurityAnalysis: %s", sanitize_error(exc, generic=True))
         return None
 
     # Try structured output first
@@ -1737,5 +1849,5 @@ async def analyze_mcp_config_security(
             try:
                 return MCPConfigSecurityAnalysis.model_validate(parsed)
             except (ValueError, TypeError, KeyError) as exc:
-                logger.debug("Failed to validate MCPConfigSecurityAnalysis: %s", exc)
+                logger.debug("Failed to validate MCPConfigSecurityAnalysis: %s", sanitize_error(exc, generic=True))
     return None

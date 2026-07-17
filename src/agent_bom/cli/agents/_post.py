@@ -338,6 +338,15 @@ def compute_exit_code(
                 exit_code = 1
                 break
 
+    # AI skill findings participate in CI only after the operator explicitly
+    # selects deterministic execution and --ai-gate-findings. The immutable
+    # deterministic_passed value remains in the artifact for audit/replay.
+    skill_audit = ctx.skill_audit_data if isinstance(ctx.skill_audit_data, dict) else {}
+    if skill_audit.get("ai_gate_enabled") is True and skill_audit.get("passed") is False:
+        if not quiet:
+            con.print("\n  [red]Exiting with code 1: deterministic-mode AI skill finding gate failed[/red]")
+        exit_code = 1
+
     # Two-tier: warn-on threshold (exit 0 with banner)
     if warn_on_severity and _active_blast_radii and exit_code == 0:
         warn_threshold = SEVERITY_ORDER.get(warn_on_severity.lower(), 0)

@@ -66,6 +66,82 @@ def test_api_pipeline_image_scan_uses_container_surface(monkeypatch):
     assert job.result["agents"][0]["mcp_servers"][0]["surface"] == "container-image"
 
 
+def test_api_pipeline_ai_enrichment_inherits_env_and_serializes_typed_provenance(monkeypatch):
+    from agent_bom import config
+    from agent_bom.ai_enrich import AI_PROVIDER_DESCRIPTORS, AIProviderResolution
+
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="ai-api-123",
+        created_at="2026-07-17T12:00:00Z",
+        request=ScanRequest(ai_enrich=True, ai_model="ollama/fake", offline=True),
+    )
+    agent = _agent_with_package()
+    package = agent.mcp_servers[0].packages[0]
+    blast_radius = BlastRadius(
+        vulnerability=Vulnerability(
+            id="CVE-2026-3206",
+            summary="Fake provider API smoke vulnerability",
+            severity=Severity.HIGH,
+        ),
+        package=package,
+        affected_agents=[agent],
+        affected_servers=agent.mcp_servers,
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    resolution = AIProviderResolution(
+        requested_model="ollama/fake",
+        model="ollama/fake",
+        provider=AI_PROVIDER_DESCRIPTORS["ollama"],
+        available=True,
+        status="active",
+    )
+    provider_prompts: list[str] = []
+
+    async def fake_provider(prompt, model, max_tokens=500, **kwargs):
+        provider_prompts.append(prompt)
+        if "Classify and triage" in prompt:
+            findings = json.loads(prompt.split("\nFindings:\n", maxsplit=1)[1])
+            finding_id = findings[0]["finding_id"]
+            return json.dumps(
+                {
+                    "assessments": [
+                        {
+                            "finding_id": finding_id,
+                            "classification": "needs_review",
+                            "confidence": "high",
+                            "false_positive_likelihood": "low",
+                            "rationale": "Bounded fake-provider assessment.",
+                            "suggested_controls": [],
+                        }
+                    ]
+                }
+            )
+        if "MCP Server Configurations" in prompt:
+            return json.dumps({"overall_risk": "Low", "summary": "Fake provider.", "findings": []})
+        return "Fake provider narrative."
+
+    monkeypatch.setattr(config, "AI_DETERMINISTIC", True)
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents, tenant_id="default": None)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [agent])
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda *args, **kwargs: [blast_radius])
+    monkeypatch.setattr("agent_bom.ai_enrich._resolve_ai_provider", lambda model="ollama/fake": resolution)
+    monkeypatch.setattr("agent_bom.ai_enrich._call_llm", fake_provider)
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    assert job.result is not None
+    assert job.result["ai_enrichment_metadata"]["deterministic"] is True
+    assert any("Classify and triage" in prompt for prompt in provider_prompts), job.result
+    assessment = job.result["ai_finding_assessments"][0]
+    assert assessment["schema_version"] == "ai.finding-assessment.v1"
+    assert assessment["provenance"]["provider"] == "ollama"
+    assert len(assessment["provenance"]["prompt_sha256"]) == 64
+
+
 def test_api_pipeline_dry_run_skips_discovery_scan_and_side_effects(monkeypatch):
     store = _DummyStore()
     job = ScanJob(

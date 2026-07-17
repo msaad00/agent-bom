@@ -25,6 +25,7 @@ class SkillFinding:
     ai_source: str | None = None  # Provider that generated ai_analysis / AI-detected finding
     ai_model: str | None = None  # Model identifier that generated ai_analysis / AI-detected finding
     ai_confidence: str | None = None  # high | medium | low, as reported or assigned by AI review
+    ai_detected: bool = False  # immutable origin marker; category remains model-proposed taxonomy
     evidence_source: str = "static_config"  # static_text | static_config | ast_python | ast_js | external_registry
     confidence: str = "medium"  # high | medium | low
     source_line: int | None = None

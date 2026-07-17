@@ -24,9 +24,16 @@
           "type": "array"
         },
         "ai_deterministic": {
-          "default": false,
-          "title": "Ai Deterministic",
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ai Deterministic"
         },
         "ai_enrich": {
           "default": false,
@@ -197,10 +204,10 @@
           "anyOf": [
             {
               "enum": [
-                "low",
-                "medium",
+                "critical",
                 "high",
-                "critical"
+                "medium",
+                "low"
               ],
               "type": "string"
             },

@@ -2834,9 +2834,10 @@ components:
           title: Agent Projects
           type: array
         ai_deterministic:
-          default: false
+          anyOf:
+          - type: boolean
+          - type: 'null'
           title: Ai Deterministic
-          type: boolean
         ai_enrich:
           default: false
           title: Ai Enrich
@@ -2948,10 +2949,10 @@ components:
         min_severity:
           anyOf:
           - enum:
-            - low
-            - medium
-            - high
             - critical
+            - high
+            - medium
+            - low
             type: string
           - type: 'null'
           title: Min Severity

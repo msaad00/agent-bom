@@ -853,6 +853,7 @@ def run_local_discovery(
                             "server": f.server,
                             "recommendation": f.recommendation,
                             "context": f.context,
+                            "ai_detected": f.ai_detected,
                         }
                         for f in skill_audit.findings
                     ],

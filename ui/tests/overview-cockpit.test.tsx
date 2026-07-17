@@ -255,24 +255,11 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("Grade C")).toBeInTheDocument();
   });
 
-  it("shows an honest posture trend when history is available", () => {
-    render(
-      <OverviewCockpit
-        {...baseProps}
-        grade="C"
-        score={62}
-        scoreTrend={{ delta: 7, previousScore: 55, timestamp: "2026-07-16T00:00:00Z" }}
-      />,
-    );
+  it("labels trend unavailable when this score model has no matching history contract", () => {
+    render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
 
-    expect(screen.getByText(/improved 7\.0 points/i)).toBeInTheDocument();
-    expect(screen.getByText(/previous 55/i)).toBeInTheDocument();
-  });
-
-  it("labels missing score history instead of inventing a flat trend", () => {
-    render(<OverviewCockpit {...baseProps} grade="C" score={62} scoreTrend={null} />);
-
-    expect(screen.getByText(/trend unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/trend unavailable.*current score model/i)).toBeInTheDocument();
+    expect(screen.queryByText(/improved|declined/i)).not.toBeInTheDocument();
   });
 
   it("carries operational lane scope hints as tooltips, not visible sentences", () => {

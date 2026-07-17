@@ -2314,22 +2314,6 @@ export interface PostureResponse {
   >;
 }
 
-export interface PostureTrendPoint {
-  timestamp: string;
-  total_vulns: number;
-  critical: number;
-  high: number;
-  medium: number;
-  low: number;
-  posture_score: number;
-  posture_grade: string;
-}
-
-export interface PostureTrendsResponse {
-  data_points: PostureTrendPoint[];
-  count: number;
-}
-
 // ─── Cross-domain overview (landing page) ────────────────────────────────────
 
 export type OverviewDomainStatus = "ok" | "warn" | "critical" | "idle";

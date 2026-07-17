@@ -12,7 +12,6 @@ import {
   formatDate,
   type PostureCountsResponse,
   type ComplianceResponse,
-  type PostureTrendPoint,
 } from "@/lib/api";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
@@ -65,7 +64,6 @@ export default function Dashboard() {
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
-  const [postureHistory, setPostureHistory] = useState<PostureTrendPoint[] | null | undefined>(undefined);
   // Local display-format override; falls back to the persisted per-tenant
   // config carried on the overview posture. Toggling persists via the API (#3940).
   const [scoreFormatOverride, setScoreFormatOverride] = useState<PostureScoreFormat | null>(null);
@@ -78,9 +76,6 @@ export default function Dashboard() {
     api.getPosture().then(setPosture).catch(() => {});
     api.getOverview().then(setOverview).catch(() => {});
     api.getCompliance().then(setCompliance).catch(() => {});
-    api.getPostureTrends(2)
-      .then((response) => setPostureHistory(response.data_points))
-      .catch(() => setPostureHistory(null));
   }, []);
 
   useEffect(() => {
@@ -322,18 +317,6 @@ export default function Dashboard() {
   const scoreFormat: PostureScoreFormat =
     scoreFormatOverride ?? overview?.posture.display_format ?? "percent";
   const scoreBreakdown = overview?.posture.breakdown ?? null;
-  const scoreTrend = (() => {
-    if (postureHistory === undefined) return undefined;
-    if (!postureHistory || postureHistory.length < 2 || typeof postureScore !== "number") return null;
-    const [latest, prior] = postureHistory;
-    if (!latest || !prior) return null;
-    const previous = Math.abs(latest.posture_score - postureScore) < 0.01 ? prior : latest;
-    return {
-      delta: postureScore - previous.posture_score,
-      previousScore: previous.posture_score,
-      timestamp: previous.timestamp,
-    };
-  })();
   const handleScoreFormatChange = (format: PostureScoreFormat) => {
     // Optimistic local update, then persist per-tenant. A failed persist (e.g.
     // a viewer without admin) still keeps the local view; it just won't stick.
@@ -396,7 +379,6 @@ export default function Dashboard() {
         score={postureScore}
         scoreFormat={scoreFormat}
         scoreBreakdown={scoreBreakdown}
-        scoreTrend={scoreTrend}
         onScoreFormatChange={handleScoreFormatChange}
         postureSummary={overview?.posture.summary ?? posture?.summary}
         critical={criticalCount}

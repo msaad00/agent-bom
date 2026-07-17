@@ -151,8 +151,6 @@ export interface OverviewCockpitProps {
   scoreFormat?: PostureScoreFormat | undefined;
   /** Weighted inputs behind the score, for the "what influences this" panel. */
   scoreBreakdown?: ExecScoreDriver[] | null | undefined;
-  /** Delta from authoritative posture history. null means no comparable history. */
-  scoreTrend?: { delta: number; previousScore: number; timestamp: string } | null | undefined;
   /** Called when the user picks a display format; parent persists it (#3940). */
   onScoreFormatChange?: ((format: PostureScoreFormat) => void) | undefined;
   postureSummary?: string | undefined;
@@ -190,7 +188,6 @@ export function OverviewCockpit({
   score,
   scoreFormat = "percent",
   scoreBreakdown = null,
-  scoreTrend,
   onScoreFormatChange,
   postureSummary,
   critical,
@@ -242,7 +239,6 @@ export function OverviewCockpit({
               high={high}
               cves={cves}
               latestScan={latestScan}
-              scoreTrend={scoreTrend}
             />
             <SeverityIssueStrip
               summaryReady={summaryReady}
@@ -929,7 +925,6 @@ function PostureHero({
   high,
   cves,
   latestScan,
-  scoreTrend,
 }: {
   grade: string;
   score?: number | undefined;
@@ -940,7 +935,6 @@ function PostureHero({
   high: number;
   cves: number | null;
   latestScan: string | null;
-  scoreTrend?: { delta: number; previousScore: number; timestamp: string } | null | undefined;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
   const badgeTone = ungraded
@@ -993,27 +987,10 @@ function PostureHero({
         <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
           {latestScan ? `Last scan · ${latestScan}` : graded ? "Scan complete" : "No completed scans"}
         </p>
-        {graded && scoreTrend !== undefined ? (
-          scoreTrend === null ? (
-            <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">Trend unavailable · fewer than two posture snapshots</p>
-          ) : (
-            <p
-              className={`mt-1 text-[10px] font-medium ${
-                scoreTrend.delta > 0
-                  ? "text-emerald-700 dark:text-emerald-300"
-                  : scoreTrend.delta < 0
-                    ? "text-red-700 dark:text-red-300"
-                    : "text-[color:var(--text-tertiary)]"
-              }`}
-            >
-              {scoreTrend.delta > 0
-                ? `Improved ${Math.abs(scoreTrend.delta).toFixed(1)} points`
-                : scoreTrend.delta < 0
-                  ? `Declined ${Math.abs(scoreTrend.delta).toFixed(1)} points`
-                  : "No score change"}
-              {` · previous ${Math.round(scoreTrend.previousScore)}`}
-            </p>
-          )
+        {graded ? (
+          <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
+            Trend unavailable · history for the current score model is not recorded
+          </p>
         ) : null}
         <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">{blurb}</p>
       </div>

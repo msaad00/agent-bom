@@ -89,7 +89,6 @@ import type {
   FirewallRuntimeStats,
   EvaluateResult,
   PostureResponse,
-  PostureTrendsResponse,
   EnrichmentPostureResponse,
   GovernanceFinding,
   GovernanceReport,
@@ -302,8 +301,6 @@ export type {
   FirewallDecisionRecord,
   EvaluateResult,
   PostureResponse,
-  PostureTrendPoint,
-  PostureTrendsResponse,
   EnrichmentSourcePosture,
   EnrichmentPostureResponse,
   GovernanceFinding,
@@ -1033,9 +1030,6 @@ export const api = {
 
   /** Full posture grade + dimensions */
   getPosture: () => get<PostureResponse>("/v1/posture"),
-
-  /** Tenant-scoped historical posture points, newest first. */
-  getPostureTrends: (limit = 2) => get<PostureTrendsResponse>(`/v1/trends?limit=${limit}`),
 
   /** Cross-domain posture snapshot for the unified overview landing page */
   getOverview: () => get<OverviewResponse>("/v1/overview"),

@@ -76,7 +76,7 @@ function edge(source: string, target: string, relationship: string, weight = 1):
   };
 }
 
-function buildCockpitGraph() {
+function buildCockpitGraph(nodeCount = 5) {
   const nodes: GraphNode[] = [
     node("agent:desktop", "agent", "claude-desktop"),
     node("server:github", "server", "github"),
@@ -90,6 +90,9 @@ function buildCockpitGraph() {
     edge("pkg:form-data", "cve:form-data", "vulnerable_to", 1.5),
     edge("server:github", "cred:gh-token", "exposes_cred"),
   ];
+  for (let index = nodes.length; index < nodeCount; index += 1) {
+    nodes.push(node(`resource:${index}`, "cloud_resource", `production-resource-${index}`, index % 17 === 0 ? "high" : "none", index % 17 === 0 ? 7.1 : 0));
+  }
 
   return {
     scan_id: scanId,
@@ -131,7 +134,7 @@ function buildCockpitGraph() {
 }
 
 async function routeCockpit(page: Page, snapshotNodeCount?: number) {
-  const graph = buildCockpitGraph();
+  const graph = buildCockpitGraph(snapshotNodeCount);
 
   await page.route("**/health", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok" }) });
@@ -242,6 +245,61 @@ async function routeCockpit(page: Page, snapshotNodeCount?: number) {
   await page.route("**/v1/graph?**", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
   });
+  await page.route("**/v1/graph/rollup?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        scan_id: scanId,
+        tenant_id: "default",
+        created_at: createdAt,
+        mode: "rollup",
+        filters: {},
+        top_level: [
+          {
+            id: "account:production",
+            label: "Production account",
+            entity_type: "cloud_account",
+            severity: "critical",
+            is_container: true,
+            has_children: true,
+            direct_child_count: 900,
+            aggregate: {
+              descendant_count: 900,
+              by_type: { cloud_resource: 900 },
+              severity_counts: { critical: 1, high: 53, none: 846 },
+              worst_severity: "critical",
+              worst_severity_rank: 4,
+              internet_exposed: true,
+              toxic_combo: true,
+              exposed_count: 8,
+              toxic_count: 1,
+            },
+          },
+          {
+            id: "account:development",
+            label: "Development account",
+            entity_type: "cloud_account",
+            severity: "high",
+            is_container: true,
+            has_children: true,
+            direct_child_count: 341,
+            aggregate: {
+              descendant_count: 341,
+              by_type: { cloud_resource: 341 },
+              severity_counts: { high: 20, none: 321 },
+              worst_severity: "high",
+              worst_severity_rank: 3,
+              internet_exposed: false,
+              toxic_combo: false,
+              exposed_count: 0,
+              toxic_count: 0,
+            },
+          },
+        ],
+        summary: { total_nodes: 1241, total_edges: 4, top_level_count: 2, container_count: 2 },
+      }),
+    });
+  });
 }
 
 async function expectCockpitVisible(page: Page) {
@@ -299,4 +357,15 @@ test("large estates lead with clusters and keep raw topology as drill-down", asy
     "/graph?scan=scan-cockpit-fixture&rollup=0",
   );
   await page.screenshot({ path: testInfo.outputPath("investigation-large-estate.png"), fullPage: true });
+
+  const rollupRequest = page.waitForRequest((request) => request.url().includes("/v1/graph/rollup"));
+  await page.getByRole("link", { name: "Explore clusters" }).click();
+  await expect(page).toHaveURL(/scan=scan-cockpit-fixture/);
+  await expect(page).toHaveURL(/rollup=1/);
+  await rollupRequest;
+  await expect(page.getByText("Scope roll-up")).toBeVisible();
+  await expect(page.getByText(/2 containers at this level.*1241 nodes in snapshot/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Open node view" }).click();
+  await expect(page).toHaveURL(/rollup=0/);
 });

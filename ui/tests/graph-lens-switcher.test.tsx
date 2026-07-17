@@ -5,12 +5,13 @@ import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 const push = vi.fn();
 let pathname = "/graph";
 let scope: string | null = null;
+let params = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
   useRouter: () => ({ push }),
   useSearchParams: () => ({
-    get: (key: string) => (key === "scope" ? scope : null),
+    get: (key: string) => (key === "scope" ? scope : params.get(key)),
   }),
 }));
 
@@ -18,6 +19,7 @@ describe("GraphLensSwitcher", () => {
   beforeEach(() => {
     pathname = "/graph";
     scope = null;
+    params = new URLSearchParams();
     push.mockClear();
   });
 
@@ -48,6 +50,38 @@ describe("GraphLensSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
     expect(push).toHaveBeenCalledWith("/mesh");
+  });
+
+  it("preserves investigation focus when switching route-backed lenses", () => {
+    pathname = "/security-graph";
+    params = new URLSearchParams({
+      scan: "scan-123",
+      agent: "payments-agent",
+      cve: "CVE-2026-0042",
+      package: "werkzeug",
+      root: "agent:payments",
+      root_label: "Payments agent",
+      investigate: "1",
+      q: "Payments agent",
+      rollup: "1",
+      unrelated: "drop-me",
+    });
+    render(<GraphLensSwitcher variant="floating" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
+
+    expect(push).toHaveBeenCalledWith(
+      "/mesh?scan=scan-123&agent=payments-agent&cve=CVE-2026-0042&package=werkzeug&root=agent%3Apayments&root_label=Payments+agent&investigate=1&q=Payments+agent&rollup=1",
+    );
+  });
+
+  it("keeps the target lens scope authoritative while preserving shared context", () => {
+    params = new URLSearchParams({ scan: "scan-123", scope: "something-else" });
+    render(<GraphLensSwitcher variant="floating" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /asset drift/i }));
+
+    expect(push).toHaveBeenCalledWith("/graph?scan=scan-123&scope=asset-drift");
   });
 
   it("routes to the asset drift lens on the lineage graph", () => {

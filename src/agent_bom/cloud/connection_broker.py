@@ -220,25 +220,75 @@ def _broker_gcp(record: CloudConnectionRecord) -> Any:
         key_info = {}
 
 
-def _broker_snowflake(record: CloudConnectionRecord) -> Any:
-    """Open a read-only Snowflake connection via key-pair auth for the connection.
+def connect_snowflake_keypair(
+    *,
+    account: str,
+    user: str,
+    private_key_pem: str,
+    role: str = "",
+    warehouse: str = "",
+    database: str = "",
+    schema: str = "",
+) -> Any:
+    """Open a ``snowflake.connector`` connection via key-pair auth (PEM → DER).
 
-    ``role_ref`` is the ``account`` (or ``account/user``), the decrypted secret is
-    the PEM private key, and ``auth_params`` carries ``user`` / ``role`` /
-    ``warehouse``. The PEM is loaded to DER via ``cryptography`` and presented as
-    ``private_key`` to the connector — key-pair auth, no password.
+    This is the single home for the key-pair connect path so every caller — the
+    read-only discovery broker and the findings-export writer — presents the PEM
+    the same way (loaded to PKCS8 DER via ``cryptography`` as ``private_key``, no
+    password). ``account`` and ``user`` are required; ``role`` / ``warehouse`` /
+    ``database`` / ``schema`` scope the session when supplied. The PEM is never
+    logged and its DER buffer is cleared after the connect attempt.
     """
     try:
         import snowflake.connector
     except ImportError as exc:
         raise CloudDiscoveryError(
-            "snowflake-connector-python is required to broker Snowflake connections. Install with: pip install 'agent-bom[snowflake]'"
+            "snowflake-connector-python is required for Snowflake connections. Install with: pip install 'agent-bom[snowflake]'"
         ) from exc
     try:
         from cryptography.hazmat.primitives import serialization
     except ImportError as exc:  # pragma: no cover - cryptography is a core dependency
-        raise CloudDiscoveryError("cryptography is required to broker Snowflake connections.") from exc
+        raise CloudDiscoveryError("cryptography is required for Snowflake connections.") from exc
 
+    if not account:
+        raise ConnectionBrokerError("Snowflake connection is missing the account.")
+    if not user:
+        raise ConnectionBrokerError("Snowflake connection is missing the user.")
+
+    try:
+        private_key = serialization.load_pem_private_key(private_key_pem.encode("utf-8"), password=None)
+        der = private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    except Exception as exc:  # noqa: BLE001 - malformed PEM / unsupported key
+        # Never echo the key material — only the failure mode.
+        raise ConnectionBrokerError("Snowflake private key could not be loaded.") from exc
+
+    conn_kwargs: dict[str, Any] = {"account": account, "user": user, "private_key": der}
+    if role:
+        conn_kwargs["role"] = role
+    if warehouse:
+        conn_kwargs["warehouse"] = warehouse
+    if database:
+        conn_kwargs["database"] = database
+    if schema:
+        conn_kwargs["schema"] = schema
+    try:
+        return snowflake.connector.connect(**conn_kwargs)
+    finally:
+        der = b""
+
+
+def _broker_snowflake(record: CloudConnectionRecord) -> Any:
+    """Open a read-only Snowflake connection via key-pair auth for the connection.
+
+    ``role_ref`` is the ``account`` (or ``account/user``), the decrypted secret is
+    the PEM private key, and ``auth_params`` carries ``user`` / ``role`` /
+    ``warehouse``. Delegates the actual connect to :func:`connect_snowflake_keypair`
+    so the key-pair path is shared with the findings-export writer.
+    """
     ref = (record.role_ref or "").strip()
     if not ref:
         raise ConnectionBrokerError(f"Snowflake connection {record.id} is missing the account (role_ref).")
@@ -255,30 +305,21 @@ def _broker_snowflake(record: CloudConnectionRecord) -> Any:
 
     pem = _decrypt_or_fail(record)
     try:
-        private_key = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
-        der = private_key.private_bytes(
-            encoding=serialization.Encoding.DER,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption(),
+        return connect_snowflake_keypair(
+            account=account,
+            user=user,
+            private_key_pem=pem,
+            role=role,
+            warehouse=warehouse,
         )
-    except Exception as exc:  # noqa: BLE001 - malformed PEM / unsupported key
-        # Never echo the key material — only the failure mode.
-        raise ConnectionBrokerError(f"Snowflake connection {record.id} private key could not be loaded.") from exc
-    finally:
-        pem = ""
-
-    conn_kwargs: dict[str, Any] = {"account": account, "user": user, "private_key": der}
-    if role:
-        conn_kwargs["role"] = role
-    if warehouse:
-        conn_kwargs["warehouse"] = warehouse
-    try:
-        return snowflake.connector.connect(**conn_kwargs)
+    except ConnectionBrokerError as exc:
+        # Re-scope generic connect/key errors to the specific connection id.
+        raise ConnectionBrokerError(f"Snowflake connection {record.id}: {exc}") from exc
     except Exception as exc:  # noqa: BLE001 - connector error (may carry account detail)
         logger.warning("Snowflake connection failed for connection %s", record.id)
         raise ConnectionBrokerError(f"Snowflake connection failed for connection {record.id}.") from exc
     finally:
-        der = b""
+        pem = ""
 
 
 def broker_session(

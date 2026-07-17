@@ -8,8 +8,9 @@ centralize on:
   adapters against the same :class:`~agent_bom.export.destinations.ExportDestination`
   contract.
 * analytics warehouses / lakehouses — ``clickhouse`` (landed, extends the
-  existing analytics client); ``snowflake`` / ``bigquery`` / ``databricks`` are
-  follow-up adapters against the same contract.
+  existing analytics client) and ``snowflake`` (landed, staged gzip-NDJSON ->
+  ``PUT`` -> ``COPY INTO`` reusing the key-pair connection broker); ``bigquery``
+  / ``databricks`` are follow-up adapters against the same contract.
 
 Every destination consumes a *bounded, streaming* iterator of finding rows and
 never materializes the whole result set in memory, so the scheduler can push
@@ -26,6 +27,7 @@ from agent_bom.export.destinations import (
     ExportDestination,
     ExportResult,
     S3ObjectStoreDestination,
+    SnowflakeWarehouseDestination,
     build_destination,
 )
 from agent_bom.export.runner import iter_current_findings, run_findings_export
@@ -37,6 +39,7 @@ __all__ = [
     "ExportDestination",
     "ExportResult",
     "S3ObjectStoreDestination",
+    "SnowflakeWarehouseDestination",
     "build_destination",
     "iter_current_findings",
     "run_findings_export",

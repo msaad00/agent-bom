@@ -46,12 +46,19 @@ _WRITE_DEP = require_authenticated_permission("scan")
 
 
 class ExportDestinationCreate(BaseModel):
-    kind: str = Field(..., description="Destination kind: s3 or clickhouse")
+    kind: str = Field(..., description="Destination kind: s3, clickhouse, or snowflake")
     display_name: str = Field(..., min_length=1, max_length=200)
     config: dict[str, Any] = Field(
-        default_factory=dict, description="Non-secret parameters (bucket/prefix/region or url/user/database/table)"
+        default_factory=dict,
+        description=(
+            "Non-secret parameters: s3 (bucket/prefix/region), clickhouse "
+            "(url/user/database/table), or snowflake (account/user/role/warehouse/database/schema/table)"
+        ),
     )
-    secret: str | None = Field(default=None, description="Write-only secret (warehouse access token); encrypted at rest, never returned")
+    secret: str | None = Field(
+        default=None,
+        description="Write-only secret (warehouse access token, or Snowflake key-pair PEM); encrypted at rest, never returned",
+    )
 
 
 class ExportScheduleCreate(BaseModel):

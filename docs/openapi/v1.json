@@ -1599,7 +1599,7 @@
         "properties": {
           "config": {
             "additionalProperties": true,
-            "description": "Non-secret parameters (bucket/prefix/region or url/user/database/table)",
+            "description": "Non-secret parameters: s3 (bucket/prefix/region), clickhouse (url/user/database/table), or snowflake (account/user/role/warehouse/database/schema/table)",
             "title": "Config",
             "type": "object"
           },
@@ -1610,7 +1610,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "Destination kind: s3 or clickhouse",
+            "description": "Destination kind: s3, clickhouse, or snowflake",
             "title": "Kind",
             "type": "string"
           },
@@ -1623,7 +1623,7 @@
                 "type": "null"
               }
             ],
-            "description": "Write-only secret (warehouse access token); encrypted at rest, never returned",
+            "description": "Write-only secret (warehouse access token, or Snowflake key-pair PEM); encrypted at rest, never returned",
             "title": "Secret"
           }
         },

@@ -75,6 +75,18 @@ class PostgresCampaignStore:
             ).fetchall()
         return [row for value in rows if (row := self._row(value)) is not None]
 
+    def list_verification_queue(self, tenant_id: str, *, after: str, limit: int) -> List[CampaignWorkflow]:
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
+                "title, member_ids, membership_fingerprint, generation, active, version, updated_at "
+                "FROM risk_campaign_workflows WHERE tenant_id=%s AND campaign_id>%s AND active=FALSE "
+                "AND verification_status IN ('unverified','failed') AND member_ids <> '[]' "
+                "ORDER BY campaign_id LIMIT %s",
+                (tenant_id, after, max(0, min(limit, 101))),
+            ).fetchall()
+        return [row for value in rows if (row := self._row(value)) is not None]
+
     def upsert(
         self,
         tenant_id: str,

@@ -145,6 +145,9 @@ class CampaignVerificationQueueResponse(BaseModel):
     tenant_id: str
     entries: list[CampaignVerificationQueueItem]
     count: int
+    has_more: bool
+    next_cursor: str | None
+    limit: int
 
 
 class CampaignActionResponse(BaseModel):
@@ -337,6 +340,29 @@ def _cursor(payload: dict[str, Any]) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
+def _queue_cursor(tenant_id: str, campaign_id: str) -> str:
+    return _cursor({"tenant": tenant_id, "after": campaign_id})
+
+
+def _decode_queue_cursor(cursor: str | None, tenant_id: str) -> str:
+    if not cursor:
+        return ""
+    try:
+        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        value = json.loads(raw)
+        if (
+            not isinstance(value, dict)
+            or value.get("tenant") != tenant_id
+            or not isinstance(value.get("after"), str)
+            or not value["after"]
+            or len(value["after"]) > 200
+        ):
+            raise ValueError("invalid queue cursor")
+        return str(value["after"])
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid campaign verification queue cursor.") from exc
+
+
 def _decode_cursor(cursor: str | None) -> dict[str, Any] | None:
     if not cursor:
         return None
@@ -411,14 +437,17 @@ async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]
 
 
 @router.get("/campaigns/verification-queue", response_model=CampaignVerificationQueueResponse)
-async def campaign_verification_queue(request: Request, _role: Any = _READ) -> dict[str, Any]:
+async def campaign_verification_queue(
+    request: Request,
+    cursor: str | None = None,
+    limit: int = Query(100, ge=1, le=100),
+    _role: Any = _READ,
+) -> dict[str, Any]:
     tenant_id = _tenant(request)
-    rows = [
-        row
-        for row in get_campaign_store().list(tenant_id)
-        if not row.active and row.member_ids and row.verification_status in {"unverified", "failed"}
-    ]
-    rows.sort(key=lambda row: (row.updated_at, row.campaign_id), reverse=True)
+    after = _decode_queue_cursor(cursor, tenant_id)
+    rows = get_campaign_store().list_verification_queue(tenant_id, after=after, limit=limit + 1)
+    has_more = len(rows) > limit
+    page = rows[:limit]
     entries = [
         {
             "campaign_id": row.campaign_id,
@@ -432,13 +461,16 @@ async def campaign_verification_queue(request: Request, _role: Any = _READ) -> d
             "version": row.version,
             "updated_at": row.updated_at,
         }
-        for row in rows[:1000]
+        for row in page
     ]
     return {
         "schema_version": "risk-campaign-verification-queue.v1",
         "tenant_id": tenant_id,
         "entries": entries,
         "count": len(entries),
+        "has_more": has_more,
+        "next_cursor": _queue_cursor(tenant_id, page[-1].campaign_id) if has_more and page else None,
+        "limit": limit,
     }
 
 

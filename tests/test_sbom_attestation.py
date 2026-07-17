@@ -41,10 +41,14 @@ def _key_material() -> tuple[Ed25519PrivateKey, str, str]:
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
-    public_pem = key.public_key().public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode()
+    public_pem = (
+        key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
     return key, private_pem, public_pem
 
 
@@ -61,7 +65,7 @@ def signing_key(monkeypatch) -> tuple[Ed25519PrivateKey, str, str]:
 
 
 def _policy(public_pem: str) -> AttestationTrustPolicy:
-    return AttestationTrustPolicy.from_public_key_pems([public_pem])
+    return AttestationTrustPolicy.from_public_key_pems([public_pem], expected_tenant_id="local")
 
 
 def test_dsse_pae_matches_the_specification_encoding() -> None:
@@ -295,16 +299,19 @@ def test_malformed_and_oversized_envelopes_are_bounded(tmp_path: Path, signing_k
 def test_cli_verify_requires_explicit_public_key(tmp_path: Path, signing_key) -> None:
     path = _write_sbom(tmp_path)
     runner = CliRunner()
-    signed = runner.invoke(attest_group, ["sign", str(path), "--json"])
+    signed = runner.invoke(attest_group, ["sign", str(path), "--tenant-id", "local", "--json"])
     assert signed.exit_code == 0, signed.output
 
-    without_key = runner.invoke(attest_group, ["verify", str(path), "--json"])
+    without_key = runner.invoke(attest_group, ["verify", str(path), "--tenant-id", "local", "--json"])
     assert without_key.exit_code == 1
     assert json.loads(without_key.output)["reason"] == "trusted_public_key_required"
 
     public_key_file = tmp_path / "trusted.pub.pem"
     public_key_file.write_text(signing_key[2])
-    with_key = runner.invoke(attest_group, ["verify", str(path), "--public-key", str(public_key_file), "--json"])
+    with_key = runner.invoke(
+        attest_group,
+        ["verify", str(path), "--tenant-id", "local", "--public-key", str(public_key_file), "--json"],
+    )
     assert with_key.exit_code == 0, with_key.output
     assert json.loads(with_key.output)["verified"] is True
 
@@ -326,7 +333,7 @@ def test_cli_cross_process_sign_then_verify_uses_only_explicit_public_key(tmp_pa
     sign_env.pop("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM", None)
 
     signed = subprocess.run(
-        [*command, "attest", "sign", str(path), "--json"],
+        [*command, "attest", "sign", str(path), "--tenant-id", "local", "--json"],
         cwd=tmp_path,
         env=sign_env,
         capture_output=True,
@@ -340,7 +347,17 @@ def test_cli_cross_process_sign_then_verify_uses_only_explicit_public_key(tmp_pa
     verify_env.pop("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM", None)
     verify_env.pop("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE", None)
     verified = subprocess.run(
-        [*command, "attest", "verify", str(path), "--public-key", str(public_file), "--json"],
+        [
+            *command,
+            "attest",
+            "verify",
+            str(path),
+            "--tenant-id",
+            "local",
+            "--public-key",
+            str(public_file),
+            "--json",
+        ],
         cwd=tmp_path,
         env=verify_env,
         capture_output=True,
@@ -351,7 +368,7 @@ def test_cli_cross_process_sign_then_verify_uses_only_explicit_public_key(tmp_pa
     assert json.loads(verified.stdout)["verified"] is True
 
     no_trust = subprocess.run(
-        [*command, "attest", "verify", str(path), "--json"],
+        [*command, "attest", "verify", str(path), "--tenant-id", "local", "--json"],
         cwd=tmp_path,
         env=verify_env,
         capture_output=True,

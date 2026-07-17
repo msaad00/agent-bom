@@ -89,7 +89,14 @@ def test_derivation_groups_only_shared_remediation_and_explains_score() -> None:
     assert len(campaigns) == 2
     campaign = next(item for item in campaigns if item["finding_count"] == 2)
     assert campaign["finding_ids"] == ["finding-a", "finding-b"]
-    assert campaign["priority_score"] == 9.4
+    assert campaign["priority_score"] == 10.0
+    assert campaign["priority_score_components"] == {
+        "base_finding_risk": 9.4,
+        "exploitability_boost": 1.0,
+        "reachability_boost": 0.5,
+        "crown_jewel_boost": 0.0,
+        "cap": 10.0,
+    }
     assert campaign["score_factors"]["severity"]["value"] == "critical"
     assert campaign["score_factors"]["exploitability"]["status"] == "observed"
     assert campaign["score_factors"]["reachability"]["status"] == "observed"
@@ -97,7 +104,7 @@ def test_derivation_groups_only_shared_remediation_and_explains_score() -> None:
     assert campaign["owner"] == "payments"
     assert campaign["expected_risk_reduction"]["assumption"] == "all campaign findings are remediated and verified"
     assert campaign["expected_risk_reduction"]["modeled_window_percent"] == pytest.approx(80.6, abs=0.1)
-    assert campaign["priority_score_method"] == "maximum finding risk; context factors do not modify the score"
+    assert "unknown signals contribute 0" in campaign["priority_score_method"]
 
 
 def test_derivation_does_not_fabricate_missing_context() -> None:
@@ -123,6 +130,41 @@ def test_derivation_rejects_non_finite_risk_signals_as_unknown() -> None:
 
     assert campaign["priority_score"] == 7.0
     assert campaign["score_factors"]["exploitability"]["status"] == "unknown"
+
+
+def test_priority_observed_signals_are_bounded_ordered_and_unknown_neutral() -> None:
+    base = {"id": "a", "severity": "medium", "risk_score": 4.0}
+    unknown = derive_campaigns([base], tenant_id="t", workflow_by_id={})[0]
+    explicit_false = derive_campaigns(
+        [{**base, "graph_reachable": False, "crown_jewel": False}], tenant_id="t", workflow_by_id={}
+    )[0]
+    enriched = derive_campaigns(
+        [
+            {
+                **base,
+                "is_kev": True,
+                "is_reachable": True,
+                "reachable_functions": ["run"],
+                "asset": {"business_criticality": "HIGH"},
+            }
+        ],
+        tenant_id="t",
+        workflow_by_id={},
+    )[0]
+    epss = derive_campaigns([{**base, "epss_score": 0.8}], tenant_id="t", workflow_by_id={})[0]
+    capped = derive_campaigns(
+        [{**base, "risk_score": 9.9, "is_kev": True, "graph_reachable": True, "crown_jewel": True}],
+        tenant_id="t",
+        workflow_by_id={},
+    )[0]
+
+    assert unknown["priority_score"] == explicit_false["priority_score"] == 4.0
+    assert enriched["priority_score"] > unknown["priority_score"]
+    assert epss["priority_score_components"]["exploitability_boost"] == 0.8
+    assert epss["score_factors"]["exploitability"]["status"] == "observed"
+    assert enriched["score_factors"]["reachability"]["status"] == "observed"
+    assert enriched["score_factors"]["crown_jewel"]["value"] is True
+    assert capped["priority_score"] == 10.0
 
 
 def test_campaign_ids_are_deterministic_across_derivations() -> None:
@@ -163,7 +205,7 @@ def test_campaign_workflow_store_is_tenant_isolated() -> None:
 def test_membership_change_and_reentry_reset_done_verification() -> None:
     store = InMemoryCampaignStore()
     row = store.reconcile_memberships("t", {"c": "one"})[0]
-    store.patch("t", "c", expected_version=row.version, fields={"state": "done", "verification_status": "verified"})
+    store.verify("t", "c", expected_version=row.version, remaining_ids=())
     changed = store.reconcile_memberships("t", {"c": "two"})[0]
     assert changed.state == "open" and changed.verification_status == "unverified"
     assert changed.generation == 2
@@ -188,12 +230,13 @@ def test_incomplete_api_snapshot_never_reconciles_or_reactivates(monkeypatch) ->
     monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: full)
     client = TestClient(app)
     campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
-    store.patch(
+    updated = store.patch(
         "tenant-alpha",
         campaign["id"],
         expected_version=campaign["version"],
-        fields={"state": "done", "verification_status": "verified"},
+        fields={"state": "done"},
     )
+    store.verify("tenant-alpha", campaign["id"], expected_version=updated.version, remaining_ids=())
     store.reconcile_memberships("tenant-alpha", {})
     before = store.get("tenant-alpha", campaign["id"])
     partial = [dict(full[0], id="changed-member")]
@@ -217,12 +260,13 @@ def test_provisional_campaign_does_not_inherit_changed_or_inactive_workflow(monk
     monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: full)
     client = TestClient(app)
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
-    store.patch(
+    updated = store.patch(
         "tenant-alpha",
         campaign["id"],
         expected_version=campaign["version"],
-        fields={"state": "done", "verification_status": "verified"},
+        fields={"state": "done"},
     )
+    store.verify("tenant-alpha", campaign["id"], expected_version=updated.version, remaining_ids=())
 
     partial = {"findings": [full[0]], "total": 2, "has_more": True, "total_approximate": False}
     monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: partial)
@@ -298,6 +342,16 @@ def test_campaign_openapi_has_typed_responses_and_partial_status() -> None:
             assert responses[status]["content"]["application/json"]["schema"]["$ref"].endswith(model)
     assert "created" in schema["components"]["schemas"]["CampaignTicketCreateResponse"]["properties"]
     assert "synced" in schema["components"]["schemas"]["CampaignTicketSyncResponse"]["properties"]
+    assert schema["components"]["schemas"]["CampaignTicketCreateResponse"]["properties"]["tickets"]["items"]["$ref"].endswith(
+        "CampaignTicketResult"
+    )
+    assert schema["components"]["schemas"]["CampaignTicketCreateResponse"]["properties"]["errors"]["items"]["$ref"].endswith(
+        "CampaignTicketCreateError"
+    )
+    verify_ref = schema["paths"]["/v1/campaigns/{campaign_id}/verify"]["post"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["$ref"]
+    assert verify_ref.endswith("CampaignVerificationResponse")
 
 
 def test_sqlite_campaign_store_persists_same_logical_id_per_tenant(tmp_path) -> None:
@@ -321,6 +375,17 @@ def test_sqlite_campaign_store_persists_same_logical_id_per_tenant(tmp_path) -> 
     assert reopened.get("tenant-beta", "campaign-1").owner == "bob"
 
 
+def test_sqlite_campaign_store_persists_original_member_ids_across_restart(tmp_path) -> None:
+    path = str(tmp_path / "campaign-members.db")
+    store = SQLiteCampaignStore(path)
+    row = store.reconcile_memberships("tenant-alpha", {"campaign-1": ("fingerprint", ("finding-b", "finding-a"))})[0]
+    assert row.member_ids == ("finding-a", "finding-b")
+    reopened = SQLiteCampaignStore(path)
+    assert reopened.get("tenant-alpha", "campaign-1").member_ids == ("finding-a", "finding-b")
+    columns = {item[1] for item in reopened._conn.execute("PRAGMA table_info(risk_campaign_workflows)").fetchall()}
+    assert "member_ids" in columns
+
+
 def test_campaign_store_selects_postgres_for_multi_replica(monkeypatch) -> None:
     sentinel = object()
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://db/agent_bom")
@@ -340,7 +405,20 @@ def test_postgres_campaign_store_uses_tenant_key_rls_and_scoped_upsert(monkeypat
 
     executed: list[tuple[str, tuple[Any, ...] | None]] = []
     rls: list[tuple[str, str]] = []
-    stored = ("tenant-alpha", "campaign-1", "alice", None, "in_progress", "pending", "2026-07-17T00:00:00Z")
+    stored = (
+        "tenant-alpha",
+        "campaign-1",
+        "alice",
+        None,
+        "in_progress",
+        "pending",
+        "[]",
+        "fingerprint",
+        1,
+        True,
+        1,
+        "2026-07-17T00:00:00Z",
+    )
 
     class _Cursor:
         def fetchone(self):
@@ -374,6 +452,7 @@ def test_postgres_campaign_store_uses_tenant_key_rls_and_scoped_upsert(monkeypat
 
     schema_sql = "\n".join(sql for sql, _ in executed)
     assert "PRIMARY KEY (tenant_id, campaign_id)" in schema_sql
+    assert "member_ids TEXT NOT NULL DEFAULT '[]'" in schema_sql
     assert rls == [("risk_campaign_workflows", "tenant_id")]
     upsert = next(params for sql, params in executed if "ON CONFLICT (tenant_id, campaign_id)" in sql)
     assert upsert[:2] == ("tenant-alpha", "campaign-1")
@@ -423,6 +502,7 @@ def test_campaign_api_requires_auth_and_rejects_viewer_writes(monkeypatch) -> No
     client = TestClient(app)
 
     assert client.get("/v1/campaigns").status_code == 401
+    assert client.post("/v1/campaigns/campaign-1/verify", json={"version": 1}).status_code == 401
     assert client.patch("/v1/campaigns/campaign-1", json={"owner": "alice"}, headers=_headers(role="viewer")).status_code == 403
 
 
@@ -502,7 +582,6 @@ def test_campaign_api_persists_workflow_without_cross_tenant_leak(monkeypatch) -
             "owner": "security-platform",
             "sla_due_at": "2026-08-01T00:00:00Z",
             "state": "in_progress",
-            "verification_status": "pending",
         },
         headers=_headers(),
     )
@@ -524,7 +603,7 @@ def test_campaign_patch_preserves_omitted_workflow_fields(monkeypatch) -> None:
     campaign_id = campaign["id"]
     first = client.patch(
         f"/v1/campaigns/{campaign_id}",
-        json={"version": campaign["version"], "owner": "alice", "state": "in_progress", "verification_status": "pending"},
+        json={"version": campaign["version"], "owner": "alice", "state": "in_progress"},
         headers=_headers(),
     )
 
@@ -532,9 +611,97 @@ def test_campaign_patch_preserves_omitted_workflow_fields(monkeypatch) -> None:
     assert second.status_code == 200
     assert second.json()["owner"] == "bob"
     assert second.json()["state"] == "in_progress"
-    assert second.json()["verification_status"] == "pending"
+    assert second.json()["verification_status"] == "unverified"
     stale = client.patch(f"/v1/campaigns/{campaign_id}", json={"version": campaign["version"], "owner": "lost"}, headers=_headers())
     assert stale.status_code == 409
+
+
+def test_campaign_patch_cannot_set_server_owned_verification(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    client = TestClient(app)
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    response = client.patch(
+        f"/v1/campaigns/{campaign['id']}",
+        json={"version": campaign["version"], "verification_status": "verified"},
+        headers=_headers(),
+    )
+    assert response.status_code == 422
+
+
+def test_campaign_verify_fails_with_remaining_members_and_is_cas_safe(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    first = client.post(
+        f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers()
+    )
+    assert first.status_code == 200
+    assert first.json()["verification_status"] == "failed"
+    assert first.json()["remaining_finding_ids"] == ["finding-a", "finding-b"]
+    assert first.json()["evidence_scope"]["membership_complete"] is True
+    stale = client.post(
+        f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers()
+    )
+    assert stale.status_code == 409
+
+
+def test_campaign_verify_survives_restart_and_disappeared_campaign(monkeypatch, tmp_path) -> None:
+    from agent_bom.api.server import app
+
+    path = str(tmp_path / "verify-restart.db")
+    set_campaign_store(SQLiteCampaignStore(path))
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    set_campaign_store(SQLiteCampaignStore(path))
+    current = [_findings()[2]]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    client.get("/v1/campaigns", headers=_headers())
+    retired = get_campaign_store().get("tenant-alpha", campaign["id"])
+    assert retired is not None and retired.active is False
+    response = client.post(
+        f"/v1/campaigns/{campaign['id']}/verify", json={"version": retired.version}, headers=_headers()
+    )
+    assert response.status_code == 200
+    assert response.json()["verification_status"] == "verified"
+    assert response.json()["state"] == "done"
+    assert response.json()["remaining_count"] == 0
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        {"findings": _findings()},
+        {"findings": _findings(), "total": 3, "total_approximate": True, "has_more": False},
+        {"findings": _findings(), "total": 4, "total_approximate": False, "has_more": True},
+    ),
+)
+def test_campaign_verify_rejects_incomplete_evidence(monkeypatch, source) -> None:
+    from agent_bom.api.server import app
+
+    store = InMemoryCampaignStore()
+    store.reconcile_memberships("tenant-alpha", {"campaign-1": ("fingerprint", ("finding-a",))})
+    set_campaign_store(store)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: source)
+    response = TestClient(app).post("/v1/campaigns/campaign-1/verify", json={"version": 1}, headers=_headers())
+    assert response.status_code == 409
+
+
+def test_campaign_verify_is_tenant_scoped_and_requires_stored_evidence(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    source = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: source)
+    client = TestClient(app)
+    assert client.post("/v1/campaigns/missing/verify", json={"version": 1}, headers=_headers()).status_code == 404
+    store = get_campaign_store()
+    store.reconcile_memberships("tenant-beta", {"campaign-1": ("fingerprint", ("finding-a",))})
+    assert client.post("/v1/campaigns/campaign-1/verify", json={"version": 1}, headers=_headers()).status_code == 404
+    assert client.post("/v1/campaigns/campaign-1/verify", json={"version": 1}, headers=_headers(role="viewer")).status_code == 403
 
 
 def test_campaign_patch_rejects_invalid_sla_timestamp(monkeypatch) -> None:
@@ -777,6 +944,7 @@ def test_campaign_ticket_sync_is_tenant_and_finding_scoped(monkeypatch) -> None:
         return {"ticket": {"id": kwargs["ticket_id"], "status": "done"}}
 
     monkeypatch.setattr("agent_bom.api.routes.campaigns.sync_ticket_status", _sync)
+    monkeypatch.setattr(store, "list_ticket_links", lambda tenant_id: (_ for _ in ()).throw(AssertionError("unbounded read")))
     client = TestClient(app)
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
     result = client.post(f"/v1/campaigns/{campaign['id']}/tickets/sync", headers=_headers())

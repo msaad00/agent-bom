@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, List
 
-from agent_bom.api.campaign_store import CampaignWorkflow, _now
+from agent_bom.api.campaign_store import CampaignWorkflow, _membership, _now
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -26,6 +27,7 @@ class PostgresCampaignStore:
                     sla_due_at TEXT,
                     state TEXT NOT NULL,
                     verification_status TEXT NOT NULL,
+                    member_ids TEXT NOT NULL DEFAULT '[]',
                     membership_fingerprint TEXT NOT NULL DEFAULT '',
                     generation INTEGER NOT NULL DEFAULT 1,
                     active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -35,6 +37,7 @@ class PostgresCampaignStore:
                 )
                 """
             )
+            conn.execute("ALTER TABLE risk_campaign_workflows ADD COLUMN IF NOT EXISTS member_ids TEXT NOT NULL DEFAULT '[]'")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_risk_campaign_workflows_tenant_state "
                 "ON risk_campaign_workflows(tenant_id, state, updated_at)"
@@ -44,13 +47,17 @@ class PostgresCampaignStore:
 
     @staticmethod
     def _row(value: tuple[Any, ...] | None) -> CampaignWorkflow | None:
-        return CampaignWorkflow(*value) if value else None
+        if not value:
+            return None
+        values = list(value)
+        values[6] = tuple(json.loads(values[6] or "[]"))
+        return CampaignWorkflow(*values)
 
     def get(self, tenant_id: str, campaign_id: str) -> CampaignWorkflow | None:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
-                "membership_fingerprint, generation, active, version, updated_at "
+                "member_ids, membership_fingerprint, generation, active, version, updated_at "
                 "FROM risk_campaign_workflows WHERE tenant_id = %s AND campaign_id = %s",
                 (tenant_id, campaign_id),
             ).fetchone()
@@ -60,11 +67,11 @@ class PostgresCampaignStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
-                "membership_fingerprint, generation, active, version, updated_at "
+                "member_ids, membership_fingerprint, generation, active, version, updated_at "
                 "FROM risk_campaign_workflows WHERE tenant_id = %s ORDER BY updated_at DESC, campaign_id",
                 (tenant_id,),
             ).fetchall()
-        return [CampaignWorkflow(*row) for row in rows]
+        return [row for value in rows if (row := self._row(value)) is not None]
 
     def upsert(
         self,
@@ -97,7 +104,9 @@ class PostgresCampaignStore:
         assert row is not None
         return row
 
-    def reconcile_memberships(self, tenant_id: str, memberships: dict[str, str], *, complete: bool = True) -> List[CampaignWorkflow]:
+    def reconcile_memberships(
+        self, tenant_id: str, memberships: dict[str, str | tuple[str, tuple[str, ...]]], *, complete: bool = True
+    ) -> List[CampaignWorkflow]:
         if not complete:
             return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         now = _now()
@@ -105,26 +114,29 @@ class PostgresCampaignStore:
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"risk_campaign:{tenant_id}",))
             rows = conn.execute(
                 "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
-                "membership_fingerprint, generation, active, version, updated_at "
+                "member_ids, membership_fingerprint, generation, active, version, updated_at "
                 "FROM risk_campaign_workflows WHERE tenant_id=%s FOR UPDATE",
                 (tenant_id,),
             ).fetchall()
-            existing = {row[1]: CampaignWorkflow(*row) for row in rows}
-            for campaign_id, fingerprint in memberships.items():
+            existing = {row.campaign_id: row for value in rows if (row := self._row(value)) is not None}
+            for campaign_id, evidence in memberships.items():
+                fingerprint, member_ids = _membership(evidence)
+                encoded_ids = json.dumps(member_ids, separators=(",", ":"))
                 row = existing.get(campaign_id)
                 if row is None:
                     conn.execute(
                         "INSERT INTO risk_campaign_workflows "
-                        "(tenant_id,campaign_id,state,verification_status,membership_fingerprint,generation,active,version,updated_at) "
-                        "VALUES (%s,%s,'open','unverified',%s,1,TRUE,1,%s)",
-                        (tenant_id, campaign_id, fingerprint, now),
+                        "(tenant_id,campaign_id,state,verification_status,member_ids,membership_fingerprint,"
+                        "generation,active,version,updated_at) "
+                        "VALUES (%s,%s,'open','unverified',%s,%s,1,TRUE,1,%s)",
+                        (tenant_id, campaign_id, encoded_ids, fingerprint, now),
                     )
-                elif not row.active or row.membership_fingerprint != fingerprint:
+                elif not row.active or row.membership_fingerprint != fingerprint or row.member_ids != member_ids:
                     conn.execute(
-                        "UPDATE risk_campaign_workflows SET membership_fingerprint=%s,generation=generation+1,active=TRUE,"
+                        "UPDATE risk_campaign_workflows SET member_ids=%s,membership_fingerprint=%s,generation=generation+1,active=TRUE,"
                         "state='open',verification_status='unverified',version=version+1,updated_at=%s "
                         "WHERE tenant_id=%s AND campaign_id=%s",
-                        (fingerprint, now, tenant_id, campaign_id),
+                        (encoded_ids, fingerprint, now, tenant_id, campaign_id),
                     )
             absent = (set(existing) - set(memberships)) if complete else set()
             for campaign_id in absent:
@@ -136,8 +148,24 @@ class PostgresCampaignStore:
             conn.commit()
         return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
 
+    def verify(
+        self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]
+    ) -> CampaignWorkflow | None:
+        status = "failed" if remaining_ids else "verified"
+        state = "open" if remaining_ids else "done"
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute(
+                "UPDATE risk_campaign_workflows SET verification_status=%s,state=%s,version=version+1,updated_at=%s "
+                "WHERE tenant_id=%s AND campaign_id=%s AND version=%s",
+                (status, state, _now(), tenant_id, campaign_id, expected_version),
+            )
+            conn.commit()
+            if cursor.rowcount != 1:
+                return None
+        return self.get(tenant_id, campaign_id)
+
     def patch(self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]) -> CampaignWorkflow | None:
-        allowed = {"owner", "sla_due_at", "state", "verification_status"}
+        allowed = {"owner", "sla_due_at", "state"}
         assignments = [f"{key}=%s" for key in fields if key in allowed]
         values = [fields[key] for key in fields if key in allowed]
         if not assignments:

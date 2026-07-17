@@ -64,6 +64,7 @@ class TicketingStore(Protocol):
     def get_ticket_link(self, tenant_id: str, ticket_id: str) -> TicketLink | None: ...
     def get_ticket_link_by_dedupe(self, tenant_id: str, connection_id: str, dedupe_key: str) -> TicketLink | None: ...
     def list_ticket_links(self, tenant_id: str) -> list[TicketLink]: ...
+    def list_ticket_links_for_findings(self, tenant_id: str, finding_ids: set[str], *, limit: int) -> list[TicketLink]: ...
     def delete_ticket_link(self, tenant_id: str, ticket_id: str) -> bool: ...
 
 
@@ -143,6 +144,17 @@ class InMemoryTicketingStore:
         with self._lock:
             rows = [replace(link) for link in self._links.values() if link.tenant_id == tenant_id]
         return sorted(rows, key=lambda r: (r.created_at, r.id))
+
+    def list_ticket_links_for_findings(self, tenant_id: str, finding_ids: set[str], *, limit: int) -> list[TicketLink]:
+        if not finding_ids or limit < 1:
+            return []
+        with self._lock:
+            rows = [
+                replace(link)
+                for link in self._links.values()
+                if link.tenant_id == tenant_id and link.dedupe_key in finding_ids
+            ]
+        return sorted(rows, key=lambda row: (row.created_at, row.id))[:limit]
 
     def delete_ticket_link(self, tenant_id: str, ticket_id: str) -> bool:
         with self._lock:
@@ -355,6 +367,18 @@ class SQLiteTicketingStore:
             (tenant_id,),
         ).fetchall()
         return [_row_to_link(r) for r in rows]
+
+    def list_ticket_links_for_findings(self, tenant_id: str, finding_ids: set[str], *, limit: int) -> list[TicketLink]:
+        keys = sorted(finding_ids)[:1000]
+        if not keys or limit < 1:
+            return []
+        placeholders = ",".join("?" for _ in keys)
+        rows = self._conn.execute(
+            f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = ? AND dedupe_key IN ({placeholders}) "  # nosec B608
+            "ORDER BY created_at, id LIMIT ?",
+            (tenant_id, *keys, min(limit, 1001)),
+        ).fetchall()
+        return [_row_to_link(row) for row in rows]
 
     def delete_ticket_link(self, tenant_id: str, ticket_id: str) -> bool:
         cursor = self._conn.execute(

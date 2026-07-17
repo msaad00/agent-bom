@@ -201,6 +201,18 @@ class PostgresTicketingStore:
             ).fetchall()
         return [_row_to_link(r) for r in rows]
 
+    def list_ticket_links_for_findings(self, tenant_id: str, finding_ids: set[str], *, limit: int) -> list[TicketLink]:
+        keys = sorted(finding_ids)[:1000]
+        if not keys or limit < 1:
+            return []
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = %s AND dedupe_key = ANY(%s) "  # nosec B608
+                "ORDER BY created_at, id LIMIT %s",
+                (tenant_id, keys, min(limit, 1001)),
+            ).fetchall()
+        return [_row_to_link(row) for row in rows]
+
     def delete_ticket_link(self, tenant_id: str, ticket_id: str) -> bool:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(

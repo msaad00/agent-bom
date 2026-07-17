@@ -75,6 +75,47 @@ def _factor_status(value: Any, *, observed: bool = False) -> dict[str, Any]:
     return {"value": value, "status": "observed" if observed else "modeled"}
 
 
+def _observed_bool(rows: list[dict[str, Any]], *keys: str) -> tuple[bool | None, list[str]]:
+    values: list[bool] = []
+    signals: list[str] = []
+    for row in rows:
+        for key in keys:
+            value = row.get(key)
+            if isinstance(value, bool):
+                values.append(value)
+                signals.append(key)
+        symbol = str(row.get("symbol_reachability") or "").lower()
+        if "symbol_reachability" in keys and symbol in {"function_reachable", "package_reachable", "unreachable"}:
+            values.append(symbol != "unreachable")
+            signals.append("symbol_reachability")
+        if "reachable_functions" in keys and isinstance(row.get("reachable_functions"), list):
+            values.append(bool(row["reachable_functions"]))
+            signals.append("reachable_functions")
+    return (any(values), sorted(set(signals))) if values else (None, [])
+
+
+def _crown_jewel(rows: list[dict[str, Any]]) -> tuple[bool | None, list[str]]:
+    observed: list[bool] = []
+    signals: list[str] = []
+    for row in rows:
+        asset_value = row.get("asset")
+        asset: Mapping[str, Any] = asset_value if isinstance(asset_value, Mapping) else {}
+        for source, value in (("crown_jewel", row.get("crown_jewel")), ("asset.crown_jewel", asset.get("crown_jewel"))):
+            if isinstance(value, bool):
+                observed.append(value)
+                signals.append(source)
+        for source, value in (
+            ("business_criticality", row.get("business_criticality")),
+            ("asset.business_criticality", asset.get("business_criticality")),
+            ("asset.criticality", asset.get("criticality")),
+        ):
+            normalized = str(value or "").strip().lower()
+            if normalized in {"critical", "high", "medium", "low"}:
+                observed.append(normalized in {"critical", "high"})
+                signals.append(source)
+    return (any(observed), sorted(set(signals))) if observed else (None, [])
+
+
 def derive_campaigns(
     findings: list[dict[str, Any]],
     *,
@@ -104,7 +145,7 @@ def derive_campaigns(
         membership_fingerprint = hashlib.sha256("\x1f".join(_finding_id(row) for row in rows).encode()).hexdigest()
         workflow = workflow_by_id.get(campaign_id)
         highest = max(rows, key=_risk)
-        priority = _risk(highest)
+        base_risk = _risk(highest)
         campaign_risk = sum(_risk(row) for row in rows)
         severities = [str(row.get("severity") or "unknown").lower() for row in rows]
         severity = str(highest.get("severity") or "unknown").lower()
@@ -114,8 +155,10 @@ def derive_campaigns(
             for row in rows
             if isinstance(row.get("epss_score"), (int, float)) and math.isfinite(float(row["epss_score"]))
         ]
-        reachable = any(row.get("is_reachable") is True or bool(row.get("reachable_functions")) for row in rows)
-        reachability_known = reachable or any(row.get("is_reachable") is False for row in rows)
+        reachable, reachability_signals = _observed_bool(
+            rows, "is_reachable", "graph_reachable", "symbol_reachability", "reachable_functions"
+        )
+        crown_jewel, crown_signals = _crown_jewel(rows)
         business_context = _common_value(rows, "business_context")
         derived_owner = _common_value(rows, "owner")
         package = str(highest.get("package") or highest.get("component") or "").strip()
@@ -124,8 +167,12 @@ def derive_campaigns(
         exploitability: dict[str, Any] = (
             {"value": "known_exploited", "status": "observed", "signals": ["kev"]}
             if kev
-            else ({"value": max(epss), "status": "modeled", "signals": ["epss"]} if epss else _factor_status(None))
+            else ({"value": max(epss), "status": "observed", "signals": ["epss"]} if epss else _factor_status(None))
         )
+        exploitability_boost = 1.0 if kev else (max(epss) if epss else 0.0)
+        reachability_boost = 0.5 if reachable is True else 0.0
+        crown_jewel_boost = 0.5 if crown_jewel is True else 0.0
+        priority = round(min(10.0, base_risk + exploitability_boost + reachability_boost + crown_jewel_boost), 2)
         campaigns.append(
             {
                 "id": campaign_id,
@@ -135,12 +182,29 @@ def derive_campaigns(
                 "finding_count": len(rows),
                 "severity": severity,
                 "priority_score": priority,
-                "priority_score_method": "maximum finding risk; context factors do not modify the score",
+                "priority_score_method": (
+                    "min(10, max base finding risk + KEV 1.0 or max EPSS×1.0 + observed reachability 0.5 "
+                    "+ explicit crown-jewel/high-criticality 0.5); unknown signals contribute 0"
+                ),
+                "priority_score_components": {
+                    "base_finding_risk": base_risk,
+                    "exploitability_boost": round(exploitability_boost, 2),
+                    "reachability_boost": reachability_boost,
+                    "crown_jewel_boost": crown_jewel_boost,
+                    "cap": 10.0,
+                },
                 "score_factors": {
                     "severity": {"value": severity, "status": "observed", "bands_present": sorted(set(severities))},
                     "exploitability": exploitability,
-                    "reachability": _factor_status(reachable if reachability_known else None, observed=reachability_known),
+                    "reachability": {
+                        **_factor_status(reachable, observed=reachable is not None),
+                        "signals": reachability_signals,
+                    },
                     "business_context": _factor_status(business_context, observed=business_context is not None),
+                    "crown_jewel": {
+                        **_factor_status(crown_jewel, observed=crown_jewel is not None),
+                        "signals": crown_signals,
+                    },
                 },
                 "expected_risk_reduction": {
                     "modeled_window_percent": round((campaign_risk / total_modeled_risk) * 100, 1) if total_modeled_risk else 0.0,

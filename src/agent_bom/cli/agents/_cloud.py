@@ -554,7 +554,7 @@ def run_benchmarks(
 
             vector_db_results = discover_vector_dbs()
             pinecone_results = discover_pinecone()
-            ctx.vector_db_results = vector_db_results
+            ctx.vector_db_results = [*vector_db_results, *pinecone_results]
             if not vector_db_results and not pinecone_results:
                 con.print("  [dim]No running vector databases found. Set PINECONE_API_KEY to scan Pinecone.[/dim]")
             else:

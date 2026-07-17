@@ -421,7 +421,7 @@ def compliance_options(fn):
                 "--vector-db-scan",
                 "vector_db_scan",
                 is_flag=True,
-                help="Scan for running vector databases (Qdrant, Weaviate, Chroma, Milvus) and assess security",
+                help="Scan Qdrant, Weaviate, Chroma, Milvus, and configured Pinecone indexes for security posture",
             ),
             click.option(
                 "--gpu-scan",

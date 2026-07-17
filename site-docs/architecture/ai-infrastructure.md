@@ -42,6 +42,7 @@ command should match the system boundary you can actually inspect.
 | Container and GPU images | `agent-bom agents --image <image>` | OS and language packages, CVEs, SBOM-ready package inventory | registry pull credentials when private images are used | image scan does not prove runtime deployment |
 | Kubernetes and GPU workloads | `agent-bom agents --k8s --namespace <ns>` | pod/workload inventory, package paths where available, GPU workload context | kubeconfig or in-cluster service account | depends on Kubernetes permissions and visible namespaces |
 | Cloud and AI platforms | provider-specific scan flags or enterprise preset | read-only cloud, warehouse, model, and AI service inventory | customer-managed provider credentials | provider coverage varies; mark partial evidence honestly |
+| Vector databases | `agent-bom agents -p . --vector-db-scan --format json --output vector-evidence.json` | reachable Qdrant, Weaviate, Chroma, and Milvus posture plus configured Pinecone index metadata | local endpoint access; optional `PINECONE_API_KEY` is read from the process environment and never written to the artifact | local discovery checks loopback defaults; Pinecone evidence is limited to indexes visible to the supplied key |
 | IaC and repo posture | `agent-bom iac scan .` or CI action | Terraform, Kubernetes, Helm, CloudFormation, Dockerfile findings | repository checkout | planned resources are not proof of deployed state |
 | Runtime proxy or gateway | `agent-bom proxy ...` or `agent-bom gateway serve ...` | audit JSONL, policy decisions, runtime alerts, relay metrics | selected MCP traffic path and operator runtime tokens | only selected traffic is governed |
 
@@ -57,6 +58,11 @@ command should match the system boundary you can actually inspect.
 - Prefer read-only credentials for cloud, warehouse, model, and registry scans.
 - Do not imply endpoint, gateway, or proxy rollout unless the runtime command
   path was actually run.
+
+For vector databases, inspect `vector-evidence.json` under `vector_db_scan`,
+then restrict unauthenticated endpoints or narrow the Pinecone key before
+rerunning the same command to produce replacement evidence. The artifact
+contains endpoint and index posture, not vector contents or credential values.
 
 ## Cloud providers
 

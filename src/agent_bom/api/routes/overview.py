@@ -677,20 +677,25 @@ def _identity_snapshot(request: Request) -> dict[str, Any]:
 def _hub_severity_snapshot(request: Request) -> dict[str, int]:
     """Per-severity counts of hub-ingested findings (POST /v1/findings/bulk).
 
-    Reads the same compliance-hub ledger that powers /v1/compliance/hub/posture
-    via the store's indexed ``severity_breakdown`` (a GROUP BY / dict count, no
-    payload hydration) so bulk-ingested evidence contributes to the overview
-    posture + headline instead of being invisible until a scan runs. Tenant
-    scope is owned by the request; the store method is tenant-keyed. Degrades to
-    zeros if the hub store is unavailable so the overview never fails closed on
-    an optional dependency.
+    Reads the CURRENT-STATE table (``hub_findings_current``) with the SAME
+    origin + default read-window predicates that ``/v1/findings`` counts on, via
+    the store's indexed ``current_severity_breakdown`` (a GROUP BY, no payload
+    hydration). This is the exec-read honesty fix (#3961): the headline used to
+    read the append-only ledger (``severity_breakdown`` — all-origin, unbounded,
+    keeping resolved/aged rows forever), so it could exceed and contradict the
+    drill-down. Deriving from current-state within the window makes the headline
+    reconcile EXACTLY with a ``/v1/findings`` click-through.
+
+    Tenant scope is owned by the request; the store method is tenant-keyed.
+    Degrades to zeros if the hub store is unavailable so the overview never fails
+    closed on an optional dependency.
     """
     empty = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
     tenant_id = _tenant_id(request)
     # Memoise the O(rows) severity GROUP BY per tenant. This snapshot feeds BOTH
     # the cache fingerprint and the composed payload, so without this it ran the
-    # full-ledger scan on every /v1/overview request (~360ms at 1M). The cache is
-    # invalidated on every hub-ledger mutation (ingest / clear), so a hit is exact
+    # full scan on every /v1/overview request (~360ms at 1M). The cache is
+    # invalidated on every hub mutation (ingest / clear), so a hit is exact
     # and reconciles with the findings API by construction (wave-2 residual #3).
     from agent_bom.api import hub_overview_cache
 
@@ -698,13 +703,22 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
     if cached is not None:
         return cached
     try:
+        from agent_bom.api import time_window
         from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
         store = get_compliance_hub_store()
-        breakdown = getattr(store, "severity_breakdown", None)
-        if not callable(breakdown):
-            return empty
-        counts = breakdown(tenant_id) or {}
+        current_breakdown = getattr(store, "current_severity_breakdown", None)
+        if callable(current_breakdown):
+            # Same default read-window ``/v1/findings`` applies (window_days
+            # unset ⇒ server default ≈90d) and the same ``bulk_ingest`` origin
+            # scope, so the headline == the drill-down for the same window.
+            since = time_window.window_since_iso(time_window.normalize_window_days(None))
+            counts = current_breakdown(tenant_id, origin="bulk_ingest", since=since) or {}
+        else:
+            breakdown = getattr(store, "severity_breakdown", None)
+            if not callable(breakdown):
+                return empty
+            counts = breakdown(tenant_id) or {}
     except Exception:  # pragma: no cover - hub store optional
         _logger.debug("hub severity snapshot failed", exc_info=True)
         return empty

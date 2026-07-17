@@ -6583,7 +6583,16 @@ paths:
 
         pagination over the same durable hub store is available (keyset-safe sort)
 
-        through ``/v1/findings?cursor=`` for scale reads.'
+        through ``/v1/findings?cursor=`` for scale reads.
+
+
+        The synchronous store read (page fetch + count) runs in a worker thread
+
+        under adaptive backpressure so a deep page against a large tenant cannot
+
+        block the event loop and starve ``/health`` (mirrors ``/v1/findings``);
+
+        under saturation it sheds with ``429 + Retry-After``.'
       operationId: list_hub_findings_v1_compliance_hub_findings_get
       parameters:
       - in: query
@@ -6652,7 +6661,18 @@ paths:
 
         (native vs external) so the dashboard /compliance page can render a
 
-        single posture story across every entry point.'
+        single posture story across every entry point.
+
+
+        The synchronous store aggregates (severity GROUP BY, SQL-side framework
+
+        counts, tenant total) plus the native-job fold run in a worker thread under
+
+        adaptive backpressure so this O(table) read cannot block the event loop and
+
+        starve ``/health`` (mirrors ``/v1/findings``); under saturation it sheds with
+
+        ``429 + Retry-After``.'
       operationId: get_hub_posture_v1_compliance_hub_posture_get
       parameters:
       - in: header

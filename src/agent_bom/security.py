@@ -539,10 +539,13 @@ def sanitize_sensitive_payload(value: object, *, key: object | None = None, max_
         # only ID fields with the canonical ``source->relation->target`` shape,
         # and never values matching a known credential pattern.
         key_text = str(key or "").strip().lower().replace("-", "_")
+        edge_parts = value.split("->")
         if (
             key_text in {"id", "canonical_id"}
             and _STRUCTURED_EDGE_ID_RE.fullmatch(value)
-            and not any(pattern.search(value) for pattern in _VALUE_CREDENTIAL_PATTERNS)
+            and len(edge_parts) == 3
+            and not _looks_sensitive_value(edge_parts[0])
+            and not _looks_sensitive_value(edge_parts[2])
         ):
             return sanitize_text(value, max_len=max_str_len)
         if "://" in value:

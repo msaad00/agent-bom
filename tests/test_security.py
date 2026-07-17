@@ -463,6 +463,15 @@ def test_sanitize_sensitive_payload_still_redacts_credentials_in_id_fields():
     assert result == {"id": "***REDACTED***"}
 
 
+def test_sanitize_sensitive_payload_redacts_unknown_secret_inside_structured_edge_id():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    opaque_value = "q7V9mK2xR8pL4nT6wY1cF3hJ5sD0aB2eG8uN9zQ6XkI="
+    edge_id = f"asset:{opaque_value}->can_access->finding:CVE-2020-14343"
+
+    assert sanitize_sensitive_payload({"id": edge_id}) == {"id": "***REDACTED***"}
+
+
 def test_sanitize_sensitive_payload_preserves_deep_inventory_metadata():
     from agent_bom.security import sanitize_sensitive_payload
 

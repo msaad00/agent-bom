@@ -309,6 +309,43 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(within(wizard).getByTestId("wizard-external-id-details").textContent!.trim()).toBe(regeneratedId);
   });
 
+  it("offers an org-wide StackSet path on the AWS setup step (deploy once, auto-enroll)", async () => {
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const wizard = openAwsWizard();
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+
+    // Single-account is the default; the CLI grant script is shown.
+    expect(within(wizard).getByText(/aws iam create-role/)).toBeInTheDocument();
+    const setupId = within(wizard).getByTestId("wizard-external-id").textContent!.trim();
+
+    // Switch to the whole-organization scope.
+    fireEvent.click(within(wizard).getByRole("button", { name: /Whole organization/i }));
+
+    // The StackSet artifact is surfaced with the same ExternalId + consistent role.
+    const stackSet = within(wizard).getByTestId("wizard-org-stackset");
+    expect(stackSet.textContent).toContain("aws cloudformation create-stack-set");
+    expect(stackSet.textContent).toContain("--auto-deployment Enabled=true");
+    expect(stackSet.textContent).toContain("OrganizationalUnitIds");
+    expect(stackSet.textContent).toContain("agent-bom-readonly");
+    expect(stackSet.textContent).toContain(`EXTERNAL_ID=${setupId}`);
+
+    // Honest copy: read-only, every member account, new accounts auto-enroll.
+    const explainer = within(wizard).getByTestId("wizard-org-explainer").textContent ?? "";
+    expect(explainer).toMatch(/every member account/i);
+    expect(explainer).toMatch(/auto-enroll|automatically/i);
+    expect(explainer).toMatch(/read-only/i);
+    expect(explainer).toMatch(/management account|delegated admin/i);
+
+    // The single-account CLI grant script is hidden while in org scope.
+    expect(within(wizard).queryByText(/aws iam create-role/)).toBeNull();
+
+    // The ExternalId still carries into Details unchanged (management-account role).
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    expect(within(wizard).getByTestId("wizard-external-id-details").textContent!.trim()).toBe(setupId);
+  });
+
   it("maps provider-specific GCP fields to role_ref / external_id / auth_params", async () => {
     apiMock.createCloudConnection.mockResolvedValue({ ...CREATED_RECORD, provider: "gcp" });
 

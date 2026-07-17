@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAwsOrgStackSetScript,
   buildCliGrantScript,
   buildCloudShellGrantScript,
   buildGrantScript,
   buildTerraformDeployScript,
   cloudGrantMethodLabel,
   cloudProviderMeta,
+  DEFAULT_AWS_ORG_ROLE_NAME,
   generateConnectionExternalId,
 } from "@/lib/cloud-connect-wizard";
 
@@ -83,6 +85,36 @@ describe("cloud-connect-wizard", () => {
     expect(buildGrantScript("aws", "cli")).toContain("aws iam create-policy");
     expect(buildGrantScript("aws", "cloudshell")).toContain("CloudShell");
     expect(cloudGrantMethodLabel("cli")).toBe("CLI");
+  });
+
+  it("builds an org-wide CloudFormation StackSet grant (deploy once, auto-enroll)", () => {
+    // The org-scale path: one StackSet from the management account mints an
+    // identical read-only role in every member account and auto-enrolls new ones,
+    // instead of onboarding accounts one by one.
+    const script = buildAwsOrgStackSetScript("abc123");
+    expect(DEFAULT_AWS_ORG_ROLE_NAME).toBe("agent-bom-readonly");
+    // StackSet create + rollout commands, matching deploy/cloudformation/README.md.
+    expect(script).toContain("aws cloudformation create-stack-set");
+    expect(script).toContain("aws cloudformation create-stack-instances");
+    expect(script).toContain("--permission-model SERVICE_MANAGED");
+    expect(script).toContain("--auto-deployment Enabled=true");
+    expect(script).toContain('OrganizationalUnitIds="${ROOT_OU_ID}"');
+    expect(script).toContain("CAPABILITY_NAMED_IAM");
+    // The consistent role name the org fan-out assumes in each account.
+    expect(script).toContain("agent-bom-readonly");
+    // The ExternalId round-trips into the StackSet parameters.
+    expect(script).toContain("EXTERNAL_ID=abc123");
+    expect(script).toContain("ParameterKey=ExternalId");
+    // Points at the shipped template.
+    expect(script).toContain("deploy/cloudformation/agent-bom-readonly-role.yaml");
+    // Honest: register the management account's role ARN afterwards.
+    expect(script.toLowerCase()).toContain("management");
+  });
+
+  it("defaults the StackSet role name and falls back to a placeholder ExternalId", () => {
+    const script = buildAwsOrgStackSetScript();
+    expect(script).toContain("ROLE_NAME=agent-bom-readonly");
+    expect(script).toContain("EXTERNAL_ID=<EXTERNAL_ID>");
   });
 
   it("generates high-entropy external IDs for AWS trust policies", () => {

@@ -8,12 +8,19 @@ metadata built by ``_agent_mode._summary``.
 
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
+
 from click.testing import CliRunner
 
 from agent_bom.cloud_sdk_freshness import (
+    PROVIDER_API_DEPRECATIONS,
     RECOMMENDED_FLOORS,
+    ProviderApiDeprecation,
+    cloud_api_deprecation_posture,
+    cloud_api_deprecation_summary,
     cloud_sdk_freshness_summary,
     cloud_sdk_posture,
+    removed_provider_apis,
 )
 
 # A fully-fresh install: every anchor distribution comfortably above its floor.
@@ -165,3 +172,161 @@ def test_doctor_renders_cloud_sdk_freshness_section():
     result = CliRunner().invoke(doctor_cmd, [])
     assert result.exit_code == 0, result.output
     assert "Cloud SDK freshness" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Provider-API deprecation / removal posture
+# ---------------------------------------------------------------------------
+
+# A reference "now" comfortably after the Azure AD Graph retirement date so the
+# entry evaluates as removed regardless of when the suite runs.
+AFTER_AZURE_GRAPH = date(2026, 1, 1)
+# A reference "now" before it, for the still-scheduled path.
+BEFORE_AZURE_GRAPH = date(2025, 1, 1)
+
+
+def test_catalog_entries_are_real_and_sourced():
+    # Every shipped entry must carry a provider, a human API label, a
+    # replacement, and an official reference URL — no unsourced/fabricated rows.
+    assert PROVIDER_API_DEPRECATIONS
+    for dep in PROVIDER_API_DEPRECATIONS:
+        assert dep.provider and dep.api and dep.replacement
+        assert dep.reference.startswith("https://")
+
+
+def test_clear_when_no_legacy_sdk_installed():
+    # Nothing legacy in the tree: every retirement is informational (clear),
+    # status ok, no warnings — the honest "we use the modern replacement" state.
+    posture = cloud_api_deprecation_posture(now=AFTER_AZURE_GRAPH, installed={})
+    assert posture["status"] == "ok"
+    assert posture["warnings"] == []
+    assert posture["removed_count"] == 0
+    assert posture["at_risk_count"] == 0
+    assert posture["gated"] == []
+    assert all(a["status"] == "clear" for a in posture["apis"])
+
+
+def test_removed_api_with_legacy_sdk_is_gated():
+    # azure-graphrbac present + past the retirement date → the Azure AD Graph
+    # API is removed AND reachable via a legacy SDK, so it is gated (a check
+    # using it must be skipped honestly, never silently passed).
+    posture = cloud_api_deprecation_posture(
+        now=AFTER_AZURE_GRAPH,
+        installed={"azure-graphrbac": "0.61.1"},
+    )
+    assert posture["status"] == "degraded"
+    assert posture["removed_count"] == 1
+    graph = next(a for a in posture["apis"] if a["distribution"] == "azure-graphrbac")
+    assert graph["status"] == "gated"
+    assert graph["lifecycle"] == "removed"
+    codes = {w["code"] for w in posture["warnings"]}
+    assert "api_removed" in codes
+    assert [g["api"] for g in posture["gated"]] == [graph["api"]]
+
+
+def test_removed_api_without_legacy_sdk_is_clear_not_gated():
+    posture = cloud_api_deprecation_posture(
+        now=AFTER_AZURE_GRAPH,
+        installed={},  # azure-graphrbac absent
+    )
+    graph = next(a for a in posture["apis"] if a["distribution"] == "azure-graphrbac")
+    assert graph["lifecycle"] == "removed"
+    assert graph["status"] == "clear"
+    assert posture["gated"] == []
+
+
+def test_scheduled_future_removal_with_legacy_sdk_is_at_risk_not_gated():
+    posture = cloud_api_deprecation_posture(
+        now=BEFORE_AZURE_GRAPH,
+        installed={"azure-graphrbac": "0.61.1"},
+    )
+    graph = next(a for a in posture["apis"] if a["distribution"] == "azure-graphrbac")
+    assert graph["lifecycle"] == "deprecating"
+    assert graph["status"] == "at_risk"
+    assert posture["at_risk_count"] == 1
+    assert posture["gated"] == []
+    codes = {w["code"] for w in posture["warnings"]}
+    assert "api_deprecating" in codes
+
+
+def test_undated_deprecation_with_legacy_sdk_is_at_risk():
+    # oauth2client has no scheduled removal date → deprecating, not removed.
+    posture = cloud_api_deprecation_posture(
+        now=AFTER_AZURE_GRAPH,
+        installed={"oauth2client": "4.1.3"},
+    )
+    entry = next(a for a in posture["apis"] if a["distribution"] == "oauth2client")
+    assert entry["lifecycle"] == "deprecating"
+    assert entry["status"] == "at_risk"
+
+
+def test_now_accepts_date_and_datetime():
+    as_date = cloud_api_deprecation_posture(now=AFTER_AZURE_GRAPH, installed={})
+    as_dt = cloud_api_deprecation_posture(now=datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc), installed={})
+    assert as_date == as_dt
+
+
+def test_removed_provider_apis_gate_helper():
+    gated = removed_provider_apis(now=AFTER_AZURE_GRAPH, installed={"azure-graphrbac": "0.61.1"})
+    assert set(gated) == {"Azure AD Graph API (graph.windows.net)"}
+    clear = removed_provider_apis(now=AFTER_AZURE_GRAPH, installed={})
+    assert clear == {}
+
+
+def test_custom_future_dated_entry_within_horizon_warns():
+    dep = ProviderApiDeprecation(
+        provider="aws",
+        api="Fake service API",
+        distribution="boto3",
+        replacement="newer boto3",
+        retirement_date="2026-03-01",
+        note="test entry",
+        reference="https://example.com/aws",
+    )
+    posture = cloud_api_deprecation_posture(
+        now=date(2026, 1, 1),
+        installed={"boto3": "1.40.0"},
+        deprecations=[dep],
+    )
+    entry = posture["apis"][0]
+    assert entry["lifecycle"] == "deprecating"
+    assert entry["status"] == "at_risk"
+
+
+def test_default_resolver_never_raises_and_is_json_shaped_deprecations():
+    posture = cloud_api_deprecation_posture()
+    assert posture["schema_version"] == 1
+    assert isinstance(posture["apis"], list) and posture["apis"]
+    assert posture["status"] in {"ok", "degraded"}
+    for entry in posture["apis"]:
+        assert entry["status"] in {"clear", "at_risk", "gated"}
+        assert entry["lifecycle"] in {"removed", "deprecating"}
+
+
+def test_deprecation_summary_trims_and_lists_gated():
+    summary = cloud_api_deprecation_summary(now=AFTER_AZURE_GRAPH, installed={"azure-graphrbac": "0.61.1"})
+    assert summary["status"] == "degraded"
+    assert summary["removed_count"] == 1
+    assert summary["gated"] == ["Azure AD Graph API (graph.windows.net)"]
+    assert summary["warnings"] and "Azure AD Graph" in summary["warnings"][0]
+
+
+def test_sdk_freshness_summary_nests_deprecations_block():
+    summary = cloud_sdk_freshness_summary(installed=FRESH)
+    assert "deprecations" in summary
+    assert summary["deprecations"]["status"] in {"ok", "degraded"}
+
+
+def test_doctor_renders_cloud_api_deprecations_section():
+    from agent_bom.cli._doctor import doctor_cmd
+
+    result = CliRunner().invoke(doctor_cmd, [])
+    assert result.exit_code == 0, result.output
+    assert "Cloud API deprecations" in result.output
+
+
+def test_agent_mode_summary_includes_deprecations():
+    from agent_bom.cli._agent_mode import _summary
+
+    out = _summary({})
+    assert "deprecations" in out["cloud_sdk_freshness"]

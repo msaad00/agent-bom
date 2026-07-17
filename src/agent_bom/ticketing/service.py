@@ -21,7 +21,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_error, sanitize_text
 from agent_bom.ticketing.connection_store import TicketingStore, TicketLink, get_ticketing_store
 from agent_bom.ticketing.factory import build_transport
 from agent_bom.ticketing.models import (
@@ -207,7 +207,7 @@ async def sync_ticket_status(
         status = await transport.get_status(ref)
     except Exception as exc:  # noqa: BLE001
         _audit("ticketing.sync", actor=actor, tenant_id=tenant_id, connection=record, outcome="failure")
-        logger.warning("Ticketing status sync failed for ticket %s", ticket_id)
+        logger.warning("Ticketing status sync failed for ticket %s", sanitize_text(ticket_id, max_len=200))
         raise TicketingError(_safe_detail(exc), code="transport_error") from exc
     finally:
         secret = ""

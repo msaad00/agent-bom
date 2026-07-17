@@ -413,6 +413,33 @@ async def test_sync_ticket_status_updates_link():
 
 
 @pytest.mark.asyncio
+async def test_sync_ticket_status_sanitizes_ticket_id_in_failure_log(caplog):
+    store = InMemoryTicketingStore()
+    _mcp_connection(store)
+    ticket_id = "ticket-1\r\nforged-log-entry"
+    store.claim_ticket_link(
+        TicketLink(
+            id=ticket_id,
+            tenant_id="t1",
+            connection_id="c1",
+            dedupe_key="finding-1",
+            provider=PROVIDER_JIRA,
+            external_id="1",
+            key="SEC-1",
+        )
+    )
+
+    async def failing_status_caller(tool, args):
+        raise RuntimeError("itsm down")
+
+    with caplog.at_level("WARNING", logger="agent_bom.ticketing.service"), pytest.raises(TicketingError):
+        await sync_ticket_status(tenant_id="t1", ticket_id=ticket_id, store=store, mcp_caller=failing_status_caller)
+
+    assert any("ticket-1 forged-log-entry" in message for message in caplog.messages)
+    assert all("\r" not in message and "\n" not in message for message in caplog.messages)
+
+
+@pytest.mark.asyncio
 async def test_sync_ticket_status_tenant_isolation():
     store = InMemoryTicketingStore()
     _mcp_connection(store)

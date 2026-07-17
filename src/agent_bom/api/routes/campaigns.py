@@ -18,13 +18,14 @@ from agent_bom.api.campaign_store import MembershipEvidence, get_campaign_store
 from agent_bom.api.risk_campaigns import derive_campaigns
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_error
 from agent_bom.ticketing.service import TicketingError, create_ticket_for_finding, sync_ticket_status
 
 router = APIRouter(tags=["campaigns"])
 _logger = logging.getLogger(__name__)
 _READ = require_authenticated_permission("read")
 _WRITE = require_authenticated_permission("scan")
+_TICKETING_ERROR_DETAIL = "The ticketing action failed. Review the connection and retry."
+_TRANSPORT_ERROR_DETAIL = "The ticketing transport failed. Review the connection and retry."
 
 
 class CampaignUpdate(BaseModel):
@@ -591,10 +592,10 @@ async def create_campaign_tickets(
                     actor=_actor(request),
                 )
             )
-        except TicketingError as exc:
-            errors.append({"finding_id": finding_id, "code": exc.code, "detail": sanitize_error(exc, generic=True)})
-        except Exception as exc:  # noqa: BLE001 - one transport failure must not hide successful tickets
-            errors.append({"finding_id": finding_id, "code": "transport_error", "detail": sanitize_error(exc, generic=True)})
+        except TicketingError:
+            errors.append({"finding_id": finding_id, "code": "ticketing_error", "detail": _TICKETING_ERROR_DETAIL})
+        except Exception:  # noqa: BLE001 - one transport failure must not hide successful tickets
+            errors.append({"finding_id": finding_id, "code": "transport_error", "detail": _TRANSPORT_ERROR_DETAIL})
     if errors:
         response.status_code = 207
     _audit("risk_campaign.ticket_bulk_create", request, campaign_id, created=len(tickets), failed=len(errors))
@@ -655,10 +656,10 @@ async def sync_campaign_tickets(
     for link in selected:
         try:
             synced.append(await sync_ticket_status(tenant_id=tenant_id, ticket_id=link.id, actor=_actor(request)))
-        except TicketingError as exc:
-            errors.append({"ticket_id": link.id, "code": exc.code, "detail": sanitize_error(exc, generic=True)})
-        except Exception as exc:  # noqa: BLE001 - preserve the rest of the bulk sync
-            errors.append({"ticket_id": link.id, "code": "transport_error", "detail": sanitize_error(exc, generic=True)})
+        except TicketingError:
+            errors.append({"ticket_id": link.id, "code": "ticketing_error", "detail": _TICKETING_ERROR_DETAIL})
+        except Exception:  # noqa: BLE001 - preserve the rest of the bulk sync
+            errors.append({"ticket_id": link.id, "code": "transport_error", "detail": _TRANSPORT_ERROR_DETAIL})
     if errors:
         response.status_code = 207
     _audit("risk_campaign.ticket_bulk_sync", request, campaign_id, synced=len(synced), failed=len(errors))

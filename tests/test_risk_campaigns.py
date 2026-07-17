@@ -881,6 +881,13 @@ def test_campaign_ticket_action_forbids_credentials_and_reports_partial_result(m
     assert result.status_code == 207
     assert result.json()["created"] == 1
     assert result.json()["failed"] == 1
+    assert result.json()["errors"] == [
+        {
+            "finding_id": "finding-b",
+            "code": "transport_error",
+            "detail": "The ticketing transport failed. Review the connection and retry.",
+        }
+    ]
     assert "secret-token" not in result.text
 
 
@@ -1114,4 +1121,11 @@ def test_campaign_ticket_sync_returns_207_and_sanitizes_partial_failure(monkeypa
     assert result.status_code == 207
     assert result.json()["synced"] == 1
     assert result.json()["failed"] == 1
+    assert result.json()["errors"] == [
+        {
+            "ticket_id": "ticket-b",
+            "code": "transport_error",
+            "detail": "The ticketing transport failed. Review the connection and retry.",
+        }
+    ]
     assert "leaked-secret-value" not in result.text

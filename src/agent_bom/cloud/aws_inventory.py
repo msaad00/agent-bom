@@ -347,6 +347,19 @@ def inventory_enabled() -> bool:
     return False
 
 
+# Sentinel a stored connection carries in ``regions`` to request an estate-wide
+# multi-region scan (the explicit "All regions" wizard toggle), instead of a
+# single default region. Case-insensitive.
+ALL_REGIONS_SENTINEL = "all"
+
+
+def is_all_regions(regions: list[str] | None) -> bool:
+    """Whether a connection's ``regions`` requests the all-enabled-regions fan-out."""
+    if not regions:
+        return False
+    return any(str(r).strip().lower() == ALL_REGIONS_SENTINEL for r in regions)
+
+
 def all_regions_enabled() -> bool:
     """Whether to fan a single scan across every enabled region in the account.
 
@@ -494,6 +507,7 @@ def discover_inventory_all_regions(
     include_compute: bool = True,
     include_network: bool = True,
     force: bool = False,
+    session: Any = None,
 ) -> dict[str, Any]:
     """Estate-wide multi-region AWS inventory: fan out per region, merge once.
 
@@ -526,13 +540,16 @@ def discover_inventory_all_regions(
             "warnings": ["boto3 is required for AWS inventory. Install with: pip install 'agent-bom[aws]'"],
         }
 
-    session_kwargs: dict[str, Any] = {}
-    if profile:
-        session_kwargs["profile_name"] = profile
-    try:
-        session = boto3.Session(**session_kwargs)
-    except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
-        return {**_empty_payload(region=""), "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
+    # A brokered assumed-role session (e.g. a stored cloud-connection scan) is
+    # used as-is; only the standalone path builds one from the profile/default chain.
+    if session is None:
+        session_kwargs: dict[str, Any] = {}
+        if profile:
+            session_kwargs["profile_name"] = profile
+        try:
+            session = boto3.Session(**session_kwargs)
+        except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
+            return {**_empty_payload(region=""), "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
 
     default_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
@@ -549,6 +566,7 @@ def discover_inventory_all_regions(
     global_payload = discover_inventory(
         region=global_region,
         profile=profile,
+        session=session,
         include_s3=include_s3,
         include_ec2=False,
         include_iam=include_iam,
@@ -571,6 +589,7 @@ def discover_inventory_all_regions(
         return discover_inventory(
             region=region,
             profile=profile,
+            session=session,
             include_s3=False,
             include_ec2=include_ec2,
             include_iam=False,
@@ -812,9 +831,10 @@ def discover_inventory(
     - ``"ok"``              — enumeration ran (possibly with per-service warnings).
 
     When ``session`` is supplied (e.g. the read-only session the credential
-    broker assumes from a stored connection), it is used as-is and the
-    ``region`` / ``profile`` arguments are ignored — the same read-only code path
-    runs against the brokered credentials instead of the local default chain.
+    broker assumes from a stored connection), it is used as-is instead of the
+    local default chain. An explicit ``region`` still wins over the session's
+    default region (the multi-region fan-out reuses one brokered session and
+    scans each region's clients in turn); ``profile`` is ignored with a session.
 
     Never raises: boto3 absence, missing credentials, and per-service access
     denials all degrade to an empty (or partial) inventory plus warnings.
@@ -846,7 +866,9 @@ def discover_inventory(
         except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
             return {**empty, "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
 
-    resolved_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    # An explicit region wins even when a session is injected — the multi-region
+    # fan-out reuses one brokered session but scans each region's clients in turn.
+    resolved_region = region or session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
     account_id = _resolve_account_id(session)
 
     warnings: list[str] = []
@@ -1888,14 +1910,14 @@ def _discover_ecr(
                     continue
                 repo_uri = str(repo.get("repositoryUri", "") or "")
                 row: dict[str, Any] = {
-                        "name": name,
-                        "arn": str(repo.get("repositoryArn", "") or ""),
-                        "uri": repo_uri,
-                        "scan_on_push": bool((repo.get("imageScanningConfiguration") or {}).get("scanOnPush")),
-                        "tag_immutable": str(repo.get("imageTagMutability", "")) == "IMMUTABLE",
-                        "account_id": account_id or "",
-                        "location": region,
-                    }
+                    "name": name,
+                    "arn": str(repo.get("repositoryArn", "") or ""),
+                    "uri": repo_uri,
+                    "scan_on_push": bool((repo.get("imageScanningConfiguration") or {}).get("scanOnPush")),
+                    "tag_immutable": str(repo.get("imageTagMutability", "")) == "IMMUTABLE",
+                    "account_id": account_id or "",
+                    "location": region,
+                }
                 image_ref = _latest_ecr_image_ref(client, name, repo_uri)
                 if image_ref:
                     try:
@@ -2518,6 +2540,7 @@ def _iso(value: Any) -> str:
 
 __all__ = [
     "ALL_REGIONS_ENV_FLAG",
+    "ALL_REGIONS_SENTINEL",
     "INVENTORY_ENV_FLAG",
     "REGIONS_ENV_VAR",
     "all_regions_enabled",
@@ -2525,4 +2548,5 @@ __all__ = [
     "discover_inventory",
     "discover_inventory_all_regions",
     "inventory_enabled",
+    "is_all_regions",
 ]

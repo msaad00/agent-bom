@@ -386,6 +386,69 @@ describe("ConnectionsPage — Connect segment", () => {
     await waitFor(() => expect(document.body.textContent).not.toContain(SECRET));
   });
 
+  it("submits the all-regions sentinel when 'All enabled regions' is checked (AWS)", async () => {
+    apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const wizard = openAwsWizard();
+    const setupId = fillAwsDetails(wizard);
+    // Free-text region input is present by default; the all-regions checkbox is off.
+    expect(within(wizard).getByPlaceholderText("us-east-1, us-west-2")).toBeInTheDocument();
+
+    fireEvent.click(within(wizard).getByTestId("wizard-all-regions"));
+    // Checking it hides the per-region free-text path (progressive disclosure).
+    expect(within(wizard).queryByPlaceholderText("us-east-1, us-west-2")).toBeNull();
+
+    fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+
+    await waitFor(() =>
+      expect(apiMock.createCloudConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "aws", external_id: setupId, regions: ["all"] }),
+      ),
+    );
+  });
+
+  it("threads opt-in DSPM bucket ARNs into the AWS grant script, bucket-scoped", async () => {
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const wizard = openAwsWizard();
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+
+    const grantScript = () => within(wizard).getByText(/aws iam create-role/).closest("pre")!;
+    // Baseline: no S3 object read in the actual grant script.
+    expect(grantScript().textContent).not.toContain("s3:GetObject");
+
+    // Open the progressive-disclosure depth control and scope a DSPM bucket.
+    fireEvent.click(within(wizard).getByRole("button", { name: /Scan depth/i }));
+    fireEvent.change(within(wizard).getByTestId("wizard-dspm-buckets"), {
+      target: { value: "arn:aws:s3:::data-lake" },
+    });
+
+    await waitFor(() => expect(grantScript().textContent).toContain("s3:GetObject"));
+    expect(grantScript().textContent).toContain("arn:aws:s3:::data-lake");
+  });
+
+  it("generates the Snowflake Snowpark native-app (SPCS) recipe from the wizard", async () => {
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
+    const wizard = screen.getByRole("dialog", { name: "Add cloud account" });
+    fireEvent.click(within(wizard).getByRole("button", { name: /Snowflake/ }));
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+
+    // Default packaging is the read-only role; switch to the native app.
+    fireEvent.click(within(wizard).getByRole("button", { name: /Native app \(SPCS\)/i }));
+
+    const recipe = within(wizard).getByTestId("wizard-snowflake-spcs").textContent ?? "";
+    expect(recipe).toContain("CREATE APPLICATION PACKAGE");
+    expect(recipe).toContain("deploy/snowflake/native-app");
+    expect(recipe.toLowerCase()).toContain("read-only");
+  });
+
   it("renders a category-spanning connector gallery with cloud, code, AI, and data tiles", async () => {
     render(<ConnectionsPage />);
     await waitForConnectTab();

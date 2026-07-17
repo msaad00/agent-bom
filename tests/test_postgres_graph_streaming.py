@@ -41,15 +41,20 @@ class _RecordingConn:
         self.committed = 0
         self.deleted_tables: list[str] = []
         self.advisory_locks: list[tuple] = []
+        self.sql_calls: list[str] = []
+        self.rolled_back = 0
 
     def __enter__(self):
         return self
 
     def __exit__(self, *args):
+        if args[0] is not None:
+            self.rollback()
         return False
 
     def execute(self, sql, params=None):
         low = " ".join(sql.strip().lower().split())
+        self.sql_calls.append(low)
         if low.startswith("select pg_advisory_xact_lock"):
             self.advisory_locks.append(tuple(params))
         elif low.startswith("delete from"):
@@ -76,7 +81,7 @@ class _RecordingConn:
         self.committed += 1
 
     def rollback(self):
-        pass
+        self.rolled_back += 1
 
 
 class _FakePool:
@@ -207,3 +212,35 @@ def test_same_scan_retry_does_not_checkout_nested_connection(monkeypatch):
     store.save_graph_streaming(scan_id="scan-retry", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
 
     assert store._pool.connection_calls == 1
+
+
+def test_postgres_stream_rolls_back_after_flushed_batch(monkeypatch):
+    """A one-shot producer failure cannot commit a partial replacement."""
+    monkeypatch.setenv("AGENT_BOM_GRAPH_WRITE_BATCH_SIZE", "1")
+    conn = _RecordingConn()
+    store = _make_store(conn, monkeypatch)
+
+    def failing_nodes():
+        yield next(_nodes(1))
+        raise RuntimeError("producer failed after flush")
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="producer failed after flush"):
+        store.save_graph_streaming(scan_id="retry", tenant_id="t1", nodes=failing_nodes(), edges=iter(()))
+
+    assert conn.committed == 0
+    assert conn.rolled_back == 1
+    assert conn.snapshot_params is None
+
+
+def test_postgres_writer_lock_precedes_snapshot_reads_and_deletes(monkeypatch):
+    conn = _RecordingConn()
+    store = _make_store(conn, monkeypatch)
+
+    store.save_graph_streaming(scan_id="scan-1", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
+
+    lock_at = next(i for i, sql in enumerate(conn.sql_calls) if sql.startswith("select pg_advisory_xact_lock"))
+    prior_read_at = next(i for i, sql in enumerate(conn.sql_calls) if "from graph_snapshots" in sql and sql.startswith("select"))
+    delete_at = next(i for i, sql in enumerate(conn.sql_calls) if sql.startswith("delete from"))
+    assert lock_at < prior_read_at < delete_at

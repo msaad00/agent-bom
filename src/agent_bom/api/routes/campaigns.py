@@ -28,6 +28,31 @@ _TICKETING_ERROR_DETAIL = "The ticketing action failed. Review the connection an
 _TRANSPORT_ERROR_DETAIL = "The ticketing transport failed. Review the connection and retry."
 
 
+def _public_ticketing_code(exc: TicketingError) -> str:
+    """Map service failures to fixed public codes without returning exception data."""
+    if exc.code == "no_connection":
+        return "no_connection"
+    if exc.code == "ambiguous_connection":
+        return "ambiguous_connection"
+    if exc.code == "missing_project":
+        return "missing_project"
+    if exc.code == "missing_finding_id":
+        return "missing_finding_id"
+    if exc.code == "secret_unavailable":
+        return "secret_unavailable"
+    if exc.code == "not_found":
+        return "not_found"
+    if exc.code == "connection_mismatch":
+        return "connection_mismatch"
+    if exc.code == "transport_error":
+        return "transport_error"
+    return "ticketing_error"
+
+
+def _public_ticketing_detail(code: str) -> str:
+    return _TRANSPORT_ERROR_DETAIL if code == "transport_error" else _TICKETING_ERROR_DETAIL
+
+
 class CampaignUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -592,8 +617,9 @@ async def create_campaign_tickets(
                     actor=_actor(request),
                 )
             )
-        except TicketingError:
-            errors.append({"finding_id": finding_id, "code": "ticketing_error", "detail": _TICKETING_ERROR_DETAIL})
+        except TicketingError as exc:
+            code = _public_ticketing_code(exc)
+            errors.append({"finding_id": finding_id, "code": code, "detail": _public_ticketing_detail(code)})
         except Exception:  # noqa: BLE001 - one transport failure must not hide successful tickets
             errors.append({"finding_id": finding_id, "code": "transport_error", "detail": _TRANSPORT_ERROR_DETAIL})
     if errors:
@@ -656,8 +682,9 @@ async def sync_campaign_tickets(
     for link in selected:
         try:
             synced.append(await sync_ticket_status(tenant_id=tenant_id, ticket_id=link.id, actor=_actor(request)))
-        except TicketingError:
-            errors.append({"ticket_id": link.id, "code": "ticketing_error", "detail": _TICKETING_ERROR_DETAIL})
+        except TicketingError as exc:
+            code = _public_ticketing_code(exc)
+            errors.append({"ticket_id": link.id, "code": code, "detail": _public_ticketing_detail(code)})
         except Exception:  # noqa: BLE001 - preserve the rest of the bulk sync
             errors.append({"ticket_id": link.id, "code": "transport_error", "detail": _TRANSPORT_ERROR_DETAIL})
     if errors:

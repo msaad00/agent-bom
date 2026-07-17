@@ -19,6 +19,7 @@ from agent_bom.api.risk_campaigns import derive_campaigns
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_job_store
 from agent_bom.ticketing.connection_store import InMemoryTicketingStore, TicketLink, get_ticketing_store, set_ticketing_store
+from agent_bom.ticketing.service import TicketingError
 
 PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 
@@ -891,6 +892,35 @@ def test_campaign_ticket_action_forbids_credentials_and_reports_partial_result(m
     assert "secret-token" not in result.text
 
 
+@pytest.mark.parametrize(
+    "service_code, expected_code",
+    (
+        ("no_connection", "no_connection"),
+        ("ambiguous_connection", "ambiguous_connection"),
+        ("missing_project", "missing_project"),
+        ("secret_unavailable", "secret_unavailable"),
+        ("transport_error", "transport_error"),
+        ("unexpected-private-code", "ticketing_error"),
+    ),
+)
+def test_campaign_ticket_create_preserves_only_public_service_codes(monkeypatch, service_code: str, expected_code: str) -> None:
+    from agent_bom.api.server import app
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+
+    async def _create(**kwargs):
+        raise TicketingError("secret connection detail", code=service_code)
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.create_ticket_for_finding", _create)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    result = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "conn"}, headers=_headers())
+
+    assert result.status_code == 207
+    assert {item["code"] for item in result.json()["errors"]} == {expected_code}
+    assert "secret connection detail" not in result.text
+
+
 def test_ticket_action_is_bounded_and_resumable_before_side_effects(monkeypatch) -> None:
     from agent_bom.api.server import app
 
@@ -1129,3 +1159,37 @@ def test_campaign_ticket_sync_returns_207_and_sanitizes_partial_failure(monkeypa
         }
     ]
     assert "leaked-secret-value" not in result.text
+
+
+def test_campaign_ticket_sync_preserves_transport_code_without_exception_detail(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    store = get_ticketing_store()
+    store.claim_ticket_link(
+        TicketLink(
+            id="ticket-a",
+            tenant_id="tenant-alpha",
+            connection_id="conn",
+            dedupe_key="finding-a",
+            provider="generic",
+        )
+    )
+
+    async def _sync(**kwargs):
+        raise TicketingError("secret sync detail", code="transport_error")
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.sync_ticket_status", _sync)
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    result = client.post(f"/v1/campaigns/{campaign['id']}/tickets/sync", headers=_headers())
+
+    assert result.status_code == 207
+    assert result.json()["errors"] == [
+        {
+            "ticket_id": "ticket-a",
+            "code": "transport_error",
+            "detail": "The ticketing transport failed. Review the connection and retry.",
+        }
+    ]
+    assert "secret sync detail" not in result.text

@@ -24,7 +24,12 @@ def upgrade() -> None:
     bind = op.get_bind()
     database_name = bind.exec_driver_sql("SELECT current_database()").scalar_one()
     bootstrap_sql = load_bootstrap_sql(database_name)
-    bind.exec_driver_sql(bootstrap_sql)
+    # The baseline contains server-side PL/pgSQL ``format(... %L ...)`` tokens.
+    # Without ``no_parameters``, SQLAlchemy passes an empty parameter mapping
+    # and psycopg3 parses those tokens as unsupported client placeholders before
+    # PostgreSQL can evaluate them.  No runtime bind values or secrets are
+    # passed through this DBAPI call.
+    bind.exec_driver_sql(bootstrap_sql, execution_options={"no_parameters": True})
 
 
 def downgrade() -> None:  # pragma: no cover - baseline downgrade is intentionally manual

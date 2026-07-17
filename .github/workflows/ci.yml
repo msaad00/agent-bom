@@ -98,7 +98,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(site-docs/|mkdocs\.yml$|\.github/workflows/(docs|ci)\.yml$|\.github/actions/setup-python/)'; then
             docs=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|deploy/supabase/postgres/)'; then
             postgres=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|site-docs/deployment/aws-company-rollout\.md$)'; then
@@ -836,11 +836,59 @@ jobs:
       - name: Install Postgres test dependencies
         run: uv sync --frozen --extra dev --extra api --extra postgres
 
+      - name: Install Postgres client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Verify Alembic bootstrap and init.sql forward upgrade
+        env:
+          PGPASSWORD: testpass
+        run: |
+          set -euo pipefail
+
+          # Fresh Alembic-only deployment. The dedicated bootstrap owner mirrors
+          # the shipped compose model: it starts privileged enough to provision
+          # roles, then init.sql strips SUPERUSER/BYPASSRLS before the connection
+          # closes. Do not run the baseline as PostgreSQL's protected `postgres`
+          # bootstrap role.
+          psql -h 127.0.0.1 -U postgres -d postgres <<'SQL'
+          CREATE ROLE agentbom_migration_owner LOGIN PASSWORD 'migrationpass' SUPERUSER;
+          CREATE DATABASE agentbom_migration OWNER agentbom_migration_owner;
+          ALTER DATABASE agentbom_migration SET init.app_password = 'apppass';
+          SQL
+          export ALEMBIC_DATABASE_URL='postgresql+psycopg://agentbom_migration_owner:migrationpass@127.0.0.1:5432/agentbom_migration'
+          uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+          # A second invocation is the supported idempotent rerun contract.
+          uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+
+          expected_head="$(uv run alembic -c deploy/supabase/postgres/alembic.ini heads | awk 'NR == 1 {print $1}')"
+          actual_head="$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc 'SELECT version_num FROM alembic_version')"
+          test "$actual_head" = "$expected_head"
+          test -z "$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc "SELECT current_setting('init.app_password', true)")"
+          test "$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")" = "f"
+
+          # Existing Docker/psql bootstrap. init.sql establishes the baseline;
+          # stamping that exact revision and moving forward must reach the same
+          # Alembic head without replaying the baseline.
+          psql -h 127.0.0.1 -U postgres -d postgres <<'SQL'
+          CREATE ROLE agentbom_psql_owner LOGIN PASSWORD 'psqlpass' SUPERUSER;
+          CREATE DATABASE agent_bom OWNER agentbom_psql_owner;
+          ALTER DATABASE agent_bom SET init.app_password = 'apppass';
+          SQL
+          PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom \
+            -v ON_ERROR_STOP=1 -f deploy/supabase/postgres/init.sql
+          export ALEMBIC_DATABASE_URL='postgresql+psycopg://agentbom_psql_owner:psqlpass@127.0.0.1:5432/agent_bom'
+          uv run alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01
+          uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+          actual_head="$(PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom -Atc 'SELECT version_num FROM alembic_version')"
+          test "$actual_head" = "$expected_head"
+          test -z "$(PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom -Atc "SELECT current_setting('init.app_password', true)")"
+          test "$(PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom -Atc "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")" = "f"
+
       - name: Provision non-superuser application role
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends postgresql-client
           # The role is intentionally NOSUPERUSER NOBYPASSRLS so RLS policies
           # actually apply to it. Granting CREATE on the public schema lets the
           # storage layer's _ensure_tenant_rls() create and own its tables, so

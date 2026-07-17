@@ -365,6 +365,7 @@ test("large estates lead with clusters and keep raw topology as drill-down", asy
   await rollupRequest;
   await expect(page.getByText("Scope roll-up")).toBeVisible();
   await expect(page.getByText(/2 containers at this level.*1241 nodes in snapshot/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("investigation-large-estate-clustered.png"), fullPage: true });
 
   await page.getByRole("button", { name: "Open node view" }).click();
   await expect(page).toHaveURL(/rollup=0/);

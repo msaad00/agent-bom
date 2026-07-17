@@ -134,7 +134,7 @@ Connect with:
 | `policy_check` | Evaluate against security policy |
 | `diff` | Compare two scan reports |
 | `marketplace_check` | Pre-install trust check |
-| `code_scan` | SAST scanning via Semgrep |
+| `code_scan` | Execute Semgrep SAST; returns typed findings/clean/skipped/failed status |
 | `where` | Show discovery paths |
 | `tool_risk_assessment` | Score live MCP tool capabilities and server risk |
 | `inventory` | List discovered agents/servers/packages |
@@ -168,7 +168,7 @@ Connect with:
 | `model_file_scan` | Scan model files for embedded threats |
 | `ai_inventory_scan` | Detect AI SDK imports, shadow AI, and deprecated models |
 | `license_compliance_scan` | SPDX license compliance and compatibility checks |
-| `ingest_external_scan` | Import third-party SBOM / SCA scan output (CycloneDX, SPDX, SARIF, scanner JSON) |
+| `ingest_external_scan` | Import tool-agnostic SBOM / scanner evidence (CycloneDX, SPDX, SARIF, scanner JSON); no producer execution |
 
 ## Resources
 

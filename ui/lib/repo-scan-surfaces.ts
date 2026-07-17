@@ -88,10 +88,10 @@ export const REPO_SCAN_SURFACES: RepoScanSurface[] = [
   },
   {
     id: "sast",
-    label: "SAST / code paths",
-    detail: "Semgrep rules across the repo tree when semgrep is installed on the control plane (optional — skipped gracefully if absent)",
+    label: "Semgrep SAST",
+    detail: "Optional Semgrep execution across the repo tree with an explicit findings, clean, skipped, or failed outcome",
     languages: ["Python", "TS/JS", "Go", "Java", "…"],
-    surfaces: ["api", "cli", "mcp"],
+    surfaces: ["api", "cli", "mcp", "ui"],
   },
   {
     id: "connectors",

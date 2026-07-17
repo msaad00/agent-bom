@@ -130,6 +130,21 @@ def builtin_scanner_registrations() -> list[ScannerRegistration]:
             standards=("OWASP_LLM01", "CIS_16_4", "SOC2_CC6_1"),
         ),
         _registration(
+            "code-native",
+            "agent_bom.ast_analyzer",
+            phase=ScannerPhase.ANALYSIS,
+            run_attr="analyze_project",
+            input_types=("code_path",),
+            output_types=("ast_analysis", "ai_components"),
+            finding_types=("prompt-risk", "guardrail", "tool-signature", "ai-component"),
+            summary="Native AST and AI-component source analysis used by the agent-bom code command; no Semgrep execution.",
+            capabilities=local_read,
+            failure_mode=ScannerFailureMode.FAIL_CLOSED,
+            skip_when=("no_code_scope",),
+            telemetry_keys=("files_analyzed", "components_found", "duration_ms"),
+            standards=("OWASP_LLM", "MITRE_ATLAS"),
+        ),
+        _registration(
             "sast-semgrep",
             "agent_bom.sast",
             phase=ScannerPhase.SCANNING,
@@ -137,7 +152,10 @@ def builtin_scanner_registrations() -> list[ScannerRegistration]:
             input_types=("code_path", "sarif"),
             output_types=("sast_data", "packages", "vulnerabilities"),
             finding_types=("sast", "cwe", "owasp"),
-            summary="Semgrep SAST execution and SARIF normalization into the package/vulnerability model.",
+            summary=(
+                "Semgrep SAST execution and normalization into the package/vulnerability model; "
+                "the legacy .sarif path input imports through the canonical parser without executing Semgrep."
+            ),
             capabilities=ExtensionCapabilities(
                 scan_modes=("local", "online", "offline_local_rules"),
                 required_scopes=("local_project_read", "conditional_network_egress"),
@@ -150,6 +168,21 @@ def builtin_scanner_registrations() -> list[ScannerRegistration]:
             skip_when=("semgrep_missing", "no_code_scope", "offline_without_local_rules"),
             telemetry_keys=("files_scanned", "rules_loaded", "findings_emitted", "duration_ms"),
             standards=("CWE", "OWASP", "SARIF"),
+        ),
+        _registration(
+            "external-scan-ingest",
+            "agent_bom.parsers.external_scanners",
+            phase=ScannerPhase.DISCOVERY,
+            run_attr="detect_and_parse",
+            input_types=("sarif", "cyclonedx", "spdx", "trivy_json", "grype_json", "syft_json"),
+            output_types=("packages", "vulnerabilities", "findings"),
+            finding_types=("external-finding", "sast", "sca", "sbom-package"),
+            summary="Tool-agnostic evidence import through canonical SARIF, SBOM, and scanner-native parsers.",
+            capabilities=local_read,
+            failure_mode=ScannerFailureMode.FAIL_CLOSED,
+            skip_when=("no_external_scan_input",),
+            telemetry_keys=("format", "packages_emitted", "findings_emitted", "duration_ms"),
+            standards=("SARIF", "CycloneDX", "SPDX"),
         ),
         _registration(
             "container-image",

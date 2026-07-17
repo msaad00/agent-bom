@@ -41,7 +41,7 @@ Inventory, package, image, IaC, cloud, and skills scanning entry points.
 | `check` | Pre-install check for one package: allow / warn / block. |
 | `verify` | Package integrity + SLSA provenance verification. |
 | `secrets` | Secret detection. |
-| `code` | SAST scanning with CWE-based compliance mapping. |
+| `code` | Native AST and AI-component analysis for prompts, guardrails, tool signatures, SDKs, and model references. It does not execute Semgrep. |
 
 ## Runtime
 

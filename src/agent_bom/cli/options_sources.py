@@ -162,7 +162,10 @@ def input_options(fn):
                 "external_scan_path",
                 type=click.Path(exists=True),
                 default=None,
-                help="Path to Trivy, Grype, or Syft JSON output. Ingests findings and adds blast radius analysis.",
+                help=(
+                    "Path to tool-agnostic SARIF, CycloneDX, SPDX, Trivy, Grype, or Syft output. "
+                    "Imports existing evidence without executing Semgrep and adds blast-radius analysis."
+                ),
             ),
             click.option(
                 "--os-packages",

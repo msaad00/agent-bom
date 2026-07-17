@@ -146,14 +146,14 @@ for the full SARIF / Trivy / Grype matrix and the `findings push` vs
 `--external-scan` tradeoff.
 
 ```bash
-# Push external scanner output (Trivy / Grype / Syft / SARIF) or normalized findings JSON
+# Push external scanner output (Trivy / Grype / Syft / tool-agnostic SARIF) or normalized findings JSON
 agent-bom findings push ./trivy.json \
   --api-url https://agent-bom.internal.example.com \
   --api-key "$AGENT_BOM_API_KEY" \
   --source trivy
 
 # Full local scan depth from an external report (no control plane required)
-agent-bom agents --external-scan ./findings.sarif -f json -o report.json
+agent-bom agents --external-scan ./findings.sarif -f json -o report.json  # imports; does not execute Semgrep
 agent-bom agents --external-scan ./trivy.json -f json -o report.json
 
 # List findings back from the control plane (lifecycle columns when present)
@@ -167,10 +167,10 @@ agent-bom fleet sync \
 
 **`findings push` vs `--external-scan`:** bulk push lands rows in the control-plane
 findings queue (`POST /v1/findings/bulk`) — best for fleet triage and dashboard
-review. `--external-scan` runs the full local scan pipeline (blast radius, graph,
+review. `--external-scan` imports evidence through the full local scan pipeline (blast radius, graph,
 compliance, exports) and merges with discovered MCP context; use it for CI gates
-and air-gap reports. SARIF from Semgrep, CodeQL, or Bandit is auto-detected on
-both paths (#3585).
+and air-gap reports. Tool-agnostic SARIF from any conforming producer is
+auto-detected on both paths (#3585).
 
 **VM / registry matrix:** scan with Trivy (`trivy rootfs` or `trivy image`), then
 either `--external-scan` for local depth or `findings push` for control-plane

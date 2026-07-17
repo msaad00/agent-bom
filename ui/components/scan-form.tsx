@@ -710,7 +710,7 @@ function RepoSurfaceCatalog() {
           ))}
         </div>
         <p className="mt-2 text-[10px] text-[color:var(--text-tertiary)]">
-          Shallow read-only clone. SaaS connectors use{" "}
+          Shallow read-only clone. Optional Semgrep SAST reports findings, clean, skipped, or failed explicitly. SaaS connectors use{" "}
           <Link href="/sources" className="text-emerald-400 hover:text-emerald-300">Data Sources</Link>, not git URLs.
         </p>
       </div>

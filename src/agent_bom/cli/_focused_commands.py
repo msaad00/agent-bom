@@ -422,9 +422,9 @@ def secrets_cmd(
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
 def code_cmd(path: str, output_format: str, output_path: Optional[str], quiet: bool) -> None:
-    """Analyze source code for AI components — prompts, guardrails, tools.
+    """Run native AST and AI-component analysis — prompts, guardrails, tools.
 
-    AST-based analysis of Python AI framework code. Extracts system
+    Native AST-based analysis of Python AI framework code. Extracts system
     prompts, flags risky prompt interpolation, detects guardrails, and maps
     tool signatures. Also reuses the multi-language AI component source scan
     to surface SDK/model usage across Python, JavaScript/TypeScript, Go,
@@ -435,6 +435,10 @@ def code_cmd(path: str, output_format: str, output_path: Optional[str], quiet: b
       agent-bom code .                      # analyze current project
       agent-bom code /path/to/agent-app     # analyze specific project
       agent-bom code . --format json        # JSON output
+
+    This command does not execute Semgrep. Use ``agents --code PATH`` for
+    Semgrep SAST, or ``agents --external-scan REPORT.sarif`` to import a
+    tool-agnostic SARIF artifact.
     """
     import json as _json
 
@@ -463,7 +467,7 @@ def code_cmd(path: str, output_format: str, output_path: Optional[str], quiet: b
         return
 
     # Console output
-    con.print(f"\n[bold]Code analysis:[/bold] {result.files_analyzed} files analyzed\n")
+    con.print(f"\n[bold]Native code analysis:[/bold] {result.files_analyzed} files analyzed\n")
 
     if result.prompts:
         con.print(f"[bold]System Prompts ({len(result.prompts)}):[/bold]")

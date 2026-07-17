@@ -130,7 +130,9 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "code_scan",
-        "description": "SAST scanning via Semgrep with CWE-based compliance mapping",
+        "description": (
+            "Execute Semgrep SAST with CWE-based compliance mapping and return a typed findings, clean, skipped, or failed execution status"
+        ),
         "annotations": {"readOnlyHint": True},
     },
     {"name": "context_graph", "description": "Agent context graph with lateral movement analysis", "annotations": {"readOnlyHint": True}},
@@ -337,7 +339,8 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "ingest_external_scan",
         "description": (
-            "Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis;"
+            "Ingest tool-agnostic SARIF, CycloneDX, SPDX, Trivy, Grype, or Syft evidence and return "
+            "packages with blast radius analysis;"
             " parse_only stays local, while pushing to the control plane requires the findings:write scope"
         ),
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},

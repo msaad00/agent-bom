@@ -89,7 +89,7 @@ export function adhocScopeChips(
       { label: "Repository", value: form.repo_url.trim() },
       { label: "Clone", value: "Shallow read-only git clone on control plane" },
       { label: "Execution", value: "Static parse only — repo code never runs" },
-      { label: "Auto-detect", value: "Agents · MCP · Skills · Terraform · IaC · CI/CD · deps · notebooks · secrets · crypto · SAST*" },
+      { label: "Auto-detect", value: "Agents · MCP · Skills · Terraform · IaC · CI/CD · deps · notebooks · secrets · crypto · optional Semgrep SAST" },
       { label: "Lockfiles", value: "uv.lock · requirements.txt · poetry.lock · package-lock.json · go.sum · …" },
       { label: "Not in repo URL", value: "SaaS connectors (Jira/Slack/…) — use Data Sources or Cloud Accounts" },
       { label: "Languages", value: "Python · TS/JS · YAML · HCL · Markdown · lockfiles" },

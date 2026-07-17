@@ -30,6 +30,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import Annotated, Any
@@ -305,6 +306,20 @@ def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
 
 def _completed_jobs_for_tenant(tenant_id: str) -> list[ScanJob]:
     return [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
+
+
+def _job_in_window(job: ScanJob, since: str | None) -> bool:
+    if since is None:
+        return True
+    stamp = job.completed_at or job.created_at
+    try:
+        observed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        cutoff = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=timezone.utc)
+        return observed >= cutoff
+    except (TypeError, ValueError):
+        return False
 
 
 class BulkFindingsRequest(BaseModel):
@@ -1870,7 +1885,7 @@ def _list_findings_impl(
     # returns that scan's rows verbatim.
     deduped: dict[str, dict[str, Any]] = {}
     for job in sorted(
-        _completed_jobs_for_tenant(tenant_id),
+        (job for job in _completed_jobs_for_tenant(tenant_id) if _job_in_window(job, window_since)),
         key=lambda job: (job.completed_at or "", job.created_at or "", job.job_id),
     ):
         if scan_id and job.job_id != scan_id:

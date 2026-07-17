@@ -140,9 +140,9 @@ export function ExposurePathCommandCenter({
   return (
     <div className="relative overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(160deg,var(--surface),var(--surface-elevated))] shadow-xl shadow-black/20">
       <div className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${severityTone}`} aria-hidden="true" />
-      <div className="space-y-5 p-5 pl-6">
+      <div className="space-y-5 p-4 pl-5 sm:p-5 sm:pl-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-2">
+          <div className="w-full min-w-0 space-y-2 sm:flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-red-500/35 bg-red-500/12 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-red-700 dark:text-red-200">
                 {String(path.severity)} risk
@@ -158,12 +158,12 @@ export function ExposurePathCommandCenter({
             </h2>
             <p
               title={pathSummary}
-              className="max-w-3xl truncate text-sm leading-6 text-[color:var(--text-secondary)]"
+              className="line-clamp-3 max-w-3xl text-sm leading-6 text-[color:var(--text-secondary)] sm:line-clamp-2"
             >
               {pathSummary}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+          <div className="grid w-full grid-cols-3 gap-2 text-xs sm:w-auto sm:grid-cols-4">
             <MetricPill label="Path risk" value={path.riskScore.toFixed(1)} tone="red" />
             <MetricPill label="Hops" value={String(hopCount)} />
             <MetricPill label="Agents" value={String(path.affectedAgents.length)} />

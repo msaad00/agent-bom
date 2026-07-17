@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from starlette.testclient import TestClient
 
 from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore, set_compliance_hub_store
@@ -27,14 +29,15 @@ def teardown_module() -> None:
 def _seed_scan_findings() -> None:
     set_job_store(InMemoryJobStore())
     set_compliance_hub_store(InMemoryComplianceHubStore())
+    observed_at = datetime.now(timezone.utc).isoformat()
     job = ScanJob(
         job_id="scope-job",
         tenant_id="default",
-        created_at="2026-02-22T10:00:00Z",
+        created_at=observed_at,
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    job.completed_at = observed_at
     job.result = {
         "agents": [],
         "scan_sources": ["cloud"],
@@ -127,14 +130,15 @@ def test_no_scope_filter_is_backward_compatible() -> None:
 def _seed_lens_findings() -> None:
     set_job_store(InMemoryJobStore())
     set_compliance_hub_store(InMemoryComplianceHubStore())
+    observed_at = datetime.now(timezone.utc).isoformat()
     job = ScanJob(
         job_id="lens-job",
         tenant_id="default",
-        created_at="2026-02-22T10:00:00Z",
+        created_at=observed_at,
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    job.completed_at = observed_at
     job.result = {
         "agents": [],
         "scan_sources": ["project"],

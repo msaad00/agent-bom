@@ -43,6 +43,7 @@ material. The index below groups the canonical docs by audience.
 - [`THREAT_MODEL.md`](THREAT_MODEL.md) — threat model
 - [`PENTEST_READINESS.md`](PENTEST_READINESS.md) — pentest readiness
 - [`SCANNER_CONTEXT_CONTRACT.md`](SCANNER_CONTEXT_CONTRACT.md) — IaC `ScanContext` two-gate authorization model
+- [`RISK_CAMPAIGNS.md`](RISK_CAMPAIGNS.md) — first command, campaign artifact, ticketing, and server-owned verification
 
 ## Platform / SRE (self-host · deploy · operate)
 
@@ -54,7 +55,7 @@ Two hubs cover the clustered material — start at the hub, then follow it to th
 - [`PERMISSIONS.md`](PERMISSIONS.md) — RBAC roles and permissions
 - [`DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) — persistence and evidence stores
 - [`RELEASE_VERIFICATION.md`](RELEASE_VERIFICATION.md) — release verification
-- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (301 paths / 358 operations)
+- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (307 paths / 364 operations)
 
 ## AI / agent developers (MCP · clients · tools)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -216,6 +217,23 @@ def test_native_transport_reads_only_direct_kubelet_configz(tmp_path: Path) -> N
         transport.close()
 
     assert result == {"kubeletconfig": {"readOnlyPort": 0}}
+
+
+def test_custom_http_transport_never_disables_certificate_validation(tmp_path: Path) -> None:
+    token_path, ca_path = _service_account_files(tmp_path)
+    transport = InClusterK8sTransport(
+        host="10.0.0.1",
+        port=443,
+        token_path=token_path,
+        ca_path=ca_path,
+        http_transport=httpx.MockTransport(lambda _request: httpx.Response(200, json={})),
+    )
+    try:
+        assert isinstance(transport._verify, ssl.SSLContext)
+        assert transport._verify.verify_mode is ssl.CERT_REQUIRED
+        assert transport._verify.check_hostname is True
+    finally:
+        transport.close()
 
 
 def test_native_transport_rejects_response_before_json_materialization(tmp_path: Path) -> None:

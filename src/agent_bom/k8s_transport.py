@@ -212,10 +212,11 @@ class InClusterK8sTransport:
         if not ca_path.is_file():
             raise K8sTransportError("Service-account CA is unavailable", reason="credentials")
 
-        # A custom transport is used only by deterministic tests. Production
-        # clients always verify the mounted cluster CA.
+        # Always construct and retain the mounted cluster CA context. Custom
+        # transports are used by deterministic tests, but must not weaken the
+        # production constructor contract or disable certificate validation.
         try:
-            self._verify: ssl.SSLContext | bool = False if http_transport is not None else ssl.create_default_context(cafile=str(ca_path))
+            self._verify = ssl.create_default_context(cafile=str(ca_path))
             self._headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
             self._http_transport = http_transport
             self._client = httpx.Client(

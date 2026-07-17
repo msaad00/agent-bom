@@ -218,6 +218,12 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --role="projects/YOUR_PROJECT_ID/roles/agentBomScanner"
 ```
 
+That project-scoped grant covers local project inventory and IAM evidence. To
+prove inherited allow/deny policies and organization principal-access-boundary
+state, create the equivalent custom role at the organization level and grant it
+at the owning organization or folder. Parent sources that cannot be read remain
+explicitly incomplete; they are never treated as an empty policy set.
+
 ### 3. Workload Identity (GKE — no key files)
 
 ```bash
@@ -236,7 +242,7 @@ export GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID
 agent-bom scan --gcp
 ```
 
-**What gets scanned:** GKE clusters + node pools, Vertex AI endpoints + models + notebooks + pipeline jobs, Cloud Run services, Cloud Functions, Artifact Registry images.
+**What gets scanned:** GKE clusters + node pools, Vertex AI endpoints + models + notebooks + pipeline jobs, Cloud Run services, Cloud Functions, Artifact Registry images, and version-3 allow policies, untruncated definitions for referenced roles, IAM deny policies, and principal-access-boundary source state.
 
 ---
 

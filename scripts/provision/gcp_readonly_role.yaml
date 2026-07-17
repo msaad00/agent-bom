@@ -10,6 +10,10 @@
 #     --member="serviceAccount:agent-bom@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
 #     --role="projects/YOUR_PROJECT_ID/roles/agentBomScanner"
 #
+# A project-scoped grant reads that project's local evidence. Complete inherited
+# allow/deny/PAB evidence also requires an equivalent organization- or
+# folder-scoped grant; missing parent access is reported as incomplete.
+#
 # Recommended: use Workload Identity Federation instead of service account keys.
 #   https://cloud.google.com/iam/docs/workload-identity-federation
 #
@@ -57,5 +61,16 @@ includedPermissions:
   - artifactregistry.tags.list
 
   # Resource metadata
+  - cloudasset.assets.listIamPolicy
+  - iam.denypolicies.list
+  - iam.policybindings.list
+  - iam.principalaccessboundarypolicies.list
+  - iam.roles.get
+  - iam.serviceAccounts.list
+  - resourcemanager.folders.get
+  - resourcemanager.folders.getIamPolicy
+  - resourcemanager.organizations.getIamPolicy
   - resourcemanager.projects.get
+  - resourcemanager.projects.getIamPolicy
   - resourcemanager.projects.list
+  - serviceusage.services.use

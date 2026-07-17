@@ -662,6 +662,51 @@ def test_inventory_enumerates_all_three_classes(monkeypatch: pytest.MonkeyPatch)
     assert "gcp:project/proj-1" in env["discovery_scope"]
 
 
+def test_inventory_transports_authorization_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    collected = {
+        "iam_observed_at": "2026-07-17T12:00:00+00:00",
+        "iam_hierarchy": ["projects/proj-1"],
+        "allow_policies": [
+            {
+                "resource": "projects/proj-1",
+                "version": 3,
+                "bindings": [
+                    {
+                        "id": "binding-1",
+                        "role": "roles/viewer",
+                        "members": ["serviceAccount:reader@p.iam.gserviceaccount.com"],
+                        "condition": None,
+                    }
+                ],
+            }
+        ],
+        "role_definitions": [{"id": "roles/viewer", "permissions": ["storage.objects.get"], "completeness": "complete"}],
+        "deny_policies": [],
+        "pab_policies": [],
+        "pab_bindings": [],
+        "iam_sources": [
+            {"name": name, "state": "complete", "diagnostics": [], "provenance": []}
+            for name in (
+                "allow_policies",
+                "role_definitions",
+                "resource_hierarchy",
+                "deny_policies",
+                "principal_access_boundaries",
+            )
+        ],
+    }
+    monkeypatch.setattr(gcp_inventory, "collect_gcp_authorization", lambda *args, **kwargs: collected)
+
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    assert payload["allow_policies"][0]["version"] == 3
+    assert payload["role_definitions"][0]["permissions"] == ["storage.objects.get"]
+    assert payload["authorization_evidence"]["sources"][0]["state"] == "complete"
+    assert payload["authorization_evidence"]["bindings"][0]["binding_id"].startswith("binding-1")
+
+
 def test_inventory_force_bypasses_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(gcp_inventory.INVENTORY_ENV_FLAG, raising=False)
     with _install_fake_gcp():

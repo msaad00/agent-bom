@@ -21,8 +21,8 @@ def _imported_google_cloud_modules() -> set[str]:
     mods: set[str] = set()
     for py in _CLOUD_DIR.glob("gcp*.py"):
         text = py.read_text()
-        for m in re.findall(r"from google\.cloud import ([a-zA-Z0-9_]+)", text):
-            mods.add(m)
+        for imported in re.findall(r"from google\.cloud import ([a-zA-Z0-9_, ]+)", text):
+            mods.update(part.strip() for part in imported.split(",") if part.strip())
         for m in re.findall(r"\bgoogle\.cloud\.([a-zA-Z0-9_]+)", text):
             mods.add(m)
     return mods
@@ -34,10 +34,9 @@ def test_every_google_cloud_module_imported_is_installed() -> None:
     pytest.importorskip("google.cloud.compute_v1")
     used = _imported_google_cloud_modules()
     assert used, "no google.cloud imports found \u2014 scraper regex may be stale"
-    # Only modules the inventory hard-depends on must be present. Others (e.g.
-    # iam_admin_v1, imported under try/except for service-account privilege
-    # detail) are version-dependent and degrade gracefully, so best-effort.
-    core = {"compute_v1", "storage"} & used
+    # These modules are hard dependencies of inventory or decision-oriented IAM
+    # collection. In particular, iam_v3 requires google-cloud-iam>=2.19.
+    core = {"asset_v1", "compute_v1", "iam_admin_v1", "iam_v2", "iam_v3", "resourcemanager_v3", "storage"} & used
     missing = [m for m in sorted(core) if not _importable(f"google.cloud.{m}")]
     assert not missing, f"core google.cloud modules missing from the gcp extra: {missing} \u2014 add the distribution to pyproject.toml"
 

@@ -1,7 +1,7 @@
 # connect-gcp — mints the read-only grant agent-bom's GCP connector needs.
 #
 # The ONLY per-cloud difference: a service account with IAM bindings
-# roles/viewer + roles/iam.securityReviewer — both read-only predefined roles.
+# Read-only inventory, IAM review, Cloud Asset, and API-consumption roles.
 # No write permission is granted. agent-bom calls only list/get APIs.
 #
 # The roles bind at the project by default, or org-wide / folder-wide
@@ -22,9 +22,14 @@ resource "random_id" "sa_suffix" {
 locals {
   service_account_id = var.service_account_id != "" ? var.service_account_id : "${var.service_account_id_prefix}-${random_id.sa_suffix.hex}"
 
-  # The two read-only predefined roles the connector needs, bound as a set so
+  # The read-only predefined roles the connector needs, bound as a set so
   # the same grant applies verbatim at whichever scope the operator picks.
-  read_roles = toset(["roles/viewer", "roles/iam.securityReviewer"])
+  read_roles = toset([
+    "roles/viewer",
+    "roles/iam.securityReviewer",
+    "roles/cloudasset.viewer",
+    "roles/serviceusage.serviceUsageConsumer",
+  ])
 
   bind_project = var.iam_binding_scope == "project"
   bind_org     = var.iam_binding_scope == "organization"
@@ -35,11 +40,11 @@ resource "google_service_account" "this" {
   project      = var.project_id
   account_id   = local.service_account_id
   display_name = var.service_account_display_name
-  description  = "Read-only service account assumed by agent-bom (viewer + securityReviewer). No write permissions."
+  description  = "Read-only service account assumed by agent-bom for inventory and IAM evidence. No write permissions."
 }
 
-# roles/viewer (inventory) + roles/iam.securityReviewer (read-only IAM policy
-# access for CIEM/posture), bound at the chosen scope. Default: project.
+# Inventory, IAM review, Cloud Asset, and API-consumption roles bound at the
+# chosen scope. Default: project.
 resource "google_project_iam_member" "readonly" {
   for_each = local.bind_project ? local.read_roles : toset([])
 

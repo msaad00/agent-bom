@@ -110,6 +110,7 @@ azure = [
 ]
 gcp = [
     "google-cloud-aiplatform>=1.38",
+    "google-cloud-asset>=3.30",
     "google-cloud-functions>=1.16",
     "google-cloud-container>=2.36",
     "google-cloud-run>=0.10",
@@ -117,7 +118,7 @@ gcp = [
     # Estate inventory imports these directly — without them GCP compute/firewall,
     # IAM service-account, storage, and log discovery silently return empty.
     "google-cloud-compute>=1.14",
-    "google-cloud-iam>=2.12",
+    "google-cloud-iam>=2.19",
     "google-cloud-storage>=2.10",
     "google-cloud-logging>=3.5",
     "google-cloud-pubsub>=2.18",

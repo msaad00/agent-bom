@@ -23,13 +23,13 @@ variable "service_account_display_name" {
 
 # --- IAM binding scope (project / org / folder — the fleet-onboarding path) ---
 # The service account always lives in project_id; iam_binding_scope only decides
-# WHERE the two read-only roles are granted. "organization"/"folder" is the GCP
+# WHERE the read-only roles are granted. "organization"/"folder" is the GCP
 # analogue of the AWS Organizations StackSet and the Azure management-group
 # scope: one apply covers every project the AGENT_BOM_GCP_ALL_PROJECTS fan-out
 # reaches, so onboarding is not per-project. Still strictly read-only.
 
 variable "iam_binding_scope" {
-  description = "Where to bind the read-only roles (roles/viewer + roles/iam.securityReviewer). \"project\" (default) binds at project_id only. \"organization\" binds org-wide via organization_id (covers every folder/project under the org). \"folder\" binds folder-wide via folder_id (covers every project under the folder). Org/folder is the fleet/mass-onboarding path for AGENT_BOM_GCP_ALL_PROJECTS — a single grant instead of a per-project apply."
+  description = "Where to bind the read-only inventory, IAM-review, Cloud Asset, and service-usage roles. \"project\" (default) binds at project_id only. \"organization\" binds org-wide via organization_id (covers every folder/project under the org). \"folder\" binds folder-wide via folder_id (covers every project under the folder). Org/folder is the fleet/mass-onboarding path for AGENT_BOM_GCP_ALL_PROJECTS — a single grant instead of a per-project apply."
   type        = string
   default     = "project"
 

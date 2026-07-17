@@ -209,7 +209,7 @@ Azure and GCP equivalents:
 # Azure — Reader / Security Reader via DefaultAzureCredential
 AGENT_BOM_AZURE_INVENTORY=1 agent-bom agents --preset enterprise --azure
 
-# GCP — roles/viewer + roles/iam.securityReviewer via ADC
+# GCP — read-only inventory, IAM review, and Cloud Asset roles via ADC
 AGENT_BOM_GCP_INVENTORY=1 agent-bom cloud gcp --project <PROJECT_ID> --cis
 ```
 

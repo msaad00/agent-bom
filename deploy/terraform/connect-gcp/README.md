@@ -6,18 +6,25 @@ same one-model connect pattern as
 `terraform apply` instead of hand-running `gcloud iam` commands.
 
 This is the **only** per-cloud difference in the connect flow: a service account
-bound to **`roles/viewer`** + **`roles/iam.securityReviewer`** — both read-only
-predefined roles. No write permission is granted. The connector calls only
+bound to **`roles/viewer`**, **`roles/iam.securityReviewer`**,
+**`roles/cloudasset.viewer`**, and **`roles/serviceusage.serviceUsageConsumer`** —
+all read-only predefined roles. No write permission is granted. The connector calls only
 `list`/`get` APIs. The roles bind at the **project** by default, or **org-wide /
 folder-wide** (`iam_binding_scope`) for fleet/mass onboarding — see
 [Fleet onboarding](#fleet-onboarding-orgfolder-scope) below.
+
+Project scope covers local project evidence. Complete inherited allow/deny and
+organization PAB evidence requires the organization/folder scope that owns it;
+the connector reports inaccessible parent sources as incomplete.
 
 ## What it creates
 
 - A read-only **service account** with a **unique, non-guessable account_id**
   (`abom-readonly-<random hex>@<project>.iam…` by default).
-- IAM bindings for **`roles/viewer`** (inventory) and
-  **`roles/iam.securityReviewer`** (read-only IAM policy access for CIEM/posture),
+- IAM bindings for **`roles/viewer`** (inventory),
+  **`roles/iam.securityReviewer`** (read-only IAM policy access),
+  **`roles/cloudasset.viewer`** (resource-local IAM policies), and
+  **`roles/serviceusage.serviceUsageConsumer`** (authorized Cloud Asset API use),
   at the **project** (default), **organization**, or **folder** scope
   (`iam_binding_scope`).
 - **Optionally** (variable-gated) a **Workload Identity Federation** pool +
@@ -81,7 +88,7 @@ module "agent_bom_connect" {
 
 ### Fleet onboarding (org/folder scope)
 
-For a fleet scan, bind the same two read-only roles once at the **organization**
+For a fleet scan, bind the same read-only role set once at the **organization**
 (or **folder**) instead of per project — the GCP analogue of the AWS
 Organizations StackSet and the Azure management-group scope. A single apply then
 covers every project the `AGENT_BOM_GCP_ALL_PROJECTS` fan-out reaches. The SA

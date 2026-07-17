@@ -103,7 +103,7 @@ carries plaintext secrets in the compose.
 | Principle | What it means here |
 |-----------|--------------------|
 | **Read-only** | Only `List*` / `Describe*` / `Get*` (AWS), `list` / `get` ARM (Azure), Google Cloud list/get permissions (GCP), and `SELECT` / `SHOW` over `ACCOUNT_USAGE` (Snowflake). No create/update/delete, ever. |
-| **Least privilege** | A single read-only managed role per source (AWS `SecurityAudit`, Azure `Reader`/`Security Reader`, GCP `roles/viewer` + `roles/iam.securityReviewer`, Snowflake `ABOM_READONLY`). Nothing broader. |
+| **Least privilege** | Read-only managed roles per source (AWS `SecurityAudit`, Azure `Reader`/`Security Reader`, GCP inventory + IAM review + Cloud Asset roles, Snowflake `ABOM_READONLY`). Nothing broader. |
 | **Zero trust / no passwords** | Short-lived tokens, key-pairs, or federated identity only. No long-lived password is ever accepted (Snowflake password auth is deprecated and warns). |
 | **No data exfiltration** | Secret *metadata* is read (a secret exists, when it rotated) but never secret *values*. No object/blob/row data is read. Errors are sanitized before display. |
 | **Customer-owned** | Findings stay in your environment. agent-bom has no phone-home; the discovery envelope on every payload records `ScanMode.CLOUD_READ_ONLY` and the exact permissions used. |
@@ -294,11 +294,13 @@ service account gets a unique, non-guessable name.
 
 ---
 
-## 5. GCP — connect with viewer + security reviewer
+## 5. GCP — connect with read-only inventory and IAM review roles
 
 **Grant** (read-only, predefined): bind the scanner service account to
-**`roles/viewer`** for inventory and **`roles/iam.securityReviewer`** for IAM
-relationship and policy visibility. For fleet-wide scans, grant the same roles
+**`roles/viewer`** for inventory, **`roles/iam.securityReviewer`** for IAM,
+**`roles/cloudasset.viewer`** for resource-local policies, and
+**`roles/serviceusage.serviceUsageConsumer`** for Cloud Asset API quota attribution.
+Together they provide read-only relationship and policy visibility. For fleet-wide scans, grant the same roles
 at the organization or folder level and enable project fan-out.
 
 **Authenticate** through Application Default Credentials — no password, pick
@@ -324,18 +326,18 @@ organization → folders → projects hierarchy, runs each project scan separate
 and writes graph nodes under the right org/folder/project parent so exposures
 stay drillable at tenant scale. `AGENT_BOM_GCP_MAX_PROJECTS` bounds the run.
 
-> **Mass-onboarding grant.** Rather than granting the two read-only roles per
+> **Mass-onboarding grant.** Rather than granting the read-only role set per
 > project, bind them **once at the organization or folder** so a single grant
 > covers every project the fan-out reaches — the GCP analogue of the AWS
 > Organizations StackSet (§3) and the Azure management-group scope (§4). The
 > `connect-gcp` module does this with `iam_binding_scope = "organization"` (or
-> `"folder"`); the binding stays strictly read-only (`roles/viewer` +
-> `roles/iam.securityReviewer`).
+> `"folder"`); the bindings stay strictly read-only.
 
 **Secure-by-default provisioning** (`deploy/terraform/connect-gcp`): the module
-mints a unique read-only service account and binds only `roles/viewer` plus
-`roles/iam.securityReviewer` — at the project by default, or org/folder-wide via
-`iam_binding_scope` for fleet onboarding. Optional Workload Identity Federation
+mints a unique read-only service account and binds only `roles/viewer`,
+`roles/iam.securityReviewer`, `roles/cloudasset.viewer`, and
+`roles/serviceusage.serviceUsageConsumer` — at the project by default, or
+org/folder-wide via `iam_binding_scope` for fleet onboarding. Optional Workload Identity Federation
 is locked to a scoped `attribute_condition`, pinned audiences, and a specific
 `principalSet`; broad wildcard federation is rejected.
 

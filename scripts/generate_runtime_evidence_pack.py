@@ -18,6 +18,7 @@ from typing import Any
 
 from starlette.testclient import TestClient
 
+from agent_bom import __version__
 from agent_bom.api.metrics import reset_for_tests as reset_metrics
 from agent_bom.audit_replay import verify_hash_chain
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
@@ -26,8 +27,8 @@ from agent_bom.proxy_audit import write_audit_record
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = REPO_ROOT / "docs" / "release" / "runtime-evidence-v0.86.3.json"
-DOCKER_IMAGE = "agent-bom-runtime-evidence:0.86.3"
+DEFAULT_OUTPUT = REPO_ROOT / "docs" / "release" / f"runtime-evidence-v{__version__}.json"
+DOCKER_IMAGE = f"agent-bom-runtime-evidence:{__version__}"
 GATEWAY_TOKEN = "release-gateway-token-with-32-plus-bytes"
 UPSTREAM_TOKEN_ENV = "AGENT_BOM_RELEASE_UPSTREAM_TOKEN"
 UPSTREAM_TOKEN_VALUE = "release-upstream-token-with-32-plus-bytes"

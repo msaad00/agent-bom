@@ -1,7 +1,7 @@
 {
   "release_version": "0.96.3",
-  "captured_at": "2026-07-13T19:41:49.902Z",
-  "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
+  "captured_at": "2026-07-17T05:04:42.080Z",
+  "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
     {
       "path": "dashboard-live.png",

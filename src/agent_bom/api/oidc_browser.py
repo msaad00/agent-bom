@@ -285,6 +285,7 @@ def configured_browser_sso_provider() -> str | None:
         cfg = OIDCBrowserConfig.from_env()
     except OIDCError:
         return None
-    if not cfg.enabled:
+    issuer = cfg.oidc.issuer
+    if not cfg.enabled or not issuer:
         return None
-    return sso_provider_from_issuer(cfg.oidc.issuer)
+    return sso_provider_from_issuer(issuer)

@@ -42,6 +42,7 @@ from agent_bom.api.models import (
     EntitlementHealth,
     HealthResponse,
     JobStatus,
+    PublicHealthResponse,
     ScanJob,
     ScanRequest,
     StepStatus,  # noqa: F401 — re-exported for tests
@@ -1269,9 +1270,29 @@ async def root(request: Request):
     return RedirectResponse(url="/docs")
 
 
-@app.get("/health", response_model=HealthResponse, tags=["meta"])
-async def health() -> HealthResponse:
+def _public_health() -> PublicHealthResponse:
+    from agent_bom.api.middleware import get_auth_runtime_status
+
+    auth_runtime = get_auth_runtime_status()
+    return PublicHealthResponse(
+        status="ok",
+        version=__version__,
+        auth_required=bool(auth_runtime["auth_required"]),
+        auth_configured=bool(auth_runtime.get("auth_configured", False)),
+        configured_auth_modes=list(cast(list[str], auth_runtime["configured_modes"])),
+        unauthenticated_allowed=bool(auth_runtime.get("unauthenticated_allowed", False)),
+    )
+
+
+@app.get("/health", response_model=PublicHealthResponse, tags=["meta"])
+async def health() -> PublicHealthResponse:
     """Liveness probe."""
+    return _public_health()
+
+
+@app.get("/v1/system/health", response_model=HealthResponse, tags=["meta"])
+async def system_health() -> HealthResponse:
+    """Authenticated operator diagnostics for configured subsystems."""
     from agent_bom.api.middleware import get_auth_runtime_status
     from agent_bom.entitlements import load_entitlement_state
 
@@ -1290,8 +1311,8 @@ async def health() -> HealthResponse:
     )
 
 
-@app.get("/healthz", response_model=HealthResponse, tags=["meta"])
-async def healthz() -> HealthResponse:
+@app.get("/healthz", response_model=PublicHealthResponse, tags=["meta"])
+async def healthz() -> PublicHealthResponse:
     """Kubernetes-style liveness probe alias for /health."""
     return await health()
 
@@ -1320,8 +1341,8 @@ async def readiness() -> JSONResponse:
     return JSONResponse(status_code=200, content=status.as_dict())
 
 
-@app.get("/livez", response_model=HealthResponse, tags=["meta"])
-async def liveness() -> HealthResponse:
+@app.get("/livez", response_model=PublicHealthResponse, tags=["meta"])
+async def liveness() -> PublicHealthResponse:
     """Kubernetes-style liveness probe alias for /health."""
     return await health()
 
@@ -1335,7 +1356,7 @@ async def ping() -> dict[str, str]:
 @app.get("/status", response_model=HealthResponse, tags=["meta"])
 async def status() -> HealthResponse:
     """Operator status alias for the health payload."""
-    return await health()
+    return await system_health()
 
 
 # ── Dashboard static file serving ────────────────────────────────────────────

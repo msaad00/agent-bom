@@ -39,15 +39,26 @@ class _RecordingConn:
         self.snapshot_params: tuple | None = None
         self.executemany_calls: list[str] = []
         self.committed = 0
+        self.deleted_tables: list[str] = []
+        self.advisory_locks: list[tuple] = []
+        self.sql_calls: list[str] = []
+        self.rolled_back = 0
 
     def __enter__(self):
         return self
 
     def __exit__(self, *args):
+        if args[0] is not None:
+            self.rollback()
         return False
 
     def execute(self, sql, params=None):
         low = " ".join(sql.strip().lower().split())
+        self.sql_calls.append(low)
+        if low.startswith("select pg_advisory_xact_lock"):
+            self.advisory_locks.append(tuple(params))
+        elif low.startswith("delete from"):
+            self.deleted_tables.append(low.split()[2])
         if low.startswith("insert into graph_snapshots"):
             self.snapshot_params = tuple(params)
         # latest/previous lookups + set_config + purge scan -> empty history
@@ -70,14 +81,16 @@ class _RecordingConn:
         self.committed += 1
 
     def rollback(self):
-        pass
+        self.rolled_back += 1
 
 
 class _FakePool:
     def __init__(self, conn):
         self._conn = conn
+        self.connection_calls = 0
 
     def connection(self):
+        self.connection_calls += 1
         return self._conn
 
 
@@ -160,3 +173,74 @@ def test_save_graph_delegates_to_streaming(monkeypatch):
     assert len(conn.node_rows) == 3
     assert len(conn.search_rows) == 3
     assert conn.snapshot_params[0] == "scan-3"
+
+
+def test_streaming_serializes_and_replaces_same_snapshot(monkeypatch):
+    """A retry cannot merge stale rows or race another writer for the scan."""
+    conn = _RecordingConn()
+    store = _make_store(conn, monkeypatch)
+
+    store.save_graph_streaming(scan_id="scan-retry", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
+
+    assert conn.advisory_locks == [("t1\x1fscan-retry",)]
+    assert conn.deleted_tables == [
+        "graph_node_search",
+        "attack_paths",
+        "interaction_risks",
+        "graph_edges",
+        "graph_nodes",
+        "graph_snapshots",
+    ]
+
+
+def test_same_scan_retry_does_not_checkout_nested_connection(monkeypatch):
+    """A one-connection pool must not deadlock while resolving prior history."""
+    class _RetryConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("select scan_id") and "order by created_at" in low and "created_at <" not in low:
+                return _FakeCursor([("scan-retry", "2026-07-17T00:00:00+00:00")])
+            if low.startswith("select created_at"):
+                return _FakeCursor([("2026-07-17T00:00:00+00:00",)])
+            if low.startswith("select scan_id") and "created_at <" in low:
+                return _FakeCursor([])
+            return super().execute(sql, params)
+
+    conn = _RetryConn()
+    store = _make_store(conn, monkeypatch)
+
+    store.save_graph_streaming(scan_id="scan-retry", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
+
+    assert store._pool.connection_calls == 1
+
+
+def test_postgres_stream_rolls_back_after_flushed_batch(monkeypatch):
+    """A one-shot producer failure cannot commit a partial replacement."""
+    monkeypatch.setenv("AGENT_BOM_GRAPH_WRITE_BATCH_SIZE", "1")
+    conn = _RecordingConn()
+    store = _make_store(conn, monkeypatch)
+
+    def failing_nodes():
+        yield next(_nodes(1))
+        raise RuntimeError("producer failed after flush")
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="producer failed after flush"):
+        store.save_graph_streaming(scan_id="retry", tenant_id="t1", nodes=failing_nodes(), edges=iter(()))
+
+    assert conn.committed == 0
+    assert conn.rolled_back == 1
+    assert conn.snapshot_params is None
+
+
+def test_postgres_writer_lock_precedes_snapshot_reads_and_deletes(monkeypatch):
+    conn = _RecordingConn()
+    store = _make_store(conn, monkeypatch)
+
+    store.save_graph_streaming(scan_id="scan-1", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
+
+    lock_at = next(i for i, sql in enumerate(conn.sql_calls) if sql.startswith("select pg_advisory_xact_lock"))
+    prior_read_at = next(i for i, sql in enumerate(conn.sql_calls) if "from graph_snapshots" in sql and sql.startswith("select"))
+    delete_at = next(i for i, sql in enumerate(conn.sql_calls) if sql.startswith("delete from"))
+    assert lock_at < prior_read_at < delete_at

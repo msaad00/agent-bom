@@ -54,7 +54,6 @@ def test_kubernetes_probe_aliases_no_auth():
         "/healthz": "ok",
         "/livez": "ok",
         "/ping": "ok",
-        "/status": "ok",
     }
     for path, status in expected_statuses.items():
         resp = client.get(path)
@@ -299,6 +298,8 @@ class TestAnonymousViewerAlongsideCredentials:
             # A valid credential still works under the default posture.
             assert client.get("/v1/auth/me", headers={"Authorization": f"Bearer {self._RAW_ADMIN}"}).status_code == 200
             assert client.get("/health").json()["auth_required"] is True
+            assert client.get("/v1/system/health").status_code == 401
+            assert client.get("/status").status_code == 401
         finally:
             self._restore(monkeypatch, original_store)
 
@@ -562,8 +563,8 @@ def test_api_key_middleware_blocks_without_key():
     assert resp.status_code == 401
 
 
-def test_api_key_middleware_exempts_probe_aliases_without_key():
-    """Auth middleware must not block configured liveness/status aliases."""
+def test_api_key_middleware_exempts_only_minimal_probes_without_key():
+    """Detailed operator status must remain protected while probes stay public."""
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse as StarletteJSONResponse
     from starlette.routing import Route
@@ -582,8 +583,9 @@ def test_api_key_middleware_exempts_probe_aliases_without_key():
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
 
     client = TestClient(test_app)
-    for path in ("/healthz", "/livez", "/ping", "/status"):
+    for path in ("/healthz", "/livez", "/ping"):
         assert client.get(path).status_code == 200
+    assert client.get("/status").status_code == 401
 
 
 def test_api_key_middleware_exempts_cors_preflight():

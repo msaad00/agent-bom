@@ -112,6 +112,20 @@ def test_privileged_assignment_without_principal_id_remains_counted_but_not_emit
     assert result.resource_ids == []
 
 
+@pytest.mark.parametrize("check", [_check_1_1, _check_1_2])
+def test_privileged_assignment_read_failure_redacts_secret_bearing_error(check):
+    auth_client = MagicMock()
+    secret = "client_secret=do-not-return-this"
+    auth_client.role_assignments.list_for_scope.side_effect = Exception(secret)
+
+    result = check(auth_client, "sub-123")
+
+    assert result.status == CheckStatus.ERROR
+    assert secret not in result.evidence
+    assert "do-not-return-this" not in result.evidence
+    assert result.evidence.endswith("An internal error occurred. Please contact support.")
+
+
 def test_report_pass_count():
     r = _make_report(CheckStatus.PASS, CheckStatus.PASS, CheckStatus.FAIL)
     assert r.passed == 2

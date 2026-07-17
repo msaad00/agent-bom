@@ -647,44 +647,86 @@ describe('api.getComplianceNarrative', () => {
   })
 })
 
-describe('api.createJiraTicket', () => {
-  it('sends correct payload', async () => {
-    global.fetch = mockFetch({ ticket_key: 'SEC-42', status: 'created' })
-    const body = {
-      jira_url: 'https://example.atlassian.net',
-      email: 'user@example.com',
-      api_token: 'token-abc',
-      project_key: 'SEC',
-      finding: { cve: 'CVE-2024-1234', severity: 'critical' },
-    }
-    const result = await api.createJiraTicket(body)
-    expect(global.fetch).toHaveBeenCalledOnce()
-    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
-    expect(url).toContain('/v1/findings/jira')
-    expect(opts.method).toBe('POST')
-    expect(opts.headers).toMatchObject({
-      'Content-Type': 'application/json',
-      'X-Jira-Api-Token': 'token-abc',
+describe('api ticketing (connect-once)', () => {
+  it('listTicketingConnections reads the connect-once endpoint', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'ticketing.connections.v1',
+      tenant_id: 't1',
+      connections: [{ id: 'c1', provider: 'jira', status: 'active' }],
+      count: 1,
     })
+    const result = await api.listTicketingConnections()
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/ticketing/connections')
+    expect(opts.method ?? 'GET').toBe('GET')
+    expect(result.connections[0]!.id).toBe('c1')
+  })
+
+  it('createTicket posts finding + connection, never a credential', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'ticketing.ticket.v1',
+      ticket: { id: 'tk1', key: 'SEC-42', status: 'open', dedupe_key: 'CVE-1:pkg' },
+      connection_id: 'c1',
+      provider: 'jira',
+      deduplicated: false,
+    })
+    const result = await api.createTicket({
+      connection_id: 'c1',
+      finding_id: 'CVE-1:pkg',
+      project: 'SEC',
+      finding: { vulnerability_id: 'CVE-1', package: 'pkg', severity: 'critical' },
+    })
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/ticketing/tickets')
+    expect(opts.method).toBe('POST')
     const sent = JSON.parse(opts.body as string)
-    expect(sent.project_key).toBe('SEC')
-    expect(sent.finding.cve).toBe('CVE-2024-1234')
+    expect(sent.connection_id).toBe('c1')
+    expect(sent.finding.vulnerability_id).toBe('CVE-1')
+    // No credential / token / base-url field may ever be sent.
     expect(sent.api_token).toBeUndefined()
-    expect(result.ticket_key).toBe('SEC-42')
-    expect(result.status).toBe('created')
+    expect(sent.jira_url).toBeUndefined()
+    expect(sent.secret).toBeUndefined()
+    // No per-action credential header either.
+    expect(opts.headers['X-Jira-Api-Token']).toBeUndefined()
+    expect(result.ticket.key).toBe('SEC-42')
+  })
+
+  it('listTickets filters by finding id when given', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'ticketing.tickets.v1',
+      tenant_id: 't1',
+      tickets: [
+        { id: 'a', dedupe_key: 'CVE-1:pkg', status: 'open' },
+        { id: 'b', dedupe_key: 'CVE-2:other', status: 'done' },
+      ],
+      count: 2,
+    })
+    const result = await api.listTickets('CVE-1:pkg')
+    expect(result.tickets).toHaveLength(1)
+    expect(result.tickets[0]!.id).toBe('a')
+    expect(result.count).toBe(1)
+  })
+
+  it('syncTicket posts to the ticket sync endpoint', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'ticketing.ticket.v1',
+      ticket: { id: 'tk1', key: 'SEC-42', status: 'done', dedupe_key: 'CVE-1:pkg' },
+      connection_id: 'c1',
+      provider: 'jira',
+      deduplicated: false,
+    })
+    const result = await api.syncTicket('tk1')
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/ticketing/tickets/tk1/sync')
+    expect(opts.method).toBe('POST')
+    expect(result.ticket.status).toBe('done')
   })
 
   it('throws on error', async () => {
-    global.fetch = mockFetch({}, false, 400)
+    global.fetch = mockFetch({}, false, 409)
     await expect(
-      api.createJiraTicket({
-        jira_url: '',
-        email: '',
-        api_token: '',
-        project_key: '',
-        finding: {},
-      })
-    ).rejects.toThrow('400')
+      api.createTicket({ finding: {} })
+    ).rejects.toThrow('409')
   })
 })
 

@@ -104,6 +104,8 @@ azure = [
     "azure-mgmt-frontdoor>=1.1",
     "azure-mgmt-apimanagement>=4.0",
     "azure-storage-queue>=12.9",
+    # Scheduled findings export to an Azure Blob sink (#4040).
+    "azure-storage-blob>=12.19",
     "six>=1.17.0",
 ]
 gcp = [
@@ -121,9 +123,13 @@ gcp = [
     "google-cloud-pubsub>=2.18",
     # The CIS benchmark builds service clients via the discovery API.
     "google-api-python-client>=2.100",
+    # Scheduled findings export to a BigQuery table sink (#4040).
+    "google-cloud-bigquery>=3.14",
 ]
 coreweave = []  # kubectl only — no pip packages
-databricks = ["databricks-sdk>=0.20"]
+# databricks-sdk: CIS/control-plane discovery. databricks-sql-connector: the
+# DBAPI path the scheduled findings export writes through (#4040).
+databricks = ["databricks-sdk>=0.20", "databricks-sql-connector>=3.0"]
 snowflake = ["snowflake-connector-python>=3.6"]
 nebius = ["requests>=2.33.0"]  # GHSA-9hjg-9r4m-mvj7 (session cookie leak)
 huggingface = ["huggingface-hub>=0.20"]

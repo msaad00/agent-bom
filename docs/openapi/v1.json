@@ -1599,7 +1599,7 @@
         "properties": {
           "config": {
             "additionalProperties": true,
-            "description": "Non-secret parameters: s3 (bucket/prefix/region), clickhouse (url/user/database/table), or snowflake (account/user/role/warehouse/database/schema/table)",
+            "description": "Non-secret parameters: s3 (bucket/prefix/region), azure-blob (container/prefix/account_url), gcs (bucket/prefix), clickhouse (url/user/database/table), snowflake (account/user/role/warehouse/database/schema/table), bigquery (project/dataset/table), or databricks (server_hostname/http_path/catalog/schema/table)",
             "title": "Config",
             "type": "object"
           },
@@ -1610,7 +1610,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "Destination kind: s3, clickhouse, or snowflake",
+            "description": "Destination kind: s3, azure-blob, gcs, clickhouse, snowflake, bigquery, or databricks",
             "title": "Kind",
             "type": "string"
           },
@@ -1623,7 +1623,7 @@
                 "type": "null"
               }
             ],
-            "description": "Write-only secret (warehouse access token, or Snowflake key-pair PEM); encrypted at rest, never returned",
+            "description": "Write-only secret (warehouse access token, Snowflake/Databricks key or token, Azure connection string, or GCS service-account key JSON); encrypted at rest, never returned",
             "title": "Secret"
           }
         },
@@ -2380,49 +2380,6 @@
           "status"
         ],
         "title": "IssueStatusUpdateRequest",
-        "type": "object"
-      },
-      "JiraTicketRequest": {
-        "additionalProperties": false,
-        "description": "Request body for POST /v1/findings/jira.",
-        "properties": {
-          "email": {
-            "title": "Email",
-            "type": "string"
-          },
-          "finding": {
-            "additionalProperties": true,
-            "title": "Finding",
-            "type": "object"
-          },
-          "jira_url": {
-            "title": "Jira Url",
-            "type": "string"
-          },
-          "project_key": {
-            "title": "Project Key",
-            "type": "string"
-          },
-          "target_id": {
-            "default": "",
-            "maxLength": 256,
-            "title": "Target Id",
-            "type": "string"
-          },
-          "target_kind": {
-            "default": "finding",
-            "pattern": "^(finding|exposure_path)$",
-            "title": "Target Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "jira_url",
-          "email",
-          "project_key",
-          "finding"
-        ],
-        "title": "JiraTicketRequest",
         "type": "object"
       },
       "JobStatus": {
@@ -12592,68 +12549,6 @@
           }
         },
         "summary": "Remove Finding Feedback",
-        "tags": [
-          "enterprise"
-        ]
-      }
-    },
-    "/v1/findings/jira": {
-      "post": {
-        "description": "Create a Jira ticket from a finding (admin/analyst only).",
-        "operationId": "create_jira_ticket_route_v1_findings_jira_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Jira-Api-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Jira-Api-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JiraTicketRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Create Jira Ticket Route V1 Findings Jira Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Jira Ticket Route",
         "tags": [
           "enterprise"
         ]

@@ -138,7 +138,11 @@ import type {
   IntelMatchResponse,
   IntelDailyBriefResponse,
   ReportJobRecord,
-  ReportCreateRequest
+  ReportCreateRequest,
+  TicketingConnectionsResponse,
+  TicketsListResponse,
+  TicketActionResult,
+  TicketCreateBody
 } from "./api-types";
 export type {
   AccountSummaryResponse,
@@ -371,6 +375,16 @@ export type {
   ReportSort,
   ReportJobRecord,
   ReportCreateRequest,
+  TicketingConnection,
+  TicketingConnectionsResponse,
+  TicketLink,
+  TicketsListResponse,
+  TicketActionResult,
+  TicketCreateBody,
+  TicketStatus,
+  TicketProvider,
+  TicketTransport,
+  TicketConnectionStatus,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 export type { ReadWindow } from "./api-types";
@@ -1258,23 +1272,24 @@ export const api = {
   createException: (body: { vulnerability_id: string; package_name: string; reason: string }) =>
     post<{ id: string; status: string }>("/v1/exceptions", body),
 
-  // ── Jira Integration ──
-  createJiraTicket: (body: {
-    jira_url: string;
-    email: string;
-    api_token: string;
-    project_key: string;
-    finding: Record<string, unknown>;
-  }) =>
-    post<{ ticket_key: string; status: string }>(
-      "/v1/findings/jira",
-      {
-        jira_url: body.jira_url,
-        email: body.email,
-        project_key: body.project_key,
-        finding: body.finding,
-      },
-      { "X-Jira-Api-Token": body.api_token },
+  // ── ITSM ticketing (connect-once) ──
+  // A connection is created once in the Connections hub; every action below runs
+  // through the stored, encrypted connection. No credential is ever sent here.
+  listTicketingConnections: () =>
+    get<TicketingConnectionsResponse>("/v1/ticketing/connections"),
+  createTicket: (body: TicketCreateBody) =>
+    post<TicketActionResult>("/v1/ticketing/tickets", body),
+  /** List filed tickets, optionally narrowed to one finding by its dedupe key. */
+  listTickets: async (findingId?: string): Promise<TicketsListResponse> => {
+    const resp = await get<TicketsListResponse>("/v1/ticketing/tickets");
+    if (!findingId) return resp;
+    const tickets = resp.tickets.filter((t) => t.dedupe_key === findingId);
+    return { ...resp, tickets, count: tickets.length };
+  },
+  syncTicket: (ticketId: string) =>
+    post<TicketActionResult>(
+      `/v1/ticketing/tickets/${encodeURIComponent(ticketId)}/sync`,
+      {},
     ),
 
   // ── False Positive Management ──

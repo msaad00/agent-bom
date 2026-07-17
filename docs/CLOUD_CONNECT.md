@@ -540,10 +540,11 @@ silently.
   for every entry (Azure identities/roles via Azure Resource Manager, GCP auth
   via `google-auth`), so the shipped posture is *clear*. The signal only lights
   up if a legacy SDK is dragged into the tree — a supply-chain / coverage guard.
-- **Fail-honest gating.** When a retired API is *both* past its removal date and
-  reachable via an installed legacy SDK, it is marked **gated**: a check bound
-  to it must be skipped and reported, never silently passed. The
-  `removed_provider_apis()` helper exposes that skip set for scanners.
+- **Retired-API exposure.** When a retired API is *both* past its removal date
+  and reachable via an installed legacy SDK, it is marked **gated** to preserve
+  the existing posture schema. This means the environment remains capable of
+  reaching that retired API; it does not claim a scanner consumed the helper or
+  skipped a check. `removed_provider_apis()` exposes the posture set for callers.
 - **Where it shows up.**
   - `agent-bom doctor` renders a **Cloud API deprecations** section (each API
     with its status and migration target).

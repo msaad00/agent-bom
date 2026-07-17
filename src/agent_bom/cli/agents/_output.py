@@ -596,15 +596,25 @@ def render_output(
                 raise SystemExit(2)
             con.print(f"\n  [green]✓[/green] Report: {output}")
 
-    with _enospc_report_fallback(
-        con,
-        report,
-        blast_radii,
-        output_format,
-        exclude_unfixable=exclude_unfixable,
-        offline_html=offline_html,
-    ):
-        _emit_report()
+    # ``--output *.zip`` names the compliance bundle when a compliance export
+    # is requested.  ZIP is not a normal report format, so do not send that
+    # path through report-format inference before the bundle exporter runs.
+    click_ctx = click.get_current_context(silent=True)
+    output_source = click_ctx.get_parameter_source("output") if click_ctx is not None else None
+    explicit_output_sources = {click.core.ParameterSource.COMMANDLINE, click.core.ParameterSource.ENVIRONMENT}
+    compliance_bundle_output = bool(
+        compliance_export and output and output.lower().endswith(".zip") and output_source in explicit_output_sources
+    )
+    if not compliance_bundle_output:
+        with _enospc_report_fallback(
+            con,
+            report,
+            blast_radii,
+            output_format,
+            exclude_unfixable=exclude_unfixable,
+            offline_html=offline_html,
+        ):
+            _emit_report()
 
     # Step 5b: Push to Prometheus Pushgateway (if requested)
     if push_gateway:
@@ -630,7 +640,7 @@ def render_output(
     if compliance_export:
         from agent_bom.output import export_compliance_bundle
 
-        ce_path = output or f"compliance-{compliance_export}.zip"
+        ce_path = output if compliance_bundle_output else f"compliance-{compliance_export}.zip"
         if not ce_path.endswith(".zip"):
             ce_path += ".zip"
         export_compliance_bundle(report, compliance_export, ce_path)

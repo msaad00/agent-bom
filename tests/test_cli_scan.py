@@ -1787,6 +1787,64 @@ def test_compliance_export_help_lists_supported_values():
     assert "pci-dss" in result.output
 
 
+def test_compliance_export_accepts_zip_output_as_bundle_path(tmp_path):
+    """A ZIP output belongs to the requested compliance bundle, not the report."""
+    out = tmp_path / "bundle.zip"
+
+    result = _run(
+        [
+            "scan",
+            "--demo",
+            "--no-scan",
+            "--compliance",
+            "--compliance-export",
+            "owasp-mcp",
+            "--output",
+            str(out),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes().startswith(b"PK")
+    assert "Compliance bundle" in result.output
+
+
+def test_compliance_export_keeps_profile_report_and_uses_framework_bundle_name(tmp_path, monkeypatch):
+    """A profile's report default must not become the compliance bundle path."""
+    monkeypatch.chdir(tmp_path)
+    profile_defaults = ("agent-bom-report.json", "json", None, None, None, None, None)
+    with patch("agent_bom.cli._profiles.apply_scan_profile_defaults", return_value=profile_defaults):
+        result = _run(["scan", "--demo", "--no-scan", "--compliance", "--compliance-export", "owasp-mcp"])
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "agent-bom-report.json").exists()
+    assert (tmp_path / "compliance-owasp-mcp.zip").read_bytes().startswith(b"PK")
+    assert not (tmp_path / "agent-bom-report.json.zip").exists()
+
+
+def test_compliance_export_keeps_explicit_non_zip_report_path(tmp_path, monkeypatch):
+    """An explicit report path remains a report; the bundle gets its own name."""
+    monkeypatch.chdir(tmp_path)
+    report_path = tmp_path / "report.json"
+    result = _run(
+        [
+            "scan",
+            "--demo",
+            "--no-scan",
+            "--compliance",
+            "--compliance-export",
+            "owasp-mcp",
+            "--output",
+            str(report_path),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert report_path.exists()
+    assert (tmp_path / "compliance-owasp-mcp.zip").read_bytes().startswith(b"PK")
+    assert not (tmp_path / "report.json.zip").exists()
+
+
 def test_scan_complete_closer_renders_severity_breakdown():
     """Regression: ``Scan complete -- N high · M medium`` must render content,
     not just an empty trailing dash.

@@ -217,6 +217,8 @@ def export_compliance_bundle(
     mapped_evidence = _merged_evidence(report, metadata)
     mapped_evidence_count = sum(len(rows) for rows in mapped_evidence.values())
     evidence_completeness = _bundle_completeness(report, mapped_evidence_count)
+    vulnerability_findings = len(cve_rows)
+    vulnerability_occurrences = report.total_vulnerabilities
     policy_results = {
         "framework": metadata.slug,
         "framework_label": metadata.report_label,
@@ -227,7 +229,8 @@ def export_compliance_bundle(
         "total_agents": report.total_agents,
         "total_servers": report.total_servers,
         "total_packages": report.total_packages,
-        "total_vulnerabilities": report.total_vulnerabilities,
+        "total_vulnerabilities": vulnerability_findings,
+        "total_vulnerability_occurrences": vulnerability_occurrences,
         "critical_count": len(report.critical_vulns),
     }
 
@@ -255,7 +258,8 @@ def export_compliance_bundle(
         f"Agents scanned: {report.total_agents}",
         f"MCP servers: {report.total_servers}",
         f"Packages inventoried: {report.total_packages}",
-        f"Vulnerabilities found: {report.total_vulnerabilities}",
+        f"Vulnerabilities found: {vulnerability_findings}",
+        f"Vulnerability occurrences across inventory: {vulnerability_occurrences}",
         f"Critical findings: {len(report.critical_vulns)}",
         "",
         "Controls mapped: " + ", ".join(metadata.catalog.keys()),
@@ -287,8 +291,9 @@ def export_compliance_bundle(
             "agents": report.total_agents,
             "servers": report.total_servers,
             "packages": report.total_packages,
-            "vulnerabilities": report.total_vulnerabilities,
-            "findings": len(cve_rows),
+            "vulnerabilities": vulnerability_findings,
+            "vulnerability_occurrences": vulnerability_occurrences,
+            "findings": vulnerability_findings,
         },
         "files": {name: {"sha256": _digest(payload), "bytes": len(payload)} for name, payload in artifacts.items()},
         "signature": {

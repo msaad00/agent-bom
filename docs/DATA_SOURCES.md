@@ -3,8 +3,10 @@
 One-page map from the README intake diagram to the **actual connect path**,
 **permission boundary**, and **first command**. agent-bom is **read-only by
 default** across every lane: no secret values stored, no writes to customer
-environments unless an operator explicitly opts into a documented exception
-(AWS side-scan snapshot lifecycle).
+environments unless an operator explicitly opts into the documented disk
+side-scan lifecycle. AWS EBS is CLI-wired; Azure Managed Disk and GCP
+Persistent Disk adapters require injected, already-authenticated SDK clients
+and are not yet scheduler- or CLI-wired.
 
 ## How intake works (four modes)
 

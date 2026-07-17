@@ -480,11 +480,15 @@ role you already created:
 Net: turning on audit-trail behavioral edges costs **no new role** and, in
 standard setups, **no new permission**.
 
-> **The one exception is the disk side-scan.** Agentless EBS side-scan
-> (`AGENT_BOM_SIDESCAN=1`) is the single deliberately non-read-only
-> capability, and it is the *only* one that needs a **separate, scoped snapshot
-> role** (`deploy/terraform/connect-aws-sidescan`) distinct from the read-only
-> scanner role, plus an in-account collector instance. Audit-trail does not.
+> **The one exception family is the opt-in disk side-scan.** AWS EBS side-scan
+> is exposed through the CLI with `AGENT_BOM_SIDESCAN=1`. Azure Managed Disk
+> and GCP Persistent Disk lifecycle adapters are available to an embedding
+> scheduler through injected, already-authenticated SDK clients; they are not
+> yet CLI- or scheduler-wired. Each provider requires a **separate, narrowly
+> scoped lifecycle role** distinct from the read-only scanner role:
+> `deploy/terraform/connect-aws-sidescan`,
+> `deploy/terraform/connect-azure-sidescan`, or
+> `deploy/terraform/connect-gcp-sidescan`. Audit-trail does not.
 
 ---
 
@@ -518,11 +522,11 @@ Azure Managed Disk and GCP Persistent Disk inventory also emits
 `side_scan_targets` records with provider, target id, location, size, encryption,
 and execution state. Those records are graph-visible workload-disk targets.
 The repository defines a versioned provider-neutral lifecycle/evidence contract
-and a fixture-tested adapter runner, but it **does not ship Azure or GCP lifecycle executors**.
-Provider mutation credentials, scheduler wiring, and CLI commands are also not
-shipped. The command above and the Terraform snapshot role are AWS EBS-only.
-Azure/GCP execution remains roadmap work until provider adapters, least-privilege
-roles, cleanup fault injection, and disposable-resource smokes are shipped.
+and concrete Azure Managed Disk and GCP Persistent Disk adapters that accept
+already-authenticated SDK clients. Separate least-privilege Terraform modules
+grant the snapshot/temp-disk/collector lifecycle. Azure/GCP credentials,
+scheduler wiring, and CLI commands are not shipped, and no live credentialed
+smoke is claimed. The command above remains AWS EBS-only.
 
 All provider lifecycle implementations must persist explicit
 `disabled`/`denied`/`partial`/`failed`/`scan_complete` state and separate cleanup
@@ -530,8 +534,9 @@ state. A scan is complete only after owned temporary resources are deleted;
 zero findings are scoped to the scanned disk and never assert that a workload is
 clean. Snapshot operations remain opt-in because they are not read-only.
 `side_scan_lifecycle.py` supplies the versioned records, deterministic ownership
-tags, stale-worker protection, and a tenant-scoped SQLite state store; no
-Azure/GCP executor or production scheduler consumes that foundation yet.
+tags, stale-worker protection, and a tenant-scoped SQLite state store. The
+injected-SDK adapters consume that state; no production scheduler or Azure/GCP
+CLI surface invokes them yet.
 
 ---
 

@@ -403,21 +403,37 @@ function CampaignCard({
 function VerificationQueue() {
   const [entries, setEntries] = useState<RiskCampaignVerificationQueueEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [retryCursor, setRetryCursor] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, RiskCampaignVerificationResult>>({});
   const [successMessage, setSuccessMessage] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (cursor: string | null = null) => {
+    const continuing = cursor !== null;
+    if (continuing) setLoadingMore(true);
+    else setLoading(true);
     setError("");
     try {
-      const response = await api.listRiskCampaignVerificationQueue();
-      setEntries(response.entries);
+      const response = await api.listRiskCampaignVerificationQueue({ cursor, limit: 25 });
+      setEntries((current) => {
+        if (!continuing) return response.entries;
+        const byId = new Map(current.map((entry) => [entry.campaign_id, entry]));
+        for (const entry of response.entries) byId.set(entry.campaign_id, entry);
+        return Array.from(byId.values());
+      });
+      setNextCursor(response.next_cursor);
+      setHasMore(response.has_more);
+      setRetryCursor(null);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : "Verification queue could not be loaded");
+      setRetryCursor(cursor);
     } finally {
-      setLoading(false);
+      if (continuing) setLoadingMore(false);
+      else setLoading(false);
     }
   }, []);
 
@@ -465,16 +481,16 @@ function VerificationQueue() {
           <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Inactive campaigns remain here after a rescan until canonical evidence confirms the original findings are gone.</p>
         </div>
         {error ? (
-          <button type="button" onClick={() => void load()} className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Retry verification queue</button>
+          <button type="button" onClick={() => void load(retryCursor)} className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Retry verification queue</button>
         ) : null}
       </div>
       {loading ? <p role="status" className="mt-3 text-xs text-[color:var(--text-tertiary)]">Loading verification queue…</p> : null}
       {error ? <p role="alert" className="mt-3 text-xs text-[color:var(--status-danger)]">{error}</p> : null}
       {successMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--status-success)]">{successMessage}</p> : null}
-      {!loading && !error && entries.length === 0 ? (
+      {!loading && entries.length === 0 && !error ? (
         <p className="mt-3 text-xs text-[color:var(--text-tertiary)]">No inactive campaigns await re-verification.</p>
       ) : null}
-      {!loading && !error && entries.length > 0 ? (
+      {!loading && entries.length > 0 ? (
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
           {entries.map((entry) => {
             const result = results[entry.campaign_id];
@@ -507,6 +523,16 @@ function VerificationQueue() {
             );
           })}
         </div>
+      ) : null}
+      {!loading && !error && hasMore ? (
+        <button
+          type="button"
+          disabled={loadingMore || nextCursor === null}
+          onClick={() => void load(nextCursor)}
+          className="mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:cursor-wait disabled:opacity-50"
+        >
+          {loadingMore ? "Loading more…" : "Load more awaiting verification"}
+        </button>
       ) : null}
     </section>
   );

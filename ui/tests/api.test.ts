@@ -758,11 +758,16 @@ describe('api risk campaigns', () => {
       tenant_id: 't1',
       entries: [],
       count: 0,
+      has_more: false,
+      next_cursor: null,
+      limit: 25,
     })
 
-    await api.listRiskCampaignVerificationQueue()
+    await api.listRiskCampaignVerificationQueue({ cursor: 'next page', limit: 500 })
     const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     expect(url).toContain('/v1/campaigns/verification-queue')
+    expect(url).toContain('cursor=next+page')
+    expect(url).toContain('limit=100')
     expect(opts.method ?? 'GET').toBe('GET')
   })
 

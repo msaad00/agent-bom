@@ -90,6 +90,9 @@ describe("RiskCampaignCommandCenter", () => {
       tenant_id: "tenant-a",
       entries: [],
       count: 0,
+      has_more: false,
+      next_cursor: null,
+      limit: 25,
     });
     vi.mocked(api.listTicketingConnections).mockResolvedValue({
       schema_version: "ticketing.connections.v1",
@@ -388,6 +391,9 @@ describe("RiskCampaignCommandCenter", () => {
       schema_version: "risk-campaign-verification-queue.v1",
       tenant_id: "tenant-a",
       count: 1,
+      has_more: false,
+      next_cursor: null,
+      limit: 25,
       entries: [{
         campaign_id: "retired-campaign-1",
         title: "Upgrade retired openssl campaign",
@@ -435,6 +441,9 @@ describe("RiskCampaignCommandCenter", () => {
       schema_version: "risk-campaign-verification-queue.v1",
       tenant_id: "tenant-a",
       count: 1,
+      has_more: false,
+      next_cursor: null,
+      limit: 25,
       entries: [{
         campaign_id: "retired-campaign-2",
         title: "Resolve runtime package exposure",
@@ -483,12 +492,71 @@ describe("RiskCampaignCommandCenter", () => {
         tenant_id: "tenant-a",
         entries: [],
         count: 0,
+        has_more: false,
+        next_cursor: null,
+        limit: 25,
       });
 
     render(<RiskCampaignCommandCenter />);
     expect(await screen.findByText("Verification queue unavailable")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Retry verification queue/i }));
     expect(await screen.findByText(/No inactive campaigns await re-verification/i)).toBeInTheDocument();
+  });
+
+  it("continues queue pages, preserves entries on failure, and deduplicates page overlap", async () => {
+    const firstEntry = {
+      campaign_id: "retired-page-1",
+      title: "First queued campaign",
+      original_member_count: 3,
+      owner: null,
+      sla_due_at: null,
+      state: "in_progress" as const,
+      verification_status: "unverified" as const,
+      active: false as const,
+      version: 1,
+      updated_at: null,
+    };
+    vi.mocked(api.listRiskCampaignVerificationQueue)
+      .mockResolvedValueOnce({
+        schema_version: "risk-campaign-verification-queue.v1",
+        tenant_id: "tenant-a",
+        entries: [firstEntry],
+        count: 2,
+        has_more: true,
+        next_cursor: "queue-page-2",
+        limit: 1,
+      })
+      .mockRejectedValueOnce(new Error("Queue continuation unavailable"))
+      .mockResolvedValueOnce({
+        schema_version: "risk-campaign-verification-queue.v1",
+        tenant_id: "tenant-a",
+        entries: [
+          { ...firstEntry, version: 2 },
+          {
+            ...firstEntry,
+            campaign_id: "retired-page-2",
+            title: "Second queued campaign",
+          },
+        ],
+        count: 2,
+        has_more: false,
+        next_cursor: null,
+        limit: 25,
+      });
+
+    render(<RiskCampaignCommandCenter />);
+    await screen.findByText("First queued campaign");
+    fireEvent.click(screen.getByRole("button", { name: /Load more awaiting verification/i }));
+
+    expect(await screen.findByText("Queue continuation unavailable")).toBeInTheDocument();
+    expect(screen.getByText("First queued campaign")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Retry verification queue/i }));
+
+    expect(await screen.findByText("Second queued campaign")).toBeInTheDocument();
+    expect(screen.getAllByText("First queued campaign")).toHaveLength(1);
+    expect(api.listRiskCampaignVerificationQueue).toHaveBeenNthCalledWith(2, { cursor: "queue-page-2", limit: 25 });
+    expect(api.listRiskCampaignVerificationQueue).toHaveBeenNthCalledWith(3, { cursor: "queue-page-2", limit: 25 });
+    expect(screen.queryByRole("button", { name: /Load more awaiting verification/i })).not.toBeInTheDocument();
   });
 
   it("assigns an owner and SLA through the campaign workflow API", async () => {

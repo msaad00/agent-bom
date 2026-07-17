@@ -3912,6 +3912,9 @@ export interface RiskCampaignVerificationQueueResponse {
   tenant_id: string;
   entries: RiskCampaignVerificationQueueEntry[];
   count: number;
+  has_more: boolean;
+  next_cursor: string | null;
+  limit: number;
 }
 
 export interface RiskCampaignTicketRequest {

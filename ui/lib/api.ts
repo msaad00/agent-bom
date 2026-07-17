@@ -1313,8 +1313,16 @@ export const api = {
   // ── Risk campaigns ──
   // Priorities and modeled risk reduction are authoritative server outputs.
   listRiskCampaigns: () => get<RiskCampaignsResponse>("/v1/campaigns"),
-  listRiskCampaignVerificationQueue: () =>
-    get<RiskCampaignVerificationQueueResponse>("/v1/campaigns/verification-queue"),
+  listRiskCampaignVerificationQueue: (
+    options: { cursor?: string | null; limit?: number } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (options.cursor) params.set("cursor", options.cursor);
+    params.set("limit", String(Math.min(100, Math.max(1, options.limit ?? 25))));
+    return get<RiskCampaignVerificationQueueResponse>(
+      `/v1/campaigns/verification-queue?${params.toString()}`,
+    );
+  },
   updateRiskCampaign: (campaignId: string, body: RiskCampaignUpdate) =>
     patch<RiskCampaign>(
       `/v1/campaigns/${encodeURIComponent(campaignId)}`,

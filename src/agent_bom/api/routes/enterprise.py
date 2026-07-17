@@ -22,7 +22,6 @@ Endpoints:
     GET    /v1/trends                         historical trend data
     GET    /v1/siem/connectors                list SIEM connector types
     POST   /v1/siem/test                      test SIEM connectivity
-    POST   /v1/findings/jira                  create Jira ticket from finding
     POST   /v1/findings/false-positive        mark finding as false positive
     GET    /v1/findings/false-positives        list false positive entries
     DELETE /v1/findings/false-positive/{id}   un-mark false positive
@@ -53,7 +52,6 @@ from agent_bom.api.models import (
     FindingTriageRequest,
     FindingTriageVexIngestRequest,
     IssueStatusUpdateRequest,
-    JiraTicketRequest,
     RotateKeyRequest,
     SAMLLoginRequest,
     TenantQuotaUpdateRequest,
@@ -295,25 +293,6 @@ def _triage_response(exc: Any) -> dict[str, Any]:
         "tenant_id": exc.tenant_id,
         "vex_eligible": decision == "not_affected" and bool(data.get("justification")),
     }
-
-
-def _jira_mapping_target(req: JiraTicketRequest) -> tuple[str, str]:
-    target_kind = req.target_kind or "finding"
-    if req.target_id:
-        return target_kind, req.target_id
-    finding = req.finding or {}
-    if target_kind == "exposure_path":
-        target_id = str(finding.get("exposure_path_id") or finding.get("path_id") or finding.get("id") or "")
-    else:
-        vuln_id = str(finding.get("vulnerability_id") or finding.get("cve_id") or finding.get("id") or "unknown")
-        package = str(finding.get("package") or finding.get("package_name") or "*")
-        server = str(finding.get("server_name") or finding.get("server") or "")
-        target_id = "|".join(part for part in (vuln_id, package, server) if part)
-    return target_kind, target_id[:256] or "unknown"
-
-
-def _jira_issue_url(jira_url: str, ticket_key: str) -> str:
-    return f"{jira_url.rstrip('/')}/browse/{ticket_key}"
 
 
 def _auth_session_state(request: Request) -> dict:
@@ -1882,77 +1861,13 @@ async def test_siem_connection(
         }
 
 
-# ── Jira Integration ────────────────────────────────────────────────────────
-
-
-@router.post("/findings/jira", tags=["enterprise"], status_code=201)
-async def create_jira_ticket_route(
-    request: Request,
-    req: JiraTicketRequest,
-    jira_api_token: str | None = Header(default=None, alias="X-Jira-Api-Token"),
-) -> dict:
-    """Create a Jira ticket from a finding (admin/analyst only)."""
-    from agent_bom.api.audit_log import log_action
-    from agent_bom.integrations.jira import create_jira_ticket
-    from agent_bom.security import validate_url
-
-    if not jira_api_token:
-        raise HTTPException(status_code=400, detail="Missing X-Jira-Api-Token header")
-    tenant_id = require_request_tenant_id(request)
-    actor = getattr(request.state, "api_key_name", "") or req.email or "system"
-    target_kind, target_id = _jira_mapping_target(req)
-    mapping_store = _get_issue_mapping_store()
-    existing = mapping_store.find(tenant_id=tenant_id, target_kind=target_kind, target_id=target_id, provider="jira")
-    if existing:
-        return {
-            "ticket_key": existing.external_id,
-            "status": "existing",
-            "mapping": existing.to_dict(),
-        }
-
-    # Validate Jira URL to prevent SSRF
-    try:
-        validate_url(req.jira_url)
-    except Exception as url_exc:
-        raise HTTPException(status_code=400, detail=f"Invalid Jira URL: {sanitize_error(url_exc)}")
-
-    try:
-        ticket_key = await create_jira_ticket(
-            jira_url=req.jira_url,
-            email=req.email,
-            api_token=jira_api_token,
-            project_key=req.project_key,
-            finding=req.finding,
-        )
-    except Exception as exc:
-        _logger.exception("Jira ticket creation failed: %s", sanitize_error(exc))
-        raise HTTPException(status_code=502, detail="Failed to create Jira ticket")
-
-    if not ticket_key:
-        raise HTTPException(status_code=502, detail="Jira API returned no ticket key")
-
-    mapping = mapping_store.put(
-        tenant_id=tenant_id,
-        target_kind=target_kind,
-        target_id=target_id,
-        provider="jira",
-        external_id=ticket_key,
-        external_url=_jira_issue_url(req.jira_url, ticket_key),
-        status="open",
-    )
-    log_action(
-        "findings.jira_ticket_created",
-        actor=actor,
-        resource=f"jira/{ticket_key}",
-        tenant_id=tenant_id,
-        vuln_id=req.finding.get("vulnerability_id", ""),
-        package=req.finding.get("package", ""),
-        issue_mapping_id=mapping.mapping_id,
-        target_kind=target_kind,
-        target_id=target_id,
-    )
-
-    return {"ticket_key": ticket_key, "status": "created", "mapping": mapping.to_dict()}
+# ── Issue-mapping status ────────────────────────────────────────────────────
+#
+# Per-action Jira ticket creation (the old ``POST /v1/findings/jira`` with an
+# ``X-Jira-Api-Token`` header) was retired in favour of the connect-once
+# ticketing plane at ``/v1/ticketing`` (see routes/ticketing.py): a connection is
+# configured once in the Connections hub and every action runs through the
+# stored, encrypted connection — no credential is ever entered per action.
 
 
 @router.put("/integrations/issues/{mapping_id}/status", tags=["enterprise"])

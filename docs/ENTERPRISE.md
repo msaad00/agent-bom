@@ -67,7 +67,6 @@ The API middleware uses ordered route rules. Narrower enterprise routes win over
 | `POST` | `/v1/shield/break-glass` | `admin` |
 | `DELETE` | `/v1/scan/` | `admin` |
 | `POST` | `/v1/exceptions` | `analyst` |
-| `POST` | `/v1/findings/jira` | `analyst` |
 | `POST` | `/v1/findings/false-positive` | `analyst` |
 | `DELETE` | `/v1/findings/false-positive/` | `analyst` |
 | `POST` | `/v1/scan` | `analyst` |

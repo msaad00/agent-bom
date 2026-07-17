@@ -187,7 +187,7 @@ for (const theme of ["light", "dark"] as const) {
     await routeProductFixture(page);
 
     await page.goto("/");
-    await expect(page.getByText("Current findings · Last 90 days")).toBeVisible();
+    await expect(page.getByText("Current findings · configured window")).toBeVisible();
     const critical = page.getByRole("link", { name: /^Critical 7/i });
     const high = page.getByRole("link", { name: /^High 26/i });
     await expect(critical).toHaveAttribute("href", "/findings?scope=all&severity=critical");

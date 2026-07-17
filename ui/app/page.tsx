@@ -397,7 +397,7 @@ export default function Dashboard() {
         latestScan={jobsLoading ? null : latestScanShort}
         mode={deploymentModeLabel(counts?.deployment_mode)}
         summaryReady={Boolean(importedReport || counts || overview)}
-        findingsScopeLabel="Current findings · Last 90 days"
+        findingsScopeLabel="Current findings · configured window"
         severity={canonicalSeverity}
         domains={overview?.domains ?? null}
         coverage={overview?.coverage ?? null}

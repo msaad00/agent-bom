@@ -126,7 +126,7 @@ describe("Overview canonical finding counts", () => {
     const high = screen.getByRole("link", { name: /^High 11/i });
     expect(critical).toHaveTextContent("7");
     expect(high).toHaveTextContent("11");
-    expect(screen.getByText("Current findings · Last 90 days")).toBeInTheDocument();
+    expect(screen.getByText("Current findings · configured window")).toBeInTheDocument();
     expect(critical).toHaveAttribute("href", "/findings?scope=all&severity=critical");
   });
 });

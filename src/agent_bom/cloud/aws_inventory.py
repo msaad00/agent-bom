@@ -50,7 +50,7 @@ from .aws import (
     _policy_actions_from_document,
     _resolve_account_id,
 )
-from .aws_iam_collector import collect_iam_role_usage_evidence
+from .aws_iam_collector import collect_iam_role_usage_evidence, collect_iam_roles_usage_evidence
 from .aws_iam_evidence import IamRoleUsageEvidence, UsageEvidenceState
 from .normalization import sanitize_discovery_warning
 
@@ -1276,23 +1276,52 @@ def _discover_iam(
     users: list[dict[str, Any]] = []
     groups: list[dict[str, Any]] = []
 
+    raw_roles: list[dict[str, Any]] = []
     try:
         role_paginator = iam.get_paginator("list_roles")
         for page in role_paginator.paginate():
             for role in page.get("Roles", []):
-                roles.append(
-                    _normalize_role(
-                        iam,
-                        role,
-                        account_id=account_id,
-                        warnings=warnings,
-                        collect_usage=len(roles) < _MAX_IAM_USAGE_ROLES,
-                    )
-                )
+                if isinstance(role, dict):
+                    raw_roles.append(role)
     except Exception as exc:  # noqa: BLE001 — one failed IAM list must not sink the scan
         record_discovery_failure(
             exc=exc, resource_type="IAM roles", permission="iam:ListRoles", cloud="aws", warnings=warnings, missing=missing
         )
+
+    # Normalize policy/trust evidence without serially polling asynchronous
+    # Access Advisor jobs. The bounded usage subset is started together and then
+    # polled in shared backoff rounds, so one estate waits once rather than once
+    # per role.
+    for role in raw_roles:
+        roles.append(
+            _normalize_role(
+                iam,
+                role,
+                account_id=account_id,
+                warnings=warnings,
+                collect_usage=False,
+            )
+        )
+    usage_inputs = [
+        (
+            str(role.get("Arn") or ""),
+            str(role.get("RoleName") or ""),
+            role,
+        )
+        for role in raw_roles[:_MAX_IAM_USAGE_ROLES]
+        if str(role.get("Arn") or "") and str(role.get("RoleName") or "")
+    ]
+    usage_by_arn = collect_iam_roles_usage_evidence(
+        iam,
+        usage_inputs,
+        max_access_advisor_polls=_MAX_ACCESS_ADVISOR_POLLS,
+        max_access_advisor_pages=_MAX_ACCESS_ADVISOR_PAGES,
+    )
+    for role in roles[:_MAX_IAM_USAGE_ROLES]:
+        principal_arn = str(role.get("arn") or "")
+        evidence = usage_by_arn.get(principal_arn)
+        if evidence is not None:
+            role["usage_evidence"] = evidence.to_dict()
 
     try:
         group_paginator = iam.get_paginator("list_groups")

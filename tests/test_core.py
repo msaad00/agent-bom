@@ -2343,18 +2343,30 @@ def test_api_extra_import_error_message_names_missing_runtime_dependency():
 
 
 def test_api_health_endpoint():
-    """GET /health returns {status: ok}."""
+    """Public health is minimal; authenticated health carries diagnostics."""
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
 
-    from agent_bom.api.server import app
+    from agent_bom.api.server import app, configure_api
 
     client = TestClient(app)
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
-    assert "tracing" in resp.json()
-    assert "storage" in resp.json()
+    assert "tracing" not in resp.json()
+    assert "storage" not in resp.json()
+
+    configure_api(api_key="health-contract-test")
+    try:
+        detailed = client.get(
+            "/v1/system/health",
+            headers={"Authorization": "Bearer health-contract-test"},
+        )
+        assert detailed.status_code == 200
+        assert "tracing" in detailed.json()
+        assert "storage" in detailed.json()
+    finally:
+        configure_api(api_key=None)
 
 
 def test_api_version_endpoint():

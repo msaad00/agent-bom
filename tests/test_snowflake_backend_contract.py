@@ -56,9 +56,14 @@ def test_health_reports_supported_snowflake_control_plane_slice(mock_connect, mo
     monkeypatch.setattr("agent_bom.api.scheduler.scheduler_loop", lambda store, fn: _async_noop())
 
     _clear_store_globals()
+    api_key = "snowflake-health-contract-test"
+    configure_api(api_key=api_key)
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
-            resp = client.get("/health")
+            resp = client.get(
+                "/v1/system/health",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
             assert resp.status_code == 200
             storage = resp.json()["storage"]
             assert storage["control_plane_backend"] == "snowflake"
@@ -69,6 +74,7 @@ def test_health_reports_supported_snowflake_control_plane_slice(mock_connect, mo
             assert storage["exception_store"] == "snowflake"
     finally:
         _clear_store_globals()
+        configure_api(api_key=None)
 
 
 @patch("agent_bom.api.snowflake_store._sf_connect")

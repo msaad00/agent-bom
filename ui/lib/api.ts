@@ -142,7 +142,13 @@ import type {
   TicketingConnectionsResponse,
   TicketsListResponse,
   TicketActionResult,
-  TicketCreateBody
+  TicketCreateBody,
+  RiskCampaign,
+  RiskCampaignsResponse,
+  RiskCampaignUpdate,
+  RiskCampaignTicketRequest,
+  RiskCampaignTicketCreateResult,
+  RiskCampaignTicketSyncResult
 } from "./api-types";
 export type {
   AccountSummaryResponse,
@@ -385,6 +391,12 @@ export type {
   TicketProvider,
   TicketTransport,
   TicketConnectionStatus,
+  RiskCampaign,
+  RiskCampaignsResponse,
+  RiskCampaignUpdate,
+  RiskCampaignTicketRequest,
+  RiskCampaignTicketCreateResult,
+  RiskCampaignTicketSyncResult,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 export type { ReadWindow } from "./api-types";
@@ -1291,6 +1303,40 @@ export const api = {
       `/v1/ticketing/tickets/${encodeURIComponent(ticketId)}/sync`,
       {},
     ),
+
+  // ── Risk campaigns ──
+  // Priorities and modeled risk reduction are authoritative server outputs.
+  listRiskCampaigns: () => get<RiskCampaignsResponse>("/v1/campaigns"),
+  updateRiskCampaign: (campaignId: string, body: RiskCampaignUpdate) =>
+    patch<RiskCampaign>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}`,
+      body,
+    ),
+  createRiskCampaignTickets: (
+    campaignId: string,
+    body: RiskCampaignTicketRequest,
+  ) => {
+    const boundedBody = {
+      ...body,
+      limit: Math.min(25, Math.max(1, body.limit ?? 25)),
+    };
+    return post<RiskCampaignTicketCreateResult>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}/tickets`,
+      boundedBody,
+    );
+  },
+  syncRiskCampaignTickets: (
+    campaignId: string,
+    options: { cursor?: string | null; limit?: number } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (options.cursor) params.set("cursor", options.cursor);
+    params.set("limit", String(Math.min(25, Math.max(1, options.limit ?? 25))));
+    return post<RiskCampaignTicketSyncResult>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}/tickets/sync?${params.toString()}`,
+      {},
+    );
+  },
 
   // ── False Positive Management ──
   markFalsePositive: (body: {

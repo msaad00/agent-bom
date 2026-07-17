@@ -730,6 +730,88 @@ describe('api ticketing (connect-once)', () => {
   })
 })
 
+describe('api risk campaigns', () => {
+  it('reads the authoritative campaign collection', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'risk-campaigns.v1',
+      tenant_id: 't1',
+      campaigns: [],
+      count: 0,
+      finding_window_days: 90,
+      finding_limit: 1000,
+      truncated: false,
+      total_findings: 0,
+      total_approximate: false,
+    })
+
+    const result = await api.listRiskCampaigns()
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/campaigns')
+    expect(opts.method ?? 'GET').toBe('GET')
+    expect(result.finding_window_days).toBe(90)
+    expect(result.total_approximate).toBe(false)
+  })
+
+  it('patches only workflow fields', async () => {
+    global.fetch = mockFetch({ id: 'campaign-1', state: 'blocked' })
+    await api.updateRiskCampaign('campaign-1', { version: 4, state: 'blocked' })
+
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/campaigns/campaign-1')
+    expect(opts.method).toBe('PATCH')
+    expect(JSON.parse(opts.body as string)).toEqual({ version: 4, state: 'blocked' })
+  })
+
+  it('creates campaign tickets through stored connections without credential fields', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'risk-campaign-tickets.v1',
+      campaign_id: 'campaign-1',
+      created: 2,
+      failed: 0,
+      tickets: [],
+      errors: [],
+      per_action_credential: false,
+    })
+    await api.createRiskCampaignTickets('campaign-1', {
+      connection_id: 'connection-1',
+      project: 'SEC',
+    })
+
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/campaigns/campaign-1/tickets')
+    expect(opts.method).toBe('POST')
+    const body = JSON.parse(opts.body as string)
+    expect(body).toEqual({ connection_id: 'connection-1', project: 'SEC', limit: 25 })
+    expect(body.credential).toBeUndefined()
+    expect(body.token).toBeUndefined()
+  })
+
+  it('bounds campaign action pages to 25 for create and sync', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'risk-campaign-ticket-sync.v1',
+      campaign_id: 'campaign-1',
+      synced: 0,
+      failed: 0,
+      tickets: [],
+      errors: [],
+      per_action_credential: false,
+      total: 0,
+      processed: 0,
+      next_cursor: null,
+      has_more: false,
+      action_limit: 25,
+    })
+
+    await api.syncRiskCampaignTickets('campaign-1', { cursor: 'next page', limit: 500 })
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/campaigns/campaign-1/tickets/sync?')
+    expect(url).toContain('cursor=next+page')
+    expect(url).toContain('limit=25')
+    expect(opts.method).toBe('POST')
+    expect(JSON.parse(opts.body as string)).toEqual({})
+  })
+})
+
 describe('api.markFalsePositive', () => {
   it('sends correct payload', async () => {
     global.fetch = mockFetch({

@@ -23,6 +23,7 @@ import {
   Ticket,
 } from "lucide-react";
 import { severityRank } from "@/lib/severity";
+import { RiskCampaignCommandCenter } from "@/components/risk-campaign-command-center";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -520,11 +521,13 @@ function RemediationPage() {
 
   return (
     <div className="space-y-6">
+      <RiskCampaignCommandCenter />
+
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between border-t border-[var(--border-subtle)] pt-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Remediation
+          <h1 className="text-xl font-semibold tracking-tight">
+            Package remediation plan
           </h1>
           <p className="text-[var(--text-secondary)] text-sm mt-1">
             {items.length} packages prioritized by reach, severity, and available fixes

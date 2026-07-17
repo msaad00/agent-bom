@@ -3762,3 +3762,144 @@ export interface TicketCreateBody {
   source_url?: string;
   finding: Record<string, unknown>;
 }
+
+// ── Risk campaigns ───────────────────────────────────────────────────────────
+// Server-authored remediation priorities. The browser renders these values but
+// never recomputes priority or expected risk reduction.
+
+export type RiskCampaignState = "open" | "in_progress" | "blocked" | "done";
+export type RiskCampaignVerificationStatus =
+  | "unverified"
+  | "pending"
+  | "verified"
+  | "failed";
+
+export interface RiskCampaignSeverityFactor {
+  value: string;
+  status: "observed";
+  bands_present: string[];
+}
+
+export type RiskCampaignExploitabilityFactor =
+  | { value: "known_exploited"; status: "observed"; signals: ["kev"] }
+  | { value: number; status: "modeled"; signals: ["epss"] }
+  | { value: null; status: "unknown"; signals?: never };
+
+export interface RiskCampaignReachabilityFactor {
+  value: boolean | null;
+  status: "observed" | "unknown";
+}
+
+export interface RiskCampaignBusinessContextFactor {
+  value: string | null;
+  status: "observed" | "unknown";
+}
+
+export interface RiskCampaignScoreFactors {
+  severity: RiskCampaignSeverityFactor;
+  exploitability: RiskCampaignExploitabilityFactor;
+  reachability: RiskCampaignReachabilityFactor;
+  business_context: RiskCampaignBusinessContextFactor;
+}
+
+export interface RiskCampaignExpectedReduction {
+  modeled_window_percent: number;
+  modeled_risk_points: number;
+  assumption: string;
+  method: string;
+  scope: string;
+  portfolio_complete: boolean;
+}
+
+export interface RiskCampaign {
+  id: string;
+  tenant_id: string;
+  title: string;
+  finding_ids: string[];
+  finding_count: number;
+  severity: string;
+  priority_score: number;
+  priority_score_method: string;
+  score_factors: RiskCampaignScoreFactors;
+  expected_risk_reduction: RiskCampaignExpectedReduction;
+  owner: string | null;
+  sla_due_at: string | null;
+  state: RiskCampaignState;
+  verification_status: RiskCampaignVerificationStatus;
+  updated_at: string | null;
+  source: string;
+  membership_fingerprint: string;
+  generation: number;
+  version: number;
+  active: boolean;
+}
+
+export interface RiskCampaignsResponse {
+  schema_version: "risk-campaigns.v1";
+  tenant_id: string;
+  campaigns: RiskCampaign[];
+  count: number;
+  finding_window_days: 90;
+  finding_limit: number;
+  truncated: boolean;
+  total_findings: number | null;
+  total_approximate: boolean;
+}
+
+export interface RiskCampaignUpdate {
+  version: number;
+  owner?: string | null;
+  sla_due_at?: string | null;
+  state?: RiskCampaignState;
+  verification_status?: RiskCampaignVerificationStatus;
+}
+
+export interface RiskCampaignTicketRequest {
+  connection_id?: string;
+  project?: string;
+  issue_type?: string;
+  cursor?: string | null;
+  limit?: number;
+}
+
+export interface RiskCampaignTicketCreateError {
+  finding_id: string;
+  code: string;
+  detail: string;
+}
+
+export interface RiskCampaignTicketSyncError {
+  ticket_id: string;
+  code: string;
+  detail: string;
+}
+
+export interface RiskCampaignTicketCreateResult {
+  schema_version: string;
+  campaign_id: string;
+  created: number;
+  failed: number;
+  tickets: TicketActionResult[];
+  errors: RiskCampaignTicketCreateError[];
+  per_action_credential: false;
+  total: number;
+  processed: number;
+  next_cursor: string | null;
+  has_more: boolean;
+  action_limit: number;
+}
+
+export interface RiskCampaignTicketSyncResult {
+  schema_version: string;
+  campaign_id: string;
+  synced: number;
+  failed: number;
+  tickets: TicketActionResult[];
+  errors: RiskCampaignTicketSyncError[];
+  per_action_credential: false;
+  total: number;
+  processed: number;
+  next_cursor: string | null;
+  has_more: boolean;
+  action_limit: number;
+}

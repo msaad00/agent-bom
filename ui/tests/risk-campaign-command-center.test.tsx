@@ -15,6 +15,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
       listTicketingConnections: vi.fn(),
       listRiskCampaigns: vi.fn(),
       updateRiskCampaign: vi.fn(),
+      verifyRiskCampaign: vi.fn(),
       createRiskCampaignTickets: vi.fn(),
       syncRiskCampaignTickets: vi.fn(),
     },
@@ -40,12 +41,20 @@ const response: RiskCampaignsResponse = {
       finding_count: 2,
       severity: "critical",
       priority_score: 9.2,
-      priority_score_method: "maximum finding risk; context factors do not modify the score",
+      priority_score_method: "bounded additive model over observed evidence; unknown factors add no boost",
+      priority_score_components: {
+        base_risk: 7.5,
+        exploitability_boost: 1,
+        reachability_boost: 0.7,
+        crown_jewel_boost: 0,
+        cap: 10,
+      },
       score_factors: {
         severity: { value: "critical", status: "observed", bands_present: ["critical", "high"] },
         exploitability: { value: "known_exploited", status: "observed", signals: ["kev"] },
         reachability: { value: true, status: "observed" },
         business_context: { value: null, status: "unknown" },
+        crown_jewel: { value: null, status: "unknown" },
       },
       expected_risk_reduction: {
         modeled_window_percent: 18.5,
@@ -110,9 +119,12 @@ describe("RiskCampaignCommandCenter", () => {
     expect(screen.getByText(/approximately 1,200 total findings/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Why this priority/i }));
-    expect(screen.getByText(/Exploitability/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Exploitability/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Crown jewel/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Base risk/i)).toBeInTheDocument();
+    expect(screen.getByText(/Unknown evidence is neutral/i)).toBeInTheDocument();
     expect(screen.getByText(/Server-side campaign model v1/i)).toBeInTheDocument();
-    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });
 
   it("renders an honest empty state without a success claim", async () => {
@@ -283,7 +295,7 @@ describe("RiskCampaignCommandCenter", () => {
     vi.mocked(api.updateRiskCampaign).mockResolvedValue({
       ...response.campaigns[0]!,
       state: "done",
-      verification_status: "verified",
+      verification_status: "pending",
     });
 
     render(<RiskCampaignCommandCenter />);
@@ -298,7 +310,64 @@ describe("RiskCampaignCommandCenter", () => {
         state: "done",
       }),
     );
-    expect((await screen.findAllByText(/Verified/i)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Pending verification/i)).length).toBeGreaterThan(0);
+  });
+
+  it("re-verifies against server-owned canonical evidence and renders remaining evidence", async () => {
+    vi.mocked(api.verifyRiskCampaign).mockResolvedValue({
+      schema_version: "risk-campaign-verification.v1",
+      campaign_id: "campaign-1",
+      verification_status: "failed",
+      state: "in_progress",
+      remaining_finding_ids: ["finding-2"],
+      remaining_count: 1,
+      original_member_count: 2,
+      evidence_scope: {
+        source: "canonical_findings_spine",
+        finding_window_days: 90,
+        finding_limit: 1000,
+        membership_complete: true,
+      },
+      version: 5,
+      verified_at: "2026-07-17T13:00:00Z",
+    });
+
+    render(<RiskCampaignCommandCenter />);
+    await screen.findByText(response.campaigns[0]!.title);
+    fireEvent.click(screen.getByRole("button", { name: /Re-verify remediation/i }));
+
+    await waitFor(() => expect(api.verifyRiskCampaign).toHaveBeenCalledWith("campaign-1", { version: 4 }));
+    expect(await screen.findByText(/1 of 2 original findings remain/i)).toBeInTheDocument();
+    expect(screen.getByText(/canonical findings spine/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Verification failed/i).length).toBeGreaterThan(0);
+  });
+
+  it("reports successful server verification without caller-authored status", async () => {
+    vi.mocked(api.verifyRiskCampaign).mockResolvedValue({
+      schema_version: "risk-campaign-verification.v1",
+      campaign_id: "campaign-1",
+      verification_status: "verified",
+      state: "done",
+      remaining_finding_ids: [],
+      remaining_count: 0,
+      original_member_count: 2,
+      evidence_scope: {
+        source: "canonical_findings_spine",
+        finding_window_days: 90,
+        finding_limit: 1000,
+        membership_complete: true,
+      },
+      version: 5,
+      verified_at: "2026-07-17T13:00:00Z",
+    });
+
+    render(<RiskCampaignCommandCenter />);
+    await screen.findByText(response.campaigns[0]!.title);
+    fireEvent.click(screen.getByRole("button", { name: /Re-verify remediation/i }));
+
+    expect(await screen.findByText(/No original findings remain/i)).toBeInTheDocument();
+    expect((await screen.findAllByText("Verified")).length).toBeGreaterThan(0);
+    expect(api.updateRiskCampaign).not.toHaveBeenCalled();
   });
 
   it("assigns an owner and SLA through the campaign workflow API", async () => {

@@ -3795,11 +3795,26 @@ export interface RiskCampaignBusinessContextFactor {
   status: "observed" | "unknown";
 }
 
+export interface RiskCampaignCrownJewelFactor {
+  value: boolean | null;
+  status: "observed" | "unknown";
+  signals?: string[];
+}
+
 export interface RiskCampaignScoreFactors {
   severity: RiskCampaignSeverityFactor;
   exploitability: RiskCampaignExploitabilityFactor;
   reachability: RiskCampaignReachabilityFactor;
   business_context: RiskCampaignBusinessContextFactor;
+  crown_jewel: RiskCampaignCrownJewelFactor;
+}
+
+export interface RiskCampaignPriorityScoreComponents {
+  base_risk: number;
+  exploitability_boost: number;
+  reachability_boost: number;
+  crown_jewel_boost: number;
+  cap: number;
 }
 
 export interface RiskCampaignExpectedReduction {
@@ -3820,6 +3835,7 @@ export interface RiskCampaign {
   severity: string;
   priority_score: number;
   priority_score_method: string;
+  priority_score_components: RiskCampaignPriorityScoreComponents;
   score_factors: RiskCampaignScoreFactors;
   expected_risk_reduction: RiskCampaignExpectedReduction;
   owner: string | null;
@@ -3854,11 +3870,32 @@ export interface RiskCampaignUpdate {
   owner?: string | null;
   sla_due_at?: string | null;
   state?: RiskCampaignState;
-  verification_status?: RiskCampaignVerificationStatus;
+}
+
+export interface RiskCampaignVerificationRequest {
+  version: number;
+}
+
+export interface RiskCampaignVerificationResult {
+  schema_version: "risk-campaign-verification.v1";
+  campaign_id: string;
+  verification_status: "verified" | "failed";
+  state: RiskCampaignState;
+  remaining_finding_ids: string[];
+  remaining_count: number;
+  original_member_count: number;
+  evidence_scope: {
+    source: "canonical_findings_spine";
+    finding_window_days: 90;
+    finding_limit: number;
+    membership_complete: true;
+  };
+  version: number;
+  verified_at: string;
 }
 
 export interface RiskCampaignTicketRequest {
-  connection_id?: string;
+  connection_id: string;
   project?: string;
   issue_type?: string;
   cursor?: string | null;

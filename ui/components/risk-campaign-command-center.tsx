@@ -20,6 +20,7 @@ import { ApiConflictError } from "@/lib/api-errors";
 import type {
   RiskCampaign,
   RiskCampaignState,
+  RiskCampaignVerificationResult,
   TicketingConnection,
 } from "@/lib/api-types";
 
@@ -61,6 +62,20 @@ function resultMessage(
   return `${successful} ticket${successful === 1 ? "" : "s"} ${verb} · ${processed}/${total} processed`;
 }
 
+function factorValue(
+  factor: keyof RiskCampaign["score_factors"],
+  value: RiskCampaign["score_factors"][keyof RiskCampaign["score_factors"]]["value"],
+): string {
+  if (value === null) return "Unknown";
+  if (factor === "reachability" && typeof value === "boolean") {
+    return value ? "Reachable" : "Not reachable";
+  }
+  if (factor === "crown_jewel" && typeof value === "boolean") {
+    return value ? "Crown jewel" : "Not a crown jewel";
+  }
+  return String(value).replaceAll("_", " ");
+}
+
 type TicketProgress = {
   mode: "create" | "sync";
   successful: number;
@@ -94,6 +109,7 @@ function CampaignCard({
   const [slaDate, setSlaDate] = useState(campaign.sla_due_at?.slice(0, 10) ?? "");
   const [versionConflict, setVersionConflict] = useState(false);
   const [ticketProgress, setTicketProgress] = useState<TicketProgress | null>(null);
+  const [verificationResult, setVerificationResult] = useState<RiskCampaignVerificationResult | null>(null);
   const workflowActionable = campaign.membership_complete && !campaign.membership_provisional;
 
   useEffect(() => {
@@ -190,6 +206,30 @@ function CampaignCard({
     }
   }, [campaign.id, campaign.version, onChanged, owner, slaDate]);
 
+  const verifyRemediation = useCallback(async () => {
+    setBusy(true);
+    setActionError("");
+    setActionMessage("");
+    setVersionConflict(false);
+    setVerificationResult(null);
+    try {
+      const result = await api.verifyRiskCampaign(campaign.id, { version: campaign.version });
+      setVerificationResult(result);
+      onChanged({
+        ...campaign,
+        state: result.state,
+        verification_status: result.verification_status,
+        version: result.version,
+        updated_at: result.verified_at,
+      });
+    } catch (error: unknown) {
+      setVersionConflict(error instanceof ApiConflictError);
+      setActionError(error instanceof Error ? error.message : "Campaign verification failed");
+    } finally {
+      setBusy(false);
+    }
+  }, [campaign, onChanged]);
+
   const factors = Object.entries(campaign.score_factors) as Array<
     [keyof RiskCampaign["score_factors"], RiskCampaign["score_factors"][keyof RiskCampaign["score_factors"]]]
   >;
@@ -247,23 +287,30 @@ function CampaignCard({
         <div className="mt-4 grid gap-3 border-t border-[color:var(--border-subtle)] pt-4 lg:grid-cols-[1fr_1.3fr]">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <p className="col-span-2 text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)] sm:col-span-4">
-              Context evidence — not priority-score weights
+              Observed priority evidence
             </p>
             {factors.map(([factor, evidence]) => (
               <div key={factor} className="rounded-lg bg-[color:var(--surface-muted)] p-2.5">
                 <div className="text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)]">{factor.replace("_", " ")}</div>
                 <div className="mt-1 text-sm font-semibold tabular-nums text-[color:var(--foreground)]">
-                  {evidence.value === null
-                    ? "Unknown"
-                    : typeof evidence.value === "boolean"
-                      ? evidence.value ? "Reachable" : "Not reachable"
-                      : String(evidence.value).replaceAll("_", " ")}
+                  {factorValue(factor, evidence.value)}
                 </div>
                 <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)]">{evidence.status}</div>
               </div>
             ))}
+            <p className="col-span-2 text-[10px] leading-4 text-[color:var(--text-tertiary)] sm:col-span-4">
+              Unknown evidence is neutral and adds no priority boost.
+            </p>
           </div>
           <div className="rounded-lg border border-[color:var(--border-subtle)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]">
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {Object.entries(campaign.priority_score_components).map(([component, value]) => (
+                <div key={component} className="rounded-md bg-[color:var(--surface-muted)] px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-wide text-[color:var(--text-tertiary)]">{component.replaceAll("_", " ")}</div>
+                  <div className="font-semibold tabular-nums text-[color:var(--foreground)]">{value}</div>
+                </div>
+              ))}
+            </div>
             <p>{campaign.expected_risk_reduction.assumption}</p>
             <p className="mt-1 text-[color:var(--text-tertiary)]">{campaign.expected_risk_reduction.method}</p>
             <p className="mt-1 text-[color:var(--text-tertiary)]">Scope: {campaign.expected_risk_reduction.scope}</p>
@@ -288,6 +335,14 @@ function CampaignCard({
           <span className="rounded-full border border-[color:var(--border-subtle)] px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[color:var(--text-secondary)]">
             {VERIFICATION_LABELS[campaign.verification_status]}
           </span>
+          <button
+            type="button"
+            disabled={busy || !workflowActionable}
+            onClick={() => void verifyRemediation()}
+            className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" /> Re-verify remediation
+          </button>
           <button type="button" disabled={!workflowActionable} onClick={() => setEditingAssignment((current) => !current)} className="text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
             Edit owner and SLA
           </button>
@@ -325,6 +380,16 @@ function CampaignCard({
         </div>
       ) : null}
       {actionMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--text-secondary)]">{actionMessage}</p> : null}
+      {verificationResult ? (
+        <div role="status" className="mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+          <strong className="text-[color:var(--foreground)]">
+            {verificationResult.remaining_count === 0
+              ? "No original findings remain."
+              : `${verificationResult.remaining_count} of ${verificationResult.original_member_count} original findings remain.`}
+          </strong>{" "}
+          Evidence: {verificationResult.evidence_scope.source.replaceAll("_", " ")}, complete {verificationResult.evidence_scope.finding_window_days}-day window.
+        </div>
+      ) : null}
       {actionError ? <p role="alert" className="mt-3 text-xs text-[color:var(--status-danger)]">{actionError}</p> : null}
       {versionConflict ? (
         <button type="button" onClick={onReload} className="mt-2 rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Reload campaigns</button>

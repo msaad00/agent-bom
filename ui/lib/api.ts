@@ -146,6 +146,8 @@ import type {
   RiskCampaign,
   RiskCampaignsResponse,
   RiskCampaignUpdate,
+  RiskCampaignVerificationRequest,
+  RiskCampaignVerificationResult,
   RiskCampaignTicketRequest,
   RiskCampaignTicketCreateResult,
   RiskCampaignTicketSyncResult
@@ -394,6 +396,8 @@ export type {
   RiskCampaign,
   RiskCampaignsResponse,
   RiskCampaignUpdate,
+  RiskCampaignVerificationRequest,
+  RiskCampaignVerificationResult,
   RiskCampaignTicketRequest,
   RiskCampaignTicketCreateResult,
   RiskCampaignTicketSyncResult,
@@ -1310,6 +1314,11 @@ export const api = {
   updateRiskCampaign: (campaignId: string, body: RiskCampaignUpdate) =>
     patch<RiskCampaign>(
       `/v1/campaigns/${encodeURIComponent(campaignId)}`,
+      body,
+    ),
+  verifyRiskCampaign: (campaignId: string, body: RiskCampaignVerificationRequest) =>
+    post<RiskCampaignVerificationResult>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}/verify`,
       body,
     ),
   createRiskCampaignTickets: (

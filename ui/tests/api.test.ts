@@ -762,6 +762,33 @@ describe('api risk campaigns', () => {
     expect(JSON.parse(opts.body as string)).toEqual({ version: 4, state: 'blocked' })
   })
 
+  it('requests server-owned campaign verification using only the workflow version', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'risk-campaign-verification.v1',
+      campaign_id: 'campaign-1',
+      verification_status: 'verified',
+      state: 'done',
+      remaining_finding_ids: [],
+      remaining_count: 0,
+      original_member_count: 2,
+      evidence_scope: {
+        source: 'canonical_findings_spine',
+        finding_window_days: 90,
+        finding_limit: 1000,
+        membership_complete: true,
+      },
+      version: 5,
+      verified_at: '2026-07-17T13:00:00Z',
+    })
+
+    await api.verifyRiskCampaign('campaign-1', { version: 4 })
+
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/campaigns/campaign-1/verify')
+    expect(opts.method).toBe('POST')
+    expect(JSON.parse(opts.body as string)).toEqual({ version: 4 })
+  })
+
   it('creates campaign tickets through stored connections without credential fields', async () => {
     global.fetch = mockFetch({
       schema_version: 'risk-campaign-tickets.v1',

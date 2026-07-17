@@ -372,6 +372,16 @@ _SERVER_CARD_TOOLS = [
         "description": "List/get NHI access-review campaigns; recomputes and persists overdue status (idempotent write)",
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },
+    {
+        "name": "create_ticket",
+        "description": "File an ITSM ticket for a finding through a stored connect-once connection; no per-action credential",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
+    {
+        "name": "sync_ticket_status",
+        "description": "Refresh a filed ITSM ticket's status through the stored ticketing connection",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
 ]
 
 _TOOL_CAPABILITY_CLASSES = {
@@ -450,6 +460,8 @@ _TOOL_CAPABILITY_CLASSES = {
     "credential_expiry": ["READ", "SECURITY", "AUDIT"],
     "cost_forecast": ["READ", "RUNTIME", "OBSERVABILITY"],
     "cost_allocation": ["READ", "RUNTIME", "OBSERVABILITY"],
+    "create_ticket": ["WRITE", "NETWORK", "INTEGRATION"],
+    "sync_ticket_status": ["WRITE", "NETWORK", "INTEGRATION"],
 }
 
 for _tool in _SERVER_CARD_TOOLS:
@@ -463,12 +475,7 @@ def server_card_tool_names() -> frozenset[str]:
 
 def _is_mcp_tool_decorator(node: ast.expr) -> bool:
     target = node.func if isinstance(node, ast.Call) else node
-    return (
-        isinstance(target, ast.Attribute)
-        and target.attr == "tool"
-        and isinstance(target.value, ast.Name)
-        and target.value.id == "mcp"
-    )
+    return isinstance(target, ast.Attribute) and target.attr == "tool" and isinstance(target.value, ast.Name) and target.value.id == "mcp"
 
 
 def registered_mcp_tool_decorator_names() -> frozenset[str]:

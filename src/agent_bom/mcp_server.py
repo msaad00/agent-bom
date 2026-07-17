@@ -1189,6 +1189,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         truncate_response=_truncate_response,
     )
 
+    from agent_bom.mcp_server_ticketing_tools import register_ticketing_tools
+
+    register_ticketing_tools(
+        mcp,
+        write_action=_WRITE_ACTION,
+        execute_tool_async=_execute_tool_async,
+        truncate_response=_truncate_response,
+    )
+
     from agent_bom.mcp_server_operator_tools import register_operator_tools
 
     register_operator_tools(

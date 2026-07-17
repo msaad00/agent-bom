@@ -29,10 +29,14 @@ def _risk(row: Mapping[str, Any]) -> float:
 
 
 def _group_key(row: Mapping[str, Any]) -> str:
+    purl = str(row.get("purl") or "").strip().lower()
     package = str(row.get("package") or row.get("component") or "").strip().lower()
+    ecosystem = str(row.get("ecosystem") or "unknown").strip().lower()
     fixed = str(row.get("fixed_version") or "").strip().lower()
+    if purl and fixed:
+        return f"upgrade:purl:{purl}:{fixed}"
     if package and fixed:
-        return f"upgrade:{package}:{fixed}"
+        return f"upgrade:package:{ecosystem}:{package}:{fixed}"
     return f"finding:{_finding_id(row)}"
 
 
@@ -69,7 +73,13 @@ def derive_campaigns(
     truncated: bool = False,
 ) -> list[dict[str, Any]]:
     """Group findings only when they share an explicit remediation target."""
-    usable = [row for row in findings if isinstance(row, dict) and _finding_id(row)]
+    by_id: dict[str, dict[str, Any]] = {}
+    for row in findings:
+        if isinstance(row, dict) and (identity := _finding_id(row)):
+            incumbent = by_id.get(identity)
+            if incumbent is None or _risk(row) > _risk(incumbent):
+                by_id[identity] = row
+    usable = list(by_id.values())
     total_modeled_risk = sum(_risk(row) for row in usable)
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in usable:
@@ -79,6 +89,7 @@ def derive_campaigns(
     for group_key, rows in groups.items():
         rows.sort(key=lambda row: _finding_id(row))
         campaign_id = _campaign_id(group_key)
+        membership_fingerprint = hashlib.sha256("\x1f".join(_finding_id(row) for row in rows).encode()).hexdigest()
         workflow = workflow_by_id.get(campaign_id)
         highest = max(rows, key=_risk)
         priority = _risk(highest)
@@ -127,11 +138,15 @@ def derive_campaigns(
                     "scope": f"last {window_days} days, first {finding_limit} findings",
                     "portfolio_complete": not truncated,
                 },
-                "owner": workflow.owner if workflow else derived_owner,
+                "owner": workflow.owner if workflow and workflow.owner is not None else derived_owner,
                 "sla_due_at": workflow.sla_due_at if workflow else None,
                 "state": workflow.state if workflow else "open",
                 "verification_status": workflow.verification_status if workflow else "unverified",
                 "updated_at": workflow.updated_at if workflow else None,
+                "membership_fingerprint": membership_fingerprint,
+                "generation": workflow.generation if workflow else 1,
+                "active": workflow.active if workflow else True,
+                "version": workflow.version if workflow else 1,
                 "source": "canonical_findings_spine",
             }
         )

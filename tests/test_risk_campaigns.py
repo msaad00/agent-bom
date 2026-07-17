@@ -4,6 +4,7 @@ import os
 import sys
 import types
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from inspect import getsource
 from typing import Any
@@ -13,7 +14,10 @@ from starlette.testclient import TestClient
 
 from agent_bom.api.campaign_store import InMemoryCampaignStore, SQLiteCampaignStore, get_campaign_store, set_campaign_store
 from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore, set_compliance_hub_store
+from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.risk_campaigns import derive_campaigns
+from agent_bom.api.store import InMemoryJobStore
+from agent_bom.api.stores import set_job_store
 from agent_bom.ticketing.connection_store import InMemoryTicketingStore, TicketLink, get_ticketing_store, set_ticketing_store
 
 PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
@@ -38,6 +42,7 @@ def _stores() -> Iterator[None]:
     set_campaign_store(InMemoryCampaignStore())
     set_compliance_hub_store(InMemoryComplianceHubStore())
     set_ticketing_store(InMemoryTicketingStore())
+    set_job_store(InMemoryJobStore())
     try:
         yield
     finally:
@@ -127,12 +132,96 @@ def test_campaign_ids_are_deterministic_across_derivations() -> None:
     assert [item["id"] for item in first] == [item["id"] for item in second]
 
 
+def test_grouping_uses_ecosystem_and_dedupes_canonical_ids() -> None:
+    rows = [
+        {"id": "same", "ecosystem": "npm", "package": "shared", "fixed_version": "2", "severity": "high"},
+        {"id": "same", "ecosystem": "npm", "package": "shared", "fixed_version": "2", "severity": "critical"},
+        {"id": "python", "ecosystem": "pypi", "package": "shared", "fixed_version": "2", "severity": "high"},
+    ]
+    campaigns = derive_campaigns(rows, tenant_id="t", workflow_by_id={})
+    assert len(campaigns) == 2
+    assert sum(item["finding_count"] for item in campaigns) == 2
+
+
 def test_campaign_workflow_store_is_tenant_isolated() -> None:
     store = InMemoryCampaignStore()
     store.upsert("tenant-alpha", "campaign-1", owner="alice", state="in_progress")
 
     assert store.get("tenant-alpha", "campaign-1") is not None
     assert store.get("tenant-beta", "campaign-1") is None
+
+
+def test_membership_change_and_reentry_reset_done_verification() -> None:
+    store = InMemoryCampaignStore()
+    row = store.reconcile_memberships("t", {"c": "one"})[0]
+    store.patch("t", "c", expected_version=row.version, fields={"state": "done", "verification_status": "verified"})
+    changed = store.reconcile_memberships("t", {"c": "two"})[0]
+    assert changed.state == "open" and changed.verification_status == "unverified"
+    assert changed.generation == 2
+    store.reconcile_memberships("t", {})
+    reentered = store.reconcile_memberships("t", {"c": "two"})[0]
+    assert reentered.generation == 3 and reentered.state == "open"
+
+
+def test_incomplete_membership_page_does_not_retire_unseen_campaigns() -> None:
+    store = InMemoryCampaignStore()
+    store.reconcile_memberships("t", {"a": "one", "b": "two"})
+    store.reconcile_memberships("t", {"a": "one"}, complete=False)
+    assert store.get("t", "b").active is True
+
+
+def test_sqlite_patch_cas_rejects_stale_writer(tmp_path) -> None:
+    store = SQLiteCampaignStore(str(tmp_path / "cas.db"))
+    row = store.reconcile_memberships("t", {"c": "one"})[0]
+    assert store.patch("t", "c", expected_version=row.version, fields={"owner": "alice"}) is not None
+    assert store.patch("t", "c", expected_version=row.version, fields={"owner": "bob"}) is None
+    assert store.get("t", "c").owner == "alice"
+
+
+def test_sqlite_patch_cas_allows_only_one_concurrent_writer(tmp_path) -> None:
+    path = str(tmp_path / "concurrent.db")
+    seed = SQLiteCampaignStore(path)
+    row = seed.reconcile_memberships("t", {"c": "one"})[0]
+
+    def write(owner: str) -> bool:
+        return SQLiteCampaignStore(path).patch("t", "c", expected_version=row.version, fields={"owner": owner}) is not None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(write, ("alice", "bob")))
+    assert sorted(outcomes) == [False, True]
+
+
+def test_default_store_is_durable_unless_ephemeral(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("AGENT_BOM_EPHEMERAL_STORE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_DB", raising=False)
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    set_campaign_store(None)
+    assert isinstance(get_campaign_store(), SQLiteCampaignStore)
+    get_campaign_store().reconcile_memberships("t", {"c": "one"})
+    set_campaign_store(None)
+    assert get_campaign_store().get("t", "c") is not None
+    set_campaign_store(None)
+    monkeypatch.setenv("AGENT_BOM_EPHEMERAL_STORE", "1")
+    assert isinstance(get_campaign_store(), InMemoryCampaignStore)
+
+
+def test_campaign_store_is_in_storage_schema_manifest() -> None:
+    from agent_bom.api.storage_schema import describe_control_plane_storage_schema
+
+    components = {item["component"]: item for item in describe_control_plane_storage_schema()["components"]}
+    assert components["risk_campaign_workflows"]["tables"] == ["risk_campaign_workflows"]
+
+
+def test_campaign_openapi_has_typed_responses_and_partial_status() -> None:
+    from agent_bom.api.server import app
+
+    schema = app.openapi()
+    assert "CampaignListResponse" in schema["components"]["schemas"]
+    for path in ("/v1/campaigns/{campaign_id}/tickets", "/v1/campaigns/{campaign_id}/tickets/sync"):
+        responses = schema["paths"][path]["post"]["responses"]
+        assert "200" in responses and "207" in responses
+        assert "CampaignActionResponse" in str(responses["207"])
 
 
 def test_sqlite_campaign_store_persists_same_logical_id_per_tenant(tmp_path) -> None:
@@ -243,11 +332,39 @@ def test_campaign_api_derives_from_bulk_findings_spine() -> None:
     assert {campaign["source"] for campaign in body["campaigns"]} == {"canonical_findings_spine"}
 
 
+def test_findings_window_excludes_old_completed_scan_but_keeps_recent_bulk() -> None:
+    from agent_bom.api.server import app
+
+    job = ScanJob(
+        job_id="old",
+        tenant_id="default",
+        created_at="2025-01-01T00:00:00Z",
+        completed_at="2025-01-01T01:00:00Z",
+        status=JobStatus.DONE,
+        request=ScanRequest(),
+        result={"findings": [{"id": "old-finding", "severity": "critical"}]},
+    )
+    from agent_bom.api.stores import _get_store
+
+    _get_store().put(job)
+    client = TestClient(app)
+    client.post(
+        "/v1/findings/bulk",
+        json={"source": "recent", "findings": [{"id": "recent-finding", "severity": "high"}]},
+        headers=_headers(tenant="default"),
+    )
+    findings = client.get("/v1/findings?window_days=90", headers=_headers(tenant="default")).json()["findings"]
+    assert {row["id"] for row in findings} == {"recent-finding"}
+
+
 def test_campaign_api_labels_bounded_source_as_truncated(monkeypatch) -> None:
     from agent_bom.api.server import app
 
     findings = [{"id": f"finding-{idx}", "severity": "low"} for idx in range(1000)]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: findings)
+    monkeypatch.setattr(
+        "agent_bom.api.routes.campaigns._load_findings",
+        lambda request: {"findings": findings, "total": 1001, "total_approximate": False, "has_more": True},
+    )
     response = TestClient(app).get("/v1/campaigns", headers=_headers())
 
     assert response.status_code == 200
@@ -269,6 +386,7 @@ def test_campaign_api_persists_workflow_without_cross_tenant_leak(monkeypatch) -
     updated = client.patch(
         f"/v1/campaigns/{first['id']}",
         json={
+            "version": first["version"],
             "owner": "security-platform",
             "sla_due_at": "2026-08-01T00:00:00Z",
             "state": "in_progress",
@@ -290,18 +408,21 @@ def test_campaign_patch_preserves_omitted_workflow_fields(monkeypatch) -> None:
 
     monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
     client = TestClient(app)
-    campaign_id = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]["id"]
-    client.patch(
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    campaign_id = campaign["id"]
+    first = client.patch(
         f"/v1/campaigns/{campaign_id}",
-        json={"owner": "alice", "state": "in_progress", "verification_status": "pending"},
+        json={"version": campaign["version"], "owner": "alice", "state": "in_progress", "verification_status": "pending"},
         headers=_headers(),
     )
 
-    second = client.patch(f"/v1/campaigns/{campaign_id}", json={"owner": "bob"}, headers=_headers())
+    second = client.patch(f"/v1/campaigns/{campaign_id}", json={"version": first.json()["version"], "owner": "bob"}, headers=_headers())
     assert second.status_code == 200
     assert second.json()["owner"] == "bob"
     assert second.json()["state"] == "in_progress"
     assert second.json()["verification_status"] == "pending"
+    stale = client.patch(f"/v1/campaigns/{campaign_id}", json={"version": campaign["version"], "owner": "lost"}, headers=_headers())
+    assert stale.status_code == 409
 
 
 def test_campaign_patch_rejects_invalid_sla_timestamp(monkeypatch) -> None:
@@ -309,11 +430,12 @@ def test_campaign_patch_rejects_invalid_sla_timestamp(monkeypatch) -> None:
 
     monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
     client = TestClient(app)
-    campaign_id = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]["id"]
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    campaign_id = campaign["id"]
 
     response = client.patch(
         f"/v1/campaigns/{campaign_id}",
-        json={"sla_due_at": "not-a-timestamp"},
+        json={"version": campaign["version"], "sla_due_at": "not-a-timestamp"},
         headers=_headers(),
     )
     assert response.status_code == 422
@@ -351,6 +473,30 @@ def test_campaign_ticket_action_forbids_credentials_and_reports_partial_result(m
     assert result.json()["created"] == 1
     assert result.json()["failed"] == 1
     assert "secret-token" not in result.text
+
+
+def test_ticket_action_is_bounded_and_resumable_before_side_effects(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    findings = [{"id": f"f-{i}", "purl": "pkg:npm/shared", "fixed_version": "2", "severity": "high"} for i in range(30)]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: findings)
+    called: list[str] = []
+
+    async def _create(**kwargs):
+        called.append(kwargs["finding_id"])
+        return {"ticket": {"id": kwargs["finding_id"]}}
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.create_ticket_for_finding", _create)
+    client = TestClient(app)
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    first = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "c"}, headers=_headers()).json()
+    assert first["processed"] == 25 and first["has_more"] is True and len(called) == 25
+    invalid = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "c", "cursor": "bad"}, headers=_headers())
+    assert invalid.status_code == 400 and len(called) == 25
+    second = client.post(
+        f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "c", "cursor": first["next_cursor"]}, headers=_headers()
+    ).json()
+    assert second["processed"] == 5 and second["next_cursor"] is None
 
 
 def test_campaign_audit_failure_does_not_log_raw_exception() -> None:

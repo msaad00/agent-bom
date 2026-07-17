@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 from datetime import datetime
 from typing import Any, Literal
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_bom.api.audit_log import log_action
@@ -31,6 +33,7 @@ class CampaignUpdate(BaseModel):
     sla_due_at: str | None = Field(default=None, max_length=64)
     state: Literal["open", "in_progress", "blocked", "done"] | None = None
     verification_status: Literal["unverified", "pending", "verified", "failed"] | None = None
+    version: int = Field(ge=1)
 
     @field_validator("sla_due_at")
     @classmethod
@@ -49,6 +52,58 @@ class CampaignTicketAction(BaseModel):
     connection_id: str = Field(min_length=1, max_length=200)
     project: str = Field(default="", max_length=200)
     issue_type: str = Field(default="", max_length=100)
+    cursor: str | None = Field(default=None, max_length=512)
+    limit: int = Field(default=25, ge=1, le=25)
+
+
+class CampaignResponse(BaseModel):
+    id: str
+    tenant_id: str
+    title: str
+    finding_ids: list[str]
+    finding_count: int
+    severity: str
+    priority_score: float
+    priority_score_method: str
+    score_factors: dict[str, Any]
+    expected_risk_reduction: dict[str, Any]
+    owner: str | None
+    sla_due_at: str | None
+    state: str
+    verification_status: str
+    updated_at: str | None
+    source: str
+    membership_fingerprint: str
+    generation: int
+    active: bool
+    version: int
+
+
+class CampaignListResponse(BaseModel):
+    schema_version: str
+    tenant_id: str
+    campaigns: list[CampaignResponse]
+    count: int
+    finding_window_days: int
+    finding_limit: int
+    truncated: bool
+    total_findings: int | None
+    total_approximate: bool
+
+
+class CampaignActionResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    schema_version: str
+    campaign_id: str
+    failed: int
+    tickets: list[dict[str, Any]]
+    errors: list[dict[str, str]]
+    per_action_credential: bool
+    total: int
+    processed: int
+    next_cursor: str | None
+    has_more: bool
+    action_limit: int
 
 
 def _tenant(request: Request) -> str:
@@ -59,24 +114,68 @@ def _actor(request: Request) -> str:
     return getattr(request.state, "api_key_name", "") or getattr(request.state, "auth_method", "") or "system"
 
 
-def _load_findings(request: Request) -> list[dict[str, Any]]:
+def _load_findings(request: Request) -> dict[str, Any]:
     from agent_bom.api.routes.scan import _list_findings_impl
 
     payload = _list_findings_impl(request, None, None, "effective_reach", 1000, 0, None, False, None, None, None, None, 90)
-    rows = payload.get("findings") or []
-    return [row for row in rows if isinstance(row, dict)]
+    payload["findings"] = [row for row in payload.get("findings") or [] if isinstance(row, dict)]
+    return payload
 
 
-def _campaigns(tenant_id: str, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    workflows = {row.campaign_id: row for row in get_campaign_store().list(tenant_id)}
+def _source_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, list):
+        return {"findings": value, "total": len(value), "total_approximate": False, "has_more": False}
+    return value
+
+
+def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]:
+    tenant_id = _tenant(request)
+    findings = source["findings"]
+    total = source.get("total")
+    incomplete = bool(
+        total is None or source.get("has_more") or source.get("total_approximate") or (isinstance(total, int) and total > len(findings))
+    )
+    initial = derive_campaigns(findings, tenant_id=tenant_id, workflow_by_id={}, window_days=90, finding_limit=1000, truncated=incomplete)
+    memberships = {item["id"]: item["membership_fingerprint"] for item in initial}
+    before = {row.campaign_id: row for row in get_campaign_store().list(tenant_id)}
+    reconciled = get_campaign_store().reconcile_memberships(tenant_id, memberships, complete=not incomplete)
+    for row in reconciled:
+        old = before.get(row.campaign_id)
+        if old is None:
+            _audit("risk_campaign.membership_observed", request, row.campaign_id, generation=row.generation)
+        elif row.generation != old.generation:
+            _audit("risk_campaign.membership_reset", request, row.campaign_id, generation=row.generation)
+    for campaign_id, old in before.items():
+        if not incomplete and old.active and campaign_id not in memberships:
+            _audit("risk_campaign.membership_retired", request, campaign_id, generation=old.generation)
+    workflows = {row.campaign_id: row for row in reconciled}
     return derive_campaigns(
         findings,
         tenant_id=tenant_id,
         workflow_by_id=workflows,
         window_days=90,
         finding_limit=1000,
-        truncated=len(findings) >= 1000,
+        truncated=incomplete,
     )
+
+
+def _cursor(campaign_id: str, offset: int) -> str:
+    raw = json.dumps({"campaign": campaign_id, "offset": offset}, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _offset(cursor: str | None, campaign_id: str, total: int) -> int:
+    if not cursor:
+        return 0
+    try:
+        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        value = json.loads(raw)
+        offset = int(value["offset"])
+        if value["campaign"] != campaign_id or offset < 0 or offset >= total:
+            raise ValueError("cursor does not match campaign")
+        return offset
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid campaign action cursor.") from exc
 
 
 def _find_campaign(campaigns: list[dict[str, Any]], campaign_id: str) -> dict[str, Any]:
@@ -99,11 +198,16 @@ def _audit(action: str, request: Request, campaign_id: str, **details: Any) -> N
         _logger.warning("risk campaign audit append failed")
 
 
-@router.get("/campaigns")
+@router.get("/campaigns", response_model=CampaignListResponse)
 async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]:
     tenant_id = _tenant(request)
-    findings = await anyio.to_thread.run_sync(_load_findings, request)
-    campaigns = _campaigns(tenant_id, findings)
+    source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
+    findings = source["findings"]
+    campaigns = _campaigns(request, source)
+    total = source.get("total")
+    truncated = bool(
+        total is None or source.get("has_more") or source.get("total_approximate") or (isinstance(total, int) and total > len(findings))
+    )
     return {
         "schema_version": "risk-campaigns.v1",
         "tenant_id": tenant_id,
@@ -111,39 +215,29 @@ async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]
         "count": len(campaigns),
         "finding_window_days": 90,
         "finding_limit": 1000,
-        "truncated": len(findings) >= 1000,
+        "truncated": truncated,
+        "total_findings": total,
+        "total_approximate": bool(source.get("total_approximate")),
     }
 
 
-@router.patch("/campaigns/{campaign_id}")
+@router.patch("/campaigns/{campaign_id}", response_model=CampaignResponse)
 async def update_campaign(request: Request, campaign_id: str, body: CampaignUpdate, _role: Any = _WRITE) -> dict[str, Any]:
     tenant_id = _tenant(request)
-    findings = await anyio.to_thread.run_sync(_load_findings, request)
-    campaign = _find_campaign(_campaigns(tenant_id, findings), campaign_id)
-    existing = get_campaign_store().get(tenant_id, campaign_id)
-    fields = body.model_fields_set
-    owner = (body.owner.strip() if body.owner else None) if "owner" in fields else (existing.owner if existing else campaign["owner"])
-    sla_due_at = body.sla_due_at if "sla_due_at" in fields else (existing.sla_due_at if existing else campaign["sla_due_at"])
-    state = (body.state if "state" in fields else (existing.state if existing else campaign["state"])) or "open"
-    verification_status = (
-        body.verification_status
-        if "verification_status" in fields
-        else (existing.verification_status if existing else campaign["verification_status"])
-    ) or "unverified"
-    workflow = get_campaign_store().upsert(
-        tenant_id,
-        campaign_id,
-        owner=owner,
-        sla_due_at=sla_due_at,
-        state=state,
-        verification_status=verification_status,
-    )
+    source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
+    campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    fields = body.model_dump(exclude_unset=True, exclude={"version"})
+    if "owner" in fields:
+        fields["owner"] = body.owner.strip() if body.owner else None
+    workflow = get_campaign_store().patch(tenant_id, campaign_id, expected_version=body.version, fields=fields)
+    if workflow is None:
+        raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")
     campaign.update(workflow.to_dict())
-    _audit("risk_campaign.update", request, campaign_id, state=state, verification_status=verification_status)
+    _audit("risk_campaign.update", request, campaign_id, state=workflow.state, verification_status=workflow.verification_status)
     return campaign
 
 
-@router.post("/campaigns/{campaign_id}/tickets")
+@router.post("/campaigns/{campaign_id}/tickets", response_model=CampaignActionResponse, responses={207: {"model": CampaignActionResponse}})
 async def create_campaign_tickets(
     request: Request,
     campaign_id: str,
@@ -152,14 +246,20 @@ async def create_campaign_tickets(
     _role: Any = _WRITE,
 ) -> dict[str, Any]:
     tenant_id = _tenant(request)
-    findings = await anyio.to_thread.run_sync(_load_findings, request)
-    campaign = _find_campaign(_campaigns(tenant_id, findings), campaign_id)
-    rows = {
-        str(row.get("id") or row.get("canonical_id") or row.get("finding_id") or row.get("vulnerability_id") or ""): row for row in findings
-    }
+    source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
+    findings = source["findings"]
+    campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    rows: dict[str, dict[str, Any]] = {}
+    for row in findings:
+        identity = str(row.get("id") or row.get("canonical_id") or row.get("finding_id") or row.get("vulnerability_id") or "")
+        if identity and identity not in rows:
+            rows[identity] = row
     tickets: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
-    for finding_id in campaign["finding_ids"]:
+    all_ids = sorted(campaign["finding_ids"])
+    offset = _offset(body.cursor, campaign_id, len(all_ids))
+    selected = all_ids[offset : offset + body.limit]
+    for finding_id in selected:
         try:
             tickets.append(
                 await create_ticket_for_finding(
@@ -179,6 +279,7 @@ async def create_campaign_tickets(
     if errors:
         response.status_code = 207
     _audit("risk_campaign.ticket_bulk_create", request, campaign_id, created=len(tickets), failed=len(errors))
+    next_offset = offset + len(selected)
     return {
         "schema_version": "risk-campaign-tickets.v1",
         "campaign_id": campaign_id,
@@ -187,21 +288,39 @@ async def create_campaign_tickets(
         "tickets": tickets,
         "errors": errors,
         "per_action_credential": False,
+        "total": len(all_ids),
+        "processed": len(selected),
+        "next_cursor": _cursor(campaign_id, next_offset) if next_offset < len(all_ids) else None,
+        "has_more": next_offset < len(all_ids),
+        "action_limit": 25,
     }
 
 
-@router.post("/campaigns/{campaign_id}/tickets/sync")
-async def sync_campaign_tickets(request: Request, campaign_id: str, response: Response, _role: Any = _WRITE) -> dict[str, Any]:
+@router.post(
+    "/campaigns/{campaign_id}/tickets/sync", response_model=CampaignActionResponse, responses={207: {"model": CampaignActionResponse}}
+)
+async def sync_campaign_tickets(
+    request: Request,
+    campaign_id: str,
+    response: Response,
+    cursor: str | None = None,
+    limit: int = Query(25, ge=1, le=25),
+    _role: Any = _WRITE,
+) -> dict[str, Any]:
     from agent_bom.ticketing.connection_store import get_ticketing_store
 
     tenant_id = _tenant(request)
-    findings = await anyio.to_thread.run_sync(_load_findings, request)
-    campaign = _find_campaign(_campaigns(tenant_id, findings), campaign_id)
+    source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
+    campaign = _find_campaign(_campaigns(request, source), campaign_id)
     finding_ids = set(campaign["finding_ids"])
-    links = [link for link in get_ticketing_store().list_ticket_links(tenant_id) if link.dedupe_key in finding_ids]
+    links = sorted(
+        (link for link in get_ticketing_store().list_ticket_links(tenant_id) if link.dedupe_key in finding_ids), key=lambda link: link.id
+    )
+    offset = _offset(cursor, campaign_id, len(links))
+    selected = links[offset : offset + limit]
     synced: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
-    for link in links:
+    for link in selected:
         try:
             synced.append(await sync_ticket_status(tenant_id=tenant_id, ticket_id=link.id, actor=_actor(request)))
         except TicketingError as exc:
@@ -211,6 +330,7 @@ async def sync_campaign_tickets(request: Request, campaign_id: str, response: Re
     if errors:
         response.status_code = 207
     _audit("risk_campaign.ticket_bulk_sync", request, campaign_id, synced=len(synced), failed=len(errors))
+    next_offset = offset + len(selected)
     return {
         "schema_version": "risk-campaign-ticket-sync.v1",
         "campaign_id": campaign_id,
@@ -219,4 +339,9 @@ async def sync_campaign_tickets(request: Request, campaign_id: str, response: Re
         "tickets": synced,
         "errors": errors,
         "per_action_credential": False,
+        "total": len(links),
+        "processed": len(selected),
+        "next_cursor": _cursor(campaign_id, next_offset) if next_offset < len(links) else None,
+        "has_more": next_offset < len(links),
+        "action_limit": 25,
     }

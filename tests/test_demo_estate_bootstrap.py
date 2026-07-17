@@ -18,15 +18,21 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_DB", str(tmp_path / "demo-estate.db"))
     monkeypatch.setenv("AGENT_BOM_GRAPH_DB", str(tmp_path / "demo-graph.db"))
 
+    from agent_bom.api import compliance_hub_store as hub_store_mod
     from agent_bom.api import server as api_server
     from agent_bom.api import stores as api_stores
+    from agent_bom.api.compliance_hub_store import set_compliance_hub_store
+    from agent_bom.api.findings_count_cache import reset_findings_count_cache
 
     api_server._runtime_api_key_seeded = False
     api_server._shutting_down = False
     original_job_store = api_stores._store
     original_graph_store = api_stores._graph_store
+    original_hub_store = hub_store_mod._HUB_STORE
     api_stores._store = None
     api_stores._graph_store = None
+    set_compliance_hub_store(None)
+    reset_findings_count_cache()
 
     try:
         with TestClient(api_server.app) as client:
@@ -34,6 +40,8 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
     finally:
         api_stores._store = original_job_store
         api_stores._graph_store = original_graph_store
+        set_compliance_hub_store(original_hub_store)
+        reset_findings_count_cache()
         # The proxy alert/metric ring buffers and the firewall decision store are
         # process-global; the demo bootstrap seeds them, so clear them here to
         # keep the seeded gateway feed from leaking into later tests.

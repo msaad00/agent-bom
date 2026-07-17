@@ -58,6 +58,7 @@ def test_normalize_account_ref_none_and_empty() -> None:
 
 def test_domain_cloud_cis_is_cspm() -> None:
     assert security_domain_for(FindingSource.CLOUD_CIS, FindingType.CIS_FAIL, {"benchmark": "CIS"}) == "cspm"
+    assert security_domain_for(FindingSource.CLOUD_CIS, FindingType.CIS_ERROR, {"benchmark": "CIS"}) == "cspm"
 
 
 def test_domain_dependency_cve_is_vuln() -> None:

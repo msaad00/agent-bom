@@ -100,7 +100,7 @@ def test_cli_compact_cis_posture_renders_remediation():
         output_mod.console = original
 
     out = buf.getvalue()
-    assert "CIS Benchmark Posture" in out
+    assert "Cloud Security Posture" in out
     assert "AWS" in out
     assert "1.4" in out  # check_id
     assert "delete-access-key" in out  # fix_cli surfaced
@@ -124,6 +124,52 @@ def test_cli_compact_cis_posture_silent_without_cis_data():
     assert buf.getvalue() == ""
 
 
+def test_cli_error_only_cis_is_error_and_surfaces_unevaluable_detail():
+    report = AIBOMReport(tool_version="0.77.1")
+    report.snowflake_cis_benchmark_data = {
+        "pass_rate": 0.0,
+        "checks": [
+            {
+                "check_id": "1.1",
+                "title": "MFA source preflight",
+                "status": "error",
+                "severity": "critical",
+                "evidence": "ACCOUNT_USAGE heartbeat is stale",
+            }
+        ],
+    }
+    buf = StringIO()
+    con = Console(file=buf, force_terminal=False, width=200)
+    import agent_bom.output as output_mod
+
+    original = output_mod.console
+    output_mod.console = con
+    try:
+        print_compact_cis_posture(report)
+    finally:
+        output_mod.console = original
+
+    out = buf.getvalue()
+    assert "ERROR" in out
+    assert "1 unevaluable" in out
+    assert "ACCOUNT_USAGE heartbeat is stale" in out
+    assert " PASS " not in out
+    assert "no failed checks" not in out
+
+
+def test_mixed_provider_headings_do_not_claim_databricks_is_cis():
+    report = AIBOMReport(tool_version="0.77.1")
+    report.databricks_cis_benchmark_data = {
+        "checks": [{"check_id": "db-1", "title": "Best practice", "status": "pass", "severity": "low"}],
+        "passed": 1,
+        "failed": 0,
+        "pass_rate": 100.0,
+    }
+    html = _cis_benchmark_section(report)
+    assert "Cloud Security Posture" in html
+    assert "CIS Benchmark Posture" not in html
+
+
 # ── HTML ─────────────────────────────────────────────────────────────────
 
 
@@ -142,6 +188,42 @@ def test_html_cis_section_emits_remediation():
 def test_html_cis_section_empty_when_no_data():
     report = AIBOMReport(tool_version="0.77.1")
     assert _cis_benchmark_section(report) == ""
+
+
+def test_html_error_only_cis_is_incomplete_not_pass_or_zero_of_zero():
+    report = AIBOMReport(tool_version="0.77.1")
+    report.snowflake_cis_benchmark_data = {
+        "passed": 0,
+        "failed": 0,
+        "errored": 1,
+        "evaluated": 0,
+        "pass_rate": 0.0,
+        "checks": [{"check_id": "1.1", "title": "MFA", "status": "error", "severity": "critical", "evidence": "source unavailable"}],
+    }
+    html = _cis_benchmark_section(report)
+    assert "ERROR" in html
+    assert "1 unevaluable" in html
+    assert "0/0 checks" not in html
+    assert "PASS" not in html
+
+
+def test_html_mixed_cis_is_incomplete_and_counts_unevaluable():
+    report = AIBOMReport(tool_version="0.77.1")
+    report.snowflake_cis_benchmark_data = {
+        "passed": 1,
+        "failed": 0,
+        "errored": 1,
+        "evaluated": 1,
+        "pass_rate": 100.0,
+        "checks": [
+            {"check_id": "1.1", "title": "MFA", "status": "pass", "severity": "critical"},
+            {"check_id": "5.1", "title": "PUBLIC", "status": "error", "severity": "high", "evidence": "denied"},
+        ],
+    }
+    html = _cis_benchmark_section(report)
+    assert "INCOMPLETE" in html
+    assert "1 unevaluable" in html
+    assert "PASS" not in html
 
 
 # ── SARIF ────────────────────────────────────────────────────────────────

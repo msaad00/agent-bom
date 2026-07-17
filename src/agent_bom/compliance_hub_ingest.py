@@ -82,6 +82,12 @@ def _pick_finding_type(
         return FindingType.LICENSE
     if "cve-" in haystack or "ghsa-" in haystack:
         return FindingType.CVE
+    if "cis_error" in haystack or "cis-error" in haystack:
+        return FindingType.CIS_ERROR
+    if "cloud_best_practice_error" in haystack:
+        return FindingType.CLOUD_BEST_PRACTICE_ERROR
+    if "cloud_best_practice_fail" in haystack or "databricks best practice" in haystack:
+        return FindingType.CLOUD_BEST_PRACTICE_FAIL
     if "cis-" in haystack or "benchmark" in haystack:
         return FindingType.CIS_FAIL
     return FindingType.SAST

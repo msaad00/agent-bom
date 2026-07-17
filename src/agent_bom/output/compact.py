@@ -402,9 +402,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     if fixable_only:
         priority = [finding for finding in priority if _forward_fix_version(finding)]
     if not priority:
-        display_list = (
-            [finding for finding in active_findings if _forward_fix_version(finding)] if fixable_only else active_findings
-        )
+        display_list = [finding for finding in active_findings if _forward_fix_version(finding)] if fixable_only else active_findings
     else:
         display_list = priority
     total = len(display_list)
@@ -412,9 +410,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     shown = display_list[start:end]
 
     # Detect if we have blast radius context (agents/servers/credentials)
-    has_blast_context = any(
-        finding.affected_agents and (finding.affected_servers or finding.exposed_credentials) for finding in shown
-    )
+    has_blast_context = any(finding.affected_agents and (finding.affected_servers or finding.exposed_credentials) for finding in shown)
 
     console.print()
     shown_n = len(shown)
@@ -465,10 +461,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
             epss_style = "red bold" if epss_pct >= 70 else "yellow" if epss_pct >= 30 else "dim"
             epss_display = f"[{epss_style}]{epss_pct}%[/{epss_style}]"
 
-        pkg_display = (
-            f"{package_name(finding)}@{package_version(finding)}"
-            + ("" if is_package_direct(finding) else " [dim]T[/dim]")
-        )
+        pkg_display = f"{package_name(finding)}@{package_version(finding)}" + ("" if is_package_direct(finding) else " [dim]T[/dim]")
         vuln_id = finding.cve_id or finding.id
 
         if has_blast_context:
@@ -673,11 +666,13 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
         return
 
     console.print()
-    console.print(f"  {lane_title('govern', 'CIS Benchmark Posture')}")
+    console.print(f"  {lane_title('govern', 'Cloud Security Posture')}")
 
     for cloud, bundle in bundles:
         checks = bundle.get("checks") or []
         failed = [c for c in checks if c.get("status") == "fail"]
+        errored = [c for c in checks if c.get("status") == "error"]
+        actionable = failed + errored
         total_eval = sum(1 for c in checks if c.get("status") in ("pass", "fail"))
         pass_rate = bundle.get("pass_rate", 0.0)
 
@@ -687,10 +682,12 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
             f"  [bold]{cloud_label}[/bold]  "
             f"[{band}]{pass_rate:.0f}%[/{band}] pass  "
             f"[dim]({bundle.get('passed', 0)}/{total_eval} checks, "
-            f"{len(failed)} failed)[/dim]"
+            f"{len(failed)} failed, {len(errored)} unevaluable)[/dim]"
         )
 
-        if not failed:
+        if errored and not failed:
+            console.print("    [red bold]ERROR[/red bold] [dim]benchmark evidence is incomplete[/dim]")
+        if not actionable:
             console.print("    [green]✓[/green] [dim]no failed checks[/dim]")
             continue
 
@@ -703,7 +700,7 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
             sev = c.get("severity") or ""
             return (priority, severity_worst_first_rank(sev))
 
-        failed_sorted = sorted(failed, key=_sort_key)
+        failed_sorted = sorted(actionable, key=_sort_key)
         shown = failed_sorted[:limit]
         sev_style = {"critical": "red bold", "high": "#e67e22 bold", "medium": "yellow", "low": "dim"}
 
@@ -725,13 +722,15 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
             )
             if guard_str:
                 console.print(f"       [dim]{guard_str}[/dim]")
+            if check.get("status") == "error" and check.get("evidence"):
+                console.print(f"       [red]unevaluable:[/red] {_compact_detail(str(check['evidence']), limit=110)}")
             if rem.get("fix_cli"):
                 console.print(f"       [cyan]{_compact_detail(rem['fix_cli'], limit=110)}[/cyan]")
             elif rem.get("fix_console"):
                 console.print(f"       [dim]→ {_compact_detail(rem['fix_console'], limit=110)}[/dim]")
 
-        if len(failed) > limit:
-            console.print(f"    [dim]... {len(failed) - limit} more (use --verbose for full plan)[/dim]")
+        if len(actionable) > limit:
+            console.print(f"    [dim]... {len(actionable) - limit} more (use --verbose for full plan)[/dim]")
 
     console.print()
 

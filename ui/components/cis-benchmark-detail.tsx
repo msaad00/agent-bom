@@ -87,7 +87,7 @@ function severityClass(severity: string): string {
 const ALL = "all";
 // Typed as string[] (not a literal tuple) so the generic FilterPills infers
 // T = string and accepts the string state value.
-const STATUS_OPTIONS: string[] = [ALL, "fail", "pass"];
+const STATUS_OPTIONS: string[] = [ALL, "error", "fail", "pass", "not_applicable"];
 
 function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
   const [copied, setCopied] = useState(false);
@@ -166,7 +166,7 @@ function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
 }
 
 function CheckCard({ check }: { check: CISBenchmarkCheck }) {
-  const [open, setOpen] = useState(check.status === "fail");
+  const [open, setOpen] = useState(check.status === "fail" || check.status === "error");
   const badge = statusBadge(check.status);
   const docs = check.remediation?.docs;
 
@@ -283,7 +283,7 @@ export function CISBenchmarkDetail() {
   const [error, setError] = useState<string | null>(null);
 
   const [cloud, setCloud] = useState<string>(ALL);
-  const [status, setStatus] = useState<string>("fail");
+  const [status, setStatus] = useState<string>(ALL);
   const [priority, setPriority] = useState<number>(-1);
   const [guardrail, setGuardrail] = useState<string>(ALL);
 
@@ -366,8 +366,8 @@ export function CISBenchmarkDetail() {
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5">
         <SectionHeader />
         <div className="mt-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-tertiary)]">
-          No cloud CIS benchmark checks yet. Run a cloud scan (AWS, Azure, GCP, Snowflake, or Databricks)
-          to populate per-check remediation.
+          No cloud security checks yet. Run CIS scans for AWS, Azure, GCP, or Snowflake, or Databricks
+          security best-practices checks, to populate per-check remediation.
         </div>
       </section>
     );
@@ -389,7 +389,7 @@ export function CISBenchmarkDetail() {
           options={STATUS_OPTIONS}
           value={status}
           onChange={setStatus}
-          render={(value) => (value === ALL ? "All" : value === "fail" ? "Failing" : "Passing")}
+          render={(value) => (value === ALL ? "All" : statusBadge(value).label)}
         />
         <FilterPills
           label="Priority"
@@ -432,9 +432,9 @@ function SectionHeader({ count }: { count?: number | undefined }) {
     <div className="flex items-center gap-2">
       <Cloud className="h-4 w-4 text-cyan-400" />
       <div>
-        <h2 className="text-lg font-semibold text-[color:var(--foreground)]">Cloud CIS Benchmark Drill-down</h2>
+        <h2 className="text-lg font-semibold text-[color:var(--foreground)]">Cloud Security Checks</h2>
         <p className="text-xs text-[color:var(--text-tertiary)]">
-          Failed AWS / Azure / GCP / Snowflake / Databricks checks behind CIS Controls v8, with fix guidance.
+          CIS checks for AWS, Azure, GCP, and Snowflake plus Databricks security best practices, with fix guidance.
           {typeof count === "number" ? ` ${count} checks.` : null}
         </p>
       </div>

@@ -50,6 +50,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_bom.security import sanitize_error
+
 from .aws_cis_benchmark import CheckStatus, CISCheckResult, finalize_read_coverage
 from .aws_inventory import is_access_denied_error
 from .base import CloudDiscoveryError
@@ -104,11 +106,13 @@ class AzureCISReport:
         return (self.passed / self.evaluated * 100) if self.evaluated else 0.0
 
     def to_dict(self) -> dict:
+        from agent_bom.cloud.benchmark_manifests import benchmark_manifest
         from agent_bom.mitre_attack import tag_cis_check
 
         return {
             "benchmark": "CIS Microsoft Azure Foundations",
             "benchmark_version": self.benchmark_version,
+            "benchmark_manifest": benchmark_manifest("azure"),
             "subscription_id": self.subscription_id,
             "subscriptions_scanned": self.subscriptions_scanned,
             "warnings": self.warnings,
@@ -179,30 +183,30 @@ def _check_1_1(auth_client: Any, subscription_id: str) -> CISCheckResult:
         # Owner role definition ID is fixed across all Azure tenants
         owner_role = "8e3af657-a8ff-443c-a75c-2fe8c4bcb635"
 
-        guest_owners = []
+        owner_assignments = []
         for ra in assignments:
             role_def_id = (getattr(ra, "role_definition_id", "") or "").split("/")[-1]
             if role_def_id == owner_role:
                 principal_id = getattr(ra, "principal_id", "") or ""
                 # We can't easily get UPN without Graph API, so flag principals
                 # and let the evidence guide investigation
-                guest_owners.append(principal_id)
+                owner_assignments.append(principal_id)
 
-        # Heuristic: if we found any Owner assignments, flag for review
-        # A more precise check requires MS Graph for UPN inspection
-        if guest_owners:
-            result.status = CheckStatus.PASS  # Can't confirm guest without Graph
+        if owner_assignments:
+            result.status = CheckStatus.ERROR
             result.evidence = (
-                f"Found {len(guest_owners)} Owner assignment(s)."
-                " Verify none are guest (#EXT#) accounts via Azure Portal > Subscriptions > Access control."
+                f"Cannot evaluate guest/external identity for {len(owner_assignments)} Owner assignment(s): "
+                "Microsoft Graph identity evidence is unavailable. Verify the principals in Azure Portal "
+                "before treating this control as passed."
             )
+            result.resource_ids = [principal_id for principal_id in owner_assignments if principal_id]
         else:
             result.status = CheckStatus.PASS
             result.evidence = "No Owner role assignments found on subscription."
 
     except Exception as exc:
         result.status = CheckStatus.ERROR
-        result.evidence = f"Could not read role assignments: {exc}"
+        result.evidence = f"Could not read Owner role assignments: {sanitize_error(exc, generic=True)}"
     return result
 
 
@@ -222,16 +226,25 @@ def _check_1_2(auth_client: Any, subscription_id: str) -> CISCheckResult:
 
         contributor_role = "b24988ac-6180-42a0-ab88-20f7382dd24c"
 
-        contributor_count = sum(1 for ra in assignments if (getattr(ra, "role_definition_id", "") or "").split("/")[-1] == contributor_role)
-
-        result.status = CheckStatus.PASS
-        result.evidence = (
-            f"Found {contributor_count} subscription-level Contributor assignment(s). "
-            "Verify none are guest (#EXT#) accounts via Azure Portal > Access control (IAM)."
-        )
+        contributor_assignments = [
+            getattr(ra, "principal_id", "") or ""
+            for ra in assignments
+            if (getattr(ra, "role_definition_id", "") or "").split("/")[-1] == contributor_role
+        ]
+        if contributor_assignments:
+            result.status = CheckStatus.ERROR
+            result.evidence = (
+                f"Cannot evaluate guest/external identity for {len(contributor_assignments)} Contributor assignment(s): "
+                "Microsoft Graph identity evidence is unavailable. Verify the principals in Azure Portal "
+                "before treating this control as passed."
+            )
+            result.resource_ids = [principal_id for principal_id in contributor_assignments if principal_id]
+        else:
+            result.status = CheckStatus.PASS
+            result.evidence = "No subscription-level Contributor role assignments found."
     except Exception as exc:
         result.status = CheckStatus.ERROR
-        result.evidence = f"Could not read role assignments: {exc}"
+        result.evidence = f"Could not read Contributor role assignments: {sanitize_error(exc, generic=True)}"
     return result
 
 

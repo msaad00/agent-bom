@@ -381,8 +381,10 @@ def test_sarif_cloud_cis_failure_emitted_once(sarif_validator: Draft7Validator) 
         rid = f"cis/{provider}/{check_id}"
         assert rule_ids.count(rid) == 1, f"expected exactly one {rid}, got {rule_ids.count(rid)}"
     # ...and the generic unified CIS rule no longer double-emits those checks.
-    # databricks CIS + snowflake governance keep the generic rule (one each).
-    assert rule_ids.count("finding/CIS_FAIL") == 2, rule_ids
+    # Snowflake governance keeps the generic CIS rule; Databricks is explicitly
+    # a vendor best-practice result, not a CIS result.
+    assert rule_ids.count("finding/CIS_FAIL") == 1, rule_ids
+    assert rule_ids.count("finding/CLOUD_BEST_PRACTICE_FAIL") == 1, rule_ids
 
     # The single aws result keeps the richer structured remediation metadata.
     aws_result = next(r for r in results if r["ruleId"] == "cis/aws/1.4")
@@ -393,3 +395,23 @@ def test_sarif_cloud_cis_failure_emitted_once(sarif_validator: Draft7Validator) 
     # And the de-duplicated document stays schema-valid SARIF 2.1.0.
     errors = sorted(sarif_validator.iter_errors(doc), key=lambda e: list(e.path))
     assert not errors, [e.message for e in errors[:5]]
+
+
+def test_sarif_cis_error_is_distinct_and_emitted_once() -> None:
+    from agent_bom.output.sarif import to_sarif
+
+    report = AIBOMReport(scan_id="cis-error")
+    report.snowflake_cis_benchmark_data = {
+        "checks": [
+            {
+                "check_id": "1.1",
+                "status": "error",
+                "severity": "critical",
+                "title": "MFA",
+                "evidence": "ACCOUNT_USAGE unavailable",
+            }
+        ]
+    }
+    rule_ids = [result["ruleId"] for result in to_sarif(report)["runs"][0]["results"]]
+    assert rule_ids.count("finding/CIS_ERROR") == 1
+    assert "finding/CIS_FAIL" not in rule_ids

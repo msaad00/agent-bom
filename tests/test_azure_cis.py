@@ -173,7 +173,8 @@ def test_check_1_1_with_owners():
     )
     auth.role_assignments.list_for_scope.return_value = [ra]
     r = _check_1_1(auth, "sub-123")
-    assert r.status == CheckStatus.PASS  # Can't confirm guest without Graph
+    assert r.status == CheckStatus.ERROR
+    assert "Microsoft Graph" in r.evidence
 
 
 def test_check_1_2_pass():

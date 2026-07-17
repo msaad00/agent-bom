@@ -36,6 +36,7 @@ from agent_bom.compliance_hub import (
     select_frameworks,
 )
 from agent_bom.compliance_hub_ingest import (
+    _pick_finding_type,
     ingest_csv_findings,
     ingest_cyclonedx_vulnerabilities,
     ingest_findings,
@@ -55,6 +56,10 @@ from agent_bom.models import (
     TransportType,
     Vulnerability,
 )
+
+
+def test_cis_error_sarif_rule_keeps_distinct_finding_type():
+    assert _pick_finding_type("finding/CIS_ERROR", [], "Unevaluable CIS control") == FindingType.CIS_ERROR
 
 # ─── Native-generator wiring ──────────────────────────────────────────────────
 

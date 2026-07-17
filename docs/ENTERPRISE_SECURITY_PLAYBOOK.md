@@ -141,6 +141,32 @@ Every scan emits `package.is_malicious` + `package.malicious_reason` on the `Pac
 - **Registry verification:** MCPServer.registry_verified / .registry_id ([`models.py:524`](../src/agent_bom/models.py)) — servers found in the curated MCP registry get a trust boost; unknowns don't.
 - **Registry freshness:** `agent-bom registry status --format json` reports the bundled MCP catalog's source list, server count, last sync timestamp, age, stale threshold, and airgapped posture. Treat stale registry posture as reduced confidence in registry-derived trust and refresh with `agent-bom registry sync-all` when network policy allows it.
 - **Cloud provider API resilience:** `agent-bom cloud resilience --format json` reports the provider pagination, retry/backoff, partial-failure, and 10k-resource synthetic evidence posture for AWS, Azure, GCP, Snowflake, Databricks, Hugging Face, OpenAI, W&B, MLflow, Nebius, CoreWeave, and Ollama. The command is credential-free and intended as release/procurement evidence; provider entries marked `partial` mean live provider-scale evidence is still outstanding, not that inventory is silently trusted.
+
+### Cloud benchmark coverage evidence
+
+AWS, Azure, GCP, Snowflake, and Databricks benchmark JSON includes a
+`benchmark_manifest`. It identifies the authoritative benchmark source,
+its stated version and reference-only access provenance, the implemented code
+registry, and explicit automated and manual control-ID
+sets; the implemented count is derived from those sets. Unsupported IDs remain
+explicitly unknown with a reason until the complete catalog is provenanced. The manifest
+deliberately returns `official_control_count` and `coverage_percentage` as
+`null` until an authoritative denominator is repository-provenanced. Treat the
+implemented count as shipped scanner breadth, not as full benchmark coverage.
+
+Snowflake source health proves that each required `ACCOUNT_USAGE` view was
+readable and records source-appropriate coverage plus the documented provider
+lag bound. Snapshot-style USERS, GRANTS, SHARES, and PASSWORD_POLICIES sources
+must reconcile their scoped row count against the corresponding live `SHOW`
+command before their checks can produce PASS or FAIL. User and grant controls
+then evaluate the live `SHOW` rows, and password-policy configuration is read
+with live `DESCRIBE PASSWORD POLICY`; count equality alone is never treated as
+configuration freshness. Temporal LOGIN_HISTORY
+and ACCESS_HISTORY queries use an explicit upper cutoff at their two- or
+three-hour ingestion bound and report `bounded_as_of`, including honest empty
+windows. `ACCOUNT_USAGE` exposes no universal ingestion watermark, so none of
+these states claims that data newer than the bound is current.
+
 - **Permission profile:** [`models.py:PermissionProfile`](../src/agent_bom/models.py) classifies capabilities (`network_access`, `filesystem_write`, `shell_access`, `runs_as_root`) and scores as `critical / high / medium / low`. `critical` ≈ root + shell + network.
 - **Tool drift:** [`ToolDriftDetector`](../src/agent_bom/runtime/detectors.py) — alerts when a server advertises a tool it didn't declare in `tools/list`. Catches post-install tool injection.
 - **Trust assessment:** [`parsers/trust_assessment.py`](../src/agent_bom/parsers/trust_assessment.py) + [`parsers/skill_audit.py`](../src/agent_bom/parsers/skill_audit.py) — static analysis of MCP skill manifests.

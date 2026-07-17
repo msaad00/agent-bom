@@ -534,4 +534,4 @@ def test_compact_cis_posture_uses_govern_lane():
     output = _plain(_capture(print_compact_cis_posture, report))
 
     assert "GOVERN" in output
-    assert "CIS Benchmark Posture" in output
+    assert "Cloud Security Posture" in output

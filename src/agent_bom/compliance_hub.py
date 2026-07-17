@@ -132,6 +132,7 @@ _SOURCE_BASELINE: dict[FindingSource, tuple[str, ...]] = {
     ),
     FindingSource.CONTAINER: _CONTAINER_FRAMEWORKS,
     FindingSource.CLOUD_CIS: _CLOUD_POSTURE_FRAMEWORKS,
+    FindingSource.CLOUD_SECURITY: tuple(framework for framework in _CLOUD_POSTURE_FRAMEWORKS if framework != FRAMEWORK_CIS),
     FindingSource.SBOM: (
         FRAMEWORK_NIST_CSF,
         FRAMEWORK_SOC2,
@@ -171,6 +172,9 @@ _FINDING_TYPE_ADDITIONS: dict[FindingType, tuple[str, ...]] = {
     FindingType.INJECTION: _AI_FRAMEWORKS,
     FindingType.EXFILTRATION: _AI_FRAMEWORKS + (FRAMEWORK_SOC2,),
     FindingType.CIS_FAIL: (FRAMEWORK_CIS,),
+    FindingType.CIS_ERROR: (FRAMEWORK_CIS,),
+    FindingType.CLOUD_BEST_PRACTICE_FAIL: (),
+    FindingType.CLOUD_BEST_PRACTICE_ERROR: (),
 }
 
 
@@ -203,7 +207,7 @@ def select_frameworks(
 
     selected.update(_SOURCE_BASELINE.get(source, ()))
 
-    if asset_type:
+    if asset_type and not (source == FindingSource.CLOUD_SECURITY and asset_type == "cloud_resource"):
         selected.update(_ASSET_TYPE_ADDITIONS.get(asset_type, ()))
 
     if finding_type:

@@ -475,7 +475,7 @@
   },
   {
     "name": "cis_benchmark",
-    "description": "Run CIS benchmark checks against a cloud account (AWS, Azure, GCP, Snowflake, Databricks).",
+    "description": "Run CIS benchmarks for AWS, Azure, GCP, and Snowflake, or Databricks security best-practices checks.",
     "arguments": [
       {
         "name": "provider",

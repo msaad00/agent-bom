@@ -157,11 +157,13 @@ class CISBenchmarkReport:
         return (self.passed / self.evaluated * 100) if self.evaluated else 0.0
 
     def to_dict(self) -> dict:
+        from agent_bom.cloud.benchmark_manifests import benchmark_manifest
         from agent_bom.mitre_attack import tag_cis_check
 
         return {
             "benchmark": "CIS AWS Foundations",
             "benchmark_version": self.benchmark_version,
+            "benchmark_manifest": benchmark_manifest("aws"),
             "account_id": self.account_id,
             "accounts_scanned": self.accounts_scanned,
             "regions_scanned": self.regions_scanned,

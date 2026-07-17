@@ -418,9 +418,11 @@ main.commands["run"].hidden = True  # Use `proxy` instead
 # ---------------------------------------------------------------------------
 from agent_bom.cli._capabilities import capabilities_cmd  # noqa: E402
 from agent_bom.cli._doctor import doctor_cmd  # noqa: E402
+from agent_bom.cli._self_audit import self_audit_cmd  # noqa: E402
 
 main.add_command(doctor_cmd, "doctor")
 main.add_command(capabilities_cmd, "capabilities")
+main.add_command(self_audit_cmd, "self-audit")
 
 # ---------------------------------------------------------------------------
 # Deployment lifecycle command

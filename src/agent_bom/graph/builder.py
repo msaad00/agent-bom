@@ -17,6 +17,7 @@ from agent_bom.api.tracing import get_tracer
 from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
 from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
+from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
@@ -955,6 +956,7 @@ def build_unified_graph_from_report(
     for inventory_payload in _iter_cloud_inventories(report_json.get("cloud_inventory")):
         _add_cloud_inventory(graph, inventory_payload, data_source_tag)
         _add_cloud_role_assignments(graph, inventory_payload, data_source_tag)
+        apply_authorization_evidence(graph, inventory_payload)
         # GCP estate roll-up backbone (org → folders → projects), carried on the
         # GCP inventory payload. Promoted after the inventory so project nodes the
         # CONTAINS tree references already exist to stitch onto.
@@ -4132,6 +4134,11 @@ def _add_cloud_role_assignments(graph: UnifiedGraph, inventory: Any, data_source
     """
     if not isinstance(inventory, dict):
         return
+    if has_authoritative_authorization_evidence(inventory):
+        # The normalized evaluator path below emits only proved access. Retaining
+        # these legacy role-name edges as well would re-introduce reachability
+        # when the authoritative sources are partial or conditional.
+        return
     assignments = inventory.get("role_assignments") or []
     if not assignments:
         return
@@ -4364,6 +4371,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     # data/secret/registry/network collections; keep the original to ingest them
     # through the normalized resource model.
     original_inventory = inventory
+    allow_heuristic_authorization = not has_authoritative_authorization_evidence(original_inventory)
     inventory = _normalize_cloud_inventory(inventory)
     provider = _clean_graph_part(inventory.get("provider")) or "aws"
     account_id = _clean_graph_part(inventory.get("account_id"))
@@ -4785,7 +4793,13 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     for principal in [*(inventory.get("roles", []) or []), *(inventory.get("users", []) or [])]:
         if isinstance(principal, dict):
             _add_inventory_principal(
-                graph, principal, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
+                graph,
+                principal,
+                provider=provider,
+                account_node_id=account_node_id,
+                resource_ids=resource_ids,
+                data_sources=data_sources,
+                allow_heuristic_authorization=allow_heuristic_authorization,
             )
 
     _wire_instance_profile_roles(
@@ -4804,7 +4818,13 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     for group in inventory.get("groups", []) or []:
         if isinstance(group, dict):
             _add_inventory_group(
-                graph, group, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
+                graph,
+                group,
+                provider=provider,
+                account_node_id=account_node_id,
+                resource_ids=resource_ids,
+                data_sources=data_sources,
+                allow_heuristic_authorization=allow_heuristic_authorization,
             )
 
 
@@ -5562,6 +5582,7 @@ def _add_inventory_principal(
     account_node_id: str,
     resource_ids: list[str],
     data_sources: list[str],
+    allow_heuristic_authorization: bool = True,
 ) -> None:
     """Emit one IAM role/user as an identity principal with policy + access edges."""
     principal_type = _clean_graph_part(principal.get("principal_type")) or "user"
@@ -5580,6 +5601,9 @@ def _add_inventory_principal(
                 "principal_id": principal_id,
                 "principal_name": principal_name,
                 "principal_type": principal_type,
+                "directory_principal_id": _clean_graph_part(principal.get("principal_id")),
+                "principal_email": _clean_graph_part(principal.get("email")),
+                "principal_resource_id": _clean_graph_part(principal.get("arn")),
                 "cloud_provider": provider,
                 "privilege_level": _clean_graph_part(principal.get("privilege_level")) or "unknown",
                 "iam_path": _clean_graph_part(principal.get("path")),
@@ -5670,7 +5694,7 @@ def _add_inventory_principal(
     # HAS_PERMISSION transitive closure; admin-privileged principals reach
     # every resource, others get a baseline same-account access edge.
     privilege = _clean_graph_part(principal.get("privilege_level")) or "unknown"
-    if privilege in ("admin", "write"):
+    if allow_heuristic_authorization and privilege in ("admin", "write"):
         for resource_id in resource_ids:
             graph.add_edge(
                 UnifiedEdge(
@@ -5690,6 +5714,7 @@ def _add_inventory_group(
     account_node_id: str,
     resource_ids: list[str],
     data_sources: list[str],
+    allow_heuristic_authorization: bool = True,
 ) -> None:
     """Emit one IAM/Entra group as a ``GROUP`` node with policies + membership.
 
@@ -5750,7 +5775,7 @@ def _add_inventory_group(
 
     # Admin/write group → baseline same-account CAN_ACCESS, so the overlay can
     # inherit it to members via MEMBER_OF (mirrors the user/role baseline).
-    if privilege in ("admin", "write"):
+    if allow_heuristic_authorization and privilege in ("admin", "write"):
         for resource_id in resource_ids:
             _add_rel_edge(
                 graph,

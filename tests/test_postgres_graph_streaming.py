@@ -11,6 +11,7 @@ connection (no live Postgres required).
 
 from __future__ import annotations
 
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, NodeStatus
 
@@ -145,16 +146,35 @@ def test_streaming_snapshot_tally_matches_nodes(monkeypatch):
     conn = _RecordingConn()
     store = _make_store(conn, monkeypatch)
 
-    store.save_graph_streaming(scan_id="scan-2", tenant_id="t1", nodes=_nodes(4), edges=iter(()))
+    store.save_graph_streaming(
+        scan_id="scan-2",
+        tenant_id="t1",
+        nodes=_nodes(4),
+        edges=iter(()),
+        analysis_status={
+            "attack_path_fusion": GraphAnalysisStatus(
+                status=GraphAnalysisState.SKIPPED,
+                reason_codes=("node_cap_exceeded",),
+                limits={"max_nodes": 5000},
+                observed={"node_count": 5001},
+            )
+        },
+    )
 
-    # graph_snapshots row: (scan, tenant, now, node_count, edge_count, risk_summary)
+    # graph_snapshots row: counts plus serialized analysis execution state.
     assert conn.snapshot_params is not None
-    scan, tenant, _now, node_count, edge_count, risk_summary = conn.snapshot_params
+    scan, tenant, _now, node_count, edge_count, risk_summary, analysis_status = conn.snapshot_params
     assert (scan, tenant, node_count, edge_count) == ("scan-2", "t1", 4, 0)
     import json
 
     # Two of four nodes carry "critical" severity (odd indices).
     assert json.loads(risk_summary) == {"critical": 2}
+    assert json.loads(analysis_status)["attack_path_fusion"] == {
+        "status": "skipped",
+        "reason_codes": ["node_cap_exceeded"],
+        "limits": {"max_nodes": 5000},
+        "observed": {"node_count": 5001},
+    }
     assert conn.committed == 1
 
 
@@ -195,6 +215,7 @@ def test_streaming_serializes_and_replaces_same_snapshot(monkeypatch):
 
 def test_same_scan_retry_does_not_checkout_nested_connection(monkeypatch):
     """A one-connection pool must not deadlock while resolving prior history."""
+
     class _RetryConn(_RecordingConn):
         def execute(self, sql, params=None):
             low = " ".join(sql.strip().lower().split())

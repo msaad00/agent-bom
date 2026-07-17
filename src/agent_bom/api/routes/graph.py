@@ -162,7 +162,34 @@ _ATTACK_PATHS_OPENAPI_RESPONSE: dict[str, Any] = {
                             "additionalProperties": True,
                         },
                     },
-                    "stats": {"type": "object", "additionalProperties": True},
+                    "stats": {
+                        "type": "object",
+                        "properties": {
+                            "analysis_status": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "required": ["status", "reason_codes", "limits", "observed"],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": ["complete", "limited", "skipped", "failed", "not_recorded"],
+                                        },
+                                        "reason_codes": {"type": "array", "items": {"type": "string"}},
+                                        "limits": {
+                                            "type": "object",
+                                            "additionalProperties": {"type": "integer", "minimum": 0},
+                                        },
+                                        "observed": {
+                                            "type": "object",
+                                            "additionalProperties": {"type": "integer", "minimum": 0},
+                                        },
+                                    },
+                                },
+                            }
+                        },
+                        "additionalProperties": True,
+                    },
                     "pagination": {"type": "object", "additionalProperties": True},
                 },
             }

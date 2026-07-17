@@ -7,6 +7,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
@@ -102,6 +103,7 @@ class UnifiedGraph:
 
     attack_paths: list[AttackPath] = field(default_factory=list)
     interaction_risks: list[InteractionRisk] = field(default_factory=list)
+    analysis_status: dict[str, GraphAnalysisStatus] = field(default_factory=dict)
 
     scan_id: str = ""
     tenant_id: str = ""
@@ -456,7 +458,12 @@ class UnifiedGraph:
         incoming edges, or both. The returned edges always preserve their
         original orientation in the canonical graph.
         """
-        sub = UnifiedGraph(scan_id=self.scan_id, tenant_id=self.tenant_id, created_at=self.created_at)
+        sub = UnifiedGraph(
+            scan_id=self.scan_id,
+            tenant_id=self.tenant_id,
+            created_at=self.created_at,
+            analysis_status=dict(self.analysis_status),
+        )
         if not roots:
             return sub, {}, False
 
@@ -590,6 +597,7 @@ class UnifiedGraph:
             "interaction_risk_count": len(self.interaction_risks),
             "max_attack_path_risk": max((p.composite_risk for p in self.attack_paths), default=0.0),
             "highest_interaction_risk": max((r.risk_score for r in self.interaction_risks), default=0.0),
+            "analysis_status": analysis_status_map_to_dict(self.analysis_status),
         }
 
     # ── Serialisation ────────────────────────────────────────────────────
@@ -603,6 +611,7 @@ class UnifiedGraph:
             "edges": [e.to_dict() for e in self.edges],
             "attack_paths": [p.to_dict() for p in self.attack_paths],
             "interaction_risks": [r.to_dict() for r in self.interaction_risks],
+            "analysis_status": analysis_status_map_to_dict(self.analysis_status),
             "stats": self.stats(),
         }
 
@@ -612,6 +621,7 @@ class UnifiedGraph:
             scan_id=data.get("scan_id", ""),
             tenant_id=data.get("tenant_id", ""),
             created_at=data.get("created_at", ""),
+            analysis_status=analysis_status_map_from_dict(data.get("analysis_status", {})),
         )
         for nd in data.get("nodes", []):
             graph.add_node(UnifiedNode.from_dict(nd))
@@ -749,7 +759,12 @@ class UnifiedGraph:
             keep_ids.add(edge.source)
             keep_ids.add(edge.target)
 
-        pruned = UnifiedGraph(scan_id=sub.scan_id, tenant_id=sub.tenant_id, created_at=sub.created_at)
+        pruned = UnifiedGraph(
+            scan_id=sub.scan_id,
+            tenant_id=sub.tenant_id,
+            created_at=sub.created_at,
+            analysis_status=dict(sub.analysis_status),
+        )
         for node_id in keep_ids:
             node = sub.nodes.get(node_id)
             if node:
@@ -764,7 +779,12 @@ class UnifiedGraph:
         node_filter: Any = None,
         edge_filter: Any = None,
     ) -> UnifiedGraph:
-        sub = UnifiedGraph(scan_id=self.scan_id, tenant_id=self.tenant_id, created_at=self.created_at)
+        sub = UnifiedGraph(
+            scan_id=self.scan_id,
+            tenant_id=self.tenant_id,
+            created_at=self.created_at,
+            analysis_status=dict(self.analysis_status),
+        )
         if edge_filter and not node_filter:
             matching_edges = [e for e in self.edges if edge_filter(e)]
             referenced_ids = set()

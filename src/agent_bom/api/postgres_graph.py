@@ -8,7 +8,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
@@ -24,6 +24,7 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS
 from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, graph_retention_policy, normalize_graph_tenant_id
 from agent_bom.graph import EntityType
+from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.security import sanitize_text
 
 from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
@@ -304,6 +305,7 @@ class PostgresGraphStore:
                     node_count INTEGER DEFAULT 0,
                     edge_count INTEGER DEFAULT 0,
                     risk_summary TEXT DEFAULT '{}',
+                    analysis_status TEXT DEFAULT '{}',
                     PRIMARY KEY (scan_id, tenant_id)
                 )
                 """
@@ -341,6 +343,7 @@ class PostgresGraphStore:
             )
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS summary TEXT DEFAULT ''")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS tool_exposure TEXT DEFAULT '[]'")
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS analysis_status TEXT DEFAULT '{}'")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_from TEXT DEFAULT ''")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_to TEXT DEFAULT NULL")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION DEFAULT 1.0")
@@ -529,6 +532,7 @@ class PostgresGraphStore:
             edges=graph.edges,
             attack_paths=graph.attack_paths,
             interaction_risks=graph.interaction_risks,
+            analysis_status=graph.analysis_status,
             created_at=graph.created_at,
         )
 
@@ -541,6 +545,7 @@ class PostgresGraphStore:
         edges: Iterable[Any],
         attack_paths: Iterable[Any] = (),
         interaction_risks: Iterable[Any] = (),
+        analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
         created_at: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables without materialising a graph.
@@ -874,13 +879,15 @@ class PostgresGraphStore:
 
             conn.execute(
                 """
-                INSERT INTO graph_snapshots (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO graph_snapshots
+                    (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary, analysis_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (scan_id, tenant_id) DO UPDATE SET
                     created_at = EXCLUDED.created_at,
                     node_count = EXCLUDED.node_count,
                     edge_count = EXCLUDED.edge_count,
-                    risk_summary = EXCLUDED.risk_summary
+                    risk_summary = EXCLUDED.risk_summary,
+                    analysis_status = EXCLUDED.analysis_status
                 """,
                 (
                     scan,
@@ -889,6 +896,7 @@ class PostgresGraphStore:
                     node_count,
                     edge_count,
                     json.dumps(dict(severity_counts)),
+                    json.dumps(analysis_status_map_to_dict(analysis_status or {})),
                 ),
             )
             conn.commit()
@@ -999,10 +1007,12 @@ class PostgresGraphStore:
 
         with _tenant_connection(self._pool) as conn:
             snapshot_row = conn.execute(
-                "SELECT created_at FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
+                "SELECT created_at, analysis_status FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
                 (effective_scan_id, tenant_id),
             ).fetchone()
             graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=str(snapshot_row[0]) if snapshot_row else "")
+            if snapshot_row:
+                graph.analysis_status = analysis_status_map_from_dict(json.loads(snapshot_row[1] or "{}"))
 
             query = (
                 "SELECT id, entity_type, label, category_uid, class_uid, type_uid, status, risk_score, severity, severity_id, "
@@ -1562,7 +1572,7 @@ class PostgresGraphStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 f"""
-                SELECT scan_id, created_at, node_count, edge_count, risk_summary
+                SELECT scan_id, created_at, node_count, edge_count, risk_summary, analysis_status
                 FROM graph_snapshots
                 {where}
                 ORDER BY created_at DESC
@@ -1577,6 +1587,7 @@ class PostgresGraphStore:
                     "node_count": row[2],
                     "edge_count": row[3],
                     "risk_summary": json.loads(row[4]),
+                    "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(json.loads(row[5] or "{}"))),
                 }
                 for row in rows
             ]
@@ -1788,6 +1799,7 @@ class PostgresGraphStore:
                 "interaction_risk_count": 0,
                 "max_attack_path_risk": 0.0,
                 "highest_interaction_risk": 0.0,
+                "analysis_status": {},
             }
 
         node_where = ["tenant_id = %s", "scan_id = %s"]
@@ -1802,6 +1814,13 @@ class PostgresGraphStore:
         where_sql = " AND ".join(node_where)
 
         with _tenant_connection(self._pool) as conn:
+            analysis_row = conn.execute(
+                "SELECT analysis_status FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
+                (effective_scan_id, tenant_id),
+            ).fetchone()
+            analysis_status = analysis_status_map_to_dict(
+                analysis_status_map_from_dict(json.loads((analysis_row[0] if analysis_row else "{}") or "{}"))
+            )
             # Unfiltered node/edge totals are already materialised on the snapshot
             # row at write time. Re-deriving the edge count here re-scans
             # graph_edges with a double id-membership subquery (~seconds at 500k
@@ -1880,6 +1899,7 @@ class PostgresGraphStore:
                 "interaction_risk_count": int((interaction_row[0] if interaction_row else 0) or 0),
                 "max_attack_path_risk": float((attack_row[1] if attack_row else 0.0) or 0.0),
                 "highest_interaction_risk": float((interaction_row[1] if interaction_row else 0.0) or 0.0),
+                "analysis_status": analysis_status,
             }
 
     def page_nodes(

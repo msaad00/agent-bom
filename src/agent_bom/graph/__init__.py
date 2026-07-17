@@ -5,6 +5,7 @@ Re-exports everything from submodules so consumers can do::
     from agent_bom.graph import UnifiedGraph, EntityType, SEVERITY_RANK
 """
 
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.builder import build_unified_graph_from_report
 from agent_bom.graph.compat import EDGE_KIND_TO_RELATIONSHIP, NODE_KIND_TO_ENTITY
 from agent_bom.graph.container import (
@@ -50,6 +51,8 @@ __all__ = [
     "GraphSemanticLayer",
     "NodeStatus",
     "GraphLayout",
+    "GraphAnalysisState",
+    "GraphAnalysisStatus",
     "OCSFSeverity",
     "SEMANTIC_CLUSTER_KINDS",
     # Severity

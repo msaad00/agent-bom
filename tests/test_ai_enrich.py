@@ -930,6 +930,34 @@ def test_build_skill_analysis_prompt():
     assert "overall_risk_level" in prompt
 
 
+def test_build_skill_analysis_prompt_bounds_repository_input():
+    """Advisory skill analysis must not build an unbounded single provider request."""
+    from agent_bom.ai_enrich import _build_skill_analysis_prompt
+
+    raw_content = {f"skill-{index}.md": "x" * 10_000 for index in range(25)}
+    findings = [
+        {
+            "severity": "high",
+            "category": "prompt_injection",
+            "title": f"finding-{index}",
+            "detail": "d" * 10_000,
+            "source_file": f"skill-{index}.md",
+            "context": "static",
+        }
+        for index in range(150)
+    ]
+
+    prompt = _build_skill_analysis_prompt(raw_content, findings)
+
+    assert "15 additional skill file(s) omitted" in prompt
+    assert "50 additional static finding(s) omitted" in prompt
+    assert "### File: skill-9.md" in prompt
+    assert "### File: skill-10.md" not in prompt
+    assert "finding-99" in prompt
+    assert "finding-100" not in prompt
+    assert len(prompt) < 170_000
+
+
 def test_parse_skill_analysis_response_valid():
     """Should parse valid JSON response."""
     from agent_bom.ai_enrich import _parse_skill_analysis_response
@@ -1308,6 +1336,29 @@ async def test_enrich_skill_audit_no_provider():
         result = await enrich_skill_audit(skill_result, skill_audit)
         assert result is False
         assert skill_audit.ai_skill_summary is None
+
+
+@pytest.mark.asyncio
+async def test_enrich_skill_audit_refuses_non_loopback_ollama_endpoint(monkeypatch):
+    """Raw skill content must not cross a remotely configured Ollama boundary."""
+    from agent_bom import ai_enrich
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+    from agent_bom.parsers.skills import SkillScanResult
+
+    skill_result = SkillScanResult(
+        source_files=["CLAUDE.md"],
+        raw_content={"CLAUDE.md": "private source instructions"},
+    )
+    skill_audit = SkillAuditResult(findings=[], passed=True)
+    provider_call = AsyncMock(return_value='{"overall_risk_level":"safe"}')
+    monkeypatch.setattr(ai_enrich, "OLLAMA_BASE_URL", "https://ollama.example.com")
+    monkeypatch.setattr(ai_enrich, "_detect_ollama", lambda: True)
+    monkeypatch.setattr(ai_enrich, "_call_llm", provider_call)
+
+    result = await ai_enrich.enrich_skill_audit(skill_result, skill_audit, model="ollama/llama3.2")
+
+    assert result is False
+    provider_call.assert_not_awaited()
 
 
 @pytest.mark.asyncio

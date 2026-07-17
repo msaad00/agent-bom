@@ -40,8 +40,14 @@ from agent_bom.ai_enrich import (
         ("key sk-ant-api03-abcdefgh12345678ijkl here", "<redacted-anthropic-key>"),
         ("pat ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345 x", "<redacted-github-token>"),
         ("aws AKIAIOSFODNN7EXAMPLE creds", "<redacted-aws-access-key>"),
+        ("aws ASIAIOSFODNN7EXAMPLE creds", "<redacted-aws-access-key>"),
         ("hf hf_abcdefghijklmnopqrstuvwxyz done", "<redacted-hf-token>"),
         ("Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6", "Bearer <redacted-token>"),
+        (
+            "session eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzNDU2Nzg5MCJ9.signature0123456789abcdef",
+            "<redacted-jwt>",
+        ),
+        ("dsn postgresql://scanner:hunter2@db.internal:5432/prod", "<redacted-connection-url>"),
     ],
 )
 def test_redact_secrets_scrubs_known_shapes(raw, needle):
@@ -155,6 +161,29 @@ def test_provider_availability_reflects_detection():
         assert LiteLLMProvider().is_available() is True
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "expected_local"),
+    [
+        ("http://localhost:11434", True),
+        ("http://127.0.0.2:11434", True),
+        ("http://[::1]:11434", True),
+        ("https://ollama.example.com", False),
+        ("http://10.0.0.8:11434", False),
+        ("http://host.docker.internal:11434", False),
+    ],
+)
+def test_ollama_provider_metadata_reflects_endpoint_boundary(monkeypatch, endpoint, expected_local):
+    """The provider's local/remote claim must follow its configured endpoint."""
+    monkeypatch.setattr(ai_enrich, "OLLAMA_BASE_URL", endpoint)
+    monkeypatch.setattr(ai_enrich, "_detect_ollama", lambda: True)
+
+    status = ai_enrich._provider_status("ollama")
+
+    assert status.available is True
+    assert status.descriptor.local is expected_local
+    assert status.descriptor.requires_network is (not expected_local)
+
+
 @pytest.mark.asyncio
 async def test_ollama_provider_generate_delegates():
     with patch("agent_bom.ai_enrich._call_ollama_direct", new_callable=AsyncMock, return_value="hi") as m:
@@ -221,6 +250,34 @@ async def test_public_enrichment_inherits_environment_determinism(monkeypatch):
     await ai_enrich.run_ai_enrichment(object(), deterministic=None)
 
     assert observed == [0.0]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_enrichment_runs_do_not_share_response_cache(monkeypatch):
+    """A cached provider response must never be relabeled as another run's evidence."""
+    observed: list[str] = []
+    both_started = asyncio.Event()
+
+    async def fake_impl(*args, **kwargs):
+        observed.append(
+            ai_enrich._cache_key(
+                "identical tenant-neutral prompt",
+                "openai/fake",
+                task=EnrichmentTask.TRIAGE,
+            )
+        )
+        if len(observed) == 2:
+            both_started.set()
+        await both_started.wait()
+
+    monkeypatch.setattr(ai_enrich, "_run_ai_enrichment_impl", fake_impl)
+
+    await asyncio.gather(
+        ai_enrich.run_ai_enrichment(object()),
+        ai_enrich.run_ai_enrichment(object()),
+    )
+
+    assert len(set(observed)) == 2
 
 
 @pytest.mark.asyncio

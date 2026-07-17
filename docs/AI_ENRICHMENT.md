@@ -40,9 +40,11 @@ advisory.
 
 Temperature zero improves stability but is not a byte-reproducibility claim:
 hosted providers and model revisions can change. Cache entries are isolated by
-provider, model, optional model revision, task, effective temperature, redaction
-posture, and prompt version. Assessment provenance records prompt/response
-hashes and the observation time so an operator can identify drift.
+enrichment run, provider, model, optional model revision, task, effective
+temperature, redaction posture, and prompt version. This keeps concurrent API
+scans from reusing and relabeling another run's model response. Assessment
+provenance records prompt/response hashes and the observation time so an
+operator can identify drift.
 
 ## Routing, limits, and data boundary
 
@@ -70,11 +72,12 @@ absent advice without weakening deterministic gates.
 | Finding triage | Finding ID/type/source/severity, bounded title and description, bounded asset name/type, risk/reachability/KEV state, and up to 20 control tags; no raw evidence | Yes, only after explicit `--ai-enrich`/API opt-in and provider configuration |
 | Narrative/summary | Bounded scan and vulnerability context, package coordinates, agent/tool names, and credential variable names; no credential values | Yes, after explicit opt-in |
 | MCP config analysis | Up to 20 agents × 10 servers, sanitized command arguments, transport, tool names, and credential variable names | Yes, after explicit opt-in |
-| Skill detection/review | Up to 6,000 characters per discovered skill file plus static finding summaries | **No. Local Ollama only; remote selections skip this task.** |
+| Skill detection/review | Up to 10 discovered skill files × 6,000 characters, plus up to 100 bounded static finding summaries; omissions are explicit in the prompt | **No. Ollama is local only when its configured URL uses a loopback host; non-loopback Ollama and all other remote selections skip this task.** |
 
 Recognizable credentials are redacted at every provider boundary. Secret
 redaction is defense in depth, not a general source-code anonymizer, which is why
-raw skill content is restricted to the local provider.
+raw skill content is restricted to a loopback Ollama endpoint. Provider metadata
+reports a non-loopback Ollama URL as networked instead of labeling it local.
 
 ## Issue #3206 checkpoint
 

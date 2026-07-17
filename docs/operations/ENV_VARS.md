@@ -241,7 +241,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_AI_MODEL_CHEAP` | `str` | `''` | tagging, summaries |
 | `AGENT_BOM_AI_MODEL_REVISION` | `str` | `''` | cache/provenance model revision, when provider exposes one |
 | `AGENT_BOM_AI_MODEL_STRONG` | `str` | `''` | detection, remediation |
-| `AGENT_BOM_AI_REDACT_PROMPTS` | `bool` | `True` | Redact recognizable secret values at every provider boundary. This is not a general source-code anonymizer; raw skill content is restricted to local AI. |
+| `AGENT_BOM_AI_REDACT_PROMPTS` | `bool` | `True` | Redact recognizable secret values at every provider boundary. This is not a general source-code anonymizer; raw skill content is restricted to a loopback-configured Ollama endpoint. |
 | `AGENT_BOM_AI_REQUEST_TIMEOUT` | `float` | `120.0` | — |
 | `AGENT_BOM_AI_RETRY_BASE_DELAY` | `float` | `0.5` | — |
 | `AGENT_BOM_AI_RETRY_MAX_DELAY` | `float` | `8.0` | — |

@@ -376,7 +376,8 @@ AI_MODEL_STRONG = _str("AGENT_BOM_AI_MODEL_STRONG", "")  # detection, remediatio
 AI_MODEL_REVISION = _str("AGENT_BOM_AI_MODEL_REVISION", "")  # cache/provenance model revision, when provider exposes one
 
 # Redact recognizable secret values at every provider boundary. This is not a
-# general source-code anonymizer; raw skill content is restricted to local AI.
+# general source-code anonymizer; raw skill content is restricted to a
+# loopback-configured Ollama endpoint.
 AI_REDACT_PROMPTS = _bool("AGENT_BOM_AI_REDACT_PROMPTS", True)
 
 # Temperature-zero mode inherited by CLI/API requests without an override. It

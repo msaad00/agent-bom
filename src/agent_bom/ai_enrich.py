@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -32,10 +33,11 @@ import re
 import threading
 import uuid
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypeVar
+from urllib.parse import urlsplit
 
 import httpx
 from rich.console import Console
@@ -255,9 +257,31 @@ def _provider_name_for_model(model: str) -> str:
     return "litellm"
 
 
+def _ollama_endpoint_is_loopback() -> bool:
+    """Return whether the configured Ollama endpoint stays on this host.
+
+    Raw skill/instruction content is eligible only for a loopback Ollama
+    endpoint. Hostnames are not resolved here: treating a DNS name as local
+    would make the trust decision vulnerable to DNS changes and would add a
+    blocking lookup to provider metadata.
+    """
+    try:
+        hostname = (urlsplit(OLLAMA_BASE_URL).hostname or "").strip().lower().rstrip(".")
+    except ValueError:
+        return False
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
 def _provider_status(provider_name: str) -> AIProviderStatus:
     descriptor = AI_PROVIDER_DESCRIPTORS[provider_name]
     if provider_name == "ollama":
+        endpoint_local = _ollama_endpoint_is_loopback()
+        descriptor = replace(descriptor, local=endpoint_local, requires_network=not endpoint_local)
         available = _detect_ollama()
         return AIProviderStatus(
             descriptor=descriptor,
@@ -370,9 +394,17 @@ _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"), "<redacted-openai-key>"),
     (re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{16,}\b"), "<redacted-github-token>"),
     (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "<redacted-slack-token>"),
-    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "<redacted-aws-access-key>"),
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "<redacted-aws-access-key>"),
     (re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"), "<redacted-google-key>"),
     (re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"), "<redacted-hf-token>"),
+    # Common bearer material can appear outside an Authorization header.
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b"), "<redacted-jwt>"),
+    # Database/broker URLs often carry userinfo credentials in otherwise useful
+    # finding text. Remove the whole secret-bearing URL before model egress.
+    (
+        re.compile(r"(?i)\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqps?)://[^\s'\"<>]+:[^\s'\"<>@]+@[^\s'\"<>]+"),
+        "<redacted-connection-url>",
+    ),
     # Bearer tokens in headers / auth strings
     (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}"), "Bearer <redacted-token>"),
 )
@@ -446,6 +478,7 @@ def _effective_temperature() -> float:
 
 
 _AI_DETERMINISTIC_OVERRIDE: ContextVar[bool | None] = ContextVar("ai_deterministic_override", default=None)
+_AI_RUN_ID: ContextVar[str | None] = ContextVar("ai_run_id", default=None)
 
 
 def _request_timeout() -> float:
@@ -683,6 +716,11 @@ def _cache_key(
     """Hash every execution posture field that can change model output."""
     prepared_prompt = _prepare_prompt(prompt)
     posture = {
+        # The cache is process-global for bounded memory reuse, but responses
+        # are evidence belonging to one enrichment run. Run scoping prevents a
+        # concurrent tenant/scan from reusing and relabeling another run's
+        # response while preserving deduplication within the run.
+        "run_id": _AI_RUN_ID.get() or "standalone",
         "provider": provider or _provider_name_for_model(model),
         "model": model,
         "model_revision": str(getattr(config, "AI_MODEL_REVISION", "") or ""),
@@ -1341,7 +1379,7 @@ async def _run_ai_enrichment_impl(
 ) -> None:
     """Run all AI enrichment steps on a report. Modifies report in-place."""
     budget = AICallBudget(max_calls=int(getattr(config, "AI_MAX_CALLS_PER_RUN", 50)))
-    run_id = str(uuid.uuid4())
+    run_id = _AI_RUN_ID.get() or str(uuid.uuid4())
     resolution = _resolve_ai_provider(model)
     report.ai_enrichment_metadata = {
         **resolution.to_metadata(),
@@ -1467,7 +1505,8 @@ async def run_ai_enrichment(
     gate_ai_findings: bool = False,
 ) -> None:
     """Run enrichment with a task-local deterministic-mode override."""
-    token = _AI_DETERMINISTIC_OVERRIDE.set(deterministic)
+    deterministic_token = _AI_DETERMINISTIC_OVERRIDE.set(deterministic)
+    run_token = _AI_RUN_ID.set(str(uuid.uuid4()))
     try:
         if gate_ai_findings and _effective_temperature() != 0.0:
             raise ValueError("AI finding gating requires deterministic mode")
@@ -1479,7 +1518,8 @@ async def run_ai_enrichment(
             gate_ai_findings=gate_ai_findings,
         )
     finally:
-        _AI_DETERMINISTIC_OVERRIDE.reset(token)
+        _AI_RUN_ID.reset(run_token)
+        _AI_DETERMINISTIC_OVERRIDE.reset(deterministic_token)
 
 
 def run_ai_enrichment_sync(
@@ -1506,6 +1546,10 @@ def run_ai_enrichment_sync(
 
 # ─── Skill file AI analysis ──────────────────────────────────────────────────
 
+_MAX_AI_SKILL_FILES = 10
+_MAX_AI_SKILL_FILE_CHARS = 6_000
+_MAX_AI_SKILL_FINDINGS = 100
+
 
 def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: list[dict]) -> str:
     """Build a prompt that sends raw skill file text + static findings to the LLM.
@@ -1513,17 +1557,40 @@ def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: l
     The prompt asks the model to classify intent, review existing findings,
     detect new threats, and assess overall risk.
     """
-    # Truncate each file to 6000 chars to stay within context limits
+    # Bound the whole request as well as each item. Static scanning still
+    # covers every discovered file; this is only the optional advisory model
+    # view and must not turn a large repository into one unbounded request.
     file_sections = []
-    for filepath, content in raw_content.items():
-        truncated = content[:6000]
-        if len(content) > 6000:
+    selected_files = list(raw_content.items())[:_MAX_AI_SKILL_FILES]
+    for filepath, content in selected_files:
+        safe_path = _bounded_ai_text(filepath, 240, "skill-file")
+        truncated = content[:_MAX_AI_SKILL_FILE_CHARS]
+        if len(content) > _MAX_AI_SKILL_FILE_CHARS:
             truncated += "\n... [truncated]"
-        file_sections.append(f"### File: {filepath}\n```\n{truncated}\n```")
+        file_sections.append(f"### File: {safe_path}\n```\n{truncated}\n```")
+
+    omitted_files = max(len(raw_content) - len(selected_files), 0)
+    if omitted_files:
+        file_sections.append(f"... [{omitted_files} additional skill file(s) omitted from advisory AI analysis]")
 
     files_text = "\n\n".join(file_sections)
 
-    findings_text = json.dumps(static_findings, indent=2) if static_findings else "[]"
+    selected_findings: list[dict[str, str]] = []
+    for finding in static_findings[:_MAX_AI_SKILL_FINDINGS]:
+        selected_findings.append(
+            {
+                "severity": _bounded_ai_text(finding.get("severity"), 20, "unknown"),
+                "category": _bounded_ai_text(finding.get("category"), 80, "unknown"),
+                "title": _bounded_ai_text(finding.get("title"), 240, "Untitled finding"),
+                "detail": _bounded_ai_text(finding.get("detail"), 500),
+                "source_file": _bounded_ai_text(finding.get("source_file"), 240),
+                "context": _bounded_ai_text(finding.get("context"), 80),
+            }
+        )
+    findings_text = json.dumps(selected_findings, indent=2) if selected_findings else "[]"
+    omitted_findings = max(len(static_findings) - len(selected_findings), 0)
+    if omitted_findings:
+        findings_text += f"\n... [{omitted_findings} additional static finding(s) omitted from advisory AI analysis]"
 
     return (
         "You are an AI security auditor specializing in analyzing skill files "

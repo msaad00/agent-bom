@@ -675,6 +675,17 @@ def save_graph_streaming(
         ):
             previous_edges[(row["source_id"], row["target_id"], row["relationship"])] = row
 
+    # A scan id is one complete snapshot. Retries/replays must replace that
+    # snapshot atomically; upserts alone would retain rows absent from the
+    # retried producer and make graph_snapshots counts contradict graph rows.
+    # The first DELETE also takes SQLite's write lock, serializing concurrent
+    # writers before any streamed batch is consumed.
+    for table in ("attack_paths", "interaction_risks", "graph_edges", "graph_nodes", "graph_snapshots"):
+        conn.execute(
+            f"DELETE FROM {table} WHERE tenant_id = ? AND scan_id = ?",  # nosec B608 - static table list
+            (tenant, scan),
+        )
+
     # Incrementally accumulated snapshot stats — mirrors UnifiedGraph.stats()
     # (severity_counts only counts truthy severities; node_type_counts is every
     # node) without a second pass over a fully materialised graph.

@@ -603,6 +603,14 @@ class PostgresGraphStore:
             """
 
         with _tenant_connection(self._pool) as conn:
+            # Serialize retries and concurrent writers for one logical
+            # snapshot. Without a transaction-scoped lock, disjoint producers
+            # can interleave their upserts and leave rows that disagree with
+            # whichever graph_snapshots tally commits last.
+            conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"{tenant}\x1f{scan}",),
+            )
             previous_row = conn.execute(
                 """
                 SELECT scan_id
@@ -627,6 +635,22 @@ class PostgresGraphStore:
                     (tenant, previous_scan),
                 ).fetchall():
                     previous_edges[(row[0], row[1], row[2])] = row
+
+            # A scan id represents a complete immutable snapshot. A retry is a
+            # replacement, not a merge; remove its old rows inside this same
+            # transaction before consuming the new one-shot producers.
+            for table in (
+                "graph_node_search",
+                "attack_paths",
+                "interaction_risks",
+                "graph_edges",
+                "graph_nodes",
+                "graph_snapshots",
+            ):
+                conn.execute(
+                    f"DELETE FROM {table} WHERE tenant_id = %s AND scan_id = %s",  # nosec B608 - static table list
+                    (tenant, scan),
+                )
 
             # ── Nodes + node-search: single-pass, interleaved bounded batches ──
             # The producer is consumed exactly once; each node contributes one

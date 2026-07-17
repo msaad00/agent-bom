@@ -237,6 +237,51 @@ def test_streaming_stats_count_yields_documented_precondition(tmp_path) -> None:
     assert snap["edge_count"] == 2
 
 
+def test_streaming_replaces_same_scan_without_stale_rows(tmp_path) -> None:
+    """Retrying one scan id replaces, rather than merges, its snapshot."""
+    db = tmp_path / "same-scan-retry.db"
+    with gs.open_graph_db(db) as conn:
+        gs.save_graph_streaming(
+            conn,
+            scan_id="scan-retry",
+            tenant_id="acme",
+            nodes=iter(
+                [
+                    UnifiedNode(id="keep", entity_type=EntityType.PACKAGE, label="keep"),
+                    UnifiedNode(id="stale", entity_type=EntityType.PACKAGE, label="stale"),
+                ]
+            ),
+            edges=iter([UnifiedEdge(source="keep", target="stale", relationship=RelationshipType.DEPENDS_ON)]),
+        )
+        gs.save_graph_streaming(
+            conn,
+            scan_id="scan-retry",
+            tenant_id="acme",
+            nodes=iter([UnifiedNode(id="keep", entity_type=EntityType.PACKAGE, label="updated")]),
+            edges=iter(()),
+        )
+
+        node_ids = {
+            row[0]
+            for row in conn.execute(
+                "SELECT id FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?",
+                ("acme", "scan-retry"),
+            )
+        }
+        edge_count = conn.execute(
+            "SELECT COUNT(*) FROM graph_edges WHERE tenant_id = ? AND scan_id = ?",
+            ("acme", "scan-retry"),
+        ).fetchone()[0]
+        snapshot = conn.execute(
+            "SELECT node_count, edge_count FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
+            ("acme", "scan-retry"),
+        ).fetchone()
+
+    assert node_ids == {"keep"}
+    assert edge_count == 0
+    assert tuple(snapshot) == (1, 0)
+
+
 def test_iter_graph_edges_dangling_edge_matches_documented_contract(tmp_path) -> None:
     """``iter_graph_edges`` vs ``load_graph`` dangling-edge handling is pinned.
 

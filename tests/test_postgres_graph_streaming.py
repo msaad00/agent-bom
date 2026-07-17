@@ -39,6 +39,8 @@ class _RecordingConn:
         self.snapshot_params: tuple | None = None
         self.executemany_calls: list[str] = []
         self.committed = 0
+        self.deleted_tables: list[str] = []
+        self.advisory_locks: list[tuple] = []
 
     def __enter__(self):
         return self
@@ -48,6 +50,10 @@ class _RecordingConn:
 
     def execute(self, sql, params=None):
         low = " ".join(sql.strip().lower().split())
+        if low.startswith("select pg_advisory_xact_lock"):
+            self.advisory_locks.append(tuple(params))
+        elif low.startswith("delete from"):
+            self.deleted_tables.append(low.split()[2])
         if low.startswith("insert into graph_snapshots"):
             self.snapshot_params = tuple(params)
         # latest/previous lookups + set_config + purge scan -> empty history
@@ -160,3 +166,21 @@ def test_save_graph_delegates_to_streaming(monkeypatch):
     assert len(conn.node_rows) == 3
     assert len(conn.search_rows) == 3
     assert conn.snapshot_params[0] == "scan-3"
+
+
+def test_streaming_serializes_and_replaces_same_snapshot(monkeypatch):
+    """A retry cannot merge stale rows or race another writer for the scan."""
+    conn = _RecordingConn()
+    store = _make_store(conn, monkeypatch)
+
+    store.save_graph_streaming(scan_id="scan-retry", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
+
+    assert conn.advisory_locks == [("t1\x1fscan-retry",)]
+    assert conn.deleted_tables == [
+        "graph_node_search",
+        "attack_paths",
+        "interaction_risks",
+        "graph_edges",
+        "graph_nodes",
+        "graph_snapshots",
+    ]

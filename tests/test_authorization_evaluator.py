@@ -18,6 +18,7 @@ from agent_bom.cloud.authorization_evidence import (
     EvidenceSource,
     EvidenceSourceState,
     PrincipalMembership,
+    ResourceAncestry,
     RoleDefinitionEvidence,
 )
 
@@ -308,6 +309,44 @@ def test_gcp_all_users_allow_matches_an_arbitrary_principal() -> None:
     result = evaluate_authorization(replace(base, bindings=(public,)), _request())
 
     assert result.decision is AuthorizationDecision.ALLOW
+
+
+def test_gcp_all_authenticated_users_allow_matches_an_authenticated_principal() -> None:
+    base = _bundle()
+    public = replace(base.bindings[0], binding_id="authenticated-public", principal_id="allAuthenticatedUsers", principal_type="public")
+
+    result = evaluate_authorization(replace(base, bindings=(public,)), _request())
+
+    assert result.decision is AuthorizationDecision.ALLOW
+
+
+def test_gcp_resource_ancestry_confines_and_applies_parent_policy() -> None:
+    base = _bundle()
+    resource = "//storage.googleapis.com/projects/_/buckets/private-data/objects/report.csv"
+    ancestry = ResourceAncestry(
+        resource="//storage.googleapis.com/projects/_/buckets/private-data",
+        ancestors=("projects/123", "folders/10", "organizations/20"),
+        source="cloudasset.assets.list",
+    )
+    parent_allow = replace(base.bindings[0], binding_id="folder-allow", scope="folders/10")
+    request = replace(_request(), resource=resource)
+
+    result = evaluate_authorization(
+        replace(base, scope="projects/123", bindings=(parent_allow,), resource_ancestry=(ancestry,)),
+        request,
+    )
+
+    assert result.decision is AuthorizationDecision.ALLOW
+
+
+def test_gcp_resource_without_proven_ancestry_cannot_escape_bundle_scope() -> None:
+    base = _bundle()
+    request = replace(_request(), resource="//storage.googleapis.com/projects/_/buckets/private-data")
+
+    result = evaluate_authorization(replace(base, scope="projects/123"), request)
+
+    assert result.decision is AuthorizationDecision.INDETERMINATE
+    assert result.diagnostics == ("resource_outside_bundle_scope",)
 
 
 def test_gcp_public_all_deny_matches_an_arbitrary_principal() -> None:

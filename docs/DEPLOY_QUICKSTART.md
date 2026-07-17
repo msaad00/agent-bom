@@ -309,7 +309,7 @@ moment it verifies.
 |----------|-----------------|--------------------|------|
 | **AWS** | IAM `SecurityAudit` (+ `ViewOnlyAccess`) — List/Describe/Get only | `agent-bom connect aws --role-arn <arn> --external-id <id> --region <r>` | `agent-bom scan --aws` |
 | **Azure** | Service principal with built-in `Reader` role | `agent-bom connect azure --client-id <id> --client-secret <s> --tenant-id <t> --subscription-id <sub>` | `agent-bom scan --azure` |
-| **GCP** | Service account with `roles/viewer` (+ `roles/iam.securityReviewer`) | `agent-bom connect gcp --service-account <email> --key-file <json> --project <id>` | `agent-bom scan --gcp` |
+| **GCP** | Service account with the read-only roles from `deploy/terraform/connect-gcp` | `agent-bom connect gcp --service-account <email> --key-file <json> --project <id>` | `agent-bom scan --gcp` |
 | **Snowflake** | Read-only role — warehouse `USAGE` + governance views, no DML/DDL | `agent-bom connect snowflake --account <acct> --user <u> --private-key-file <pem> --role <role> --warehouse <wh>` | `agent-bom scan --snowflake` |
 
 Grants come from the read-only `connect-*` Terraform modules under

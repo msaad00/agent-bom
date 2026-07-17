@@ -1,0 +1,21 @@
+# agent-bom GCP organization IAM-evidence role — read-only parent evidence.
+#
+# Create at the owning organization (not at a project):
+#   gcloud iam roles create agentBomIamEvidence \
+#     --organization=YOUR_ORGANIZATION_ID \
+#     --file=gcp_organization_iam_evidence_role.yaml
+#
+# Grant at the organization so inherited folder/org policies and PABs can be
+# proven. Without this parent grant, agent-bom reports those feeds incomplete.
+#   gcloud organizations add-iam-policy-binding YOUR_ORGANIZATION_ID \
+#     --member="serviceAccount:agent-bom@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+#     --role="organizations/YOUR_ORGANIZATION_ID/roles/agentBomIamEvidence"
+
+title: agent-bom Organization IAM Evidence
+description: Read-only organization and folder IAM evidence for agent-bom. No write access.
+stage: GA
+includedPermissions:
+  - iam.principalaccessboundarypolicies.list
+  - resourcemanager.folders.get
+  - resourcemanager.folders.getIamPolicy
+  - resourcemanager.organizations.getIamPolicy

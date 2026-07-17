@@ -67,6 +67,7 @@ resource "azurerm_role_definition" "scanner" {
       "Microsoft.App/containerApps/read",
       "Microsoft.Authorization/roleAssignments/read",
       "Microsoft.Authorization/roleDefinitions/read",
+      "Microsoft.Authorization/denyAssignments/read",
       "Microsoft.CognitiveServices/accounts/deployments/read",
       "Microsoft.CognitiveServices/accounts/read",
       "Microsoft.Compute/disks/read",

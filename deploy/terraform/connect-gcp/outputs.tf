@@ -10,7 +10,12 @@ output "service_account_name" {
 
 output "granted_roles" {
   description = "Predefined read-only roles bound to the service account at the configured scope."
-  value       = ["roles/viewer", "roles/iam.securityReviewer"]
+  value = [
+    "roles/viewer",
+    "roles/iam.securityReviewer",
+    "roles/cloudasset.viewer",
+    "roles/serviceusage.serviceUsageConsumer",
+  ]
 }
 
 output "iam_binding_scope" {

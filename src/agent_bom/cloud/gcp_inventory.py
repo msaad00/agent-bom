@@ -43,6 +43,8 @@ from typing import Any
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
 
 from .aws_inventory import dedupe_missing_permissions, record_discovery_failure
+from .gcp_authorization_collector import collect_gcp_authorization
+from .gcp_iam_evidence import normalize_gcp_iam_inventory
 from .normalization import sanitize_discovery_warning
 from .side_scan_targets import gcp_persistent_disk_targets
 
@@ -66,14 +68,19 @@ _GCP_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "compute.firewalls.list",
 )
 _GCP_IAM_PERMISSIONS: tuple[str, ...] = (
-    "iam.serviceAccounts.list",
-    "resourcemanager.projects.getIamPolicy",
+    "cloudasset.assets.listIamPolicy",
+    "iam.denypolicies.list",
+    "iam.policybindings.list",
+    "iam.principalaccessboundarypolicies.list",
     "iam.roles.get",
+    "iam.serviceAccounts.list",
+    "resourcemanager.folders.get",
+    "resourcemanager.folders.getIamPolicy",
+    "resourcemanager.organizations.getIamPolicy",
+    "resourcemanager.projects.get",
+    "resourcemanager.projects.getIamPolicy",
+    "serviceusage.services.use",
 )
-
-# Cap on the permission set captured per resolved role definition, so a single
-# broad role (e.g. owner) cannot bloat the inventory payload.
-_MAX_ROLE_PERMISSIONS = 500
 # Estate-breadth read-only permissions exercised by the extended discoverers
 # (GKE / Cloud Run / Cloud Functions / Cloud SQL / VPC / disks / Pub/Sub). Kept
 # explicit so the discovery envelope's `permissions_used` stays honest.
@@ -331,6 +338,15 @@ def discover_inventory(
         "firewalls": [],
         "service_accounts": [],
         "groups": [],
+        "allow_policies": [],
+        "role_definitions": [],
+        "deny_policies": [],
+        "pab_policies": [],
+        "pab_bindings": [],
+        "iam_hierarchy": [],
+        "iam_sources": [],
+        "iam_observed_at": None,
+        "authorization_evidence": None,
         "gke_clusters": [],
         "cloud_run_services": [],
         "cloud_functions": [],
@@ -388,6 +404,7 @@ def discover_inventory(
     firewalls: list[dict[str, Any]] = []
     service_accounts: list[dict[str, Any]] = []
     iam_groups: list[dict[str, Any]] = []
+    authorization: dict[str, Any] = {}
     gke_clusters: list[dict[str, Any]] = []
     cloud_run_services: list[dict[str, Any]] = []
     cloud_functions: list[dict[str, Any]] = []
@@ -409,6 +426,12 @@ def discover_inventory(
         instances = _discover_instances(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
         firewalls = _discover_firewalls(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_iam:
+        authorization = collect_gcp_authorization(
+            credentials,
+            resolved_project,
+            warnings=warnings,
+            missing=missing,
+        )
         iam_bindings, member_kinds = _discover_project_iam_bindings(
             resolved_project, credentials=credentials, warnings=warnings, missing=missing
         )
@@ -492,6 +515,14 @@ def discover_inventory(
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
     )
 
+    authorization_payload = {
+        "status": "ok" if include_iam else "disabled",
+        "project_id": resolved_project,
+        "account_id": resolved_project,
+        **authorization,
+    }
+    authorization_evidence = normalize_gcp_iam_inventory(authorization_payload).to_dict()
+
     return {
         "provider": "gcp",
         "status": "ok",
@@ -503,6 +534,15 @@ def discover_inventory(
         "firewalls": firewalls,
         "service_accounts": service_accounts,
         "groups": iam_groups,
+        "allow_policies": authorization.get("allow_policies", []),
+        "role_definitions": authorization.get("role_definitions", []),
+        "deny_policies": authorization.get("deny_policies", []),
+        "pab_policies": authorization.get("pab_policies", []),
+        "pab_bindings": authorization.get("pab_bindings", []),
+        "iam_hierarchy": authorization.get("iam_hierarchy", []),
+        "iam_sources": authorization.get("iam_sources", []),
+        "iam_observed_at": authorization.get("iam_observed_at"),
+        "authorization_evidence": authorization_evidence,
         "gke_clusters": gke_clusters,
         "cloud_run_services": cloud_run_services,
         "cloud_functions": cloud_functions,
@@ -855,9 +895,9 @@ def _make_role_resolver(*, credentials: Any, warnings: list[str]) -> Any:
     ``includedPermissions`` so a binding's *actual* capabilities are known rather
     than only its name-classified privilege level — closing the gap with the
     Azure path, which already resolves role definitions to actions. Each role is
-    resolved at most once (cached) and the permission set is capped. Within
-    ``roles/iam.securityReviewer`` / ``viewer``. Degrades to an empty list plus a
-    warning on any error — never raises.
+    resolved at most once (cached), and every returned permission is retained.
+    The call is covered by the connector's read-only IAM review roles. It
+    degrades to an empty list plus a warning on any error — never raises.
     """
     cache: dict[str, list[str]] = {}
     client_holder: dict[str, Any] = {}
@@ -877,7 +917,7 @@ def _make_role_resolver(*, credentials: Any, warnings: list[str]) -> Any:
                 client = iam_admin_v1.IAMClient(credentials=credentials)
                 client_holder["client"] = client
             role_def = client.get_role(request=iam_admin_v1.GetRoleRequest(name=name))
-            permissions = [str(p) for p in (getattr(role_def, "included_permissions", None) or [])][:_MAX_ROLE_PERMISSIONS]
+            permissions = [str(p) for p in (getattr(role_def, "included_permissions", None) or [])]
         except Exception as exc:  # noqa: BLE001 — one failed role lookup must not sink the scan
             warnings.append(f"GCP role-definition resolution skipped for {name}: {sanitize_discovery_warning(exc)}")
         cache[name] = permissions

@@ -143,6 +143,8 @@ _READ_VERBS = {
 # generic ``Generate`` verb would weaken the guard for unrelated APIs.
 _READ_ONLY_ACTION_EXCEPTIONS = {
     "iam:GenerateServiceLastAccessedDetails",  # creates an IAM usage report job; changes no IAM/resource configuration
+    # Authorizes quota/billing attribution for otherwise read-only GCP calls.
+    "serviceusage.services.use",
 }
 
 

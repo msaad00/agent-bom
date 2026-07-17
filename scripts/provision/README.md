@@ -207,7 +207,17 @@ gcloud iam roles create agentBomScanner \
   --file=gcp_readonly_role.yaml
 ```
 
-### 2. Create service account + assign role
+For inherited organization/folder policy and principal-access-boundary
+evidence, create the separate parent-scoped role. Do not add these permissions
+to the project custom role:
+
+```bash
+gcloud iam roles create agentBomIamEvidence \
+  --organization=YOUR_ORGANIZATION_ID \
+  --file=gcp_organization_iam_evidence_role.yaml
+```
+
+### 2. Create service account + assign roles
 
 ```bash
 gcloud iam service-accounts create agent-bom-scanner \
@@ -217,6 +227,12 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:agent-bom-scanner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role="projects/YOUR_PROJECT_ID/roles/agentBomScanner"
 ```
+
+That project-scoped grant covers local project inventory and IAM evidence. To
+prove inherited organization/folder policy and principal-access-boundary state,
+grant `organizations/YOUR_ORGANIZATION_ID/roles/agentBomIamEvidence` at the
+owning organization (or a narrower folder). Parent sources that cannot be read
+remain explicitly incomplete; they are never treated as an empty policy set.
 
 ### 3. Workload Identity (GKE — no key files)
 
@@ -236,7 +252,7 @@ export GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID
 agent-bom scan --gcp
 ```
 
-**What gets scanned:** GKE clusters + node pools, Vertex AI endpoints + models + notebooks + pipeline jobs, Cloud Run services, Cloud Functions, Artifact Registry images.
+**What gets scanned:** GKE clusters + node pools, Vertex AI endpoints + models + notebooks + pipeline jobs, Cloud Run services, Cloud Functions, Artifact Registry images, and version-3 allow policies, untruncated definitions for referenced roles, IAM deny policies, and principal-access-boundary source state.
 
 ---
 

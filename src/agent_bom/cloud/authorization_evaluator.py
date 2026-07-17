@@ -29,6 +29,7 @@ def _principal_identifier_matches(bundle: AuthorizationEvidenceBundle, identifie
         return True
     if bundle.provider is AuthorizationProvider.GCP and normalized.casefold() in {
         "allusers",
+        "allauthenticatedusers",
         "principalset://goog/public:all",
     }:
         return True
@@ -77,23 +78,45 @@ def _resource_within_bundle(bundle: AuthorizationEvidenceBundle, resource: str) 
     tenant/account. Cross-hierarchy ancestry must be normalized by a provider
     adapter before reaching this foundation evaluator.
     """
-    return _scope_contains(
+    if _scope_contains(
         bundle.provider,
         bundle.scope,
         resource,
         applies_to_children=True,
         allow_wildcard=False,
-    )
+    ):
+        return True
+    return bundle.scope in _resource_scope_chain(bundle, resource)
 
 
-def _scope_matches(provider: AuthorizationProvider, binding: AuthorizationBinding, resource: str) -> bool:
-    return _scope_contains(
-        provider,
+def _resource_scope_chain(bundle: AuthorizationEvidenceBundle, resource: str) -> tuple[str, ...]:
+    """Return ancestry only when one unambiguous canonical record applies."""
+    candidate = resource.strip().rstrip("/")
+    matches = [
+        item
+        for item in bundle.resource_ancestry
+        if candidate == item.resource.rstrip("/") or candidate.startswith(f"{item.resource.rstrip('/')}/")
+    ]
+    if not matches:
+        return ()
+    longest = max(len(item.resource.rstrip("/")) for item in matches)
+    most_specific = [item for item in matches if len(item.resource.rstrip("/")) == longest]
+    if len(most_specific) != 1:
+        return ()
+    item = most_specific[0]
+    return (item.resource.rstrip("/"), *item.ancestors)
+
+
+def _scope_matches(bundle: AuthorizationEvidenceBundle, binding: AuthorizationBinding, resource: str) -> bool:
+    if _scope_contains(
+        bundle.provider,
         binding.scope,
         resource,
         applies_to_children=binding.applies_to_children,
         allow_wildcard=True,
-    )
+    ):
+        return True
+    return binding.applies_to_children and binding.scope in _resource_scope_chain(bundle, resource)
 
 
 def _plane_matches(binding_plane: AuthorizationPlane, request_plane: AuthorizationPlane) -> bool:
@@ -159,7 +182,7 @@ def _context_applies(
         return False
     if _principal_is_excluded(bundle, binding, request.principal_id):
         return False
-    if not _scope_matches(bundle.provider, binding, request.resource):
+    if not _scope_matches(bundle, binding, request.resource):
         return False
     return _plane_matches(binding.plane, request.plane)
 

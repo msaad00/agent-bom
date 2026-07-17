@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Scheduled findings export now reaches four more destinations — Azure Blob and GCS object stores, plus BigQuery and Databricks warehouse tables — each connect-once with brokered credentials and fail-closed on missing config (#4040).
+- Remediation now files tickets through the connect-once ITSM plane: the row action reads the stored `/v1/ticketing` connection, previews the ticket, and surfaces the ticket key + status with a sync action — no per-action credentials, tokens, or URLs (#4004).
+
+### Removed
+- Retired the legacy `POST /v1/findings/jira` route and its per-action static-token path, superseded by the connect-once ticketing plane (#4004).
+
 ## [0.96.3] - 2026-07-16
 
 ### Added

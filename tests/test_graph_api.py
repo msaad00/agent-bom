@@ -1263,6 +1263,34 @@ class _RecordingGraphStore:
         self.calls.append(("save_graph", graph.scan_id, graph.tenant_id))
         self.graph = graph
 
+    def save_graph_streaming(
+        self,
+        *,
+        scan_id: str,
+        tenant_id: str = "",
+        nodes,
+        edges,
+        attack_paths=(),
+        interaction_risks=(),
+        created_at: str = "",
+    ) -> dict:
+        graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id, created_at=created_at)
+        for node in nodes:
+            graph.add_node(node)
+        for edge in edges:
+            graph.add_edge(edge)
+        graph.attack_paths.extend(attack_paths)
+        graph.interaction_risks.extend(interaction_risks)
+        self.calls.append(("save_graph_streaming", scan_id, tenant_id))
+        self.graph = graph
+        return {"nodes": len(graph.nodes), "edges": len(graph.edges)}
+
+    def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = ""):
+        from agent_bom.graph.delta_digest import digest_from_graph
+
+        self.calls.append(("prior_delta_digest", tenant_id, scan_id))
+        return digest_from_graph(self.graph)
+
     def load_graph(self, *, tenant_id: str = "", scan_id: str = "", entity_types=None, min_severity_rank: int = 0) -> UnifiedGraph:
         self.calls.append(("load_graph", tenant_id, scan_id, entity_types, min_severity_rank))
         return self.graph
@@ -2079,7 +2107,13 @@ class TestGraphStoreBackendSelection:
         job = SimpleNamespace(job_id="job-123", tenant_id="default", progress=[])
         _persist_graph_snapshot(job, {"scan_id": "job-123"})
 
-        assert ("save_graph", "job-123", "default") in recording_graph_store.calls
+        # Write path now streams node/edge iterables into the store instead of
+        # handing over a fully built graph, and derives the prior-snapshot delta
+        # from a bounded digest rather than a second full load_graph (#4075).
+        assert ("save_graph_streaming", "job-123", "default") in recording_graph_store.calls
+        assert not any(call[0] == "save_graph" for call in recording_graph_store.calls)
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+        assert ("prior_delta_digest", "default", "store-scan") in recording_graph_store.calls
         assert tenant_context == [("set", "default"), ("reset", "tenant-token")]
 
     def test_graph_search_uses_store_native_query(self, recording_graph_store):

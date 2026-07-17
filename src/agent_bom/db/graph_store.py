@@ -17,7 +17,10 @@ from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Generator, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Sequence
+
+if TYPE_CHECKING:
+    from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 from agent_bom.graph import (
     SEVERITY_RANK,
@@ -993,6 +996,52 @@ def load_graph(
             )
 
     return graph
+
+
+def prior_delta_digest(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    scan_id: str = "",
+) -> "PriorSnapshotDigest":
+    """Build a bounded prior-snapshot digest for delta-alert computation.
+
+    Streams only the columns :func:`agent_bom.graph.webhooks.compute_delta_alerts`
+    reads from the prior graph (node ids, agent refs, attack-path and
+    interaction-risk keys) instead of materialising a full ``UnifiedGraph`` — so
+    peak RSS is decoupled from the prior snapshot's node/edge payload (#4055,
+    #4075). The digest yields byte-identical delta alerts to the full-graph path.
+    """
+    from agent_bom.graph.delta_digest import PriorSnapshotDigestBuilder
+
+    tenant_id = normalize_graph_tenant_id(tenant_id)
+    builder = PriorSnapshotDigestBuilder()
+    effective_scan_id, _created_at = _resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+    if not effective_scan_id:
+        return builder.build()
+    for row in conn.execute(
+        "SELECT id, entity_type, label, severity, status, risk_score FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?",
+        (tenant_id, effective_scan_id),
+    ):
+        builder.add_node(
+            row["id"],
+            row["entity_type"],
+            label=row["label"],
+            severity=row["severity"] or "",
+            status=row["status"],
+            risk_score=row["risk_score"],
+        )
+    for row in conn.execute(
+        "SELECT source_node, target_node FROM attack_paths WHERE tenant_id = ? AND scan_id = ?",
+        (tenant_id, effective_scan_id),
+    ):
+        builder.add_attack_path(row["source_node"], row["target_node"])
+    for row in conn.execute(
+        "SELECT pattern, agents FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?",
+        (tenant_id, effective_scan_id),
+    ):
+        builder.add_interaction_risk(row["pattern"], json.loads(row["agents"]))
+    return builder.build()
 
 
 def _node_from_snapshot_row(row: sqlite3.Row) -> UnifiedNode:

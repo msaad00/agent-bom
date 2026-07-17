@@ -443,8 +443,10 @@ class ClickHouseWarehouseDestination:
             # staging rows. A present exact marker is safely reconciled; absent
             # or unavailable status preserves staging and the primary error.
             try:
+                # Table names are constructor-validated; all values are escaped
+                # with the ClickHouse literal encoder above.
                 committed = self._client.execute(
-                    f"SELECT count() FROM {runs_table} WHERE tenant_id = '{escaped_tenant}' "
+                    f"SELECT count() FROM {runs_table} WHERE tenant_id = '{escaped_tenant}' "  # nosec B608
                     f"AND run_id = '{escaped_run}' AND publication_attempt_id = '{escaped_attempt}' FORMAT TabSeparated"
                 )
                 if str(committed).strip() == "1":
@@ -531,8 +533,10 @@ class SnowflakeWarehouseDestination:
         try:
             check_cursor = check_conn.cursor()
             try:
+                # The table identifier is quoted from a validated constructor
+                # value; predicates remain connector-bound parameters.
                 check_cursor.execute(
-                    f"SELECT 1 FROM {_sf_ident(self._table + _RUNS_SUFFIX)} WHERE "
+                    f"SELECT 1 FROM {_sf_ident(self._table + _RUNS_SUFFIX)} WHERE "  # nosec B608
                     '"tenant_id" = %s AND "run_id" = %s AND "publication_attempt_id" = %s LIMIT 1',
                     (tenant_id, run_id, attempt_id),
                 )
@@ -579,8 +583,10 @@ class SnowflakeWarehouseDestination:
                 cursor.execute(f"PUT 'file://{tmp_path}' {stage_ref} AUTO_COMPRESS=FALSE SOURCE_COMPRESSION=GZIP OVERWRITE=TRUE")
                 cursor.execute("BEGIN")
                 transaction_started = True
+                # table_ref is quoted from the validated table name; tenant_id
+                # is passed separately through the connector parameter API.
                 cursor.execute(
-                    f"DELETE FROM {table_ref} WHERE {_sf_ident('tenant_id')} = %s",
+                    f"DELETE FROM {table_ref} WHERE {_sf_ident('tenant_id')} = %s",  # nosec B608
                     (tenant_id,),
                 )
                 if row_count:
@@ -590,8 +596,10 @@ class SnowflakeWarehouseDestination:
                         "MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE "
                         "PURGE = TRUE"
                     )
+                # The table/column identifiers are fixed or validated and
+                # quoted; all publication values use bound parameters.
                 cursor.execute(
-                    f"INSERT INTO {_sf_ident(self._table + _RUNS_SUFFIX)} "
+                    f"INSERT INTO {_sf_ident(self._table + _RUNS_SUFFIX)} "  # nosec B608
                     '("tenant_id", "run_id", "publication_attempt_id", "row_count", "committed_at") '
                     "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP())",
                     (tenant_id, run_id, attempt_id, row_count),
@@ -706,8 +714,10 @@ class BigQueryWarehouseDestination:
     def _manifest_exists(self, runs_ref: str, *, tenant_id: str, run_id: str, attempt_id: str) -> bool:
         if not self._table_exists(runs_ref):
             return False
+        # runs_ref is assembled exclusively from validated project/dataset/table
+        # identifiers; query values are supplied by named parameters.
         rows = self._scope_query(
-            f"SELECT 1 FROM `{runs_ref}` WHERE tenant_id = @tenant_id AND run_id = @run_id "
+            f"SELECT 1 FROM `{runs_ref}` WHERE tenant_id = @tenant_id AND run_id = @run_id "  # nosec B608
             "AND publication_attempt_id = @attempt_id LIMIT 1",
             tenant_id=tenant_id,
             run_id=run_id,
@@ -744,8 +754,10 @@ class BigQueryWarehouseDestination:
                 run_id=run_id,
                 attempt_id=attempt_id,
             )
+        # staged_ref is assembled exclusively from validated identifiers; the
+        # row scope is passed through named BigQuery parameters.
         cleanup_sql = (
-            f"DELETE FROM `{staged_ref}` WHERE tenant_id = @tenant_id AND run_id = @run_id AND publication_attempt_id = @attempt_id"
+            f"DELETE FROM `{staged_ref}` WHERE tenant_id = @tenant_id AND run_id = @run_id AND publication_attempt_id = @attempt_id"  # nosec B608
         )
         row_count = 0
         batch: list[dict[str, Any]] = []
@@ -763,8 +775,10 @@ class BigQueryWarehouseDestination:
                 self._load(staged_ref, batch)
                 row_count += len(batch)
             publication_started = True
+            # runs_ref is validated identifier composition; row_count is a
+            # locally accumulated integer and all external values are bound.
             self._scope_query(
-                f"INSERT INTO `{runs_ref}` (tenant_id, run_id, publication_attempt_id, row_count, "
+                f"INSERT INTO `{runs_ref}` (tenant_id, run_id, publication_attempt_id, row_count, "  # nosec B608
                 "commit_version, committed_at) VALUES "
                 f"(@tenant_id, @run_id, @attempt_id, {row_count}, UNIX_MICROS(CURRENT_TIMESTAMP()), CURRENT_TIMESTAMP())",
                 tenant_id=tenant_id,
@@ -897,8 +911,10 @@ class DatabricksWarehouseDestination:
                     cursor.executemany(insert_sql, batch)
                     row_count += len(batch)
                 publication_started = True
+                # Fully qualified table/column identifiers are backtick-quoted;
+                # publication values are connector-bound parameters.
                 cursor.execute(
-                    f"INSERT INTO {self._full_table(_RUNS_SUFFIX)} ("
+                    f"INSERT INTO {self._full_table(_RUNS_SUFFIX)} ("  # nosec B608
                     f"{_dbx_ident('tenant_id')}, {_dbx_ident('run_id')}, {_dbx_ident(_ATTEMPT_COLUMN)}, "
                     f"{_dbx_ident('row_count')}, {_dbx_ident('commit_version')}, {_dbx_ident('committed_at')}) "
                     "VALUES (?, ?, ?, ?, UNIX_MICROS(CURRENT_TIMESTAMP()), CURRENT_TIMESTAMP())",
@@ -907,8 +923,10 @@ class DatabricksWarehouseDestination:
             except Exception:
                 if publication_started:
                     try:
+                        # Identifiers are quoted by _dbx_ident/_full_table and
+                        # the lookup scope is connector-bound.
                         cursor.execute(
-                            f"SELECT 1 FROM {self._full_table(_RUNS_SUFFIX)} WHERE {_dbx_ident('tenant_id')} = ? "
+                            f"SELECT 1 FROM {self._full_table(_RUNS_SUFFIX)} WHERE {_dbx_ident('tenant_id')} = ? "  # nosec B608
                             f"AND {_dbx_ident('run_id')} = ? AND {_dbx_ident(_ATTEMPT_COLUMN)} = ? LIMIT 1",
                             (tenant_id, run_id, attempt_id),
                         )
@@ -923,8 +941,10 @@ class DatabricksWarehouseDestination:
                     # Preserve staging: the manifest INSERT can still complete.
                     raise ExportPublicationIndeterminateError("Databricks publication status is indeterminate") from None
                 try:
+                    # Identifiers are quoted by _dbx_ident/_full_table and the
+                    # failed-attempt scope is connector-bound.
                     cursor.execute(
-                        f"DELETE FROM {self._full_table(_STAGED_SUFFIX)} WHERE {_dbx_ident('tenant_id')} = ? "
+                        f"DELETE FROM {self._full_table(_STAGED_SUFFIX)} WHERE {_dbx_ident('tenant_id')} = ? "  # nosec B608
                         f"AND {_dbx_ident('run_id')} = ? AND {_dbx_ident(_ATTEMPT_COLUMN)} = ?",
                         (tenant_id, run_id, attempt_id),
                     )

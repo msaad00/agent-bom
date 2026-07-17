@@ -587,6 +587,36 @@ def test_multiregion_merges_region_scoped_and_dedupes_globals(monkeypatch: pytes
     assert "aws:region/eu-west-1" in scope
 
 
+def test_is_all_regions_sentinel() -> None:
+    assert aws_inventory.is_all_regions(["all"]) is True
+    assert aws_inventory.is_all_regions(["ALL"]) is True
+    assert aws_inventory.is_all_regions(["us-east-1"]) is False
+    assert aws_inventory.is_all_regions([]) is False
+    assert aws_inventory.is_all_regions(None) is False
+
+
+def test_multiregion_threads_injected_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A brokered assumed-role session (connection scan) must fan out across
+    # regions using THAT session's credentials — never build its own from the
+    # local default chain. Passing an explicit region set avoids env dependence.
+    monkeypatch.setenv(aws_inventory.INVENTORY_ENV_FLAG, "1")
+
+    injected = _MultiRegionSession(enabled_regions=["us-east-1", "eu-west-1"], region_name="us-east-1")
+
+    def _boom_factory(**_kwargs: Any) -> Any:  # pragma: no cover - must never run
+        raise AssertionError("discover_inventory_all_regions built its own session instead of using the injected one")
+
+    with _install_multiregion_boto3(_boom_factory):
+        payload = aws_inventory.discover_inventory_all_regions(
+            regions=["us-east-1", "eu-west-1"], session=injected, force=True
+        )
+
+    assert payload["status"] == "ok"
+    assert set(payload["regions"]) == {"us-east-1", "eu-west-1"}
+    # Region-scoped EC2 fanned out across both regions via the injected session.
+    assert {i["instance_id"] for i in payload["instances"]} == {"i-us-east-1", "i-eu-west-1"}
+
+
 def test_multiregion_failing_region_degrades_to_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(aws_inventory.INVENTORY_ENV_FLAG, "1")
     monkeypatch.setenv(aws_inventory.REGIONS_ENV_VAR, "us-east-1,eu-west-1")

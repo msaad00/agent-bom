@@ -48,6 +48,32 @@ three-step wizard: **Provider → Setup → Details**.
   (Contributor) role or higher; **viewer** is read-only. The wizard and empty
   states surface your role and, when an action needs a higher one, the concrete
   way to elevate. Roles are the closed enum in `src/agent_bom/rbac.py`.
+- **Scan depth (opt-in, read-only).** The Setup step's collapsed **Scan depth
+  (advanced)** control keeps the default path least-privilege (`SecurityAudit` +
+  `ViewOnlyAccess` for AWS, `Reader` for Azure, `roles/viewer` for GCP). Turning
+  on **Deep-scan** adds the read-only *content* reads those baseline policies
+  structurally exclude — AWS: Lambda code, ECR image pull, Inspector, CIS account
+  contacts, Bedrock agents; Azure: `Key Vault Reader` + `AcrPull`; GCP:
+  `roles/artifactregistry.reader` — the same grants as each module's
+  `deep-scan.tf`. **DSPM object sampling** (AWS) grants read-only
+  `s3:GetObject`/`s3:ListBucket` **scoped to the bucket ARNs you name** (never a
+  wildcard). The choice threads into the generated grant script and, for the
+  Terraform method, sets `enable_deep_scan_reads` / `dspm_s3_bucket_arns`. Headless
+  parity: `agent-bom connect <aws|azure|gcp> --emit --deep-scan [--dspm-bucket
+  arn:aws:s3:::…]`.
+- **All regions (AWS).** The Details step offers an explicit **All enabled
+  regions** toggle. Checked, the connection stores the `all` sentinel and the scan
+  fans out across every enabled region (via `discover_inventory_all_regions`)
+  using the one brokered role; unchecked, you scan the specific free-text
+  region(s) as before.
+- **Snowflake packaging.** The Snowflake Setup step chooses between the read-only
+  **metadata role** (default) and the **Snowpark Container Services / Native App**
+  — "run agent-bom inside your account." The native-app option generates the
+  install recipe inline, reusing the shipped package under
+  `deploy/snowflake/native-app/` (see
+  [`docs/snowflake-native-app/INSTALL.md`](snowflake-native-app/INSTALL.md) for
+  the end-to-end walkthrough, including building + pushing the container images).
+  Headless parity: `agent-bom connect snowflake --emit --spcs`.
 
 ### Self-host defaults ("just works" on the shipped compose)
 

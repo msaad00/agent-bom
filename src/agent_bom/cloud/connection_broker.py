@@ -133,7 +133,12 @@ def _broker_aws(record: CloudConnectionRecord, *, session_name: str, duration_se
         external_id = ""
 
     creds = assumed.get("Credentials", {})
-    region = record.regions[0] if record.regions else None
+    # The "all regions" sentinel is not a real region — leave the session's
+    # region unset so the default resolves and the multi-region fan-out enumerates
+    # the enabled set from these credentials.
+    from agent_bom.cloud.aws_inventory import is_all_regions
+
+    region = None if is_all_regions(record.regions) else (record.regions[0] if record.regions else None)
     return boto3.Session(
         aws_access_key_id=creds.get("AccessKeyId"),
         aws_secret_access_key=creds.get("SecretAccessKey"),

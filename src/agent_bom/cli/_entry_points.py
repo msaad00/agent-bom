@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 import click
 
@@ -325,7 +326,42 @@ def _connect_options(source: _ConnectSource) -> list[click.Parameter]:
             help="Write the emitted artifact to this file (default: stdout).",
         )
     )
+    # ── Snowflake: read-only role (default) vs Snowpark native-app (SPCS) ──
+    if source.name == "snowflake":
+        options.append(
+            click.Option(
+                ["--spcs"],
+                "spcs",
+                is_flag=True,
+                default=False,
+                help=(
+                    "Emit the Snowpark Container Services / Native App install recipe "
+                    "(run agent-bom inside your account) instead of the read-only metadata role."
+                ),
+            )
+        )
+    # ── Depth: baseline (default) vs opt-in read-only deep-scan + DSPM ──
+    if source.name in {"aws", "azure", "gcp"}:
+        options.append(
+            click.Option(
+                ["--deep-scan/--baseline"],
+                "deep_scan",
+                default=False,
+                help=(
+                    "Opt into read-only deep-scan content reads in the emitted artifact "
+                    "(AWS: Lambda code/ECR/Inspector/Bedrock; Azure: Key Vault Reader/AcrPull; "
+                    "GCP: Artifact Registry reader). Default: baseline (least privilege)."
+                ),
+            )
+        )
     if source.name == "aws":
+        options.append(
+            click.Option(
+                ["--dspm-bucket", "dspm_buckets"],
+                multiple=True,
+                help="Opt-in DSPM: grant read-only s3:GetObject/ListBucket on this bucket ARN (repeatable). Implies --deep-scan.",
+            )
+        )
         options.append(
             click.Option(
                 ["--trust-principal"],
@@ -392,7 +428,7 @@ def _resolve_connect_inputs(source: _ConnectSource, kwargs: dict[str, object]) -
     return role_ref, external_id, regions, auth_params, supplied
 
 
-def _emit_options(source: _ConnectSource, kwargs: dict[str, object]) -> dict[str, str]:
+def _emit_options(source: _ConnectSource, kwargs: dict[str, object]) -> dict[str, Any]:
     """Map raw Click kwargs onto the onboarding-generator option keys.
 
     Reuses the same connection flags the establish path uses (``--external-id``,
@@ -404,17 +440,25 @@ def _emit_options(source: _ConnectSource, kwargs: dict[str, object]) -> dict[str
     def _val(key: str) -> str:
         return str(kwargs.get(key) or "").strip()
 
+    deep_scan = "true" if bool(kwargs.get("deep_scan")) else ""
+
     if source.name == "aws":
+        raw_buckets = kwargs.get("dspm_buckets")
+        buckets: tuple[Any, ...] = tuple(raw_buckets) if isinstance(raw_buckets, (tuple, list)) else ()
         return {
             "external_id": _val("external_id"),
             "role_name": _val("role_name"),
             "trusted_principal_arn": _val("trust_principal"),
+            "enable_deep_scan_reads": deep_scan,
+            "dspm_s3_bucket_arns": [str(b).strip() for b in buckets if str(b).strip()],
         }
     if source.name == "azure":
-        return {"subscription_id": _val("subscription_id")}
+        return {"subscription_id": _val("subscription_id"), "enable_deep_scan_reads": deep_scan}
     if source.name == "gcp":
-        return {"project_id": _val("project")}
+        return {"project_id": _val("project"), "enable_deep_scan_reads": deep_scan}
     # snowflake
+    if bool(kwargs.get("spcs")):
+        return {"mode": "spcs", "account": _val("account")}
     return {"role": _val("role"), "user": _val("user"), "warehouse": _val("warehouse")}
 
 

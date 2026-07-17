@@ -113,6 +113,60 @@ class TestOtherProviderEmit:
         assert r.exit_code == 0, r.output
         assert "CREATE ROLE IF NOT EXISTS RO_ROLE" in r.stdout
 
+    def test_snowflake_spcs_emits_native_app_recipe(self) -> None:
+        r = _run(["connect", "snowflake", "--emit", "--spcs"])
+        assert r.exit_code == 0, r.output
+        assert "CREATE APPLICATION PACKAGE" in r.stdout
+        assert "deploy/snowflake/native-app" in r.stdout
+
+
+class TestEmitDepth:
+    """`--deep-scan` / `--dspm-bucket` are explicit opt-ins threaded into the
+    emitted artifact. Baseline (no flags) stays least-privilege."""
+
+    def test_aws_baseline_has_no_inline_policies(self) -> None:
+        r = _run(["connect", "aws", "--emit"])
+        assert r.exit_code == 0, r.output
+        role = json.loads(r.stdout)["Resources"]["AgentBomReadOnlyRole"]
+        assert "Policies" not in role["Properties"]
+
+    def test_aws_deep_scan_adds_content_reads(self) -> None:
+        r = _run(["connect", "aws", "--emit", "--deep-scan"])
+        assert r.exit_code == 0, r.output
+        assert "lambda:GetFunction" in r.stdout
+        assert "s3:GetObject" not in r.stdout
+
+    def test_aws_dspm_bucket_scopes_object_read(self) -> None:
+        r = _run(["connect", "aws", "--emit", "--deep-scan", "--dspm-bucket", "arn:aws:s3:::data-lake"])
+        assert r.exit_code == 0, r.output
+        tpl = json.loads(r.stdout)
+        text = r.stdout
+        assert "s3:GetObject" in text
+        assert "arn:aws:s3:::data-lake" in text
+        assert tpl["Resources"]["AgentBomReadOnlyRole"]["Properties"]["Policies"]
+
+    def test_aws_dspm_rejects_hostile_bucket(self) -> None:
+        r = _run(["connect", "aws", "--emit", "--deep-scan", "--dspm-bucket", 'x", "Effect":"Allow'])
+        assert r.exit_code == 2, r.output
+        assert "invalid S3 bucket ARN" in r.stderr
+
+    def test_azure_deep_scan_adds_dataplane_readers(self) -> None:
+        r = _run(["connect", "azure", "--emit", "--subscription-id", TestOtherProviderEmit._AZURE_SUB, "--deep-scan"])
+        assert r.exit_code == 0, r.output
+        assert "Key Vault Reader" in r.stdout
+        assert "AcrPull" in r.stdout
+
+    def test_gcp_deep_scan_adds_artifact_registry(self) -> None:
+        r = _run(["connect", "gcp", "--emit", "--project", "proj-1", "--deep-scan"])
+        assert r.exit_code == 0, r.output
+        assert "roles/artifactregistry.reader" in r.stdout
+
+    def test_help_documents_depth_flags(self) -> None:
+        r = _run(["connect", "aws", "--help"])
+        assert r.exit_code == 0
+        assert "--deep-scan" in r.stdout
+        assert "--dspm-bucket" in r.stdout
+
 
 class TestEmitValidation:
     def test_unsupported_format_is_rejected(self) -> None:

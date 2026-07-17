@@ -3894,6 +3894,26 @@ export interface RiskCampaignVerificationResult {
   verified_at: string;
 }
 
+export interface RiskCampaignVerificationQueueEntry {
+  campaign_id: string;
+  title: string;
+  original_member_count: number;
+  owner: string | null;
+  sla_due_at: string | null;
+  state: RiskCampaignState;
+  verification_status: "unverified" | "failed";
+  active: false;
+  version: number;
+  updated_at: string | null;
+}
+
+export interface RiskCampaignVerificationQueueResponse {
+  schema_version: "risk-campaign-verification-queue.v1";
+  tenant_id: string;
+  entries: RiskCampaignVerificationQueueEntry[];
+  count: number;
+}
+
 export interface RiskCampaignTicketRequest {
   connection_id: string;
   project?: string;

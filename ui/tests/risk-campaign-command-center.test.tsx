@@ -14,6 +14,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
       ...actual.api,
       listTicketingConnections: vi.fn(),
       listRiskCampaigns: vi.fn(),
+      listRiskCampaignVerificationQueue: vi.fn(),
       updateRiskCampaign: vi.fn(),
       verifyRiskCampaign: vi.fn(),
       createRiskCampaignTickets: vi.fn(),
@@ -84,6 +85,12 @@ describe("RiskCampaignCommandCenter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.listRiskCampaigns).mockResolvedValue(response);
+    vi.mocked(api.listRiskCampaignVerificationQueue).mockResolvedValue({
+      schema_version: "risk-campaign-verification-queue.v1",
+      tenant_id: "tenant-a",
+      entries: [],
+      count: 0,
+    });
     vi.mocked(api.listTicketingConnections).mockResolvedValue({
       schema_version: "ticketing.connections.v1",
       tenant_id: "tenant-a",
@@ -368,6 +375,114 @@ describe("RiskCampaignCommandCenter", () => {
     expect(await screen.findByText(/No original findings remain/i)).toBeInTheDocument();
     expect((await screen.findAllByText("Verified")).length).toBeGreaterThan(0);
     expect(api.updateRiskCampaign).not.toHaveBeenCalled();
+  });
+
+  it("renders durable inactive campaigns awaiting re-verification and removes verified entries", async () => {
+    vi.mocked(api.listRiskCampaignVerificationQueue).mockResolvedValue({
+      schema_version: "risk-campaign-verification-queue.v1",
+      tenant_id: "tenant-a",
+      count: 1,
+      entries: [{
+        campaign_id: "retired-campaign-1",
+        title: "Upgrade retired openssl campaign",
+        original_member_count: 12,
+        owner: "appsec",
+        sla_due_at: "2026-07-28T00:00:00Z",
+        state: "in_progress",
+        verification_status: "unverified",
+        active: false,
+        version: 7,
+        updated_at: "2026-07-17T12:00:00Z",
+      }],
+    });
+    vi.mocked(api.verifyRiskCampaign).mockResolvedValue({
+      schema_version: "risk-campaign-verification.v1",
+      campaign_id: "retired-campaign-1",
+      verification_status: "verified",
+      state: "done",
+      remaining_finding_ids: [],
+      remaining_count: 0,
+      original_member_count: 12,
+      evidence_scope: {
+        source: "canonical_findings_spine",
+        finding_window_days: 90,
+        finding_limit: 1000,
+        membership_complete: true,
+      },
+      version: 8,
+      verified_at: "2026-07-17T13:00:00Z",
+    });
+
+    render(<RiskCampaignCommandCenter />);
+    expect(await screen.findByText(/Awaiting re-verification/i)).toBeInTheDocument();
+    expect(screen.getByText("Upgrade retired openssl campaign")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Re-verify Upgrade retired openssl campaign/i }));
+
+    await waitFor(() => expect(api.verifyRiskCampaign).toHaveBeenCalledWith("retired-campaign-1", { version: 7 }));
+    expect(await screen.findByText(/verified: no original findings remain/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No inactive campaigns await re-verification/i)).toBeInTheDocument();
+    expect(screen.queryByText("Upgrade retired openssl campaign")).not.toBeInTheDocument();
+  });
+
+  it("keeps failed queue entries with the authoritative version and evidence result", async () => {
+    vi.mocked(api.listRiskCampaignVerificationQueue).mockResolvedValue({
+      schema_version: "risk-campaign-verification-queue.v1",
+      tenant_id: "tenant-a",
+      count: 1,
+      entries: [{
+        campaign_id: "retired-campaign-2",
+        title: "Resolve runtime package exposure",
+        original_member_count: 5,
+        owner: null,
+        sla_due_at: null,
+        state: "in_progress",
+        verification_status: "failed",
+        active: false,
+        version: 3,
+        updated_at: null,
+      }],
+    });
+    vi.mocked(api.verifyRiskCampaign).mockResolvedValue({
+      schema_version: "risk-campaign-verification.v1",
+      campaign_id: "retired-campaign-2",
+      verification_status: "failed",
+      state: "in_progress",
+      remaining_finding_ids: ["finding-a", "finding-b"],
+      remaining_count: 2,
+      original_member_count: 5,
+      evidence_scope: {
+        source: "canonical_findings_spine",
+        finding_window_days: 90,
+        finding_limit: 1000,
+        membership_complete: true,
+      },
+      version: 4,
+      verified_at: "2026-07-17T13:00:00Z",
+    });
+
+    render(<RiskCampaignCommandCenter />);
+    await screen.findByText("Resolve runtime package exposure");
+    fireEvent.click(screen.getByRole("button", { name: /Re-verify Resolve runtime package exposure/i }));
+
+    expect(await screen.findByText(/2 of 5 original findings remain/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Re-verify Resolve runtime package exposure/i }));
+    await waitFor(() => expect(api.verifyRiskCampaign).toHaveBeenLastCalledWith("retired-campaign-2", { version: 4 }));
+  });
+
+  it("shows and retries an independent verification-queue load error", async () => {
+    vi.mocked(api.listRiskCampaignVerificationQueue)
+      .mockRejectedValueOnce(new Error("Verification queue unavailable"))
+      .mockResolvedValueOnce({
+        schema_version: "risk-campaign-verification-queue.v1",
+        tenant_id: "tenant-a",
+        entries: [],
+        count: 0,
+      });
+
+    render(<RiskCampaignCommandCenter />);
+    expect(await screen.findByText("Verification queue unavailable")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Retry verification queue/i }));
+    expect(await screen.findByText(/No inactive campaigns await re-verification/i)).toBeInTheDocument();
   });
 
   it("assigns an owner and SLA through the campaign workflow API", async () => {

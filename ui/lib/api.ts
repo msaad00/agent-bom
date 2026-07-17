@@ -148,6 +148,7 @@ import type {
   RiskCampaignUpdate,
   RiskCampaignVerificationRequest,
   RiskCampaignVerificationResult,
+  RiskCampaignVerificationQueueResponse,
   RiskCampaignTicketRequest,
   RiskCampaignTicketCreateResult,
   RiskCampaignTicketSyncResult
@@ -398,6 +399,7 @@ export type {
   RiskCampaignUpdate,
   RiskCampaignVerificationRequest,
   RiskCampaignVerificationResult,
+  RiskCampaignVerificationQueueResponse,
   RiskCampaignTicketRequest,
   RiskCampaignTicketCreateResult,
   RiskCampaignTicketSyncResult,
@@ -1311,6 +1313,8 @@ export const api = {
   // ── Risk campaigns ──
   // Priorities and modeled risk reduction are authoritative server outputs.
   listRiskCampaigns: () => get<RiskCampaignsResponse>("/v1/campaigns"),
+  listRiskCampaignVerificationQueue: () =>
+    get<RiskCampaignVerificationQueueResponse>("/v1/campaigns/verification-queue"),
   updateRiskCampaign: (campaignId: string, body: RiskCampaignUpdate) =>
     patch<RiskCampaign>(
       `/v1/campaigns/${encodeURIComponent(campaignId)}`,

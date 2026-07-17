@@ -21,6 +21,7 @@ import type {
   RiskCampaign,
   RiskCampaignState,
   RiskCampaignVerificationResult,
+  RiskCampaignVerificationQueueEntry,
   TicketingConnection,
 } from "@/lib/api-types";
 
@@ -399,6 +400,118 @@ function CampaignCard({
   );
 }
 
+function VerificationQueue() {
+  const [entries, setEntries] = useState<RiskCampaignVerificationQueueEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, RiskCampaignVerificationResult>>({});
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await api.listRiskCampaignVerificationQueue();
+      setEntries(response.entries);
+    } catch (loadError: unknown) {
+      setError(loadError instanceof Error ? loadError.message : "Verification queue could not be loaded");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const verify = useCallback(async (entry: RiskCampaignVerificationQueueEntry) => {
+    setBusyId(entry.campaign_id);
+    setError("");
+    setSuccessMessage("");
+    try {
+      const result = await api.verifyRiskCampaign(entry.campaign_id, { version: entry.version });
+      if (result.verification_status === "verified") {
+        setSuccessMessage(`${entry.title} verified: no original findings remain in the complete canonical evidence window.`);
+        setEntries((current) => current.filter((item) => item.campaign_id !== entry.campaign_id));
+        setResults((current) => {
+          const next = { ...current };
+          delete next[entry.campaign_id];
+          return next;
+        });
+      } else {
+        setEntries((current) => current.map((item) => item.campaign_id === entry.campaign_id
+          ? {
+              ...item,
+              state: result.state,
+              verification_status: "failed",
+              version: result.version,
+              updated_at: result.verified_at,
+            }
+          : item));
+        setResults((current) => ({ ...current, [entry.campaign_id]: result }));
+      }
+    } catch (verifyError: unknown) {
+      setError(verifyError instanceof Error ? verifyError.message : "Campaign verification failed");
+    } finally {
+      setBusyId(null);
+    }
+  }, []);
+
+  return (
+    <section aria-labelledby="verification-queue-title" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--status-warn)]">Durable workflow evidence</div>
+          <h3 id="verification-queue-title" className="mt-1 text-base font-semibold text-[color:var(--foreground)]">Awaiting re-verification</h3>
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Inactive campaigns remain here after a rescan until canonical evidence confirms the original findings are gone.</p>
+        </div>
+        {error ? (
+          <button type="button" onClick={() => void load()} className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Retry verification queue</button>
+        ) : null}
+      </div>
+      {loading ? <p role="status" className="mt-3 text-xs text-[color:var(--text-tertiary)]">Loading verification queue…</p> : null}
+      {error ? <p role="alert" className="mt-3 text-xs text-[color:var(--status-danger)]">{error}</p> : null}
+      {successMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--status-success)]">{successMessage}</p> : null}
+      {!loading && !error && entries.length === 0 ? (
+        <p className="mt-3 text-xs text-[color:var(--text-tertiary)]">No inactive campaigns await re-verification.</p>
+      ) : null}
+      {!loading && !error && entries.length > 0 ? (
+        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+          {entries.map((entry) => {
+            const result = results[entry.campaign_id];
+            return (
+              <article key={entry.campaign_id} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-semibold text-[color:var(--foreground)]">{entry.title}</h4>
+                    <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+                      {entry.original_member_count} original findings · Owner: {entry.owner || "Unassigned"} · {formatDate(entry.sla_due_at)}
+                    </p>
+                    <p className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)]">{VERIFICATION_LABELS[entry.verification_status]} · inactive snapshot</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busyId === entry.campaign_id}
+                    onClick={() => void verify(entry)}
+                    aria-label={`Re-verify ${entry.title}`}
+                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" /> {busyId === entry.campaign_id ? "Verifying…" : "Re-verify"}
+                  </button>
+                </div>
+                {result ? (
+                  <p role="status" className="mt-2 text-xs text-[color:var(--status-warn)]">
+                    {result.remaining_count} of {result.original_member_count} original findings remain · canonical findings spine, complete {result.evidence_scope.finding_window_days}-day window.
+                  </p>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function RiskCampaignCommandCenter() {
   const [campaigns, setCampaigns] = useState<RiskCampaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -439,13 +552,15 @@ export function RiskCampaignCommandCenter() {
     setCampaigns((current) => current.map((campaign) => campaign.id === updated.id ? updated : campaign));
   }, []);
 
-  if (loading) return <PageLoadingState title="Loading prioritized campaigns" detail="Reading server-authored risk priorities and workflow state." />;
-  if (error) return <PageErrorState title={error} detail="No campaign status has been inferred. Retry the authoritative API." action={{ label: "Retry campaigns", onClick: () => void load() }} />;
-  if (campaigns.length === 0) return <PageEmptyState title="No prioritized campaigns yet" detail="No campaign was returned for the current 90-day findings window. This is not an all-clear result." icon={Network} actions={[{ label: "Run a scan", href: "/scan" }, { label: "Review findings", href: "/findings", variant: "secondary" }]} />;
-
   return (
     <section aria-labelledby="risk-campaigns-title" className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      {loading ? (
+        <PageLoadingState title="Loading prioritized campaigns" detail="Reading server-authored risk priorities and workflow state." />
+      ) : error ? (
+        <PageErrorState title={error} detail="No campaign status has been inferred. Retry the authoritative API." action={{ label: "Retry campaigns", onClick: () => void load() }} />
+      ) : campaigns.length === 0 ? (
+        <PageEmptyState title="No prioritized campaigns yet" detail="No campaign was returned for the current 90-day findings window. This is not an all-clear result." icon={Network} actions={[{ label: "Run a scan", href: "/scan" }, { label: "Review findings", href: "/findings", variant: "secondary" }]} />
+      ) : <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--accent)]">Prioritized remediation</div>
           <h2 id="risk-campaigns-title" className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--foreground)]">Risk campaigns</h2>
@@ -455,8 +570,8 @@ export function RiskCampaignCommandCenter() {
           <Link href="/security-graph" className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[color:var(--text-secondary)]">Open investigation</Link>
           <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[color:var(--text-tertiary)]">Last {windowDays} days</span>
         </div>
-      </div>
-      {truncated ? (
+      </div>}
+      {!loading && !error && campaigns.length > 0 && truncated ? (
         <div role="status" className="flex items-start gap-2 rounded-xl border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2.5 text-xs text-[color:var(--text-secondary)]">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--status-warn)]" />
           <span>
@@ -465,12 +580,17 @@ export function RiskCampaignCommandCenter() {
           </span>
         </div>
       ) : null}
-      <div className="grid gap-4 2xl:grid-cols-2">
-        {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} />)}
-      </div>
-      <div className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">
-        <CheckCircle2 className="h-3.5 w-3.5" /> Priority and expected reduction are supplied by the server; ticket actions use stored connections.
-      </div>
+      <VerificationQueue />
+      {!loading && !error && campaigns.length > 0 ? (
+        <>
+          <div className="grid gap-4 2xl:grid-cols-2">
+            {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} />)}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Priority and expected reduction are supplied by the server; ticket actions use stored connections.
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }

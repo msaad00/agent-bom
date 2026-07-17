@@ -752,6 +752,20 @@ describe('api risk campaigns', () => {
     expect(result.total_approximate).toBe(false)
   })
 
+  it('reads the durable inactive verification queue', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'risk-campaign-verification-queue.v1',
+      tenant_id: 't1',
+      entries: [],
+      count: 0,
+    })
+
+    await api.listRiskCampaignVerificationQueue()
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/campaigns/verification-queue')
+    expect(opts.method ?? 'GET').toBe('GET')
+  })
+
   it('patches only workflow fields', async () => {
     global.fetch = mockFetch({ id: 'campaign-1', state: 'blocked' })
     await api.updateRiskCampaign('campaign-1', { version: 4, state: 'blocked' })

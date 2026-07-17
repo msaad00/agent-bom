@@ -3676,3 +3676,89 @@ export interface ReportCreateRequest {
   sort?: ReportSort;
   severity?: string | null;
 }
+
+// ── ITSM ticketing (connect-once) ─────────────────────────────────────────────
+// Shapes mirror src/agent_bom/api/routes/ticketing.py + ticketing/service.py.
+// Credentials never appear here: a connection is created once in the Connections
+// hub, and every ticket action runs through the stored, encrypted connection.
+
+export type TicketProvider = "jira" | "servicenow" | "generic" | string;
+export type TicketTransport = "mcp" | "rest" | string;
+export type TicketConnectionStatus = "pending" | "active" | "error" | string;
+/** Canonical, provider-neutral ticket status (models.py TicketStatus). */
+export type TicketStatus = "open" | "in_progress" | "done" | "unknown" | string;
+
+/** Non-secret metadata for a stored ticketing connection. */
+export interface TicketingConnection {
+  id: string;
+  tenant_id: string;
+  provider: TicketProvider;
+  transport: TicketTransport;
+  auth_method: string;
+  display_name: string;
+  endpoint: string;
+  auth_params: Record<string, string>;
+  status: TicketConnectionStatus;
+  status_detail: string;
+  created_at: string;
+  updated_at: string;
+  has_secret: boolean;
+}
+
+export interface TicketingConnectionsResponse {
+  schema_version: string;
+  tenant_id: string;
+  connections: TicketingConnection[];
+  count: number;
+}
+
+/** A finding→ticket link (also the idempotency ledger row). */
+export interface TicketLink {
+  id: string;
+  tenant_id: string;
+  connection_id: string;
+  dedupe_key: string;
+  provider: TicketProvider;
+  status: TicketStatus;
+  external_id: string;
+  key: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TicketsListResponse {
+  schema_version: string;
+  tenant_id: string;
+  tickets: TicketLink[];
+  count: number;
+}
+
+/** Result of creating or syncing a ticket (service.py _result). */
+export interface TicketActionResult {
+  schema_version: string;
+  ticket: TicketLink;
+  connection_id: string;
+  provider: TicketProvider;
+  transport: TicketTransport;
+  deduplicated: boolean;
+  audit_metadata: {
+    connect_once: boolean;
+    per_action_credential: boolean;
+    note: string;
+  };
+}
+
+/**
+ * Body for POST /v1/ticketing/tickets. Carries NO credential, token, or
+ * base-URL: auth + endpoint resolve only from the stored connection. Title and
+ * description are derived server-side from `finding` (TicketDraft.from_finding).
+ */
+export interface TicketCreateBody {
+  connection_id?: string;
+  finding_id?: string;
+  project?: string;
+  issue_type?: string;
+  source_url?: string;
+  finding: Record<string, unknown>;
+}

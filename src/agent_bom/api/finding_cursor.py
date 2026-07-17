@@ -51,33 +51,41 @@ def decode_finding_cursor(cursor: str, *, expected_sort: str) -> tuple[float, st
         sort = str(payload.get("sort") or "")
         if sort != expected_sort:
             raise ValueError("Cursor sort mismatch")
+        primary: float | int
         if sort == "ordinal":
-            # ``ordinal`` orders by ``ledger_ordinal, first_seen, canonical_id``
-            # but the cursor tuple carries ``last_seen`` — a keyset over it would
-            # filter by a key the ORDER BY never uses, dropping/duplicating rows.
-            # ``ordinal`` therefore paginates by OFFSET only; a cursor is invalid.
-            raise ValueError("ordinal sort does not support cursor pagination; use offset")
-        return float(payload.get("primary") or 0.0), str(payload.get("last_seen") or ""), str(payload.get("canonical_id") or "")
+            # Ordinal cursors use the actual indexed ORDER BY tuple:
+            # (ledger_ordinal ASC, first_seen ASC, canonical_id ASC). Keep the
+            # bigint as an int so MAX(bigint) remains exact through JSON decode.
+            primary = int(payload.get("primary") or 0)
+        else:
+            primary = float(payload.get("primary") or 0.0)
+        return primary, str(payload.get("last_seen") or ""), str(payload.get("canonical_id") or "")
     except Exception as exc:
         raise ValueError("Invalid findings cursor") from exc
 
 
 def cursor_from_current_row(row: dict[str, Any], *, sort: str) -> str:
     normalized = sort if sort in _ALLOWED_SORTS else "effective_reach"
+    primary: float | int
     if normalized == "ordinal":
-        # No keyset cursor is emitted for ordinal (see ``decode_finding_cursor``):
-        # its ORDER BY key is not in the cursor tuple. Callers page by OFFSET.
-        return ""
-    if normalized == "cvss":
+        raw_ordinal = row.get("ledger_ordinal")
+        primary = int(raw_ordinal) if raw_ordinal is not None else 0
+        tie = str(row.get("first_seen") or "")
+    elif normalized == "cvss":
         primary = cvss_sort_value(row.get("cvss_score"))
+        tie = str(row.get("last_seen") or "")
     elif normalized == "severity":
         primary = float(row.get("severity_rank") or 0.0)
+        tie = str(row.get("last_seen") or "")
     else:
         primary = float(row.get("effective_reach_score") or 0.0)
+        tie = str(row.get("last_seen") or "")
     return encode_finding_cursor(
         sort=normalized,
         primary=primary,
-        last_seen=str(row.get("last_seen") or ""),
+        # The cursor stays opaque to callers. For ordinal, this slot carries
+        # first_seen; for descending risk sorts it carries last_seen.
+        last_seen=tie,
         canonical_id=str(row.get("canonical_id") or ""),
     )
 
@@ -92,11 +100,11 @@ def sqlite_keyset_clause(sort: str, cursor: str) -> tuple[str, list[Any]]:
     """Return extra WHERE SQL + params for keyset pagination after ``cursor``."""
     normalized = sort if sort in _ALLOWED_SORTS else "effective_reach"
     if normalized == "ordinal":
-        # Guarded here as well as in ``decode_finding_cursor``: an ordinal keyset
-        # would have to filter on ``ledger_ordinal``/``first_seen`` (the ORDER BY
-        # key), which the cursor tuple does not carry. Reject rather than emit a
-        # predicate that dup/drops rows.
-        raise ValueError("ordinal sort does not support cursor pagination; use offset")
+        primary, first_seen, canonical_id = decode_finding_cursor(cursor, expected_sort=normalized)
+        return (
+            " AND (ledger_ordinal > ? OR (ledger_ordinal = ? AND (first_seen > ? OR (first_seen = ? AND canonical_id > ?))))",
+            [primary, primary, first_seen, first_seen, canonical_id],
+        )
     primary, last_seen, canonical_id = decode_finding_cursor(cursor, expected_sort=normalized)
     if normalized == "cvss":
         col = _cvss_keyset_expr()
@@ -128,9 +136,15 @@ def row_is_after_cursor(
     row_last = str(row.get("last_seen") or "")
     row_canonical = str(row.get("canonical_id") or "")
     if normalized == "ordinal":
-        # Ordinal has no keyset cursor (see ``decode_finding_cursor``); it pages
-        # by OFFSET. Reject rather than compare on the wrong (last_seen) key.
-        raise ValueError("ordinal sort does not support cursor pagination; use offset")
+        raw_ordinal = row.get("ledger_ordinal")
+        row_ordinal = int(raw_ordinal) if raw_ordinal is not None else 0
+        row_first = str(row.get("first_seen") or "")
+        cursor_ordinal = int(primary)
+        if row_ordinal != cursor_ordinal:
+            return row_ordinal > cursor_ordinal
+        if row_first != last_seen:
+            return row_first > last_seen
+        return row_canonical > canonical_id
     if normalized == "cvss":
         row_primary = cvss_sort_value(row.get("cvss_score"))
     elif normalized == "severity":

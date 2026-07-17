@@ -120,7 +120,10 @@ def infer_risk_level(metadata: dict) -> str:
     Returns "high", "medium", or "low".
     """
     score = 0
-    desc = (metadata.get("description", "") + " " + " ".join(metadata.get("keywords", []))).lower()
+    description = str(metadata.get("description") or "")
+    raw_keywords = metadata.get("keywords") or []
+    keywords = [raw_keywords] if isinstance(raw_keywords, str) else [str(value) for value in raw_keywords]
+    desc = (description + " " + " ".join(keywords)).lower()
 
     # Capability signals from description/keywords
     if any(kw in desc for kw in _HIGH_RISK_KEYWORDS):
@@ -138,10 +141,10 @@ def infer_risk_level(metadata: dict) -> str:
 
     # Dependencies amplify risk
     dep_count = metadata.get("dependencies_count", 0)
-    if dep_count > 20:
-        score += 1
-    elif dep_count > 50:
+    if dep_count > 50:
         score += 2
+    elif dep_count > 20:
+        score += 1
 
     if score >= 5:
         return "high"
@@ -153,11 +156,14 @@ def infer_risk_level(metadata: dict) -> str:
 def generate_risk_justification(metadata: dict, risk_level: str) -> str:
     """Generate human-readable risk justification from metadata signals."""
     parts: list[str] = []
-    desc = (metadata.get("description", "") + " " + " ".join(metadata.get("keywords", []))).lower()
+    description = str(metadata.get("description") or "")
+    raw_keywords = metadata.get("keywords") or []
+    keywords = [raw_keywords] if isinstance(raw_keywords, str) else [str(value) for value in raw_keywords]
+    desc = (description + " " + " ".join(keywords)).lower()
 
     # What it does
-    if metadata.get("description"):
-        parts.append(metadata["description"].rstrip(".") + ".")
+    if description:
+        parts.append(description.rstrip(".") + ".")
 
     # Capability signals
     high_kws = [kw for kw in _HIGH_RISK_KEYWORDS if kw in desc]

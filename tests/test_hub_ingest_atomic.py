@@ -17,6 +17,7 @@ test runs everywhere against a fake store.
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from typing import Any
 from uuid import uuid4
 
@@ -154,9 +155,7 @@ def test_atomic_ingest_matches_sequential_add_plus_upsert():
     tok = set_current_tenant(tenant_seq)
     try:
         store.add(tenant_seq, payloads)
-        store.upsert_current_batch(
-            tenant_seq, payloads, observed_at="2026-07-16T00:00:00Z", batch_id="b", source="connector"
-        )
+        store.upsert_current_batch(tenant_seq, payloads, observed_at="2026-07-16T00:00:00Z", batch_id="b", source="connector")
         seq_count = store.count(tenant_seq)
         seq_current = store.list_current_page(tenant_seq, limit=50)[1]
     finally:
@@ -248,3 +247,92 @@ def test_shared_body_uses_atomic_seam_when_available():
     assert result["reconciled"] == 0
     assert store.calls and store.calls[0]["batch_id"] == "batch-9"
     assert store.calls[0]["reconcile_absent"] is False
+
+
+def test_postgres_atomic_store_invalidates_cached_finding_totals(monkeypatch):
+    """The atomic write seam invalidates the same tenant cache as split writes."""
+    from agent_bom.api import postgres_compliance_hub as module
+    from agent_bom.api.findings_count_cache import (
+        cache_key,
+        get_cached_total,
+        reset_findings_count_cache,
+        set_cached_total,
+    )
+
+    class _Connection:
+        def commit(self) -> None:
+            return None
+
+    @contextmanager
+    def _connection(_pool):
+        yield _Connection()
+
+    store = module.PostgresComplianceHubStore.__new__(module.PostgresComplianceHubStore)
+    store._pool = object()
+    monkeypatch.setattr(module, "_tenant_connection", _connection)
+    monkeypatch.setattr(store, "_write_ledger_batch", lambda *_a, **_k: 1)
+    monkeypatch.setattr(store, "_write_current_batch", lambda *_a, **_k: None)
+    monkeypatch.setattr(store, "_bump_tenant_total", lambda *_a, **_k: 2)
+
+    key = cache_key(
+        tenant_id="tenant-cache",
+        severity=None,
+        scan_id=None,
+        origin="bulk_ingest",
+        window_days=90,
+    )
+    reset_findings_count_cache()
+    set_cached_total(key, 1)
+
+    total, reconciled = store.ingest_batch_atomic(
+        "tenant-cache",
+        [_payload(2)],
+        observed_at="2026-07-17T00:00:00Z",
+        batch_id="batch-2",
+        source="connector",
+        reconcile_absent=False,
+        present_canonical_ids={"c-2"},
+    )
+
+    assert (total, reconciled) == (2, 0)
+    assert get_cached_total(key) is None
+
+
+@pg_only
+def test_live_postgres_atomic_ingest_invalidates_cached_finding_totals():
+    """A committed live write drops every cached filter/window for its tenant."""
+    from agent_bom.api.findings_count_cache import (
+        cache_key,
+        get_cached_total,
+        reset_findings_count_cache,
+        set_cached_total,
+    )
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_compliance_hub import PostgresComplianceHubStore
+
+    tenant = f"atomic-cache-{uuid4().hex}"
+    token = set_current_tenant(tenant)
+    key = cache_key(
+        tenant_id=tenant,
+        severity="critical",
+        scan_id=None,
+        origin="bulk_ingest",
+        window_days=90,
+    )
+    try:
+        reset_findings_count_cache()
+        set_cached_total(key, 1)
+        store = PostgresComplianceHubStore()
+        store.ingest_batch_atomic(
+            tenant,
+            [_payload(1, severity="critical")],
+            observed_at="2026-07-17T00:00:00Z",
+            batch_id="batch-live-cache",
+            source="connector",
+            reconcile_absent=False,
+            present_canonical_ids={"c-1"},
+        )
+        assert get_cached_total(key) is None
+    finally:
+        reset_findings_count_cache()
+        reset_current_tenant(token)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from starlette.testclient import TestClient
 
 from agent_bom.api.server import JobStatus, _get_store, app, configure_api
@@ -10,6 +12,10 @@ from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_e
 
 _AUTH_HEADERS = proxy_headers(tenant="default")
 _ADMIN_HEADERS = proxy_headers(role="admin", tenant="default")
+
+
+def _recent_stamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def setup_module() -> None:
@@ -43,11 +49,11 @@ def _add_done_job(
     job = ScanJob(
         job_id=job_id,
         tenant_id=tenant_id,
-        created_at="2026-02-22T10:00:00Z",
+        created_at=_recent_stamp(),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    job.completed_at = _recent_stamp()
     job.result = {
         "agents": [],
         "blast_radius": blast_radius,
@@ -144,11 +150,11 @@ def test_overview_reads_compacted_scan_summary() -> None:
     job = ScanJob(
         job_id="compact-job",
         tenant_id="default",
-        created_at="2026-02-22T10:00:00Z",
+        created_at=_recent_stamp(),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    job.completed_at = _recent_stamp()
     job.result = {
         "summary": {
             "total_vulnerabilities": 87,
@@ -178,16 +184,14 @@ def test_overview_reads_compacted_scan_summary() -> None:
     assert resp.status_code == 200
     data = resp.json()
 
-    # The configurable exec-score engine (#3940) recomputes the grade from the
-    # honest estate counts and takes the *worst* of that and the scan scorecard
-    # floor (42.0). 3 critical + 12 high + 72 unrated is heavy pressure, so the
-    # diminishing-returns score lands well below the floor — still an F, and the
-    # CVE/severity tiles are populated (the compaction-must-not-zero-tiles intent
-    # this test guards).
+    # Historical compact summaries still populate scan/domain reporting and the
+    # scorecard floor. They cannot populate a current finding drill-down because
+    # the rows were compacted, so the executive severity headline remains exact
+    # with /v1/findings instead of presenting non-clickable counts.
     assert data["posture"]["grade"] == "F"
     assert data["posture"]["score"] <= 42.0
-    assert data["headline"]["critical"] == 3
-    assert data["headline"]["high"] == 12
+    assert data["headline"]["critical"] == 0
+    assert data["headline"]["high"] == 0
     assert data["domains"]["vuln"]["metric"] == 87
 
 
@@ -402,11 +406,11 @@ def test_overview_coverage_lanes_map_to_five_domains() -> None:
     job = ScanJob(
         job_id="dom-job",
         tenant_id="default",
-        created_at="2026-02-22T10:00:00Z",
+        created_at=_recent_stamp(),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    job.completed_at = _recent_stamp()
     job.result = {
         "agents": [],
         "scan_sources": ["cloud"],
@@ -453,11 +457,11 @@ def test_overview_coverage_lanes_overlap_for_repo_dependency_cve() -> None:
     job = ScanJob(
         job_id="overlap-job",
         tenant_id="default",
-        created_at="2026-02-22T10:00:00Z",
+        created_at=_recent_stamp(),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    job.completed_at = _recent_stamp()
     job.result = {
         "agents": [],
         "scan_sources": ["project"],
@@ -526,11 +530,11 @@ def test_overview_headline_reflects_noncve_spine_critical() -> None:
     job = ScanJob(
         job_id="spine-job",
         tenant_id="default",
-        created_at="2026-02-22T10:00:00Z",
+        created_at=_recent_stamp(),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    job.completed_at = _recent_stamp()
     job.result = {
         "agents": [],
         "scan_sources": ["agent_discovery"],
@@ -583,11 +587,11 @@ def test_posture_counts_reconcile_with_overview_headline() -> None:
     job = ScanJob(
         job_id="reconcile-job",
         tenant_id="default",
-        created_at="2026-02-22T10:00:00Z",
+        created_at=_recent_stamp(),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    job.completed_at = _recent_stamp()
     job.result = {
         "agents": [],
         "scan_sources": ["agent_discovery"],
@@ -631,11 +635,11 @@ def test_overview_compliance_failing_moves_grade() -> None:
         job = ScanJob(
             job_id="cmp-job",
             tenant_id="default",
-            created_at="2026-02-22T10:00:00Z",
+            created_at=_recent_stamp(),
             request=ScanRequest(),
         )
         job.status = JobStatus.DONE
-        job.completed_at = "2026-02-22T10:05:00Z"
+        job.completed_at = _recent_stamp()
         job.result = {
             "agents": [],
             "scan_sources": ["cloud"],

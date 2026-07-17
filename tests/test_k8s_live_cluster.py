@@ -19,12 +19,16 @@ import subprocess
 import pytest
 
 from agent_bom.k8s import (
+    CollectorState,
     K8sDiscoveryError,
+    K8sPostureStatus,
     evaluate_kubelet_config,
     evaluate_pod_security,
     evaluate_rbac,
     scan_live_cluster_posture,
+    scan_live_cluster_posture_with_evidence,
 )
+from agent_bom.k8s_transport import K8sReadResult, K8sTransportError
 
 # ─── PodSecurity (running workloads) ─────────────────────────────────────────
 
@@ -337,10 +341,8 @@ def test_scan_live_cluster_no_kubectl(monkeypatch):
         scan_live_cluster_posture(namespace="prod")
 
 
-def test_scan_live_cluster_kubelet_unreachable_skips_not_fails(monkeypatch):
-    """A managed cluster that blocks the kubelet configz proxy must skip node
-    checks honestly (no finding fabricated, scan still completes) rather than
-    crash or emit a false pass."""
+def test_scan_live_cluster_does_not_request_configz_by_default(monkeypatch):
+    """The compatibility scan does not request opt-in node config evidence."""
     monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/" + cmd)
 
     import json
@@ -361,12 +363,7 @@ def test_scan_live_cluster_kubelet_unreachable_skips_not_fails(monkeypatch):
         r = R()
         r.stderr = ""
         key = tuple(cmd[1:3])
-        if key == ("get", "--raw"):
-            # kubelet configz blocked (managed control plane)
-            r.returncode = 1
-            r.stdout = ""
-            r.stderr = "Error from server (Forbidden): nodes proxy is forbidden"
-            return r
+        assert key != ("get", "--raw")
         r.returncode = 0
         r.stdout = json.dumps(payloads[key])
         return r
@@ -376,3 +373,154 @@ def test_scan_live_cluster_kubelet_unreachable_skips_not_fails(monkeypatch):
     # Must not raise; kubelet checks are simply skipped.
     findings = scan_live_cluster_posture(namespace="prod")
     assert all(not f.rule_id.startswith("K8S-LIVE-02") for f in findings)
+
+
+class _FixtureTransport:
+    name = "fixture"
+
+    def __init__(self, payloads: dict[str, dict], errors: dict[str, K8sTransportError] | None = None) -> None:
+        self.payloads = payloads
+        self.errors = errors or {}
+        self.get_paths: list[tuple[str, int, str]] = []
+
+    def list_resource(self, resource: str, *, namespace: str | None = None, all_namespaces: bool = False):
+        del namespace, all_namespaces
+        if resource in self.errors:
+            raise self.errors[resource]
+        data = self.payloads.get(resource, {"items": []})
+        return K8sReadResult(data=data, object_count=len(data.get("items", [])), pages=1, truncated=False)
+
+    def get_kubelet_json(self, host: str, port: int, path: str, *, timeout: int | None = None):
+        del timeout
+        self.get_paths.append((host, port, path))
+        if "configz" in self.errors:
+            raise self.errors["configz"]
+        return self.payloads.get("configz", {})
+
+    def close(self) -> None:
+        return None
+
+
+def _foundation_payloads() -> dict[str, dict]:
+    return {
+        "pods": {
+            "items": [
+                _pod(
+                    {
+                        "automountServiceAccountToken": False,
+                        "securityContext": {"runAsNonRoot": True},
+                        "containers": [{"name": "c", "securityContext": {"privileged": True}}],
+                    }
+                )
+            ]
+        },
+        "networkpolicies": {"items": []},
+        "clusterrolebindings": {"items": []},
+        "clusterroles": {"items": []},
+        "roles": {"items": []},
+        "nodes": {
+            "items": [
+                {
+                    "metadata": {"name": "node-a"},
+                    "status": {
+                        "addresses": [{"type": "InternalIP", "address": "10.0.0.10"}],
+                        "daemonEndpoints": {"kubeletEndpoint": {"Port": 10250}},
+                    },
+                }
+            ]
+        },
+    }
+
+
+def test_posture_evidence_isolates_forbidden_collector_without_false_network_policy_finding() -> None:
+    transport = _FixtureTransport(
+        _foundation_payloads(),
+        errors={"networkpolicies": K8sTransportError("forbidden", status_code=403)},
+    )
+
+    result = scan_live_cluster_posture_with_evidence(namespace="prod", transport=transport)
+
+    evidence = {item.collector_id: item for item in result.collectors}
+    assert result.status is K8sPostureStatus.PARTIAL
+    assert evidence["pods"].state is CollectorState.EXECUTED
+    assert evidence["networkpolicies"].state is CollectorState.UNEVALUABLE
+    assert "K8S-LIVE-007" in {finding.rule_id for finding in result.findings}
+    assert "K8S-LIVE-005" not in {finding.rule_id for finding in result.findings}
+
+
+def test_kubelet_configz_is_opt_in_and_skipped_without_proxy_access() -> None:
+    transport = _FixtureTransport(_foundation_payloads())
+
+    result = scan_live_cluster_posture_with_evidence(namespace="prod", transport=transport)
+
+    evidence = {item.collector_id: item for item in result.collectors}
+    assert evidence["kubelet_configz"].state is CollectorState.SKIPPED
+    assert result.status is K8sPostureStatus.COMPLETE
+    assert transport.get_paths == []
+
+
+def test_kubelet_configz_forbidden_is_unevaluable_not_clean() -> None:
+    transport = _FixtureTransport(
+        _foundation_payloads(),
+        errors={"configz": K8sTransportError("forbidden", status_code=403)},
+    )
+
+    result = scan_live_cluster_posture_with_evidence(
+        namespace="prod",
+        transport=transport,
+        enable_nodes_configz=True,
+    )
+
+    evidence = {item.collector_id: item for item in result.collectors}
+    assert evidence["kubelet_configz"].state is CollectorState.UNEVALUABLE
+    assert result.status is K8sPostureStatus.PARTIAL
+    assert transport.get_paths == [("10.0.0.10", 10250, "/configz")]
+    assert all(not finding.rule_id.startswith("K8S-LIVE-02") for finding in result.findings)
+
+
+def test_kubelet_configz_success_is_executed_evidence() -> None:
+    payloads = _foundation_payloads()
+    payloads["configz"] = {
+        "kubeletconfig": {
+            "authentication": {"anonymous": {"enabled": False}},
+            "authorization": {"mode": "Webhook"},
+            "readOnlyPort": 0,
+        }
+    }
+    transport = _FixtureTransport(payloads)
+
+    result = scan_live_cluster_posture_with_evidence(
+        namespace="prod",
+        transport=transport,
+        enable_nodes_configz=True,
+    )
+
+    evidence = {item.collector_id: item for item in result.collectors}
+    assert evidence["kubelet_configz"].state is CollectorState.EXECUTED
+    assert evidence["kubelet_configz"].object_count == 1
+    assert result.status is K8sPostureStatus.COMPLETE
+
+
+def test_posture_evidence_records_failed_collectors_without_raising() -> None:
+    errors = {
+        resource: K8sTransportError("connection failed")
+        for resource in ("pods", "networkpolicies", "clusterrolebindings", "clusterroles", "roles", "nodes")
+    }
+
+    result = scan_live_cluster_posture_with_evidence(transport=_FixtureTransport({}, errors=errors))
+
+    assert result.status is K8sPostureStatus.FAILED
+    assert {item.state for item in result.collectors if item.collector_id != "kubelet_configz"} == {CollectorState.FAILED}
+
+
+def test_compatibility_wrapper_fails_closed_on_partial_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent_bom.k8s as k8s_module
+
+    transport = _FixtureTransport(
+        _foundation_payloads(),
+        errors={"networkpolicies": K8sTransportError("forbidden", status_code=403)},
+    )
+    monkeypatch.setattr(k8s_module, "select_k8s_transport", lambda **_kwargs: transport)
+
+    with pytest.raises(K8sDiscoveryError, match="forbidden"):
+        scan_live_cluster_posture(namespace="prod")

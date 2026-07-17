@@ -7,10 +7,19 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import click
 
-from agent_bom.sbom_attestation import sign_sbom_file, verify_sbom_attestation
+from agent_bom.sbom_attestation import (
+    AttestationSigningError,
+    AttestationTrustError,
+    AttestationTrustPolicy,
+    MemoryAttestationReplayStore,
+    SQLiteAttestationReplayStore,
+    sign_sbom_file,
+    verify_sbom_attestation,
+)
 
 
 @click.group("attest")
@@ -29,9 +38,32 @@ def attest_group() -> None:
     help="Attestation path (default: <sbom>.intoto.json).",
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
-def sign_cmd(sbom_path: str, sig_out: str | None, att_out: str | None, as_json: bool) -> None:
+@click.option("--tenant-id", required=True, help="Tenant bound into the signed attestation.")
+@click.option("--ttl-seconds", type=click.IntRange(1, 2_592_000), default=900, show_default=True)
+def sign_cmd(
+    sbom_path: str,
+    sig_out: str | None,
+    att_out: str | None,
+    as_json: bool,
+    tenant_id: str,
+    ttl_seconds: int,
+) -> None:
     """Sign a generated SBOM file: SHA-256 digest + signed in-toto attestation."""
-    result = sign_sbom_file(sbom_path, signature_path=sig_out, attestation_path=att_out)
+    try:
+        result = sign_sbom_file(
+            sbom_path,
+            signature_path=sig_out,
+            attestation_path=att_out,
+            tenant_id=tenant_id,
+            ttl_seconds=ttl_seconds,
+        )
+    except AttestationSigningError as exc:
+        reason = str(exc)
+        if as_json:
+            click.echo(json.dumps({"sbom": sbom_path, "signed": False, "reason": reason}, indent=2))
+        else:
+            click.echo(f"FAILED: {sbom_path}\n  reason: {reason}")
+        raise SystemExit(1) from None
     if as_json:
         click.echo(
             json.dumps(
@@ -50,16 +82,11 @@ def sign_cmd(sbom_path: str, sig_out: str | None, att_out: str | None, as_json: 
         return
     click.echo(f"Signed SBOM:   {result.sbom_path}")
     click.echo(f"  sha256:      {result.sha256}")
-    click.echo(f"  algorithm:   {result.algorithm}" + ("" if result.cryptographic else "  (tamper-evident, not asymmetric)"))
+    click.echo(f"  algorithm:   {result.algorithm}")
     if result.key_id:
         click.echo(f"  key_id:      {result.key_id}")
     click.echo(f"  signature:   {result.signature_path}")
     click.echo(f"  attestation: {result.attestation_path}")
-    if not result.cryptographic:
-        click.echo(
-            "  note: HMAC-SHA256 mode — verifiers need the shared secret. "
-            "Set AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM for asymmetric, third-party-verifiable signatures."
-        )
 
 
 @attest_group.command("verify")
@@ -78,10 +105,65 @@ def sign_cmd(sbom_path: str, sig_out: str | None, att_out: str | None, as_json: 
     default=None,
     help="Detached signature path (default: <sbom>.sig).",
 )
+@click.option(
+    "--public-key",
+    "public_key_paths",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    multiple=True,
+    help="Trusted Ed25519 public-key PEM file. Repeat for key rotation; embedded envelope keys are never trusted.",
+)
+@click.option("--tenant-id", required=True, help="Expected signed tenant boundary.")
+@click.option("--max-age-seconds", type=click.IntRange(1, 2_592_000), default=3600, show_default=True)
+@click.option("--clock-skew-seconds", type=click.IntRange(0, 300), default=60, show_default=True)
+@click.option(
+    "--replay-cache",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="SQLite replay cache shared across verifier processes. Without it, replay state is process-local.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
-def verify_cmd(sbom_path: str, att_path: str | None, sig_path: str | None, as_json: bool) -> None:
+def verify_cmd(
+    sbom_path: str,
+    att_path: str | None,
+    sig_path: str | None,
+    public_key_paths: tuple[str, ...],
+    tenant_id: str,
+    max_age_seconds: int,
+    clock_skew_seconds: int,
+    replay_cache: str | None,
+    as_json: bool,
+) -> None:
     """Verify a generated SBOM against its in-toto attestation and detached signature."""
-    result = verify_sbom_attestation(sbom_path, attestation_path=att_path, signature_path=sig_path)
+    trust_policy = None
+    replay_store = SQLiteAttestationReplayStore(replay_cache) if replay_cache else MemoryAttestationReplayStore()
+    if public_key_paths:
+        try:
+            pems: list[str] = []
+            for raw_path in public_key_paths:
+                path = Path(raw_path)
+                if path.stat().st_size > 64 * 1024:
+                    raise AttestationTrustError("trusted_public_key_file_too_large")
+                pems.append(path.read_text(encoding="utf-8"))
+            trust_policy = AttestationTrustPolicy.from_public_key_pems(
+                pems,
+                expected_tenant_id=tenant_id,
+                max_age_seconds=max_age_seconds,
+                clock_skew_seconds=clock_skew_seconds,
+                replay_store=replay_store,
+            )
+        except (OSError, UnicodeError, AttestationTrustError) as exc:
+            reason = str(exc) if isinstance(exc, AttestationTrustError) else "trusted_public_key_unreadable"
+            if as_json:
+                click.echo(json.dumps({"sbom": sbom_path, "verified": False, "reason": reason}, indent=2))
+            else:
+                click.echo(f"FAILED: {sbom_path}\n  reason: {reason}")
+            raise SystemExit(1) from None
+    result = verify_sbom_attestation(
+        sbom_path,
+        attestation_path=att_path,
+        signature_path=sig_path,
+        trust_policy=trust_policy,
+    )
     if as_json:
         click.echo(
             json.dumps(
@@ -96,6 +178,13 @@ def verify_cmd(sbom_path: str, att_path: str | None, sig_path: str | None, as_js
                     "checks": result.checks,
                     "expected_sha256": result.expected_sha256,
                     "actual_sha256": result.actual_sha256,
+                    "format_version": result.format_version,
+                    "legacy": result.legacy,
+                    "trust_status": result.trust_status,
+                    "tenant_id": result.tenant_id,
+                    "evidence_id": result.evidence_id,
+                    "issued_at": result.issued_at,
+                    "expires_at": result.expires_at,
                 },
                 indent=2,
             )

@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (73):
+Tools (75):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -1186,6 +1186,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         read_only=_READ_ONLY,
         execute_tool_sync_async=_execute_tool_sync_async,
         safe_path=_safe_path,
+        truncate_response=_truncate_response,
+    )
+
+    from agent_bom.mcp_server_ticketing_tools import register_ticketing_tools
+
+    register_ticketing_tools(
+        mcp,
+        write_action=_WRITE_ACTION,
+        execute_tool_async=_execute_tool_async,
         truncate_response=_truncate_response,
     )
 

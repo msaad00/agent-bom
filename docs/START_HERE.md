@@ -47,7 +47,7 @@ docker compose -f deploy/docker-compose.pilot.yml up -d
 
 - Deployment chooser (Docker / Helm / EKS / Postgres):
   [`../site-docs/deployment/overview.md`](../site-docs/deployment/overview.md)
-- API contract (350 operations): [`../docs/openapi/v1.json`](openapi/v1.json)
+- API contract (357 operations): [`../docs/openapi/v1.json`](openapi/v1.json)
 - Enterprise auth, tenancy, RBAC: [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md),
   [`PERMISSIONS.md`](PERMISSIONS.md)
 - Runtime proxy/gateway enforcement: [`MCP_SERVER.md`](MCP_SERVER.md) and the
@@ -102,7 +102,7 @@ scan a repo by URL.
 
 ```bash
 pip install 'agent-bom[mcp-server]'
-agent-bom mcp server                      # stdio MCP server: 73 tools, 6 resources, 8 prompts
+agent-bom mcp server                      # stdio MCP server: 75 tools, 6 resources, 8 prompts
 ```
 
 - MCP server setup + client guides: [`MCP_SERVER.md`](MCP_SERVER.md),

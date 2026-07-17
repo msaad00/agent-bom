@@ -50,7 +50,7 @@
 
 **MCP server mode**
 
-- Advertises 73 MCP tools, 6 resources, and 8 workflow prompts.
+- Advertises 75 MCP tools, 6 resources, and 8 workflow prompts.
 - Registry metadata lives in the committed Smithery manifest and Glama listing; install and liveness checks are in the integration docs.
 
 </details>

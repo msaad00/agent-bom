@@ -22,7 +22,7 @@ import os
 import warnings
 from datetime import datetime, timezone
 
-from agent_bom.snowflake_spcs_auth import apply_spcs_workload_identity, native_app_mode
+from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity, native_app_mode
 
 from .exception_store import ExceptionStatus, VulnException
 from .fleet_store import FleetAgent, FleetLifecycleState

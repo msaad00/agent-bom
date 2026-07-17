@@ -40,6 +40,7 @@ import re
 import warnings
 from typing import Any
 
+from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.governance import (
     AccessRecord,
@@ -56,7 +57,6 @@ from agent_bom.governance import (
 )
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 from agent_bom.security import sanitize_error
-from agent_bom.snowflake_spcs_auth import apply_spcs_workload_identity
 
 from .base import CloudDiscoveryError
 from .normalization import (

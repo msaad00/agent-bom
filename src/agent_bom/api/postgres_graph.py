@@ -613,7 +613,7 @@ class PostgresGraphStore:
             )
             previous_row = conn.execute(
                 """
-                SELECT scan_id
+                SELECT scan_id, created_at
                 FROM graph_snapshots
                 WHERE tenant_id = %s
                 ORDER BY created_at DESC, scan_id DESC
@@ -622,8 +622,18 @@ class PostgresGraphStore:
                 (tenant,),
             ).fetchone()
             previous_scan = str(previous_row[0]) if previous_row else ""
-            if previous_scan == scan:
-                previous_scan = self.previous_snapshot_id(tenant_id=tenant, before_scan_id=scan)
+            if previous_row and previous_scan == scan:
+                prior_row = conn.execute(
+                    """
+                    SELECT scan_id
+                    FROM graph_snapshots
+                    WHERE tenant_id = %s AND created_at < %s
+                    ORDER BY created_at DESC, scan_id DESC
+                    LIMIT 1
+                    """,
+                    (tenant, previous_row[1]),
+                ).fetchone()
+                previous_scan = str(prior_row[0]) if prior_row else ""
             previous_edges: dict[tuple[str, str, str], Any] = {}
             if previous_scan:
                 for row in conn.execute(

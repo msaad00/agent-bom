@@ -82,8 +82,10 @@ class _RecordingConn:
 class _FakePool:
     def __init__(self, conn):
         self._conn = conn
+        self.connection_calls = 0
 
     def connection(self):
+        self.connection_calls += 1
         return self._conn
 
 
@@ -184,3 +186,24 @@ def test_streaming_serializes_and_replaces_same_snapshot(monkeypatch):
         "graph_nodes",
         "graph_snapshots",
     ]
+
+
+def test_same_scan_retry_does_not_checkout_nested_connection(monkeypatch):
+    """A one-connection pool must not deadlock while resolving prior history."""
+    class _RetryConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("select scan_id") and "order by created_at" in low and "created_at <" not in low:
+                return _FakeCursor([("scan-retry", "2026-07-17T00:00:00+00:00")])
+            if low.startswith("select created_at"):
+                return _FakeCursor([("2026-07-17T00:00:00+00:00",)])
+            if low.startswith("select scan_id") and "created_at <" in low:
+                return _FakeCursor([])
+            return super().execute(sql, params)
+
+    conn = _RetryConn()
+    store = _make_store(conn, monkeypatch)
+
+    store.save_graph_streaming(scan_id="scan-retry", tenant_id="t1", nodes=_nodes(1), edges=iter(()))
+
+    assert store._pool.connection_calls == 1

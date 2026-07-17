@@ -270,7 +270,7 @@ async def create_ticket(request: Request, body: TicketCreate, _role: Any = _WRIT
             actor=_actor(request),
         )
     except TicketingError as exc:
-        raise HTTPException(status_code=_ERROR_STATUS.get(exc.code, 400), detail=str(exc)) from exc
+        raise HTTPException(status_code=_ERROR_STATUS.get(exc.code, 400), detail=sanitize_error(exc)) from exc
 
 
 @router.get("/ticketing/tickets")
@@ -293,4 +293,4 @@ async def sync_ticket(request: Request, ticket_id: str, _role: Any = _WRITE_DEP)
     try:
         return await sync_ticket_status(tenant_id=tenant_id, ticket_id=ticket_id, actor=_actor(request))
     except TicketingError as exc:
-        raise HTTPException(status_code=_ERROR_STATUS.get(exc.code, 400), detail=str(exc)) from exc
+        raise HTTPException(status_code=_ERROR_STATUS.get(exc.code, 400), detail=sanitize_error(exc)) from exc

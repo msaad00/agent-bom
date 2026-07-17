@@ -483,3 +483,8 @@ AGENT_BOM_POSTGRES_IAM_REGION
 # (cli/agents). Boolean intent flag that flips auto-proposed gateway block rules
 # from audit (propose only) to enforce mode; not a scalar config knob.
 AGENT_BOM_ENFORCE_CORRELATED_BLOCKS
+
+# Atlassian OAuth app identity and file-first secret are resolved dynamically
+# by the connect-once Jira integration so credentials can rotate at runtime.
+AGENT_BOM_JIRA_OAUTH_CLIENT_ID
+AGENT_BOM_JIRA_OAUTH_CLIENT_SECRET

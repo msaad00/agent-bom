@@ -281,14 +281,14 @@ class SQLiteTicketingStore:
 
     def get_connection(self, tenant_id: str, connection_id: str) -> TicketingConnectionRecord | None:
         row = self._conn.execute(
-            f"SELECT {_CONN_COLS} FROM ticketing_connections WHERE tenant_id = ? AND id = ?",
+            f"SELECT {_CONN_COLS} FROM ticketing_connections WHERE tenant_id = ? AND id = ?",  # nosec B608 -- fixed internal columns
             (tenant_id, connection_id),
         ).fetchone()
         return _row_to_conn(row) if row else None
 
     def list_connections(self, tenant_id: str) -> list[TicketingConnectionRecord]:
         rows = self._conn.execute(
-            f"SELECT {_CONN_COLS} FROM ticketing_connections WHERE tenant_id = ? ORDER BY created_at, id",
+            f"SELECT {_CONN_COLS} FROM ticketing_connections WHERE tenant_id = ? ORDER BY created_at, id",  # nosec B608 -- fixed internal columns
             (tenant_id,),
         ).fetchall()
         return [_row_to_conn(r) for r in rows]
@@ -304,7 +304,7 @@ class SQLiteTicketingStore:
     def claim_ticket_link(self, link: TicketLink) -> tuple[bool, TicketLink]:
         try:
             self._conn.execute(
-                f"INSERT INTO ticket_links ({_LINK_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                f"INSERT INTO ticket_links ({_LINK_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?)",  # nosec B608 -- fixed internal columns
                 (
                     link.id,
                     link.tenant_id,
@@ -337,21 +337,21 @@ class SQLiteTicketingStore:
 
     def get_ticket_link(self, tenant_id: str, ticket_id: str) -> TicketLink | None:
         row = self._conn.execute(
-            f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = ? AND id = ?",
+            f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = ? AND id = ?",  # nosec B608 -- fixed internal columns
             (tenant_id, ticket_id),
         ).fetchone()
         return _row_to_link(row) if row else None
 
     def get_ticket_link_by_dedupe(self, tenant_id: str, connection_id: str, dedupe_key: str) -> TicketLink | None:
         row = self._conn.execute(
-            f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = ? AND connection_id = ? AND dedupe_key = ?",
+            f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = ? AND connection_id = ? AND dedupe_key = ?",  # nosec B608 -- fixed internal columns
             (tenant_id, connection_id, dedupe_key),
         ).fetchone()
         return _row_to_link(row) if row else None
 
     def list_ticket_links(self, tenant_id: str) -> list[TicketLink]:
         rows = self._conn.execute(
-            f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = ? ORDER BY created_at, id",
+            f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = ? ORDER BY created_at, id",  # nosec B608 -- fixed internal columns
             (tenant_id,),
         ).fetchall()
         return [_row_to_link(r) for r in rows]

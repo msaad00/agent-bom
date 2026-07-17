@@ -1314,5 +1314,32 @@
         "desc": "Maximum campaigns to list when campaign_id is omitted (default: 200)"
       }
     ]
+  },
+  {
+    "name": "create_ticket",
+    "description": "File an ITSM ticket for a finding through a stored connect-once connection; no per-action credential.",
+    "arguments": [
+      {"name": "finding", "type": "string", "desc": "Finding or issue as a JSON object"},
+      {"name": "project", "type": "string", "desc": "Target ITSM project or queue key"},
+      {"name": "connection_id", "type": "string", "desc": "Stored ticketing connection id"},
+      {"name": "finding_id", "type": "string", "desc": "Stable finding id for idempotency"},
+      {"name": "issue_type", "type": "string", "desc": "ITSM issue type"},
+      {"name": "source_url", "type": "string", "desc": "Optional agent-bom provenance link"},
+      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
+      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
+      {"name": "reason", "type": "string", "desc": "Human audit reason"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
+    ]
+  },
+  {
+    "name": "sync_ticket_status",
+    "description": "Refresh a filed ITSM ticket's status through the stored ticketing connection.",
+    "arguments": [
+      {"name": "ticket_id", "type": "string", "desc": "Agent-bom ticket link id"},
+      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
+      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
+      {"name": "reason", "type": "string", "desc": "Human audit reason"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
+    ]
   }
 ]

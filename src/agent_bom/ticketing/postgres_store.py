@@ -88,21 +88,14 @@ class PostgresTicketingStore:
     def put_connection(self, record: TicketingConnectionRecord) -> None:
         with _tenant_connection(self._pool) as conn:
             conn.execute(
-                f"""
-                INSERT INTO ticketing_connections ({_CONN_COLS})
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (id) DO UPDATE SET
-                    provider = EXCLUDED.provider,
-                    transport = EXCLUDED.transport,
-                    auth_method = EXCLUDED.auth_method,
-                    display_name = EXCLUDED.display_name,
-                    endpoint = EXCLUDED.endpoint,
-                    secret_encrypted = EXCLUDED.secret_encrypted,
-                    auth_params = EXCLUDED.auth_params,
-                    status = EXCLUDED.status,
-                    status_detail = EXCLUDED.status_detail,
-                    updated_at = EXCLUDED.updated_at
-                """,
+                (
+                    f"INSERT INTO ticketing_connections ({_CONN_COLS}) "  # nosec B608 -- fixed internal columns
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (id) DO UPDATE SET provider = EXCLUDED.provider, transport = EXCLUDED.transport, "
+                    "auth_method = EXCLUDED.auth_method, display_name = EXCLUDED.display_name, endpoint = EXCLUDED.endpoint, "
+                    "secret_encrypted = EXCLUDED.secret_encrypted, auth_params = EXCLUDED.auth_params, status = EXCLUDED.status, "
+                    "status_detail = EXCLUDED.status_detail, updated_at = EXCLUDED.updated_at"
+                ),
                 (
                     record.id,
                     record.tenant_id,
@@ -124,7 +117,7 @@ class PostgresTicketingStore:
     def get_connection(self, tenant_id: str, connection_id: str) -> TicketingConnectionRecord | None:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
-                f"SELECT {_CONN_COLS} FROM ticketing_connections WHERE tenant_id = %s AND id = %s",
+                f"SELECT {_CONN_COLS} FROM ticketing_connections WHERE tenant_id = %s AND id = %s",  # nosec B608 -- fixed internal columns
                 (tenant_id, connection_id),
             ).fetchone()
         return _row_to_conn(row) if row else None
@@ -132,7 +125,7 @@ class PostgresTicketingStore:
     def list_connections(self, tenant_id: str) -> list[TicketingConnectionRecord]:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                f"SELECT {_CONN_COLS} FROM ticketing_connections WHERE tenant_id = %s ORDER BY created_at, id",
+                f"SELECT {_CONN_COLS} FROM ticketing_connections WHERE tenant_id = %s ORDER BY created_at, id",  # nosec B608 -- fixed internal columns
                 (tenant_id,),
             ).fetchall()
         return [_row_to_conn(r) for r in rows]
@@ -149,11 +142,10 @@ class PostgresTicketingStore:
     def claim_ticket_link(self, link: TicketLink) -> tuple[bool, TicketLink]:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
-                f"""
-                INSERT INTO ticket_links ({_LINK_COLS})
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (tenant_id, connection_id, dedupe_key) DO NOTHING
-                """,
+                (
+                    f"INSERT INTO ticket_links ({_LINK_COLS}) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "  # nosec B608 -- fixed internal columns
+                    "ON CONFLICT (tenant_id, connection_id, dedupe_key) DO NOTHING"
+                ),
                 (
                     link.id,
                     link.tenant_id,
@@ -188,7 +180,7 @@ class PostgresTicketingStore:
     def get_ticket_link(self, tenant_id: str, ticket_id: str) -> TicketLink | None:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
-                f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = %s AND id = %s",
+                f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = %s AND id = %s",  # nosec B608 -- fixed internal columns
                 (tenant_id, ticket_id),
             ).fetchone()
         return _row_to_link(row) if row else None
@@ -196,7 +188,7 @@ class PostgresTicketingStore:
     def get_ticket_link_by_dedupe(self, tenant_id: str, connection_id: str, dedupe_key: str) -> TicketLink | None:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
-                f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = %s AND connection_id = %s AND dedupe_key = %s",
+                f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = %s AND connection_id = %s AND dedupe_key = %s",  # nosec B608 -- fixed internal columns
                 (tenant_id, connection_id, dedupe_key),
             ).fetchone()
         return _row_to_link(row) if row else None
@@ -204,7 +196,7 @@ class PostgresTicketingStore:
     def list_ticket_links(self, tenant_id: str) -> list[TicketLink]:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = %s ORDER BY created_at, id",
+                f"SELECT {_LINK_COLS} FROM ticket_links WHERE tenant_id = %s ORDER BY created_at, id",  # nosec B608 -- fixed internal columns
                 (tenant_id,),
             ).fetchall()
         return [_row_to_link(r) for r in rows]

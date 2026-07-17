@@ -58,10 +58,12 @@ def test_run_scan_sync_clones_repo_url_and_cleans_up(monkeypatch: pytest.MonkeyP
 
     from agent_bom.api.repo_tree_scan import RepoTreeScanResult
 
-    def fake_repo_tree(path: str, *, agents, warnings, update_progress=None):
+    def fake_repo_tree(path: str, *, agents, warnings, update_progress=None, offline=False):
         tree_calls.append(path)
+        assert offline is False
         return RepoTreeScanResult(
             iac_findings_data={"total": 1, "findings": [{"rule_id": "TF001", "severity": "high", "title": "test"}]},
+            sast_data={"scanner_driver_id": "sast-semgrep", "execution_status": "clean", "findings": []},
         )
 
     monkeypatch.setattr("agent_bom.api.repo_tree_scan.scan_cloned_repo_tree", fake_repo_tree)
@@ -82,4 +84,5 @@ def test_run_scan_sync_clones_repo_url_and_cleans_up(monkeypatch: pytest.MonkeyP
     assert job.status == JobStatus.DONE
     assert job.result is not None
     assert job.result.get("iac_findings", {}).get("total") == 1
+    assert job.result.get("sast", {}).get("execution_status") == "clean"
     assert job.result.get("status") == "findings_only"

@@ -81,6 +81,7 @@ def run_local_discovery(
     filesystem_paths: tuple,
     code_paths: tuple,
     sast_config: str,
+    offline: bool = False,
     tf_dirs: tuple,
     gha_path: Any,
     agent_projects: tuple,
@@ -468,7 +469,7 @@ def run_local_discovery(
         con.print(f"\n[bold blue]Running SAST scan on {len(code_paths)} path(s) via Semgrep...[/bold blue]\n")
         for code_path in code_paths:
             try:
-                sast_packages, sast_result = scan_code(code_path, config=sast_config)
+                sast_packages, sast_result = scan_code(code_path, config=sast_config, offline=offline)
                 con.print(
                     f"  [green]v[/green] {code_path}: {sast_result.total_findings} finding(s) "
                     f"in {sast_result.files_scanned} file(s) [dim]({sast_result.scan_time_seconds}s)[/dim]"

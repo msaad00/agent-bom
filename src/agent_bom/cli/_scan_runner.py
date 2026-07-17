@@ -141,6 +141,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
             filesystem_paths=(),
             code_paths=(),
             sast_config="auto",
+            offline=cfg.offline,
             ai_inventory_paths=(),
             tf_dirs=(),
             gha_path=None,

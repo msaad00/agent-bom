@@ -36,7 +36,7 @@ from agent_bom.api.export_schedule_store import (
     get_export_schedule_store,
 )
 from agent_bom.api.scheduler import parse_cron_next
-from agent_bom.export.destinations import ExportResult
+from agent_bom.export.destinations import ExportPublicationIndeterminateError, ExportResult
 from agent_bom.export.runner import run_findings_export
 
 logger = logging.getLogger(__name__)
@@ -93,8 +93,14 @@ def execute_export(
             severity=schedule.severity,
             since=_since_cutoff(schedule, now),
         )
+    except ExportPublicationIndeterminateError:
+        detail = "Publication status is indeterminate; verify the destination marker before retrying"
+        logger.warning("Scheduled export publication is indeterminate for schedule %s", schedule.schedule_id)
+        _mark_destination(destination_store, record, "indeterminate", detail)
+        _persist_run(store, schedule, now_iso, status="indeterminate", row_count=None)
+        return False
     except Exception as exc:  # noqa: BLE001 - destination / stream / crypto failure
-        logger.exception("Scheduled export failed for schedule %s", schedule.schedule_id)
+        logger.warning("Scheduled export failed for schedule %s", schedule.schedule_id)
         _mark_destination(destination_store, record, "error", sanitize_error(exc))
         _persist_run(store, schedule, now_iso, status="error", row_count=None)
         return False

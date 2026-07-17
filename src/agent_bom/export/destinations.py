@@ -31,9 +31,12 @@ Destination credentials come from a stored, encrypted, revocable connection
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import logging
 import os
+import re
+import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from tempfile import NamedTemporaryFile, SpooledTemporaryFile
@@ -63,6 +66,31 @@ _SPOOL_MAX_BYTES = 8 * 1024 * 1024
 # ClickHouse insert batch size: rows are flushed every N so we never hold the
 # full feed in memory.
 _CH_BATCH_ROWS = 500
+_RUNS_SUFFIX = "_runs"
+_STAGED_SUFFIX = "_staged"
+_ATTEMPT_COLUMN = "publication_attempt_id"
+_WAREHOUSE_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_BIGQUERY_PROJECT_IDENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+
+
+def _warehouse_ident(value: str, *, field: str) -> str:
+    if not _WAREHOUSE_IDENT.fullmatch(value):
+        raise ExportDestinationError(f"Warehouse export {field} must be a simple SQL identifier")
+    return value
+
+
+def _bigquery_project_ident(value: str) -> str:
+    if not _BIGQUERY_PROJECT_IDENT.fullmatch(value):
+        raise ExportDestinationError("BigQuery export project must be a simple project identifier")
+    return value
+
+
+def _clickhouse_literal(value: str) -> str:
+    """Escape a ClickHouse single-quoted string literal."""
+    return (
+        value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t").replace("\0", "\\0")
+    )
+
 
 # String columns of the ``findings_feed`` landing table, shared by every
 # warehouse adapter (ClickHouse + Snowflake) so the feed shape is identical
@@ -84,6 +112,10 @@ _FEED_STRING_FIELDS = (
 
 class ExportDestinationError(RuntimeError):
     """Raised when a destination cannot be built or written to."""
+
+
+class ExportPublicationIndeterminateError(ExportDestinationError):
+    """Publication may still complete; callers must not classify it as failed."""
 
 
 @dataclass(frozen=True)
@@ -314,12 +346,13 @@ class GcsObjectStoreDestination:
 
 
 class ClickHouseWarehouseDestination:
-    """Stream findings into a ClickHouse warehouse table in bounded batches.
+    """Stage findings in ClickHouse and publish a complete attempt pointer.
 
     Reuses the existing zero-dependency analytics client
     (:class:`agent_bom.cloud.clickhouse.ClickHouseClient`) and its
-    ``findings_feed`` table. Rows are inserted in batches of at most
-    ``batch_rows`` so only one batch is ever held in memory.
+    Rows are inserted into an attempt-scoped staging table in batches of at
+    most ``batch_rows``. A single manifest row publishes the complete attempt,
+    so concurrent processes never expose each other's partial batches.
     """
 
     kind = "clickhouse"
@@ -333,7 +366,7 @@ class ClickHouseWarehouseDestination:
         batch_rows: int = _CH_BATCH_ROWS,
     ) -> None:
         self._client = client
-        self._table = table
+        self._table = _warehouse_ident(table, field="table")
         self._ensure_schema = ensure_schema
         self._batch_rows = max(1, batch_rows)
 
@@ -343,17 +376,86 @@ class ClickHouseWarehouseDestination:
     def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:
         if self._ensure_schema:
             self._client.ensure_tables()
+        staged_table = f"{self._table}{_STAGED_SUFFIX}"
+        runs_table = f"{self._table}{_RUNS_SUFFIX}"
+        attempt_id = uuid.uuid4().hex
+        escaped_tenant = _clickhouse_literal(tenant_id)
+        escaped_run = _clickhouse_literal(run_id)
+        escaped_attempt = _clickhouse_literal(attempt_id)
+        self._client.execute(
+            f"CREATE TABLE IF NOT EXISTS {runs_table} ("
+            "tenant_id String, run_id String, publication_attempt_id String, row_count UInt64, "
+            "commit_version UInt64 DEFAULT toUnixTimestamp64Nano(now64(9)), "
+            "committed_at DateTime64(6) DEFAULT now64(6)"
+            ") ENGINE = ReplacingMergeTree(commit_version) ORDER BY (tenant_id, run_id)"
+        )
+        self._client.execute(
+            f"CREATE TABLE IF NOT EXISTS {staged_table} ("
+            "tenant_id String, run_id String, publication_attempt_id String, exported_at DateTime DEFAULT now(), "
+            "finding_id String, canonical_id String, severity LowCardinality(String), cvss_score Float32, "
+            "epss_score Float32, package_name String, package_version String, ecosystem LowCardinality(String), "
+            "cve_id String, source LowCardinality(String), status LowCardinality(String), effective_reach String, "
+            "first_seen String, last_seen String"
+            ") ENGINE = MergeTree() ORDER BY (tenant_id, run_id, publication_attempt_id, finding_id) "
+            "PARTITION BY toYYYYMM(exported_at)"
+        )
+        cleanup_attempt = (
+            f"ALTER TABLE {staged_table} DELETE WHERE tenant_id = '{escaped_tenant}' "
+            f"AND run_id = '{escaped_run}' AND publication_attempt_id = '{escaped_attempt}' SETTINGS mutations_sync = 1"
+        )
         row_count = 0
         batch: list[dict[str, Any]] = []
-        for finding in rows:
-            batch.append(self._to_row(finding, tenant_id=tenant_id, run_id=run_id))
-            if len(batch) >= self._batch_rows:
-                self._client.insert_json(self._table, batch)
+        try:
+            for finding in rows:
+                row = self._to_row(finding, tenant_id=tenant_id, run_id=run_id)
+                row[_ATTEMPT_COLUMN] = attempt_id
+                batch.append(row)
+                if len(batch) >= self._batch_rows:
+                    self._client.insert_json(staged_table, batch)
+                    row_count += len(batch)
+                    batch = []
+            if batch:
+                self._client.insert_json(staged_table, batch)
                 row_count += len(batch)
-                batch = []
-        if batch:
-            self._client.insert_json(self._table, batch)
-            row_count += len(batch)
+        except Exception:
+            # No publication was attempted: this is a definitive staging
+            # failure. Cleanup is best-effort and must not mask the load error.
+            try:
+                self._client.execute(cleanup_attempt)
+            except Exception:
+                logger.warning("ClickHouse failed-attempt cleanup deferred")
+            raise
+        try:
+            self._client.insert_json(
+                runs_table,
+                [
+                    {
+                        "tenant_id": tenant_id,
+                        "run_id": run_id,
+                        _ATTEMPT_COLUMN: attempt_id,
+                        "row_count": row_count,
+                    }
+                ],
+            )
+        except Exception:
+            # A publication timeout is ambiguous: the INSERT can still finish
+            # after this process observes no marker. Never delete its immutable
+            # staging rows. A present exact marker is safely reconciled; absent
+            # or unavailable status preserves staging and the primary error.
+            try:
+                committed = self._client.execute(
+                    f"SELECT count() FROM {runs_table} WHERE tenant_id = '{escaped_tenant}' "
+                    f"AND run_id = '{escaped_run}' AND publication_attempt_id = '{escaped_attempt}' FORMAT TabSeparated"
+                )
+                if str(committed).strip() == "1":
+                    return ExportResult(
+                        kind=self.kind,
+                        destination_uri=f"clickhouse://{getattr(self._client, 'database', 'agent_bom')}/{self._table}",
+                        row_count=row_count,
+                    )
+            except Exception:
+                logger.warning("ClickHouse publication status is indeterminate")
+            raise ExportPublicationIndeterminateError("ClickHouse publication status is indeterminate") from None
         uri = f"clickhouse://{getattr(self._client, 'database', 'agent_bom')}/{self._table}"
         logger.info("Exported %d findings to %s", row_count, uri)
         return ExportResult(kind=self.kind, destination_uri=uri, row_count=row_count)
@@ -381,14 +483,10 @@ class SnowflakeWarehouseDestination:
     Snowflake's recommended bulk-ingest shape (COPY INTO from an internal stage),
     not row-at-a-time INSERT, so it scales to millions of findings on a cadence.
 
-    Each run appends its snapshot tagged with ``run_id`` + ``exported_at`` (COPY
-    INTO is append-only — Snowflake has no ReplacingMergeTree). The table is
-    ``CLUSTER BY (tenant_id, finding_id)`` so the current state is the latest row
-    per finding, e.g.::
-
-        SELECT * FROM findings_feed
-        QUALIFY ROW_NUMBER() OVER (
-            PARTITION BY tenant_id, finding_id ORDER BY exported_at DESC) = 1
+    Each completed run atomically replaces the tenant snapshot and inserts an
+    exact durable marker in ``<table>_runs``. The marker reconciles a lost COMMIT
+    response; zero-row runs delete the prior tenant snapshot without exposing a
+    partial replacement.
 
     The connection comes from ``connection_factory`` — built once from the stored,
     encrypted, revocable connect-once connection (key-pair auth reused from the
@@ -412,7 +510,7 @@ class SnowflakeWarehouseDestination:
         self._connection_factory = connection_factory
         self._database = database
         self._schema = schema or "PUBLIC"
-        self._table = table or "findings_feed"
+        self._table = _warehouse_ident(table or "findings_feed", field="table")
         self._ensure_schema = ensure_schema
 
     def _create_table_sql(self) -> str:
@@ -420,20 +518,48 @@ class SnowflakeWarehouseDestination:
         cols += [f"{_sf_ident(name)} FLOAT" for name in _SF_FLOAT_COLUMNS]
         return f"CREATE TABLE IF NOT EXISTS {_sf_ident(self._table)} (\n  " + ",\n  ".join(cols) + "\n) CLUSTER BY (tenant_id, finding_id)"
 
+    def _create_runs_table_sql(self) -> str:
+        return (
+            f"CREATE TABLE IF NOT EXISTS {_sf_ident(self._table + _RUNS_SUFFIX)} ("
+            '"tenant_id" STRING, "run_id" STRING, "publication_attempt_id" STRING, '
+            '"row_count" INTEGER, "committed_at" TIMESTAMP_TZ)'
+        )
+
+    def _manifest_exists(self, *, tenant_id: str, run_id: str, attempt_id: str) -> bool:
+        """Read an exact durable marker on a fresh session after COMMIT ambiguity."""
+        check_conn = self._connection_factory()
+        try:
+            check_cursor = check_conn.cursor()
+            try:
+                check_cursor.execute(
+                    f"SELECT 1 FROM {_sf_ident(self._table + _RUNS_SUFFIX)} WHERE "
+                    '"tenant_id" = %s AND "run_id" = %s AND "publication_attempt_id" = %s LIMIT 1',
+                    (tenant_id, run_id, attempt_id),
+                )
+                return check_cursor.fetchone() is not None
+            finally:
+                check_cursor.close()
+        finally:
+            check_conn.close()
+
     def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:
         from datetime import datetime, timezone
 
         exported_at = datetime.now(timezone.utc).isoformat()
+        attempt_id = uuid.uuid4().hex
         table_ref = _sf_ident(self._table)
-        stage_ref = f"@%{_sf_ident(self._table)}"
+        stage_scope = hashlib.sha256(f"{tenant_id}\0{run_id}".encode()).hexdigest()
+        stage_ref = f"@%{_sf_ident(self._table)}/agent_bom/{stage_scope}/{uuid.uuid4().hex}"
 
         conn = self._connection_factory()
         tmp_path = ""
+        transaction_started = False
         try:
             cursor = conn.cursor()
             try:
                 if self._ensure_schema:
                     cursor.execute(self._create_table_sql())
+                    cursor.execute(self._create_runs_table_sql())
                 # Stream rows to a gzip NDJSON file: bounded RAM, spills to disk,
                 # so a huge tenant never inflates process memory.
                 with NamedTemporaryFile(suffix=".ndjson.gz", delete=False) as handle:
@@ -447,15 +573,60 @@ class SnowflakeWarehouseDestination:
                         gz.write("\n")
                         row_count += 1
                 # PUT the pre-gzipped file to the table stage (no re-compression),
-                # then bulk COPY INTO and purge the stage on success.
+                # then start the replacement transaction. Snowflake connections
+                # default to autocommit, so BEGIN/COMMIT are explicit SQL rather
+                # than relying on the connector's no-op commit() method.
                 cursor.execute(f"PUT 'file://{tmp_path}' {stage_ref} AUTO_COMPRESS=FALSE SOURCE_COMPRESSION=GZIP OVERWRITE=TRUE")
+                cursor.execute("BEGIN")
+                transaction_started = True
                 cursor.execute(
-                    f"COPY INTO {table_ref} FROM {stage_ref} "
-                    "FILE_FORMAT = (TYPE = JSON) "
-                    "MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE "
-                    "PURGE = TRUE"
+                    f"DELETE FROM {table_ref} WHERE {_sf_ident('tenant_id')} = %s",
+                    (tenant_id,),
                 )
-                conn.commit()
+                if row_count:
+                    cursor.execute(
+                        f"COPY INTO {table_ref} FROM {stage_ref} "
+                        "FILE_FORMAT = (TYPE = JSON) "
+                        "MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE "
+                        "PURGE = TRUE"
+                    )
+                cursor.execute(
+                    f"INSERT INTO {_sf_ident(self._table + _RUNS_SUFFIX)} "
+                    '("tenant_id", "run_id", "publication_attempt_id", "row_count", "committed_at") '
+                    "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP())",
+                    (tenant_id, run_id, attempt_id, row_count),
+                )
+                try:
+                    cursor.execute("COMMIT")
+                    transaction_started = False
+                except Exception:
+                    # The marker and replacement commit atomically. A fresh
+                    # session can therefore reconcile a lost COMMIT response.
+                    try:
+                        committed = self._manifest_exists(tenant_id=tenant_id, run_id=run_id, attempt_id=attempt_id)
+                    except Exception:
+                        logger.warning("Snowflake publication status is indeterminate")
+                        committed = False
+                    if committed:
+                        transaction_started = False
+                    else:
+                        raise ExportPublicationIndeterminateError("Snowflake COMMIT status is indeterminate") from None
+                if row_count == 0:
+                    try:
+                        cursor.execute(f"REMOVE {stage_ref}")
+                    except Exception:
+                        logger.warning("Snowflake empty-attempt stage cleanup deferred")
+            except Exception:
+                if transaction_started:
+                    try:
+                        cursor.execute("ROLLBACK")
+                    except Exception:
+                        logger.warning("Snowflake rollback status is indeterminate")
+                try:
+                    cursor.execute(f"REMOVE {stage_ref}")
+                except Exception:
+                    logger.warning("Snowflake stage cleanup deferred")
+                raise
             finally:
                 cursor.close()
         finally:
@@ -472,16 +643,17 @@ class SnowflakeWarehouseDestination:
 
 
 class BigQueryWarehouseDestination:
-    """Load findings into a BigQuery ``findings_feed`` table in bounded batches.
+    """Stage findings in BigQuery and publish a complete attempt pointer.
 
     Mirrors :class:`ClickHouseWarehouseDestination`: rows are loaded in batches of
     at most ``batch_rows`` via ``client.load_table_from_json`` (BigQuery's native
     JSON bulk-load), so at most one batch is held in memory. The load's
     ``CREATE_IF_NEEDED`` disposition creates the table with the explicit feed
-    schema; the dataset is ensured up front (a load cannot create a dataset). Each
-    run appends its snapshot tagged with ``run_id`` + ``exported_at`` (append-only
-    — the latest row per finding is the current state). ``client`` and
-    ``job_config`` are injected so the adapter itself is SDK-free and testable.
+    schema; the dataset is ensured up front (a load cannot create a dataset).
+    Each invocation gets a unique attempt ID. One manifest load publishes the
+    attempt after every data batch succeeds; an exact-attempt read reconciles a
+    manifest response timeout. ``client`` and job configs are injected so the
+    adapter itself is SDK-free and testable.
     """
 
     kind = "bigquery"
@@ -494,6 +666,7 @@ class BigQueryWarehouseDestination:
         dataset: str,
         table: str = "findings_feed",
         job_config: Any = None,
+        cleanup_job_config_factory: Callable[[str, str, str], Any] | None = None,
         ensure_schema: bool = True,
         batch_rows: int = _CH_BATCH_ROWS,
     ) -> None:
@@ -502,10 +675,11 @@ class BigQueryWarehouseDestination:
         if not dataset:
             raise ExportDestinationError("BigQuery export destination requires a dataset")
         self._client = client
-        self._project = project
-        self._dataset = dataset
-        self._table = table or "findings_feed"
+        self._project = _bigquery_project_ident(project)
+        self._dataset = _warehouse_ident(dataset, field="dataset")
+        self._table = _warehouse_ident(table or "findings_feed", field="table")
         self._job_config = job_config
+        self._cleanup_job_config_factory = cleanup_job_config_factory or (lambda _tenant, _run, _attempt: None)
         self._ensure_schema = ensure_schema
         self._batch_rows = max(1, batch_rows)
 
@@ -514,6 +688,35 @@ class BigQueryWarehouseDestination:
         # finishes (or raises), so a failed batch surfaces immediately.
         self._client.load_table_from_json(batch, table_ref, job_config=self._job_config).result()
 
+    def _table_exists(self, table_ref: str) -> bool:
+        try:
+            self._client.get_table(table_ref)
+        except Exception as exc:
+            if exc.__class__.__name__ == "NotFound":
+                return False
+            raise
+        return True
+
+    def _scope_query(self, sql: str, *, tenant_id: str, run_id: str, attempt_id: str) -> Any:
+        return self._client.query(
+            sql,
+            job_config=self._cleanup_job_config_factory(tenant_id, run_id, attempt_id),
+        ).result()
+
+    def _manifest_exists(self, runs_ref: str, *, tenant_id: str, run_id: str, attempt_id: str) -> bool:
+        if not self._table_exists(runs_ref):
+            return False
+        rows = self._scope_query(
+            f"SELECT 1 FROM `{runs_ref}` WHERE tenant_id = @tenant_id AND run_id = @run_id "
+            "AND publication_attempt_id = @attempt_id LIMIT 1",
+            tenant_id=tenant_id,
+            run_id=run_id,
+            attempt_id=attempt_id,
+        )
+        if rows is None:
+            return False
+        return next(iter(rows), None) is not None
+
     def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:
         from datetime import datetime, timezone
 
@@ -521,17 +724,78 @@ class BigQueryWarehouseDestination:
         table_ref = f"{self._project}.{self._dataset}.{self._table}"
         if self._ensure_schema:
             self._client.create_dataset(f"{self._project}.{self._dataset}", exists_ok=True)
+        staged_ref = f"{table_ref}{_STAGED_SUFFIX}"
+        runs_ref = f"{table_ref}{_RUNS_SUFFIX}"
+        attempt_id = uuid.uuid4().hex
+        if self._ensure_schema:
+            feed_columns = [f"`{column}` STRING" for column in (*_SF_STRING_COLUMNS, _ATTEMPT_COLUMN)]
+            feed_columns += [f"`{column}` FLOAT64" for column in _SF_FLOAT_COLUMNS]
+            self._scope_query(
+                f"CREATE TABLE IF NOT EXISTS `{staged_ref}` ({', '.join(feed_columns)})",
+                tenant_id=tenant_id,
+                run_id=run_id,
+                attempt_id=attempt_id,
+            )
+            self._scope_query(
+                f"CREATE TABLE IF NOT EXISTS `{runs_ref}` (tenant_id STRING NOT NULL, run_id STRING NOT NULL, "
+                "publication_attempt_id STRING NOT NULL, row_count INT64 NOT NULL, commit_version INT64 NOT NULL, "
+                "committed_at TIMESTAMP NOT NULL)",
+                tenant_id=tenant_id,
+                run_id=run_id,
+                attempt_id=attempt_id,
+            )
+        cleanup_sql = (
+            f"DELETE FROM `{staged_ref}` WHERE tenant_id = @tenant_id AND run_id = @run_id AND publication_attempt_id = @attempt_id"
+        )
         row_count = 0
         batch: list[dict[str, Any]] = []
-        for finding in rows:
-            batch.append(_warehouse_feed_row(finding, tenant_id=tenant_id, run_id=run_id, exported_at=exported_at))
-            if len(batch) >= self._batch_rows:
-                self._load(table_ref, batch)
+        publication_started = False
+        try:
+            for finding in rows:
+                row = _warehouse_feed_row(finding, tenant_id=tenant_id, run_id=run_id, exported_at=exported_at)
+                row[_ATTEMPT_COLUMN] = attempt_id
+                batch.append(row)
+                if len(batch) >= self._batch_rows:
+                    self._load(staged_ref, batch)
+                    row_count += len(batch)
+                    batch = []
+            if batch:
+                self._load(staged_ref, batch)
                 row_count += len(batch)
-                batch = []
-        if batch:
-            self._load(table_ref, batch)
-            row_count += len(batch)
+            publication_started = True
+            self._scope_query(
+                f"INSERT INTO `{runs_ref}` (tenant_id, run_id, publication_attempt_id, row_count, "
+                "commit_version, committed_at) VALUES "
+                f"(@tenant_id, @run_id, @attempt_id, {row_count}, UNIX_MICROS(CURRENT_TIMESTAMP()), CURRENT_TIMESTAMP())",
+                tenant_id=tenant_id,
+                run_id=run_id,
+                attempt_id=attempt_id,
+            )
+        except Exception:
+            if publication_started:
+                try:
+                    if self._manifest_exists(runs_ref, tenant_id=tenant_id, run_id=run_id, attempt_id=attempt_id):
+                        return ExportResult(
+                            kind=self.kind,
+                            destination_uri=f"bigquery://{self._project}/{self._dataset}/{self._table}",
+                            row_count=row_count,
+                        )
+                except Exception:
+                    logger.warning("BigQuery publication status is indeterminate")
+                # The manifest load may still be running. Preserve staging so a
+                # late commit can only publish a complete immutable attempt.
+                raise ExportPublicationIndeterminateError("BigQuery publication status is indeterminate") from None
+            try:
+                if self._table_exists(staged_ref):
+                    self._scope_query(
+                        cleanup_sql,
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        attempt_id=attempt_id,
+                    )
+            except Exception:
+                logger.warning("BigQuery failed-attempt cleanup deferred")
+            raise
         uri = f"bigquery://{self._project}/{self._dataset}/{self._table}"
         logger.info("Exported %d findings to %s", row_count, uri)
         return ExportResult(kind=self.kind, destination_uri=uri, row_count=row_count)
@@ -543,16 +807,15 @@ def _dbx_ident(name: str) -> str:
 
 
 class DatabricksWarehouseDestination:
-    """Insert findings into a Databricks ``findings_feed`` Delta table in batches.
+    """Stage findings in Delta and publish a complete attempt pointer.
 
     Mirrors :class:`SnowflakeWarehouseDestination`: a DBAPI connection is opened
     once from the connect-once connection (``databricks-sql-connector``,
-    key/OAuth token from the stored secret — no per-run credential), a
-    ``CREATE TABLE IF NOT EXISTS`` lands the feed schema, then rows are inserted
-    with parameterized ``executemany`` in bounded batches (native ``?`` binding,
-    injection-safe). The connection is always closed and committed only on a
-    fully successful load. Append-only, tagged with ``run_id`` + ``exported_at``.
-    ``connection_factory`` is injected so the adapter is SDK-free and testable.
+    key/OAuth token from the stored secret — no per-run credential). Rows land
+    in an attempt-scoped Delta staging table through bounded, parameterized
+    ``executemany`` calls. One atomic manifest INSERT publishes the complete
+    attempt. This does not depend on multi-statement transaction support, which
+    is limited to catalog-managed tables and newer Databricks runtimes.
     """
 
     kind = "databricks"
@@ -574,46 +837,58 @@ class DatabricksWarehouseDestination:
         self._connection_factory = connection_factory
         self._catalog = catalog
         self._schema = schema
-        self._table = table or "findings_feed"
+        self._table = _warehouse_ident(table or "findings_feed", field="table")
         self._ensure_schema = ensure_schema
         self._batch_rows = max(1, batch_rows)
 
-    def _full_table(self) -> str:
-        return f"{_dbx_ident(self._catalog)}.{_dbx_ident(self._schema)}.{_dbx_ident(self._table)}"
+    def _full_table(self, suffix: str = "") -> str:
+        return f"{_dbx_ident(self._catalog)}.{_dbx_ident(self._schema)}.{_dbx_ident(self._table + suffix)}"
 
-    def _create_table_sql(self) -> str:
+    def _create_staged_table_sql(self) -> str:
         cols = [f"{_dbx_ident(c)} STRING" for c in _SF_STRING_COLUMNS]
+        cols.append(f"{_dbx_ident(_ATTEMPT_COLUMN)} STRING")
         cols += [f"{_dbx_ident(c)} DOUBLE" for c in _SF_FLOAT_COLUMNS]
-        return f"CREATE TABLE IF NOT EXISTS {self._full_table()} (\n  " + ",\n  ".join(cols) + "\n) USING DELTA"
+        return f"CREATE TABLE IF NOT EXISTS {self._full_table(_STAGED_SUFFIX)} (\n  " + ",\n  ".join(cols) + "\n) USING DELTA"
+
+    def _create_runs_table_sql(self) -> str:
+        return (
+            f"CREATE TABLE IF NOT EXISTS {self._full_table(_RUNS_SUFFIX)} ("
+            f"{_dbx_ident('tenant_id')} STRING, {_dbx_ident('run_id')} STRING, "
+            f"{_dbx_ident(_ATTEMPT_COLUMN)} STRING, {_dbx_ident('row_count')} BIGINT, "
+            f"{_dbx_ident('commit_version')} BIGINT, {_dbx_ident('committed_at')} TIMESTAMP) USING DELTA"
+        )
 
     def _insert_sql(self) -> str:
-        columns = _SF_STRING_COLUMNS + _SF_FLOAT_COLUMNS
+        columns = (*_SF_STRING_COLUMNS, _ATTEMPT_COLUMN, *_SF_FLOAT_COLUMNS)
         col_list = ", ".join(_dbx_ident(c) for c in columns)
         placeholders = ", ".join("?" for _ in columns)
-        return f"INSERT INTO {self._full_table()} ({col_list}) VALUES ({placeholders})"  # nosec B608 - table/columns are backtick-escaped via _dbx_ident and columns are a fixed constant; row values use "?" placeholders (parameterized)
+        return f"INSERT INTO {self._full_table(_STAGED_SUFFIX)} ({col_list}) VALUES ({placeholders})"  # nosec B608 - table/columns are backtick-escaped via _dbx_ident and columns are a fixed constant; row values use "?" placeholders (parameterized)
 
     @staticmethod
-    def _row_tuple(feed: dict[str, Any]) -> tuple[Any, ...]:
+    def _row_tuple(feed: dict[str, Any], attempt_id: str) -> tuple[Any, ...]:
         strings = tuple(str(feed.get(c, "") or "") for c in _SF_STRING_COLUMNS)
         floats = tuple(float(feed.get(c) or 0.0) for c in _SF_FLOAT_COLUMNS)
-        return strings + floats
+        return strings + (attempt_id,) + floats
 
     def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:
         from datetime import datetime, timezone
 
         exported_at = datetime.now(timezone.utc).isoformat()
+        attempt_id = uuid.uuid4().hex
         insert_sql = self._insert_sql()
         row_count = 0
+        publication_started = False
         conn = self._connection_factory()
         try:
             cursor = conn.cursor()
             try:
                 if self._ensure_schema:
-                    cursor.execute(self._create_table_sql())
+                    cursor.execute(self._create_staged_table_sql())
+                    cursor.execute(self._create_runs_table_sql())
                 batch: list[tuple[Any, ...]] = []
                 for finding in rows:
                     feed = _warehouse_feed_row(finding, tenant_id=tenant_id, run_id=run_id, exported_at=exported_at)
-                    batch.append(self._row_tuple(feed))
+                    batch.append(self._row_tuple(feed, attempt_id))
                     if len(batch) >= self._batch_rows:
                         cursor.executemany(insert_sql, batch)
                         row_count += len(batch)
@@ -621,8 +896,41 @@ class DatabricksWarehouseDestination:
                 if batch:
                     cursor.executemany(insert_sql, batch)
                     row_count += len(batch)
-                if hasattr(conn, "commit"):
-                    conn.commit()
+                publication_started = True
+                cursor.execute(
+                    f"INSERT INTO {self._full_table(_RUNS_SUFFIX)} ("
+                    f"{_dbx_ident('tenant_id')}, {_dbx_ident('run_id')}, {_dbx_ident(_ATTEMPT_COLUMN)}, "
+                    f"{_dbx_ident('row_count')}, {_dbx_ident('commit_version')}, {_dbx_ident('committed_at')}) "
+                    "VALUES (?, ?, ?, ?, UNIX_MICROS(CURRENT_TIMESTAMP()), CURRENT_TIMESTAMP())",
+                    (tenant_id, run_id, attempt_id, row_count),
+                )
+            except Exception:
+                if publication_started:
+                    try:
+                        cursor.execute(
+                            f"SELECT 1 FROM {self._full_table(_RUNS_SUFFIX)} WHERE {_dbx_ident('tenant_id')} = ? "
+                            f"AND {_dbx_ident('run_id')} = ? AND {_dbx_ident(_ATTEMPT_COLUMN)} = ? LIMIT 1",
+                            (tenant_id, run_id, attempt_id),
+                        )
+                        if cursor.fetchone() is not None:
+                            return ExportResult(
+                                kind=self.kind,
+                                destination_uri=f"databricks://{self._catalog}/{self._schema}/{self._table}",
+                                row_count=row_count,
+                            )
+                    except Exception:
+                        logger.warning("Databricks publication status is indeterminate")
+                    # Preserve staging: the manifest INSERT can still complete.
+                    raise ExportPublicationIndeterminateError("Databricks publication status is indeterminate") from None
+                try:
+                    cursor.execute(
+                        f"DELETE FROM {self._full_table(_STAGED_SUFFIX)} WHERE {_dbx_ident('tenant_id')} = ? "
+                        f"AND {_dbx_ident('run_id')} = ? AND {_dbx_ident(_ATTEMPT_COLUMN)} = ?",
+                        (tenant_id, run_id, attempt_id),
+                    )
+                except Exception:
+                    logger.warning("Databricks failed-attempt cleanup deferred")
+                raise
             finally:
                 cursor.close()
         finally:
@@ -674,12 +982,25 @@ def _default_bigquery_job_config() -> Any:
     from google.cloud import bigquery
 
     schema = [bigquery.SchemaField(c, "STRING") for c in _SF_STRING_COLUMNS]
+    schema.append(bigquery.SchemaField(_ATTEMPT_COLUMN, "STRING"))
     schema += [bigquery.SchemaField(c, "FLOAT64") for c in _SF_FLOAT_COLUMNS]
     return bigquery.LoadJobConfig(
         schema=schema,
         write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
         create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
         source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+    )
+
+
+def _default_bigquery_scope_job_config(tenant_id: str, run_id: str, attempt_id: str) -> Any:
+    from google.cloud import bigquery
+
+    return bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("tenant_id", "STRING", tenant_id),
+            bigquery.ScalarQueryParameter("run_id", "STRING", run_id),
+            bigquery.ScalarQueryParameter("attempt_id", "STRING", attempt_id),
+        ]
     )
 
 
@@ -694,6 +1015,7 @@ def _default_databricks_connection(config: dict[str, Any], secret: str | None) -
         server_hostname=config["server_hostname"],
         http_path=config["http_path"],
         access_token=secret or "",
+        autocommit=True,
     )
 
 
@@ -755,11 +1077,13 @@ def build_destination(kind: str, config: dict[str, Any], secret: str | None = No
             raise ExportDestinationError("Snowflake export destination requires 'account' and 'user' in config")
         if not database:
             raise ExportDestinationError("Snowflake export destination requires 'database' in config")
+        if not secret or not secret.strip():
+            raise ExportDestinationError("Snowflake export destination requires a stored private-key secret")
         schema = str(config.get("schema", "") or "PUBLIC").strip() or "PUBLIC"
         role = str(config.get("role", "") or "").strip()
         warehouse = str(config.get("warehouse", "") or "").strip()
         table = str(config.get("table", "findings_feed") or "findings_feed").strip()
-        pem = secret or ""
+        pem = secret.strip()
 
         def _factory() -> Any:
             # Connect-once: key-pair PEM comes from the stored, decrypted secret;
@@ -787,7 +1111,14 @@ def build_destination(kind: str, config: dict[str, Any], secret: str | None = No
         # google-cloud-bigquery import fires only here, at export-run time.
         client = _default_bigquery_client(project)
         job_config = _default_bigquery_job_config()
-        return BigQueryWarehouseDestination(client, project=project, dataset=dataset, table=table, job_config=job_config)
+        return BigQueryWarehouseDestination(
+            client,
+            project=project,
+            dataset=dataset,
+            table=table,
+            job_config=job_config,
+            cleanup_job_config_factory=_default_bigquery_scope_job_config,
+        )
     if normalized == "databricks":
         server_hostname = str(config.get("server_hostname", "")).strip()
         http_path = str(config.get("http_path", "")).strip()
@@ -799,13 +1130,15 @@ def build_destination(kind: str, config: dict[str, Any], secret: str | None = No
             raise ExportDestinationError("Databricks export destination requires 'catalog' in config")
         if not schema:
             raise ExportDestinationError("Databricks export destination requires 'schema' in config")
+        if not secret or not secret.strip():
+            raise ExportDestinationError("Databricks export destination requires a stored access-token secret")
         table = str(config.get("table", "findings_feed") or "findings_feed").strip()
         conn_config = {"server_hostname": server_hostname, "http_path": http_path}
 
         def _dbx_factory() -> Any:
             # Connect-once: the DBAPI connection is opened from the stored,
             # decrypted access token; no per-run credential is passed.
-            return _default_databricks_connection(conn_config, secret)
+            return _default_databricks_connection(conn_config, secret.strip())
 
         return DatabricksWarehouseDestination(_dbx_factory, catalog=catalog, schema=schema, table=table)
     raise ExportDestinationError(f"Unknown export destination kind {normalized!r}; supported: {', '.join(SUPPORTED_EXPORT_KINDS)}")

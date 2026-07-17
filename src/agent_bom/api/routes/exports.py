@@ -18,6 +18,7 @@ findings to it on a cadence. A ``run`` endpoint fires a one-off export now.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -35,11 +36,12 @@ from agent_bom.api.export_destination_store import (
 )
 from agent_bom.api.export_schedule_store import ExportSchedule, get_export_schedule_store
 from agent_bom.api.tenancy import require_request_tenant_id
-from agent_bom.export.destinations import SUPPORTED_EXPORT_KINDS
+from agent_bom.export.destinations import SUPPORTED_EXPORT_KINDS, ExportPublicationIndeterminateError
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _READ_DEP = require_authenticated_permission("read")
 _WRITE_DEP = require_authenticated_permission("scan")
@@ -97,6 +99,8 @@ async def create_export_destination(request: Request, body: ExportDestinationCre
         raise HTTPException(
             status_code=400, detail=f"Unsupported destination kind '{body.kind}'. Use one of: {', '.join(SUPPORTED_EXPORT_KINDS)}."
         )
+    if kind in {"snowflake", "databricks"} and (not body.secret or not body.secret.strip()):
+        raise HTTPException(status_code=422, detail=f"{kind.title()} export destination requires a write-only secret")
 
     secret_encrypted = ""
     if body.secret:
@@ -106,7 +110,7 @@ async def create_export_destination(request: Request, body: ExportDestinationCre
                 detail="Destination secret encryption is not configured (AGENT_BOM_CONNECTIONS_KEY unset); refusing to store a secret.",
             )
         try:
-            secret_encrypted = encrypt_secret(body.secret)
+            secret_encrypted = encrypt_secret(body.secret.strip())
         except ConnectionSecretError as exc:
             raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
 
@@ -179,16 +183,33 @@ def _run_export_sync(tenant_id: str, destination_id: str, run_id: str) -> None:
     record = store.get(tenant_id, destination_id)
     if record is None:
         return
-    secret = decrypt_secret(record.secret_encrypted) if record.secret_encrypted else None
-    run_findings_export(
-        tenant_id=tenant_id,
-        kind=record.kind,
-        config=record.config,
-        secret=secret,
-        destination_id=destination_id,
-        run_id=run_id,
-        actor="api",
-    )
+    try:
+        secret = decrypt_secret(record.secret_encrypted) if record.secret_encrypted else None
+        run_findings_export(
+            tenant_id=tenant_id,
+            kind=record.kind,
+            config=record.config,
+            secret=secret,
+            destination_id=destination_id,
+            run_id=run_id,
+            actor="api",
+        )
+    except ExportPublicationIndeterminateError:
+        record.status = "indeterminate"
+        record.last_run_status = "indeterminate"
+        record.status_detail = "Publication status is indeterminate; verify the destination marker before retrying"
+        logger.warning("One-off export publication is indeterminate for destination %s", destination_id)
+    except Exception as exc:  # noqa: BLE001 - worker must persist destination failure state
+        record.status = "error"
+        record.last_run_status = "error"
+        record.status_detail = sanitize_error(exc)
+        logger.warning("One-off export failed for destination %s", destination_id)
+    else:
+        record.status = "active"
+        record.last_run_status = "success"
+        record.status_detail = ""
+    record.last_run_at = datetime.now(timezone.utc).isoformat()
+    store.put(record)
 
 
 # ── Schedules ─────────────────────────────────────────────────────────────

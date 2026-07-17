@@ -218,4 +218,5 @@ async def sync_campaign_tickets(request: Request, campaign_id: str, response: Re
         "failed": len(errors),
         "tickets": synced,
         "errors": errors,
+        "per_action_credential": False,
     }

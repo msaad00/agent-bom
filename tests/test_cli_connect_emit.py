@@ -116,7 +116,9 @@ class TestOtherProviderEmit:
     def test_snowflake_spcs_emits_native_app_recipe(self) -> None:
         r = _run(["connect", "snowflake", "--emit", "--spcs"])
         assert r.exit_code == 0, r.output
-        assert "CREATE APPLICATION PACKAGE" in r.stdout
+        assert "snow app run --project deploy/snowflake/native-app" in r.stdout
+        assert "Artifact:" in r.stdout
+        assert "Next step:" in r.stdout
         assert "deploy/snowflake/native-app" in r.stdout
 
 

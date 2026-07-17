@@ -40,6 +40,7 @@ import re
 import warnings
 from typing import Any
 
+from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.governance import (
     AccessRecord,
@@ -174,6 +175,9 @@ def _resolve_snowflake_auth(
     key-pair (SNOWFLAKE_PRIVATE_KEY_PATH) → SNOWFLAKE_PASSWORD (deprecated) →
     externalbrowser SSO (safe default).
     """
+    if apply_spcs_workload_identity(conn_kwargs):
+        return
+
     if not authenticator:
         authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
     if authenticator:

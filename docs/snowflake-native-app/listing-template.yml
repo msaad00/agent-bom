@@ -1,0 +1,27 @@
+title: agent-bom
+subtitle: Govern AI, MCP, identity, and cloud security evidence in your Snowflake account.
+description: >-
+  agent-bom discovers and correlates AI agents, MCP servers, identities,
+  vulnerabilities, cloud posture, and runtime evidence without exporting
+  customer data. The API and dashboard run in Snowpark Container Services.
+  Scanner and MCP runtime services are explicit opt-ins, and advisory-feed
+  egress is disabled until the consumer approves named integrations.
+listing_terms:
+  type: STANDARD
+targets:
+  regions:
+    - ALL
+usage_examples:
+  - title: Verify the installed posture
+    description: Confirm services and advisory egress start in the documented state.
+    query: CALL agent_bom.core.health_check();
+  - title: Run the first read-only scan
+    description: Scan only the customer-bound objects approved during installation.
+    query: CALL agent_bom.core.trigger_scan();
+data_dictionary:
+  - database: AGENT_BOM
+    schemas:
+      - schema: CORE
+        tables:
+          - table: FINDINGS
+            description: Tenant-owned normalized security findings produced by scans.

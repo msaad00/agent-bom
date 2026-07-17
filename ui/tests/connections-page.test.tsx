@@ -444,7 +444,8 @@ describe("ConnectionsPage — Connect segment", () => {
     fireEvent.click(within(wizard).getByRole("button", { name: /Native app \(SPCS\)/i }));
 
     const recipe = within(wizard).getByTestId("wizard-snowflake-spcs").textContent ?? "";
-    expect(recipe).toContain("CREATE APPLICATION PACKAGE");
+    expect(recipe).toContain("snow app run --project deploy/snowflake/native-app");
+    expect(recipe).toContain("Next step:");
     expect(recipe).toContain("deploy/snowflake/native-app");
     expect(recipe.toLowerCase()).toContain("read-only");
   });

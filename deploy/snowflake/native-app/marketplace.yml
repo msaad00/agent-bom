@@ -1,0 +1,8 @@
+required_compute_pools:
+  - AGENT_BOM_CONSUMER_POOL:
+      label: "agent-bom control plane"
+      description: >-
+        One bounded CPU pool runs the API and dashboard. The scanner and MCP
+        services share this pool and remain disabled until explicitly enabled.
+      compatible_instance_families:
+        - CPU_X64_XS

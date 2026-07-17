@@ -8,13 +8,21 @@ Run the entire agent-bom AI-supply-chain security stack inside your own Snowflak
 - **Inventory + blast radius** across structured cloud asset tables, semi-structured event JSON, and unstructured stages (notebooks, IaC, model artifacts, prompt corpora)
 - **Fix-first security dashboard** — Next.js with React Flow graph viz, hosted on Snowpark Container Services inside your account
 - **Audit log** with HMAC chain, OCSF-shaped events, customer-owned (we cannot read it)
-- **Zero data egress by default** — only customer-approved advisory feeds (OSV / KEV / EPSS / GHSA) reach outbound
+- **Zero data egress by default** — only customer-approved advisory and package-metadata feeds (OSV, KEV, EPSS, GHSA, NVD, deps.dev, and named package registries) reach outbound
 - **Opt-in Phase 4 services** — scanner and MCP runtime service specs are packaged, but neither starts until you call the enable procedures
+
+Every SPCS container uses Snowflake's injected workload identity
+(`SNOWFLAKE_HOST` plus `/snowflake/session/token`) with OAuth. Do not provide a
+Snowflake password, browser authenticator, user private key, or long-lived OAuth
+token to the application containers.
 
 ## Prerequisites
 
 - Snowflake account on `STANDARD` edition or higher
 - `ACCOUNTADMIN` role for the install + initial bindings (after install, app is operated by a less-privileged role)
+- Snowflake CLI `3.23.0` for provider/private-preview installs
+- Four `linux/amd64` images pushed to the provider image repository at the
+  immutable tag in `manifest.yml`; Snowflake CLI does not build container images
 - Optional: corporate VPN egress IP block(s) for the dashboard network policy
 
 ## 1 — Review the manifest
@@ -33,23 +41,41 @@ The trust contract:
 | `CREATE SERVICE`, `BIND SERVICE ENDPOINT` | Schema-level grants |
 | `SELECT` on tables YOU bind at install | Any write privilege on your tables |
 | `READ` on stages YOU bind at install | `MANAGE GRANTS`, `ACCOUNTADMIN` access |
-| Outbound HTTPS to OSV/KEV/EPSS/GHSA (per-EAI consent) | Any other outbound network |
+| Outbound HTTPS to seven named advisory/package-metadata integrations (per-EAI consent) | Any other outbound network |
 
-## 2 — Install from the Marketplace
+## 2 — Install through a real distribution lane
 
-```sql
--- One-line Marketplace install (TBD once listing approved):
-CALL SNOWFLAKE.LOCAL.NATIVE_APPS.INSTALL_FROM_MARKETPLACE('agent-bom');
+### Provider/private preview
+
+First command:
+
+```bash
+snow app run \
+  --project deploy/snowflake/native-app \
+  --connection <snowflake-cli-connection>
 ```
 
-Or manually via the dev path:
+Artifact: Snowflake CLI bundles the explicit artifact allowlist into
+`deploy/snowflake/native-app/output/deploy`, syncs it to the application-package
+stage, and creates or upgrades the development application. Provider-only
+`images.yml`, `snowflake.yml`, bootstrap SQL, credentials, and image archives are
+not included in the consumer package.
+
+Next step:
 
 ```sql
--- Upload the app package, create the application
-CREATE APPLICATION PACKAGE agent_bom_pkg;
-ALTER APPLICATION PACKAGE agent_bom_pkg ADD VERSION v0_85 USING '@agent_bom_stage/v0_85';
-CREATE APPLICATION agent_bom FROM APPLICATION PACKAGE agent_bom_pkg USING VERSION v0_85;
+CALL agent_bom.core.health_check();
 ```
+
+Then bind only the read-only objects required for the intended scan lanes.
+
+### Marketplace consumer
+
+Install from the agent-bom listing in Snowsight only after Snowflake has approved
+and made the listing available to the consumer account. This repository does not
+claim that external publication has occurred, and there is no fabricated
+`INSTALL_FROM_MARKETPLACE` stored procedure. See the [provider release
+lane](MARKETPLACE.md) for the exact external approval boundary.
 
 ## 3 — Bind your tables (the customer-approved access)
 
@@ -69,12 +95,17 @@ See [`customer_grants_template.sql`](../../deploy/snowflake/native-app/scripts/c
 
 ## 4 — Approve the External Access Integrations (advisory feeds)
 
-agent-bom needs OSV / KEV / EPSS / GHSA to enrich findings with vulnerability metadata. These are the **only** outbound calls; each is gated by a per-feed EAI you toggle in the install UI.
+agent-bom uses OSV, CISA KEV, FIRST EPSS, GHSA, NVD, deps.dev, and named
+package registries to enrich findings with vulnerability and package metadata.
+These are the **only** outbound calls; each is gated by a per-feed EAI you
+toggle in the install UI.
 
-If you want fully air-gapped (no outbound network at all): leave all four EAIs OFF. agent-bom still scans + classifies; CVE enrichment is just less complete.
+If you want fully air-gapped (no outbound network at all): leave all seven EAIs
+OFF. agent-bom still scans and classifies; CVE/package enrichment is less
+complete.
 
 The packaged scanner service is also off by default. To run the SPCS scanner
-with advisory enrichment, bind all four EAI references first, then opt in:
+with advisory enrichment, bind all seven EAI references first, then opt in:
 
 ```sql
 CALL agent_bom.core.enable_scanner_service();
@@ -87,6 +118,9 @@ The scanner service attaches only these EAIs:
 - `cisa_kev`
 - `first_epss`
 - `github_ghsa`
+- `nvd_api`
+- `deps_dev`
+- `package_registries`
 
 If any EAI is unbound, service creation should fail before outbound access is
 available.
@@ -138,12 +172,12 @@ agent-bom snowflake test-connection
 ## 8 — Trigger your first scan
 
 ```sql
--- Manual scan
 CALL agent_bom.core.trigger_scan();
-
--- Or enable the auto-scan task (default 6h interval)
-ALTER TASK agent_bom.core.auto_scan_task RESUME;
 ```
+
+The package does not assume access to a consumer warehouse and therefore does
+not create a hard-coded Snowflake task. Schedule this procedure from the
+customer-owned orchestrator or warehouse policy already used for security jobs.
 
 ## 9 — Open the dashboard
 
@@ -168,7 +202,7 @@ SHOW GRANTS TO APPLICATION ROLE agent_bom.app_user;
 -- Confirm the read-only contract on bound objects
 SHOW GRANTS ON DATABASE YOUR_DB;  -- should show NO grants to APPLICATION agent_bom
 
--- Confirm EAI scope (only the four advisory feeds)
+-- Confirm EAI scope (only the seven declared advisory/package feeds)
 SHOW EXTERNAL ACCESS INTEGRATIONS LIKE 'AGENT_BOM_%';
 
 -- Confirm no scanner egress until explicit opt-in

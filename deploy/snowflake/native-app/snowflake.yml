@@ -1,0 +1,34 @@
+definition_version: 2
+
+entities:
+  agent_bom_package:
+    type: application package
+    identifier: agent_bom_pkg
+    distribution: external
+    enable_release_channels: true
+    stage: app_src.agent_bom_stage
+    manifest: manifest.yml
+    artifacts:
+      - src: README.md
+        dest: README.md
+      - src: manifest.yml
+        dest: manifest.yml
+      - src: marketplace.yml
+        dest: marketplace.yml
+      - src: scripts/*.sql
+        dest: scripts/
+      - src: dcm/*.sql
+        dest: dcm/
+      - src: service-spec.yaml
+        dest: service-spec.yaml
+      - src: service-specs/*.yaml
+        dest: service-specs/
+      - src: streamlit/*.py
+        dest: streamlit/
+
+  agent_bom_app:
+    type: application
+    identifier: agent_bom
+    from:
+      target: agent_bom_package
+    debug: false

@@ -12,7 +12,11 @@ PR can't quietly weaken the read-only contract.
 
 from __future__ import annotations
 
+import hashlib
 import re
+import subprocess
+import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -26,6 +30,12 @@ SERVICE_SPECS_DIR = NATIVE_APP_DIR / "service-specs"
 CORE_SERVICE_SPEC_PATH = NATIVE_APP_DIR / "service-spec.yaml"
 RELEASE_WORKFLOW_PATH = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-snowflake.yml"
 PYPROJECT_PATH = Path(__file__).resolve().parents[1] / "pyproject.toml"
+PROJECT_PATH = NATIVE_APP_DIR / "snowflake.yml"
+MARKETPLACE_PATH = NATIVE_APP_DIR / "marketplace.yml"
+CONSUMER_README_PATH = NATIVE_APP_DIR / "README.md"
+IMAGE_BUILD_PATH = NATIVE_APP_DIR / "images.yml"
+LISTING_TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "docs" / "snowflake-native-app" / "listing-template.yml"
+RELEASE_TOOL_PATH = Path(__file__).resolve().parents[1] / "scripts" / "release" / "snowflake_native_app.py"
 
 
 def _snowflake_image_tag_from_pyproject() -> str:
@@ -191,8 +201,9 @@ def test_manifest_declares_phase4_services_default_off(manifest: dict):
     assert config["enable_mcp_runtime_service"]["default"] is False
 
     images = set(manifest.get("artifacts", {}).get("container_services", {}).get("images", []))
-    assert f"/db/schema/agent_bom_repo/agent-bom-scanner:{SNOWFLAKE_PACKAGE_IMAGE_TAG}" in images
-    assert f"/db/schema/agent_bom_repo/agent-bom-mcp-runtime:{SNOWFLAKE_PACKAGE_IMAGE_TAG}" in images
+    repository = "/agent_bom_provider/spcs/agent_bom_repo"
+    assert f"{repository}/agent-bom-scanner:{SNOWFLAKE_PACKAGE_IMAGE_TAG}" in images
+    assert f"{repository}/agent-bom-mcp-runtime:{SNOWFLAKE_PACKAGE_IMAGE_TAG}" in images
 
 
 def test_native_app_container_images_are_release_pinned(
@@ -225,7 +236,24 @@ def test_scanner_service_spec_uses_scanner_entrypoint_and_not_mcp_runtime(servic
     assert scanner["name"] == "agent-bom-scanner"
     assert scanner["env"]["AGENT_BOM_MCP_MODE"] == "0"
     assert scanner["env"]["AGENT_BOM_ENABLE_ADVISORY_EGRESS"] == "1"
-    assert scanner["command"][:4] == ["agent-bom", "agents", "--snowflake", "--snowflake-authenticator"]
+    assert scanner["command"][:3] == ["agent-bom", "agents", "--snowflake"]
+    assert "--snowflake-authenticator" not in scanner["command"]
+    assert "SNOWFLAKE_AUTHENTICATOR" not in scanner["env"]
+
+
+def test_native_app_service_specs_use_spcs_injected_context_without_unresolved_placeholders(
+    service_specs: dict[str, dict], core_service_spec: dict
+):
+    for spec_name, spec in {"service-spec.yaml": core_service_spec, **service_specs}.items():
+        for container in spec["spec"]["containers"]:
+            env = container.get("env", {})
+            assert env.get("AGENT_BOM_SNOWFLAKE_NATIVE_APP") == "1" or container["name"] == "agent-bom-ui"
+            for key in ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_DATABASE", "SNOWFLAKE_SCHEMA"):
+                assert key not in env, f"{spec_name}:{container['name']} must use the SPCS-injected {key} value"
+        rendered = yaml.safe_dump(spec)
+        placeholders = set(re.findall(r"\{\{\s*([^} ]+)\s*\}\}", rendered))
+        expected = {"mcp_bearer_token"} if spec_name == "mcp-runtime-service.yaml" else set()
+        assert placeholders == expected
 
 
 def test_mcp_runtime_spec_requires_bearer_token_and_has_no_advisory_egress(service_specs: dict[str, dict]):
@@ -255,12 +283,18 @@ def test_setup_sql_exposes_customer_health_check(setup_sql: str):
     assert "GRANT USAGE ON PROCEDURE CORE.HEALTH_CHECK()" in upper
 
 
+def test_setup_sql_does_not_depend_on_a_consumer_warehouse(setup_sql: str):
+    upper = setup_sql.upper()
+    assert "COMPUTE_WH" not in upper
+    assert "CREATE OR REPLACE TASK CORE.AUTO_SCAN_TASK" not in upper
+
+
 def test_scanner_service_creation_is_eai_gated(setup_sql: str):
     scanner_section = setup_sql.split("CREATE OR REPLACE PROCEDURE core.enable_scanner_service()", 1)[1].split(
         "CREATE OR REPLACE PROCEDURE core.enable_mcp_runtime_service", 1
     )[0]
     assert "EXTERNAL_ACCESS_INTEGRATIONS" in scanner_section
-    for eai_name in ("osv_dev", "cisa_kev", "first_epss", "github_ghsa"):
+    for eai_name in ("osv_dev", "cisa_kev", "first_epss", "github_ghsa", "nvd_api", "deps_dev", "package_registries"):
         assert f"reference('{eai_name}')" in scanner_section
 
 
@@ -302,17 +336,19 @@ def test_dcm_v001_no_write_grants_on_customer_data():
 def test_release_workflow_derives_version_from_pyproject_when_unset():
     workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "required: false" in workflow
-    assert 'project = tomllib.loads(Path("pyproject.toml").read_text())["project"]' in workflow
-    assert 'version = "v" + str(project["version"]).replace(".", "_")' in workflow
-    assert "package_version: ${{ steps.version.outputs.version }}" in workflow
-    assert "inputs.version" not in workflow.split("Build Snowflake Native App artifact", 1)[1]
+    assert 'tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]' in workflow
+    assert 'package_version="v${semantic_version//./_}"' in workflow
+    assert "package_version: ${{ steps.release.outputs.package_version }}" in workflow
+    assert "semantic_version: ${{ steps.release.outputs.semantic_version }}" in workflow
+    assert "image_matrix: ${{ steps.release.outputs.image_matrix }}" in workflow
+    assert "inputs.version" not in workflow.split("Build reproducible Native App artifact", 1)[1]
 
 
 def test_release_workflow_pins_actions_and_rejects_latest_native_app_images():
     workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
     action_refs = dict(
         re.findall(
-            r"^\s*-\s*uses:\s*(actions/(?:checkout|setup-python|upload-artifact|download-artifact))@([0-9a-f]{40})\s*$",
+            r"^\s*-\s*uses:\s*(actions/(?:checkout|setup-python|upload-artifact|download-artifact))@([0-9a-f]{40})(?:\s+#.*)?$",
             workflow,
             flags=re.MULTILINE,
         )
@@ -325,5 +361,138 @@ def test_release_workflow_pins_actions_and_rejects_latest_native_app_images():
     }
     assert not re.search(r"^\s*-\s*uses:\s*actions/[^@\s]+@(?:v\d+|latest)\s*$", workflow, flags=re.MULTILINE)
     assert not re.search(r"#\s*actions/[^@\s]+@v\d+", workflow)
-    assert 'assert ":latest" not in text' in workflow
-    assert 'assert f":{version}" in text' in workflow
+    assert "snowflake_native_app.py validate" in workflow
+    assert "snowflake_native_app.py matrix" in workflow
+
+
+# ─── Provider release + Marketplace distribution contract ─────────────────
+
+
+def test_native_app_manifest_packages_consumer_readme(manifest: dict):
+    assert manifest["artifacts"]["readme"] == "README.md"
+    readme = CONSUMER_README_PATH.read_text(encoding="utf-8")
+    assert "## Required privileges" in readme
+    assert "## Configure after install" in readme
+    assert "## Procedures" in readme
+
+
+def test_marketplace_resource_manifest_declares_install_managed_compute_pool():
+    marketplace = yaml.safe_load(MARKETPLACE_PATH.read_text(encoding="utf-8"))
+    pools = marketplace["required_compute_pools"]
+    assert len(pools) == 1
+    pool_name, pool = next(iter(pools[0].items()))
+    assert pool_name == "AGENT_BOM_CONSUMER_POOL"
+    assert pool["compatible_instance_families"]
+
+    setup = SETUP_SQL_PATH.read_text(encoding="utf-8").upper()
+    assert "CREATE COMPUTE POOL IF NOT EXISTS AGENT_BOM_CONSUMER_POOL" in setup
+    assert "INSTANCE_FAMILY = CPU_X64_XS" in setup
+
+
+def test_snowflake_cli_project_packages_every_runtime_asset():
+    project = yaml.safe_load(PROJECT_PATH.read_text(encoding="utf-8"))
+    assert project["definition_version"] == 2
+    package = project["entities"]["agent_bom_package"]
+    assert package["type"] == "application package"
+    assert package["distribution"] == "external"
+    assert package["enable_release_channels"] is True
+    assert package["manifest"] == "manifest.yml"
+
+    sources = {entry["src"] for entry in package["artifacts"]}
+    assert {
+        "README.md",
+        "manifest.yml",
+        "marketplace.yml",
+        "scripts/*.sql",
+        "dcm/*.sql",
+        "service-spec.yaml",
+        "service-specs/*.yaml",
+        "streamlit/*.py",
+    } <= sources
+
+
+def test_image_build_contract_matches_every_manifest_image(manifest: dict):
+    contract = yaml.safe_load(IMAGE_BUILD_PATH.read_text(encoding="utf-8"))
+    assert contract["schema_version"] == 1
+    assert contract["platform"] == "linux/amd64"
+    images = contract["images"]
+    assert {item["name"] for item in images} == {
+        "agent-bom",
+        "agent-bom-ui",
+        "agent-bom-scanner",
+        "agent-bom-mcp-runtime",
+    }
+    manifest_names = {
+        image.rsplit("/", 1)[-1].split(":", 1)[0]
+        for image in manifest["artifacts"]["container_services"]["images"]
+    }
+    assert manifest_names == {item["name"] for item in images}
+    repo_root = NATIVE_APP_DIR.parents[2]
+    for item in images:
+        assert (repo_root / item["context"]).exists()
+        assert (repo_root / item["dockerfile"]).is_file()
+
+
+def test_marketplace_listing_template_is_review_ready_and_has_no_publication_claim():
+    listing = yaml.safe_load(LISTING_TEMPLATE_PATH.read_text(encoding="utf-8"))
+    assert listing["title"] == "agent-bom"
+    assert listing["subtitle"]
+    assert listing["description"]
+    assert listing["listing_terms"]["type"] == "STANDARD"
+    assert listing["usage_examples"]
+    assert listing["data_dictionary"]
+    text = LISTING_TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "TBD" not in text
+    assert "published" not in text.lower()
+
+
+def test_release_tool_validates_and_builds_reproducible_package(tmp_path: Path):
+    validate = subprocess.run(
+        [sys.executable, str(RELEASE_TOOL_PATH), "validate"],
+        cwd=NATIVE_APP_DIR.parents[2],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert validate.returncode == 0, validate.stderr
+
+    first = tmp_path / "first.tgz"
+    second = tmp_path / "second.tgz"
+    for target in (first, second):
+        result = subprocess.run(
+            [sys.executable, str(RELEASE_TOOL_PATH), "package", "--output", str(target)],
+            cwd=NATIVE_APP_DIR.parents[2],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+    assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
+    with tarfile.open(first, "r:gz") as archive:
+        names = set(archive.getnames())
+    assert "manifest.yml" in names
+    assert "marketplace.yml" in names
+    assert "README.md" in names
+    assert "snowflake.yml" not in names
+    assert "images.yml" not in names
+
+
+def test_release_workflow_builds_pushes_and_publishes_without_secret_echoes():
+    workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "fromJSON(needs.package.outputs.image_matrix)" in workflow
+    assert "linux/amd64" in workflow
+    assert "docker push" in workflow
+    assert "snow spcs image-registry login" in workflow
+    assert "snow app deploy" in workflow
+    assert "snow app publish" in workflow
+    assert "snow app bundle --project deploy/snowflake/native-app" in workflow
+    assert "--project deploy/snowflake/native-app/snowflake.yml" not in workflow
+    assert "SNOWFLAKE_PRIVATE_KEY" in workflow
+    assert 'echo "$SNOWFLAKE_PRIVATE_KEY"' not in workflow
+    assert "snowflake-cli==" in workflow
+    # Snowflake CLI 3.23.0 pins PyYAML 6.0.2.  Keep the workflow's explicit
+    # dependency pin solver-compatible in both package and publish jobs.
+    assert workflow.count("pyyaml==6.0.2") == 2
+    assert "pyyaml==6.0.3" not in workflow
+    assert "environment: snowflake-marketplace" in workflow

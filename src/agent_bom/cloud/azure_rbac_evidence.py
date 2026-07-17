@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from hashlib import sha256
 from typing import Any, Mapping
@@ -85,6 +86,21 @@ def _source_records(payload: Mapping[str, Any]) -> tuple[EvidenceSource, ...]:
     return tuple(sorted(sources, key=lambda item: item.name))
 
 
+def _downgrade_source(
+    sources: tuple[EvidenceSource, ...],
+    name: str,
+    diagnostic: str,
+) -> tuple[EvidenceSource, ...]:
+    updated: list[EvidenceSource] = []
+    for source in sources:
+        if source.name != name:
+            updated.append(source)
+            continue
+        state = EvidenceSourceState.PARTIAL if source.state is EvidenceSourceState.COMPLETE else source.state
+        updated.append(replace(source, state=state, diagnostics=tuple(sorted({*source.diagnostics, diagnostic}))))
+    return tuple(updated)
+
+
 def _permission_fields(permission_blocks: Any) -> tuple[tuple[str, ...], ...]:
     actions: set[str] = set()
     not_actions: set[str] = set()
@@ -141,7 +157,7 @@ def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSou
         )
 
     bindings: list[AuthorizationBinding] = []
-    has_group_assignment = False
+    has_group_reference = False
     for assignment in _records(payload.get("role_assignments")):
         principal_id = _text(assignment.get("principal_id"))
         principal_type = _text(assignment.get("principal_type")).lower()
@@ -149,7 +165,7 @@ def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSou
         assignment_scope = _text(assignment.get("scope"))
         if not principal_id or not role_id or not assignment_scope:
             continue
-        has_group_assignment = has_group_assignment or principal_type == "group"
+        has_group_reference = has_group_reference or principal_type == "group"
         bindings.append(
             AuthorizationBinding(
                 binding_id=_text(assignment.get("id")) or _stable_id(principal_id, principal_type, role_id, assignment_scope),
@@ -167,18 +183,30 @@ def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSou
         deny_id = _text(deny.get("id")) or _text(deny.get("name"))
         deny_scope = _text(deny.get("scope"))
         if not deny_id or not deny_scope:
+            sources = _downgrade_source(sources, "deny_assignments", "malformed_deny_assignment")
             continue
-        principals = _records(deny.get("principals")) or ({"id": "*", "type": "all"},)
+        principals = _records(deny.get("principals"))
+        if not principals:
+            sources = _downgrade_source(sources, "deny_assignments", f"malformed_deny_principals:{deny_id}")
+            continue
         excluded_principals = tuple(
             sorted({_text(item.get("id")) for item in _records(deny.get("exclude_principals")) if _text(item.get("id"))})
         )
         permission_blocks = _records(deny.get("permissions"))
+        if not permission_blocks:
+            sources = _downgrade_source(sources, "deny_assignments", f"malformed_deny_permissions:{deny_id}")
+            continue
         for block_index, permission in enumerate(permission_blocks):
             permissions = _string_tuple(permission.get("actions"))
             excluded = _string_tuple(permission.get("not_actions"))
             data_permissions = _string_tuple(permission.get("data_actions"))
             excluded_data = _string_tuple(permission.get("not_data_actions"))
             if not permissions and not data_permissions:
+                sources = _downgrade_source(
+                    sources,
+                    "deny_assignments",
+                    f"malformed_deny_permission_block:{deny_id}:{block_index}",
+                )
                 continue
             condition = _condition(
                 permission.get("condition") or deny.get("condition"),
@@ -187,13 +215,20 @@ def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSou
             for principal in principals:
                 principal_id = _deny_principal_id(principal)
                 if not principal_id:
+                    sources = _downgrade_source(
+                        sources,
+                        "deny_assignments",
+                        f"malformed_deny_principal:{deny_id}:{block_index}",
+                    )
                     continue
+                principal_type = _text(principal.get("type")).lower()
+                has_group_reference = has_group_reference or principal_type == "group"
                 bindings.append(
                     AuthorizationBinding(
                         binding_id=f"{deny_id}:permission-{block_index}:principal-{principal_id}",
                         effect=AuthorizationEffect.DENY,
                         principal_id=principal_id,
-                        principal_type=_text(principal.get("type")).lower(),
+                        principal_type=principal_type,
                         scope=deny_scope,
                         permissions=permissions,
                         excluded_permissions=excluded,
@@ -208,7 +243,7 @@ def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSou
 
     required_sources = ["role_assignments", "role_definitions", "deny_assignments"]
     mutable_sources = list(sources)
-    if has_group_assignment:
+    if has_group_reference:
         mutable_sources.append(
             EvidenceSource(
                 "group_memberships",

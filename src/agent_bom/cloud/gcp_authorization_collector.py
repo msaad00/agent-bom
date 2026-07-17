@@ -31,6 +31,10 @@ def _strings(value: Any) -> list[str]:
     return sorted({_text(item) for item in (value or []) if _text(item)})
 
 
+def _ordered_strings(value: Any) -> list[str]:
+    return list(dict.fromkeys(_text(item) for item in (value or []) if _text(item)))
+
+
 def _etag(value: Any) -> str:
     if isinstance(value, bytes):
         return base64.b64encode(value).decode("ascii")
@@ -100,7 +104,7 @@ def _policy_record(resource: str, policy: Any, *, asset_type: str, ancestors: An
     return {
         "resource": resource,
         "asset_type": asset_type,
-        "ancestors": _strings(ancestors),
+        "ancestors": _ordered_strings(ancestors),
         "version": int(_get(policy, "version", 0) or 0),
         "etag": _etag(_get(policy, "etag")),
         "bindings": bindings,
@@ -109,39 +113,55 @@ def _policy_record(resource: str, policy: Any, *, asset_type: str, ancestors: An
 
 
 def _role_record(role: Any, role_id: str) -> dict[str, Any]:
+    stage = _text(_get(role, "stage"))
+    deleted = bool(_get(role, "deleted", False))
+    disabled = stage.casefold() == "disabled"
     return {
         "id": _text(_get(role, "name")) or role_id,
         "title": _text(_get(role, "title")),
         "description": _text(_get(role, "description")),
-        "stage": _text(_get(role, "stage")),
-        "deleted": bool(_get(role, "deleted", False)),
-        "permissions": _strings(_get(role, "included_permissions", [])),
-        "completeness": EvidenceSourceState.COMPLETE.value,
+        "stage": stage,
+        "deleted": deleted,
+        "permissions": [] if deleted or disabled else _strings(_get(role, "included_permissions", [])),
+        "completeness": (EvidenceSourceState.UNAVAILABLE.value if deleted or disabled else EvidenceSourceState.COMPLETE.value),
+        "diagnostics": [item for item, applies in (("role_deleted", deleted), ("role_disabled", disabled)) if applies],
     }
 
 
-def _deny_rule(rule: Any) -> dict[str, Any]:
+def _deny_rule(rule: Any) -> dict[str, Any] | None:
+    denied_principals = _strings(_get(rule, "denied_principals", []))
+    denied_permissions = _strings(_get(rule, "denied_permissions", []))
+    if not denied_principals or not denied_permissions:
+        return None
     return {
-        "denied_principals": _strings(_get(rule, "denied_principals", [])),
+        "denied_principals": denied_principals,
         "exception_principals": _strings(_get(rule, "exception_principals", [])),
-        "denied_permissions": _strings(_get(rule, "denied_permissions", [])),
+        "denied_permissions": denied_permissions,
         "exception_permissions": _strings(_get(rule, "exception_permissions", [])),
         "condition": _condition(_get(rule, "denial_condition")),
     }
 
 
-def _deny_record(policy: Any, attachment_point: str) -> dict[str, Any]:
+def _deny_record(policy: Any, attachment_point: str) -> tuple[dict[str, Any] | None, int]:
     rules: list[dict[str, Any]] = []
+    dropped = 0
     for wrapper in _get(policy, "rules", []) or []:
         rule = _get(wrapper, "deny_rule", wrapper)
-        rules.append(_deny_rule(rule))
+        normalized = _deny_rule(rule)
+        if normalized is None:
+            dropped += 1
+        else:
+            rules.append(normalized)
+    name = _text(_get(policy, "name"))
+    if not name or not rules:
+        return None, max(1, dropped)
     return {
-        "name": _text(_get(policy, "name")),
+        "name": name,
         "uid": _text(_get(policy, "uid")),
         "display_name": _text(_get(policy, "display_name")),
         "attachment_point": attachment_point,
         "rules": rules,
-    }
+    }, dropped
 
 
 def _pab_record(policy: Any) -> dict[str, Any]:
@@ -228,6 +248,7 @@ def collect_gcp_authorization(
             warnings.append("GCP IAM evidence SDKs are incomplete. Install with: pip install 'agent-bom[gcp]'")
             return {
                 "iam_observed_at": observed_at,
+                "iam_scope": f"projects/{project_id}",
                 "iam_hierarchy": [f"projects/{project_id}"],
                 "allow_policies": [],
                 "role_definitions": [],
@@ -246,12 +267,20 @@ def collect_gcp_authorization(
                 ],
             }
 
-    project_scope = f"projects/{project_id}"
+    requested_project_scope = f"projects/{project_id}"
+    project_scope = requested_project_scope
     hierarchy = [project_scope]
     hierarchy_state = EvidenceSourceState.COMPLETE
     hierarchy_diagnostics: list[str] = []
     try:
-        project = clients.projects.get_project(request={"name": project_scope})
+        project = clients.projects.get_project(request={"name": requested_project_scope})
+        canonical_project_scope = _text(_get(project, "name"))
+        if canonical_project_scope.startswith("projects/"):
+            project_scope = canonical_project_scope
+            hierarchy[0] = project_scope
+        else:
+            hierarchy_state = EvidenceSourceState.PARTIAL
+            hierarchy_diagnostics.append("project response omitted canonical resource name")
         parent = _text(_get(project, "parent"))
         while parent:
             hierarchy.append(parent)
@@ -283,7 +312,11 @@ def collect_gcp_authorization(
     try:
         assets, truncated = _bounded(
             clients.assets.list_assets(
-                request={"parent": project_scope, "content_type": "IAM_POLICY", "page_size": min(maximum + 1, 1000)}
+                request={
+                    "parent": requested_project_scope,
+                    "content_type": "IAM_POLICY",
+                    "page_size": min(maximum + 1, 1000),
+                }
             ),
             maximum,
         )
@@ -385,6 +418,7 @@ def collect_gcp_authorization(
     deny_diagnostics: list[str] = []
     deny_records: dict[str, dict[str, Any]] = {}
     deny_count = 0
+    malformed_deny_rules = 0
     for scope in hierarchy:
         attachment = f"cloudresourcemanager.googleapis.com/{scope}"
         parent = f"policies/{quote(attachment, safe='')}/denypolicies"
@@ -394,8 +428,10 @@ def collect_gcp_authorization(
                     deny_state = EvidenceSourceState.TRUNCATED
                     deny_diagnostics.append(f"deny policy collection capped at {maximum} records")
                     break
-                record = _deny_record(policy, attachment)
-                deny_records[record["name"] or f"{attachment}:{deny_count}"] = record
+                deny_record, dropped = _deny_record(policy, attachment)
+                malformed_deny_rules += dropped
+                if deny_record is not None:
+                    deny_records[deny_record["name"]] = deny_record
                 deny_count += 1
         except Exception as exc:  # noqa: BLE001
             state = _failure_state(exc)
@@ -411,6 +447,10 @@ def collect_gcp_authorization(
                 missing=missing,
             )
     deny_state = _merge_state(deny_state, hierarchy_state)
+    if malformed_deny_rules and deny_state is EvidenceSourceState.COMPLETE:
+        deny_state = EvidenceSourceState.PARTIAL
+        suffix = "rule" if malformed_deny_rules == 1 else "rules"
+        deny_diagnostics.append(f"dropped {malformed_deny_rules} malformed deny {suffix}")
     if hierarchy_state is not EvidenceSourceState.COMPLETE:
         deny_diagnostics.append("parent hierarchy unavailable; inherited deny policies may be missing")
 
@@ -470,10 +510,11 @@ def collect_gcp_authorization(
         pab_diagnostics.append("parent hierarchy unavailable; organization PAB evidence may be missing")
     if pab_state is EvidenceSourceState.COMPLETE and (pab_records or pab_bindings):
         pab_state = EvidenceSourceState.PARTIAL
-        pab_diagnostics.append("PAB evidence is preserved but boundary evaluation is not implemented")
+        pab_diagnostics.append("PAB evidence is preserved but target principal sets are not resolved")
 
     return {
         "iam_observed_at": observed_at,
+        "iam_scope": project_scope,
         "iam_hierarchy": hierarchy,
         "allow_policies": sorted(allow_policies.values(), key=lambda item: item["resource"]),
         "role_definitions": sorted(roles, key=lambda item: item["id"].casefold()),

@@ -106,7 +106,7 @@ class _DisabledRolesClient(_RolesClient):
 
 class _DenyClient:
     def list_policies(self, request: dict[str, Any]) -> Iterable[Any]:
-        if "projects%2Fproj-1" not in request["parent"]:
+        if "projects%2F123" not in request["parent"]:
             return []
         rule = SimpleNamespace(
             denied_principals=["principal://iam.googleapis.com/projects/-/serviceAccounts/ci@proj-1.iam.gserviceaccount.com"],
@@ -161,8 +161,8 @@ def test_collects_v3_allow_roles_hierarchy_and_deny_without_permission_truncatio
         "resource_hierarchy": EvidenceSourceState.COMPLETE.value,
         "role_definitions": EvidenceSourceState.COMPLETE.value,
     }
-    assert result["iam_hierarchy"] == ["projects/proj-1", "folders/10", "organizations/20"]
-    conditional = next(policy for policy in result["allow_policies"] if policy["resource"] == "projects/proj-1")
+    assert result["iam_hierarchy"] == ["projects/123", "folders/10", "organizations/20"]
+    conditional = next(policy for policy in result["allow_policies"] if policy["resource"] == "projects/123")
     assert conditional["version"] == 3
     assert conditional["bindings"][0]["condition"]["expression"].startswith("resource.name")
     viewer = next(role for role in result["role_definitions"] if role["id"] == "roles/viewer")
@@ -189,7 +189,7 @@ def test_malformed_deny_rule_downgrades_deny_source() -> None:
         display_name="malformed",
         rules=[SimpleNamespace(deny_rule=SimpleNamespace(denied_principals=[], denied_permissions=[]))],
     )
-    clients.denies.list_policies = lambda request: [malformed]
+    clients.denies.list_policies = lambda request: [malformed] if "projects%2F123" in request["parent"] else []
 
     result = collect_gcp_authorization(None, "proj-1", clients=clients, warnings=[])
 

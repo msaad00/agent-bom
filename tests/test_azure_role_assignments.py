@@ -90,8 +90,8 @@ def test_authorization_discovery_preserves_explicit_source_states() -> None:
     out = _discover_authorization(object(), "sub1", warnings=[])
 
     assert {source["name"]: source["state"] for source in out["authorization_sources"]} == {
-        "role_assignments": "complete",
-        "role_definitions": "complete",
+        "role_assignments": "partial",
+        "role_definitions": "partial",
         "deny_assignments": "complete",
     }
     assert out["role_assignments"][0]["id"] == ""

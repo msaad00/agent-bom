@@ -207,7 +207,17 @@ gcloud iam roles create agentBomScanner \
   --file=gcp_readonly_role.yaml
 ```
 
-### 2. Create service account + assign role
+For inherited organization/folder policy and principal-access-boundary
+evidence, create the separate parent-scoped role. Do not add these permissions
+to the project custom role:
+
+```bash
+gcloud iam roles create agentBomIamEvidence \
+  --organization=YOUR_ORGANIZATION_ID \
+  --file=gcp_organization_iam_evidence_role.yaml
+```
+
+### 2. Create service account + assign roles
 
 ```bash
 gcloud iam service-accounts create agent-bom-scanner \
@@ -219,10 +229,10 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 ```
 
 That project-scoped grant covers local project inventory and IAM evidence. To
-prove inherited allow/deny policies and organization principal-access-boundary
-state, create the equivalent custom role at the organization level and grant it
-at the owning organization or folder. Parent sources that cannot be read remain
-explicitly incomplete; they are never treated as an empty policy set.
+prove inherited organization/folder policy and principal-access-boundary state,
+grant `organizations/YOUR_ORGANIZATION_ID/roles/agentBomIamEvidence` at the
+owning organization (or a narrower folder). Parent sources that cannot be read
+remain explicitly incomplete; they are never treated as an empty policy set.
 
 ### 3. Workload Identity (GKE — no key files)
 

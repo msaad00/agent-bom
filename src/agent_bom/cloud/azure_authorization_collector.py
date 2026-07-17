@@ -107,16 +107,19 @@ def _principal_records(values: Any) -> list[dict[str, str]]:
 
 def _deny_record(assignment: Any) -> dict[str, Any] | None:
     scope = _text(getattr(assignment, "scope", None))
-    if not scope:
+    principals = _principal_records(getattr(assignment, "principals", None))
+    permissions = [_permission_record(permission) for permission in (getattr(assignment, "permissions", None) or [])]
+    permissions = [item for item in permissions if item["actions"] or item["data_actions"]]
+    if not scope or not principals or not permissions:
         return None
     return {
         "id": _text(getattr(assignment, "id", None)),
         "name": _text(getattr(assignment, "name", None)),
         "deny_assignment_name": _text(getattr(assignment, "deny_assignment_name", None)),
         "scope": scope,
-        "principals": _principal_records(getattr(assignment, "principals", None)),
+        "principals": principals,
         "exclude_principals": _principal_records(getattr(assignment, "exclude_principals", None)),
-        "permissions": [_permission_record(permission) for permission in (getattr(assignment, "permissions", None) or [])],
+        "permissions": permissions,
         "do_not_apply_to_child_scopes": bool(getattr(assignment, "do_not_apply_to_child_scopes", False)),
         "is_system_protected": bool(getattr(assignment, "is_system_protected", False)),
         "condition": _text(getattr(assignment, "condition", None)) or None,

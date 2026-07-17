@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from hashlib import sha256
 from typing import Any, Mapping
@@ -17,6 +18,7 @@ from agent_bom.cloud.authorization_evidence import (
     EvidenceSource,
     EvidenceSourceState,
     PrincipalMembership,
+    ResourceAncestry,
     RoleDefinitionEvidence,
 )
 
@@ -35,6 +37,12 @@ def _strings(value: Any) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
     return tuple(sorted({_text(item) for item in value if _text(item)}))
+
+
+def _ordered_strings(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(dict.fromkeys(_text(item) for item in value if _text(item)))
 
 
 def _stable_id(*parts: str) -> str:
@@ -93,6 +101,21 @@ def _source_records(payload: Mapping[str, Any]) -> tuple[EvidenceSource, ...]:
     return tuple(sorted(sources, key=lambda item: item.name))
 
 
+def _downgrade_source(
+    sources: tuple[EvidenceSource, ...],
+    name: str,
+    diagnostic: str,
+) -> tuple[EvidenceSource, ...]:
+    updated: list[EvidenceSource] = []
+    for source in sources:
+        if source.name != name:
+            updated.append(source)
+            continue
+        state = EvidenceSourceState.PARTIAL if source.state is EvidenceSourceState.COMPLETE else source.state
+        updated.append(replace(source, state=state, diagnostics=tuple(sorted({*source.diagnostics, diagnostic}))))
+    return tuple(updated)
+
+
 def _condition(value: Any) -> AuthorizationCondition | None:
     if not isinstance(value, Mapping):
         return None
@@ -122,35 +145,55 @@ def _deny_permission(value: Any) -> str:
 
 def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSource, ...]) -> AuthorizationEvidenceBundle:
     project_id = _text(payload.get("project_id")) or _text(payload.get("account_id"))
-    scope = f"projects/{project_id}" if project_id else ""
+    scope = _text(payload.get("iam_scope")) or (f"projects/{project_id}" if project_id else "")
     bindings: list[AuthorizationBinding] = []
     roles: list[RoleDefinitionEvidence] = []
+    resource_ancestry: list[ResourceAncestry] = []
     has_group_binding = False
 
     for role in _records(payload.get("role_definitions")):
         role_id = _text(role.get("id"))
         if not role_id:
             continue
+        deleted = bool(role.get("deleted", False))
+        disabled = _text(role.get("stage")).casefold() == "disabled"
+        completeness = EvidenceSourceState.UNAVAILABLE if deleted or disabled else _state(role.get("completeness"))
+        diagnostics = tuple(item for item, applies in (("role_deleted", deleted), ("role_disabled", disabled)) if applies)
         roles.append(
             RoleDefinitionEvidence(
                 role_id=role_id,
-                permissions=_strings(role.get("permissions")),
-                completeness=_state(role.get("completeness")),
+                permissions=() if deleted or disabled else _strings(role.get("permissions")),
+                completeness=completeness,
                 source="gcp.iam.roles.get",
+                diagnostics=diagnostics,
             )
         )
 
     for policy in _records(payload.get("allow_policies")):
         resource = _text(policy.get("resource"))
         if not resource:
+            sources = _downgrade_source(sources, "allow_policies", "malformed_allow_policy_resource")
             continue
+        ancestors = _ordered_strings(policy.get("ancestors"))
+        if ancestors:
+            resource_ancestry.append(
+                ResourceAncestry(
+                    resource=resource,
+                    ancestors=ancestors,
+                    source="gcp.cloudasset.assets.listIamPolicy",
+                )
+            )
+        elif resource.startswith("//"):
+            sources = _downgrade_source(sources, "allow_policies", f"missing_resource_ancestry:{resource}")
         for binding in _records(policy.get("bindings")):
             role_id = _text(binding.get("role"))
             binding_id = _text(binding.get("id"))
             if not role_id or not binding_id:
                 continue
             for member in _strings(binding.get("members")):
-                principal_type = member.partition(":")[0].lower() if ":" in member else ""
+                principal_type = (
+                    "public" if member.casefold() in {"allusers", "allauthenticatedusers"} else member.partition(":")[0].lower()
+                )
                 has_group_binding = has_group_binding or principal_type == "group"
                 bindings.append(
                     AuthorizationBinding(
@@ -170,16 +213,28 @@ def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSou
         attachment = _text(policy.get("attachment_point"))
         deny_scope = attachment.removeprefix("cloudresourcemanager.googleapis.com/")
         if not policy_id or not deny_scope:
+            sources = _downgrade_source(sources, "deny_policies", "malformed_deny_policy")
             continue
         for rule_index, rule in enumerate(_records(policy.get("rules"))):
             permissions = tuple(sorted({_deny_permission(item) for item in _strings(rule.get("denied_permissions"))}))
             exceptions = tuple(sorted({_deny_permission(item) for item in _strings(rule.get("exception_permissions"))}))
             excluded_principals = tuple(sorted({_deny_principal(item) for item in _strings(rule.get("exception_principals"))}))
             condition = _condition(rule.get("condition"))
-            for raw_principal in _strings(rule.get("denied_principals")):
+            raw_principals = _strings(rule.get("denied_principals"))
+            if not raw_principals or not permissions:
+                sources = _downgrade_source(sources, "deny_policies", f"malformed_deny_rule:{policy_id}:{rule_index}")
+                continue
+            for raw_principal in raw_principals:
                 principal = _deny_principal(raw_principal)
                 if not principal:
+                    sources = _downgrade_source(sources, "deny_policies", f"malformed_deny_principal:{policy_id}:{rule_index}")
                     continue
+                if principal.casefold().startswith("principalset://") and principal != "*":
+                    sources = _downgrade_source(
+                        sources,
+                        "deny_policies",
+                        f"unresolved_deny_principal_set:{principal}",
+                    )
                 bindings.append(
                     AuthorizationBinding(
                         binding_id=f"{policy_id}:rule-{rule_index}:principal-{principal}",
@@ -213,6 +268,13 @@ def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSou
         )
         required_sources.append("group_memberships")
 
+    if _records(payload.get("pab_policies")) or _records(payload.get("pab_bindings")):
+        sources = _downgrade_source(
+            sources,
+            "principal_access_boundaries",
+            "pab_targets_not_yet_resolved_to_principals",
+        )
+
     return AuthorizationEvidenceBundle(
         provider=AuthorizationProvider.GCP,
         scope=scope,
@@ -221,6 +283,7 @@ def _authoritative_bundle(payload: Mapping[str, Any], sources: tuple[EvidenceSou
         required_sources=tuple(required_sources),
         bindings=tuple(sorted(bindings, key=lambda item: item.binding_id)),
         role_definitions=tuple(sorted(roles, key=lambda item: item.role_id)),
+        resource_ancestry=tuple(sorted(resource_ancestry, key=lambda item: item.resource)),
     )
 
 

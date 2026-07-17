@@ -12,6 +12,7 @@ import {
   formatDate,
   type PostureCountsResponse,
   type ComplianceResponse,
+  type PostureTrendPoint,
 } from "@/lib/api";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
@@ -64,6 +65,7 @@ export default function Dashboard() {
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
+  const [postureHistory, setPostureHistory] = useState<PostureTrendPoint[] | null | undefined>(undefined);
   // Local display-format override; falls back to the persisted per-tenant
   // config carried on the overview posture. Toggling persists via the API (#3940).
   const [scoreFormatOverride, setScoreFormatOverride] = useState<PostureScoreFormat | null>(null);
@@ -76,6 +78,9 @@ export default function Dashboard() {
     api.getPosture().then(setPosture).catch(() => {});
     api.getOverview().then(setOverview).catch(() => {});
     api.getCompliance().then(setCompliance).catch(() => {});
+    api.getPostureTrends(2)
+      .then((response) => setPostureHistory(response.data_points))
+      .catch(() => setPostureHistory(null));
   }, []);
 
   useEffect(() => {
@@ -317,6 +322,18 @@ export default function Dashboard() {
   const scoreFormat: PostureScoreFormat =
     scoreFormatOverride ?? overview?.posture.display_format ?? "percent";
   const scoreBreakdown = overview?.posture.breakdown ?? null;
+  const scoreTrend = (() => {
+    if (postureHistory === undefined) return undefined;
+    if (!postureHistory || postureHistory.length < 2 || typeof postureScore !== "number") return null;
+    const [latest, prior] = postureHistory;
+    if (!latest || !prior) return null;
+    const previous = Math.abs(latest.posture_score - postureScore) < 0.01 ? prior : latest;
+    return {
+      delta: postureScore - previous.posture_score,
+      previousScore: previous.posture_score,
+      timestamp: previous.timestamp,
+    };
+  })();
   const handleScoreFormatChange = (format: PostureScoreFormat) => {
     // Optimistic local update, then persist per-tenant. A failed persist (e.g.
     // a viewer without admin) still keeps the local view; it just won't stick.
@@ -333,7 +350,7 @@ export default function Dashboard() {
       <PageLaneHeader
         lane="command"
         title="Overview"
-        subtitle="Exec briefing: posture, open issues, compliance evidence, and live surfaces. Use Findings, Security graph, and Agent mesh for engineer drill-down."
+        subtitle="Exec briefing: posture, open issues, compliance evidence, and live surfaces. Use Findings and Investigation for engineer drill-down."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-200">
             {deploymentModeLabel(counts?.deployment_mode)} · {countActiveServices(counts?.services)} services live
@@ -353,7 +370,7 @@ export default function Dashboard() {
               href="/security-graph"
               className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
             >
-              Security graph <GitBranch className="h-4 w-4" />
+              Investigation <GitBranch className="h-4 w-4" />
             </Link>
             {(displayedAgentCount ?? 0) > 0 ? (
               <Link
@@ -379,6 +396,7 @@ export default function Dashboard() {
         score={postureScore}
         scoreFormat={scoreFormat}
         scoreBreakdown={scoreBreakdown}
+        scoreTrend={scoreTrend}
         onScoreFormatChange={handleScoreFormatChange}
         postureSummary={overview?.posture.summary ?? posture?.summary}
         critical={criticalCount}

@@ -108,17 +108,9 @@ describe('Nav', () => {
     expect(screen.getByText('Posture')).toBeInTheDocument()
   })
 
-  it('renders the AI inventory nav group', () => {
+  it('renders one consolidated Inventory nav group', () => {
     renderExpandedNav()
-    expect(screen.getByText('AI inventory')).toBeInTheDocument()
-  })
-
-  it('uses a plain "AI" monogram (not a busy circuit icon) for the AI inventory group', () => {
-    renderExpandedNav()
-    const aiGroup = screen.getByRole('button', { name: /ai inventory/i })
-    // The monogram is its own element whose full text is exactly "AI"; the
-    // "AI inventory" label span reads differently and is not matched.
-    expect(within(aiGroup).getByText('AI', { exact: true })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^inventory/i })).toBeInTheDocument()
   })
 
   it('renders the Connect nav group', () => {
@@ -131,10 +123,9 @@ describe('Nav', () => {
     expect(screen.getByRole('button', { name: /^runtime/i })).toBeInTheDocument()
   })
 
-  it('renders Governance, Reference, and Operations groups', () => {
+  it('renders Governance and Operations groups', () => {
     renderExpandedNav()
     expect(screen.getByText('Governance')).toBeInTheDocument()
-    expect(screen.getByText('Reference')).toBeInTheDocument()
     expect(screen.getByText('Operations')).toBeInTheDocument()
   })
 
@@ -179,9 +170,9 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/remediation')).toBe(true)
   })
 
-  it('contains Security Graph link under Posture', () => {
+  it('exposes one Investigation entry under Posture', () => {
     renderExpandedNav()
-    const links = screen.getAllByRole('link', { name: /security graph/i })
+    const links = screen.getAllByRole('link', { name: /^investigation$/i })
     expect(links.some((l) => l.getAttribute('href') === '/security-graph')).toBe(true)
   })
 
@@ -217,23 +208,33 @@ describe('Nav', () => {
     expect(hrefs).toContain('/connections')
   })
 
-  it('contains MCP Catalog link in Reference', () => {
-    renderExpandedNav()
-    fireEvent.click(screen.getByRole('button', { name: /reference/i }))
-    const links = screen.getAllByRole('link', { name: /mcp catalog/i })
-    expect(links.some((l) => l.getAttribute('href') === '/registry')).toBe(true)
+  it('keeps MCP Catalog available through command search', () => {
+    renderNav()
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const palette = screen.getByRole('dialog', { name: /command palette/i })
+    expect(within(palette).getByRole('link', { name: /mcp catalog/i })).toHaveAttribute('href', '/registry')
   })
 
-  it('keeps graph lenses tucked under Posture instead of primary sidebar links', () => {
+  it('keeps graph lenses in the command palette instead of the sidebar', () => {
     renderExpandedNav()
-    expect(screen.getByText(/graph lenses/i)).toBeInTheDocument()
     const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
     expect(hrefs).toContain('/security-graph')
-    expect(screen.getByRole('link', { name: /^lineage$/i })).toBeInTheDocument()
-    expect(hrefs).toContain('/graph')
-    expect(hrefs).toContain('/mesh')
-    expect(hrefs).toContain('/context')
+    expect(hrefs).not.toContain('/graph')
+    expect(hrefs).not.toContain('/mesh')
+    expect(hrefs).not.toContain('/context')
     expect(hrefs).not.toContain('/insights')
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const palette = screen.getByRole('dialog', { name: /command palette/i })
+    const paletteHrefs = within(palette).getAllByRole('link').map((l) => l.getAttribute('href'))
+    expect(paletteHrefs).toEqual(expect.arrayContaining(['/graph', '/mesh', '/context']))
+  })
+
+  it('keeps Investigation selected while a deep graph lens route is open', () => {
+    mockedPathname = '/mesh'
+    renderExpandedNav()
+
+    expect(screen.getByRole('link', { name: /^investigation$/i })).toHaveAttribute('aria-current', 'page')
   })
 
   it('drops the duplicate /overview home entry', () => {
@@ -306,12 +307,14 @@ describe('Nav', () => {
     expect(screen.getByAltText('agent-bom')).toBeInTheDocument()
   })
 
-  it('renders all 7 nav group labels', () => {
+  it('compresses the primary navigation to six workflow groups', () => {
     renderExpandedNav()
-    const groups = ['Posture', 'AI inventory', 'Governance', 'Connect', 'Runtime', 'Reference', 'Operations']
+    const groups = ['Posture', 'Inventory', 'Governance', 'Connect', 'Runtime', 'Operations']
     for (const group of groups) {
       expect(screen.getAllByText(group).length).toBeGreaterThan(0)
     }
+    expect(screen.queryByText('AI inventory')).not.toBeInTheDocument()
+    expect(screen.queryByText('Reference')).not.toBeInTheDocument()
   })
 
   it('does not render sidebar group description paragraphs', () => {
@@ -322,10 +325,10 @@ describe('Nav', () => {
 
   it('shows page counts for expanded nav groups', async () => {
     renderExpandedNav()
-    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('4').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: /governance/i }))
     await waitFor(() => {
-      expect(screen.getAllByText('6').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('4').length).toBeGreaterThan(0)
     })
   })
 
@@ -333,11 +336,10 @@ describe('Nav', () => {
     renderExpandedNav()
     const expectedByGroup: Record<string, string[]> = {
       Posture: ['/', '/findings', '/security-graph', '/remediation'],
-      'AI inventory': ['/agents', '/manifest', '/fleet'],
-      Governance: ['/compliance', '/blueprints', '/findings?lens=trust', '/governance', '/drift', '/audit'],
+      Inventory: ['/inventory', '/agents', '/manifest', '/fleet'],
+      Governance: ['/compliance', '/governance', '/drift', '/audit'],
       Connect: ['/connections', '/scan'],
       Runtime: ['/runtime', '/traces', '/identity'],
-      Reference: ['/registry'],
       Operations: ['/cost', '/jobs', '/activity'],
     }
 
@@ -394,10 +396,10 @@ describe('Nav', () => {
     renderExpandedNav()
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /ai inventory/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^inventory/i })).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /ai inventory/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^inventory/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/unused in local \(1\)/i)).toBeInTheDocument()
@@ -519,10 +521,10 @@ describe('Nav', () => {
     renderExpandedNav()
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /ai inventory/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^inventory/i })).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /ai inventory/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^inventory/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/unused in local/i)).toBeInTheDocument()

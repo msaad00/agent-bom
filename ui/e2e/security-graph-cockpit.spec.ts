@@ -130,7 +130,7 @@ function buildCockpitGraph() {
   };
 }
 
-async function routeCockpit(page: Page) {
+async function routeCockpit(page: Page, snapshotNodeCount?: number) {
   const graph = buildCockpitGraph();
 
   await page.route("**/health", async (route) => {
@@ -169,7 +169,7 @@ async function routeCockpit(page: Page) {
         {
           scan_id: scanId,
           created_at: createdAt,
-          node_count: graph.nodes.length,
+          node_count: snapshotNodeCount ?? graph.nodes.length,
           edge_count: graph.edges.length,
           risk_summary: graph.stats.severity_counts,
         },
@@ -245,7 +245,7 @@ async function routeCockpit(page: Page) {
 }
 
 async function expectCockpitVisible(page: Page) {
-  await expect(page.getByRole("heading", { name: "Security graph" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Investigation" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: /Claude Desktop.*form-data.*CVE-2025-7783/ }),
   ).toBeVisible();
@@ -277,6 +277,26 @@ test("security-graph cockpit stays usable on a mobile viewport", async ({ page }
   await page.goto("/security-graph");
   await page.waitForLoadState("networkidle");
   await expectCockpitVisible(page);
+  const overflows = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(overflows).toBe(false);
 
   await page.screenshot({ path: testInfo.outputPath("security-graph-cockpit-mobile.png"), fullPage: true });
+});
+
+test("large estates lead with clusters and keep raw topology as drill-down", async ({ page }, testInfo: TestInfo) => {
+  await routeCockpit(page, 1_241);
+
+  await page.goto("/security-graph");
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText("Large estate · 1,241 nodes")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Explore clusters" })).toHaveAttribute(
+    "href",
+    "/graph?scan=scan-cockpit-fixture&rollup=1",
+  );
+  await expect(page.getByRole("link", { name: "Open raw topology" })).toHaveAttribute(
+    "href",
+    "/graph?scan=scan-cockpit-fixture&rollup=0",
+  );
+  await page.screenshot({ path: testInfo.outputPath("investigation-large-estate.png"), fullPage: true });
 });

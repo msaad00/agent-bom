@@ -47,7 +47,7 @@ export function RankedPathList({
             type="button"
             aria-pressed={active}
             onClick={() => onSelect(row.selectionKey)}
-            className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+            className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-xl border px-3 py-2.5 text-left transition sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-center sm:gap-3 ${
               active
                 ? "border-orange-400/70 bg-orange-500/10 ring-1 ring-orange-400/60"
                 : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] hover:border-[color:var(--border-strong)]"
@@ -63,7 +63,7 @@ export function RankedPathList({
               {row.rank === 1 ? "#1 fix first" : `#${row.rank}`}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-[color:var(--foreground)]">
+              <span className="block break-words text-sm font-medium leading-snug text-[color:var(--foreground)]">
                 {row.cve ? `${row.cve} · ` : ""}
                 {row.title}
               </span>
@@ -71,7 +71,7 @@ export function RankedPathList({
                 {row.hops} hop{row.hops === 1 ? "" : "s"} · {row.agents} agent{row.agents === 1 ? "" : "s"}
               </span>
             </span>
-            <span className="shrink-0 rounded-lg border border-red-900/60 bg-red-950/30 px-2.5 py-1 text-right">
+            <span className="col-span-2 col-start-2 justify-self-start rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-left sm:col-span-1 sm:col-start-auto sm:justify-self-auto sm:text-right">
               <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-red-300/80">
                 Path risk
               </span>
@@ -80,7 +80,7 @@ export function RankedPathList({
               </span>
             </span>
             <ChevronRight
-              className={`h-4 w-4 shrink-0 transition ${
+              className={`col-start-3 row-start-1 h-4 w-4 shrink-0 self-center transition sm:col-start-auto sm:row-start-auto ${
                 active ? "text-orange-300" : "text-[color:var(--text-tertiary)]"
               }`}
               aria-hidden="true"

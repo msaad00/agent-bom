@@ -12,9 +12,33 @@ HELM_DIR = DEPLOY_DIR / "helm" / "agent-bom"
 ENDPOINTS_DIR = DEPLOY_DIR / "endpoints"
 LOADTEST_DIR = DEPLOY_DIR / "loadtest"
 OPS_DIR = DEPLOY_DIR / "ops"
+REPO_ROOT = DEPLOY_DIR.parent
 
 
 # ─── K8s manifest validation ────────────────────────────────────────────────
+
+
+def test_runtime_images_probe_the_expected_running_process() -> None:
+    """A healthy image must prove its runtime entrypoint is still PID 1."""
+    expected = {
+        "Dockerfile.runtime": "agent-bom proxy",
+        "Dockerfile.mcp": "agent-bom mcp server",
+    }
+    for filename, process_signature in expected.items():
+        dockerfile = (DEPLOY_DIR / "docker" / filename).read_text()
+        assert "/proc/1/cmdline" in dockerfile
+        assert process_signature in dockerfile
+        healthcheck = dockerfile.split("HEALTHCHECK", 1)[1].split("ENTRYPOINT", 1)[0]
+        assert "agent-bom --version" not in healthcheck
+
+
+def test_airgap_profile_disables_cdn_backed_interactive_docs() -> None:
+    values = yaml.safe_load((HELM_DIR / "examples" / "airgap-vuln-db-values.yaml").read_text())
+    env = {entry["name"]: entry["value"] for entry in values["controlPlane"]["api"]["env"]}
+    assert env["AGENT_BOM_DISABLE_DOCS"] == "1"
+
+    deployment_docs = (REPO_ROOT / "docs" / "ENTERPRISE_DEPLOYMENT.md").read_text()
+    assert "docs/openapi/v1.yaml" in deployment_docs
 
 
 def test_k8s_yamls_are_valid():
@@ -758,7 +782,7 @@ def test_alembic_migration_hook_template():
     """Postgres migrations should run as a fail-loud Helm pre-upgrade hook."""
     template = (HELM_DIR / "templates" / "controlplane-alembic-migration-job.yaml").read_text()
     assert "controlPlane.migrations.postgres.enabled" in template
-    assert 'helm.sh/hook: {{ $migrations.hooks | quote }}' in template
+    assert "helm.sh/hook: {{ $migrations.hooks | quote }}" in template
     assert "alembic" in template
     assert "upgrade" in template
     assert "head" in template

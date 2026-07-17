@@ -191,9 +191,7 @@ class ScanRequest(BaseModel):
         if not repo_url:
             return self
         if self.offline:
-            raise ValueError(
-                "offline mode cannot clone a remote repo_url; drop offline or scan a local path instead"
-            )
+            raise ValueError("offline mode cannot clone a remote repo_url; drop offline or scan a local path instead")
         conflicts: list[str] = []
         if self.agent_projects:
             conflicts.append("agent_projects")
@@ -358,6 +356,17 @@ class EntitlementHealth(BaseModel):
     enabled_feature_count: int = 0
     metadata_only: bool = True
     current_oss_paths_gated: bool = False
+
+
+class PublicHealthResponse(BaseModel):
+    """Non-sensitive liveness and UI bootstrap posture."""
+
+    status: str = "ok"
+    version: str
+    auth_required: bool = True
+    auth_configured: bool = False
+    configured_auth_modes: list[str] = Field(default_factory=list)
+    unauthenticated_allowed: bool = False
 
 
 class HealthResponse(BaseModel):

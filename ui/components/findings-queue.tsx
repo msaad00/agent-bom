@@ -11,6 +11,7 @@ import {
   formatFindingTimestamp,
   vulnRowKey,
 } from "@/lib/findings-view";
+import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 
 const ALL_COLUMNS_VISIBLE: FindingColumnVisibility = {
   cvss: true,
@@ -209,16 +210,18 @@ export function FindingsQueueTable({
                           >
                             {v.id}
                           </button>
-                          <a
-                            href={`https://osv.dev/vulnerability/${v.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(event) => event.stopPropagation()}
-                            className="inline-flex items-center gap-1 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
-                          >
-                            OSV
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
+                          {getOsvVulnerabilityUrl(v.id) ? (
+                            <a
+                              href={getOsvVulnerabilityUrl(v.id) ?? undefined}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                              className="inline-flex items-center gap-1 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+                            >
+                              OSV
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : null}
                           {(v.is_kev ?? v.cisa_kev) && <CisaKevBadge />}
                           <ReachabilityBadge
                             reachable={v.graph_reachable}

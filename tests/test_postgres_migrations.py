@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -64,6 +65,7 @@ def test_baseline_migration_executes_bootstrap_without_dbapi_parameters(monkeypa
     baseline contains PL/pgSQL ``format(... %L ...)`` expressions, so its
     driver execution must explicitly suppress DBAPI parameter handling.
     """
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace(get_bind=lambda: None)))
     module = _load_module(BASELINE, "abom_control_plane_baseline")
     bootstrap_sql = "DO $$ BEGIN PERFORM format('PASSWORD %L', 'secret'); END $$;"
 
@@ -138,6 +140,7 @@ def test_graph_snapshot_json_parity_migration_is_idempotent_and_chained():
 
 def test_hub_partition_migration_uses_the_psycopg_driver_connection(monkeypatch):
     """The shared partition helper uses psycopg's ``%s`` execute contract."""
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace(get_bind=lambda: None)))
     module = _load_module(HUB_OBSERVATIONS_PARTITION, "abom_hub_observations_partition")
     driver_connection = object()
     bind = SimpleNamespace(connection=SimpleNamespace(driver_connection=driver_connection))

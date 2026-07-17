@@ -46,18 +46,26 @@ _WRITE_DEP = require_authenticated_permission("scan")
 
 
 class ExportDestinationCreate(BaseModel):
-    kind: str = Field(..., description="Destination kind: s3, clickhouse, or snowflake")
+    kind: str = Field(
+        ...,
+        description="Destination kind: s3, azure-blob, gcs, clickhouse, snowflake, bigquery, or databricks",
+    )
     display_name: str = Field(..., min_length=1, max_length=200)
     config: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Non-secret parameters: s3 (bucket/prefix/region), clickhouse "
-            "(url/user/database/table), or snowflake (account/user/role/warehouse/database/schema/table)"
+            "Non-secret parameters: s3 (bucket/prefix/region), azure-blob (container/prefix/account_url), "
+            "gcs (bucket/prefix), clickhouse (url/user/database/table), "
+            "snowflake (account/user/role/warehouse/database/schema/table), bigquery (project/dataset/table), "
+            "or databricks (server_hostname/http_path/catalog/schema/table)"
         ),
     )
     secret: str | None = Field(
         default=None,
-        description="Write-only secret (warehouse access token, or Snowflake key-pair PEM); encrypted at rest, never returned",
+        description=(
+            "Write-only secret (warehouse access token, Snowflake/Databricks key or token, Azure connection "
+            "string, or GCS service-account key JSON); encrypted at rest, never returned"
+        ),
     )
 
 

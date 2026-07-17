@@ -92,6 +92,7 @@ import type {
   EnrichmentPostureResponse,
   GovernanceFinding,
   GovernanceReport,
+  SelfPostureReport,
   ActivityTimeline,
   TraceIngestResponse,
   TraceExplorerResponse,
@@ -314,6 +315,11 @@ export type {
   EnrichmentPostureResponse,
   GovernanceFinding,
   GovernanceReport,
+  SelfPostureStatus,
+  SelfPostureOverall,
+  SelfPostureCheck,
+  SelfPostureCounts,
+  SelfPostureReport,
   ActivityTimeline,
   TraceFlaggedCall,
   TraceIngestResponse,
@@ -1185,6 +1191,9 @@ export const api = {
   getGatewayFeed: (limit = 100) => get<GatewayFeedResponse>(`/v1/gateway/feed?limit=${limit}`),
   getGatewayFeedKpis: () => get<GatewayFeedKpis>("/v1/gateway/feed/kpis"),
   getFirewallStats: () => get<FirewallRuntimeStats>("/v1/firewall/stats"),
+
+  // Operator self-posture — this instance's own control-plane hardening
+  getSelfPosture: () => get<SelfPostureReport>("/v1/self-posture"),
 
   // Governance
   getGovernance: (days = 30) => get<GovernanceReport>(`/v1/governance?days=${days}`),

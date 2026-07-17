@@ -143,6 +143,15 @@ def test_grouping_uses_ecosystem_and_dedupes_canonical_ids() -> None:
     assert sum(item["finding_count"] for item in campaigns) == 2
 
 
+def test_purl_grouping_ignores_installed_version_and_qualifiers() -> None:
+    rows = [
+        {"id": "a", "purl": "pkg:npm/%40scope/lib@1.0?repository_url=x", "fixed_version": "2", "severity": "high"},
+        {"id": "b", "purl": "pkg:npm/%40scope/lib@1.5?download_url=y", "fixed_version": "2", "severity": "high"},
+    ]
+    campaigns = derive_campaigns(rows, tenant_id="t", workflow_by_id={})
+    assert len(campaigns) == 1 and campaigns[0]["finding_count"] == 2
+
+
 def test_campaign_workflow_store_is_tenant_isolated() -> None:
     store = InMemoryCampaignStore()
     store.upsert("tenant-alpha", "campaign-1", owner="alice", state="in_progress")
@@ -168,6 +177,35 @@ def test_incomplete_membership_page_does_not_retire_unseen_campaigns() -> None:
     store.reconcile_memberships("t", {"a": "one", "b": "two"})
     store.reconcile_memberships("t", {"a": "one"}, complete=False)
     assert store.get("t", "b").active is True
+
+
+def test_incomplete_api_snapshot_never_reconciles_or_reactivates(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    store = InMemoryCampaignStore()
+    set_campaign_store(store)
+    full = _findings()
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: full)
+    client = TestClient(app)
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    store.patch(
+        "tenant-alpha",
+        campaign["id"],
+        expected_version=campaign["version"],
+        fields={"state": "done", "verification_status": "verified"},
+    )
+    store.reconcile_memberships("tenant-alpha", {})
+    before = store.get("tenant-alpha", campaign["id"])
+    partial = [dict(full[0], id="changed-member")]
+    monkeypatch.setattr(
+        "agent_bom.api.routes.campaigns._load_findings",
+        lambda request: {"findings": partial, "total": 99, "has_more": True, "total_approximate": False},
+    )
+    body = client.get("/v1/campaigns", headers=_headers()).json()
+    after = store.get("tenant-alpha", campaign["id"])
+    assert after == before
+    assert body["membership_complete"] is False
+    assert all(item["membership_provisional"] is True for item in body["campaigns"])
 
 
 def test_sqlite_patch_cas_rejects_stale_writer(tmp_path) -> None:
@@ -218,10 +256,17 @@ def test_campaign_openapi_has_typed_responses_and_partial_status() -> None:
 
     schema = app.openapi()
     assert "CampaignListResponse" in schema["components"]["schemas"]
-    for path in ("/v1/campaigns/{campaign_id}/tickets", "/v1/campaigns/{campaign_id}/tickets/sync"):
+    expected = {
+        "/v1/campaigns/{campaign_id}/tickets": "CampaignTicketCreateResponse",
+        "/v1/campaigns/{campaign_id}/tickets/sync": "CampaignTicketSyncResponse",
+    }
+    for path, model in expected.items():
         responses = schema["paths"][path]["post"]["responses"]
         assert "200" in responses and "207" in responses
-        assert "CampaignActionResponse" in str(responses["207"])
+        for status in ("200", "207"):
+            assert responses[status]["content"]["application/json"]["schema"]["$ref"].endswith(model)
+    assert "created" in schema["components"]["schemas"]["CampaignTicketCreateResponse"]["properties"]
+    assert "synced" in schema["components"]["schemas"]["CampaignTicketSyncResponse"]["properties"]
 
 
 def test_sqlite_campaign_store_persists_same_logical_id_per_tenant(tmp_path) -> None:
@@ -302,6 +347,42 @@ def test_postgres_campaign_store_uses_tenant_key_rls_and_scoped_upsert(monkeypat
     upsert = next(params for sql, params in executed if "ON CONFLICT (tenant_id, campaign_id)" in sql)
     assert upsert[:2] == ("tenant-alpha", "campaign-1")
     assert row.tenant_id == "tenant-alpha"
+
+
+def test_postgres_campaign_reconcile_locks_tenant_before_read(monkeypatch) -> None:
+    import agent_bom.api.postgres_campaign as module
+
+    executed: list[str] = []
+
+    class _Cursor:
+        def fetchall(self):
+            return []
+
+    class _Conn:
+        def execute(self, sql, params=None):
+            executed.append(str(sql))
+            return _Cursor()
+
+        def commit(self):
+            return None
+
+    class _Pool:
+        @contextmanager
+        def connection(self):
+            yield _Conn()
+
+    @contextmanager
+    def _tenant_connection(pool):
+        yield _Conn()
+
+    monkeypatch.setattr(module, "ensure_postgres_schema_version", lambda *args: None)
+    monkeypatch.setattr(module, "_ensure_tenant_rls", lambda *args: None)
+    monkeypatch.setattr(module, "_tenant_connection", _tenant_connection)
+    store = module.PostgresCampaignStore(pool=_Pool())
+    store.reconcile_memberships("tenant-alpha", {})
+    lock_index = next(index for index, sql in enumerate(executed) if "pg_advisory_xact_lock" in sql)
+    read_index = next(index for index, sql in enumerate(executed) if "FOR UPDATE" in sql)
+    assert lock_index < read_index
 
 
 def test_campaign_api_requires_auth_and_rejects_viewer_writes(monkeypatch) -> None:
@@ -497,6 +578,64 @@ def test_ticket_action_is_bounded_and_resumable_before_side_effects(monkeypatch)
         f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "c", "cursor": first["next_cursor"]}, headers=_headers()
     ).json()
     assert second["processed"] == 5 and second["next_cursor"] is None
+
+
+def test_action_cursor_binds_action_membership_items_and_connection(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    findings = [{"id": f"f-{i}", "purl": "pkg:npm/shared@1", "fixed_version": "2", "severity": "high"} for i in range(30)]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: findings)
+    called: list[str] = []
+
+    async def _create(**kwargs):
+        called.append(kwargs["finding_id"])
+        return {"ticket": {"id": kwargs["finding_id"]}}
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.create_ticket_for_finding", _create)
+    client = TestClient(app)
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    first = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "one"}, headers=_headers()).json()
+    cursor = first["next_cursor"]
+    findings.reverse()
+    replay_start = len(called)
+    resumed = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "one", "cursor": cursor}, headers=_headers())
+    assert resumed.status_code == 200
+    resumed_ids = called[replay_start:]
+    retry_start = len(called)
+    retried = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "one", "cursor": cursor}, headers=_headers())
+    assert retried.status_code == 200 and called[retry_start:] == resumed_ids
+    baseline = len(called)
+    changed = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "two", "cursor": cursor}, headers=_headers())
+    assert changed.status_code == 409 and len(called) == baseline
+    cross = client.post(f"/v1/campaigns/{campaign['id']}/tickets/sync?cursor={cursor}", headers=_headers())
+    assert cross.status_code == 409 and len(called) == baseline
+    findings.append({"id": "inserted", "purl": "pkg:npm/shared@1", "fixed_version": "2", "severity": "high"})
+    stale = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "one", "cursor": cursor}, headers=_headers())
+    assert stale.status_code == 409 and len(called) == baseline
+    findings.pop()
+    findings.pop()
+    deleted = client.post(f"/v1/campaigns/{campaign['id']}/tickets", json={"connection_id": "one", "cursor": cursor}, headers=_headers())
+    assert deleted.status_code == 409 and len(called) == baseline
+
+
+def test_malformed_cursor_has_zero_workflow_audit_or_transport_side_effects(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    store = InMemoryCampaignStore()
+    set_campaign_store(store)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    audits: list[str] = []
+    calls: list[str] = []
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._audit", lambda action, *args, **kwargs: audits.append(action))
+
+    async def _create(**kwargs):
+        calls.append("called")
+        return {}
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.create_ticket_for_finding", _create)
+    response = TestClient(app).post("/v1/campaigns/any/tickets", json={"connection_id": "c", "cursor": "malformed"}, headers=_headers())
+    assert response.status_code == 400
+    assert store.list("tenant-alpha") == [] and audits == [] and calls == []
 
 
 def test_campaign_audit_failure_does_not_log_raw_exception() -> None:

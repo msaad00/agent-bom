@@ -29,7 +29,7 @@ def _risk(row: Mapping[str, Any]) -> float:
 
 
 def _group_key(row: Mapping[str, Any]) -> str:
-    purl = str(row.get("purl") or "").strip().lower()
+    purl = _canonical_purl(str(row.get("purl") or ""))
     package = str(row.get("package") or row.get("component") or "").strip().lower()
     ecosystem = str(row.get("ecosystem") or "unknown").strip().lower()
     fixed = str(row.get("fixed_version") or "").strip().lower()
@@ -38,6 +38,18 @@ def _group_key(row: Mapping[str, Any]) -> str:
     if package and fixed:
         return f"upgrade:package:{ecosystem}:{package}:{fixed}"
     return f"finding:{_finding_id(row)}"
+
+
+def _canonical_purl(value: str) -> str:
+    """Return the package identity portion of a purl, excluding installation detail."""
+    purl = value.strip().lower().split("#", 1)[0].split("?", 1)[0]
+    if not purl.startswith("pkg:"):
+        return purl
+    head, separator, name = purl.rpartition("/")
+    if not separator:
+        head, name = "pkg:", purl[4:]
+    name = name.rsplit("@", 1)[0]
+    return f"{head}{separator}{name}" if separator else f"{head}{name}"
 
 
 def _campaign_id(group_key: str) -> str:

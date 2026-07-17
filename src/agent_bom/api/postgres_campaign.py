@@ -98,8 +98,11 @@ class PostgresCampaignStore:
         return row
 
     def reconcile_memberships(self, tenant_id: str, memberships: dict[str, str], *, complete: bool = True) -> List[CampaignWorkflow]:
+        if not complete:
+            return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         now = _now()
         with _tenant_connection(self._pool) as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"risk_campaign:{tenant_id}",))
             rows = conn.execute(
                 "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
                 "membership_fingerprint, generation, active, version, updated_at "

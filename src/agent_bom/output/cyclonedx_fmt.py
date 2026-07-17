@@ -21,7 +21,7 @@ from agent_bom.asset_provenance import (
     sanitize_discovery_provenance,
 )
 from agent_bom.checksums import cyclonedx_hashes
-from agent_bom.models import AIBOMReport
+from agent_bom.models import AIBOMReport, Vulnerability
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 from agent_bom.vex import vex_justification_to_cdx
 
@@ -35,22 +35,65 @@ def _sanitize_bom_ref(raw: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]", "-", raw)
 
 
-def _unique_bom_ref_items(items: list[dict]) -> list[dict]:
-    """Return one item per ``bom-ref``, preserving first-observed evidence.
+def _merge_properties(current: list[dict], incoming: list[dict]) -> list[dict]:
+    """Merge component properties without dropping later security evidence."""
+    merged = [dict(prop) for prop in current]
+    positions = {str(prop.get("name")): index for index, prop in enumerate(merged)}
+    seen = {(str(prop.get("name")), str(prop.get("value"))) for prop in merged}
+    for prop in incoming:
+        name = str(prop.get("name") or "")
+        value = str(prop.get("value") or "")
+        if (name, value) in seen:
+            continue
+        if name == "agent-bom:tool-count" and name in positions:
+            index = positions[name]
+            try:
+                current_count = int(str(merged[index].get("value") or "0"))
+                incoming_count = int(value)
+            except ValueError:
+                pass
+            else:
+                if incoming_count > current_count:
+                    seen.discard((name, str(merged[index].get("value") or "")))
+                    merged[index] = dict(prop)
+                    seen.add((name, value))
+                continue
+        merged.append(dict(prop))
+        seen.add((name, value))
+        positions.setdefault(name, len(merged) - 1)
+    return merged
+
+
+def _merge_bom_ref_items(items: list[dict]) -> list[dict]:
+    """Return one item per ``bom-ref`` while merging later evidence.
 
     The same agent, server, tool service, model, or dataset can be discovered
     through multiple configuration surfaces. CycloneDX requires those arrays
-    to be unique; their graph relationships carry the many-to-many context.
+    to be unique, but first-observation deduplication must not discard security
+    properties learned from an enriched observation.
     """
     unique: list[dict] = []
-    seen_refs: set[str] = set()
+    by_ref: dict[str, dict] = {}
     for item in items:
         ref = str(item.get("bom-ref") or "")
-        if ref and ref in seen_refs:
+        existing = by_ref.get(ref) if ref else None
+        if existing is not None:
+            existing["properties"] = _merge_properties(
+                list(existing.get("properties", [])),
+                list(item.get("properties", [])),
+            )
+            for key, value in item.items():
+                if key not in existing or existing[key] in (None, "", []):
+                    existing[key] = value
             continue
         if ref:
-            seen_refs.add(ref)
-        unique.append(item)
+            copied = dict(item)
+            if "properties" in copied:
+                copied["properties"] = [dict(prop) for prop in copied["properties"]]
+            by_ref[ref] = copied
+            unique.append(copied)
+        else:
+            unique.append(item)
     return unique
 
 
@@ -64,6 +107,59 @@ def _merge_dependencies(dependencies: list[dict]) -> list[dict]:
         targets = by_ref.setdefault(ref, set())
         targets.update(str(target) for target in dependency.get("dependsOn", []) if target)
     return [{"ref": ref, "dependsOn": sorted(by_ref[ref])} for ref in sorted(by_ref)]
+
+
+def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str) -> dict:
+    """Build one package-scoped CycloneDX vulnerability observation."""
+    ratings: list[dict[str, object]] = []
+    if vuln.cvss_score:
+        ratings.append(
+            {
+                "score": vuln.cvss_score,
+                "severity": vuln.severity.value,
+                "method": "CVSSv3",
+            }
+        )
+    else:
+        ratings.append({"severity": vuln.severity.value})
+    entry: dict = {
+        "id": vuln.id,
+        "description": vuln.summary or f"See {vuln.id} for details",
+        "source": {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"},
+        "ratings": ratings,
+        "affects": [{"ref": pkg_ref}],
+    }
+    if vuln.fixed_version:
+        entry["recommendation"] = f"Upgrade to {vuln.fixed_version}"
+    if vuln.vex_status:
+        state_map = {
+            "affected": "exploitable",
+            "not_affected": "not_affected",
+            "fixed": "resolved",
+            "under_investigation": "in_triage",
+        }
+        analysis: dict[str, str] = {"state": state_map.get(vuln.vex_status, "in_triage")}
+        if vuln.vex_justification:
+            justification = vex_justification_to_cdx(vuln.vex_justification)
+            if justification:
+                analysis["justification"] = justification
+        entry["analysis"] = analysis
+    return entry
+
+
+def _merge_vulnerability_observation(by_id: dict[str, dict], observation: dict) -> None:
+    """Merge a vulnerability ID into one entry with all affected components."""
+    vuln_id = str(observation["id"])
+    existing = by_id.get(vuln_id)
+    if existing is None:
+        by_id[vuln_id] = observation
+        return
+    affected_refs = {
+        str(affected.get("ref"))
+        for affected in [*existing.get("affects", []), *observation.get("affects", [])]
+        if affected.get("ref")
+    }
+    existing["affects"] = [{"ref": ref} for ref in sorted(affected_refs)]
 
 
 def _append_discovery_provenance_properties(properties: list[dict], provenance: dict | None) -> None:
@@ -326,7 +422,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     """
     components = []
     services: list[dict] = []
-    vulnerabilities_cdx = []
+    vulnerabilities_by_id: dict[str, dict] = {}
     dependencies = []
 
     comp_id = 0
@@ -409,6 +505,11 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 # (and its vulnerabilities) were already emitted via another server.
                 server_deps.append(pkg_ref)
                 bom_ref_map[f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"] = pkg_ref
+                for vuln in pkg.vulnerabilities:
+                    _merge_vulnerability_observation(
+                        vulnerabilities_by_id,
+                        _cyclonedx_vulnerability(vuln, pkg_ref),
+                    )
                 if pkg_ref in seen_component_refs:
                     continue
                 seen_component_refs.add(pkg_ref)
@@ -481,48 +582,6 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     pkg_component["externalReferences"] = ext_refs
                 components.append(pkg_component)
 
-                for vuln in pkg.vulnerabilities:
-                    ratings: list[dict[str, object]] = []
-                    if vuln.cvss_score:
-                        ratings.append(
-                            {
-                                "score": vuln.cvss_score,
-                                "severity": vuln.severity.value,
-                                "method": "CVSSv3",
-                            }
-                        )
-                    else:
-                        ratings.append(
-                            {
-                                "severity": vuln.severity.value,
-                            }
-                        )
-                    vuln_entry: dict[str, object] = {
-                        "id": vuln.id,
-                        "description": vuln.summary or f"See {vuln.id} for details",
-                        "source": {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"},
-                        "ratings": ratings,
-                        "affects": [{"ref": pkg_ref}],
-                    }
-                    if vuln.fixed_version:
-                        vuln_entry["recommendation"] = f"Upgrade to {vuln.fixed_version}"
-                    if vuln.vex_status:
-                        _cdx_state_map = {
-                            "affected": "exploitable",
-                            "not_affected": "not_affected",
-                            "fixed": "resolved",
-                            "under_investigation": "in_triage",
-                        }
-                        analysis_dict: dict[str, str] = {
-                            "state": _cdx_state_map.get(vuln.vex_status, "in_triage"),
-                        }
-                        if vuln.vex_justification:
-                            cdx_justification = vex_justification_to_cdx(vuln.vex_justification)
-                            if cdx_justification:
-                                analysis_dict["justification"] = cdx_justification
-                        vuln_entry["analysis"] = analysis_dict
-                    vulnerabilities_cdx.append(vuln_entry)
-
             dependencies.append({"ref": server_ref, "dependsOn": server_deps})
         dependencies.append({"ref": agent_ref, "dependsOn": agent_deps})
 
@@ -559,9 +618,10 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     # Discovery paths overlap by design. Normalize the document-level arrays
     # once after all builders have contributed so uniqueness applies globally,
     # not only to package components.
-    components = _unique_bom_ref_items(components)
-    services = _unique_bom_ref_items(services)
+    components = _merge_bom_ref_items(components)
+    services = _merge_bom_ref_items(services)
     dependencies = _merge_dependencies(dependencies)
+    vulnerabilities_cdx = [vulnerabilities_by_id[vuln_id] for vuln_id in sorted(vulnerabilities_by_id)]
 
     cdx = {
         "bomFormat": "CycloneDX",

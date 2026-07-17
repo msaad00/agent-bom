@@ -173,22 +173,47 @@ def test_cyclonedx_conforms_to_1_7_schema(report: AIBOMReport) -> None:
 def _shared_server_cyclonedx_report() -> AIBOMReport:
     """Demo-equivalent overlap: repeated agent/server discovery and a package
     without a package URL must still produce one strict-valid BOM graph."""
-    no_purl = Package(name="local-plugin", version="1.0", ecosystem="generic", purl=None)
-    left_pkg = Package(name="left", version="1.0", ecosystem="npm", purl="pkg:npm/left@1.0")
-    right_pkg = Package(name="right", version="2.0", ecosystem="npm", purl="pkg:npm/right@2.0")
+    shared_vuln = Vulnerability(id="CVE-2026-SHARED", summary="shared risk", severity=Severity.HIGH)
+    late_vuln = Vulnerability(id="CVE-2026-LATE", summary="late enrichment", severity=Severity.CRITICAL)
+    left_no_purl = Package(name="local-plugin", version="1.0", ecosystem="generic", purl=None)
+    right_no_purl = Package(
+        name="local-plugin",
+        version="1.0",
+        ecosystem="generic",
+        purl=None,
+        vulnerabilities=[late_vuln],
+    )
+    left_pkg = Package(
+        name="left",
+        version="1.0",
+        ecosystem="npm",
+        purl="pkg:npm/left@1.0",
+        vulnerabilities=[shared_vuln],
+    )
+    right_pkg = Package(
+        name="right",
+        version="2.0",
+        ecosystem="npm",
+        purl="pkg:npm/right@2.0",
+        vulnerabilities=[shared_vuln],
+    )
     left_server = MCPServer(
         name="shared-server",
         command="npx",
         args=["shared-server"],
-        packages=[no_purl, left_pkg],
+        packages=[left_no_purl, left_pkg],
         tools=[MCPTool(name="query", description="read data")],
     )
     right_server = MCPServer(
         name="shared-server",
         command="npx",
         args=["shared-server"],
-        packages=[no_purl, right_pkg],
-        tools=[MCPTool(name="query", description="read data")],
+        packages=[right_no_purl, right_pkg],
+        tools=[
+            MCPTool(name="query", description="read data"),
+            MCPTool(name="admin", description="write data"),
+        ],
+        env={"API_KEY": "test-secret"},
     )
     first = Agent(
         name="first",
@@ -231,6 +256,26 @@ def test_cyclonedx_shared_discovery_is_globally_unique_and_schema_valid() -> Non
 
     local_plugin = next(component for component in cdx["components"] if component["name"] == "local-plugin")
     assert "purl" not in local_plugin
+
+    shared_server = next(component for component in cdx["components"] if component["name"] == "shared-server")
+    properties = shared_server["properties"]
+    assert {prop["value"] for prop in properties if prop["name"] == "agent-bom:has-credentials"} == {"true"}
+    assert {prop["value"] for prop in properties if prop["name"] == "agent-bom:tool-count"} == {"2"}
+    assert {prop["value"].split(":", 1)[0] for prop in properties if prop["name"] == "agent-bom:mcp-tool"} == {
+        "admin",
+        "query",
+    }
+
+    vulnerabilities = {vulnerability["id"]: vulnerability for vulnerability in cdx["vulnerabilities"]}
+    assert set(vulnerabilities) == {"CVE-2026-LATE", "CVE-2026-SHARED"}
+    component_name_by_ref = {component["bom-ref"]: component["name"] for component in cdx["components"]}
+    assert {component_name_by_ref[item["ref"]] for item in vulnerabilities["CVE-2026-LATE"]["affects"]} == {
+        "local-plugin"
+    }
+    assert {component_name_by_ref[item["ref"]] for item in vulnerabilities["CVE-2026-SHARED"]["affects"]} == {
+        "left",
+        "right",
+    }
 
 
 def test_cyclonedx_merges_repeated_dependency_edges_deterministically() -> None:

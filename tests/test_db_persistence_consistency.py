@@ -58,6 +58,17 @@ class _FakePolicyConnection:
             return _FakeCursor()
         if s.startswith("select data from policy_audit_log"):
             rows = list(audit.values()) + list(anon)
+            param_index = 0
+            if "team_id = %s" in s:
+                rows = [r for r in rows if r[2] == params[param_index]]
+                param_index += 1
+            if "data ->> 'policy_id' = %s" in s:
+                expected = params[param_index]
+                rows = [r for r in rows if __import__("json").loads(r[3])["policy_id"] == expected]
+                param_index += 1
+            if "data ->> 'agent_name' = %s" in s:
+                expected = params[param_index]
+                rows = [r for r in rows if __import__("json").loads(r[3])["agent_name"] == expected]
             rows.sort(key=lambda r: r[1], reverse=True)  # ORDER BY ts DESC
             data_rows = [(r[3],) for r in rows]
             if params:
@@ -198,6 +209,30 @@ def test_pg_policy_audit_persists_caller_timestamp(monkeypatch):
     ts = "2020-01-01T12:00:00+00:00"  # in the past — cannot be insert time
     store.put_audit_entry(_audit_entry("e1", ts))
     assert pool._state["audit"]["e1"][1] == ts
+
+
+def test_pg_policy_audit_filters_before_limit(monkeypatch):
+    store, _pool = _pg_policy_store(monkeypatch)
+    for index in range(3):
+        entry = _audit_entry(f"new-{index}", f"2026-07-17T00:00:0{index + 2}+00:00")
+        entry.policy_id = "other-policy"
+        entry.agent_name = "other-agent"
+        store.put_audit_entry(entry)
+    store.put_audit_entry(_audit_entry("older-match", "2026-07-17T00:00:01+00:00"))
+
+    rows = store.list_audit_entries(policy_id="pol-1", agent_name="agent-a", tenant_id="acme", limit=1)
+
+    assert [row.entry_id for row in rows] == ["older-match"]
+
+
+def test_pg_policy_empty_filters_match_sqlite_no_filter_semantics(monkeypatch):
+    store, _pool = _pg_policy_store(monkeypatch)
+    store.put_audit_entry(_audit_entry("one", "2026-07-17T00:00:01+00:00"))
+    store.put_audit_entry(_audit_entry("two", "2026-07-17T00:00:02+00:00"))
+
+    rows = store.list_audit_entries(policy_id="", agent_name="", tenant_id="acme")
+
+    assert [row.entry_id for row in rows] == ["two", "one"]
 
 
 # ─── Proxy replay captured_at + idempotency (PG) ─────────────────────────────

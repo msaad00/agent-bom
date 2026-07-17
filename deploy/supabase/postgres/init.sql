@@ -251,10 +251,12 @@ CREATE TABLE IF NOT EXISTS llm_cost_budgets (
     updated_at  TEXT NOT NULL,
     mode        TEXT NOT NULL DEFAULT 'report',
     cost_center TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (tenant_id, agent, cost_center)
+    owner       TEXT NOT NULL DEFAULT '',
+    workflow    TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_cost_budgets_scope ON llm_cost_budgets(tenant_id, agent, cost_center);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_cost_budgets_scope ON llm_cost_budgets(tenant_id, agent, cost_center, owner, workflow);
 CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_agent ON llm_costs(tenant_id, agent);
 CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_observed ON llm_costs(tenant_id, observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_cost_center ON llm_costs(tenant_id, cost_center);

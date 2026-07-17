@@ -197,13 +197,14 @@ def test_llm_cost_tables_baseline_with_rls():
         assert col in cost_cols, f"llm_costs baseline missing column: {col}"
 
     budget_cols = _columns_for("llm_cost_budgets")
-    for col in ("tenant_id", "agent", "limit_usd", "mode", "cost_center"):
+    for col in ("tenant_id", "agent", "limit_usd", "mode", "cost_center", "owner", "workflow"):
         assert col in budget_cols, f"llm_cost_budgets baseline missing column: {col}"
 
     for table in ("llm_costs", "llm_cost_budgets"):
         assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in SQL
         assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
     assert "uq_llm_cost_budgets_scope" in _indexes() or "uq_llm_cost_budgets_scope" in SQL
+    assert "PRIMARY KEY (tenant_id, agent, cost_center, owner, workflow)" in SQL
 
 
 def test_policy_audit_log_has_entry_id_dedup_key():

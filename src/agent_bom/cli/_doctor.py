@@ -29,6 +29,7 @@ def doctor_cmd() -> None:
     runtime_checks: list[tuple[str, str, str]] = []
     platform_checks: list[tuple[str, str, str]] = []
     cloud_sdk_checks: list[tuple[str, str, str]] = []
+    cloud_api_checks: list[tuple[str, str, str]] = []
 
     # Python version
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -143,6 +144,26 @@ def doctor_cmd() -> None:
     except Exception:
         cloud_sdk_checks.append(("Cloud SDKs", "freshness check unavailable", "info"))
 
+    # Provider-API deprecation posture — a legacy-SDK exposure guard for
+    # retired/deprecating provider APIs (Azure AD Graph, oauth2client, …).
+    # Honest default is "clear": agent-bom uses the modern replacements, so this
+    # only lights up if a legacy SDK is dragged into the environment.
+    try:
+        from agent_bom.cloud_sdk_freshness import cloud_api_deprecation_posture
+
+        _api_status_map = {"clear": "ok", "at_risk": "warn", "gated": "warn"}
+        for api in cloud_api_deprecation_posture()["apis"]:
+            if api["status"] == "clear":
+                value = f"clear (uses {api['replacement']})"
+            elif api["status"] == "gated":
+                value = f"retired + {api['distribution']} present — checks skipped; migrate to {api['replacement']}"
+            else:
+                when = f" on {api['retirement_date']}" if api["retirement_date"] else ""
+                value = f"deprecating{when} — {api['distribution']} present; migrate to {api['replacement']}"
+            cloud_api_checks.append((api["api"], value, _api_status_map.get(api["status"], "info")))
+    except Exception:
+        cloud_api_checks.append(("Cloud API deprecations", "check unavailable", "info"))
+
     checks = [*core_checks, *runtime_checks, *platform_checks]
     warns = sum(1 for _, _, s in checks if s == "warn")
 
@@ -172,6 +193,7 @@ def doctor_cmd() -> None:
                 "runtime": _section(runtime_checks),
                 "platform": _section(platform_checks),
                 "cloud_sdk": _section(cloud_sdk_checks),
+                "cloud_api_deprecations": _section(cloud_api_checks),
                 "capabilities": capabilities,
                 "coverage": coverage,
                 "ready": warns == 0,
@@ -189,6 +211,7 @@ def doctor_cmd() -> None:
     _print_section(console, "Runtime surfaces", runtime_checks)
     _print_section(console, "Platform integrations", platform_checks)
     _print_section(console, "Cloud SDK freshness", cloud_sdk_checks)
+    _print_section(console, "Cloud API deprecations", cloud_api_checks)
 
     # Nothing-silent capability view — every gated feature with its state and
     # unlock path, so a skipped/degraded capability is never silent.

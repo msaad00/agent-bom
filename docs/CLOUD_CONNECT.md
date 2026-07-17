@@ -517,3 +517,37 @@ the freshness of the SDK layer is surfaced, never left silent.
     `summary`, alongside the vuln-DB freshness fields.
 - **How to refresh.** Upgrade the matching extra, e.g.
   `pip install -U 'agent-bom[aws]'` (or `[azure]` / `[gcp]` / `[snowflake]`).
+- **Staying current automatically.** Dependabot keeps the provider SDKs on a
+  safe cadence via the `cloud-and-ai-sdks` group in `.github/dependabot.yml`
+  (boto3/botocore are data-driven and backward-compatible, so new provider APIs
+  land through routine bumps).
+
+### 9.1 Provider-API deprecation posture (a legacy-SDK exposure guard)
+
+The freshness check above answers "is my SDK current?". A complementary signal
+answers "does my install still depend on a provider API the vendor has
+*retired*?" A retired API returns errors (for example Azure AD Graph now returns
+HTTP 403), so a check that still routes through it under-covers or fails
+silently.
+
+- **What it checks.** A small, first-party-sourced watchlist of retired /
+  deprecated provider APIs (e.g. the retired **Azure AD Graph API**, the
+  deprecated **oauth2client** auth library), each keyed by the *legacy*
+  distribution that speaks it. The probe is whether that legacy SDK is present
+  in the environment — an **offline, deterministic** check evaluated against the
+  current date.
+- **Honest default is "clear".** agent-bom already uses the modern replacement
+  for every entry (Azure identities/roles via Azure Resource Manager, GCP auth
+  via `google-auth`), so the shipped posture is *clear*. The signal only lights
+  up if a legacy SDK is dragged into the tree — a supply-chain / coverage guard.
+- **Fail-honest gating.** When a retired API is *both* past its removal date and
+  reachable via an installed legacy SDK, it is marked **gated**: a check bound
+  to it must be skipped and reported, never silently passed. The
+  `removed_provider_apis()` helper exposes that skip set for scanners.
+- **Where it shows up.**
+  - `agent-bom doctor` renders a **Cloud API deprecations** section (each API
+    with its status and migration target).
+  - `--agent-mode` scan metadata carries a `deprecations` block (`status`,
+    `removed_count`, `at_risk_count`, `gated`, `warnings`) nested under
+    `cloud_sdk_freshness`; `doctor --agent-mode` emits a
+    `cloud_api_deprecations` section in its envelope.

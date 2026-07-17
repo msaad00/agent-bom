@@ -76,7 +76,7 @@ Graph, mesh, dashboard, and narrative reporting workflows.
 | `mesh` | Agent-mesh view. |
 | `report` | Reporting group (history, narrative, exports). |
 | `findings` | Findings workbench for CLI users: `list` normalized findings (lifecycle columns when bulk-ingest metadata exists), `push` external scanner or normalized JSON to `POST /v1/findings/bulk`, triage queue items, decisions, and signed OpenVEX export. |
-| `attest` | Sign SBOMs with Ed25519 DSSE PAE and verify only against explicit `--public-key` trust files; legacy embedded-key envelopes are reported as untrusted. |
+| `attest` | Sign tenant/freshness/replay-bound SBOM DSSE PAE and verify explicit Ed25519 keys; the library exposes a pinned local Sigstore adapter policy, and legacy embedded-key envelopes remain untrusted. |
 
 ## Governance
 

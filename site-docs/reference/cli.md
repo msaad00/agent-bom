@@ -72,7 +72,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `findings` | List normalized findings, manage the triage queue, record decisions, and export signed OpenVEX evidence |
 | `findings push` | Push normalized findings or Trivy / Grype / Syft JSON to `POST /v1/findings/bulk` on the control plane |
 | `findings list` | List findings from the control plane; prints lifecycle columns when bulk-ingest metadata is present |
-| `attest` | Sign generated SBOMs as Ed25519 DSSE-PAE attestations and verify them against explicit trusted public-key files |
+| `attest` | Sign tenant-bound SBOM DSSE-PAE attestations and verify explicit Ed25519 trust policies |
 
 SBOM signing is fail-closed and does not reuse the compliance/audit HMAC
 fallback. Configure a persistent Ed25519 private key, preferably through the
@@ -80,12 +80,23 @@ file-first secret boundary, then distribute only its public key to verifiers:
 
 ```bash
 export AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE=/run/secrets/sbom-signing.pem
-agent-bom attest sign report.cdx.json
-agent-bom attest verify report.cdx.json --public-key trusted-sbom-signing.pub.pem
+agent-bom attest sign report.cdx.json --tenant-id tenant-a
+agent-bom attest verify report.cdx.json \
+  --tenant-id tenant-a \
+  --public-key trusted-sbom-signing.pub.pem \
+  --replay-cache /var/lib/agent-bom/attestation-replay.sqlite3
 ```
 
 Verification never trusts a key embedded in an envelope. Older envelopes remain
 readable as `legacy_attestation_untrusted`, but cannot produce a verified result.
+The verifier also pins the statement builder, predicate type, tenant, issue and
+expiry times, maximum age, nonce, and evidence ID. Use `--replay-cache` when
+replay detection must survive separate CLI processes.
+
+Library integrations can supply a bounded Sigstore verifier adapter. That
+policy requires a local bundle, local TrustedRoot JSON, certificate identity
+regexp, and exact OIDC issuer; no Sigstore signer policy is read from envelope
+metadata or environment defaults.
 
 ### Governance And Operations
 

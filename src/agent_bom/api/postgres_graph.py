@@ -32,6 +32,23 @@ from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_poo
 logger = logging.getLogger(__name__)
 
 
+def _json_column_to_dict(value: Any) -> dict[str, Any]:
+    """Normalize a JSON/JSONB column value to a ``dict``.
+
+    ``init.sql`` and the enterprise migration declare ``risk_summary`` /
+    ``analysis_status`` as ``JSONB`` while the app's own ``_init_tables`` created
+    legacy tables as ``TEXT``. Under psycopg3 a ``JSONB`` column returns an
+    already-parsed ``dict`` and a ``TEXT`` column returns a ``str``, so the read
+    must handle both to stay correct across the two schema variants. Mirrors the
+    guard already used in ``postgres_audit`` (``isinstance(x, dict)``).
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        return json.loads(value or "{}")
+    return {}
+
+
 def select_expired_snapshot_ids(
     rows: Iterable[Sequence[Any]],
     *,
@@ -304,8 +321,8 @@ class PostgresGraphStore:
                     created_at TEXT NOT NULL,
                     node_count INTEGER DEFAULT 0,
                     edge_count INTEGER DEFAULT 0,
-                    risk_summary TEXT DEFAULT '{}',
-                    analysis_status TEXT DEFAULT '{}',
+                    risk_summary JSONB DEFAULT '{}'::jsonb,
+                    analysis_status JSONB NOT NULL DEFAULT '{}'::jsonb,
                     PRIMARY KEY (scan_id, tenant_id)
                 )
                 """
@@ -343,7 +360,7 @@ class PostgresGraphStore:
             )
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS summary TEXT DEFAULT ''")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS tool_exposure TEXT DEFAULT '[]'")
-            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS analysis_status TEXT DEFAULT '{}'")
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS analysis_status JSONB NOT NULL DEFAULT '{}'::jsonb")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_from TEXT DEFAULT ''")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_to TEXT DEFAULT NULL")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION DEFAULT 1.0")
@@ -1012,7 +1029,7 @@ class PostgresGraphStore:
             ).fetchone()
             graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=str(snapshot_row[0]) if snapshot_row else "")
             if snapshot_row:
-                graph.analysis_status = analysis_status_map_from_dict(json.loads(snapshot_row[1] or "{}"))
+                graph.analysis_status = analysis_status_map_from_dict(_json_column_to_dict(snapshot_row[1]))
 
             query = (
                 "SELECT id, entity_type, label, category_uid, class_uid, type_uid, status, risk_score, severity, severity_id, "
@@ -1586,8 +1603,8 @@ class PostgresGraphStore:
                     "created_at": row[1],
                     "node_count": row[2],
                     "edge_count": row[3],
-                    "risk_summary": json.loads(row[4]),
-                    "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(json.loads(row[5] or "{}"))),
+                    "risk_summary": _json_column_to_dict(row[4]),
+                    "analysis_status": analysis_status_map_to_dict(analysis_status_map_from_dict(_json_column_to_dict(row[5]))),
                 }
                 for row in rows
             ]
@@ -1819,7 +1836,7 @@ class PostgresGraphStore:
                 (effective_scan_id, tenant_id),
             ).fetchone()
             analysis_status = analysis_status_map_to_dict(
-                analysis_status_map_from_dict(json.loads((analysis_row[0] if analysis_row else "{}") or "{}"))
+                analysis_status_map_from_dict(_json_column_to_dict(analysis_row[0] if analysis_row else None))
             )
             # Unfiltered node/edge totals are already materialised on the snapshot
             # row at write time. Re-deriving the edge count here re-scans

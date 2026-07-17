@@ -378,6 +378,12 @@ describe("RiskCampaignCommandCenter", () => {
   });
 
   it("renders durable inactive campaigns awaiting re-verification and removes verified entries", async () => {
+    vi.mocked(api.listRiskCampaigns).mockResolvedValue({
+      ...response,
+      campaigns: [],
+      count: 0,
+      truncated: false,
+    });
     vi.mocked(api.listRiskCampaignVerificationQueue).mockResolvedValue({
       schema_version: "risk-campaign-verification-queue.v1",
       tenant_id: "tenant-a",

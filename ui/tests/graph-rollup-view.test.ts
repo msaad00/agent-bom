@@ -84,7 +84,8 @@ describe("buildRollupFlowGraph", () => {
     expect(nodes).toHaveLength(2);
     expect(nodes[0]?.id).toBe("account:prod");
     expect(nodes[0]?.position).toEqual({ x: 0, y: 0 });
-    expect(nodes[1]?.position).toEqual({ x: 268, y: 0 });
+    expect(nodes[1]?.position).toEqual({ x: 332, y: 0 });
+    expect(nodes[1]!.position.x - nodes[0]!.position.x).toBeGreaterThanOrEqual(300 + 32);
     expect(nodes[0]?.data.attributes?.rollup_has_children).toBe(true);
     expect(nodes[0]?.data.description).toContain("click to drill down");
   });

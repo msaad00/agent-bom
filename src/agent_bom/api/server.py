@@ -898,6 +898,7 @@ from agent_bom.api.routes.agent_manifest import router as _agent_manifest_router
 # ─── Route modules ────────────────────────────────────────────────────────
 from agent_bom.api.routes.assets import router as _assets_router  # noqa: E402
 from agent_bom.api.routes.blueprints import router as _blueprints_router  # noqa: E402
+from agent_bom.api.routes.campaigns import router as _campaigns_router  # noqa: E402
 from agent_bom.api.routes.cloud import router as _cloud_router  # noqa: E402
 from agent_bom.api.routes.cloud_connections import router as _cloud_connections_router  # noqa: E402
 from agent_bom.api.routes.compliance import router as _compliance_router  # noqa: E402
@@ -946,6 +947,7 @@ _v1_api_router = create_v1_api_router()
 for _router in (
     _assets_router,
     _agent_manifest_router,
+    _campaigns_router,
     _cloud_router,
     _cloud_connections_router,
     _compliance_router,

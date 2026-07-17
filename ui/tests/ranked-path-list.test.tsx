@@ -55,4 +55,13 @@ describe("RankedPathList", () => {
     expect(active).toHaveLength(1);
     expect(within(active[0]!).getByText("#2")).toBeInTheDocument();
   });
+
+  it("uses a stacked mobile hierarchy without truncating the path title", () => {
+    render(<RankedPathList rows={rows} selectedKey="k1" onSelect={vi.fn()} />);
+
+    const title = screen.getByText(/CVE-2026-0002/);
+    expect(title).toHaveClass("break-words");
+    expect(title).not.toHaveClass("truncate");
+    expect(title.closest("button")).toHaveClass("grid");
+  });
 });

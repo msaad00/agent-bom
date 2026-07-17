@@ -1166,6 +1166,12 @@ async function installRoutes(page) {
   }));
   await page.route("**/v1/connectors", (route) => fulfill(route, { connectors: [] }));
   await page.route("**/v1/schedules", (route) => fulfill(route, []));
+  await page.route("**/v1/ticketing/tickets", (route) => fulfill(route, {
+    schema_version: "ticketing.tickets.v1",
+    tenant_id: "default",
+    tickets: [],
+    count: 0,
+  }));
   await page.route("**/v1/discovery/providers", (route) => fulfill(route, {
     contract_version: "1",
     entrypoints_enabled: false,

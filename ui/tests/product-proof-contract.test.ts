@@ -24,6 +24,11 @@ describe("product proof capture contract", () => {
     expect(source).toContain("RELEASE_VERSION");
   });
 
+  it("mocks the authenticated ticket list used by remediation", () => {
+    expect(source).toContain('page.route("**/v1/ticketing/tickets"');
+    expect(source).toContain('schema_version: "ticketing.tickets.v1"');
+  });
+
   it("does not present fictional identifiers as OSV advisories", () => {
     expect(findingsQueue).toContain("getOsvVulnerabilityUrl(v.id)");
     expect(findingsQueue).not.toContain("https://osv.dev/vulnerability/${v.id}");

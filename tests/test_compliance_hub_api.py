@@ -193,6 +193,129 @@ def test_list_hub_findings_pagination():
     assert body["offset"] == 20
 
 
+def test_list_hub_findings_cursor_walk_has_no_duplicate_or_drop():
+    client = _client()
+    csv_rows = "Title,Severity\n" + "\n".join(f"row-{i},low" for i in range(7))
+    client.post("/v1/compliance/ingest", json={"format": "csv", "content": csv_rows})
+
+    seen: list[str] = []
+    cursor = ""
+    totals: list[int | None] = []
+    while True:
+        params = {"limit": 2}
+        if cursor:
+            params["cursor"] = cursor
+        response = client.get("/v1/compliance/hub/findings", params=params)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        totals.append(body["total"])
+        assert body["offset"] == 0
+        seen.extend(str(row["id"]) for row in body["findings"])
+        cursor = body["next_cursor"]
+        if not cursor:
+            break
+
+    assert totals[0] == 7
+    assert all(total is None for total in totals[1:])
+    assert len(seen) == len(set(seen)) == 7
+
+
+def test_list_hub_findings_rejects_malformed_cursor_without_store_read(monkeypatch):
+    from agent_bom.api import compliance_hub_store
+
+    touched = False
+    original = compliance_hub_store.get_compliance_hub_store
+
+    def _store():
+        nonlocal touched
+        touched = True
+        return original()
+
+    monkeypatch.setattr(compliance_hub_store, "get_compliance_hub_store", _store)
+    response = _client().get("/v1/compliance/hub/findings", params={"cursor": "not-a-cursor"})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid or stale compliance hub cursor"
+    assert touched is False
+
+
+def test_list_hub_findings_cursor_is_tenant_bound():
+    alpha = _client(tenant="tenant-alpha")
+    beta = _client(tenant="tenant-beta")
+    csv_rows = "Title,Severity\n" + "\n".join(f"row-{i},low" for i in range(3))
+    alpha.post("/v1/compliance/ingest", json={"format": "csv", "content": csv_rows})
+    cursor = alpha.get("/v1/compliance/hub/findings", params={"limit": 1}).json()["next_cursor"]
+    assert cursor
+
+    response = beta.get("/v1/compliance/hub/findings", params={"limit": 1, "cursor": cursor})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid or stale compliance hub cursor"
+
+
+def test_list_hub_findings_bounds_legacy_offset_and_rejects_mixed_pagination():
+    client = _client()
+    too_deep = client.get("/v1/compliance/hub/findings", params={"offset": 10_001})
+    assert too_deep.status_code == 400
+    assert too_deep.json()["detail"] == "Invalid compliance hub pagination"
+
+    client.post(
+        "/v1/compliance/ingest",
+        json={"format": "csv", "content": "Title,Severity\none,low\ntwo,low"},
+    )
+    cursor = client.get("/v1/compliance/hub/findings", params={"limit": 1}).json()["next_cursor"]
+    mixed = client.get("/v1/compliance/hub/findings", params={"limit": 1, "offset": 1, "cursor": cursor})
+    assert mixed.status_code == 400
+
+
+def test_list_hub_findings_cursor_crosses_native_prefix_into_durable_rows():
+    from agent_bom.api.server import ScanJob, ScanRequest, set_job_store
+    from agent_bom.api.store import InMemoryJobStore
+    from agent_bom.api.stores import _get_store
+
+    set_job_store(InMemoryJobStore())
+    job = ScanJob(
+        job_id="native-prefix",
+        tenant_id="tenant-alpha",
+        created_at="2026-05-05T10:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-05-05T10:01:00Z"
+    job.result = {"findings": [{"id": f"native-{i}", "vulnerability_id": f"CVE-2026-{i:04d}", "severity": "high"} for i in range(3)]}
+    _get_store().put(job)
+    client = _client()
+    client.post(
+        "/v1/compliance/ingest",
+        json={"format": "csv", "content": "Title,Severity\nhub-one,low\nhub-two,low\nhub-three,low"},
+    )
+
+    origins: list[str] = []
+    cursor = ""
+    totals: list[int | None] = []
+    while True:
+        response = client.get(
+            "/v1/compliance/hub/findings",
+            params={"limit": 2, **({"cursor": cursor} if cursor else {})},
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        totals.append(body["total"])
+        origins.extend(str(row.get("origin") or "durable_hub") for row in body["findings"])
+        cursor = body["next_cursor"]
+        if not cursor:
+            break
+
+    assert totals[0] == 6
+    assert all(total is None for total in totals[1:])
+    assert origins == [
+        "native_scan",
+        "native_scan",
+        "native_scan",
+        "durable_hub",
+        "durable_hub",
+        "durable_hub",
+    ]
+
+
 def test_list_hub_findings_includes_native_scan_findings():
     """Native scans and external ingests must compose in the hub list.
 

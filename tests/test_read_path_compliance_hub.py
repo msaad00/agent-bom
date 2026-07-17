@@ -22,6 +22,9 @@ Covers four findings fixed in one coherent change:
 
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -244,6 +247,56 @@ class TestExecHeadlineReconciliation:
 
 
 class TestPostureOffload:
+    @pytest.mark.asyncio
+    async def test_posture_counts_keeps_loop_responsive_and_preserves_tenant(self, monkeypatch) -> None:
+        """The nav-count fold runs off-loop with middleware tenant context intact."""
+        from starlette.requests import Request
+
+        from agent_bom.api.routes import compliance as compliance_routes
+
+        request = Request({"type": "http", "method": "GET", "path": "/v1/posture/counts", "headers": []})
+        request.state.tenant_id = "tenant-worker"
+        caller_thread = threading.get_ident()
+        observed: dict[str, object] = {}
+
+        def _slow(req: Request) -> dict:
+            observed["thread"] = threading.get_ident()
+            observed["tenant"] = compliance_routes._tenant_id(req)
+            time.sleep(0.3)
+            return {"tenant": observed["tenant"]}
+
+        monkeypatch.setattr(compliance_routes, "_get_posture_counts_impl", _slow)
+        task = asyncio.create_task(compliance_routes.get_posture_counts(request))
+        await asyncio.sleep(0.03)
+        assert not task.done()
+        assert await asyncio.wait_for(asyncio.sleep(0, result="tick"), timeout=0.1) == "tick"
+        assert await task == {"tenant": "tenant-worker"}
+        assert observed == {"thread": observed["thread"], "tenant": "tenant-worker"}
+        assert observed["thread"] != caller_thread
+
+    def test_posture_counts_sheds_with_429_when_backpressure_opens(self, monkeypatch) -> None:
+        from agent_bom.api.routes import compliance as compliance_routes
+        from agent_bom.backpressure import reset_backpressure_for_tests
+
+        monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_OVERVIEW_P99_MS", "1")
+        monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_OVERVIEW_MIN_SAMPLES", "1")
+        monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_OVERVIEW_COOLDOWN_SECONDS", "30")
+        reset_backpressure_for_tests()
+
+        original = compliance_routes._get_posture_counts_impl
+
+        def _slow(request):
+            time.sleep(0.01)
+            return original(request)
+
+        monkeypatch.setattr(compliance_routes, "_get_posture_counts_impl", _slow)
+        client = _client()
+        try:
+            statuses = {client.get("/v1/posture/counts").status_code for _ in range(6)}
+        finally:
+            reset_backpressure_for_tests()
+        assert 429 in statuses, statuses
+
     def test_posture_sheds_with_429_when_backpressure_opens(self, monkeypatch) -> None:
         """/v1/compliance/hub/posture offloads off the loop and sheds under load."""
         from agent_bom.api.routes import compliance as compliance_routes
@@ -393,17 +446,88 @@ class TestOrdinalKeyset:
         assert len(seen) == len(set(seen)) == 6
 
     def test_ordinal_emits_no_cursor(self, store) -> None:
-        """Ordinal paginates by offset only — no broken keyset cursor is handed out."""
+        """Ordinal emits an opaque keyset cursor over its real ordering tuple."""
         now = _now()
         recent = (now - timedelta(days=1)).isoformat()
         for i in range(4):
             _seed_current(store, "t1", {"id": f"f{i}", "severity": "high", "origin": "bulk_ingest"}, observed_at=recent)
-        _rows, _total, cursor = store.list_current_page("t1", limit=2, sort="ordinal")
-        assert not cursor
+        first, total, cursor = store.list_current_page("t1", limit=2, sort="ordinal")
+        assert total == 4
+        assert cursor
+        second, continued_total, next_cursor = store.list_current_page("t1", limit=2, sort="ordinal", cursor=cursor, include_total=False)
+        assert continued_total is None
+        assert next_cursor is None
+        ids = [str(row.get("canonical_id") or row.get("id")) for row in first + second]
+        assert len(ids) == len(set(ids)) == 4
 
-    def test_ordinal_cursor_is_rejected(self) -> None:
+    def test_ordinal_cursor_round_trips_real_sort_tuple(self) -> None:
         from agent_bom.api.finding_cursor import decode_finding_cursor, encode_finding_cursor
 
-        crafted = encode_finding_cursor(sort="ordinal", primary=0.0, last_seen="2026-01-01T00:00:00Z", canonical_id="x")
-        with pytest.raises(ValueError):
-            decode_finding_cursor(crafted, expected_sort="ordinal")
+        encoded = encode_finding_cursor(
+            sort="ordinal",
+            primary=42.0,
+            last_seen="2026-01-01T00:00:00Z",
+            canonical_id="x",
+        )
+        assert decode_finding_cursor(encoded, expected_sort="ordinal") == (
+            42.0,
+            "2026-01-01T00:00:00Z",
+            "x",
+        )
+
+    def test_postgres_ordinal_cursor_uses_keyset_without_offset(self, monkeypatch) -> None:
+        from contextlib import contextmanager
+
+        from agent_bom.api import postgres_compliance_hub as postgres_module
+        from agent_bom.api.finding_cursor import encode_finding_cursor
+
+        class _Cursor:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def fetchone(self):
+                return self._rows[0] if self._rows else None
+
+            def fetchall(self):
+                return self._rows
+
+        class _Conn:
+            def __init__(self):
+                self.executed: list[tuple[str, object]] = []
+
+            def execute(self, sql, params=None):
+                self.executed.append((sql, params))
+                normalized = " ".join(sql.split()).lower()
+                if "information_schema.columns" in normalized:
+                    return _Cursor([(1,)])
+                if "from hub_findings_current" in normalized and "select canonical_id" in normalized:
+                    return _Cursor([])
+                return _Cursor([])
+
+        conn = _Conn()
+
+        @contextmanager
+        def _connection(_pool):
+            yield conn
+
+        monkeypatch.setattr(postgres_module, "_tenant_connection", _connection)
+        store = postgres_module.PostgresComplianceHubStore.__new__(postgres_module.PostgresComplianceHubStore)
+        store._pool = object()
+        cursor = encode_finding_cursor(
+            sort="ordinal",
+            primary=25,
+            last_seen="2026-01-01T00:00:00Z",
+            canonical_id="finding-25",
+        )
+
+        rows, total, next_cursor = store.list_current_page("tenant-pg", limit=10, sort="ordinal", cursor=cursor, include_total=False)
+
+        assert rows == [] and total is None and next_cursor is None
+        page_sql, page_params = next(
+            (sql, params) for sql, params in conn.executed if "SELECT canonical_id" in sql and "FROM hub_findings_current" in sql
+        )
+        normalized = " ".join(page_sql.split())
+        assert "ledger_ordinal > %s" in normalized
+        assert "ORDER BY ledger_ordinal ASC, first_seen ASC, canonical_id ASC" in normalized
+        assert "OFFSET" not in normalized.upper()
+        assert page_params == ("tenant-pg", 25, 25, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "finding-25", 11)

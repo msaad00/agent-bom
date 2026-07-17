@@ -241,6 +241,8 @@ def _postgres_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool)
     }
     if has_ledger_col:
         current_row["ledger_finding_id"] = row[13]
+        if len(row) > 14:
+            current_row["ledger_ordinal"] = int(row[14])
     return current_row
 
 
@@ -1161,7 +1163,7 @@ class PostgresComplianceHubStore:
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         with _tenant_connection(self._pool) as conn:
             has_ledger_col = _postgres_current_has_ledger_col(conn)
-            payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
+            payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
             row = conn.execute(
                 f"""
                 SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
@@ -1241,7 +1243,7 @@ class PostgresComplianceHubStore:
             else:
                 total = None
             has_ledger_col = _postgres_current_has_ledger_col(conn)
-            payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
+            payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
             if cursor:
                 query_params: tuple[Any, ...] = (*params, fetch_limit)
                 limit_sql = "LIMIT %s"

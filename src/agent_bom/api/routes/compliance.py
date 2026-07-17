@@ -16,6 +16,8 @@ Endpoints:
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -1805,6 +1807,19 @@ async def get_posture_counts(request: Request) -> dict:
     Returns:
         {critical, high, medium, low, unrated, total, kev, compound_issues, …}
     """
+    try:
+        async with adaptive_backpressure("overview"):
+            return await anyio.to_thread.run_sync(_get_posture_counts_impl, request)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+
+def _get_posture_counts_impl(request: Request) -> dict:
+    """Synchronous posture-count composition, executed in a worker thread."""
     from agent_bom.api.routes.overview import exec_severity_counts
 
     tenant_jobs = _tenant_jobs(request)
@@ -2057,14 +2072,76 @@ async def ingest_compliance_findings(request: Request) -> dict:
     return response
 
 
-def _unpack_hub_list_page(result: tuple[Any, ...]) -> tuple[list[dict[str, Any]], int]:
+def _unpack_hub_list_page(result: tuple[Any, ...]) -> tuple[list[dict[str, Any]], int | None, str | None]:
     page = result[0]
     total = result[1] if len(result) > 1 else None
-    return page, total or 0
+    next_cursor = result[2] if len(result) > 2 else None
+    return page, total, next_cursor
+
+
+_HUB_LIST_OFFSET_CEILING = 10_000
+_HUB_LIST_CURSOR_VERSION = 1
+
+
+def _hub_native_fingerprint(findings: list[dict[str, Any]]) -> str:
+    ids = [str(row.get("id") or "") for row in findings]
+    raw = json.dumps(ids, separators=(",", ":"), ensure_ascii=True).encode()
+    return hashlib.sha256(raw).hexdigest()[:24]
+
+
+def _hub_tenant_fingerprint(tenant_id: str) -> str:
+    return hashlib.sha256(tenant_id.encode()).hexdigest()[:24]
+
+
+def _encode_hub_list_cursor(
+    *,
+    tenant_id: str,
+    native_findings: list[dict[str, Any]],
+    native_index: int,
+    hub_cursor: str,
+    total: int,
+) -> str:
+    payload = {
+        "v": _HUB_LIST_CURSOR_VERSION,
+        "t": _hub_tenant_fingerprint(tenant_id),
+        "n": native_index,
+        "nf": _hub_native_fingerprint(native_findings),
+        "h": hub_cursor,
+        "total": total,
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_hub_list_cursor(
+    cursor: str,
+    *,
+    tenant_id: str,
+    native_findings: list[dict[str, Any]],
+) -> tuple[int, str, int]:
+    try:
+        if not cursor or len(cursor) > 4096:
+            raise ValueError
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.b64decode(padded.encode(), altchars=b"-_", validate=True).decode())
+        if not isinstance(payload, dict) or payload.get("v") != _HUB_LIST_CURSOR_VERSION:
+            raise ValueError
+        if payload.get("t") != _hub_tenant_fingerprint(tenant_id):
+            raise ValueError
+        if payload.get("nf") != _hub_native_fingerprint(native_findings):
+            raise ValueError
+        native_index = int(payload["n"])
+        total = int(payload["total"])
+        hub_cursor = str(payload.get("h") or "")
+        if native_index < 0 or native_index > len(native_findings) or total < 0:
+            raise ValueError
+        return native_index, hub_cursor, total
+    except Exception as exc:
+        raise ValueError("Invalid or stale compliance hub cursor") from exc
 
 
 @router.get("/compliance/hub/findings", tags=["compliance"])
-async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0) -> dict:
+async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0, cursor: str | None = None) -> dict:
     """List compliance-hub findings for the current tenant.
 
     Returns the canonical finding-list envelope (#3666) shared with
@@ -2073,9 +2150,11 @@ async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0)
     the same shape so the list endpoint matches `/hub/posture` totals.
 
     Ordering is ingest-order (``sort="ordinal"``) so the list matches the way
-    findings were imported; pagination is ``limit`` / ``offset``. Keyset
-    pagination over the same durable hub store is available (keyset-safe sort)
-    through ``/v1/findings?cursor=`` for scale reads.
+    findings were imported. ``cursor`` is the scale path: it walks the native
+    scan prefix and the durable hub store with a bounded opaque continuation,
+    then uses the indexed ``(ledger_ordinal, first_seen, canonical_id)`` keyset.
+    ``limit`` / ``offset`` remain as a compatibility path capped at offset
+    10,000; deeper walks must follow ``next_cursor``.
 
     The synchronous store read (page fetch + count) runs in a worker thread
     under adaptive backpressure so a deep page against a large tenant cannot
@@ -2084,16 +2163,19 @@ async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0)
     """
     try:
         async with adaptive_backpressure("compliance"):
-            return await anyio.to_thread.run_sync(_list_hub_findings_impl, request, limit, offset)
+            return await anyio.to_thread.run_sync(_list_hub_findings_impl, request, limit, offset, cursor)
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,
             detail=exc.to_dict(),
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+    except ValueError as exc:
+        detail = "Invalid or stale compliance hub cursor" if cursor else "Invalid compliance hub pagination"
+        raise HTTPException(status_code=400, detail=detail) from exc
 
 
-def _list_hub_findings_impl(request: Request, limit: int, offset: int) -> dict:
+def _list_hub_findings_impl(request: Request, limit: int, offset: int, cursor: str | None = None) -> dict:
     """Synchronous body of :func:`list_hub_findings` (runs in a worker thread)."""
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
     from agent_bom.api.finding_list_envelope import finding_list_envelope
@@ -2101,29 +2183,94 @@ def _list_hub_findings_impl(request: Request, limit: int, offset: int) -> dict:
     tenant_id = _tenant_id(request)
     safe_limit = max(1, min(limit, 1000))
     safe_offset = max(0, offset)
+    if safe_offset > _HUB_LIST_OFFSET_CEILING:
+        raise ValueError("offset exceeds compatibility ceiling; use cursor")
+    if cursor and safe_offset:
+        raise ValueError("cursor and offset cannot be combined")
     sort = "ordinal"
     native = _native_hub_findings(request)
+
+    # Validate the opaque continuation before resolving the store. Malformed,
+    # cross-tenant, or stale-native cursors therefore perform no database work.
+    if cursor:
+        native_index, hub_cursor, stable_total = _decode_hub_list_cursor(
+            cursor,
+            tenant_id=tenant_id,
+            native_findings=native,
+        )
+    else:
+        native_index, hub_cursor, stable_total = 0, "", -1
+
     store = get_compliance_hub_store()
     list_page = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
-    if callable(list_page):
-        if native:
-            window = safe_offset + safe_limit
-            hub_rows, hub_total = _unpack_hub_list_page(list_page(tenant_id, limit=window, offset=0, sort=sort))
-            combined = native + hub_rows
-            page = combined[safe_offset : safe_offset + safe_limit]
-            total = len(native) + hub_total
-        else:
-            page, total = _unpack_hub_list_page(list_page(tenant_id, limit=safe_limit, offset=safe_offset, sort=sort))
-    else:
+    if not callable(list_page):
+        if cursor:
+            raise ValueError("cursor pagination requires a paged compliance store")
         findings = store.list(tenant_id) + native
         page = findings[safe_offset : safe_offset + safe_limit]
         total = len(findings)
+        next_cursor = ""
+    elif safe_offset:
+        # Backward-compatible, explicitly bounded OFFSET behavior. New clients
+        # use cursor and never issue an OFFSET against the durable store.
+        window = safe_offset + safe_limit
+        legacy_hub_rows, legacy_hub_total, _ = _unpack_hub_list_page(list_page(tenant_id, limit=window, offset=0, sort=sort))
+        combined = native + legacy_hub_rows
+        page = combined[safe_offset : safe_offset + safe_limit]
+        total = len(native) + int(legacy_hub_total or 0)
+        next_cursor = ""
+    else:
+        page = native[native_index : native_index + safe_limit]
+        next_native_index = native_index + len(page)
+        remaining = safe_limit - len(page)
+        hub_rows: list[dict[str, Any]] = []
+        hub_total: int | None = None
+        hub_next: str | None = None
+        if remaining > 0:
+            hub_rows, hub_total, hub_next = _unpack_hub_list_page(
+                list_page(
+                    tenant_id,
+                    limit=remaining,
+                    offset=0,
+                    sort=sort,
+                    include_total=not cursor,
+                    cursor=hub_cursor or None,
+                )
+            )
+            page.extend(hub_rows)
+        elif not cursor:
+            # Exact first-page total without hydrating a durable row. A limit=0
+            # query fetches only the keyset lookahead and returns COUNT(*).
+            _unused, hub_total, _unused_cursor = _unpack_hub_list_page(
+                list_page(tenant_id, limit=0, offset=0, sort=sort, include_total=True)
+            )
+
+        total = stable_total if cursor else len(native) + int(hub_total or 0)
+        has_native_more = next_native_index < len(native)
+        hub_unstarted_with_rows = remaining == 0 and not hub_cursor and total > len(native)
+        has_hub_more = bool(hub_next) or hub_unstarted_with_rows
+        if has_native_more or has_hub_more:
+            continuation_hub_cursor = hub_cursor if remaining == 0 else str(hub_next or "")
+            next_cursor = _encode_hub_list_cursor(
+                tenant_id=tenant_id,
+                native_findings=native,
+                native_index=next_native_index,
+                hub_cursor=continuation_hub_cursor,
+                total=total,
+            )
+        else:
+            next_cursor = ""
     return finding_list_envelope(
         findings=page,
-        total=total,
+        # A continuation is not a database snapshot: concurrent ingests may
+        # change the matching cardinality between pages. Return null instead of
+        # replaying a potentially stale first-page COUNT as if it were exact.
+        total=None if cursor else total,
         limit=safe_limit,
         offset=safe_offset,
         sort=sort,
+        cursor=cursor or "",
+        next_cursor=next_cursor,
     )
 
 

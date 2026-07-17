@@ -6579,11 +6579,15 @@ paths:
 
         Ordering is ingest-order (``sort="ordinal"``) so the list matches the way
 
-        findings were imported; pagination is ``limit`` / ``offset``. Keyset
+        findings were imported. ``cursor`` is the scale path: it walks the native
 
-        pagination over the same durable hub store is available (keyset-safe sort)
+        scan prefix and the durable hub store with a bounded opaque continuation,
 
-        through ``/v1/findings?cursor=`` for scale reads.
+        then uses the indexed ``(ledger_ordinal, first_seen, canonical_id)`` keyset.
+
+        ``limit`` / ``offset`` remain as a compatibility path capped at offset
+
+        10,000; deeper walks must follow ``next_cursor``.
 
 
         The synchronous store read (page fetch + count) runs in a worker thread
@@ -6609,6 +6613,14 @@ paths:
           default: 0
           title: Offset
           type: integer
+      - in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
       - in: header
         name: X-Agent-Bom-Role
         required: false

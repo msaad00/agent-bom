@@ -9877,7 +9877,7 @@
         ]
       },
       "get": {
-        "description": "List compliance-hub findings for the current tenant.\n\nReturns the canonical finding-list envelope (#3666) shared with\n``/v1/findings`` so consumers learn one shape across every finding surface.\nIncludes durable external ingests plus native scan findings projected into\nthe same shape so the list endpoint matches `/hub/posture` totals.\n\nOrdering is ingest-order (``sort=\"ordinal\"``) so the list matches the way\nfindings were imported; pagination is ``limit`` / ``offset``. Keyset\npagination over the same durable hub store is available (keyset-safe sort)\nthrough ``/v1/findings?cursor=`` for scale reads.\n\nThe synchronous store read (page fetch + count) runs in a worker thread\nunder adaptive backpressure so a deep page against a large tenant cannot\nblock the event loop and starve ``/health`` (mirrors ``/v1/findings``);\nunder saturation it sheds with ``429 + Retry-After``.",
+        "description": "List compliance-hub findings for the current tenant.\n\nReturns the canonical finding-list envelope (#3666) shared with\n``/v1/findings`` so consumers learn one shape across every finding surface.\nIncludes durable external ingests plus native scan findings projected into\nthe same shape so the list endpoint matches `/hub/posture` totals.\n\nOrdering is ingest-order (``sort=\"ordinal\"``) so the list matches the way\nfindings were imported. ``cursor`` is the scale path: it walks the native\nscan prefix and the durable hub store with a bounded opaque continuation,\nthen uses the indexed ``(ledger_ordinal, first_seen, canonical_id)`` keyset.\n``limit`` / ``offset`` remain as a compatibility path capped at offset\n10,000; deeper walks must follow ``next_cursor``.\n\nThe synchronous store read (page fetch + count) runs in a worker thread\nunder adaptive backpressure so a deep page against a large tenant cannot\nblock the event loop and starve ``/health`` (mirrors ``/v1/findings``);\nunder saturation it sheds with ``429 + Retry-After``.",
         "operationId": "list_hub_findings_v1_compliance_hub_findings_get",
         "parameters": [
           {
@@ -9898,6 +9898,22 @@
               "default": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
             }
           },
           {

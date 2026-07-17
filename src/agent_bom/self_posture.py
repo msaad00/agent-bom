@@ -171,8 +171,13 @@ def _check_db_rls(env: Mapping[str, str]) -> PostureCheck:
             id="database.rls_isolation",
             category="database",
             title="Tenant isolation enforced by the database",
-            status=STATUS_PASS,
-            detail="Superuser/BYPASSRLS database roles are rejected (default) — Row-Level Security tenant policies are enforced.",
+            status=STATUS_UNKNOWN,
+            detail=(
+                "AGENT_BOM_ALLOW_SUPERUSER_DB is not enabled, but configuration alone cannot "
+                "prove that the active database role is non-superuser, lacks BYPASSRLS, and is "
+                "subject to the expected Row-Level Security policies."
+            ),
+            remediation="Verify the active database role and RLS policies against the running database.",
         )
     production = _is_production(env)
     status = STATUS_FAIL if production else STATUS_WARN
@@ -255,15 +260,14 @@ def _check_secret_sealing(env: Mapping[str, str]) -> list[PostureCheck]:
         has_literal = bool((env.get(literal_var) or "").strip())
         has_file = bool((env.get(file_var) or "").strip())
         title = f"Secret sealed via file/provider — {label}"
-        if has_file or external:
-            via = "file reference" if has_file else "external secret provider"
+        if has_file:
             checks.append(
                 PostureCheck(
                     id=f"secrets.{check_id}",
                     category="secrets",
                     title=title,
                     status=STATUS_PASS,
-                    detail=f"The {label} is provided via {via}, not a literal environment value.",
+                    detail=f"The {label} is configured through a file reference, not a literal environment value.",
                 )
             )
         elif has_literal:
@@ -281,13 +285,18 @@ def _check_secret_sealing(env: Mapping[str, str]) -> list[PostureCheck]:
                 )
             )
         else:
+            external_note = (
+                " External-secrets integration is enabled, but that deployment-level flag does not prove this specific secret is populated."
+                if external
+                else ""
+            )
             checks.append(
                 PostureCheck(
                     id=f"secrets.{check_id}",
                     category="secrets",
                     title=title,
                     status=STATUS_UNKNOWN,
-                    detail=f"No {label} is configured, so sealing cannot be assessed.",
+                    detail=f"No file or literal configuration for the {label} is visible, so sealing cannot be assessed.{external_note}",
                     remediation=f"When you configure it, prefer {file_var} over a literal {literal_var}.",
                 )
             )
@@ -385,7 +394,7 @@ def self_posture(
     return {
         "schema_version": SCHEMA_VERSION,
         "overall_status": overall,
-        "hardened": counts[STATUS_FAIL] == 0,
+        "hardened": overall == "hardened",
         "deployment_env": _deployment_env(resolved_env) or "unknown",
         "counts": counts,
         "checks": [check.to_dict() for check in checks],

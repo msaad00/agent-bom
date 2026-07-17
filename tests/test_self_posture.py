@@ -27,18 +27,19 @@ def _hardened_env() -> dict[str, str]:
     }
 
 
-def test_hardened_production_config_passes_security_checks() -> None:
+def test_configured_production_reports_unverified_runtime_checks_honestly() -> None:
     report = self_posture(_hardened_env(), distribution_count=66)
     checks = _by_id(report)
 
     assert checks["auth.api_authentication"]["status"] == STATUS_PASS
-    assert checks["database.rls_isolation"]["status"] == STATUS_PASS
+    assert checks["database.rls_isolation"]["status"] == STATUS_UNKNOWN
     assert checks["audit.hmac_integrity"]["status"] == STATUS_PASS
     assert checks["secrets.audit_hmac_key"]["status"] == STATUS_PASS
     assert checks["secrets.connections_key"]["status"] == STATUS_PASS
     assert checks["deployment.env_declared"]["status"] == STATUS_PASS
-    # No fail present -> hardened; supply-chain is an explicit unknown context.
-    assert report["hardened"] is True
+    # Unknown runtime/supply-chain state is not proof that the deployment is hardened.
+    assert report["hardened"] is False
+    assert report["overall_status"] == "needs_review"
     assert report["counts"][STATUS_FAIL] == 0
 
 
@@ -126,6 +127,30 @@ def test_unconfigured_audit_hmac_in_dev_is_unknown_not_pass() -> None:
 def test_unconfigured_secret_is_unknown_not_pass() -> None:
     check = _by_id(self_posture({"AGENT_BOM_DEPLOYMENT_ENV": "dev"}, distribution_count=10))["secrets.audit_hmac_key"]
     assert check["status"] == STATUS_UNKNOWN
+
+
+def test_external_secrets_enablement_alone_is_not_proof_a_secret_is_sealed() -> None:
+    env = {
+        "AGENT_BOM_DEPLOYMENT_ENV": "production",
+        "AGENT_BOM_EXTERNAL_SECRETS_ENABLED": "1",
+    }
+    checks = _by_id(self_posture(env, distribution_count=10))
+    assert checks["secrets.audit_hmac_key"]["status"] == STATUS_UNKNOWN
+    assert checks["secrets.connections_key"]["status"] == STATUS_UNKNOWN
+
+
+def test_unknown_or_warning_outcomes_never_set_hardened_true() -> None:
+    unknown = self_posture(_hardened_env(), distribution_count=66)
+    warning = self_posture(
+        _hardened_env()
+        | {
+            "AGENT_BOM_DEPLOYMENT_ENV": "dev",
+            "AGENT_BOM_ALLOW_UNAUTHENTICATED_API": "1",
+        },
+        distribution_count=66,
+    )
+    assert unknown["hardened"] is False
+    assert warning["hardened"] is False
 
 
 def test_supply_chain_is_context_only_never_a_fake_pass() -> None:

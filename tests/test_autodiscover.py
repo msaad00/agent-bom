@@ -90,6 +90,34 @@ def test_infer_risk_no_repo():
     assert risk_order[no_level] > risk_order[with_level]
 
 
+def test_nullable_registry_text_fields_do_not_abort_risk_inference():
+    metadata = {
+        "description": None,
+        "keywords": None,
+        "maintainers": 3,
+        "repository": "https://github.com/example/lib",
+        "dependencies_count": 0,
+    }
+    assert infer_risk_level(metadata) == "low"
+    assert generate_risk_justification(metadata, "low")
+
+
+def test_more_than_fifty_dependencies_receive_the_larger_risk_weight():
+    base = {
+        "description": "a simple utility library",
+        "keywords": [],
+        "maintainers": 5,
+        "repository": "https://github.com/example/lib",
+    }
+    assert infer_risk_level({**base, "dependencies_count": 21}) == "low"
+    assert infer_risk_level({**base, "dependencies_count": 51}) == "low"
+
+    # The score difference becomes visible at the medium threshold when paired
+    # with a single-maintainer trust signal.
+    assert infer_risk_level({**base, "maintainers": 1, "dependencies_count": 21}) == "low"
+    assert infer_risk_level({**base, "maintainers": 1, "dependencies_count": 51}) == "medium"
+
+
 # ── generate_risk_justification tests ─────────────────────────────────────
 
 

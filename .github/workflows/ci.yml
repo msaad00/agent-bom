@@ -82,7 +82,10 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
             action=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/)'; then
+          # Changes to this workflow must exercise the Alpine job itself;
+          # otherwise checkout/bootstrap fixes can merge without ever running
+          # in the container they modify.
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/workflows/ci\.yml$|\.github/actions/setup-python/)'; then
             alpine=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/)'; then
@@ -873,6 +876,21 @@ jobs:
     container:
       image: python:3.14.3-alpine3.23@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510
     steps:
+      # The Alpine image does not include Git. Without this bootstrap,
+      # actions/checkout falls back to GitHub's REST archive download, which
+      # turns a transient archive-service outage into a false compatibility
+      # failure before any repository test runs.
+      - name: Bootstrap Git for checkout (Alpine)
+        run: |
+          for attempt in 1 2 3; do
+            if apk add --no-cache git; then
+              exit 0
+            fi
+            echo "git bootstrap failed on attempt ${attempt}; retrying..."
+            sleep $((attempt * 5))
+          done
+          apk add --no-cache git
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install build deps (Alpine)

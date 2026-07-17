@@ -11,6 +11,7 @@ from agent_bom.cloud.authorization_evidence import (
     AuthorizationProvider,
     EvidenceSource,
     EvidenceSourceState,
+    ResourceAncestry,
     RoleDefinitionEvidence,
 )
 
@@ -46,6 +47,13 @@ def test_bundle_serializes_source_completeness_and_provenance() -> None:
                 source="iam.roles.get",
             ),
         ),
+        resource_ancestry=(
+            ResourceAncestry(
+                resource="//storage.googleapis.com/projects/_/buckets/private-data",
+                ancestors=("projects/123", "folders/10", "organizations/20"),
+                source="cloudasset.assets.list",
+            ),
+        ),
     )
 
     payload = bundle.to_dict()
@@ -57,6 +65,13 @@ def test_bundle_serializes_source_completeness_and_provenance() -> None:
         "diagnostics": ["permission_denied"],
         "provenance": [],
     }
+    assert payload["resource_ancestry"] == [
+        {
+            "resource": "//storage.googleapis.com/projects/_/buckets/private-data",
+            "ancestors": ["projects/123", "folders/10", "organizations/20"],
+            "source": "cloudasset.assets.list",
+        }
+    ]
     assert json.loads(json.dumps(payload)) == payload
 
 

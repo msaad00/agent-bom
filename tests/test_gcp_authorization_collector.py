@@ -97,6 +97,13 @@ class _RolesClient:
         )
 
 
+class _DisabledRolesClient(_RolesClient):
+    def get_role(self, request: dict[str, Any]) -> Any:
+        role = super().get_role(request)
+        role.stage = "DISABLED"
+        return role
+
+
 class _DenyClient:
     def list_policies(self, request: dict[str, Any]) -> Iterable[Any]:
         if "projects%2Fproj-1" not in request["parent"]:
@@ -161,6 +168,34 @@ def test_collects_v3_allow_roles_hierarchy_and_deny_without_permission_truncatio
     viewer = next(role for role in result["role_definitions"] if role["id"] == "roles/viewer")
     assert len(viewer["permissions"]) == 600
     assert result["deny_policies"][0]["rules"][0]["condition"]["expression"].endswith("'/private')")
+    assert result["iam_scope"] == "projects/123"
+
+
+def test_disabled_role_is_retained_as_non_authorizing_evidence() -> None:
+    clients = _clients()
+    clients.roles = _DisabledRolesClient()
+
+    result = collect_gcp_authorization(None, "proj-1", clients=clients, warnings=[])
+
+    assert {role["completeness"] for role in result["role_definitions"]} == {EvidenceSourceState.UNAVAILABLE.value}
+    assert all(role["permissions"] == [] for role in result["role_definitions"])
+
+
+def test_malformed_deny_rule_downgrades_deny_source() -> None:
+    clients = _clients()
+    malformed = SimpleNamespace(
+        name="policies/project/denypolicies/malformed",
+        uid="deny-bad",
+        display_name="malformed",
+        rules=[SimpleNamespace(deny_rule=SimpleNamespace(denied_principals=[], denied_permissions=[]))],
+    )
+    clients.denies.list_policies = lambda request: [malformed]
+
+    result = collect_gcp_authorization(None, "proj-1", clients=clients, warnings=[])
+
+    assert _source_states(result)["deny_policies"] == EvidenceSourceState.PARTIAL.value
+    source = next(item for item in result["iam_sources"] if item["name"] == "deny_policies")
+    assert "dropped 1 malformed deny rule" in source["diagnostics"]
 
 
 def test_asset_pager_is_consumed_across_pages() -> None:

@@ -363,3 +363,29 @@ def test_group_assignment_remains_indeterminate_without_transitive_membership() 
 
     assert bundle.source_state("group_memberships") is EvidenceSourceState.PARTIAL
     assert result.decision is AuthorizationDecision.INDETERMINATE
+
+
+def test_group_deny_cannot_fail_open_without_transitive_membership() -> None:
+    deny = _deny_assignment()
+    deny.principals = [SimpleNamespace(id="group-1", type="Group")]
+    collected = collect_azure_authorization(
+        object(),
+        "sub-1",
+        client=_client(assignments=[_assignment("sp-1")], denies=[deny]),
+        warnings=[],
+    )
+    bundle = normalize_azure_rbac_inventory({"status": "ok", "subscription_id": "sub-1", **collected})
+
+    result = evaluate_authorization(
+        bundle,
+        AuthorizationRequest(
+            provider=AuthorizationProvider.AZURE,
+            principal_id="sp-1",
+            action="Microsoft.Storage/storageAccounts/read",
+            resource="/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Storage/storageAccounts/data",
+            plane=AuthorizationPlane.CONTROL,
+        ),
+    )
+
+    assert bundle.source_state("group_memberships") is EvidenceSourceState.UNAVAILABLE
+    assert result.decision is AuthorizationDecision.INDETERMINATE

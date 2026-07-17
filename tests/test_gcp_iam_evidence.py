@@ -216,6 +216,94 @@ def test_authoritative_conditional_deny_is_indeterminate() -> None:
     assert result.diagnostics == ("unevaluated_deny_condition",)
 
 
+def test_unresolved_group_principal_set_deny_downgrades_evidence() -> None:
+    payload = _authoritative_payload()
+    payload["deny_policies"] = [
+        {
+            "name": "policies/project/denypolicies/group-protect",
+            "attachment_point": "cloudresourcemanager.googleapis.com/projects/proj-1",
+            "rules": [
+                {
+                    "denied_principals": ["principalSet://goog/group/security@example.com"],
+                    "exception_principals": [],
+                    "denied_permissions": ["storage.googleapis.com/objects.get"],
+                    "exception_permissions": [],
+                    "condition": None,
+                }
+            ],
+        }
+    ]
+
+    bundle = normalize_gcp_iam_inventory(payload)
+    result = evaluate_authorization(bundle, _request())
+
+    assert bundle.source_state("deny_policies") is EvidenceSourceState.PARTIAL
+    assert result.decision is AuthorizationDecision.INDETERMINATE
+    assert "deny_policies:partial" in result.diagnostics
+
+
+def test_deleted_or_disabled_roles_cannot_authorize() -> None:
+    for role_state in ({"deleted": True, "stage": "GA"}, {"deleted": False, "stage": "DISABLED"}):
+        payload = _authoritative_payload()
+        payload["role_definitions"][0].update(role_state)  # type: ignore[index]
+
+        bundle = normalize_gcp_iam_inventory(payload)
+        result = evaluate_authorization(bundle, _request())
+
+        assert bundle.role_definitions[0].permissions == ()
+        assert bundle.role_definitions[0].completeness is EvidenceSourceState.UNAVAILABLE
+        assert result.decision is AuthorizationDecision.INDETERMINATE
+
+
+def test_hierarchy_and_asset_ancestry_apply_parent_policy_to_canonical_resource() -> None:
+    payload = _authoritative_payload()
+    payload["iam_scope"] = "projects/123"
+    payload["allow_policies"] = [
+        {
+            "resource": "folders/10",
+            "version": 3,
+            "bindings": [
+                {
+                    "id": "folder-binding",
+                    "role": "roles/storage.objectViewer",
+                    "members": ["serviceAccount:ci@proj-1.iam.gserviceaccount.com"],
+                    "condition": None,
+                }
+            ],
+        },
+        {
+            "resource": "//storage.googleapis.com/projects/_/buckets/private-data",
+            "ancestors": ["projects/123", "folders/10", "organizations/20"],
+            "version": 3,
+            "bindings": [],
+        },
+    ]
+    request = AuthorizationRequest(
+        provider=AuthorizationProvider.GCP,
+        principal_id="serviceAccount:ci@proj-1.iam.gserviceaccount.com",
+        action="storage.objects.get",
+        resource="//storage.googleapis.com/projects/_/buckets/private-data/objects/report.csv",
+        plane=AuthorizationPlane.CONTROL,
+    )
+
+    bundle = normalize_gcp_iam_inventory(payload)
+    result = evaluate_authorization(bundle, request)
+
+    assert bundle.scope == "projects/123"
+    assert bundle.resource_ancestry[0].ancestors == ("projects/123", "folders/10", "organizations/20")
+    assert result.decision is AuthorizationDecision.ALLOW
+
+
+def test_public_members_are_normalized_explicitly() -> None:
+    payload = _authoritative_payload()
+    payload["allow_policies"][0]["bindings"][0]["members"] = ["allUsers", "allAuthenticatedUsers"]  # type: ignore[index]
+
+    bundle = normalize_gcp_iam_inventory(payload)
+
+    assert {binding.principal_id for binding in bundle.bindings} == {"allAuthenticatedUsers", "allUsers"}
+    assert {binding.principal_type for binding in bundle.bindings} == {"public"}
+
+
 def test_missing_authoritative_role_is_indeterminate() -> None:
     payload = _authoritative_payload()
     payload["role_definitions"] = []

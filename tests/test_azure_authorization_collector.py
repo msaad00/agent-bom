@@ -213,6 +213,23 @@ def test_malformed_deny_marks_deny_source_partial() -> None:
     assert deny_source["diagnostics"] == ["dropped 1 malformed deny assignment record"]
 
 
+def test_malformed_nested_deny_rule_marks_source_partial() -> None:
+    malformed = _deny_assignment()
+    malformed.permissions = [SimpleNamespace(actions=[], not_actions=[], data_actions=[], not_data_actions=[])]
+
+    result = collect_azure_authorization(
+        object(),
+        "sub-1",
+        client=_client(denies=[malformed]),
+        warnings=[],
+    )
+
+    assert result["deny_assignments"] == []
+    assert _source_states(result)["deny_assignments"] == EvidenceSourceState.PARTIAL.value
+    source = next(item for item in result["authorization_sources"] if item["name"] == "deny_assignments")
+    assert source["diagnostics"] == ["dropped 1 malformed deny assignment record"]
+
+
 class _DeniedError(Exception):
     status_code = 403
 

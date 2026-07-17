@@ -198,6 +198,9 @@ Minimum verification matrix:
 
 - Keep changes scoped. Do not mix dependency bumps, product docs, UI changes,
   and scanner behavior unless one is required by the other.
+- Do not add new top-level modules under `src/agent_bom/*.py`. Put new code in
+  an existing package (`api/`, `graph/`, `runtime/`, `cloud/`, `mcp_tools/`,
+  …). The flat namespace is frozen by `scripts/check_package_layout.py`.
 - Preserve signed commits and avoid synthetic GitHub update-branch churn; use
   local rebase plus `--force-with-lease` when a PR branch must be refreshed.
 - Do not edit generated artifacts unless the owning generation command is run

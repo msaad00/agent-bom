@@ -173,6 +173,12 @@ jobs:
         # breadcrumbs must never ship in product source. Pure stdlib, fails fast.
         run: python scripts/check_comment_hygiene.py
 
+      - name: Package layout — no new top-level src/agent_bom/*.py modules
+        # Source: scripts/check_package_layout.py
+        # The flat namespace is frozen; new modules belong in packages
+        # (api/, graph/, runtime/, cloud/, …). Pure stdlib.
+        run: python scripts/check_package_layout.py
+
       - name: Exception sanitization — no raw exception text in HTTP responses or logs
         # Source: scripts/check_exception_sanitization.py
         # Raw exception strings carry secrets, ARNs, paths, and connection

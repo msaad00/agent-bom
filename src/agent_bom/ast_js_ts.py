@@ -1,4 +1,18 @@
-"""JS/TS analyzer helpers extracted from ast_analyzer."""
+"""JS/TS analysis facade used by ``ast_analyzer`` (regex fallback + tree-sitter).
+
+Layering
+--------
+* **This module** (``ast_js_ts``) is the *facade* callers should use via
+  ``ast_analyzer``: file scan, flow findings, and dependency-symbol reach.
+  When the tree-sitter runtime is available it delegates block analysis to
+  ``js_ts_ast``; otherwise it falls back to conservative regex helpers.
+* **``js_ts_ast``** is the *engine*: parser-backed JS/TS syntax trees
+  (imports, call sites, tool registrations). Prefer that module only when you
+  specifically need raw AST analysis of a source block.
+
+Do not add a third parallel JS/TS analyzer — extend this facade or the engine.
+"""
+
 
 from __future__ import annotations
 

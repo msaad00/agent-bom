@@ -405,7 +405,7 @@ def _evaluate_control_plane_bundle(
         return True, ""
     try:
         from agent_bom.api.policy_store import GatewayPolicy
-        from agent_bom.proxy import _evaluate_gateway_policy_bundle
+        from agent_bom.gateway import evaluate_gateway_policy_bundle
 
         policies = []
         parse_errors = 0
@@ -434,7 +434,7 @@ def _evaluate_control_plane_bundle(
         patterns_ok, pattern_reason = _validate_gateway_rule_patterns(policies)
         if not patterns_ok:
             return False, pattern_reason
-        return _evaluate_gateway_policy_bundle(policies, source_agent, tool_name, arguments)
+        return evaluate_gateway_policy_bundle(policies, source_agent, tool_name, arguments)
     except Exception as exc:  # noqa: BLE001
         # Fail closed: a bundle that cannot be evaluated must not silently pass.
         logger.warning("gateway control-plane bundle evaluation failed: %s", _sanitize_for_log(exc))

@@ -91,7 +91,7 @@ def test_derivation_groups_only_shared_remediation_and_explains_score() -> None:
     assert campaign["finding_ids"] == ["finding-a", "finding-b"]
     assert campaign["priority_score"] == 10.0
     assert campaign["priority_score_components"] == {
-        "base_finding_risk": 9.4,
+            "base_risk": 9.4,
         "exploitability_boost": 1.0,
         "reachability_boost": 0.5,
         "crown_jewel_boost": 0.0,
@@ -135,9 +135,7 @@ def test_derivation_rejects_non_finite_risk_signals_as_unknown() -> None:
 def test_priority_observed_signals_are_bounded_ordered_and_unknown_neutral() -> None:
     base = {"id": "a", "severity": "medium", "risk_score": 4.0}
     unknown = derive_campaigns([base], tenant_id="t", workflow_by_id={})[0]
-    explicit_false = derive_campaigns(
-        [{**base, "graph_reachable": False, "crown_jewel": False}], tenant_id="t", workflow_by_id={}
-    )[0]
+    explicit_false = derive_campaigns([{**base, "graph_reachable": False, "crown_jewel": False}], tenant_id="t", workflow_by_id={})[0]
     enriched = derive_campaigns(
         [
             {
@@ -152,6 +150,7 @@ def test_priority_observed_signals_are_bounded_ordered_and_unknown_neutral() -> 
         workflow_by_id={},
     )[0]
     epss = derive_campaigns([{**base, "epss_score": 0.8}], tenant_id="t", workflow_by_id={})[0]
+    out_of_range_epss = derive_campaigns([{**base, "epss_score": 8.0}], tenant_id="t", workflow_by_id={})[0]
     capped = derive_campaigns(
         [{**base, "risk_score": 9.9, "is_kev": True, "graph_reachable": True, "crown_jewel": True}],
         tenant_id="t",
@@ -161,6 +160,9 @@ def test_priority_observed_signals_are_bounded_ordered_and_unknown_neutral() -> 
     assert unknown["priority_score"] == explicit_false["priority_score"] == 4.0
     assert enriched["priority_score"] > unknown["priority_score"]
     assert epss["priority_score_components"]["exploitability_boost"] == 0.8
+    assert out_of_range_epss["priority_score_components"]["exploitability_boost"] == 0.0
+    assert out_of_range_epss["score_factors"]["exploitability"]["status"] == "unknown"
+    assert epss["priority_score_components"]["base_risk"] == 4.0
     assert epss["score_factors"]["exploitability"]["status"] == "observed"
     assert enriched["score_factors"]["reachability"]["status"] == "observed"
     assert enriched["score_factors"]["crown_jewel"]["value"] is True
@@ -348,9 +350,9 @@ def test_campaign_openapi_has_typed_responses_and_partial_status() -> None:
     assert schema["components"]["schemas"]["CampaignTicketCreateResponse"]["properties"]["errors"]["items"]["$ref"].endswith(
         "CampaignTicketCreateError"
     )
-    verify_ref = schema["paths"]["/v1/campaigns/{campaign_id}/verify"]["post"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]["$ref"]
+    verify_ref = schema["paths"]["/v1/campaigns/{campaign_id}/verify"]["post"]["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ]
     assert verify_ref.endswith("CampaignVerificationResponse")
 
 
@@ -636,16 +638,12 @@ def test_campaign_verify_fails_with_remaining_members_and_is_cas_safe(monkeypatc
     monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
     client = TestClient(app)
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
-    first = client.post(
-        f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers()
-    )
+    first = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
     assert first.status_code == 200
     assert first.json()["verification_status"] == "failed"
     assert first.json()["remaining_finding_ids"] == ["finding-a", "finding-b"]
     assert first.json()["evidence_scope"]["membership_complete"] is True
-    stale = client.post(
-        f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers()
-    )
+    stale = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
     assert stale.status_code == 409
 
 
@@ -663,9 +661,7 @@ def test_campaign_verify_survives_restart_and_disappeared_campaign(monkeypatch, 
     client.get("/v1/campaigns", headers=_headers())
     retired = get_campaign_store().get("tenant-alpha", campaign["id"])
     assert retired is not None and retired.active is False
-    response = client.post(
-        f"/v1/campaigns/{campaign['id']}/verify", json={"version": retired.version}, headers=_headers()
-    )
+    response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": retired.version}, headers=_headers())
     assert response.status_code == 200
     assert response.json()["verification_status"] == "verified"
     assert response.json()["state"] == "done"
@@ -902,7 +898,7 @@ def test_provisional_campaign_patch_has_zero_workflow_or_audit_side_effects(monk
 
     response = client.patch(
         f"/v1/campaigns/{campaign['id']}",
-        json={"version": campaign["version"], "state": "done", "verification_status": "verified"},
+        json={"version": campaign["version"], "state": "done"},
         headers=_headers(),
     )
 

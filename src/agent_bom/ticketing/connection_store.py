@@ -149,11 +149,7 @@ class InMemoryTicketingStore:
         if not finding_ids or limit < 1:
             return []
         with self._lock:
-            rows = [
-                replace(link)
-                for link in self._links.values()
-                if link.tenant_id == tenant_id and link.dedupe_key in finding_ids
-            ]
+            rows = [replace(link) for link in self._links.values() if link.tenant_id == tenant_id and link.dedupe_key in finding_ids]
         return sorted(rows, key=lambda row: (row.created_at, row.id))[:limit]
 
     def delete_ticket_link(self, tenant_id: str, ticket_id: str) -> bool:

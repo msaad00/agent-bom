@@ -153,7 +153,9 @@ def derive_campaigns(
         epss = [
             float(row["epss_score"])
             for row in rows
-            if isinstance(row.get("epss_score"), (int, float)) and math.isfinite(float(row["epss_score"]))
+            if isinstance(row.get("epss_score"), (int, float))
+            and math.isfinite(float(row["epss_score"]))
+            and 0.0 <= float(row["epss_score"]) <= 1.0
         ]
         reachable, reachability_signals = _observed_bool(
             rows, "is_reachable", "graph_reachable", "symbol_reachability", "reachable_functions"
@@ -187,7 +189,7 @@ def derive_campaigns(
                     "+ explicit crown-jewel/high-criticality 0.5); unknown signals contribute 0"
                 ),
                 "priority_score_components": {
-                    "base_finding_risk": base_risk,
+                    "base_risk": base_risk,
                     "exploitability_boost": round(exploitability_boost, 2),
                     "reachability_boost": reachability_boost,
                     "crown_jewel_boost": crown_jewel_boost,

@@ -211,10 +211,7 @@ def _source_incomplete(source: dict[str, Any]) -> bool:
     findings = source["findings"]
     total = source.get("total")
     return bool(
-        total is None
-        or source.get("has_more")
-        or source.get("total_approximate")
-        or (isinstance(total, int) and total > len(findings))
+        total is None or source.get("has_more") or source.get("total_approximate") or (isinstance(total, int) and total > len(findings))
     )
 
 
@@ -375,9 +372,7 @@ async def update_campaign(request: Request, campaign_id: str, body: CampaignUpda
 
 
 @router.post("/campaigns/{campaign_id}/verify", response_model=CampaignVerificationResponse)
-async def verify_campaign(
-    request: Request, campaign_id: str, body: CampaignVerificationRequest, _role: Any = _WRITE
-) -> dict[str, Any]:
+async def verify_campaign(request: Request, campaign_id: str, body: CampaignVerificationRequest, _role: Any = _WRITE) -> dict[str, Any]:
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
     if _source_incomplete(source):

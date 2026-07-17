@@ -128,9 +128,7 @@ class InMemoryCampaignStore:
                     row.updated_at = _now()
             return [replace(self._rows[(tenant_id, cid)]) for cid in memberships]
 
-    def verify(
-        self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]
-    ) -> CampaignWorkflow | None:
+    def verify(self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]) -> CampaignWorkflow | None:
         with self._lock:
             row = self._rows.get((tenant_id, campaign_id))
             if row is None or row.version != expected_version:
@@ -304,9 +302,7 @@ class SQLiteCampaignStore:
             raise
         return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
 
-    def verify(
-        self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]
-    ) -> CampaignWorkflow | None:
+    def verify(self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]) -> CampaignWorkflow | None:
         status = "failed" if remaining_ids else "verified"
         state = "open" if remaining_ids else "done"
         cursor = self._conn.execute(

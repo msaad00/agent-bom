@@ -148,9 +148,7 @@ class PostgresCampaignStore:
             conn.commit()
         return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
 
-    def verify(
-        self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]
-    ) -> CampaignWorkflow | None:
+    def verify(self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]) -> CampaignWorkflow | None:
         status = "failed" if remaining_ids else "verified"
         state = "open" if remaining_ids else "done"
         with _tenant_connection(self._pool) as conn:

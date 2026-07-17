@@ -91,7 +91,7 @@ def test_create_destination_never_echoes_secret_and_is_tenant_scoped():
 
 def test_create_destination_rejects_unsupported_kind():
     client = TestClient(_app())
-    body = {"kind": "bigquery", "display_name": "BQ", "config": {}}
+    body = {"kind": "kafka", "display_name": "K", "config": {}}
     resp = client.post("/v1/exports/destinations", json=body, headers=_headers())
     assert resp.status_code == 400
 

@@ -16,9 +16,12 @@ materializes the whole result set in memory:
   ``PUT``\\ s it to the table's internal stage, and ``COPY INTO``\\ s the
   ``findings_feed`` table — Snowflake's recommended bulk-load, bounded in RAM.
 
-Landed adapters: ``s3`` (object store), ``clickhouse`` + ``snowflake``
-(warehouses). Follow-up adapters against this same contract (tracked in #4040):
-``azure-blob``, ``gcs``, ``bigquery``, ``databricks``.
+Landed adapters:
+
+* object stores — ``s3``, ``azure-blob``, ``gcs`` (all stream the same gzip
+  NDJSON snapshot to a tenant/run-partitioned object key).
+* warehouses — ``clickhouse``, ``snowflake``, ``bigquery``, ``databricks`` (all
+  land the same ``findings_feed`` row shape via the vendor's bulk-load path).
 
 Destination credentials come from a stored, encrypted, revocable connection
 (connect-once): the caller decrypts the single secret once and passes it to
@@ -40,10 +43,19 @@ from agent_bom.cloud.connection_broker import connect_snowflake_keypair
 
 logger = logging.getLogger(__name__)
 
-# Kinds with a shipped adapter in this slice.
-SUPPORTED_EXPORT_KINDS: tuple[str, ...] = ("s3", "clickhouse", "snowflake")
-# Follow-up adapters that plug into the same ExportDestination contract (#4040).
-DEFERRED_EXPORT_KINDS: tuple[str, ...] = ("azure-blob", "gcs", "bigquery", "databricks")
+# Kinds with a shipped adapter. Object stores: s3 / azure-blob / gcs. Warehouses:
+# clickhouse / snowflake / bigquery / databricks.
+SUPPORTED_EXPORT_KINDS: tuple[str, ...] = (
+    "s3",
+    "azure-blob",
+    "gcs",
+    "clickhouse",
+    "snowflake",
+    "bigquery",
+    "databricks",
+)
+# No follow-up adapters remain queued behind the ExportDestination contract.
+DEFERRED_EXPORT_KINDS: tuple[str, ...] = ()
 
 # Rows spill to disk past this many bytes so upload RAM stays flat regardless of
 # how many findings a tenant has.
@@ -122,6 +134,17 @@ def _feed_row(finding: dict[str, Any], *, tenant_id: str, run_id: str) -> dict[s
     return row
 
 
+def _warehouse_feed_row(finding: dict[str, Any], *, tenant_id: str, run_id: str, exported_at: str) -> dict[str, Any]:
+    """Feed row plus the run's ``exported_at`` stamp, shared by warehouse adapters.
+
+    ``exported_at`` lets a query keep the latest row per (tenant_id, finding_id)
+    since every warehouse landing is append-only.
+    """
+    feed = _feed_row(finding, tenant_id=tenant_id, run_id=run_id)
+    feed["exported_at"] = exported_at
+    return feed
+
+
 def _object_key(prefix: str, tenant_id: str, run_id: str) -> str:
     """Tenant/run-partitioned object key for an object-store export."""
     safe_tenant = (tenant_id or "default").replace("/", "_").replace("\\", "_")
@@ -190,6 +213,102 @@ class S3ObjectStoreDestination:
                 ExtraArgs={"ContentType": "application/gzip", "ServerSideEncryption": "AES256"},
             )
         uri = f"s3://{self._bucket}/{key}"
+        logger.info("Exported %d findings to %s", row_count, uri)
+        return ExportResult(kind=self.kind, destination_uri=uri, row_count=row_count, byte_count=byte_count)
+
+
+def _stream_gzip_ndjson(rows: Iterable[dict[str, Any]], spool: Any) -> int:
+    """Write ``rows`` as gzip NDJSON into ``spool`` and return the row count.
+
+    Shared by every object-store adapter so the on-disk snapshot shape is
+    byte-identical across s3 / azure-blob / gcs. Streaming: at most one row is
+    materialized at a time, so RAM stays flat regardless of tenant size.
+    """
+    row_count = 0
+    with gzip.GzipFile(fileobj=spool, mode="wb") as gz:
+        for row in rows:
+            line = json.dumps(row, separators=(",", ":"), ensure_ascii=True, default=str)
+            gz.write(line.encode("utf-8"))
+            gz.write(b"\n")
+            row_count += 1
+    return row_count
+
+
+class AzureBlobObjectStoreDestination:
+    """Stream a gzip NDJSON findings snapshot to an Azure Blob container.
+
+    Mirrors :class:`S3ObjectStoreDestination`: rows stream through a gzip writer
+    backed by a spooled temp file (RAM-bounded, spills to disk past a threshold),
+    then the blob is uploaded with ``overwrite=True``. The client is built once
+    from the connect-once connection (a stored, encrypted Azure Storage
+    connection string, or ambient managed identity against ``account_url``) — no
+    per-run credential. ``client_factory`` is injectable for tests.
+    """
+
+    kind = "azure-blob"
+
+    def __init__(
+        self,
+        container: str,
+        *,
+        prefix: str = "findings-feed",
+        client_factory: Callable[[], Any],
+    ) -> None:
+        if not container:
+            raise ExportDestinationError("Azure Blob export destination requires a container")
+        self._container = container
+        self._prefix = prefix
+        self._client_factory = client_factory
+
+    def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:
+        key = _object_key(self._prefix, tenant_id, run_id)
+        with SpooledTemporaryFile(max_size=_SPOOL_MAX_BYTES) as spool:
+            row_count = _stream_gzip_ndjson(rows, spool)
+            byte_count = spool.tell()
+            spool.seek(0)
+            service = self._client_factory()
+            blob = service.get_blob_client(container=self._container, blob=key)
+            blob.upload_blob(spool, overwrite=True)
+        uri = f"azure-blob://{self._container}/{key}"
+        logger.info("Exported %d findings to %s", row_count, uri)
+        return ExportResult(kind=self.kind, destination_uri=uri, row_count=row_count, byte_count=byte_count)
+
+
+class GcsObjectStoreDestination:
+    """Stream a gzip NDJSON findings snapshot to a Google Cloud Storage bucket.
+
+    Mirrors :class:`S3ObjectStoreDestination`. The client is built once from the
+    connect-once connection (a stored service-account key JSON, or ambient
+    Application Default Credentials) — no per-run credential. The blob is uploaded
+    from the spooled file object (streamed, not buffered). ``client_factory`` is
+    injectable for tests.
+    """
+
+    kind = "gcs"
+
+    def __init__(
+        self,
+        bucket: str,
+        *,
+        prefix: str = "findings-feed",
+        client_factory: Callable[[], Any],
+    ) -> None:
+        if not bucket:
+            raise ExportDestinationError("GCS export destination requires a bucket")
+        self._bucket = bucket
+        self._prefix = prefix
+        self._client_factory = client_factory
+
+    def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:
+        key = _object_key(self._prefix, tenant_id, run_id)
+        with SpooledTemporaryFile(max_size=_SPOOL_MAX_BYTES) as spool:
+            row_count = _stream_gzip_ndjson(rows, spool)
+            byte_count = spool.tell()
+            spool.seek(0)
+            client = self._client_factory()
+            blob = client.bucket(self._bucket).blob(key)
+            blob.upload_from_file(spool, content_type="application/gzip", rewind=True)
+        uri = f"gs://{self._bucket}/{key}"
         logger.info("Exported %d findings to %s", row_count, uri)
         return ExportResult(kind=self.kind, destination_uri=uri, row_count=row_count, byte_count=byte_count)
 
@@ -352,13 +471,241 @@ class SnowflakeWarehouseDestination:
         return ExportResult(kind=self.kind, destination_uri=uri, row_count=row_count)
 
 
+class BigQueryWarehouseDestination:
+    """Load findings into a BigQuery ``findings_feed`` table in bounded batches.
+
+    Mirrors :class:`ClickHouseWarehouseDestination`: rows are loaded in batches of
+    at most ``batch_rows`` via ``client.load_table_from_json`` (BigQuery's native
+    JSON bulk-load), so at most one batch is held in memory. The load's
+    ``CREATE_IF_NEEDED`` disposition creates the table with the explicit feed
+    schema; the dataset is ensured up front (a load cannot create a dataset). Each
+    run appends its snapshot tagged with ``run_id`` + ``exported_at`` (append-only
+    — the latest row per finding is the current state). ``client`` and
+    ``job_config`` are injected so the adapter itself is SDK-free and testable.
+    """
+
+    kind = "bigquery"
+
+    def __init__(
+        self,
+        client: Any,
+        *,
+        project: str,
+        dataset: str,
+        table: str = "findings_feed",
+        job_config: Any = None,
+        ensure_schema: bool = True,
+        batch_rows: int = _CH_BATCH_ROWS,
+    ) -> None:
+        if not project:
+            raise ExportDestinationError("BigQuery export destination requires a project")
+        if not dataset:
+            raise ExportDestinationError("BigQuery export destination requires a dataset")
+        self._client = client
+        self._project = project
+        self._dataset = dataset
+        self._table = table or "findings_feed"
+        self._job_config = job_config
+        self._ensure_schema = ensure_schema
+        self._batch_rows = max(1, batch_rows)
+
+    def _load(self, table_ref: str, batch: list[dict[str, Any]]) -> None:
+        # load_table_from_json returns a LoadJob; .result() blocks until the load
+        # finishes (or raises), so a failed batch surfaces immediately.
+        self._client.load_table_from_json(batch, table_ref, job_config=self._job_config).result()
+
+    def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:
+        from datetime import datetime, timezone
+
+        exported_at = datetime.now(timezone.utc).isoformat()
+        table_ref = f"{self._project}.{self._dataset}.{self._table}"
+        if self._ensure_schema:
+            self._client.create_dataset(f"{self._project}.{self._dataset}", exists_ok=True)
+        row_count = 0
+        batch: list[dict[str, Any]] = []
+        for finding in rows:
+            batch.append(_warehouse_feed_row(finding, tenant_id=tenant_id, run_id=run_id, exported_at=exported_at))
+            if len(batch) >= self._batch_rows:
+                self._load(table_ref, batch)
+                row_count += len(batch)
+                batch = []
+        if batch:
+            self._load(table_ref, batch)
+            row_count += len(batch)
+        uri = f"bigquery://{self._project}/{self._dataset}/{self._table}"
+        logger.info("Exported %d findings to %s", row_count, uri)
+        return ExportResult(kind=self.kind, destination_uri=uri, row_count=row_count)
+
+
+def _dbx_ident(name: str) -> str:
+    """Quote a Databricks (Unity Catalog) identifier with backticks."""
+    return "`" + str(name).replace("`", "``") + "`"
+
+
+class DatabricksWarehouseDestination:
+    """Insert findings into a Databricks ``findings_feed`` Delta table in batches.
+
+    Mirrors :class:`SnowflakeWarehouseDestination`: a DBAPI connection is opened
+    once from the connect-once connection (``databricks-sql-connector``,
+    key/OAuth token from the stored secret — no per-run credential), a
+    ``CREATE TABLE IF NOT EXISTS`` lands the feed schema, then rows are inserted
+    with parameterized ``executemany`` in bounded batches (native ``?`` binding,
+    injection-safe). The connection is always closed and committed only on a
+    fully successful load. Append-only, tagged with ``run_id`` + ``exported_at``.
+    ``connection_factory`` is injected so the adapter is SDK-free and testable.
+    """
+
+    kind = "databricks"
+
+    def __init__(
+        self,
+        connection_factory: Callable[[], Any],
+        *,
+        catalog: str,
+        schema: str,
+        table: str = "findings_feed",
+        ensure_schema: bool = True,
+        batch_rows: int = _CH_BATCH_ROWS,
+    ) -> None:
+        if not catalog:
+            raise ExportDestinationError("Databricks export destination requires a catalog")
+        if not schema:
+            raise ExportDestinationError("Databricks export destination requires a schema")
+        self._connection_factory = connection_factory
+        self._catalog = catalog
+        self._schema = schema
+        self._table = table or "findings_feed"
+        self._ensure_schema = ensure_schema
+        self._batch_rows = max(1, batch_rows)
+
+    def _full_table(self) -> str:
+        return f"{_dbx_ident(self._catalog)}.{_dbx_ident(self._schema)}.{_dbx_ident(self._table)}"
+
+    def _create_table_sql(self) -> str:
+        cols = [f"{_dbx_ident(c)} STRING" for c in _SF_STRING_COLUMNS]
+        cols += [f"{_dbx_ident(c)} DOUBLE" for c in _SF_FLOAT_COLUMNS]
+        return f"CREATE TABLE IF NOT EXISTS {self._full_table()} (\n  " + ",\n  ".join(cols) + "\n) USING DELTA"
+
+    def _insert_sql(self) -> str:
+        columns = _SF_STRING_COLUMNS + _SF_FLOAT_COLUMNS
+        col_list = ", ".join(_dbx_ident(c) for c in columns)
+        placeholders = ", ".join("?" for _ in columns)
+        return f"INSERT INTO {self._full_table()} ({col_list}) VALUES ({placeholders})"
+
+    @staticmethod
+    def _row_tuple(feed: dict[str, Any]) -> tuple[Any, ...]:
+        strings = tuple(str(feed.get(c, "") or "") for c in _SF_STRING_COLUMNS)
+        floats = tuple(float(feed.get(c) or 0.0) for c in _SF_FLOAT_COLUMNS)
+        return strings + floats
+
+    def write_findings(self, rows: Iterable[dict[str, Any]], *, tenant_id: str, run_id: str) -> ExportResult:
+        from datetime import datetime, timezone
+
+        exported_at = datetime.now(timezone.utc).isoformat()
+        insert_sql = self._insert_sql()
+        row_count = 0
+        conn = self._connection_factory()
+        try:
+            cursor = conn.cursor()
+            try:
+                if self._ensure_schema:
+                    cursor.execute(self._create_table_sql())
+                batch: list[tuple[Any, ...]] = []
+                for finding in rows:
+                    feed = _warehouse_feed_row(finding, tenant_id=tenant_id, run_id=run_id, exported_at=exported_at)
+                    batch.append(self._row_tuple(feed))
+                    if len(batch) >= self._batch_rows:
+                        cursor.executemany(insert_sql, batch)
+                        row_count += len(batch)
+                        batch = []
+                if batch:
+                    cursor.executemany(insert_sql, batch)
+                    row_count += len(batch)
+                if hasattr(conn, "commit"):
+                    conn.commit()
+            finally:
+                cursor.close()
+        finally:
+            conn.close()
+        uri = f"databricks://{self._catalog}/{self._schema}/{self._table}"
+        logger.info("Exported %d findings to %s", row_count, uri)
+        return ExportResult(kind=self.kind, destination_uri=uri, row_count=row_count)
+
+
+# ── Default SDK client factories ─────────────────────────────────────────────
+# Each lazily imports its vendor SDK so the base package stays slim; the import
+# only fires when a real export runs. Module-level (not nested in
+# build_destination) so tests can monkeypatch the SDK boundary without a network.
+def _default_azure_blob_service(secret: str | None, account_url: str) -> Any:
+    try:
+        from azure.storage.blob import BlobServiceClient
+    except ImportError as exc:  # pragma: no cover - optional extra
+        raise ExportDestinationError("Azure Blob export requires azure-storage-blob; install with: pip install 'agent-bom[azure]'") from exc
+    if secret:
+        return BlobServiceClient.from_connection_string(secret)
+    try:
+        from azure.identity import DefaultAzureCredential
+    except ImportError as exc:  # pragma: no cover - optional extra
+        raise ExportDestinationError(
+            "Azure Blob managed-identity export requires azure-identity; install with: pip install 'agent-bom[azure]'"
+        ) from exc
+    return BlobServiceClient(account_url=account_url, credential=DefaultAzureCredential())
+
+
+def _default_gcs_client(secret: str | None) -> Any:
+    try:
+        from google.cloud import storage
+    except ImportError as exc:  # pragma: no cover - optional extra
+        raise ExportDestinationError("GCS export requires google-cloud-storage; install with: pip install 'agent-bom[gcp]'") from exc
+    if secret:
+        return storage.Client.from_service_account_info(json.loads(secret))
+    return storage.Client()
+
+
+def _default_bigquery_client(project: str) -> Any:
+    try:
+        from google.cloud import bigquery
+    except ImportError as exc:  # pragma: no cover - optional extra
+        raise ExportDestinationError("BigQuery export requires google-cloud-bigquery; install with: pip install 'agent-bom[gcp]'") from exc
+    return bigquery.Client(project=project)
+
+
+def _default_bigquery_job_config() -> Any:
+    from google.cloud import bigquery
+
+    schema = [bigquery.SchemaField(c, "STRING") for c in _SF_STRING_COLUMNS]
+    schema += [bigquery.SchemaField(c, "FLOAT64") for c in _SF_FLOAT_COLUMNS]
+    return bigquery.LoadJobConfig(
+        schema=schema,
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+        create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+    )
+
+
+def _default_databricks_connection(config: dict[str, Any], secret: str | None) -> Any:
+    try:
+        from databricks import sql as databricks_sql
+    except ImportError as exc:  # pragma: no cover - optional extra
+        raise ExportDestinationError(
+            "Databricks export requires databricks-sql-connector; install with: pip install 'agent-bom[databricks]'"
+        ) from exc
+    return databricks_sql.connect(
+        server_hostname=config["server_hostname"],
+        http_path=config["http_path"],
+        access_token=secret or "",
+    )
+
+
 def build_destination(kind: str, config: dict[str, Any], secret: str | None = None) -> ExportDestination:
     """Build a destination adapter from a connect-once connection record.
 
-    ``config`` carries the non-secret parameters (bucket/prefix/region, or
-    ClickHouse url/user/database/table). ``secret`` is the single decrypted
-    secret from the stored connection (the ClickHouse access token); ``s3`` uses
-    the ambient credential chain and ignores it.
+    ``config`` carries the non-secret parameters (bucket/container/prefix/region,
+    or warehouse project/dataset/catalog/schema/table). ``secret`` is the single
+    decrypted secret from the stored connection (warehouse access token, Snowflake
+    PEM, Azure connection string, or GCS service-account key JSON). ``s3`` uses the
+    ambient credential chain and ignores it; ``gcs`` / ``azure-blob`` fall back to
+    ambient credentials (ADC / managed identity) when no secret is stored.
     """
     normalized = (kind or "").strip().lower()
     if normalized == "s3":
@@ -367,6 +714,29 @@ def build_destination(kind: str, config: dict[str, Any], secret: str | None = No
             prefix=str(config.get("prefix", "findings-feed")),
             region=(str(config["region"]) if config.get("region") else None),
         )
+    if normalized == "azure-blob":
+        container = str(config.get("container", "")).strip()
+        if not container:
+            raise ExportDestinationError("Azure Blob export destination requires 'container' in config")
+        account_url = str(config.get("account_url", "") or "").strip()
+        if not secret and not account_url:
+            raise ExportDestinationError("Azure Blob export requires a connection-string secret or an 'account_url' for managed identity")
+        prefix = str(config.get("prefix", "findings-feed") or "findings-feed")
+
+        def _azure_factory() -> Any:
+            return _default_azure_blob_service(secret, account_url)
+
+        return AzureBlobObjectStoreDestination(container, prefix=prefix, client_factory=_azure_factory)
+    if normalized == "gcs":
+        bucket = str(config.get("bucket", "")).strip()
+        if not bucket:
+            raise ExportDestinationError("GCS export destination requires 'bucket' in config")
+        prefix = str(config.get("prefix", "findings-feed") or "findings-feed")
+
+        def _gcs_factory() -> Any:
+            return _default_gcs_client(secret)
+
+        return GcsObjectStoreDestination(bucket, prefix=prefix, client_factory=_gcs_factory)
     if normalized == "clickhouse":
         from agent_bom.cloud.clickhouse import ClickHouseClient
 
@@ -405,9 +775,37 @@ def build_destination(kind: str, config: dict[str, Any], secret: str | None = No
             )
 
         return SnowflakeWarehouseDestination(_factory, database=database, schema=schema, table=table)
-    if normalized in DEFERRED_EXPORT_KINDS:
-        raise ExportDestinationError(
-            f"Export destination kind {normalized!r} is a planned follow-up adapter (#4040); "
-            f"supported kinds are {', '.join(SUPPORTED_EXPORT_KINDS)}."
-        )
+    if normalized == "bigquery":
+        project = str(config.get("project", "")).strip()
+        dataset = str(config.get("dataset", "")).strip()
+        if not project:
+            raise ExportDestinationError("BigQuery export destination requires 'project' in config")
+        if not dataset:
+            raise ExportDestinationError("BigQuery export destination requires 'dataset' in config")
+        table = str(config.get("table", "findings_feed") or "findings_feed").strip()
+        # Client + job config are built eagerly (mirrors the ClickHouse path); the
+        # google-cloud-bigquery import fires only here, at export-run time.
+        client = _default_bigquery_client(project)
+        job_config = _default_bigquery_job_config()
+        return BigQueryWarehouseDestination(client, project=project, dataset=dataset, table=table, job_config=job_config)
+    if normalized == "databricks":
+        server_hostname = str(config.get("server_hostname", "")).strip()
+        http_path = str(config.get("http_path", "")).strip()
+        catalog = str(config.get("catalog", "")).strip()
+        schema = str(config.get("schema", "")).strip()
+        if not server_hostname or not http_path:
+            raise ExportDestinationError("Databricks export destination requires 'server_hostname' and 'http_path' in config")
+        if not catalog:
+            raise ExportDestinationError("Databricks export destination requires 'catalog' in config")
+        if not schema:
+            raise ExportDestinationError("Databricks export destination requires 'schema' in config")
+        table = str(config.get("table", "findings_feed") or "findings_feed").strip()
+        conn_config = {"server_hostname": server_hostname, "http_path": http_path}
+
+        def _dbx_factory() -> Any:
+            # Connect-once: the DBAPI connection is opened from the stored,
+            # decrypted access token; no per-run credential is passed.
+            return _default_databricks_connection(conn_config, secret)
+
+        return DatabricksWarehouseDestination(_dbx_factory, catalog=catalog, schema=schema, table=table)
     raise ExportDestinationError(f"Unknown export destination kind {normalized!r}; supported: {', '.join(SUPPORTED_EXPORT_KINDS)}")

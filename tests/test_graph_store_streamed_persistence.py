@@ -19,7 +19,10 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
+
 from agent_bom.db import graph_store as gs
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import AttackPath, InteractionRisk, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -39,6 +42,12 @@ def _sample_graph(scan_id: str) -> UnifiedGraph:
         AttackPath(source="agent:a", target="vuln:v", hops=["agent:a", "server:s", "pkg:p", "vuln:v"], composite_risk=8.5)
     )
     g.interaction_risks.append(InteractionRisk(pattern="shared-cred", agents=["agent:a"], risk_score=7.0, description="x"))
+    g.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+        status=GraphAnalysisState.LIMITED,
+        reason_codes=("path_cap_reached",),
+        limits={"max_paths": 50},
+        observed={"candidate_path_count": 72, "result_count": 50},
+    )
     return g
 
 
@@ -52,7 +61,8 @@ def _snapshot_rows(conn, scan_id: str, tenant_id: str) -> dict[str, list]:
         "attack_paths": rows("SELECT * FROM attack_paths WHERE tenant_id=? AND scan_id=? ORDER BY source_node,target_node"),
         "interaction_risks": rows("SELECT * FROM interaction_risks WHERE tenant_id=? AND scan_id=? ORDER BY pattern"),
         "snapshot": rows(
-            "SELECT node_count, edge_count, risk_summary, node_type_counts FROM graph_snapshots WHERE tenant_id=? AND scan_id=?"
+            "SELECT node_count, edge_count, risk_summary, node_type_counts, analysis_status "
+            "FROM graph_snapshots WHERE tenant_id=? AND scan_id=?"
         ),
     }
 
@@ -78,6 +88,7 @@ def test_streaming_persist_matches_save_graph(tmp_path) -> None:
             edges=iter(streamed.edges),
             attack_paths=iter(streamed.attack_paths),
             interaction_risks=iter(streamed.interaction_risks),
+            analysis_status=streamed.analysis_status,
         )
         rows_b = _snapshot_rows(conn, "s1", "acme")
 
@@ -144,6 +155,83 @@ def test_streaming_load_iterators_match_load_graph(tmp_path) -> None:
     assert sorted((e.source, e.target, e.relationship.value) for e in streamed_edges) == sorted(
         (e.source, e.target, e.relationship.value) for e in full.edges
     )
+    assert full.analysis_status["attack_path_fusion"].status is GraphAnalysisState.LIMITED
+    assert full.analysis_status["attack_path_fusion"].reason_codes == ("path_cap_reached",)
+
+
+def test_analysis_status_is_tenant_isolated(tmp_path) -> None:
+    db = tmp_path / "tenant-status.db"
+    with gs.open_graph_db(db) as conn:
+        for tenant, state in (
+            ("tenant-a", GraphAnalysisState.COMPLETE),
+            ("tenant-b", GraphAnalysisState.SKIPPED),
+        ):
+            graph = UnifiedGraph(scan_id="shared-scan", tenant_id=tenant)
+            graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+                status=state,
+                reason_codes=("node_cap_exceeded",) if state is GraphAnalysisState.SKIPPED else (),
+            )
+            gs.save_graph(conn, graph)
+
+        tenant_a = gs.load_graph(conn, tenant_id="tenant-a", scan_id="shared-scan")
+        tenant_b = gs.load_graph(conn, tenant_id="tenant-b", scan_id="shared-scan")
+
+    assert tenant_a.analysis_status["attack_path_fusion"].status is GraphAnalysisState.COMPLETE
+    assert tenant_b.analysis_status["attack_path_fusion"].status is GraphAnalysisState.SKIPPED
+
+
+def test_legacy_snapshot_analysis_status_is_not_recorded(tmp_path) -> None:
+    from agent_bom.api.graph_store import SQLiteGraphStore
+
+    db = tmp_path / "legacy-status.db"
+    with gs.open_graph_db(db) as conn:
+        graph = _sample_graph("legacy-scan")
+        gs.save_graph(conn, graph)
+        conn.execute(
+            "UPDATE graph_snapshots SET analysis_status = '{}' WHERE tenant_id = ? AND scan_id = ?",
+            ("acme", "legacy-scan"),
+        )
+        conn.commit()
+
+        loaded = gs.load_graph(conn, tenant_id="acme", scan_id="legacy-scan")
+
+    status = loaded.analysis_status["attack_path_fusion"]
+    assert status.status is GraphAnalysisState.NOT_RECORDED
+    assert status.reason_codes == ("legacy_snapshot",)
+    api_status = SQLiteGraphStore(db).snapshot_stats(tenant_id="acme", scan_id="legacy-scan")
+    assert api_status["analysis_status"]["attack_path_fusion"]["status"] == "not_recorded"
+
+
+def test_analysis_status_retry_rollback_preserves_prior_snapshot(tmp_path) -> None:
+    db = tmp_path / "status-rollback.db"
+    with gs.open_graph_db(db) as conn:
+        original = _sample_graph("retry-scan")
+        original.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(status=GraphAnalysisState.COMPLETE)
+        gs.save_graph(conn, original)
+
+        def failing_nodes():
+            yield UnifiedNode(id="replacement", entity_type=EntityType.AGENT, label="replacement")
+            raise RuntimeError("producer failed after flush")
+
+        with pytest.raises(RuntimeError, match="producer failed after flush"):
+            gs.save_graph_streaming(
+                conn,
+                scan_id="retry-scan",
+                tenant_id="acme",
+                nodes=failing_nodes(),
+                edges=(),
+                analysis_status={
+                    "attack_path_fusion": GraphAnalysisStatus(
+                        status=GraphAnalysisState.FAILED,
+                        reason_codes=("analysis_error",),
+                    )
+                },
+            )
+        conn.rollback()
+        loaded = gs.load_graph(conn, tenant_id="acme", scan_id="retry-scan")
+
+    assert "replacement" not in loaded.nodes
+    assert loaded.analysis_status["attack_path_fusion"].status is GraphAnalysisState.COMPLETE
 
 
 def test_streaming_snapshot_stats_are_golden_and_match_unified_graph_stats(tmp_path) -> None:
@@ -370,12 +458,8 @@ def test_sqlite_stream_retry_rolls_back_after_flushed_batch(tmp_path, monkeypatc
 
     with sqlite3.connect(db) as conn:
         graph_ids = {row[0] for row in conn.execute("SELECT id FROM graph_nodes WHERE tenant_id='acme' AND scan_id='retry'")}
-        search_ids = {
-            row[0] for row in conn.execute("SELECT node_id FROM graph_node_search WHERE tenant_id='acme' AND scan_id='retry'")
-        }
-        count = conn.execute(
-            "SELECT node_count FROM graph_snapshots WHERE tenant_id='acme' AND scan_id='retry'"
-        ).fetchone()[0]
+        search_ids = {row[0] for row in conn.execute("SELECT node_id FROM graph_node_search WHERE tenant_id='acme' AND scan_id='retry'")}
+        count = conn.execute("SELECT node_count FROM graph_snapshots WHERE tenant_id='acme' AND scan_id='retry'").fetchone()[0]
     assert graph_ids == search_ids == {"original"}
     assert count == 1
 

@@ -15,7 +15,7 @@ import sqlite3
 import threading
 import time
 from collections import defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.graph import AttackPath, EntityType, NodeDimensions, NodeStatus, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 
 # Only finding-like nodes (vulnerabilities, misconfigurations, drift) carry a
@@ -162,6 +163,7 @@ class GraphStoreProtocol(Protocol):
         edges: Iterable[UnifiedEdge],
         attack_paths: Iterable[AttackPath] = (),
         interaction_risks: Iterable[Any] = (),
+        analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
         created_at: str = "",
     ) -> dict[str, int]: ...
 
@@ -1153,6 +1155,7 @@ class SQLiteGraphStore:
         edges: Iterable[UnifiedEdge],
         attack_paths: Iterable[AttackPath] = (),
         interaction_risks: Iterable[Any] = (),
+        analysis_status: Mapping[str, GraphAnalysisStatus] | None = None,
         created_at: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables without materialising a graph.
@@ -1171,6 +1174,7 @@ class SQLiteGraphStore:
                 edges=edges,
                 attack_paths=attack_paths,
                 interaction_risks=interaction_risks,
+                analysis_status=analysis_status,
                 created_at=created_at,
             )
             self._refresh_snapshot_search_index(conn, tenant_id=tenant_id, scan_id=scan_id)
@@ -1392,6 +1396,7 @@ class SQLiteGraphStore:
                 "interaction_risk_count": 0,
                 "max_attack_path_risk": 0.0,
                 "highest_interaction_risk": 0.0,
+                "analysis_status": {},
             }
         try:
             effective_scan_id, _created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
@@ -1406,7 +1411,16 @@ class SQLiteGraphStore:
                     "interaction_risk_count": 0,
                     "max_attack_path_risk": 0.0,
                     "highest_interaction_risk": 0.0,
+                    "analysis_status": {},
                 }
+
+            analysis_row = conn.execute(
+                "SELECT analysis_status FROM graph_snapshots WHERE scan_id = ? AND tenant_id = ?",
+                (effective_scan_id, tenant_id),
+            ).fetchone()
+            analysis_status = analysis_status_map_to_dict(
+                analysis_status_map_from_dict(json.loads((analysis_row[0] if analysis_row else "{}") or "{}"))
+            )
 
             node_where = ["tenant_id = ?", "scan_id = ?"]
             params: list[Any] = [tenant_id, effective_scan_id]
@@ -1514,6 +1528,7 @@ class SQLiteGraphStore:
                 "interaction_risk_count": int((interaction_row[0] if interaction_row else 0) or 0),
                 "max_attack_path_risk": float((attack_row[1] if attack_row else 0.0) or 0.0),
                 "highest_interaction_risk": float((interaction_row[1] if interaction_row else 0.0) or 0.0),
+                "analysis_status": analysis_status,
             }
         finally:
             conn.close()

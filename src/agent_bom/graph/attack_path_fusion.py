@@ -30,7 +30,9 @@ capped, and the number of returned paths is capped after ranking + dedup.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -46,6 +48,22 @@ _MAX_NODES = 5000  # node budget: skip fusion on graphs larger than this
 _MAX_VISITED_PER_ENTRY = 2000  # per-entry traversal node budget
 _MAX_ENTRIES = 200  # cap distinct internet-exposed entry points walked
 _MAX_PATHS = 50  # ranked fused chains returned / materialised
+
+_ANALYZER = "attack_path_fusion"
+_LIMITS = {
+    "max_nodes": _MAX_NODES,
+    "max_visited_per_entry": _MAX_VISITED_PER_ENTRY,
+    "max_entries": _MAX_ENTRIES,
+    "max_depth": _MAX_DEPTH,
+    "max_paths": _MAX_PATHS,
+}
+
+
+@dataclass(slots=True)
+class _FusionComputation:
+    paths: list[AttackPath]
+    status: GraphAnalysisStatus
+
 
 # Edges an attacker can traverse moving *forward* from an internet entry toward
 # data. All are already present in the unified graph (inventory + both overlays).
@@ -165,8 +183,22 @@ def compute_fused_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     collecting the *highest-scoring* chain that terminates at each reachable
     crown-jewel data store, then ranks + dedups + caps the result.
     """
+    return _compute_fused_attack_paths(graph).paths
+
+
+def _compute_fused_attack_paths(graph: UnifiedGraph) -> _FusionComputation:
+    """Compute paths together with an honest snapshot-wide execution status."""
+    node_count = len(graph.nodes)
+    base_observed = {"node_count": node_count}
     if not graph.nodes:
-        return []
+        return _FusionComputation(
+            [],
+            GraphAnalysisStatus(
+                status=GraphAnalysisState.COMPLETE,
+                limits=_LIMITS,
+                observed={**base_observed, "entry_count": 0, "evaluated_entry_count": 0, "candidate_path_count": 0, "result_count": 0},
+            ),
+        )
     if len(graph.nodes) > _MAX_NODES:
         # Capped, NOT "no attack paths". Log a signal so a large real estate that
         # skipped fusion is not silently read as "flagship found nothing".
@@ -176,33 +208,71 @@ def compute_fused_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
             len(graph.nodes),
             _MAX_NODES,
         )
-        return []
+        return _FusionComputation(
+            [],
+            GraphAnalysisStatus(
+                status=GraphAnalysisState.SKIPPED,
+                reason_codes=("node_cap_exceeded",),
+                limits=_LIMITS,
+                observed={**base_observed, "entry_count": 0, "evaluated_entry_count": 0, "candidate_path_count": 0, "result_count": 0},
+            ),
+        )
 
     entries = [n for n in graph.nodes.values() if _is_entry(n)]
+    entry_count = len(entries)
     if not entries:
-        return []
+        return _FusionComputation(
+            [],
+            GraphAnalysisStatus(
+                status=GraphAnalysisState.COMPLETE,
+                limits=_LIMITS,
+                observed={**base_observed, "entry_count": 0, "evaluated_entry_count": 0, "candidate_path_count": 0, "result_count": 0},
+            ),
+        )
     # Deterministic, bounded set of footholds.
     entries.sort(key=lambda n: (-n.risk_score, n.id))
     entries = entries[:_MAX_ENTRIES]
+    reason_codes: set[str] = set()
+    if entry_count > _MAX_ENTRIES:
+        reason_codes.add("entry_cap_reached")
 
     # Best chain (by score) per (entry, jewel) pair, deduped across entries.
     best_by_pair: dict[tuple[str, str], tuple[float, AttackPath]] = {}
 
     for entry in entries:
-        _walk_from_entry(graph, entry, best_by_pair)
+        reason_codes.update(_walk_from_entry(graph, entry, best_by_pair))
 
     paths = [ap for _score, ap in best_by_pair.values()]
     paths.sort(key=lambda p: (p.composite_risk, len(p.hops)), reverse=True)
-    return paths[:_MAX_PATHS]
+    candidate_path_count = len(paths)
+    if candidate_path_count > _MAX_PATHS:
+        reason_codes.add("path_cap_reached")
+    paths = paths[:_MAX_PATHS]
+    return _FusionComputation(
+        paths,
+        GraphAnalysisStatus(
+            status=GraphAnalysisState.LIMITED if reason_codes else GraphAnalysisState.COMPLETE,
+            reason_codes=tuple(sorted(reason_codes)),
+            limits=_LIMITS,
+            observed={
+                **base_observed,
+                "entry_count": entry_count,
+                "evaluated_entry_count": len(entries),
+                "candidate_path_count": candidate_path_count,
+                "result_count": len(paths),
+            },
+        ),
+    )
 
 
 def _walk_from_entry(
     graph: UnifiedGraph,
     entry: UnifiedNode,
     best_by_pair: dict[tuple[str, str], tuple[float, AttackPath]],
-) -> None:
+) -> set[str]:
     """Bounded DFS from a single entry, recording best chain per crown jewel."""
     visited_budget = {"n": 0}
+    limit_reasons: set[str] = set()
 
     def dfs(
         node_id: str,
@@ -215,6 +285,7 @@ def _walk_from_entry(
         cred_exposure: list[str],
     ) -> None:
         if visited_budget["n"] >= _MAX_VISITED_PER_ENTRY:
+            limit_reasons.add("visit_cap_reached")
             return
         visited_budget["n"] += 1
         node = graph.nodes.get(node_id)
@@ -242,6 +313,8 @@ def _walk_from_entry(
             # A data store can also be a transit hop, so keep exploring.
 
         if len(hops) > _MAX_DEPTH:
+            if any(_rel(edge) in _TRAVERSABLE_RELS and edge.target not in on_path for edge in graph.adjacency.get(node_id, [])):
+                limit_reasons.add("depth_cap_reached")
             return
 
         for edge in graph.adjacency.get(node_id, []):
@@ -274,6 +347,7 @@ def _walk_from_entry(
             on_path.discard(nxt)
 
     dfs(entry.id, [entry.id], [], [], {entry.id}, _node_boost(entry), [], [])
+    return limit_reasons
 
 
 def apply_attack_path_fusion(graph: UnifiedGraph) -> dict[str, object]:
@@ -283,13 +357,16 @@ def apply_attack_path_fusion(graph: UnifiedGraph) -> dict[str, object]:
     re-run does not duplicate them. Other attack paths (lateral, governance) are
     preserved. Returns counts. Never raises into the builder.
     """
-    fused = compute_fused_attack_paths(graph)
+    computation = _compute_fused_attack_paths(graph)
+    fused = computation.paths
     # Drop any prior fusion output, keep everything else.
     graph.attack_paths = [p for p in graph.attack_paths if not _is_fusion_path(p)]
     graph.attack_paths.extend(fused)
+    graph.analysis_status[_ANALYZER] = computation.status
     result: dict[str, object] = {
         "fused_attack_paths": len(fused),
         "max_fused_risk": int(round(max((p.composite_risk for p in fused), default=0.0))),
+        "analysis_status": computation.status.to_dict(),
     }
     # Surface the node-budget cap so 0 paths on a large estate reads as "skipped"
     # rather than "genuinely none".

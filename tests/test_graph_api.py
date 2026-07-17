@@ -34,6 +34,7 @@ from agent_bom.graph import (
     UnifiedGraph,
     UnifiedNode,
 )
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 
 
 def _build_persisted_graph(db, scan_id="test-scan-001"):
@@ -1272,6 +1273,7 @@ class _RecordingGraphStore:
         edges,
         attack_paths=(),
         interaction_risks=(),
+        analysis_status=None,
         created_at: str = "",
     ) -> dict:
         graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id, created_at=created_at)
@@ -1281,6 +1283,7 @@ class _RecordingGraphStore:
             graph.add_edge(edge)
         graph.attack_paths.extend(attack_paths)
         graph.interaction_risks.extend(interaction_risks)
+        graph.analysis_status.update(analysis_status or {})
         self.calls.append(("save_graph_streaming", scan_id, tenant_id))
         self.graph = graph
         return {"nodes": len(graph.nodes), "edges": len(graph.edges)}
@@ -1653,10 +1656,14 @@ class TestGraphStoreBackendSelection:
         attack_path_item = schema["paths"]["/v1/graph/attack-paths"]["get"]["responses"]["200"]["content"]["application/json"]["schema"][
             "properties"
         ]["attack_paths"]["items"]
+        analysis_schema = schema["paths"]["/v1/graph/attack-paths"]["get"]["responses"]["200"]["content"]["application/json"]["schema"][
+            "properties"
+        ]["stats"]["properties"]["analysis_status"]["additionalProperties"]
 
         assert fix_first_card["properties"]["exposure_path"]["required"][:5] == ["id", "label", "summary", "riskScore", "severity"]
         assert "affectedAgents" in attack_path_item["properties"]["exposure_path"]["properties"]
         assert "exposedCredentials" in attack_path_item["properties"]["exposure_path"]["properties"]
+        assert analysis_schema["properties"]["status"]["enum"] == ["complete", "limited", "skipped", "failed", "not_recorded"]
 
     def test_graph_routes_use_pluggable_store(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
@@ -1671,10 +1678,18 @@ class TestGraphStoreBackendSelection:
                 tool_exposure=["run_shell"],
             )
         )
+        recording_graph_store.graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+            status=GraphAnalysisState.LIMITED,
+            reason_codes=("path_cap_reached",),
+            limits={"max_paths": 50},
+            observed={"candidate_path_count": 80, "result_count": 50},
+        )
         client = TestClient(app)
 
         response = client.get("/v1/graph")
+        attack_path_response = client.get("/v1/graph/attack-paths")
         assert response.status_code == 200
+        assert attack_path_response.status_code == 200
         body = response.json()
         assert body["scan_id"] == "store-scan"
         assert body["attack_paths"][0]["summary"] == "agent-a reaches CVE-2026-1"
@@ -1682,6 +1697,8 @@ class TestGraphStoreBackendSelection:
         assert body["attack_paths"][0]["exposure_path"]["source"]["id"] == "agent:a"
         assert body["attack_paths"][0]["exposure_path"]["target"]["id"] == "vuln:cve"
         assert body["attack_paths"][0]["exposure_path"]["severity"] == "high"
+        assert body["stats"]["analysis_status"]["attack_path_fusion"]["status"] == "limited"
+        assert attack_path_response.json()["stats"]["analysis_status"]["attack_path_fusion"]["status"] == "limited"
         assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
         assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
 
@@ -1778,7 +1795,9 @@ class TestGraphStoreBackendSelection:
 
     def test_fix_first_graph_view_derives_paths_when_snapshot_has_topology_but_no_path_rows(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
-        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data")
+        )
         recording_graph_store.graph.add_node(UnifiedNode(id="cred:aws", entity_type=EntityType.CREDENTIAL, label="AWS_SECRET_ACCESS_KEY"))
         recording_graph_store.graph.add_node(UnifiedNode(id="tool:shell", entity_type=EntityType.TOOL, label="run_shell"))
         recording_graph_store.graph.add_node(
@@ -2553,9 +2572,7 @@ class TestGraphStoreBackendSelection:
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
         recording_graph_store.graph.add_node(UnifiedNode(id="server:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
-        recording_graph_store.graph.add_node(
-            UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data")
-        )
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data"))
         recording_graph_store.graph.add_node(
             UnifiedNode(
                 id="vuln:cve",

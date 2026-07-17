@@ -176,6 +176,43 @@ def test_cap_sets_truncated_source_state() -> None:
     assert _source_states(result)["role_definitions"] == EvidenceSourceState.TRUNCATED.value
 
 
+def test_malformed_assignment_marks_assignments_and_role_set_partial() -> None:
+    malformed = _assignment("sp-bad")
+    malformed.role_definition_id = None
+
+    result = collect_azure_authorization(
+        object(),
+        "sub-1",
+        client=_client(assignments=[_assignment("sp-1"), malformed], denies=[]),
+        warnings=[],
+    )
+
+    assert [item["principal_id"] for item in result["role_assignments"]] == ["sp-1"]
+    assert _source_states(result)["role_assignments"] == EvidenceSourceState.PARTIAL.value
+    assert _source_states(result)["role_definitions"] == EvidenceSourceState.PARTIAL.value
+    assignment_source = next(source for source in result["authorization_sources"] if source["name"] == "role_assignments")
+    role_source = next(source for source in result["authorization_sources"] if source["name"] == "role_definitions")
+    assert assignment_source["diagnostics"] == ["dropped 1 malformed role assignment record"]
+    assert role_source["diagnostics"] == ["role set incomplete because 1 malformed role assignment record was dropped"]
+
+
+def test_malformed_deny_marks_deny_source_partial() -> None:
+    malformed = _deny_assignment()
+    malformed.scope = None
+
+    result = collect_azure_authorization(
+        object(),
+        "sub-1",
+        client=_client(denies=[_deny_assignment(), malformed]),
+        warnings=[],
+    )
+
+    assert len(result["deny_assignments"]) == 1
+    assert _source_states(result)["deny_assignments"] == EvidenceSourceState.PARTIAL.value
+    deny_source = next(source for source in result["authorization_sources"] if source["name"] == "deny_assignments")
+    assert deny_source["diagnostics"] == ["dropped 1 malformed deny assignment record"]
+
+
 class _DeniedError(Exception):
     status_code = 403
 

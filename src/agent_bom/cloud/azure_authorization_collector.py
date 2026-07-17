@@ -182,7 +182,20 @@ def collect_azure_authorization(
             missing=missing,
         )
 
-    assignments = [record for item in raw_assignments if (record := _assignment_record(item, subscription_id)) is not None]
+    assignments: list[dict[str, Any]] = []
+    dropped_assignments = 0
+    for item in raw_assignments:
+        record = _assignment_record(item, subscription_id)
+        if record is None:
+            dropped_assignments += 1
+        else:
+            assignments.append(record)
+    if dropped_assignments:
+        noun = "record" if dropped_assignments == 1 else "records"
+        assignment_diagnostics.append(f"dropped {dropped_assignments} malformed role assignment {noun}")
+        if assignment_state is EvidenceSourceState.COMPLETE:
+            assignment_state = EvidenceSourceState.PARTIAL
+
     role_ids = sorted({item["role_definition_id"] for item in assignments}, key=str.casefold)
     roles: list[dict[str, Any]] = []
     role_state = EvidenceSourceState.COMPLETE
@@ -190,6 +203,10 @@ def collect_azure_authorization(
     if assignment_state is EvidenceSourceState.TRUNCATED:
         role_state = EvidenceSourceState.TRUNCATED
         role_diagnostics.append("role set is bounded by truncated assignments")
+    elif dropped_assignments:
+        role_state = EvidenceSourceState.PARTIAL
+        noun = "record was" if dropped_assignments == 1 else "records were"
+        role_diagnostics.append(f"role set incomplete because {dropped_assignments} malformed role assignment {noun} dropped")
     elif assignment_state is not EvidenceSourceState.COMPLETE:
         role_state = assignment_state
         role_diagnostics.append("role assignment feed is unavailable")
@@ -237,7 +254,19 @@ def collect_azure_authorization(
             warnings=warnings,
             missing=missing,
         )
-    denies = [record for item in raw_denies if (record := _deny_record(item)) is not None]
+    denies: list[dict[str, Any]] = []
+    dropped_denies = 0
+    for item in raw_denies:
+        record = _deny_record(item)
+        if record is None:
+            dropped_denies += 1
+        else:
+            denies.append(record)
+    if dropped_denies:
+        noun = "record" if dropped_denies == 1 else "records"
+        deny_diagnostics.append(f"dropped {dropped_denies} malformed deny assignment {noun}")
+        if deny_state is EvidenceSourceState.COMPLETE:
+            deny_state = EvidenceSourceState.PARTIAL
 
     return {
         "authorization_observed_at": observed_at,

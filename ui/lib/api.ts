@@ -1263,6 +1263,7 @@ export const api = {
     sort?: string;
     limit?: number;
     offset?: number;
+    cursor?: string;
     approximateTotal?: boolean;
     // First-class scope + taxonomy filters (issue #3946). All optional +
     // backward compatible; the server canonicalizes and never rejects them.
@@ -1280,6 +1281,7 @@ export const api = {
     if (filters?.sort) params.set("sort", filters.sort);
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.offset != null) params.set("offset", String(filters.offset));
+    if (filters?.cursor) params.set("cursor", filters.cursor);
     if (filters?.approximateTotal) params.set("approximate_total", "true");
     if (filters?.provider) params.set("provider", filters.provider);
     if (filters?.account) params.set("account", filters.account);

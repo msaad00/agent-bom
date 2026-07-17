@@ -582,6 +582,8 @@ export interface PostureCountsResponse {
   high: number;
   medium: number;
   low: number;
+  /** Findings whose source severity is unknown or unscored. */
+  unrated?: number | undefined;
   total: number;
   kev: number;
   compound_issues: number;
@@ -928,7 +930,8 @@ export interface FindingListEnvelope<T> {
   schema_version: string;
   findings: T[];
   count: number;
-  total: number;
+  /** Null on continuation pages whose first-page count may no longer be current. */
+  total: number | null;
   total_approximate?: boolean | undefined;
   limit: number;
   offset: number;

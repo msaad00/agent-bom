@@ -22,6 +22,7 @@ describe("findings-lens", () => {
     expect(findingsQueueTitle("ops")).toBe("Findings queue");
     expect(findingsLensHint("trust")).toMatch(/GRC|audit/i);
     expect(findingsLensHint("ops")).toMatch(/Engineering/i);
+    expect(findingsPageSubtitle("trust", "12 findings", "from latest.")).toMatch(/12 findings · from latest/i);
     expect(findingsPageSubtitle("trust", "12 findings", "from latest.")).toMatch(/Shared with engineering/i);
     expect(findingsPageSubtitle("ops", "12 findings", "from latest.")).toMatch(/Shared with compliance/i);
   });

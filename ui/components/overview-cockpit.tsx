@@ -164,6 +164,8 @@ export interface OverviewCockpitProps {
   latestScan: string | null;
   mode: string;
   summaryReady: boolean;
+  /** Honest scope shared by the headline and its finding drill-downs. */
+  findingsScopeLabel?: string | undefined;
   severity: SeverityCounts;
   /** Severity × issue-type matrix (CVEs, misconfigs, secrets, identity). */
   issueMatrix?: IssueSeverityMatrix | null | undefined;
@@ -199,6 +201,7 @@ export function OverviewCockpit({
   scans,
   latestScan,
   summaryReady,
+  findingsScopeLabel,
   severity,
   issueMatrix = null,
   domains,
@@ -249,6 +252,7 @@ export function OverviewCockpit({
               complianceScore={complianceScore}
               severity={severity}
               matrix={issueMatrix}
+              scopeLabel={findingsScopeLabel}
             />
           </div>
 
@@ -716,7 +720,7 @@ function TopRisksPanel({
           </Link>
         ) : null}
         <Link
-          href="/findings?severity=critical"
+          href="/findings?scope=all&severity=critical"
           className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
         >
           Critical findings
@@ -1055,6 +1059,7 @@ function SeverityIssueStrip({
   complianceScore,
   severity,
   matrix,
+  scopeLabel,
 }: {
   summaryReady: boolean;
   critical: number;
@@ -1064,6 +1069,7 @@ function SeverityIssueStrip({
   complianceScore?: string | undefined;
   severity: SeverityCounts;
   matrix: IssueSeverityMatrix | null | undefined;
+  scopeLabel?: string | undefined;
 }) {
   const resolved = matrix ?? emptyIssueSeverityMatrix();
   const hasTyped = resolved.openTotal > 0;
@@ -1109,7 +1115,7 @@ function SeverityIssueStrip({
         bare
         title="Open issues"
         titleClassName={SECTION_TITLE_CLASS}
-        subtitle="By severity · CVE, misconfig, secret, identity"
+        subtitle={scopeLabel ?? "By severity · CVE, misconfig, secret, identity"}
         defaultOpen
         actions={
           <div className="flex flex-wrap items-center gap-1.5">
@@ -1119,7 +1125,7 @@ function SeverityIssueStrip({
                 green pass). The glyph carries the distinction. */}
             {summaryReady && kev != null ? (
               <CategoryChip
-                href={findingsHref({ kev: true })}
+                href={findingsHref({ scope: "all", kev: true })}
                 icon={Flame}
                 label="KEV"
                 value={kev}
@@ -1128,7 +1134,7 @@ function SeverityIssueStrip({
             ) : null}
             {summaryReady && credentials != null ? (
               <CategoryChip
-                href={findingsHref({ issue: "secret" })}
+                href={findingsHref({ scope: "all", issue: "secret" })}
                 icon={KeyRound}
                 label="Secrets"
                 value={credentials}
@@ -1176,7 +1182,7 @@ function SeverityIssueStrip({
         {bands.map((band) => (
           <Link
             key={band.key}
-            href={findingsHref({ severity: band.key })}
+            href={findingsHref({ scope: "all", severity: band.key })}
             className={`rounded-lg border px-2.5 py-2 transition ${band.tint}`}
           >
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-secondary)]">
@@ -1231,7 +1237,7 @@ function SeverityIssueStrip({
             return (
               <Link
                 key={issue}
-                href={findingsHref({ issue })}
+                href={findingsHref({ scope: "all", issue })}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
               >
                 <Glyph className="h-3 w-3 text-[color:var(--text-tertiary)]" aria-hidden="true" />

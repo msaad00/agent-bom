@@ -4,8 +4,10 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface PaginationBarProps {
   page: number;
-  totalPages: number;
-  totalItems?: number;
+  totalPages: number | null;
+  totalItems?: number | null;
+  /** Server-provided continuation when an exact total is intentionally absent. */
+  hasMore?: boolean;
   itemLabel?: string;
   onPrevious: () => void;
   onNext: () => void;
@@ -18,17 +20,20 @@ export function PaginationBar({
   page,
   totalPages,
   totalItems,
+  hasMore,
   itemLabel = "total",
   onPrevious,
   onNext,
   previousDisabled = page <= 1,
-  nextDisabled = page >= totalPages,
+  nextDisabled = totalPages == null ? !hasMore : page >= totalPages,
   className = "",
 }: PaginationBarProps) {
   const summary =
-    typeof totalItems === "number"
+    typeof totalItems === "number" && totalPages != null
       ? `Page ${page} of ${totalPages} (${totalItems.toLocaleString()} ${itemLabel})`
-      : `Page ${page} of ${totalPages}`;
+      : totalPages != null
+        ? `Page ${page} of ${totalPages}`
+        : `Page ${page} · total unavailable`;
 
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 ${className}`}>

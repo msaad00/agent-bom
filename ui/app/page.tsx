@@ -34,7 +34,6 @@ import {
   buildExposurePathView,
   buildExecExposurePaths,
 } from "@/lib/dashboard-data";
-import { buildIssueSeverityMatrix } from "@/lib/finding-issue-type";
 import {
   ShieldAlert, ArrowRight, Clock,
   AlertTriangle, GitBranch, Network,
@@ -212,20 +211,32 @@ export default function Dashboard() {
     [doneJobs]
   );
 
-  const severity = useMemo(() => aggregateSeverity(allBlast), [allBlast]);
-  const issueMatrix = useMemo(
-    () =>
-      buildIssueSeverityMatrix(
-        allBlast.map((blast) => ({
-          id: blast.vulnerability_id,
-          severity: blast.severity,
-          impact_category: blast.impact_category,
-          framework_tags: blast.framework_tags,
-          exposed_credentials: blast.exposed_credentials,
-        })),
-      ),
-    [allBlast],
-  );
+  // Blast rows remain useful for exposure-path detail, but they are not an
+  // estate count source: this client hydrates at most ten completed jobs and
+  // would otherwise display a partial/repeated severity histogram. The API's
+  // posture-count spine is current-state, deduplicated, and uses the same
+  // default window as /v1/findings. Imported offline reports are the one local
+  // exception because no server-side canonical view exists for them.
+  const importedSeverity = useMemo(() => aggregateSeverity(allBlast), [allBlast]);
+  const canonicalSeverity = useMemo(() => {
+    if (importedReport) return importedSeverity;
+    if (counts) {
+      return {
+        critical: counts.critical,
+        high: counts.high,
+        medium: counts.medium,
+        low: counts.low,
+        total: counts.total,
+      };
+    }
+    return {
+      critical: overview?.headline.critical ?? 0,
+      high: overview?.headline.high ?? 0,
+      medium: 0,
+      low: 0,
+      total: overview?.headline.critical_high ?? 0,
+    };
+  }, [counts, importedReport, importedSeverity, overview]);
   const kevCount = useMemo(() => allBlast.filter((b) => (b.is_kev ?? b.cisa_kev) === true).length, [allBlast]);
   const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
   const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
@@ -281,21 +292,16 @@ export default function Dashboard() {
   const summaryReady = !jobsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
-  const criticalCount = detailsReady
-    ? (severity.critical || (seededEvidence ? (overview?.headline.critical ?? counts?.critical ?? summaryStats?.critical_findings ?? 0) : severity.critical))
-    : (overview?.headline.critical ?? summaryStats?.critical_findings ?? counts?.critical ?? 0);
-  const highCount = detailsReady
-    ? (severity.high || (seededEvidence ? (overview?.headline.high ?? counts?.high ?? summaryStats?.high_findings ?? 0) : severity.high))
-    : (overview?.headline.high ?? summaryStats?.high_findings ?? counts?.high ?? 0);
-  const fallbackVulnTotal = overview?.headline.critical_high ?? counts?.total ?? summaryStats?.total_vulnerabilities ?? 0;
-  const displayedUniqueCVEs = detailsReady
-    ? (uniqueCVEs > 0 ? uniqueCVEs : (seededEvidence ? fallbackVulnTotal : uniqueCVEs))
-    : (summaryStats?.total_vulnerabilities ?? fallbackVulnTotal);
-  const displayedKevCount = detailsReady
-    ? (kevCount > 0 ? kevCount : (seededEvidence ? (overview?.headline.kev ?? counts?.kev ?? 0) : kevCount))
-    : (overview?.headline.kev ?? counts?.kev ?? 0);
-  const displayedCredentialExposure = detailsReady
-    ? (credentialExposureCount > 0 ? credentialExposureCount : (seededEvidence ? (overview?.headline.credential_exposed ?? 0) : credentialExposureCount))
+  const criticalCount = canonicalSeverity.critical;
+  const highCount = canonicalSeverity.high;
+  const displayedUniqueCVEs = importedReport
+    ? uniqueCVEs
+    : (overview?.domains.vuln.metric ?? 0);
+  const displayedKevCount = importedReport
+    ? kevCount
+    : (counts?.kev ?? overview?.headline.kev ?? 0);
+  const displayedCredentialExposure = importedReport
+    ? credentialExposureCount
     : (overview?.headline.credential_exposed ?? 0);
   const displayedReachableTools = detailsReady ? reachableToolCount : null;
   const displayedPackages = detailsReady
@@ -390,9 +396,9 @@ export default function Dashboard() {
         scans={summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
         latestScan={jobsLoading ? null : latestScanShort}
         mode={deploymentModeLabel(counts?.deployment_mode)}
-        summaryReady={summaryReady}
-        severity={severity}
-        issueMatrix={issueMatrix}
+        summaryReady={Boolean(importedReport || counts || overview)}
+        findingsScopeLabel="Current findings · Last 90 days"
+        severity={canonicalSeverity}
         domains={overview?.domains ?? null}
         coverage={overview?.coverage ?? null}
         topPath={topExposurePath}

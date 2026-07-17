@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import FindingsPage from "@/app/findings/page";
 
-const { apiMock } = vi.hoisted(() => ({
+const { apiMock, navigationState } = vi.hoisted(() => ({
   apiMock: {
     listJobs: vi.fn(),
     getScan: vi.fn(),
@@ -14,10 +14,11 @@ const { apiMock } = vi.hoisted(() => ({
     exportFindingTriageVex: vi.fn(),
     getPostureCounts: vi.fn(),
   },
+  navigationState: { query: "" },
 }));
 
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigationState.query),
   useRouter: () => ({ replace: vi.fn() }),
   usePathname: () => "/findings",
 }));
@@ -91,6 +92,7 @@ function scanJob() {
 
 describe("FindingsPage", () => {
   beforeEach(() => {
+    navigationState.query = "";
     apiMock.listJobs.mockReset();
     apiMock.getScan.mockReset();
     apiMock.listFindings.mockReset();
@@ -228,5 +230,61 @@ describe("FindingsPage", () => {
     await waitFor(() =>
       expect(apiMock.listFindings).toHaveBeenCalledWith(expect.objectContaining({ windowDays: 0 })),
     );
+  });
+
+  it("follows opaque continuation while labeling an intentionally unknown total", async () => {
+    navigationState.query = "scope=all";
+    const finding = (index: number) => ({
+      id: `uuid-${index}`,
+      severity: "high",
+      cve_id: `CVE-2026-${String(index).padStart(4, "0")}`,
+      title: `Finding ${index}`,
+      asset: { name: `asset-${index}` },
+    });
+    apiMock.listFindings
+      .mockResolvedValueOnce({
+        schema_version: "v1",
+        findings: Array.from({ length: 25 }, (_, index) => finding(index)),
+        count: 25,
+        total: null,
+        total_approximate: false,
+        limit: 25,
+        offset: 0,
+        sort: "severity",
+        cursor: "",
+        next_cursor: "opaque-page-2",
+        has_more: true,
+        warnings: [],
+        window: { days: 90, since: "2026-04-18T00:00:00Z", applied: true, label: "Last 90 days" },
+      })
+      .mockResolvedValueOnce({
+        schema_version: "v1",
+        findings: [finding(25)],
+        count: 1,
+        total: null,
+        total_approximate: false,
+        limit: 25,
+        offset: 0,
+        sort: "severity",
+        cursor: "opaque-page-2",
+        next_cursor: "",
+        has_more: false,
+        warnings: [],
+        window: { days: 90, since: "2026-04-18T00:00:00Z", applied: true, label: "Last 90 days" },
+      });
+
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("Page 1 · total unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Current state · Last 90 days")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cursor: "opaque-page-2", windowDays: 90 }),
+      ),
+    );
+    expect(await screen.findByText("Page 2 · total unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Next/i })).toBeDisabled();
   });
 });

@@ -86,5 +86,8 @@ describe("finding-issue-type", () => {
       "/findings?severity=critical&issue=misconfiguration",
     );
     expect(findingsHref({ kev: true })).toBe("/findings?kev=1");
+    expect(findingsHref({ scope: "all", severity: "critical" })).toBe(
+      "/findings?scope=all&severity=critical",
+    );
   });
 });

@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS attack_paths (
 
 CREATE INDEX IF NOT EXISTS idx_ap_risk ON attack_paths(composite_risk DESC);
 CREATE INDEX IF NOT EXISTS idx_ap_scan ON attack_paths(scan_id);
+CREATE INDEX IF NOT EXISTS idx_ap_tenant_scan ON attack_paths(tenant_id, scan_id);
 
 -- ── Interaction risks (per scan) ──
 CREATE TABLE IF NOT EXISTS interaction_risks (
@@ -180,6 +181,7 @@ CREATE TABLE IF NOT EXISTS interaction_risks (
     tenant_id       TEXT NOT NULL DEFAULT 'default',
     PRIMARY KEY (pattern, agents, scan_id, tenant_id)
 );
+CREATE INDEX IF NOT EXISTS idx_ir_tenant_scan ON interaction_risks(tenant_id, scan_id);
 
 -- ── Schema version ──
 CREATE TABLE IF NOT EXISTS graph_schema_version (

@@ -282,6 +282,28 @@ def test_streaming_replaces_same_scan_without_stale_rows(tmp_path) -> None:
     assert tuple(snapshot) == (1, 0)
 
 
+def test_delta_digest_queries_use_tenant_snapshot_indexes(tmp_path) -> None:
+    """Digest projections must not scan other tenants' path/risk history."""
+    db = tmp_path / "digest-query-plan.db"
+    with gs.open_graph_db(db) as conn:
+        queries = (
+            "SELECT source_node, target_node FROM attack_paths WHERE tenant_id = ? AND scan_id = ?",
+            "SELECT pattern, agents FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?",
+        )
+        plans = [
+            " ".join(
+                row["detail"]
+                for row in conn.execute(
+                    f"EXPLAIN QUERY PLAN {query}",
+                    ("acme", "scan-1"),
+                )
+            )
+            for query in queries
+        ]
+
+    assert all("tenant_id=? AND scan_id=?" in plan for plan in plans), plans
+
+
 def test_iter_graph_edges_dangling_edge_matches_documented_contract(tmp_path) -> None:
     """``iter_graph_edges`` vs ``load_graph`` dangling-edge handling is pinned.
 

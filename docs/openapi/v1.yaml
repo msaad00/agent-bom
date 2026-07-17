@@ -121,6 +121,65 @@ components:
       - findings
       title: BulkFindingsRequest
       type: object
+    CampaignTicketAction:
+      additionalProperties: false
+      properties:
+        connection_id:
+          maxLength: 200
+          minLength: 1
+          title: Connection Id
+          type: string
+        issue_type:
+          default: ''
+          maxLength: 100
+          title: Issue Type
+          type: string
+        project:
+          default: ''
+          maxLength: 200
+          title: Project
+          type: string
+      required:
+      - connection_id
+      title: CampaignTicketAction
+      type: object
+    CampaignUpdate:
+      additionalProperties: false
+      properties:
+        owner:
+          anyOf:
+          - maxLength: 200
+            type: string
+          - type: 'null'
+          title: Owner
+        sla_due_at:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Sla Due At
+        state:
+          anyOf:
+          - enum:
+            - open
+            - in_progress
+            - blocked
+            - done
+            type: string
+          - type: 'null'
+          title: State
+        verification_status:
+          anyOf:
+          - enum:
+            - unverified
+            - pending
+            - verified
+            - failed
+            type: string
+          - type: 'null'
+          title: Verification Status
+      title: CampaignUpdate
+      type: object
     CloudConnectionCreate:
       additionalProperties: false
       description: "Request body for creating a connection. ``external_id`` is write-only.\n\
@@ -4469,6 +4528,222 @@ paths:
       summary: Compare Baseline
       tags:
       - enterprise
+  /v1/campaigns:
+    get:
+      operationId: list_campaigns_v1_campaigns_get
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response List Campaigns V1 Campaigns Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: List Campaigns
+      tags:
+      - campaigns
+  /v1/campaigns/{campaign_id}:
+    patch:
+      operationId: update_campaign_v1_campaigns__campaign_id__patch
+      parameters:
+      - in: path
+        name: campaign_id
+        required: true
+        schema:
+          title: Campaign Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignUpdate'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Update Campaign V1 Campaigns  Campaign Id  Patch
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Update Campaign
+      tags:
+      - campaigns
+  /v1/campaigns/{campaign_id}/tickets:
+    post:
+      operationId: create_campaign_tickets_v1_campaigns__campaign_id__tickets_post
+      parameters:
+      - in: path
+        name: campaign_id
+        required: true
+        schema:
+          title: Campaign Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignTicketAction'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Create Campaign Tickets V1 Campaigns  Campaign Id  Tickets
+                  Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Create Campaign Tickets
+      tags:
+      - campaigns
+  /v1/campaigns/{campaign_id}/tickets/sync:
+    post:
+      operationId: sync_campaign_tickets_v1_campaigns__campaign_id__tickets_sync_post
+      parameters:
+      - in: path
+        name: campaign_id
+        required: true
+        schema:
+          title: Campaign Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Sync Campaign Tickets V1 Campaigns  Campaign Id  Tickets
+                  Sync Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Sync Campaign Tickets
+      tags:
+      - campaigns
   /v1/cis/checks:
     get:
       description: List tenant-scoped CIS benchmark checks with indexed filters where

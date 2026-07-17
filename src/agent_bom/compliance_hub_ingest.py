@@ -28,6 +28,11 @@ from typing import Any, Iterable
 from agent_bom.compliance_hub import apply_hub_classification
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.graph.severity import normalize_severity
+from agent_bom.parsers.sarif import (
+    NormalizedSarifResult,
+    SarifValidationError,
+    normalize_sarif_document,
+)
 
 # SARIF level → severity. SARIF only defines four levels; we map none/note
 # down to "info" so they don't masquerade as low-severity bugs.
@@ -93,47 +98,6 @@ def _pick_finding_type(
     return FindingType.SAST
 
 
-def _rule_tags(rule: dict) -> list[str]:
-    props = rule.get("properties") or {}
-    tags = props.get("tags") or []
-    return [str(t) for t in tags]
-
-
-def _result_location(result: dict) -> tuple[str, str | None]:
-    """Return (display_name, file_path) for a SARIF result.
-
-    SARIF locations carry a `physicalLocation.artifactLocation.uri`. We use
-    that as both the asset name and location so findings can be deduped by
-    file path across rules.
-    """
-    locations = result.get("locations") or []
-    if not locations:
-        return ("unknown", None)
-    physical = locations[0].get("physicalLocation") or {}
-    artifact = physical.get("artifactLocation") or {}
-    uri = artifact.get("uri")
-    if not uri:
-        return ("unknown", None)
-    region = physical.get("region") or {}
-    line = region.get("startLine")
-    name = f"{uri}:{line}" if line else uri
-    return (str(name), str(uri))
-
-
-def _build_rule_index(run: dict) -> dict[str, dict]:
-    """Index `rules[]` by id so we can fetch metadata for each result."""
-    tool = run.get("tool") or {}
-    driver = tool.get("driver") or {}
-    rules = driver.get("rules") or []
-    return {str(rule.get("id") or ""): rule for rule in rules if rule.get("id")}
-
-
-def _tool_name(run: dict) -> str:
-    tool = run.get("tool") or {}
-    driver = tool.get("driver") or {}
-    return str(driver.get("name") or "external")
-
-
 def ingest_sarif_findings(path: str | Path) -> list[Finding]:
     """Parse a SARIF 2.1.0 file into hub-classified ``Finding`` objects.
 
@@ -156,76 +120,60 @@ def ingest_sarif_findings(path: str | Path) -> list[Finding]:
         return []
     if not isinstance(sarif, dict):
         return []
-    return parse_sarif_document(sarif)
+    try:
+        return parse_sarif_document(sarif)
+    except SarifValidationError:
+        return []
 
 
 def parse_sarif_document(sarif: dict) -> list[Finding]:
     """Parse an in-memory SARIF 2.1.0 document into hub-classified findings."""
-    runs = sarif.get("runs") or []
-    findings: list[Finding] = []
-    for run in runs:
-        if not isinstance(run, dict):
-            continue
-        tool_name = _tool_name(run)
-        rule_index = _build_rule_index(run)
-        for result in run.get("results") or []:
-            if not isinstance(result, dict):
-                continue
-            findings.append(_sarif_result_to_finding(result, rule_index, tool_name))
-    return findings
+    document = normalize_sarif_document(sarif)
+    return [_normalized_sarif_result_to_finding(result) for result in document.results]
 
 
-def _sarif_result_to_finding(result: dict, rule_index: dict[str, dict], tool_name: str) -> Finding:
-    rule_id = str(result.get("ruleId") or "")
-    rule = rule_index.get(rule_id, {})
-    rule_tags = _rule_tags(rule)
-
-    message_text = ((result.get("message") or {}).get("text") or "").strip()
-    rule_short = ((rule.get("shortDescription") or {}).get("text") or "").strip()
-    rule_full = ((rule.get("fullDescription") or {}).get("text") or "").strip()
-    description = message_text or rule_full or rule_short or rule_id
-
-    level = result.get("level")
-    properties = result.get("properties") or {}
-    sec_severity_raw = properties.get("security-severity") or (rule.get("properties") or {}).get("security-severity")
-    sec_severity: float | None
-    try:
-        sec_severity = float(sec_severity_raw) if sec_severity_raw is not None else None
-    except (TypeError, ValueError):
-        sec_severity = None
-
-    severity = _coerce_severity(level, sec_severity)
-
-    asset_name, location = _result_location(result)
+def _normalized_sarif_result_to_finding(result: NormalizedSarifResult) -> Finding:
+    rule_id = result.rule_id
+    rule_tags = list(result.rule_tags)
+    description = result.message or result.rule_full_description or result.rule_short_description or rule_id
+    severity = _coerce_severity(result.level, result.security_severity)
+    location = result.location
+    if location is None:
+        asset_name, file_path = "unknown", None
+    else:
+        file_path = location.uri
+        asset_name = f"{file_path}:{location.start_line}" if location.start_line else file_path
     finding_type = _pick_finding_type(rule_id, rule_tags, description)
-
     cwe_ids = [tag.upper() for tag in rule_tags if tag.lower().startswith("cwe-")]
 
     evidence: dict[str, Any] = {
-        "external_tool": tool_name,
+        "external_tool": result.tool_name,
         "rule_id": rule_id,
         "rule_tags": rule_tags,
-        "sarif_level": level,
+        "sarif_level": result.level,
     }
-    if sec_severity is not None:
-        evidence["sarif_security_severity"] = sec_severity
+    if result.security_severity is not None:
+        evidence["sarif_security_severity"] = result.security_severity
+    if result.fingerprints:
+        evidence["sarif_fingerprints"] = dict(result.fingerprints)
+    if result.partial_fingerprints:
+        evidence["sarif_partial_fingerprints"] = dict(result.partial_fingerprints)
 
-    title = rule_short or rule_id or message_text[:100] or "External finding"
-
+    title = result.rule_short_description or rule_id or result.message[:100] or "External finding"
     finding = Finding(
         finding_type=finding_type,
         source=FindingSource.EXTERNAL,
         asset=Asset(
             name=asset_name,
-            asset_type="file" if location else "external",
+            asset_type="file" if file_path else "external",
             identifier=rule_id or None,
-            location=location,
+            location=file_path,
         ),
         severity=severity,
         title=title,
         description=description,
         cwe_ids=cwe_ids,
-        cvss_score=sec_severity,
+        cvss_score=result.security_severity,
         evidence=evidence,
     )
     return apply_hub_classification(finding)

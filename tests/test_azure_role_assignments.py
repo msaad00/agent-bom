@@ -50,6 +50,7 @@ class _AuthzClient:
     def __init__(self, *a, **k):
         self.role_assignments = _RoleAssignments()
         self.role_definitions = _AuthzClient._defs
+        self.deny_assignments = types.SimpleNamespace(list=lambda: [])
 
 
 @pytest.fixture(autouse=True)
@@ -81,6 +82,21 @@ def test_role_name_cache_avoids_duplicate_lookups() -> None:
     _discover_role_assignments(object(), "sub1", warnings=[])
     # 2 distinct role-definition ids → at most 2 lookups despite repeated reader use.
     assert _AuthzClient._defs.calls <= 2
+
+
+def test_authorization_discovery_preserves_explicit_source_states() -> None:
+    from agent_bom.cloud.azure_inventory import _discover_authorization
+
+    out = _discover_authorization(object(), "sub1", warnings=[])
+
+    assert {source["name"]: source["state"] for source in out["authorization_sources"]} == {
+        "role_assignments": "partial",
+        "role_definitions": "partial",
+        "deny_assignments": "complete",
+    }
+    assert out["role_assignments"][0]["id"] == ""
+    assert out["role_assignments"][0]["role_definition_id"]
+    assert out["role_definitions"][0]["completeness"] == "complete"
 
 
 def test_missing_sdk_is_graceful(monkeypatch) -> None:

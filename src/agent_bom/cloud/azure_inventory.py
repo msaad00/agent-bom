@@ -44,6 +44,8 @@ from typing import Any
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
 
 from .aws_inventory import dedupe_missing_permissions, record_discovery_failure
+from .azure_authorization_collector import collect_azure_authorization
+from .azure_rbac_evidence import normalize_azure_rbac_inventory
 from .normalization import sanitize_discovery_warning
 from .side_scan_targets import azure_managed_disk_targets
 
@@ -67,6 +69,7 @@ _AZURE_COMPUTE_PERMISSIONS: tuple[str, ...] = (
 )
 _AZURE_IDENTITY_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.ManagedIdentity/userAssignedIdentities/read",
+    "Microsoft.Authorization/denyAssignments/read",
     "Microsoft.Authorization/roleAssignments/read",
     "Microsoft.Authorization/roleDefinitions/read",
 )
@@ -200,6 +203,11 @@ def discover_inventory(
         "security_groups": [],
         "managed_identities": [],
         "role_assignments": [],
+        "role_definitions": [],
+        "deny_assignments": [],
+        "authorization_sources": [],
+        "authorization_observed_at": None,
+        "authorization_evidence": None,
         "service_principals": [],
         "entra_groups": [],
         "key_vaults": [],
@@ -281,7 +289,7 @@ def discover_inventory(
         discovery_tasks.append(("security_groups", _discover_nsgs))
     if include_identity:
         discovery_tasks.append(("managed_identities", _discover_managed_identities))
-        discovery_tasks.append(("role_assignments", _discover_role_assignments))
+        discovery_tasks.append(("authorization", _discover_authorization))
     if include_data:
         discovery_tasks.append(("key_vaults", _discover_key_vaults))
         discovery_tasks.append(("container_registries", _discover_container_registries))
@@ -304,7 +312,7 @@ def discover_inventory(
         discovery_tasks.append(("private_endpoints", _discover_private_endpoints))
         discovery_tasks.append(("api_management", _discover_api_management))
 
-    collected: dict[str, list[dict[str, Any]]] = {}
+    collected: dict[str, Any] = {}
     task_warnings: dict[str, list[str]] = {key: [] for key, _ in discovery_tasks}
     # Parallel per-task accumulator so one discoverer's missing-permission entries
     # never race another's. Merged back in deterministic task order, then deduped.
@@ -342,7 +350,14 @@ def discover_inventory(
     container_clusters = collected.get("container_clusters", [])
     security_groups = collected.get("security_groups", [])
     managed_identities = collected.get("managed_identities", [])
-    role_assignments = collected.get("role_assignments", [])
+    authorization = collected.get("authorization", {})
+    if not isinstance(authorization, dict):
+        authorization = {}
+    role_assignments = authorization.get("role_assignments", [])
+    role_definitions = authorization.get("role_definitions", [])
+    deny_assignments = authorization.get("deny_assignments", [])
+    authorization_sources = authorization.get("authorization_sources", [])
+    authorization_observed_at = authorization.get("authorization_observed_at")
     key_vaults = collected.get("key_vaults", [])
     container_registries = collected.get("container_registries", [])
     databases = collected.get("databases", [])
@@ -411,6 +426,19 @@ def discover_inventory(
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
     )
 
+    authorization_payload = {
+        "status": "ok" if include_identity else "disabled",
+        "subscription_id": resolved_sub,
+        "account_id": resolved_sub,
+        "role_assignments": role_assignments,
+        "role_definitions": role_definitions,
+        "deny_assignments": deny_assignments,
+        "authorization_sources": authorization_sources,
+        "authorization_observed_at": authorization_observed_at,
+        "entra_groups": entra_groups,
+    }
+    authorization_evidence = normalize_azure_rbac_inventory(authorization_payload).to_dict()
+
     return {
         "provider": "azure",
         "status": "ok",
@@ -423,6 +451,11 @@ def discover_inventory(
         "security_groups": security_groups,
         "managed_identities": managed_identities,
         "role_assignments": role_assignments,
+        "role_definitions": role_definitions,
+        "deny_assignments": deny_assignments,
+        "authorization_sources": authorization_sources,
+        "authorization_observed_at": authorization_observed_at,
+        "authorization_evidence": authorization_evidence,
         "service_principals": service_principals,
         "entra_groups": entra_groups,
         "key_vaults": key_vaults,
@@ -875,10 +908,22 @@ def _discover_managed_identities(
     return identities
 
 
+def _discover_authorization(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> dict[str, Any]:
+    """Collect decision-capable Azure RBAC authorization evidence read-only."""
+    return collect_azure_authorization(
+        credential,
+        subscription_id,
+        warnings=warnings,
+        missing=missing,
+    )
+
+
 def _discover_role_assignments(
     credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
 ) -> list[dict[str, Any]]:
-    """Enumerate Azure RBAC role assignments in the subscription (read-only).
+    """Compatibility wrapper returning assignments from full RBAC evidence.
 
     Each assignment links a principal (managed identity / service principal /
     user / group) to a scope (subscription, resource group, or a specific
@@ -888,49 +933,7 @@ def _discover_role_assignments(
     cached. Requires ``Microsoft.Authorization/roleAssignments/read`` +
     ``roleDefinitions/read`` (both included in Reader).
     """
-    try:
-        from azure.mgmt.authorization import AuthorizationManagementClient
-    except ImportError:
-        warnings.append("azure-mgmt-authorization not installed. Skipping role-assignment inventory.")
-        return []
-
-    assignments: list[dict[str, Any]] = []
-    role_name_cache: dict[str, str] = {}
-    try:
-        client = AuthorizationManagementClient(credential, subscription_id)
-        for assignment in client.role_assignments.list_for_subscription():
-            principal_id = str(getattr(assignment, "principal_id", "") or "")
-            scope = str(getattr(assignment, "scope", "") or "")
-            role_def_id = str(getattr(assignment, "role_definition_id", "") or "")
-            if not principal_id or not scope:
-                continue
-            role_name = role_name_cache.get(role_def_id)
-            if role_name is None:
-                try:
-                    role_def = client.role_definitions.get_by_id(role_def_id)
-                    role_name = str(getattr(role_def, "role_name", "") or "")
-                except Exception:  # noqa: BLE001 — fall back to the id's GUID suffix
-                    role_name = role_def_id.rsplit("/", 1)[-1] if role_def_id else ""
-                role_name_cache[role_def_id] = role_name
-            assignments.append(
-                {
-                    "principal_id": principal_id,
-                    "principal_type": str(getattr(assignment, "principal_type", "") or "").lower(),
-                    "role_name": role_name,
-                    "scope": scope,
-                    "account_id": subscription_id,
-                }
-            )
-    except Exception as exc:  # noqa: BLE001 — one failed Azure role assignments list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure role assignments",
-            permission="Microsoft.Authorization/roleAssignments/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
-    return assignments
+    return _discover_authorization(credential, subscription_id, warnings=warnings, missing=missing)["role_assignments"]
 
 
 # Microsoft Graph directory-read fan-out caps. A hostile/huge tenant must not be

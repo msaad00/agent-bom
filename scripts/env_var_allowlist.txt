@@ -72,6 +72,8 @@ AGENT_BOM_AWS_ORG_EXTERNAL_ID
 # Explicit comma-separated region override for the multi-region AWS inventory fan-out (else enabled regions are enumerated).
 AGENT_BOM_AWS_REGIONS
 AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS
+# Defensive per-run cap (default 50000) on raw Azure authorization records; read at collector import and overridable explicitly by tests/callers.
+AGENT_BOM_AZURE_AUTHORIZATION_MAX_RECORDS
 # Opt-in (default OFF, read live) Azure Storage Queue URL for event-driven Azure posture ingestion; when set, the operator has wired Activity Log / Event Grid→Storage Queue and the bounded consumer drains change events. Deploy-only toggle; absence disables the consumer.
 AGENT_BOM_AZURE_EVENT_QUEUE
 AGENT_BOM_AZURE_INVENTORY
@@ -212,6 +214,8 @@ AGENT_BOM_GATEWAY_REPLICAS
 AGENT_BOM_GATEWAY_REQUIRE_SHARED_RATE_LIMIT
 # Opt-in (default OFF) gate to fan the GCP inventory across every project in the org/folder tree (multi-project fan-out).
 AGENT_BOM_GCP_ALL_PROJECTS
+# Defensive per-run cap (default 50000) on raw GCP authorization records; read at collector import and overridable explicitly by tests/callers.
+AGENT_BOM_GCP_AUTHORIZATION_MAX_RECORDS
 # Opt-in (default OFF, read live) Pub/Sub subscription path for event-driven GCP posture ingestion; when set, the operator has wired a Cloud Asset Inventory feed / audit-log sink→Pub/Sub and the bounded consumer drains change events. Deploy-only toggle; absence disables the consumer.
 AGENT_BOM_GCP_EVENT_SUBSCRIPTION
 # Read-only GCP service account to impersonate (keyless, least-privilege) when set; the connector runs every call as this SA.

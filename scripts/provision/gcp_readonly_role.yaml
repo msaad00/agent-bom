@@ -10,6 +10,10 @@
 #     --member="serviceAccount:agent-bom@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
 #     --role="projects/YOUR_PROJECT_ID/roles/agentBomScanner"
 #
+# This project custom role intentionally excludes organization-only hierarchy
+# and PAB permissions. For inherited evidence, create and grant the separate
+# gcp_organization_iam_evidence_role.yaml at the owning organization.
+#
 # Recommended: use Workload Identity Federation instead of service account keys.
 #   https://cloud.google.com/iam/docs/workload-identity-federation
 #
@@ -57,5 +61,12 @@ includedPermissions:
   - artifactregistry.tags.list
 
   # Resource metadata
+  - cloudasset.assets.listIamPolicy
+  - iam.denypolicies.list
+  - iam.policybindings.list
+  - iam.roles.get
+  - iam.serviceAccounts.list
   - resourcemanager.projects.get
+  - resourcemanager.projects.getIamPolicy
   - resourcemanager.projects.list
+  - serviceusage.services.use

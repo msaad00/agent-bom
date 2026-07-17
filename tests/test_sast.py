@@ -138,11 +138,12 @@ def test_parse_sarif_empty():
 
 
 def test_parse_sarif_no_location():
-    """Results without locations are skipped."""
+    """Results without locations remain available as external evidence."""
     sarif = {
+        "version": "2.1.0",
         "runs": [
             {
-                "tool": {"driver": {"rules": []}},
+                "tool": {"driver": {"name": "semgrep", "rules": []}},
                 "results": [
                     {
                         "ruleId": "test-rule",
@@ -152,10 +153,12 @@ def test_parse_sarif_no_location():
                     }
                 ],
             }
-        ]
+        ],
     }
     findings, _, _ = _parse_sarif_findings(sarif)
-    assert findings == []
+    assert len(findings) == 1
+    assert findings[0].file_path == "unknown"
+    assert findings[0].tool_name == "semgrep"
 
 
 # ── Severity mapping ───────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ _SERVICES = [
     "_discover_app_services",
     "_discover_nsgs",
     "_discover_managed_identities",
-    "_discover_role_assignments",
+    "_discover_authorization",
     "_discover_key_vaults",
     "_discover_container_registries",
     "_discover_databases",
@@ -59,11 +59,23 @@ _SERVICES = [
 ]
 
 
+def _stub_result(label: str):
+    if label == "_discover_authorization":
+        return {
+            "authorization_observed_at": "2026-01-01T00:00:00+00:00",
+            "role_assignments": [],
+            "role_definitions": [],
+            "deny_assignments": [],
+            "authorization_sources": [],
+        }
+    return [{"name": f"{label}-1", "id": f"/id/{label}"}]
+
+
 def _slow_stub(label: str, delay: float = 0.15):
     def fn(cred, sub, *, warnings, missing=None):
         time.sleep(delay)
         warnings.append(f"warn-{label}")
-        return [{"name": f"{label}-1", "id": f"/id/{label}"}]
+        return _stub_result(label)
 
     return fn
 
@@ -82,7 +94,7 @@ def test_discovery_runs_concurrently(monkeypatch) -> None:
             try:
                 time.sleep(0.15)
                 warnings.append(f"warn-{label}")
-                return [{"name": f"{label}-1", "id": f"/id/{label}"}]
+                return _stub_result(label)
             finally:
                 with lock:
                     active -= 1
@@ -120,6 +132,45 @@ def test_warnings_preserved_in_deterministic_order(monkeypatch) -> None:
     assert len(inv["warnings"]) == len(_SERVICES)
     # storage is the first task → its warning is first regardless of completion order
     assert inv["warnings"][0] == "warn-_discover_storage_accounts"
+
+
+def test_authorization_evidence_is_transported_without_loss(monkeypatch) -> None:
+    for name in _SERVICES:
+        monkeypatch.setattr(azinv, name, _slow_stub(name, delay=0.0))
+
+    def authorization(cred, sub, *, warnings, missing=None):
+        return {
+            "authorization_observed_at": "2026-01-01T00:00:00+00:00",
+            "role_assignments": [
+                {
+                    "id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/assignment-1",
+                    "principal_id": "sp-1",
+                    "principal_type": "serviceprincipal",
+                    "role_definition_id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/reader",
+                    "scope": "/subscriptions/sub-1",
+                }
+            ],
+            "role_definitions": [
+                {
+                    "id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/reader",
+                    "completeness": "complete",
+                    "permissions": [{"actions": ["Microsoft.Storage/storageAccounts/read"]}],
+                }
+            ],
+            "deny_assignments": [],
+            "authorization_sources": [
+                {"name": name, "state": "complete", "diagnostics": [], "provenance": []}
+                for name in ("role_assignments", "role_definitions", "deny_assignments")
+            ],
+        }
+
+    monkeypatch.setattr(azinv, "_discover_authorization", authorization)
+    inv = azinv.discover_inventory("sub-1", credential=object(), include_hierarchy=False, force=True)
+
+    assert inv["role_assignments"][0]["id"].endswith("/assignment-1")
+    assert inv["role_definitions"][0]["permissions"][0]["actions"] == ["Microsoft.Storage/storageAccounts/read"]
+    assert inv["authorization_evidence"]["sources"][0]["state"] == "complete"
+    assert inv["authorization_evidence"]["bindings"][0]["binding_id"].endswith("/assignment-1")
 
 
 def test_one_service_failing_does_not_sink_others(monkeypatch) -> None:

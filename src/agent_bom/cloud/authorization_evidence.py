@@ -182,6 +182,22 @@ class PrincipalMembership:
 
 
 @dataclass(frozen=True)
+class ResourceAncestry:
+    """Canonical provider resource and its proven containing scopes."""
+
+    resource: str
+    ancestors: tuple[str, ...]
+    source: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "resource": self.resource,
+            "ancestors": list(self.ancestors),
+            "source": self.source,
+        }
+
+
+@dataclass(frozen=True)
 class AuthorizationEvidenceBundle:
     provider: AuthorizationProvider
     scope: str
@@ -191,6 +207,7 @@ class AuthorizationEvidenceBundle:
     bindings: tuple[AuthorizationBinding, ...] = ()
     role_definitions: tuple[RoleDefinitionEvidence, ...] = ()
     memberships: tuple[PrincipalMembership, ...] = ()
+    resource_ancestry: tuple[ResourceAncestry, ...] = ()
     diagnostics: tuple[str, ...] = ()
 
     def source_state(self, name: str) -> EvidenceSourceState | None:
@@ -245,6 +262,7 @@ class AuthorizationEvidenceBundle:
             "bindings": [binding.to_dict() for binding in self.bindings],
             "role_definitions": [role.to_dict() for role in self.role_definitions],
             "memberships": [membership.to_dict() for membership in self.memberships],
+            "resource_ancestry": [item.to_dict() for item in self.resource_ancestry],
             "diagnostics": list(self.diagnostics),
         }
 
@@ -280,5 +298,6 @@ __all__ = [
     "EvidenceSource",
     "EvidenceSourceState",
     "PrincipalMembership",
+    "ResourceAncestry",
     "RoleDefinitionEvidence",
 ]

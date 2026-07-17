@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Optional
 
 from agent_bom.models import Package, Severity, Vulnerability
+from agent_bom.parsers.sarif import SarifValidationError, normalize_sarif_document
 
 _logger = logging.getLogger(__name__)
 
@@ -67,6 +68,10 @@ class SASTFinding:
     owasp_ids: list[str] = field(default_factory=list)
     rule_url: Optional[str] = None
     snippet: Optional[str] = None
+    tool_name: str = "external"
+    security_severity: float | None = None
+    fingerprints: dict[str, str] = field(default_factory=dict)
+    partial_fingerprints: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -119,6 +124,10 @@ class SASTResult:
                     "owasp_ids": f.owasp_ids,
                     "rule_url": f.rule_url,
                     "snippet": f.snippet,
+                    "tool_name": f.tool_name,
+                    "security_severity": f.security_severity,
+                    "fingerprints": f.fingerprints,
+                    "partial_fingerprints": f.partial_fingerprints,
                 }
                 for f in self.findings
             ],
@@ -234,69 +243,49 @@ def _resolve_sast_configs(scan_target: Path, config: str) -> list[str]:
 
 
 def _parse_sarif_findings(sarif: dict) -> tuple[list[SASTFinding], int, int]:
-    """Parse Semgrep SARIF output into SASTFinding objects.
+    """Project canonical SARIF records into SASTFinding objects.
 
     Returns (findings, rules_loaded, files_scanned).
     """
+    document = normalize_sarif_document(sarif)
     findings: list[SASTFinding] = []
-    files_seen: set[str] = set()
-    rules_loaded = 0
-
-    for run in sarif.get("runs", []):
-        driver = run.get("tool", {}).get("driver", {})
-        rules = {r["id"]: r for r in driver.get("rules", [])}
-        rules_loaded = max(rules_loaded, len(rules))
-
-        for result in run.get("results", []):
-            rule_id = result.get("ruleId", "unknown")
-            level = result.get("level", "warning")
-            message = result.get("message", {}).get("text", "")
-
-            # Extract location
-            locations = result.get("locations", [])
-            if not locations:
-                continue
-            loc = locations[0].get("physicalLocation", {})
-            artifact = loc.get("artifactLocation", {}).get("uri", "")
-            region = loc.get("region", {})
-            start_line = region.get("startLine", 0)
-            end_line = region.get("endLine", start_line)
-            start_col = region.get("startColumn", 0)
-            end_col = region.get("endColumn", 0)
-            snippet_obj = region.get("snippet", {})
-            snippet = snippet_obj.get("text") if snippet_obj else None
-
-            files_seen.add(artifact)
-
-            severity = _SARIF_LEVEL_MAP.get(level, Severity.UNKNOWN)
-
-            # Extract CWE IDs and OWASP tags from rule metadata
-            rule_meta = rules.get(rule_id, {})
-            rule_props = rule_meta.get("properties", {})
-            tags = rule_props.get("tags", [])
-            cwe_ids = [t for t in tags if t.upper().startswith("CWE-")]
-            owasp_ids = [t for t in tags if ":" in t and t[0] == "A"]
-
-            rule_url = rule_meta.get("helpUri")
-
-            findings.append(
-                SASTFinding(
-                    rule_id=rule_id,
-                    message=message[:500],
-                    severity=severity,
-                    file_path=artifact,
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=start_col,
-                    end_col=end_col,
-                    cwe_ids=cwe_ids,
-                    owasp_ids=owasp_ids,
-                    rule_url=rule_url,
-                    snippet=snippet[:200] if snippet else None,
-                )
+    for result in document.results:
+        location = result.location
+        level_severity = _SARIF_LEVEL_MAP.get(result.level or "warning", Severity.UNKNOWN)
+        if result.security_severity is None:
+            severity = level_severity
+        elif result.security_severity >= 9.0:
+            severity = Severity.CRITICAL
+        elif result.security_severity >= 7.0:
+            severity = Severity.HIGH
+        elif result.security_severity >= 4.0:
+            severity = Severity.MEDIUM
+        elif result.security_severity > 0:
+            severity = Severity.LOW
+        else:
+            severity = Severity.NONE
+        findings.append(
+            SASTFinding(
+                rule_id=result.rule_id or "unknown",
+                message=(result.message or result.rule_full_description or result.rule_short_description)[:500],
+                severity=severity,
+                file_path=location.uri if location is not None else "unknown",
+                start_line=location.start_line if location is not None else 0,
+                end_line=location.end_line if location is not None else 0,
+                start_col=location.start_column if location is not None else 0,
+                end_col=location.end_column if location is not None else 0,
+                cwe_ids=[tag for tag in result.rule_tags if tag.upper().startswith("CWE-")],
+                owasp_ids=[tag for tag in result.rule_tags if ":" in tag and tag.startswith("A")],
+                rule_url=result.rule_url,
+                snippet=(location.snippet[:200] if location and location.snippet else None),
+                tool_name=result.tool_name,
+                security_severity=result.security_severity,
+                fingerprints=dict(result.fingerprints),
+                partial_fingerprints=dict(result.partial_fingerprints),
             )
+        )
 
-    return findings, rules_loaded, len(files_seen)
+    return findings, document.rules_loaded, document.files_scanned
 
 
 def _findings_to_packages(findings: list[SASTFinding]) -> list[Package]:
@@ -316,7 +305,7 @@ def _findings_to_packages(findings: list[SASTFinding]) -> list[Package]:
         vulns: list[Vulnerability] = []
         seen_ids: set[str] = set()
         for finding in file_finds:
-            vid = f"{finding.rule_id}:{finding.start_line}"
+            vid = f"{finding.tool_name}:{finding.rule_id}:{finding.start_line}"
             if vid in seen_ids:
                 continue
             seen_ids.add(vid)
@@ -327,6 +316,7 @@ def _findings_to_packages(findings: list[SASTFinding]) -> list[Package]:
                     summary=finding.message,
                     severity=finding.severity,
                     cwe_ids=finding.cwe_ids,
+                    cvss_score=finding.security_severity,
                     references=[finding.rule_url] if finding.rule_url else [],
                 )
             )
@@ -352,9 +342,12 @@ def _import_sarif(path: Path) -> tuple[list[Package], SASTResult]:
     except OSError as exc:
         raise SASTScanError(f"could not read SARIF file {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
-        raise SASTScanError(f"invalid SARIF file {path}: {exc}") from exc
+        raise SASTScanError(f"invalid SARIF file {path}") from exc
 
-    findings, rules_loaded, files_scanned = _parse_sarif_findings(sarif)
+    try:
+        findings, rules_loaded, files_scanned = _parse_sarif_findings(sarif)
+    except SarifValidationError as exc:
+        raise SASTScanError(f"invalid SARIF file {path}") from exc
     packages = _findings_to_packages(findings)
     result = SASTResult(
         findings=findings,
@@ -447,7 +440,10 @@ def scan_code(
 
     elapsed = time.monotonic() - start
 
-    findings, rules_loaded, files_scanned = _parse_sarif_findings(sarif)
+    try:
+        findings, rules_loaded, files_scanned = _parse_sarif_findings(sarif)
+    except SarifValidationError as exc:
+        raise SASTScanError("semgrep produced structurally invalid SARIF output") from exc
     packages = _findings_to_packages(findings)
 
     sast_result = SASTResult(

@@ -24,7 +24,7 @@ modules — keys and public-key material are variables or outputs only.
 |--------|--------------------------------------------|-------------|
 | [`connect-aws`](./connect-aws/) | IAM role/user + AWS-managed `SecurityAudit` (+ `ViewOnlyAccess`); cross-account or OIDC trust | `AGENT_BOM_AWS_INVENTORY=1` |
 | [`connect-azure`](./connect-azure/) | Built-in `Reader` (+ `Security Reader`) RBAC assignment at a subscription / management group | `AGENT_BOM_AZURE_INVENTORY=1` |
-| [`connect-gcp`](./connect-gcp/) | Service account + `roles/viewer` & `roles/iam.securityReviewer` at a project / organization / folder; optional keyless Workload Identity Federation | `AGENT_BOM_GCP_INVENTORY=1` |
+| [`connect-gcp`](./connect-gcp/) | Service account + read-only inventory, IAM review, Cloud Asset, and service-usage roles at a project / organization / folder; optional keyless Workload Identity Federation | `AGENT_BOM_GCP_INVENTORY=1` |
 | [`connect-snowflake`](./connect-snowflake/) | `ABOM_READONLY` role + `IMPORTED PRIVILEGES`/`MONITOR USAGE`/warehouse `USAGE` grants + key-pair user | `SNOWFLAKE_*` (see module README) |
 
 ## Keyless-first

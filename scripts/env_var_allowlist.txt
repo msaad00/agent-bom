@@ -473,6 +473,11 @@ AGENT_BOM_EXEC_SCORE_POLICY_FILE
 # mounted secret path, not a scalar application setting for config.py.
 AGENT_BOM_POSTGRES_PASSWORD_FILE
 
+# File-first audit and connection-encryption secrets are mounted secret paths,
+# not scalar application settings for the generated config reference.
+AGENT_BOM_AUDIT_HMAC_KEY_FILE
+AGENT_BOM_CONNECTIONS_KEY_FILE
+
 # Opt-in runtime Postgres IAM authentication selection. These are resolved at
 # connection time so short-lived tokens can be refreshed without static config.
 AGENT_BOM_POSTGRES_AUTH_MODE

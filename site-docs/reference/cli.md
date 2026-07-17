@@ -105,6 +105,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `db freshness` | Show the structured vuln-data freshness indicator (sources, age, staleness) surfaced on every scan, API, and MCP tool |
 | `db framework-status` | Show bundled framework catalog freshness |
 | `doctor` | Check environment readiness for scanning |
+| `self-audit` | Audit this agent-bom deployment's own security and governance posture (auth, tenant isolation, audit-log integrity, secret sealing) with honest pass/fail/warn/unknown results |
 | `capabilities` | Show every gated capability, current state, and exact unlock path without printing secret values |
 | `gateway` | Multi-MCP gateway commands |
 | `interactive` | Start an interactive command shell for repeated CLI workflows |

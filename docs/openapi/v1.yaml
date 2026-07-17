@@ -17373,6 +17373,57 @@ paths:
       summary: Scorecard Lookup
       tags:
       - security
+  /v1/self-posture:
+    get:
+      description: "Return this agent-bom deployment's own security + governance posture.\n\
+        \nHonest per-check results (pass/fail/warn/unknown) over API authentication,\n\
+        database tenant isolation, audit-log integrity signing, secret sealing, and\n\
+        the dependency attack surface. Distribution enumeration is offloaded to a\n\
+        worker thread so the event loop is never blocked (non-negotiable \xA77)."
+      operationId: get_self_posture_v1_self_posture_get
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Self Posture V1 Self Posture Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Self Posture
+      tags:
+      - self-posture
   /v1/shield/break-glass:
     post:
       description: "Emergency kill-switch override \u2014 admin only, audit logged.\n\

@@ -2066,7 +2066,7 @@ class TestGraphStoreBackendSelection:
 
         monkeypatch.setattr("agent_bom.api.pipeline._get_graph_store", lambda: recording_graph_store)
         monkeypatch.setattr("agent_bom.graph.builder.build_unified_graph_from_report", lambda report_json, scan_id, tenant_id: persisted)
-        monkeypatch.setattr("agent_bom.graph.webhooks.compute_delta_alerts", lambda previous, current: [])
+        monkeypatch.setattr("agent_bom.graph.webhooks.compute_delta_alerts_from_digest", lambda prior, current: [])
         monkeypatch.setattr(
             "agent_bom.api.postgres_store.set_current_tenant",
             lambda tenant_id: tenant_context.append(("set", tenant_id)) or "tenant-token",

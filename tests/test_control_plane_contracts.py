@@ -139,7 +139,7 @@ def control_plane_contracts(tmp_path, monkeypatch):
         "agent_bom.graph.builder.build_unified_graph_from_report",
         lambda report_json, scan_id, tenant_id: graphs[scan_id],
     )
-    monkeypatch.setattr("agent_bom.graph.webhooks.compute_delta_alerts", lambda previous, current: [])
+    monkeypatch.setattr("agent_bom.graph.webhooks.compute_delta_alerts_from_digest", lambda prior, current: [])
     monkeypatch.setattr("agent_bom.graph.webhooks.dispatch_delta_alerts", lambda alerts, product_version=None: None)
 
     _persist_graph_snapshot(alpha_job, {"scan_id": "tenant-alpha-scan"})

@@ -336,7 +336,8 @@ def _persist_graph_snapshot(
     export all derive from the same persisted graph state.
     """
     from agent_bom.graph.builder import build_unified_graph_from_report
-    from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
+    from agent_bom.graph.delta_digest import PriorSnapshotDigest
+    from agent_bom.graph.webhooks import compute_delta_alerts_from_digest, dispatch_delta_alerts
 
     tenant_id = job.tenant_id or "default"
     scan_id = report_json.get("scan_id") or job.job_id
@@ -346,16 +347,23 @@ def _persist_graph_snapshot(
 
     tenant_token = set_current_tenant(tenant_id)
     try:
-        previous_graph = None
+        prior_digest = PriorSnapshotDigest.empty()
         graph_store = _get_graph_store()
         previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id)
         if previous_scan_id and previous_scan_id != scan_id:
-            previous_graph = graph_store.load_graph(tenant_id=tenant_id, scan_id=previous_scan_id)
+            # Bounded prior-snapshot read for delta diffing — never materialise a
+            # second full UnifiedGraph (#4055 / #4075). Backends that predate the
+            # digest primitive fall back to the full load (byte-identical result).
+            digest_reader = getattr(graph_store, "prior_delta_digest", None)
+            if callable(digest_reader):
+                prior_digest = digest_reader(tenant_id=tenant_id, scan_id=previous_scan_id)
+            else:
+                prior_digest = PriorSnapshotDigest.from_graph(graph_store.load_graph(tenant_id=tenant_id, scan_id=previous_scan_id))
         graph_store.save_graph(graph)
     finally:
         reset_current_tenant(tenant_token)
 
-    alerts = compute_delta_alerts(previous_graph, graph)
+    alerts = compute_delta_alerts_from_digest(prior_digest, graph)
     delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
     _logger.info(
         "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d delta_delivered=%d",

@@ -172,6 +172,27 @@ def test_native_transport_rejects_proxy_paths(tmp_path: Path) -> None:
         transport.close()
 
 
+def test_native_transport_rejects_external_or_nonstandard_kubelet_endpoints(tmp_path: Path) -> None:
+    token_path, ca_path = _service_account_files(tmp_path)
+    requests: list[httpx.Request] = []
+    transport = InClusterK8sTransport(
+        host="10.0.0.1",
+        port=443,
+        token_path=token_path,
+        ca_path=ca_path,
+        http_transport=httpx.MockTransport(lambda request: requests.append(request) or httpx.Response(200, json={})),
+    )
+    try:
+        with pytest.raises(K8sTransportError, match="internal"):
+            transport.get_kubelet_json("8.8.8.8", 10250, "/configz")
+        with pytest.raises(K8sTransportError, match="port"):
+            transport.get_kubelet_json("10.0.0.10", 443, "/configz")
+    finally:
+        transport.close()
+
+    assert requests == []
+
+
 def test_native_transport_reads_only_direct_kubelet_configz(tmp_path: Path) -> None:
     token_path, ca_path = _service_account_files(tmp_path)
 
@@ -195,6 +216,45 @@ def test_native_transport_reads_only_direct_kubelet_configz(tmp_path: Path) -> N
         transport.close()
 
     assert result == {"kubeletconfig": {"readOnlyPort": 0}}
+
+
+def test_native_transport_rejects_response_before_json_materialization(tmp_path: Path) -> None:
+    token_path, ca_path = _service_account_files(tmp_path)
+    transport = InClusterK8sTransport(
+        host="10.0.0.1",
+        port=443,
+        token_path=token_path,
+        ca_path=ca_path,
+        max_response_bytes=32,
+        http_transport=httpx.MockTransport(lambda _request: httpx.Response(200, content=b'{"items":["' + (b"x" * 64) + b'"]}')),
+    )
+    try:
+        with pytest.raises(K8sTransportError, match="configured byte bound") as caught:
+            transport.list_resource("pods", all_namespaces=True)
+    finally:
+        transport.close()
+
+    assert caught.value.reason == "response_too_large"
+
+
+def test_native_transport_rejects_non_object_list_metadata(tmp_path: Path) -> None:
+    token_path, ca_path = _service_account_files(tmp_path)
+    transport = InClusterK8sTransport(
+        host="10.0.0.1",
+        port=443,
+        token_path=token_path,
+        ca_path=ca_path,
+        http_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"items": [{"metadata": {"name": "pod-a"}}], "metadata": "bad"})
+        ),
+    )
+    try:
+        with pytest.raises(K8sTransportError, match="metadata") as caught:
+            transport.list_resource("pods", all_namespaces=True)
+    finally:
+        transport.close()
+
+    assert caught.value.reason == "invalid_json"
 
 
 def test_select_transport_prefers_in_cluster_and_never_falls_back_to_kubectl(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -226,6 +286,17 @@ def test_in_cluster_configuration_failure_never_falls_back_to_kubectl(monkeypatc
 
     with pytest.raises(K8sTransportError, match="service-account token"):
         select_k8s_transport(token_path=missing_token, ca_path=ca_path)
+
+
+def test_in_cluster_out_of_range_port_is_a_transport_configuration_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    token_path, ca_path = _service_account_files(tmp_path)
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+    monkeypatch.setenv("KUBERNETES_SERVICE_PORT", "0")
+
+    with pytest.raises(K8sTransportError, match="service port") as caught:
+        select_k8s_transport(token_path=token_path, ca_path=ca_path)
+
+    assert caught.value.reason == "configuration"
 
 
 def test_kubectl_transport_caps_returned_items() -> None:
@@ -264,3 +335,20 @@ def test_kubectl_transport_classifies_and_sanitizes_forbidden(monkeypatch: pytes
     assert caught.value.status_code == 403
     assert "cluster-secret" not in str(caught.value)
     assert "/var/run" not in str(caught.value)
+
+
+def test_kubectl_transport_rejects_stdout_above_byte_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent_bom.k8s_transport as transport_module
+
+    def oversized_run(*_args, **kwargs):
+        kwargs["stdout"].write(b'{"items":["' + (b"x" * 64) + b'"]}')
+        return SimpleNamespace(returncode=0, stdout=None, stderr=None)
+
+    monkeypatch.setattr(transport_module.shutil, "which", lambda _command: "/usr/bin/kubectl")
+    monkeypatch.setattr(transport_module.subprocess, "run", oversized_run)
+    transport = KubectlK8sTransport(max_response_bytes=32)
+
+    with pytest.raises(K8sTransportError, match="configured byte bound") as caught:
+        transport.list_resource("pods", namespace="prod")
+
+    assert caught.value.reason == "response_too_large"

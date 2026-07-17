@@ -19,10 +19,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
+from math import ceil
+from time import monotonic
 from typing import Optional
 
 from agent_bom.iac.models import IaCFinding
-from agent_bom.k8s_transport import K8sReadTransport, K8sTransportError, select_k8s_transport
+from agent_bom.k8s_transport import K8sReadTransport, K8sTransportError, select_k8s_transport, validate_kubelet_endpoint
 
 
 class K8sDiscoveryError(Exception):
@@ -637,6 +639,9 @@ _POSTURE_RESOURCES = (
     "roles",
     "nodes",
 )
+MAX_CONFIGZ_NODES = 100
+MAX_CONFIGZ_BUDGET_SECONDS = 60
+MAX_CONFIGZ_REQUEST_SECONDS = 30
 
 
 def _collector_state_for_error(exc: K8sTransportError) -> CollectorState:
@@ -654,19 +659,15 @@ def _kubelet_endpoint(node: dict) -> tuple[str, int] | None:
         for item in raw_addresses
         if isinstance(item, dict) and isinstance(item.get("address"), str) and item.get("address")
     }
-    host = next(
-        (
-            by_type[address_type]
-            for address_type in ("InternalDNS", "Hostname", "InternalIP", "ExternalDNS", "ExternalIP")
-            if by_type.get(address_type)
-        ),
-        None,
-    )
+    host = by_type.get("InternalIP")
     endpoint = (status.get("daemonEndpoints", {}) or {}).get("kubeletEndpoint", {}) or {}
     port = endpoint.get("Port", endpoint.get("port"))
-    if not host or not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65_535:
+    if not host or not isinstance(port, int) or isinstance(port, bool):
         return None
-    return str(host), port
+    try:
+        return validate_kubelet_endpoint(str(host), port)
+    except K8sTransportError:
+        return None
 
 
 def _posture_status(collectors: list[K8sCollectorEvidence]) -> K8sPostureStatus:
@@ -925,7 +926,13 @@ def scan_live_cluster_posture_with_evidence(
             config_count = 0
             config_errors: list[K8sTransportError] = []
             node_items = nodes.get("items", []) or []
-            for node in node_items:
+            config_truncated = len(node_items) > MAX_CONFIGZ_NODES
+            config_deadline = monotonic() + MAX_CONFIGZ_BUDGET_SECONDS
+            for node in node_items[:MAX_CONFIGZ_NODES]:
+                remaining_seconds = config_deadline - monotonic()
+                if remaining_seconds <= 0:
+                    config_truncated = True
+                    break
                 if not isinstance(node, dict):
                     continue
                 node_name = (node.get("metadata", {}) or {}).get("name")
@@ -947,7 +954,7 @@ def scan_live_cluster_posture_with_evidence(
                         kubelet_host,
                         kubelet_port,
                         "/configz",
-                        timeout=30,
+                        timeout=max(1, min(MAX_CONFIGZ_REQUEST_SECONDS, ceil(remaining_seconds))),
                     )
                 except K8sTransportError as exc:
                     config_errors.append(exc)
@@ -966,15 +973,19 @@ def scan_live_cluster_posture_with_evidence(
                     else CollectorState.UNEVALUABLE
                 )
                 message = f"{len(config_errors)} node config read(s) were not evaluable"
+            elif config_truncated and config_count == 0:
+                config_state = CollectorState.UNEVALUABLE
+                message = "nodes/configz collection reached its configured bound before any node was evaluated"
             else:
                 config_state = CollectorState.EXECUTED
-                message = ""
+                message = "nodes/configz collection reached its configured bound" if config_truncated else ""
             collectors.append(
                 K8sCollectorEvidence(
                     collector_id="kubelet_configz",
                     state=config_state,
                     object_count=config_count,
                     pages=config_count,
+                    truncated=config_truncated,
                     message=message,
                     transport=transport_name,
                 )

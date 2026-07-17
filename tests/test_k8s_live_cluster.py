@@ -501,6 +501,76 @@ def test_kubelet_configz_success_is_executed_evidence() -> None:
     assert result.status is K8sPostureStatus.COMPLETE
 
 
+def test_kubelet_configz_rejects_external_node_metadata_without_requesting_it() -> None:
+    payloads = _foundation_payloads()
+    payloads["nodes"]["items"][0]["status"]["addresses"] = [
+        {"type": "ExternalIP", "address": "8.8.8.8"},
+    ]
+    transport = _FixtureTransport(payloads)
+
+    result = scan_live_cluster_posture_with_evidence(
+        namespace="prod",
+        transport=transport,
+        enable_nodes_configz=True,
+    )
+
+    evidence = {item.collector_id: item for item in result.collectors}
+    assert evidence["kubelet_configz"].state is CollectorState.UNEVALUABLE
+    assert result.status is K8sPostureStatus.PARTIAL
+    assert transport.get_paths == []
+
+
+def test_kubelet_configz_caps_node_fanout(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent_bom.k8s as k8s_module
+
+    payloads = _foundation_payloads()
+    second_node = {
+        "metadata": {"name": "node-b"},
+        "status": {
+            "addresses": [{"type": "InternalIP", "address": "10.0.0.11"}],
+            "daemonEndpoints": {"kubeletEndpoint": {"Port": 10250}},
+        },
+    }
+    payloads["nodes"]["items"].append(second_node)
+    payloads["configz"] = {"kubeletconfig": {"readOnlyPort": 0}}
+    transport = _FixtureTransport(payloads)
+    monkeypatch.setattr(k8s_module, "MAX_CONFIGZ_NODES", 1)
+
+    result = scan_live_cluster_posture_with_evidence(
+        namespace="prod",
+        transport=transport,
+        enable_nodes_configz=True,
+    )
+
+    evidence = {item.collector_id: item for item in result.collectors}
+    assert evidence["kubelet_configz"].truncated is True
+    assert evidence["kubelet_configz"].object_count == 1
+    assert result.status is K8sPostureStatus.PARTIAL
+    assert transport.get_paths == [("10.0.0.10", 10250, "/configz")]
+
+
+def test_kubelet_configz_honors_overall_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent_bom.k8s as k8s_module
+
+    payloads = _foundation_payloads()
+    transport = _FixtureTransport(payloads)
+    readings = iter((100.0, 161.0))
+    monkeypatch.setattr(k8s_module, "monotonic", lambda: next(readings))
+    monkeypatch.setattr(k8s_module, "MAX_CONFIGZ_BUDGET_SECONDS", 60)
+
+    result = scan_live_cluster_posture_with_evidence(
+        namespace="prod",
+        transport=transport,
+        enable_nodes_configz=True,
+    )
+
+    evidence = {item.collector_id: item for item in result.collectors}
+    assert evidence["kubelet_configz"].truncated is True
+    assert evidence["kubelet_configz"].object_count == 0
+    assert result.status is K8sPostureStatus.PARTIAL
+    assert transport.get_paths == []
+
+
 def test_posture_evidence_records_failed_collectors_without_raising() -> None:
     errors = {
         resource: K8sTransportError("connection failed")
@@ -511,6 +581,18 @@ def test_posture_evidence_records_failed_collectors_without_raising() -> None:
 
     assert result.status is K8sPostureStatus.FAILED
     assert {item.state for item in result.collectors if item.collector_id != "kubelet_configz"} == {CollectorState.FAILED}
+
+
+def test_posture_evidence_normalizes_invalid_in_cluster_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+    monkeypatch.setenv("KUBERNETES_SERVICE_PORT", "0")
+
+    result = scan_live_cluster_posture_with_evidence()
+
+    assert result.status is K8sPostureStatus.FAILED
+    assert result.transport == "unavailable"
+    assert {item.state for item in result.collectors if item.collector_id != "kubelet_configz"} == {CollectorState.FAILED}
+    assert {item.message for item in result.collectors if item.collector_id != "kubelet_configz"} == {"Invalid Kubernetes service port"}
 
 
 def test_compatibility_wrapper_fails_closed_on_partial_evidence(monkeypatch: pytest.MonkeyPatch) -> None:

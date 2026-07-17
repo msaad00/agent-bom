@@ -21,6 +21,7 @@ from typing import Any, Protocol
 
 from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.graph import AttackPath, EntityType, NodeDimensions, NodeStatus, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from agent_bom.graph.delta_digest import PriorSnapshotDigest
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 
 # Only finding-like nodes (vulnerabilities, misconfigurations, drift) carry a
@@ -159,6 +160,8 @@ class GraphStoreProtocol(Protocol):
         min_severity_rank: int = 0,
         relationship_types: frozenset[str] | None = None,
     ) -> UnifiedGraph: ...
+
+    def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = "") -> PriorSnapshotDigest: ...
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]: ...
 
@@ -1180,6 +1183,58 @@ class SQLiteGraphStore:
                 scan_id=scan_id,
                 entity_types=entity_types,
                 min_severity_rank=min_severity_rank,
+            )
+        finally:
+            conn.close()
+
+    def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = "") -> PriorSnapshotDigest:
+        """Build a bounded :class:`PriorSnapshotDigest` for delta diffing.
+
+        Streams the prior snapshot's node ids (id column only) and the small
+        AGENT-node + attack-path/interaction-risk key sets instead of loading a
+        second full ``UnifiedGraph`` — so peak RSS on the persist path is not
+        doubled by the previous snapshot (#4055 / #4075).
+        """
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return PriorSnapshotDigest.empty()
+        try:
+            effective_scan_id, _created = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return PriorSnapshotDigest.empty()
+            node_ids: set[str] = set()
+            for row in conn.execute(
+                "SELECT id FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?",
+                (tenant_id, effective_scan_id),
+            ):
+                node_ids.add(row["id"])
+            agent_nodes: dict[str, UnifiedNode] = {
+                node.id: node
+                for node in sqlite_graph_store.iter_graph_nodes(
+                    conn,
+                    tenant_id=tenant_id,
+                    scan_id=effective_scan_id,
+                    entity_types={EntityType.AGENT.value},
+                )
+            }
+            attack_path_keys: set[tuple[str, str]] = set()
+            for row in conn.execute(
+                "SELECT source_node, target_node FROM attack_paths WHERE tenant_id = ? AND scan_id = ?",
+                (tenant_id, effective_scan_id),
+            ):
+                attack_path_keys.add((row["source_node"], row["target_node"]))
+            interaction_risk_keys: set[tuple[str, tuple[str, ...]]] = set()
+            for row in conn.execute(
+                "SELECT pattern, agents FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?",
+                (tenant_id, effective_scan_id),
+            ):
+                interaction_risk_keys.add((row["pattern"], tuple(sorted(json.loads(row["agents"])))))
+            return PriorSnapshotDigest(
+                node_ids=frozenset(node_ids),
+                agent_nodes=agent_nodes,
+                attack_path_keys=frozenset(attack_path_keys),
+                interaction_risk_keys=frozenset(interaction_risk_keys),
             )
         finally:
             conn.close()

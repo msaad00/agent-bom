@@ -19,6 +19,8 @@ from typing import Any
 
 from agent_bom.event_normalization import build_event_ref, build_event_relationships
 from agent_bom.graph.container import UnifiedGraph
+from agent_bom.graph.delta_digest import PriorSnapshotDigest
+from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType
 from agent_bom.posture_streaming import PostureEvent, WebhookDestination, WebhookOutbox, default_webhook_outbox
@@ -28,15 +30,15 @@ logger = logging.getLogger(__name__)
 
 
 def _graph_node_ref(
-    graph: UnifiedGraph | None,
+    nodes: Mapping[str, UnifiedNode] | None,
     node_id: str,
     *,
     role: str,
 ) -> dict[str, Any] | None:
-    """Resolve one graph node into a canonical event target reference."""
-    if graph is None:
+    """Resolve one node (from a node mapping) into a canonical event target ref."""
+    if nodes is None:
         return None
-    node = graph.nodes.get(node_id)
+    node = nodes.get(node_id)
     if node is None:
         return None
     return build_event_ref(
@@ -54,12 +56,12 @@ def _graph_node_ref(
 
 def _graph_relationships(
     *,
-    graph: UnifiedGraph | None,
+    nodes: Mapping[str, UnifiedNode] | None,
     targets: list[tuple[str, str]],
     source: str = "graph_delta",
 ) -> dict[str, Any] | None:
     """Build an additive canonical relationship envelope for delta alerts."""
-    target_refs = [_graph_node_ref(graph, node_id, role=role) for node_id, role in targets]
+    target_refs = [_graph_node_ref(nodes, node_id, role=role) for node_id, role in targets]
     return build_event_relationships(source=source, targets=[ref for ref in target_refs if ref])
 
 
@@ -83,10 +85,30 @@ def compute_delta_alerts(
 
     Returns a list of alert dicts suitable for SIEM push or webhook delivery.
     Each alert has: type, severity, title, description, node_ids, scan_id.
+
+    Thin wrapper over :func:`compute_delta_alerts_from_digest` — projects the
+    fully materialised ``old_graph`` into a :class:`PriorSnapshotDigest` first.
+    Callers that can stream the prior snapshot (the scan pipeline) should build
+    the digest via a bounded store read and call the digest form directly, so
+    peak RSS is not doubled by a second full graph (#4055 / #4075).
+    """
+    return compute_delta_alerts_from_digest(PriorSnapshotDigest.from_graph(old_graph), new_graph)
+
+
+def compute_delta_alerts_from_digest(
+    prior: PriorSnapshotDigest,
+    new_graph: UnifiedGraph,
+) -> list[dict[str, Any]]:
+    """Compute delta alerts against a bounded prior-snapshot digest.
+
+    Byte-identical to :func:`compute_delta_alerts` on the same underlying
+    snapshots, but the prior side is a :class:`PriorSnapshotDigest` (node ids +
+    agent nodes + path/risk keys) rather than a whole ``UnifiedGraph`` — so the
+    caller never materialises a second full graph just to diff against it.
     """
     alerts: list[dict[str, Any]] = []
 
-    old_nodes = old_graph.nodes if old_graph else {}
+    old_node_ids = prior.node_ids
 
     # ── New critical/high findings ───────────────────────────────────
     # Large control-plane snapshots are usually dominated by unchanged
@@ -94,7 +116,7 @@ def compute_delta_alerts(
     # against the prior snapshot instead of materializing full node-id
     # difference sets or scanning the same delta twice.
     for nid, node in new_graph.nodes.items():
-        if nid in old_nodes:
+        if nid in old_node_ids:
             continue
         if node.entity_type == EntityType.VULNERABILITY and SEVERITY_RANK.get(node.severity, 0) >= 4:
             details = {
@@ -118,7 +140,7 @@ def compute_delta_alerts(
                     "scan_id": new_graph.scan_id,
                     "details": details,
                     "event_relationships": _graph_relationships(
-                        graph=new_graph,
+                        nodes=new_graph.nodes,
                         targets=[(nid, "affected_finding")],
                     ),
                     "attributes": {
@@ -147,16 +169,14 @@ def compute_delta_alerts(
                     "scan_id": new_graph.scan_id,
                     "details": details,
                     "event_relationships": _graph_relationships(
-                        graph=new_graph,
+                        nodes=new_graph.nodes,
                         targets=[(nid, "affected_finding")],
                     ),
                 }
             )
 
     # ── New attack paths with high composite risk ────────────────────
-    old_path_keys = set()
-    if old_graph:
-        old_path_keys = {(p.source, p.target) for p in old_graph.attack_paths}
+    old_path_keys = prior.attack_path_keys
     for path in new_graph.attack_paths:
         if (path.source, path.target) not in old_path_keys and path.composite_risk >= 7.0:
             details = {
@@ -180,7 +200,7 @@ def compute_delta_alerts(
                     "scan_id": new_graph.scan_id,
                     "details": details,
                     "event_relationships": _graph_relationships(
-                        graph=new_graph,
+                        nodes=new_graph.nodes,
                         targets=[
                             (path.source, "path_source"),
                             (path.target, "path_target"),
@@ -195,9 +215,7 @@ def compute_delta_alerts(
             )
 
     # ── New lateral movement risks ───────────────────────────────────
-    old_risk_keys = set()
-    if old_graph:
-        old_risk_keys = {(r.pattern, tuple(sorted(r.agents))) for r in old_graph.interaction_risks}
+    old_risk_keys = prior.interaction_risk_keys
     for risk in new_graph.interaction_risks:
         key = (risk.pattern, tuple(sorted(risk.agents)))
         if key not in old_risk_keys and risk.risk_score >= 7.0:
@@ -222,7 +240,7 @@ def compute_delta_alerts(
                     "scan_id": new_graph.scan_id,
                     "details": details,
                     "event_relationships": _graph_relationships(
-                        graph=new_graph,
+                        nodes=new_graph.nodes,
                         targets=[(node_id, "affected_agent") for node_id in node_ids],
                     ),
                     "attributes": {
@@ -234,8 +252,8 @@ def compute_delta_alerts(
             )
 
     # ── Nodes removed (potential drift) ──────────────────────────────
-    if old_graph:
-        agent_removed = [nid for nid, node in old_nodes.items() if nid not in new_graph.nodes and node.entity_type == EntityType.AGENT]
+    if prior.agent_nodes:
+        agent_removed = [nid for nid in prior.agent_nodes if nid not in new_graph.nodes]
         if agent_removed:
             details = {
                 "node_ids": agent_removed,
@@ -254,7 +272,7 @@ def compute_delta_alerts(
                     "scan_id": new_graph.scan_id,
                     "details": details,
                     "event_relationships": _graph_relationships(
-                        graph=old_graph,
+                        nodes=prior.agent_nodes,
                         targets=[(node_id, "removed_agent") for node_id in agent_removed],
                     ),
                 }

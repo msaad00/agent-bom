@@ -973,6 +973,67 @@ class PostgresGraphStore:
 
             return graph
 
+    def prior_delta_digest(self, *, tenant_id: str = "", scan_id: str = ""):
+        """Build a bounded prior-snapshot digest for delta diffing.
+
+        Streams the prior snapshot's node ids via a server-side cursor and loads
+        only the small AGENT-node + attack-path/interaction-risk key sets, so the
+        persist path never materialises a second full ``UnifiedGraph`` just to
+        diff against it (#4055 / #4075).
+        """
+        from agent_bom.graph.delta_digest import PriorSnapshotDigest
+        from agent_bom.graph.types import EntityType
+
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return PriorSnapshotDigest.empty()
+
+        node_ids: set[str] = set()
+        agent_nodes: dict[str, Any] = {}
+        attack_path_keys: set[tuple[str, str]] = set()
+        interaction_risk_keys: set[tuple[str, tuple[str, ...]]] = set()
+
+        with _tenant_connection(self._pool) as conn:
+            # Server-side (named) cursor streams node ids without buffering the
+            # whole result set client-side — peak stays bounded by the id set.
+            with conn.cursor(name="prior_delta_digest_ids") as cur:
+                cur.itersize = 5000
+                cur.execute(
+                    "SELECT id FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s",
+                    (tenant_id, effective_scan_id),
+                )
+                for row in cur:
+                    node_ids.add(row[0])
+
+            agent_query = (
+                "SELECT id, entity_type, label, category_uid, class_uid, type_uid, status, risk_score, severity, "
+                "severity_id, first_seen, last_seen, attributes, compliance_tags, data_sources, dimensions "
+                "FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s AND entity_type = %s"
+            )
+            for row in conn.execute(agent_query, (tenant_id, effective_scan_id, EntityType.AGENT.value)).fetchall():
+                node = self._node_from_row(row)
+                agent_nodes[node.id] = node
+
+            for row in conn.execute(
+                "SELECT source_node, target_node FROM attack_paths WHERE tenant_id = %s AND scan_id = %s",
+                (tenant_id, effective_scan_id),
+            ).fetchall():
+                attack_path_keys.add((row[0], row[1]))
+
+            for row in conn.execute(
+                "SELECT pattern, agents FROM interaction_risks WHERE tenant_id = %s AND scan_id = %s",
+                (tenant_id, effective_scan_id),
+            ).fetchall():
+                interaction_risk_keys.add((row[0], tuple(sorted(json.loads(row[1])))))
+
+        return PriorSnapshotDigest(
+            node_ids=frozenset(node_ids),
+            agent_nodes=agent_nodes,
+            attack_path_keys=frozenset(attack_path_keys),
+            interaction_risk_keys=frozenset(interaction_risk_keys),
+        )
+
     def nodes_by_ids(
         self,
         *,

@@ -16,6 +16,7 @@ from agent_bom.graph.container import (
     LegendEntry,
     UnifiedGraph,
 )
+from agent_bom.graph.delta_digest import PriorSnapshotDigest
 from agent_bom.graph.dependency_reach import (
     PackageReachability,
     ReachabilityReport,
@@ -41,7 +42,12 @@ from agent_bom.graph.severity import (
 )
 from agent_bom.graph.types import EntityType, GraphLayout, GraphSemanticLayer, NodeStatus, RelationshipType
 from agent_bom.graph.util import _now_iso
-from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts, format_alerts_for_siem
+from agent_bom.graph.webhooks import (
+    compute_delta_alerts,
+    compute_delta_alerts_from_digest,
+    dispatch_delta_alerts,
+    format_alerts_for_siem,
+)
 
 __all__ = [
     # Types
@@ -94,6 +100,8 @@ __all__ = [
     # Builder
     "build_unified_graph_from_report",
     "compute_delta_alerts",
+    "compute_delta_alerts_from_digest",
+    "PriorSnapshotDigest",
     "dispatch_delta_alerts",
     "format_alerts_for_siem",
     # Dependency reachability (#1896)

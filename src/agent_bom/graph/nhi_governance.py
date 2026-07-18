@@ -25,6 +25,13 @@ the three core NHI governance analytics that close the 2026-06-19 audit gap:
    dormancy. The score is written back onto the ``managed_identity`` node so the
    graph, API, and findings all rank the same way.
 
+The verdict covers every non-human identity type in the graph — Azure/
+discovered ``managed_identity`` nodes plus AWS IAM ``role`` and GCP
+``service_account`` nodes — so CIEM over-grant / dormant / orphan findings span
+all three clouds. For the cloud-inventory role/service-account types, which do
+not carry owner or last-used as a first-class contract, absent evidence is
+fail-closed: it is never turned into a dormant / over-grant / orphan verdict.
+
 Reference-only: consumes labels, timestamps, and edge metadata already in the
 graph; never touches secret material and never raises into the builder.
 """
@@ -39,13 +46,27 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.api.credential_expiry import classify_credential
-from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
 from agent_bom.graph.container import UnifiedGraph
+from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 
 _OVERLAY_SOURCE = "nhi-governance"
 
 DEFAULT_DORMANT_DAYS = 90
+
+# Identity node types that carry a governance verdict. MANAGED_IDENTITY (Azure /
+# discovered NHIs) is the original; ROLE (AWS IAM roles, Snowflake roles) and
+# SERVICE_ACCOUNT (GCP service accounts) are governed too so CIEM over-grant /
+# dormant findings cover AWS and GCP, not just Azure.
+_GOVERNED_ENTITY_TYPES = frozenset({EntityType.MANAGED_IDENTITY, EntityType.ROLE, EntityType.SERVICE_ACCOUNT})
+
+# For these types the base cloud inventory does NOT carry owner / last-used as a
+# first-class contract, so ABSENT evidence must never be turned into a dormant /
+# over-grant / orphan verdict (fail-closed). MANAGED_IDENTITY keeps its legacy
+# "no timestamp == dormant" / "no owner == orphaned" semantics because the NHI
+# discovery overlay always supplies those fields.
+_STRICT_EVIDENCE_TYPES = frozenset({EntityType.ROLE, EntityType.SERVICE_ACCOUNT})
 
 # Permission/scope edges that count as a *granted* capability for right-sizing.
 _GRANT_RELS = frozenset({RelationshipType.HAS_PERMISSION, RelationshipType.SCOPED_TO})
@@ -184,6 +205,20 @@ def _granted_targets(graph: UnifiedGraph, node_id: str) -> dict[str, str | None]
     return granted
 
 
+def _node_provider(attrs: Mapping[str, Any]) -> str | None:
+    """Provider attribution for an identity node.
+
+    MANAGED_IDENTITY nodes carry ``provider``; cloud-inventory ROLE /
+    SERVICE_ACCOUNT nodes carry ``cloud_provider``. Read either so AWS/GCP
+    findings are attributed correctly.
+    """
+    for key in ("provider", "cloud_provider"):
+        value = attrs.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 def _exposed_targets(graph: UnifiedGraph, targets: set[str]) -> bool:
     return any(graph.nodes.get(tid) is not None and bool(graph.nodes[tid].attributes.get("internet_exposed")) for tid in targets)
 
@@ -209,19 +244,29 @@ def evaluate_identity_governance(
         for key, vals in usage.items():
             usage_map[str(key)] = {str(v) for v in vals}
 
-    identities = [n for n in graph.nodes.values() if n.entity_type == EntityType.MANAGED_IDENTITY]
+    identities = [n for n in graph.nodes.values() if n.entity_type in _GOVERNED_ENTITY_TYPES]
     results: list[IdentityGovernance] = []
     for node in identities[:_MAX_IDENTITIES]:
         attrs = node.attributes
+        strict = node.entity_type in _STRICT_EVIDENCE_TYPES
         identity_id = str(attrs.get("identity_id") or node.id)
         owner = attrs.get("owner")
         owner_str = str(owner).strip() if isinstance(owner, str) and str(owner).strip() else None
 
         granted = _granted_targets(graph, node.id)
-        observed = set(usage_map.get(identity_id, set())) | set(usage_map.get(node.id, set()))
-        # Edge-level last_used markers count as observed usage for that target.
-        observed |= {tid for tid, last_used in granted.items() if last_used}
-        unused = sorted(tid for tid in granted if tid not in observed)
+        # Observed usage: a caller-supplied usage map keyed by identity_id or node
+        # id, plus any per-target ``last_used_at`` marker on the grant edges.
+        mapped_usage = set(usage_map.get(identity_id, set())) | set(usage_map.get(node.id, set()))
+        edge_usage = {tid for tid, last_used in granted.items() if last_used}
+        observed = mapped_usage | edge_usage
+        has_observed_signal = bool(mapped_usage or edge_usage)
+        if strict and not has_observed_signal:
+            # Fail-closed: without a per-target usage signal for an AWS/GCP
+            # identity we cannot claim any grant is unused — never fabricate an
+            # over-grant from absent evidence.
+            unused: list[str] = []
+        else:
+            unused = sorted(tid for tid in granted if tid not in observed)
 
         # ── Dormancy ──
         last_used_at = attrs.get("last_used_at")
@@ -230,10 +275,18 @@ def evaluate_identity_governance(
         if last_used_dt is not None:
             dormancy_days = max(0, _days_since(last_used_dt, now))
             is_dormant = dormancy_days >= window
+        elif strict:
+            # No real last-used telemetry for an AWS/GCP identity → not
+            # assessable. Fail-closed: absence of evidence is never dormancy.
+            is_dormant = False
         else:
             # No usage timestamp at all → treat as dormant (never-observed).
             is_dormant = True
-        is_orphaned = owner_str is None
+        # Orphan detection needs an owner *contract*: MANAGED_IDENTITY always
+        # carries an ``owner`` attribute (empty when unowned), so a missing owner
+        # is a real orphan. Cloud-inventory ROLE/SERVICE_ACCOUNT nodes carry no
+        # owner key, so their absence is "not tracked", not "orphaned".
+        is_orphaned = ("owner" in attrs) and owner_str is None if strict else owner_str is None
 
         # ── Privilege / exposure ──
         is_privileged = bool(attrs.get("escalates_to_admin") or attrs.get("is_admin") or attrs.get("privilege_level") == "admin")
@@ -245,7 +298,7 @@ def evaluate_identity_governance(
             {
                 "id": identity_id,
                 "name": node.label,
-                "provider": attrs.get("provider"),
+                "provider": _node_provider(attrs),
                 "credential_expires_at": attrs.get("credential_expires_at"),
                 "last_rotated": attrs.get("last_rotated") or attrs.get("created_at"),
             },
@@ -294,7 +347,7 @@ def evaluate_identity_governance(
                 node_id=node.id,
                 identity_id=identity_id,
                 name=node.label,
-                provider=attrs.get("provider") if isinstance(attrs.get("provider"), str) else None,
+                provider=_node_provider(attrs),
                 owner=owner_str,
                 risk_score=risk_score,
                 risk_band=_risk_band(risk_score),
@@ -350,7 +403,7 @@ def build_nhi_governance_findings(
             labels = [_target_label(graph, tid) for tid in v.unused_targets[:20]]
             findings.append(
                 Finding(
-                    finding_type=FindingType.CREDENTIAL_EXPOSURE,
+                    finding_type=FindingType.CIEM_OVER_PRIVILEGE,
                     source=FindingSource.MCP_SCAN,
                     asset=asset,
                     severity="medium" if v.is_privileged else "low",
@@ -407,6 +460,133 @@ def build_nhi_governance_findings(
             )
 
     return findings
+
+
+# Identity node types that carry AWS Access-Advisor service grants (cloud IAM
+# principals + agent-bom-issued/discovered NHIs). Access-Advisor evidence is
+# only ever attached to AWS roles/users today; the wider set future-proofs the
+# emitter without changing behaviour where no such edge exists.
+_CIEM_IDENTITY_TYPES = frozenset(
+    {
+        EntityType.ROLE,
+        EntityType.USER,
+        EntityType.SERVICE_ACCOUNT,
+        EntityType.SERVICE_PRINCIPAL,
+        EntityType.FEDERATED_IDENTITY,
+        EntityType.MANAGED_IDENTITY,
+    }
+)
+
+
+def _access_advisor_grants(graph: UnifiedGraph, node_id: str) -> dict[str, str | None]:
+    """Return {granted service target id: last_used_at} for Access-Advisor edges.
+
+    Only edges explicitly marked ``access_advisor`` are considered, so effective-
+    permission closure edges and other grants are never mistaken for observed
+    (or unobserved) usage. ``None`` marks a granted-but-never-used service.
+    """
+    grants: dict[str, str | None] = {}
+    for edge in graph.adjacency.get(node_id, []):
+        if edge.relationship not in _GRANT_RELS:
+            continue
+        evidence = edge.evidence
+        if not isinstance(evidence, Mapping) or not evidence.get("access_advisor"):
+            continue
+        raw = evidence.get("last_used_at")
+        last_used = str(raw) if isinstance(raw, str) and raw.strip() else None
+        if edge.target not in grants or (last_used and not grants[edge.target]):
+            grants[edge.target] = last_used
+    return grants
+
+
+def _is_privileged_identity(node: UnifiedNode) -> bool:
+    attrs = node.attributes
+    return bool(
+        attrs.get("escalates_to_admin")
+        or attrs.get("is_admin")
+        or attrs.get("can_escalate_privilege")
+        or str(attrs.get("privilege_level") or "").strip().lower() == "admin"
+    )
+
+
+def build_ciem_over_privilege_findings(graph: UnifiedGraph) -> list[Finding]:
+    """Emit CIEM over-privilege findings from AWS Access-Advisor usage evidence.
+
+    An identity granted a service it has never accessed (Access-Advisor reports
+    no ``last_authenticated``) is over-privileged and should be right-sized. Only
+    identities carrying Access-Advisor grant edges are evaluated, and only
+    never-used grants are flagged — where evidence is absent nothing is claimed
+    (honest counts). Never raises into the pipeline.
+    """
+    findings: list[Finding] = []
+    for node in graph.nodes.values():
+        if node.entity_type not in _CIEM_IDENTITY_TYPES:
+            continue
+        grants = _access_advisor_grants(graph, node.id)
+        if not grants:
+            continue
+        unused = sorted(tid for tid, last_used in grants.items() if not last_used)
+        if not unused:
+            continue
+        labels = [_target_label(graph, tid) for tid in unused]
+        granted_count = len(grants)
+        used_count = granted_count - len(unused)
+        privileged = _is_privileged_identity(node)
+        provider = str(node.attributes.get("cloud_provider") or "").strip() or None
+        identifier = str(node.attributes.get("principal_id") or node.attributes.get("identity_id") or node.id)
+        asset = Asset(name=node.label, asset_type="identity", identifier=identifier, location=provider)
+        shown = labels[:20]
+        overflow = "…" if len(labels) > 20 else "."
+        findings.append(
+            Finding(
+                finding_type=FindingType.CIEM_OVER_PRIVILEGE,
+                source=FindingSource.GRAPH_ANALYSIS,
+                asset=asset,
+                severity="medium" if privileged else "low",
+                title=f"Over-privileged identity: {node.label} has {len(unused)} unused permission(s)",
+                description=(
+                    f"Identity '{node.label}' is granted access to {granted_count} service(s) but AWS Access Advisor "
+                    f"shows it has used only {used_count}. Right-size by removing the never-used grants: "
+                    f"{', '.join(shown)}{overflow}"
+                ),
+                remediation_guidance=(
+                    "Remove or scope down the never-used service permissions to enforce least privilege. "
+                    "Confirm against a full Access-Advisor observation window before pruning."
+                ),
+                evidence={
+                    "ciem": "over_privilege",
+                    "analysis": "access_advisor_rightsizing",
+                    "identity_id": identifier,
+                    "cloud_provider": provider,
+                    "granted_count": granted_count,
+                    "used_count": used_count,
+                    "unused_permission_count": len(unused),
+                    "unused_permissions": shown,
+                    "privileged": privileged,
+                },
+                risk_score=round(min(10.0, 4.0 + (2.0 if privileged else 0.0) + min(len(unused), 4)), 2),
+                is_actionable=True,
+                impact_category="over_privilege",
+                id=stable_id("ciem_over_privilege", node.id, *unused),
+            )
+        )
+    return findings
+
+
+def build_ciem_over_privilege_findings_data(graph: UnifiedGraph) -> list[dict[str, Any]]:
+    """Serializable form stored on the report at the graph-build call site.
+
+    Mirrors the toxic-combination side-block: the report carries the dicts and
+    :meth:`AIBOMReport.to_findings` rehydrates them into the unified stream.
+    """
+    return [f.to_dict() for f in build_ciem_over_privilege_findings(graph)]
+
+
+def ciem_over_privilege_findings_from_data(data: list[dict[str, Any]] | None) -> list[Finding]:
+    """Rehydrate stored CIEM over-privilege dicts into Findings (preserves type)."""
+    from agent_bom.graph.toxic_findings import toxic_combination_findings_from_data
+
+    return toxic_combination_findings_from_data(data or [])
 
 
 def apply_nhi_governance(
@@ -602,7 +782,10 @@ __all__ = [
     "IdentityGovernance",
     "apply_nhi_governance",
     "apply_nhi_governance_with_findings",
+    "build_ciem_over_privilege_findings",
+    "build_ciem_over_privilege_findings_data",
     "build_nhi_governance_findings",
+    "ciem_over_privilege_findings_from_data",
     "describe_nhi_governance_posture",
     "describe_nhi_lifecycle_posture",
     "dormant_days",

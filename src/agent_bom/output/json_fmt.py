@@ -869,9 +869,7 @@ def _blast_radius_json_entry(
         "package": f"{br.package.name}@{br.package.version}",
         "ecosystem": br.package.ecosystem,
         "layer_attribution": [_package_occurrence_to_dict(occ) for occ in br.layer_attribution],
-        "introduced_in_layer": (
-            _package_occurrence_to_dict(br.package.primary_occurrence) if br.package.primary_occurrence else None
-        ),
+        "introduced_in_layer": (_package_occurrence_to_dict(br.package.primary_occurrence) if br.package.primary_occurrence else None),
         "package_discovery_provenance": package_discovery_provenance(br.package),
         "package_version_provenance": package_version_provenance(br.package),
         "is_malicious": br.package.is_malicious,
@@ -893,9 +891,7 @@ def _blast_radius_json_entry(
         "user_interaction": getattr(br.vulnerability, "user_interaction", None),
         "network_exploitable": getattr(br.vulnerability, "network_exploitable", False),
         "triage_priority": fused_triage_priority(
-            severity=(
-                br.vulnerability.severity.value if hasattr(br.vulnerability.severity, "value") else str(br.vulnerability.severity)
-            ),
+            severity=(br.vulnerability.severity.value if hasattr(br.vulnerability.severity, "value") else str(br.vulnerability.severity)),
             is_kev=bool(br.vulnerability.is_kev),
             epss_score=getattr(br.vulnerability, "epss_score", None),
             network_exploitable=bool(getattr(br.vulnerability, "network_exploitable", False)),
@@ -933,13 +929,8 @@ def to_json(report: AIBOMReport) -> dict:
     from agent_bom.scorecard import summarize_scorecard_coverage
 
     all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
-    cve_pairs = (
-        list(zip(cve_findings(report, report.blast_radii), report.blast_radii, strict=True)) if report.blast_radii else []
-    )
-    exposure_paths = [
-        exposure_path_for_report_finding(finding, br=br, rank=rank)
-        for rank, (finding, br) in enumerate(cve_pairs, start=1)
-    ]
+    cve_pairs = list(zip(cve_findings(report, report.blast_radii), report.blast_radii, strict=True)) if report.blast_radii else []
+    exposure_paths = [exposure_path_for_report_finding(finding, br=br, rank=rank) for rank, (finding, br) in enumerate(cve_pairs, start=1)]
     unified_findings = [finding.to_dict() for finding in report.to_findings()]
     finding_summary = _build_finding_summary(unified_findings)
     result = {
@@ -1185,8 +1176,7 @@ def to_json(report: AIBOMReport) -> dict:
             for agent in report.agents
         ],
         "blast_radius": [
-            _blast_radius_json_entry(br, finding, rank, exposure_paths[rank - 1])
-            for rank, (finding, br) in enumerate(cve_pairs, start=1)
+            _blast_radius_json_entry(br, finding, rank, exposure_paths[rank - 1]) for rank, (finding, br) in enumerate(cve_pairs, start=1)
         ],
         "exposure_paths": {
             "schema_version": "1",
@@ -1210,9 +1200,7 @@ def to_json(report: AIBOMReport) -> dict:
     if report.ai_enrichment_metadata:
         result["ai_enrichment_metadata"] = report.ai_enrichment_metadata
     if report.ai_finding_assessments:
-        result["ai_finding_assessments"] = [
-            assessment.model_dump(mode="json") for assessment in report.ai_finding_assessments
-        ]
+        result["ai_finding_assessments"] = [assessment.model_dump(mode="json") for assessment in report.ai_finding_assessments]
 
     # Skill security audit (only when skill files were scanned)
     if report.skill_audit_data:
@@ -1328,6 +1316,16 @@ def to_json(report: AIBOMReport) -> dict:
             "source": "graph-toxic-combination",
             "count": len(report.toxic_combination_findings_data),
             "findings": report.toxic_combination_findings_data,
+        }
+
+    # CIEM over-privilege right-sizing (also folded into the unified ``findings``
+    # block above); surfaced standalone for discoverability by the exec read.
+    if report.ciem_over_privilege_findings_data:
+        result["ciem_over_privilege"] = {
+            "schema_version": "1",
+            "source": "graph-ciem-rightsizing",
+            "count": len(report.ciem_over_privilege_findings_data),
+            "findings": report.ciem_over_privilege_findings_data,
         }
 
     if report.runtime_correlation:

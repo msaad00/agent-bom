@@ -449,6 +449,10 @@ class ComplianceReportScope(BaseModel):
     control_count: int = 0
     finding_count: int = 0
     audit_event_count: int = 0
+    # True when the audit window held more entries than the export cap; the
+    # bundle then carries a partial (most-recent) set, not the full window.
+    audit_events_truncated: bool = False
+    audit_event_limit: int = 0
     completed_scan_count: int = 0
 
 
@@ -467,6 +471,8 @@ class ComplianceAuditIntegrity(BaseModel):
     verified: int = 0
     tampered: int = 0
     checked: int = 0
+    # True when the checked set is a truncated (partial) view of the window.
+    truncated: bool = False
 
 
 class ComplianceThreatModel(BaseModel):

@@ -47,15 +47,20 @@ def cache_key(
     scan_id: str | None,
     origin: str | None,
     window_days: int = 0,
+    status: str | None = None,
 ) -> tuple[Any, ...]:
     # ``window_days`` is part of the key so a windowed total (last ~90d) never
     # collides with an all-history total under the same tenant/filter (#4009).
+    # ``status`` is part of the key so an open-only total (the default) never
+    # collides with an all/resolved total under the same tenant/filter — the
+    # lifecycle filter changes the COUNT basis.
     return (
         tenant_id,
         (severity or "").lower(),
         scan_id or "",
         origin or "",
         int(window_days),
+        (status or "").lower(),
     )
 
 
@@ -106,6 +111,7 @@ def resolve_effective_approximate_total(
     scan_id: str | None,
     origin: str | None = "bulk_ingest",
     window_days: int = 0,
+    status: str | None = None,
 ) -> bool:
     """Return whether list-findings should skip ``COUNT(*)`` for the bulk slice."""
     if requested:
@@ -113,6 +119,6 @@ def resolve_effective_approximate_total(
     threshold = approximate_total_threshold()
     if threshold is None:
         return False
-    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin=origin, window_days=window_days)
+    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin=origin, window_days=window_days, status=status)
     cached = get_cached_total(key)
     return cached is not None and cached >= threshold

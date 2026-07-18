@@ -277,10 +277,24 @@ def test_bulk_reconcile_absent_api() -> None:
     assert resp.status_code == 201, resp.text
     assert resp.json()["reconciled"] == 1
 
+    # Default /v1/findings is now lifecycle-aware (open = live posture): the
+    # reconciled-away finding is resolved and must NOT appear in the default
+    # view. It surfaces under ``?status=all`` / ``?status=resolved`` with its
+    # resolved_at stamp. (Updated for the P1 fix — the prior assertion encoded
+    # the buggy behavior where resolved rows ranked as live.)
     listed = client.get("/v1/findings", params={"limit": 50}).json()
     by_id = {item["id"]: item for item in listed["findings"]}
     assert by_id["finding-kept-api"]["status"] == "open"
-    assert by_id["finding-dropped-api"]["status"] == "resolved"
-    assert by_id["finding-dropped-api"]["resolved_at"] == TUE
+    assert "finding-dropped-api" not in by_id, "resolved findings must be excluded from the default (open) view"
+
+    all_listed = client.get("/v1/findings", params={"limit": 50, "status": "all"}).json()
+    all_by_id = {item["id"]: item for item in all_listed["findings"]}
+    assert all_by_id["finding-kept-api"]["status"] == "open"
+    assert all_by_id["finding-dropped-api"]["status"] == "resolved"
+    assert all_by_id["finding-dropped-api"]["resolved_at"] == TUE
+
+    resolved_listed = client.get("/v1/findings", params={"limit": 50, "status": "resolved"}).json()
+    resolved_ids = {item["id"] for item in resolved_listed["findings"]}
+    assert resolved_ids == {"finding-dropped-api"}
 
     reset_compliance_hub_store()

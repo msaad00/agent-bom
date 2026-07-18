@@ -106,8 +106,9 @@ def test_kev_triggers_code_security():
 
 
 def test_label_functions():
+    # agent-bom's own descriptor, not the copyrighted CIS Controls v8 title.
     lbl = cis_label("CIS-07.1")
-    assert lbl == "CIS-07.1 Establish and maintain a vulnerability management process"
+    assert lbl == "CIS-07.1 Vulnerability-management program"
     labels = cis_labels(["CIS-02.1", "CIS-07.1"])
     assert len(labels) == 2
 

@@ -28,20 +28,25 @@ _HIGH_RISK = high_risk_severities()
 
 # ─── Catalog ──────────────────────────────────────────────────────────────────
 
+# NOTE — the descriptors below are agent-bom's OWN short wording for each
+# safeguard area, not the official CIS Controls v8 safeguard titles. CIS
+# Controls v8 is licensed CC BY-NC-ND, so its control text is NOT reproduced or
+# redistributed here; only the safeguard **identifier** (the fact) is used.
+# Consult the CIS source for the official titles: https://www.cisecurity.org/controls/v8
 CIS_CONTROLS: dict[str, str] = {
     # CIS 02 — Inventory and Control of Software Assets
-    "CIS-02.1": "Establish and maintain a software inventory",
-    "CIS-02.3": "Address unauthorized software",
-    "CIS-02.7": "Allowlist authorized libraries",
+    "CIS-02.1": "Software asset inventory",
+    "CIS-02.3": "Unauthorized-software remediation",
+    "CIS-02.7": "Approved-library allowlisting",
     # CIS 07 — Continuous Vulnerability Management
-    "CIS-07.1": "Establish and maintain a vulnerability management process",
-    "CIS-07.4": "Perform automated patch management",
-    "CIS-07.5": "Perform automated vulnerability scans of internal assets",
-    "CIS-07.6": "Perform automated vulnerability scans of public-facing assets",
+    "CIS-07.1": "Vulnerability-management program",
+    "CIS-07.4": "Automated patch remediation",
+    "CIS-07.5": "Internal-asset vulnerability scanning",
+    "CIS-07.6": "External-facing vulnerability scanning",
     # CIS 16 — Application Software Security
-    "CIS-16.1": "Establish and maintain a secure application development process",
-    "CIS-16.11": "Use standard hardening configuration templates",
-    "CIS-16.12": "Implement code-level security checks",
+    "CIS-16.1": "Secure application-development lifecycle",
+    "CIS-16.11": "Hardened application configuration baselines",
+    "CIS-16.12": "Code-level security testing",
 }
 
 

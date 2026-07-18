@@ -16,6 +16,25 @@ from agent_bom.discovery import CONFIG_LOCATIONS
 from agent_bom.discovery import discover_all as _discover_all_default
 from agent_bom.models import AgentType
 
+# Severity ordering for the aggregate SAST summary across multiple --code paths.
+# A failure or skip must outrank a clean/findings result so the summary never
+# hides that a path could not be scanned. Kept module-level so it is unit-testable.
+_SAST_STATUS_RANK = {"failed": 3, "skipped": 2, "findings": 1, "clean": 0}
+
+
+def _aggregate_sast_path_results(path_results: list[dict]) -> dict:
+    """Collapse per-``--code``-path SAST results into one honest summary.
+
+    With multiple code paths, a failure in an *earlier* path must not be lost
+    when a *later* path succeeds. Rank by execution status (failed/skipped
+    outrank findings/clean) and keep the highest-ranked path; ties resolve to
+    the first path at that rank, preserving the first failure's reason/detail.
+    """
+    return max(
+        path_results,
+        key=lambda result: _SAST_STATUS_RANK.get(str(result.get("execution_status")), 0),
+    )
+
 
 def _first_run_hints() -> list[tuple[str, str]]:
     """Return concrete config locations for common MCP clients on this platform."""
@@ -467,6 +486,7 @@ def run_local_discovery(
         from agent_bom.sast import SASTResult, SASTScanError, scan_code
 
         con.print(f"\n[bold blue]Running SAST scan on {len(code_paths)} path(s) via Semgrep...[/bold blue]\n")
+        sast_path_results: list[dict] = []
         for code_path in code_paths:
             try:
                 sast_packages, sast_result = scan_code(code_path, config=sast_config, offline=offline)
@@ -486,19 +506,23 @@ def run_local_discovery(
                         mcp_servers=[server],
                     )
                     ctx.agents.append(sast_agent)
-                ctx.sast_data = sast_result.to_dict()
+                sast_path_results.append(sast_result.to_dict())
             except SASTScanError as exc:
                 detail_by_reason = {
                     "offline_remote_config": "Offline mode disallows registry-backed rules.",
                     "offline_no_local_config": "Offline mode found no local Semgrep rule configuration.",
                     "semgrep_unavailable": "Semgrep is unavailable; install it or import an existing SARIF report.",
                 }
-                ctx.sast_data = SASTResult(
-                    execution_status=exc.execution_status,
-                    status_reason=exc.reason_code,
-                    status_detail=detail_by_reason.get(exc.reason_code, "SAST execution failed."),
-                ).to_dict()
+                sast_path_results.append(
+                    SASTResult(
+                        execution_status=exc.execution_status,
+                        status_reason=exc.reason_code,
+                        status_detail=detail_by_reason.get(exc.reason_code, "SAST execution failed."),
+                    ).to_dict()
+                )
                 con.print(f"  [yellow]![/yellow] {code_path}: [{exc.execution_status.value}] {exc.reason_code}")
+        if sast_path_results:
+            ctx.sast_data = _aggregate_sast_path_results(sast_path_results)
 
     # Step 1d3b: AI component source scan (--ai-inventory)
     ai_inventory_paths = kwargs.get("ai_inventory_paths", ())

@@ -23,20 +23,26 @@ _HIGH_RISK = high_risk_severities()
 
 # ─── Catalog ──────────────────────────────────────────────────────────────────
 
+# NOTE — the descriptors below are agent-bom's OWN short wording for each
+# criterion area, not the official AICPA Trust Services Criteria text. The AICPA
+# TSC is copyrighted, so its criteria text is NOT reproduced or redistributed
+# here; only the criterion **identifier** (the fact) is used. Consult the AICPA
+# source for the official wording:
+# https://www.aicpa.org/resources/landing/system-and-organization-controls-soc-suite-of-services
 SOC2_TSC: dict[str, str] = {
     # CC6 — Logical and physical access controls
-    "CC6.1": "Logical and physical access controls implemented",
-    "CC6.6": "Security boundaries and system access restricted",
-    "CC6.8": "Unauthorized or malicious software prevented or detected",
+    "CC6.1": "Logical/physical access restriction",
+    "CC6.6": "External access-boundary protection",
+    "CC6.8": "Malicious/unauthorized software controls",
     # CC7 — System operations
-    "CC7.1": "Detection and monitoring of anomalies and events",
-    "CC7.2": "Monitoring of system components for anomalies",
-    "CC7.4": "Incident response activities executed",
+    "CC7.1": "Anomaly and event detection",
+    "CC7.2": "Security-event monitoring",
+    "CC7.4": "Security-incident response",
     # CC8 — Change management
-    "CC8.1": "Change management processes authorized and implemented",
+    "CC8.1": "Change authorization and control",
     # CC9 — Risk mitigation
-    "CC9.1": "Risk mitigation activities identified and applied",
-    "CC9.2": "Vendor and business partner risk is managed",
+    "CC9.1": "Risk-mitigation activities",
+    "CC9.2": "Vendor/third-party risk management",
 }
 
 

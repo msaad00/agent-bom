@@ -1038,6 +1038,9 @@ jobs:
       - name: Verify cloud benchmark inventory (no catalog/registry/classification drift)
         run: python scripts/check_benchmark_drift.py
 
+      - name: Verify vendored framework catalog (NIST 800-53 + ISO crosswalk integrity)
+        run: python scripts/check_framework_catalog.py
+
       - name: Verify product surface contract
         run: python scripts/check_product_surface_contract.py
 

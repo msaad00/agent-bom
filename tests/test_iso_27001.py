@@ -102,7 +102,8 @@ def test_fixable_triggers_secure_coding():
 
 
 def test_label_functions():
-    assert iso_27001_label("A.8.8") == "A.8.8 Management of technical vulnerabilities"
+    # agent-bom's own descriptor, not the copyrighted ISO/IEC 27001:2022 title.
+    assert iso_27001_label("A.8.8") == "A.8.8 Technical vulnerability management"
     labels = iso_27001_labels(["A.5.19", "A.8.8"])
     assert len(labels) == 2
 

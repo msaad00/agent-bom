@@ -23,11 +23,23 @@ attribution emerges only because a shared check happens to evidence controls in
 several frameworks. Consumers and UI copy must label these as vendor-asserted,
 never "official".
 
-PR2 SEAM. ``FRAMEWORK_CONTROL_CATALOG`` is the registry where provenanced
-authoritative catalogs plug in later: ``framework -> {control_id ->
-ControlSpec(title, evidencing_checks, ...)}``. PR1 ships it **empty** — no new
-catalog data, no new framework claims — and resolution here does not yet depend
-on it. ``control_spec()`` is the read seam PR2 fills.
+PR2 CATALOG. ``FRAMEWORK_CONTROL_CATALOG`` is the registry of provenanced
+authoritative catalogs: ``framework -> {control_id -> ControlSpec(title,
+evidencing_checks, ...)}``. It is populated from the vendored data in
+``agent_bom.framework_catalog``:
+
+* ``nist-800-53`` carries the full NIST SP 800-53 Rev 5 catalog — control IDs
+  and **authoritative public-domain titles** (NIST is a U.S. Government work,
+  CC0 1.0), ``reference_only=False``.
+* ``iso-27001`` / ``soc2`` / ``cis`` are **reference-only** stubs
+  (``reference_only=True``): the control **ID** is the fact, but the ``title``
+  is ``None`` or agent-bom's own short descriptor — never the copyrighted
+  official ISO / AICPA / CIS title, none of which are vendored anywhere in this
+  tree.
+
+``control_spec()`` is the read seam; ``evidencing_checks`` stays empty here
+(PR3 curates check -> control). ``nist_to_iso()`` exposes NIST's own official
+SP 800-53 Rev 5 -> ISO/IEC 27001:2022 crosswalk (ISO referenced by ID only).
 """
 
 from __future__ import annotations
@@ -39,6 +51,7 @@ from typing import TYPE_CHECKING
 # module). This layer owns the *resolution API* over it and re-exports it so
 # callers depend on ``framework_mapping`` rather than the raw table — leaving
 # PR2 free to relocate the data behind this seam without touching callers.
+from agent_bom import framework_catalog
 from agent_bom.constants import CWE_COMPLIANCE_MAP
 from agent_bom.finding import FindingSource, FindingType
 
@@ -52,6 +65,7 @@ __all__ = [
     "FRAMEWORK_CONTROL_CATALOG",
     "ControlSpec",
     "control_spec",
+    "nist_to_iso",
     "select_frameworks",
     "is_framework_relevant",
     "ALL_FRAMEWORKS",
@@ -104,27 +118,43 @@ def controls_for_cwes(cwe_ids: Iterable[str], framework_key: str, *, normalize: 
 class ControlSpec:
     """A single control's metadata plus the checks that evidence it.
 
+    ``title`` carries a control name only when we may lawfully store one: for
+    ``nist-800-53`` it is NIST's authoritative public-domain title; for the
+    reference-only frameworks (``iso-27001`` / ``soc2`` / ``cis``) it is ``None``
+    or agent-bom's own short descriptor — never the copyrighted official title.
+    ``reference_only`` flags the latter, where only the control **ID** is a
+    vendorable fact.
+
     VENDOR-ASSERTED (see module docstring): ``evidencing_checks`` records which
     agent-bom checks map to this control, not an authority-published crosswalk.
-    PR2 populates ``FRAMEWORK_CONTROL_CATALOG`` with instances of this; PR1
-    defines only the shape.
     """
 
     control_id: str
-    title: str
+    title: str | None
     evidencing_checks: tuple[str, ...] = field(default_factory=tuple)
+    reference_only: bool = False
 
 
-# framework key -> {control_id -> ControlSpec}. Intentionally empty in PR1.
+# framework slug -> {control_id -> ControlSpec}. Populated at import time from the
+# vendored, provenance-tagged data in ``agent_bom.framework_catalog`` (see the
+# ``_build_framework_control_catalog`` call at the end of this module).
 FRAMEWORK_CONTROL_CATALOG: dict[str, dict[str, ControlSpec]] = {}
 
 
 def control_spec(framework_key: str, control_id: str) -> ControlSpec | None:
-    """Return the catalog entry for a control, or None when uncatalogued.
-
-    Safe against the empty PR1 catalog; PR2 backs this with real data.
-    """
+    """Return the catalog entry for a control, or None when uncatalogued."""
     return FRAMEWORK_CONTROL_CATALOG.get(framework_key, {}).get(control_id)
+
+
+def nist_to_iso(control_id: str) -> list[str]:
+    """Return the ISO/IEC 27001:2022 Annex A control IDs NIST's official
+    SP 800-53 Rev 5 crosswalk maps ``control_id`` to (identifiers only).
+
+    This is the one authoritative cross-framework mapping we vendor; ISO control
+    titles are copyrighted and are not stored. Empty list when NIST publishes no
+    ISO mapping for the control.
+    """
+    return framework_catalog.iso_controls_for_nist(control_id)
 
 
 # ─── Framework slug vocabulary ───────────────────────────────────────────────
@@ -358,3 +388,45 @@ def is_framework_relevant(
         finding_type,
         include_gov=include_gov,
     )
+
+
+# ─── Populate the provenanced control catalog (import-time, once) ─────────────
+
+
+def _build_framework_control_catalog() -> None:
+    """Fill ``FRAMEWORK_CONTROL_CATALOG`` from the vendored framework data.
+
+    NIST 800-53 is stored in full (public-domain titles). ISO 27001, SOC 2, and
+    CIS are reference-only: the ID is the fact, the title is None or agent-bom's
+    own descriptor. No copyrighted ISO/AICPA/CIS title is ever placed here.
+    """
+    # Own-worded descriptors for the reference-only frameworks (never the
+    # official copyrighted titles). Imported locally to keep this resolution
+    # layer's public import surface minimal.
+    from agent_bom.cis_controls import CIS_CONTROLS
+    from agent_bom.iso_27001 import ISO_27001
+    from agent_bom.soc2 import SOC2_TSC
+
+    FRAMEWORK_CONTROL_CATALOG[FRAMEWORK_NIST_800_53] = {
+        control_id: ControlSpec(control_id=control_id, title=spec["title"])
+        for control_id, spec in framework_catalog.nist_controls().items()
+    }
+
+    # ISO 27001 (reference-only): every Annex A control NIST's crosswalk cites,
+    # plus the IDs our own taggers use. Title = our own descriptor if we have
+    # one, else None — the official ISO title is never stored.
+    crosswalk = framework_catalog.nist_to_iso_crosswalk()
+    iso_ids = {iso for ids in crosswalk.values() for iso in ids} | set(ISO_27001)
+    FRAMEWORK_CONTROL_CATALOG[FRAMEWORK_ISO_27001] = {
+        control_id: ControlSpec(control_id, ISO_27001.get(control_id), reference_only=True) for control_id in sorted(iso_ids)
+    }
+
+    FRAMEWORK_CONTROL_CATALOG[FRAMEWORK_SOC2] = {
+        control_id: ControlSpec(control_id, SOC2_TSC[control_id], reference_only=True) for control_id in SOC2_TSC
+    }
+    FRAMEWORK_CONTROL_CATALOG[FRAMEWORK_CIS] = {
+        control_id: ControlSpec(control_id, CIS_CONTROLS[control_id], reference_only=True) for control_id in CIS_CONTROLS
+    }
+
+
+_build_framework_control_catalog()

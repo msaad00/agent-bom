@@ -445,6 +445,26 @@ disallow_incomplete_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 
+# Phase 2 (#1969): api/ modules brought under the STRICTER profile that also
+# forbids implicit ``Any`` generics (``dict``/``list`` without parameters).
+# Kept as a separate override block from the one above because that block does
+# NOT set ``disallow_any_generics``; the strict findings-list/models work in the
+# sibling PR uses the same ``disallow_any_generics`` set, so when both land these
+# two blocks merge cleanly (union the module lists, drop this comment).
+[[tool.mypy.overrides]]
+module = [
+    "agent_bom.api.oidc",
+    "agent_bom.api.postgres_fleet_store",
+    "agent_bom.api.finding_list_envelope",
+    "agent_bom.api.time_window",
+    "agent_bom.api.cost_owner",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+warn_return_any = true
+warn_unused_ignores = true
+
 [tool.ruff]
 line-length = 140  # Relaxed from 120 for CLI help strings
 target-version = "py311"

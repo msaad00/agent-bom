@@ -193,6 +193,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
                     resolve_transitive=cfg.resolve_transitive,
                     offline=cfg.offline,
                     demo_advisories=cfg.demo,
+                    project_dir=cfg.project,
                 )
             except IncompleteScanError as exc:
                 con.print(f"  [yellow]Warning:[/yellow] {exc}")

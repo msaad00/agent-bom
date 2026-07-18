@@ -303,7 +303,20 @@ def _resolve_fixed_version(row: sqlite3.Row) -> Optional[str]:
     """
     if _is_distro_release_ecosystem(row["ecosystem"]):
         return (row["fixed"] or "").strip() or None
-    return row["fixed_version"] or row["fixed"]
+    # Prefer the version-matched range fix over the advisory-level rollup. For a
+    # multi-branch advisory the rollup names the fix on a *different* branch, so
+    # reporting it against an installed version on another branch can advise a
+    # downgrade. Fall back to the rollup only when the matched range carries no
+    # fix, and never present an invalid (e.g. git-SHA) rollup as a usable fix.
+    from agent_bom.scanners.osv import is_valid_fix_version
+
+    matched = (row["fixed"] or "").strip()
+    if matched:
+        return matched
+    rollup = (row["fixed_version"] or "").strip()
+    if rollup and is_valid_fix_version(rollup):
+        return rollup
+    return None
 
 
 def _comparator_ecosystem(ecosystem: str) -> str:

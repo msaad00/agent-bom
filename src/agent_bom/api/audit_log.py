@@ -40,6 +40,10 @@ _MAX_AUDIT_DETAIL_STRING_LENGTH = 2048
 _MAX_AUDIT_DETAIL_COLLECTION_ITEMS = 32
 _MAX_AUDIT_DETAIL_DEPTH = 4
 _MAX_AUDIT_DETAILS_JSON_BYTES = 16 * 1024
+# Bound on chain-head re-read retries when a concurrent writer wins the race to
+# link the current head; each retry re-reads a strictly newer head, so this only
+# caps pathological contention rather than normal operation.
+_MAX_APPEND_RETRIES = 50
 
 
 def _env_enabled(name: str) -> bool:
@@ -401,10 +405,14 @@ class InMemoryAuditLog:
 
     def append(self, entry: AuditEntry) -> None:
         tenant_id = _entry_tenant(entry)
-        entry.prev_signature = self._last_sig_by_tenant[tenant_id]
-        entry.sign()
-        self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
+        # The chain-head read, signature, and head write must be atomic with the
+        # list append: doing the read-modify-write outside the lock lets two
+        # threads read the same head and fork the chain (both sign against one
+        # predecessor). Hold the lock across the whole sequence.
         with self._lock:
+            entry.prev_signature = self._last_sig_by_tenant[tenant_id]
+            entry.sign()
+            self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
             self._entries.append(entry)
             self._update_checkpoint(tenant_id, entry.hmac_signature)
             if len(self._entries) > self._MAX_ENTRIES:
@@ -460,6 +468,7 @@ class SQLiteAuditLog:
         self._db_path = db_path
         self._local = threading.local()
         self._last_sig_by_tenant: dict[str, str] = defaultdict(str)
+        self._append_lock = threading.Lock()
         self._init_db()
         self._hydrate_last_signatures()
         if os.path.exists(self._db_path):
@@ -471,6 +480,9 @@ class SQLiteAuditLog:
         if conn is None:
             conn = sqlite3.connect(self._db_path, check_same_thread=False)
             conn.execute("PRAGMA journal_mode=WAL")
+            # Let a concurrent writer wait for the write lock instead of failing
+            # fast with "database is locked" under multi-thread contention.
+            conn.execute("PRAGMA busy_timeout=5000")
             self._local.conn = conn
         return conn
 
@@ -508,7 +520,33 @@ class SQLiteAuditLog:
             head_signature TEXT NOT NULL
         )""")
         self._conn.commit()
+        self._ensure_fork_guard_index()
         self._hydrate_checkpoints()
+
+    def _ensure_fork_guard_index(self) -> None:
+        """Serialize the hash chain at the DB with a per-tenant head uniqueness.
+
+        ``UNIQUE(tenant_id, prev_signature)`` lets at most one row link to any
+        given predecessor (and exactly one genesis, ``prev_signature = ''``, per
+        tenant), so a concurrent fork is rejected instead of persisted. Built
+        defensively: pre-existing forks in older data would make the unique index
+        creation fail, and we log rather than refuse to start — appends still
+        retry, but cross-writer forks cannot be rejected until the data is
+        reconciled.
+        """
+        try:
+            self._conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_tenant_prevsig "
+                "ON audit_log(tenant_id, prev_signature)"
+            )
+            self._conn.commit()
+        except sqlite3.IntegrityError:
+            self._conn.rollback()
+            logger.warning(
+                "Could not create audit_log fork-guard unique index "
+                "(pre-existing chain forks?); appends will retry but forks cannot "
+                "be rejected at the DB until the existing rows are reconciled"
+            )
 
     def _hydrate_checkpoints(self) -> None:
         existing = self._conn.execute("SELECT COUNT(*) FROM audit_chain_checkpoint").fetchone()
@@ -559,12 +597,16 @@ class SQLiteAuditLog:
         )
 
     def _latest_signature_for_tenant(self, tenant_id: str) -> str:
+        # The chain head is the LAST-APPENDED row (max rowid), not the row with
+        # the latest timestamp. Under concurrent appends a later-inserted entry
+        # can carry an earlier wall-clock timestamp, so ordering by rowid (true
+        # insertion/append order) keeps head selection aligned with the chain.
         row = self._conn.execute(
             """
             SELECT hmac_signature
             FROM audit_log
             WHERE COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default') = ?
-            ORDER BY timestamp DESC, rowid DESC
+            ORDER BY rowid DESC
             LIMIT 1
             """,
             (tenant_id,),
@@ -581,7 +623,7 @@ class SQLiteAuditLog:
                     hmac_signature,
                     ROW_NUMBER() OVER (
                         PARTITION BY tenant_id
-                        ORDER BY timestamp DESC, rowid DESC
+                        ORDER BY rowid DESC
                     ) AS rn
                 FROM audit_log
             )
@@ -593,31 +635,50 @@ class SQLiteAuditLog:
 
     def append(self, entry: AuditEntry) -> None:
         tenant_id = _entry_tenant(entry)
-        prev_sig = self._last_sig_by_tenant.get(tenant_id)
-        if prev_sig is None or prev_sig == "":
-            prev_sig = self._latest_signature_for_tenant(tenant_id)
-        entry.prev_signature = prev_sig
-        entry.sign()
-        self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
-        self._conn.execute(
-            "INSERT INTO audit_log"
-            " (entry_id, timestamp, action, actor, resource,"
-            " details, prev_signature, hmac_signature, tenant_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                entry.entry_id,
-                entry.timestamp,
-                entry.action,
-                entry.actor,
-                entry.resource,
-                json.dumps(entry.details),
-                entry.prev_signature,
-                entry.hmac_signature,
-                tenant_id,
-            ),
-        )
-        self._upsert_checkpoint(tenant_id, entry.hmac_signature)
-        self._conn.commit()
+        # An in-process lock serializes seal+insert so threads sharing this store
+        # can't read the same head and fork the chain. The DB-level
+        # UNIQUE(tenant_id, prev_signature) plus this retry handle the
+        # cross-process case (separate connections/replicas): a writer that loses
+        # the race is rejected, then re-reads the advanced head and re-links.
+        with self._append_lock:
+            attempts = 0
+            while True:
+                attempts += 1
+                prev_sig = self._last_sig_by_tenant.get(tenant_id)
+                if prev_sig is None or prev_sig == "":
+                    prev_sig = self._latest_signature_for_tenant(tenant_id)
+                entry.prev_signature = prev_sig
+                entry.sign()
+                try:
+                    self._conn.execute(
+                        "INSERT INTO audit_log"
+                        " (entry_id, timestamp, action, actor, resource,"
+                        " details, prev_signature, hmac_signature, tenant_id)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            entry.entry_id,
+                            entry.timestamp,
+                            entry.action,
+                            entry.actor,
+                            entry.resource,
+                            json.dumps(entry.details),
+                            entry.prev_signature,
+                            entry.hmac_signature,
+                            tenant_id,
+                        ),
+                    )
+                    self._upsert_checkpoint(tenant_id, entry.hmac_signature)
+                    self._conn.commit()
+                except sqlite3.IntegrityError as exc:
+                    self._conn.rollback()
+                    if "prev_signature" not in str(exc) or attempts > _MAX_APPEND_RETRIES:
+                        raise
+                    # Another writer linked this head first — drop the stale cache
+                    # and re-read the advanced head before retrying.
+                    self._last_sig_by_tenant[tenant_id] = self._latest_signature_for_tenant(tenant_id)
+                    continue
+                self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
+                return
 
     def list_entries(
         self,
@@ -689,9 +750,13 @@ class SQLiteAuditLog:
             clauses.append("tenant_id = ?")
             params.append(tenant_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        # Walk the chain in true append order (rowid), which is how entries were
+        # linked. Ordering by timestamp would reorder concurrently-appended rows
+        # whose wall-clock times don't match insertion order and report a healthy
+        # chain as tampered.
         sql = (
             f"SELECT entry_id, timestamp, action, actor, resource, details, prev_signature, hmac_signature"  # nosec B608
-            f" FROM audit_log {where} ORDER BY timestamp ASC, rowid ASC LIMIT ?"
+            f" FROM audit_log {where} ORDER BY rowid ASC LIMIT ?"
         )
         params.append(limit)
         rows = self._conn.execute(sql, params).fetchall()

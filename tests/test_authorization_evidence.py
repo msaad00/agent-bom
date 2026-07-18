@@ -86,6 +86,16 @@ def test_missing_required_source_is_not_complete() -> None:
     assert bundle.incomplete_required_sources() == ("deny_assignments:missing",)
 
 
+def test_empty_required_source_contract_is_not_complete() -> None:
+    bundle = AuthorizationEvidenceBundle(
+        provider=AuthorizationProvider.GCP,
+        scope="projects/proj-1",
+        sources=(EvidenceSource("allow_policies", EvidenceSourceState.COMPLETE),),
+    )
+
+    assert bundle.incomplete_required_sources() == ("required_sources:missing",)
+
+
 def test_duplicate_source_state_is_deterministic_and_incomplete() -> None:
     bundle = AuthorizationEvidenceBundle(
         provider=AuthorizationProvider.GCP,

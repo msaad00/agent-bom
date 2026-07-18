@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -20,6 +22,8 @@ _UNSUPPORTED_CODES = {"NotSupported", "NotSupportedException", "UnsupportedOpera
 _ACCESS_ADVISOR_PAGE_SIZE = 100
 _ACCESS_ADVISOR_HARD_MAX_POLLS = 10
 _ACCESS_ADVISOR_HARD_MAX_PAGES = 10
+_ACCESS_ADVISOR_INITIAL_BACKOFF_SECONDS = 1.0
+_ACCESS_ADVISOR_MAX_BACKOFF_SECONDS = 5.0
 
 
 def _error_code(exc: Exception) -> str:
@@ -132,7 +136,7 @@ def _collect_access_advisor(
             return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
         response: Mapping[str, Any] = {}
         poll_budget = min(_ACCESS_ADVISOR_HARD_MAX_POLLS, max(1, max_polls))
-        for _ in range(poll_budget):
+        for poll_index in range(poll_budget):
             candidate = client.get_service_last_accessed_details(JobId=job_id, MaxItems=_ACCESS_ADVISOR_PAGE_SIZE)
             if not isinstance(candidate, Mapping):
                 return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
@@ -141,52 +145,226 @@ def _collect_access_advisor(
                 break
             if response.get("JobStatus") == "FAILED":
                 return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
+            if poll_index + 1 < poll_budget:
+                delay = min(
+                    _ACCESS_ADVISOR_INITIAL_BACKOFF_SECONDS * (2**poll_index),
+                    _ACCESS_ADVISOR_MAX_BACKOFF_SECONDS,
+                )
+                time.sleep(delay)
         else:
             return (), UsageEvidenceState.PENDING, "access_advisor_pending"
 
-        pages: list[Mapping[str, Any]] = [response]
-        page_budget = min(_ACCESS_ADVISOR_HARD_MAX_PAGES, max(1, max_pages))
-        while bool(pages[-1].get("IsTruncated")):
-            if len(pages) >= page_budget:
-                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_page_budget_exhausted"
-            marker = pages[-1].get("Marker")
-            if not isinstance(marker, str) or not marker:
-                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
-            candidate = client.get_service_last_accessed_details(
-                JobId=job_id,
-                MaxItems=_ACCESS_ADVISOR_PAGE_SIZE,
-                Marker=marker,
-            )
-            if not isinstance(candidate, Mapping) or candidate.get("JobStatus") not in {None, "COMPLETED"}:
-                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
-            pages.append(candidate)
-
-        evidence: list[IamServiceUsageEvidence] = []
-        for page in pages:
-            services = page.get("ServicesLastAccessed", [])
-            if not isinstance(services, list):
-                return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
-            for service in services:
-                if not isinstance(service, Mapping):
-                    continue
-                namespace = service.get("ServiceNamespace")
-                if not isinstance(namespace, str) or not namespace:
-                    continue
-                accessed = service.get("LastAuthenticated")
-                region = service.get("LastAuthenticatedRegion")
-                evidence.append(
-                    IamServiceUsageEvidence(
-                        service_namespace=namespace,
-                        state=UsageEvidenceState.AVAILABLE,
-                        last_accessed_at=accessed if isinstance(accessed, datetime) else None,
-                        last_accessed_region=region if isinstance(region, str) else None,
-                        collected_at=collected_at,
-                    )
-                )
-        return tuple(evidence), UsageEvidenceState.AVAILABLE, "access_advisor_available"
+        return _completed_access_advisor_evidence(
+            client,
+            job_id,
+            response,
+            max_pages=max_pages,
+            collected_at=collected_at,
+        )
     except Exception as exc:
         state, diagnostic = _usage_failure(exc)
         return (), state, diagnostic
+
+
+def _completed_access_advisor_evidence(
+    client: Any,
+    job_id: str,
+    response: Mapping[str, Any],
+    *,
+    max_pages: int,
+    collected_at: datetime,
+) -> tuple[tuple[IamServiceUsageEvidence, ...], UsageEvidenceState, str]:
+    """Read every page of one completed job without retaining partial output."""
+    pages: list[Mapping[str, Any]] = [response]
+    page_budget = min(_ACCESS_ADVISOR_HARD_MAX_PAGES, max(1, max_pages))
+    while bool(pages[-1].get("IsTruncated")):
+        if len(pages) >= page_budget:
+            return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_page_budget_exhausted"
+        marker = pages[-1].get("Marker")
+        if not isinstance(marker, str) or not marker:
+            return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
+        candidate = client.get_service_last_accessed_details(
+            JobId=job_id,
+            MaxItems=_ACCESS_ADVISOR_PAGE_SIZE,
+            Marker=marker,
+        )
+        if not isinstance(candidate, Mapping) or candidate.get("JobStatus") not in {None, "COMPLETED"}:
+            return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
+        pages.append(candidate)
+
+    evidence: list[IamServiceUsageEvidence] = []
+    for page in pages:
+        services = page.get("ServicesLastAccessed", [])
+        if not isinstance(services, list):
+            return (), UsageEvidenceState.UNAVAILABLE, "access_advisor_unavailable"
+        for service in services:
+            if not isinstance(service, Mapping):
+                continue
+            namespace = service.get("ServiceNamespace")
+            if not isinstance(namespace, str) or not namespace:
+                continue
+            accessed = service.get("LastAuthenticated")
+            region = service.get("LastAuthenticatedRegion")
+            evidence.append(
+                IamServiceUsageEvidence(
+                    service_namespace=namespace,
+                    state=UsageEvidenceState.AVAILABLE,
+                    last_accessed_at=accessed if isinstance(accessed, datetime) else None,
+                    last_accessed_region=region if isinstance(region, str) else None,
+                    collected_at=collected_at,
+                )
+            )
+    return tuple(evidence), UsageEvidenceState.AVAILABLE, "access_advisor_available"
+
+
+def _usage_result(
+    client: Any,
+    *,
+    principal_arn: str,
+    role_name: str,
+    role_snapshot: Mapping[str, Any] | None,
+    usage: tuple[IamServiceUsageEvidence, ...],
+    usage_state: UsageEvidenceState,
+    diagnostic: str,
+    collected_at: datetime,
+) -> IamRoleUsageEvidence:
+    role_usage = _role_last_used(
+        client,
+        role_name,
+        role_snapshot=role_snapshot,
+        collected_at=collected_at,
+    )
+    if role_usage is not None:
+        usage = (*usage, role_usage)
+    return IamRoleUsageEvidence(
+        principal_arn=principal_arn,
+        usage_state=usage_state,
+        records=usage,
+        diagnostic=diagnostic,
+        collected_at=collected_at,
+    )
+
+
+def collect_iam_roles_usage_evidence(
+    client: Any,
+    roles: Sequence[tuple[str, str, Mapping[str, Any] | None]],
+    *,
+    max_access_advisor_polls: int = 3,
+    max_access_advisor_pages: int = 5,
+    collected_at: datetime | None = None,
+) -> dict[str, IamRoleUsageEvidence]:
+    """Collect several roles using shared, bounded Access Advisor poll rounds.
+
+    Access Advisor jobs are asynchronous. Starting and immediately polling one
+    role at a time makes the default three polls collapse into one instant and
+    usually returns ``pending`` for every role. This method starts the bounded
+    estate batch first, then polls all jobs in shared exponential-backoff rounds,
+    so waiting is once per estate rather than once per role.
+    """
+    observed_at = collected_at or datetime.now(timezone.utc)
+    results: dict[str, IamRoleUsageEvidence] = {}
+    jobs: dict[str, tuple[str, str, Mapping[str, Any] | None]] = {}
+    for principal_arn, role_name, role_snapshot in roles:
+        try:
+            started = client.generate_service_last_accessed_details(
+                Arn=principal_arn,
+                Granularity="SERVICE_LEVEL",
+            )
+            job_id = started.get("JobId")
+            if not isinstance(job_id, str) or not job_id:
+                raise ValueError("missing Access Advisor job id")
+            jobs[principal_arn] = (job_id, role_name, role_snapshot)
+        except Exception as exc:
+            state, diagnostic = _usage_failure(exc)
+            results[principal_arn] = _usage_result(
+                client,
+                principal_arn=principal_arn,
+                role_name=role_name,
+                role_snapshot=role_snapshot,
+                usage=(),
+                usage_state=state,
+                diagnostic=diagnostic,
+                collected_at=observed_at,
+            )
+
+    poll_budget = min(_ACCESS_ADVISOR_HARD_MAX_POLLS, max(1, max_access_advisor_polls))
+    for poll_index in range(poll_budget):
+        for principal_arn, (job_id, role_name, role_snapshot) in tuple(jobs.items()):
+            try:
+                response = client.get_service_last_accessed_details(
+                    JobId=job_id,
+                    MaxItems=_ACCESS_ADVISOR_PAGE_SIZE,
+                )
+                if not isinstance(response, Mapping):
+                    raise TypeError("invalid Access Advisor response")
+                status = str(response.get("JobStatus") or "").upper()
+                if status == "COMPLETED":
+                    usage, state, diagnostic = _completed_access_advisor_evidence(
+                        client,
+                        job_id,
+                        response,
+                        max_pages=max_access_advisor_pages,
+                        collected_at=observed_at,
+                    )
+                    results[principal_arn] = _usage_result(
+                        client,
+                        principal_arn=principal_arn,
+                        role_name=role_name,
+                        role_snapshot=role_snapshot,
+                        usage=usage,
+                        usage_state=state,
+                        diagnostic=diagnostic,
+                        collected_at=observed_at,
+                    )
+                    del jobs[principal_arn]
+                elif status == "FAILED":
+                    results[principal_arn] = _usage_result(
+                        client,
+                        principal_arn=principal_arn,
+                        role_name=role_name,
+                        role_snapshot=role_snapshot,
+                        usage=(),
+                        usage_state=UsageEvidenceState.UNAVAILABLE,
+                        diagnostic="access_advisor_unavailable",
+                        collected_at=observed_at,
+                    )
+                    del jobs[principal_arn]
+                elif status not in {"IN_PROGRESS", "RUNNING", "PENDING"}:
+                    raise ValueError("unknown Access Advisor job status")
+            except Exception as exc:
+                state, diagnostic = _usage_failure(exc)
+                results[principal_arn] = _usage_result(
+                    client,
+                    principal_arn=principal_arn,
+                    role_name=role_name,
+                    role_snapshot=role_snapshot,
+                    usage=(),
+                    usage_state=state,
+                    diagnostic=diagnostic,
+                    collected_at=observed_at,
+                )
+                del jobs[principal_arn]
+
+        if not jobs or poll_index + 1 >= poll_budget:
+            break
+        delay = min(
+            _ACCESS_ADVISOR_INITIAL_BACKOFF_SECONDS * (2**poll_index),
+            _ACCESS_ADVISOR_MAX_BACKOFF_SECONDS,
+        )
+        time.sleep(delay)
+
+    for principal_arn, (_job_id, role_name, role_snapshot) in jobs.items():
+        results[principal_arn] = _usage_result(
+            client,
+            principal_arn=principal_arn,
+            role_name=role_name,
+            role_snapshot=role_snapshot,
+            usage=(),
+            usage_state=UsageEvidenceState.PENDING,
+            diagnostic="access_advisor_pending",
+            collected_at=observed_at,
+        )
+    return results
 
 
 def _role_last_used(

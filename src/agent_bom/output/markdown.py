@@ -17,6 +17,7 @@ from agent_bom.output.finding_views import (
     package_name,
     package_version,
     ranked_cve_findings,
+    reachability_label,
     severity_counts,
     severity_value,
 )
@@ -103,8 +104,8 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     if cve_rows:
         lines.append("## Findings")
         lines.append("")
-        lines.append("| Severity | CVE | Package | Version | Fix | CVSS | EPSS | KEV | CWE | Tags | Source | Agents |")
-        lines.append("|----------|-----|---------|---------|-----|------|------|-----|-----|------|--------|--------|")
+        lines.append("| Severity | CVE | Package | Version | Fix | CVSS | EPSS | KEV | Reach | CWE | Tags | Source | Agents |")
+        lines.append("|----------|-----|---------|---------|-----|------|------|-----|-------|-----|------|--------|--------|")
 
         for finding in sorted(cve_rows, key=lambda f: _finding_sev_order(severity_value(f))):
             vuln_id = finding.cve_id or finding.id
@@ -112,6 +113,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
             cvss = f"{finding.cvss_score}" if finding.cvss_score is not None else "-"
             epss = f"{finding.epss_score:.4f}" if finding.epss_score is not None else "-"
             kev = "Yes" if finding.is_kev else "-"
+            reach = reachability_label(finding)[0]
             cwe = _md_cell(", ".join(finding.cwe_ids) if finding.cwe_ids else "-")
             tags = _md_cell(", ".join(framework_qualified_finding_tags(finding)) or "-")
             source = _md_cell(evidence(finding, "severity_source", "-") or "-")
@@ -119,7 +121,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
             agents = str(len(finding.affected_agents))
             lines.append(
                 f"| {sev_badge} | {vuln_id} | {package_name(finding)} | {package_version(finding) or '-'} | {fix} | {cvss} | "
-                f"{epss} | {kev} | {cwe} | {tags} | {source} | {agents} |"
+                f"{epss} | {kev} | {reach} | {cwe} | {tags} | {source} | {agents} |"
             )
 
         lines.append("")
@@ -161,6 +163,9 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
                 lines.append(f"- **Fix**: Upgrade to {finding.fixed_version}")
             if finding.cwe_ids:
                 lines.append(f"- **CWE**: {', '.join(finding.cwe_ids)}")
+            reach_label, reach_state = reachability_label(finding)
+            reach_suffix = " (code reachability not evaluated)" if reach_state == "unknown" else ""
+            lines.append(f"- **Reachability**: {reach_label}{reach_suffix}")
             compliance_tags = ", ".join(framework_qualified_finding_tags(finding))
             if compliance_tags:
                 lines.append(f"- **Compliance tags**: {compliance_tags}")

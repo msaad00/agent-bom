@@ -66,6 +66,36 @@ def evidence(finding: Finding, key: str, default: Any = "") -> Any:
     return default if value is None else value
 
 
+# Human-facing labels for the code-level reachability signal. Ordered
+# most-specific first. ``state`` drives filtering/styling; ``label`` is the cell.
+_REACHABILITY_LABELS: dict[str, tuple[str, str]] = {
+    "function_reachable": ("Function", "reachable"),
+    "package_reachable": ("Package", "reachable"),
+    "unreachable": ("Unreachable", "unreachable"),
+}
+
+
+def reachability_label(finding: Finding) -> tuple[str, str]:
+    """Human-facing code-reachability signal for a CVE finding.
+
+    Returns ``(label, state)`` where ``state`` is ``"reachable"``,
+    ``"unreachable"``, or ``"unknown"``. This surfaces the symbol/graph
+    reachability moat — *not* the coarse blast-radius ``reachability``
+    classification (which is always populated). §11 honesty: when neither the
+    symbol nor graph engine produced a verdict we report ``"Unknown"`` and
+    never imply the finding is reachable.
+    """
+    symbol = evidence(finding, "symbol_reachability", None)
+    if isinstance(symbol, str) and symbol in _REACHABILITY_LABELS:
+        return _REACHABILITY_LABELS[symbol]
+    graph = finding.evidence.get("graph_reachable", None)
+    if graph is True:
+        return "Reachable", "reachable"
+    if graph is False:
+        return "Unreachable", "unreachable"
+    return "Unknown", "unknown"
+
+
 def package_name(finding: Finding) -> str:
     value = evidence(finding, "package_name", "")
     if value:

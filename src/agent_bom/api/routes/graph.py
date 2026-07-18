@@ -393,18 +393,59 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
             continue
         attrs = node.attributes
         port_detail = _exposed_port_detail(attrs)
+        # A WAF / API-gateway in front of the resource mitigates its exposure
+        # (set by the CNAPP overlay). Honesty (§11): a mitigated node is NOT
+        # counted as a full-weight toxic/exposed foothold, but it is NOT hidden
+        # either — it surfaces as an explicitly *mitigated* signal at lower rank.
+        exposure_mitigated = bool(attrs.get("exposure_mitigated") or attrs.get("protected_by_waf"))
         if attrs.get("toxic_exposed_vulnerable"):
             add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label}: exposed{port_detail} + vulnerable.", 20.0)
+        elif attrs.get("toxic_exposed_vulnerable_mitigated"):
+            add(
+                "toxic_exposed_vulnerable_mitigated",
+                "Toxic (mitigated): exposed + vulnerable behind WAF",
+                f"{node.label}: internet-exposed{port_detail} + vulnerable but fronted by a WAF/API gateway (exposure mitigated).",
+                8.0,
+            )
         elif attrs.get("internet_exposed"):
-            add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet{port_detail}.", 15.0)
+            if exposure_mitigated:
+                add(
+                    "internet_exposed_mitigated",
+                    "Internet exposed (mitigated)",
+                    f"{node.label} is internet-exposed{port_detail} but fronted by a WAF/API gateway (exposure mitigated).",
+                    6.0,
+                )
+            else:
+                add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet{port_detail}.", 15.0)
         if attrs.get("escalates_to_admin"):
             add("privilege_escalation_admin", "Admin escalation", f"{node.label} can assume an admin-privileged role.", 20.0)
         elif attrs.get("can_escalate_privilege"):
             add("privilege_escalation", "Privilege escalation", f"{node.label} can assume a role with broader effective access.", 16.0)
+        # Standing admin-equivalent permissions (holds admin directly) — an
+        # independent CIEM signal from the assume-chain escalation above, so it
+        # is added, not chained via elif. Basis provenance stays visible.
+        if attrs.get("admin_equivalent"):
+            basis = attrs.get("admin_equivalence_basis")
+            basis_detail = f" (basis: {basis})" if basis else ""
+            add(
+                "admin_equivalent",
+                "Admin-equivalent identity",
+                f"{node.label} holds admin-equivalent permissions{basis_detail}.",
+                18.0,
+            )
         if attrs.get("toxic_exposed_sensitive"):
-            add("exposed_sensitive_data", "Exposed sensitive data", f"{node.label} holds sensitive data and is internet-exposed.", 22.0)
+            reach = attrs.get("sensitive_data_access_count")
+            reach_detail = f", reachable by {reach} identity/tool path(s)" if isinstance(reach, int) and reach > 0 else ""
+            add(
+                "exposed_sensitive_data",
+                "Exposed sensitive data",
+                f"{node.label} holds sensitive data and is internet-exposed{reach_detail}.",
+                22.0,
+            )
         elif attrs.get("data_sensitivity"):
-            add("sensitive_data", "Sensitive data", f"{node.label} holds sensitive (PII/PHI/secret) data.", 8.0)
+            reach = attrs.get("sensitive_data_access_count")
+            reach_detail = f", reachable by {reach} identity/tool path(s)" if isinstance(reach, int) and reach > 0 else ""
+            add("sensitive_data", "Sensitive data", f"{node.label} holds sensitive (PII/PHI/secret) data{reach_detail}.", 8.0)
         # Runtime-observed reachability: a hop with actual observed runtime
         # activity is confirmed reachable, not just statically connected — so it
         # ranks above an identical static-only chain.
@@ -956,6 +997,27 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             45.0,
                             f"{node.label} drifted to using tool {tool.label} outside its declared blueprint.",
                         )
+
+    # Admin-equivalent identity: a principal that holds admin-equivalent
+    # permissions is a standing CIEM risk on its own — no assume-chain, finding,
+    # or dangerous-tool anchor required — so surface it as a first-class path so
+    # it appears/ranks in the queue rather than sitting inert on the node. The
+    # admin-equivalence basis (policy_evaluation / scanner_actions / heuristic)
+    # is carried into the summary as provenance.
+    for node in graph.nodes.values():
+        if not node.attributes.get("admin_equivalent"):
+            continue
+        basis = node.attributes.get("admin_equivalence_basis")
+        basis_detail = f" (basis: {basis})" if basis else ""
+        emit(
+            "admin_equivalent",
+            node.id,
+            node.id,
+            [node.id],
+            [],
+            60.0,
+            f"{node.label} holds admin-equivalent permissions{basis_detail} — a standing privilege-escalation risk.",
+        )
     return paths
 
 
@@ -1003,7 +1065,10 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
             vulnerable.add(edge.source)
         elif rel == RelationshipType.HAS_PERMISSION.value:
             principal = graph.nodes.get(edge.source)
-            if principal is not None and principal.attributes.get("escalates_to_admin"):
+            # A resource is admin-privilege-reachable when a principal that can
+            # escalate to admin OR that already holds admin-equivalent permissions
+            # has effective access to it.
+            if principal is not None and (principal.attributes.get("escalates_to_admin") or principal.attributes.get("admin_equivalent")):
                 admin_reachable.add(edge.target)
         elif rel in (RelationshipType.STORES.value, RelationshipType.EXPOSED_TO.value):
             store = graph.nodes.get(edge.target)
@@ -1015,10 +1080,15 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
         if _node_type_value(node) not in _TOXIC_RESOURCE_TYPES or len(paths) >= _MAX_TOXIC_PATHS:
             continue
         attrs = node.attributes
+        # WAF / API-gateway in front of the resource mitigates its exposure
+        # (CNAPP overlay). Honesty (§11): the node still surfaces (marked
+        # mitigated), but its exposure factor is not counted at full weight and
+        # the composite band is capped below an unmitigated peer's.
+        exposure_mitigated = bool(attrs.get("exposure_mitigated") or attrs.get("protected_by_waf"))
         factors: list[str] = []
         if attrs.get("internet_exposed"):
-            factors.append("internet-exposed")
-        if node.id in vulnerable or attrs.get("toxic_exposed_vulnerable"):
+            factors.append("internet-exposed (WAF-mitigated)" if exposure_mitigated else "internet-exposed")
+        if node.id in vulnerable or attrs.get("toxic_exposed_vulnerable") or attrs.get("toxic_exposed_vulnerable_mitigated"):
             factors.append("exploitable vulnerability")
         sens_ids = sensitive_neighbors.get(node.id, [])
         if attrs.get("data_sensitivity") or sens_ids:
@@ -1037,7 +1107,13 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
         hops = [node.id, target] if target != node.id else [node.id]
         edges = ["exposed_to"] if target != node.id else []
         base = _toxic_band(len(factors))
+        if exposure_mitigated:
+            # Below the unmitigated toxic band — the WAF fronts the exposure — but
+            # still surfaced and marked, never dropped.
+            base = min(base, 65.0)
         prefix = "Crown jewel" if len(factors) >= 3 else "Toxic combination"
+        if exposure_mitigated:
+            prefix += " (exposure mitigated)"
         paths.append(
             AttackPath(
                 source=node.id,

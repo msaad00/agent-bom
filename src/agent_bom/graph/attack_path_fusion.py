@@ -148,10 +148,19 @@ def _node_boost(node: UnifiedNode) -> float:
     boost = 0.0
     if attrs.get("toxic_exposed_vulnerable"):
         boost += 10.0
+    elif attrs.get("toxic_exposed_vulnerable_mitigated"):
+        # Exposure fronted by a WAF/API gateway: a real but mitigated toxic combo.
+        # Counted at a reduced weight so it ranks below a bare toxic node without
+        # being silently dropped (honesty: de-prioritized, not hidden).
+        boost += 4.0
     if attrs.get("escalates_to_admin"):
         boost += 12.0
     elif attrs.get("can_escalate_privilege"):
         boost += 8.0
+    # Standing admin-equivalent permissions are an independent escalation prize
+    # (holds admin directly, distinct from reaching admin via an assume-chain).
+    if attrs.get("admin_equivalent"):
+        boost += 12.0
     return boost
 
 

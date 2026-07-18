@@ -1147,6 +1147,9 @@ class AIBOMReport:
     # objects (not serialized directly); folded into the unified stream by
     # to_findings() so the API path reaches CLI parity for identity governance.
     nhi_governance_findings: list["Finding"] = field(default_factory=list)
+    # CIEM over-privilege findings (serialized Finding dicts; set at the graph-build call site).
+    # Right-sizing from AWS Access-Advisor usage evidence; rehydrated by to_findings().
+    ciem_over_privilege_findings_data: Optional[list] = None
     # Estate-wide cloud asset inventory; one provider payload or a per-provider list (opt-in AGENT_BOM_CLOUD_INVENTORY)
     cloud_inventory_data: Optional[Union[dict, list]] = None
     identity_discovery_data: Optional[dict] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
@@ -1315,6 +1318,20 @@ class AIBOMReport:
                         findings.append(finding)
         return findings
 
+    def _ciem_over_privilege_findings(self) -> "list[Finding]":
+        """CIEM over-privilege findings, rehydrated from the side block.
+
+        Access-Advisor right-sizing findings are serialized on
+        ``ciem_over_privilege_findings_data`` at the graph-build call site;
+        surfacing them here routes them through ``--fail-on-severity`` and every
+        machine output (JSON/SARIF/CSV), mirroring the toxic-combination block.
+        """
+        if not self.ciem_over_privilege_findings_data:
+            return []
+        from agent_bom.graph.nhi_governance import ciem_over_privilege_findings_from_data
+
+        return ciem_over_privilege_findings_from_data(self.ciem_over_privilege_findings_data)
+
     def to_findings(self) -> "list[Finding]":
         """Return the unified findings list, auto-populating from blast_radii if empty.
 
@@ -1339,6 +1356,8 @@ class AIBOMReport:
         base.extend(finding for finding in self._toxic_combination_findings() if finding.id not in toxic_existing)
         nhi_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._nhi_governance_findings() if finding.id not in nhi_existing)
+        ciem_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._ciem_over_privilege_findings() if finding.id not in ciem_existing)
         mcp_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._mcp_tool_rule_findings() if finding.id not in mcp_existing)
         iac_existing = {getattr(f, "id", None) for f in base}

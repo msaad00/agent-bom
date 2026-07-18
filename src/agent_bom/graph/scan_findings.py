@@ -60,5 +60,17 @@ def attach_graph_derived_findings(report: "AIBOMReport", graph: "UnifiedGraph") 
     except Exception as exc:  # noqa: BLE001
         _logger.debug("Toxic-combination findings surfacing skipped: %s", exc)
 
+    # ── CIEM over-privilege (Access-Advisor right-sizing) ────────────────────
+    # Usage-evidence right-sizing findings; serialized like toxic combinations
+    # and rehydrated by to_findings().
+    try:
+        from agent_bom.graph.nhi_governance import build_ciem_over_privilege_findings_data
+
+        ciem = build_ciem_over_privilege_findings_data(graph)
+        if ciem:
+            report.ciem_over_privilege_findings_data = ciem
+    except Exception as exc:  # noqa: BLE001
+        _logger.debug("CIEM over-privilege findings surfacing skipped: %s", exc)
+
 
 __all__ = ["attach_graph_derived_findings"]

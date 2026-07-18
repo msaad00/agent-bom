@@ -146,6 +146,11 @@ def security_domain_for(
     ):
         return "vuln"
 
+    # Cloud identity entitlement right-sizing is cloud-posture (CSPM), decisive by
+    # type regardless of the graph-analysis source that derived it.
+    if finding_type is FindingType.CIEM_OVER_PRIVILEGE:
+        return "cspm"
+
     if finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE):
         return "aspm"
 

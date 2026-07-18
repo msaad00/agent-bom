@@ -135,6 +135,9 @@ AGENT_BOM_REQUIRE_TENANT_BOUNDARY
 # MCP-specific tenant override (#1964). Set on the agent-bom mcp server
 # process when its tenant context differs from AGENT_BOM_TENANT_ID.
 AGENT_BOM_MCP_TENANT_ID
+# Ed25519 signing key for MCP scan attestations; secret, resolved file-first
+# via resolve_secret (accepts the _FILE variant), never stored.
+AGENT_BOM_MCP_SCAN_ED25519_PRIVATE_KEY_PEM
 AGENT_BOM_CONTROL_PLANE_TOKEN
 # Hard maximum credential age (days) for expiry/rotation governance; read in api/credential_expiry.py (#2923).
 AGENT_BOM_CRED_MAX_AGE_DAYS

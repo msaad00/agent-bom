@@ -152,6 +152,7 @@ ALLOWED_TOP_LEVEL_MODULES: frozenset[str] = frozenset(
     'mcp_introspect.py',
     'mcp_official_registry.py',
     'mcp_registry_text.py',
+    'mcp_scan_attestation.py',
     'mcp_server.py',
     'mcp_server_catalog.py',
     'mcp_server_entrypoint.py',

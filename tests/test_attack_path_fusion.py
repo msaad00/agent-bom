@@ -6,6 +6,7 @@ from agent_bom.graph.attack_path_fusion import (
     _MAX_DEPTH,
     _MAX_NODES,
     _MAX_PATHS,
+    _node_boost,
     apply_attack_path_fusion,
     compute_fused_attack_paths,
 )
@@ -305,3 +306,21 @@ def test_oversized_graph_surfaces_skipped_signal():
     assert stats["analysis_status"]["status"] == "skipped"
     assert stats["analysis_status"]["reason_codes"] == ["node_cap_exceeded"]
     assert g.analysis_status["attack_path_fusion"].status.value == "skipped"
+
+
+def test_node_boost_recognizes_admin_equivalent():
+    # A standing admin-equivalent node contributes independent escalation risk to
+    # a chain that passes through it (previously read by nothing).
+    plain = UnifiedNode(id="p", entity_type=EntityType.ROLE, label="r")
+    admin = UnifiedNode(id="p2", entity_type=EntityType.ROLE, label="r2", attributes={"admin_equivalent": True})
+    assert _node_boost(admin) > _node_boost(plain)
+
+
+def test_node_boost_deprioritizes_mitigated_toxic_but_keeps_it():
+    # A WAF-fronted (mitigated) toxic node scores below a bare toxic node, yet is
+    # not zeroed out — honesty: de-prioritized, not hidden.
+    bare = UnifiedNode(id="a", entity_type=EntityType.CLOUD_RESOURCE, label="a", attributes={"toxic_exposed_vulnerable": True})
+    mitig = UnifiedNode(
+        id="b", entity_type=EntityType.CLOUD_RESOURCE, label="b", attributes={"toxic_exposed_vulnerable_mitigated": True}
+    )
+    assert 0 < _node_boost(mitig) < _node_boost(bare)

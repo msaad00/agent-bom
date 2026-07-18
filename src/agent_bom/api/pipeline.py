@@ -14,6 +14,7 @@ import ctypes
 import gc
 import json
 import logging
+import os
 import sys
 import threading
 import uuid
@@ -350,6 +351,42 @@ def _surface_graph_derived_findings(
     attach_graph_derived_findings(report, findings_graph)
 
 
+def _graph_build_workspace_enabled() -> bool:
+    """Opt-in flag for routing persistence through the build workspace (#4075).
+
+    Default-off so the shipped persist path is byte-for-byte unchanged. When on,
+    the persist streams from the storage-backed workspace instead of the
+    materialised graph — the seam PR-2 will emit into directly.
+    """
+    return os.environ.get("AGENT_BOM_GRAPH_BUILD_WORKSPACE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _persist_via_build_workspace(graph_store: Any, graph: Any) -> dict[str, int]:
+    """Stream a built graph through the bounded workspace into the store.
+
+    Produces a snapshot byte-identical to the direct streamed save; the workspace
+    holds only a bounded batch in memory while it re-emits nodes/edges. Attack
+    paths / interaction risks stay in-memory (small, bounded) — streaming those
+    is out of scope for PR-1.
+    """
+    from agent_bom.graph.build_workspace import open_graph_build_workspace
+
+    with open_graph_build_workspace(tenant_id=graph.tenant_id, workspace_id=graph.scan_id) as workspace:
+        workspace.add_nodes(graph.nodes.values())
+        workspace.add_edges(graph.edges)
+        counts: dict[str, int] = graph_store.save_graph_streaming(
+            scan_id=graph.scan_id,
+            tenant_id=graph.tenant_id,
+            nodes=workspace.iter_nodes(),
+            edges=workspace.iter_edges(),
+            attack_paths=graph.attack_paths,
+            interaction_risks=graph.interaction_risks,
+            analysis_status=graph.analysis_status,
+            created_at=graph.created_at,
+        )
+        return counts
+
+
 def _persist_graph_snapshot(
     job: ScanJob,
     report_json: dict[str, Any],
@@ -385,16 +422,26 @@ def _persist_graph_snapshot(
         # Persist via the streamed write path (node/edge iterables) so the write
         # never buffers a second copy of the graph; counts come from the store's
         # running tally, not len(graph.*).
-        counts = graph_store.save_graph_streaming(
-            scan_id=graph.scan_id,
-            tenant_id=graph.tenant_id,
-            nodes=graph.nodes.values(),
-            edges=graph.edges,
-            attack_paths=graph.attack_paths,
-            interaction_risks=graph.interaction_risks,
-            analysis_status=graph.analysis_status,
-            created_at=graph.created_at,
-        )
+        #
+        # First consumer of the storage-backed build workspace (#4075, PR-1):
+        # when enabled, the graph is spilled to a bounded workspace store and the
+        # persist streams back from it, producing a byte-identical snapshot. This
+        # is the seam the builder re-plumb (PR-2) will emit into directly to drop
+        # the producer's own materialisation; opt-in so the shipped path is
+        # unchanged by default.
+        if _graph_build_workspace_enabled():
+            counts = _persist_via_build_workspace(graph_store, graph)
+        else:
+            counts = graph_store.save_graph_streaming(
+                scan_id=graph.scan_id,
+                tenant_id=graph.tenant_id,
+                nodes=graph.nodes.values(),
+                edges=graph.edges,
+                attack_paths=graph.attack_paths,
+                interaction_risks=graph.interaction_risks,
+                analysis_status=graph.analysis_status,
+                created_at=graph.created_at,
+            )
     finally:
         reset_current_tenant(tenant_token)
 

@@ -9,12 +9,28 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Protocol
 
 from agent_bom.api.models import JobStatus
 
 
-def job_in_window(job: Any, since: str | None) -> bool:
+class _ScanJobLike(Protocol):
+    """Structural contract for the scan-job rows this fold reads.
+
+    Kept as a Protocol (rather than importing ``ScanJob``) so the fold stays
+    decoupled from the concrete store row and accepts any object exposing the
+    same surface. ``ScanJob`` satisfies it structurally.
+    """
+
+    job_id: str
+    status: JobStatus
+    result: dict[str, Any] | None
+    created_at: str
+    completed_at: str | None
+    child_job_ids: list[str]
+
+
+def job_in_window(job: _ScanJobLike, since: str | None) -> bool:
     """Return whether a job's completion timestamp is inside ``since``."""
     if since is None:
         return True
@@ -44,7 +60,7 @@ def finding_identity(finding: dict[str, Any]) -> str:
 
 
 def current_scan_findings(
-    jobs: Iterable[Any],
+    jobs: Iterable[_ScanJobLike],
     *,
     since: str | None,
     scan_id: str | None,

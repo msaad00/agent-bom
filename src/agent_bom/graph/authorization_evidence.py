@@ -292,7 +292,8 @@ def apply_authorization_evidence(graph: UnifiedGraph, inventory: Any) -> dict[st
     """Emit evaluator-proven access edges and a secret-safe execution status."""
     if not has_authoritative_authorization_evidence(inventory):
         return {}
-    assert isinstance(inventory, Mapping)
+    if not isinstance(inventory, Mapping):
+        return {}
     bundle = _bundle(inventory)
     if bundle is None:
         return {}

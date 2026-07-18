@@ -3,8 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+import pytest
+
+from agent_bom.cloud import aws_iam_collector
 from agent_bom.cloud.aws_iam_collector import collect_iam_role_evidence, collect_iam_role_usage_evidence
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, UsageEvidenceState
+
+
+@pytest.fixture(autouse=True)
+def _avoid_real_access_advisor_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(aws_iam_collector.time, "sleep", lambda _delay: None)
 
 
 class ProviderError(Exception):
@@ -105,6 +113,35 @@ def test_access_advisor_pending_is_bounded_and_explicit() -> None:
     )
 
     assert evidence.usage_state is UsageEvidenceState.PENDING
+
+
+def test_access_advisor_nonterminal_states_use_backoff_before_completion(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = IamClient()
+    statuses = iter(("RUNNING", "PENDING", "COMPLETED"))
+    delays: list[float] = []
+    monkeypatch.setattr(aws_iam_collector.time, "sleep", delays.append)
+
+    def delayed(**kwargs: str) -> dict[str, Any]:
+        status = next(statuses)
+        if status != "COMPLETED":
+            return {"JobStatus": status}
+        return {
+            "JobStatus": status,
+            "ServicesLastAccessed": [{"ServiceNamespace": "s3"}],
+            "IsTruncated": False,
+        }
+
+    client.get_service_last_accessed_details = delayed  # type: ignore[method-assign]
+    evidence = collect_iam_role_usage_evidence(
+        client,
+        principal_arn="arn:aws:iam::123456789012:role/scanner",
+        role_name="scanner",
+        max_access_advisor_polls=3,
+    )
+
+    assert evidence.usage_state is UsageEvidenceState.AVAILABLE
+    assert evidence.diagnostic == "access_advisor_available"
+    assert delays == [1.0, 2.0]
 
 
 def test_policy_read_failure_makes_collection_partial_without_exception_text() -> None:

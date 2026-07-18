@@ -1341,6 +1341,8 @@ class AIBOMReport:
         base.extend(finding for finding in self._nhi_governance_findings() if finding.id not in nhi_existing)
         mcp_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._mcp_tool_rule_findings() if finding.id not in mcp_existing)
+        iac_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._iac_findings() if finding.id not in iac_existing)
         gov_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._snowflake_governance_findings() if finding.id not in gov_existing)
         malicious_existing = {getattr(f, "id", None) for f in base}
@@ -1397,6 +1399,27 @@ class AIBOMReport:
         for raw in data.get("findings", []) or []:
             if isinstance(raw, dict):
                 findings.append(snowflake_governance_finding_to_finding(raw, account))
+        return findings
+
+    def _iac_findings(self) -> "list[Finding]":
+        """IaC misconfiguration findings lifted into the unified stream.
+
+        The IaC scanner stores results in the ``iac_findings_data`` side block; they
+        reached only JSON + SARIF's dedicated IaC loop, so exec ``total_findings``,
+        ``--fail-on-severity``, and severity rollups under-counted them. Convert each
+        to a Finding (mirrors the CIS / secret side-block pattern). SARIF continues
+        to render IaC via its dedicated loop and skips these in the unified loop, so
+        each IaC finding appears exactly once.
+        """
+        from agent_bom.finding import iac_finding_to_finding
+
+        data = self.iac_findings_data
+        if not isinstance(data, dict):
+            return []
+        findings: list[Finding] = []
+        for raw in data.get("findings", []) or []:
+            if isinstance(raw, dict):
+                findings.append(iac_finding_to_finding(raw))
         return findings
 
     def _cloud_cis_findings(self) -> "list[Finding]":

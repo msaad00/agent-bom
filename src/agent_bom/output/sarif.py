@@ -666,6 +666,13 @@ def to_sarif(
             and evidence.get("provider") in _DEDICATED_CIS_PROVIDERS
         ):
             continue
+        # IaC misconfigurations are emitted once below by the dedicated IaC loop
+        # with richer per-rule rule IDs + line numbers. They now also flow through
+        # report.to_findings() (for exec totals + the severity gate), carrying an
+        # ``iac`` evidence marker; skip them here to keep each IaC finding to
+        # exactly one SARIF result.
+        if finding.finding_type == FindingType.CIS_FAIL and evidence.get("iac"):
+            continue
         finding_severity_name = str(finding.severity or "medium").lower()
         rule_id = f"finding/{finding.finding_type.value}"
         level = finding_sev_map.get(finding_severity_name, "warning")

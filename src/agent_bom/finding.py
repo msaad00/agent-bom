@@ -851,6 +851,65 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
     return finding
 
 
+def iac_finding_to_finding(iac: dict) -> "Finding":
+    """Convert one IaC misconfiguration into a unified Finding.
+
+    IaC scanning (Terraform / CloudFormation / K8s / Dockerfile) previously
+    reached only the JSON side block and SARIF's dedicated IaC loop, never the
+    unified stream — so exec ``total_findings``, ``--fail-on-severity``, and the
+    severity rollups under-counted it. Modeled as a ``CIS_FAIL`` carrying the
+    ``iac`` evidence marker so :func:`agent_bom.finding_scope.security_domain_for`
+    keeps its primary CSPM lane while :func:`_is_iac_misconfig` also adds the ASPM
+    lens (IaC is a code-layer config concern). SARIF keeps rendering it via the
+    richer dedicated loop; the unified SARIF loop skips it to avoid duplicates.
+    """
+    from agent_bom.security import sanitize_text
+
+    rule_id = sanitize_text(str(iac.get("rule_id", "") or "unknown"), max_len=80)
+    file_path = sanitize_text(str(iac.get("file_path", "") or "unknown"), max_len=400)
+    line_number = iac.get("line_number") or 0
+    try:
+        line_number = int(line_number)
+    except (TypeError, ValueError):
+        line_number = 0
+    category = sanitize_text(str(iac.get("category", "iac") or "iac"), max_len=64).lower()
+    severity = sanitize_text(str(iac.get("severity", "medium") or "medium"), max_len=40)
+    title = sanitize_text(str(iac.get("title", "") or rule_id), max_len=300)
+    message = sanitize_text(str(iac.get("message", "") or ""), max_len=600)
+    remediation = sanitize_text(str(iac.get("remediation", "") or ""), max_len=600)
+    compliance = [str(t) for t in (iac.get("compliance") or []) if str(t).strip()]
+    attack = [str(t) for t in (iac.get("attack_techniques") or []) if str(t).strip()]
+
+    return Finding(
+        finding_type=FindingType.CIS_FAIL,
+        source=FindingSource.CLOUD_SECURITY,
+        asset=Asset(
+            name=file_path,
+            asset_type="iac_resource",
+            identifier=f"iac:{category}:{file_path}:{line_number}",
+            location=file_path,
+        ),
+        severity=severity,
+        title=f"IaC misconfiguration {rule_id}: {title}" if title != rule_id else f"IaC misconfiguration {rule_id}",
+        description=message or f"IaC rule {rule_id} failed for {file_path}.",
+        remediation_guidance=remediation or None,
+        compliance_tags=sorted(set(compliance)),
+        attack_tags=sorted(set(attack)),
+        evidence={
+            "iac": True,
+            "rule_id": rule_id,
+            "category": category,
+            "scan_type": "iac",
+            "file_path": file_path,
+            "line_number": line_number,
+            "compliance": compliance,
+        },
+        is_actionable=True,
+        impact_category="iac_misconfiguration",
+        id=stable_id("iac", rule_id, file_path, str(line_number)),
+    )
+
+
 def snowflake_governance_finding_to_finding(finding: dict, account: str) -> "Finding":
     """Convert one derived Snowflake governance finding into a unified Finding.
 

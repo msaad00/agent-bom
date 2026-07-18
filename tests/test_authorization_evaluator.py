@@ -78,6 +78,46 @@ def test_complete_matching_evidence_allows() -> None:
     assert result.matched_allow_bindings == ("allow-storage-read",)
 
 
+def _thin_bundle(effect: AuthorizationEffect = AuthorizationEffect.ALLOW) -> AuthorizationEvidenceBundle:
+    return AuthorizationEvidenceBundle(
+        provider=AuthorizationProvider.GCP,
+        scope="projects/proj-1",
+        bindings=(
+            AuthorizationBinding(
+                binding_id=f"thin-{effect.value}",
+                effect=effect,
+                principal_id=_PRINCIPAL,
+                principal_type="serviceaccount",
+                scope="projects/proj-1",
+                data_permissions=("storage.objects.get",),
+                plane=AuthorizationPlane.DATA,
+            ),
+        ),
+    )
+
+
+def test_empty_required_sources_can_never_allow() -> None:
+    result = evaluate_authorization(_thin_bundle(), _request())
+
+    assert result.decision is AuthorizationDecision.INDETERMINATE
+    assert result.diagnostics == ("required_sources:missing",)
+    assert result.matched_allow_bindings == ()
+
+
+def test_empty_required_sources_can_never_imply_deny() -> None:
+    result = evaluate_authorization(_thin_bundle(), _request("storage.objects.delete"))
+
+    assert result.decision is AuthorizationDecision.INDETERMINATE
+    assert result.diagnostics == ("required_sources:missing",)
+
+
+def test_explicit_deny_remains_authoritative_without_required_source_contract() -> None:
+    result = evaluate_authorization(_thin_bundle(AuthorizationEffect.DENY), _request())
+
+    assert result.decision is AuthorizationDecision.EXPLICIT_DENY
+    assert result.matched_deny_bindings == ("thin-deny",)
+
+
 @pytest.mark.parametrize("state", [EvidenceSourceState.PARTIAL, EvidenceSourceState.UNAVAILABLE])
 def test_incomplete_role_evidence_can_never_allow(state: EvidenceSourceState) -> None:
     result = evaluate_authorization(_bundle(role_state=state), _request())

@@ -219,8 +219,8 @@ def evaluate_authorization(bundle: AuthorizationEvidenceBundle, request: Authori
     """Evaluate one request without converting absent evidence into a decision.
 
     Matching explicit denies are useful even in a partial bundle.  An allow or
-    implicit deny, however, requires every source named by ``required_sources``
-    and every referenced role definition to be complete.
+    implicit deny, however, requires a non-empty ``required_sources`` contract,
+    every named source, and every referenced role definition to be complete.
     """
     if (
         request.provider is not bundle.provider

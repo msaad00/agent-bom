@@ -8,6 +8,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
+from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
 from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
@@ -30,6 +32,17 @@ class StepStatus(str, Enum):
 
 
 # ─── Scan Models ───────────────────────────────────────────────────────────
+
+
+class AIProvenance(_CoreAIProvenance):
+    """Public schema contract for model-derived scan evidence."""
+
+
+class AIFindingAssessment(_CoreAIFindingAssessment):
+    """Public schema contract for one advisory AI assessment."""
+
+    provenance: AIProvenance
+
 
 # Fields that fan out one child scan job per element when a request carries more
 # than one explicit target. Mirrors scan_batches.BATCH_*_TARGET_FIELDS (kept
@@ -54,6 +67,15 @@ ScanImageRef = Annotated[str, Field(max_length=_SCAN_IMAGE_REF_MAX_LENGTH)]
 ScanConnectorName = Annotated[str, Field(max_length=_SCAN_CONNECTOR_MAX_LENGTH)]
 ScanGlobPattern = Annotated[str, Field(max_length=_SCAN_GLOB_MAX_LENGTH)]
 ScanSinglePath = Annotated[str, Field(max_length=_SCAN_PATH_MAX_LENGTH)]
+
+_SCAN_SEVERITY_ORDER = ("low", "medium", "high", "critical")
+
+
+def _stabilize_scan_severity_schema(schema: dict[str, Any]) -> None:
+    """Keep OpenAPI output stable across Python ``Literal`` implementations."""
+    for variant in schema.get("anyOf", ()):
+        if "enum" in variant:
+            variant["enum"] = list(_SCAN_SEVERITY_ORDER)
 
 
 class _BoundedProgress(list[str]):
@@ -118,6 +140,15 @@ class ScanRequest(BaseModel):
     enrich: bool = False
     """Enrich with NVD CVSS, EPSS, and CISA KEV data."""
 
+    ai_enrich: bool = False
+    """Add advisory AI classification/triage and narratives without changing deterministic findings."""
+
+    ai_model: str = Field(default="openai/gpt-4o-mini", max_length=256)
+    """Provider/model identifier used when ``ai_enrich`` is enabled."""
+
+    ai_deterministic: bool | None = None
+    """Optional per-request temperature-zero override; ``None`` inherits deployment policy."""
+
     offline: bool = False
     """Use the local vulnerability DB only; do not perform network vulnerability lookups."""
 
@@ -160,7 +191,10 @@ class ScanRequest(BaseModel):
     exclude_servers: list[ScanGlobPattern] = Field(default_factory=list)
     """Exclude MCP servers matching these name patterns."""
 
-    min_severity: Literal["low", "medium", "high", "critical"] | None = None
+    min_severity: Annotated[
+        Literal["low", "medium", "high", "critical"] | None,
+        Field(json_schema_extra=_stabilize_scan_severity_schema),
+    ] = None
     """Minimum severity to include in results (low/medium/high/critical)."""
 
     @field_validator("format", "min_severity", mode="before")

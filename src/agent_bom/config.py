@@ -373,15 +373,15 @@ OLLAMA_BASE_URL = _str("AGENT_BOM_OLLAMA_URL", "http://localhost:11434")
 # Empty string means "fall back to the single resolved model" (legacy path).
 AI_MODEL_CHEAP = _str("AGENT_BOM_AI_MODEL_CHEAP", "")  # tagging, summaries
 AI_MODEL_STRONG = _str("AGENT_BOM_AI_MODEL_STRONG", "")  # detection, remediation
+AI_MODEL_REVISION = _str("AGENT_BOM_AI_MODEL_REVISION", "")  # cache/provenance model revision, when provider exposes one
 
-# Redaction: scrub secret-looking material from every prompt before it leaves
-# the control plane. On by default — "no exfiltration by default" (issue #3206
-# hard requirement #4). Set to False only for trusted local-only deployments.
+# Redact recognizable secret values at every provider boundary. This is not a
+# general source-code anonymizer; raw skill content is restricted to a
+# loopback-configured Ollama endpoint.
 AI_REDACT_PROMPTS = _bool("AGENT_BOM_AI_REDACT_PROMPTS", True)
 
-# Deterministic mode: temperature 0 + cache, so AI-derived findings are stable
-# enough to (optionally, explicitly) gate on. Default temperature stays 0.3 for
-# richer narratives when determinism is not required.
+# Temperature-zero mode inherited by CLI/API requests without an override. It
+# improves stability but is not byte-reproducible across provider revisions.
 AI_DETERMINISTIC = _bool("AGENT_BOM_AI_DETERMINISTIC", False)
 AI_TEMPERATURE = _float("AGENT_BOM_AI_TEMPERATURE", 0.3)
 
@@ -393,8 +393,11 @@ AI_RETRY_BASE_DELAY = _float("AGENT_BOM_AI_RETRY_BASE_DELAY", 0.5)
 AI_RETRY_MAX_DELAY = _float("AGENT_BOM_AI_RETRY_MAX_DELAY", 8.0)
 AI_REQUEST_TIMEOUT = _float("AGENT_BOM_AI_REQUEST_TIMEOUT", 120.0)
 
-# Per-run cap on total LLM calls (cost/latency control). 0 disables the cap.
+# Cap actual provider requests, including retries. 0 is unlimited; negative is invalid.
 AI_MAX_CALLS_PER_RUN = _int("AGENT_BOM_AI_MAX_CALLS", 50)
+# Bound the amount of finding material sent for advisory triage in one run.
+AI_MAX_FINDINGS_PER_RUN = _int("AGENT_BOM_AI_MAX_FINDINGS", 100)
+AI_FINDING_BATCH_SIZE = _int("AGENT_BOM_AI_FINDING_BATCH_SIZE", 20)  # findings per triage request; runtime cap 50
 
 
 # ── OIDC discovery shim ──────────────────────────────────────────────────

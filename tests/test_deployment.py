@@ -1,9 +1,29 @@
 """Tests for deployment configs and MCP server metadata."""
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_dependency_light_deployment_helpers_do_not_import_pydantic():
+    """Helm and release helpers run before project dependencies are installed."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            "-c",
+            ("import sys; sys.path.insert(0, 'src'); import agent_bom.deploy_profiles; import agent_bom.mcp_registry_text"),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 # ---------------------------------------------------------------------------

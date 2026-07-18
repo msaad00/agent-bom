@@ -30,3 +30,7 @@ a5c3a329da9d0f5deed6a6857bcbaeaf3a024f1e:docs/ENTERPRISE_SECURITY_PLAYBOOK.md:ge
 e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_hardening.py:jwt:286
 e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:334
 e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:360
+
+# History-only false positive from a synthetic token-shape redaction fixture.
+# The fixture verifies that prompt sanitization removes the value.
+8b56ca26dfb1f9a575f21678fa8f33be113fc231:tests/test_ai_enrich_providers.py:jwt:47

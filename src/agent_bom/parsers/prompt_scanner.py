@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_bom.traversal import iter_discovery_files
+
 logger = logging.getLogger(__name__)
 
 # ── Obfuscation normalization ──────────────────────────────────────────────
@@ -406,48 +408,36 @@ def discover_prompt_files(
     if not root.is_dir():
         return found
 
-    def _walk(directory: Path, depth: int) -> None:
-        if depth > max_depth:
-            return
-        try:
-            entries = sorted(directory.iterdir())
-        except PermissionError:
-            return
+    prompt_dir_extensions = {
+        ".txt",
+        ".md",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".j2",
+        ".jinja2",
+        ".hbs",
+        ".mustache",
+        ".prompt",
+        ".promptfile",
+    }
+    for path in iter_discovery_files(root, extra_skip_dirs=frozenset(_SKIP_DIRS)):
+        relative_parts = path.relative_to(root).parts
+        parent_parts = relative_parts[:-1]
+        prompt_dir_depths = [
+            index for index, part in enumerate(parent_parts) if part.lower() in PROMPT_DIR_NAMES
+        ]
+        in_reachable_prompt_dir = bool(prompt_dir_depths) and min(prompt_dir_depths) <= max_depth
+        within_normal_depth = len(parent_parts) <= max_depth
 
-        for entry in entries:
-            if entry.is_dir():
-                if entry.name in _SKIP_DIRS:
-                    continue
-                # Check if it's a prompt directory
-                if entry.name.lower() in PROMPT_DIR_NAMES:
-                    # Scan all files inside prompt directories
-                    for f in sorted(entry.rglob("*")):
-                        if f.is_file() and f.suffix in {
-                            ".txt",
-                            ".md",
-                            ".yaml",
-                            ".yml",
-                            ".json",
-                            ".j2",
-                            ".jinja2",
-                            ".hbs",
-                            ".mustache",
-                            ".prompt",
-                            ".promptfile",
-                        }:
-                            found.append(f)
-                else:
-                    _walk(entry, depth + 1)
-            elif entry.is_file():
-                # Match by extension
-                if entry.suffix.lower() in PROMPT_FILE_EXTENSIONS:
-                    found.append(entry)
-                # Match by exact name
-                elif entry.name.lower() in PROMPT_FILE_NAMES:
-                    found.append(entry)
+        if in_reachable_prompt_dir and path.suffix.lower() in prompt_dir_extensions:
+            found.append(path)
+        elif within_normal_depth and (
+            path.suffix.lower() in PROMPT_FILE_EXTENSIONS or path.name.lower() in PROMPT_FILE_NAMES
+        ):
+            found.append(path)
 
-    _walk(root, 0)
-    return found
+    return sorted(found)
 
 
 # ── Analysis ─────────────────────────────────────────────────────────────────

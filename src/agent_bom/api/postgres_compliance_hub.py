@@ -28,6 +28,7 @@ from agent_bom.api.compliance_hub_store import (
     collect_scope_filtered_page,
     compute_effective_reach_score,
     scope_filter_batch_size,
+    status_sql_predicate,
 )
 from agent_bom.api.finding_cursor import (
     cursor_from_current_row,
@@ -849,11 +850,13 @@ class PostgresComplianceHubStore:
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> dict[str, int]:
         # GROUP BY the materialised ``severity`` on the current-state table with
-        # the SAME tenant/since/origin predicates ``list_current_page`` counts on,
-        # so the exec headline reconciles exactly with the ``/v1/findings``
-        # drill-down and retired/aged ledger rows never inflate it (#3961/#4009).
+        # the SAME tenant/since/origin/status predicates ``list_current_page``
+        # counts on, so the exec headline reconciles exactly with the
+        # ``/v1/findings`` drill-down and retired/aged/resolved rows never inflate
+        # it (#3961/#4009).
         where = ["tenant_id = %s"]
         params: list[Any] = [tenant_id]
         if since:
@@ -862,6 +865,10 @@ class PostgresComplianceHubStore:
         if origin is not None:
             where.append("origin = %s")
             params.append(origin)
+        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
+        if status_sql:
+            where.append(status_sql)
+            params.extend(status_params)
         where_sql = " AND ".join(where)
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
@@ -1195,6 +1202,7 @@ class PostgresComplianceHubStore:
         cursor: str | None = None,
         since: str | None = None,
         scope: Mapping[str, str] | None = None,
+        status: str | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
@@ -1226,6 +1234,14 @@ class PostgresComplianceHubStore:
             # partial index apply (a bound param is not provably non-empty) (#3926).
             where.append("scan_id <> '' AND scan_id = %s")
             params.append(scan_id)
+        # Lifecycle-status filter over the sargable ``status`` column. In the base
+        # predicate so it applies in BOTH the fast keyset path and the scoped
+        # batched path (base_where flows into the scope fetch_batch). The
+        # default-open path rides idx_hub_findings_current_tenant_open_reach.
+        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
+        if status_sql:
+            where.append(status_sql)
+            params.extend(status_params)
         if scope:
             # provider/account_ref/environment/domain live in the JSON payload and
             # ``domain`` is a computed overlapping-lens SET — not a single SQL

@@ -13988,6 +13988,17 @@
               ],
               "title": "Window Days"
             }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "maxLength": 16,
+              "title": "Status",
+              "type": "string"
+            }
           }
         ],
         "responses": {

@@ -1484,6 +1484,11 @@ async def list_jobs(
 
 
 _ALLOWED_FINDING_SORTS = ("effective_reach", "cvss", "severity")
+# Lifecycle-status filter (default ``open`` = live posture). ``open`` maps to
+# status IN (open, reopened) in the store; ``resolved`` to status = resolved;
+# ``all`` applies no lifecycle predicate.
+_ALLOWED_FINDING_STATUSES = ("open", "resolved", "all")
+_DEFAULT_FINDING_STATUS = "open"
 _ALLOWED_FINDING_SEVERITIES = (
     "critical",
     "high",
@@ -1551,11 +1556,12 @@ def _resolve_bulk_findings_total(
     page_len: int,
     limit: int,
     window_days: int = 0,
+    status: str | None = None,
 ) -> tuple[int | None, bool]:
     """Return ``(total, total_approximate)`` for the bulk-ingest slice."""
     from agent_bom.api.findings_count_cache import cache_key, get_cached_total, set_cached_total
 
-    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest", window_days=window_days)
+    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest", window_days=window_days, status=status)
     if not approximate_total:
         if bulk_total is not None:
             set_cached_total(key, bulk_total)
@@ -1617,6 +1623,7 @@ def _merged_scan_bulk_page(
     limit: int,
     since: str | None = None,
     scope: Mapping[str, str] | None = None,
+    status: str | None = None,
 ) -> list[dict[str, Any]]:
     """Merge pre-sorted scan findings with bulk hub pages without O(table) work.
 
@@ -1625,6 +1632,8 @@ def _merged_scan_bulk_page(
     full combined window in memory. When ``scope`` is set the bulk source is
     refilled by keyset cursor (the scope-filtered store path is cursor-only, not
     offset-addressable) so the merge still streams a bounded window per chunk.
+    ``status`` filters the bulk source's lifecycle status to match the merged
+    scan findings' basis (default open) so both halves reconcile.
     """
     scan_i = 0
     bulk_remote_offset = 0
@@ -1633,10 +1642,14 @@ def _merged_scan_bulk_page(
     bulk_cursor: str | None = None
     bulk_exhausted = False
 
-    # Only the current-state store path carries the ``since`` predicate; when a
-    # window is active pass it through, otherwise stay byte-compatible with the
-    # legacy ``list_page`` bulk path that has no window kwarg.
-    since_kwargs = {"since": since} if since else {}
+    # Only the current-state store path carries the ``since`` / ``status``
+    # predicates; when active pass them through, otherwise stay byte-compatible
+    # with the legacy ``list_page`` bulk path that has neither kwarg.
+    extra_kwargs: dict[str, Any] = {}
+    if since:
+        extra_kwargs["since"] = since
+    if status is not None:
+        extra_kwargs["status"] = status
 
     def _refill_bulk() -> bool:
         nonlocal bulk_buf, bulk_i, bulk_remote_offset, bulk_cursor, bulk_exhausted
@@ -1655,7 +1668,7 @@ def _merged_scan_bulk_page(
                 include_total=False,
                 cursor=bulk_cursor,
                 scope=dict(scope),
-                **since_kwargs,
+                **extra_kwargs,
             )
             bulk_buf = bulk_result[0]
             bulk_cursor = bulk_result[2] if len(bulk_result) > 2 else None
@@ -1672,7 +1685,7 @@ def _merged_scan_bulk_page(
             scan_id=scan_id,
             origin="bulk_ingest",
             include_total=False,
-            **since_kwargs,
+            **extra_kwargs,
         )
         bulk_buf = bulk_result[0]
         bulk_remote_offset += len(bulk_buf)
@@ -1744,6 +1757,7 @@ async def list_findings(
     environment: Annotated[str | None, Query(max_length=64)] = None,
     domain: Annotated[str | None, Query(max_length=32)] = None,
     window_days: Annotated[int | None, Query(ge=0, le=3650)] = None,
+    status: Annotated[str, Query(max_length=16)] = _DEFAULT_FINDING_STATUS,
 ) -> dict:
     """List vulnerability findings aggregated from completed scan results.
 
@@ -1779,6 +1793,7 @@ async def list_findings(
                 environment,
                 domain,
                 window_days,
+                status,
             )
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -1802,6 +1817,7 @@ def _list_findings_impl(
     environment: str | None = None,
     domain: str | None = None,
     window_days: int | None = None,
+    status: str = _DEFAULT_FINDING_STATUS,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
@@ -1823,7 +1839,7 @@ def _list_findings_impl(
     ``OFFSET`` cost). ``cursor`` and non-zero ``offset`` cannot be combined.
     """
     from agent_bom.api import time_window
-    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store, status_matches
     from agent_bom.api.finding_cursor import decode_finding_cursor
 
     tenant_id = _tenant_id(request)
@@ -1845,6 +1861,15 @@ def _list_findings_impl(
             status_code=422,
             detail=f"invalid severity '{severity}'; accepted values: {', '.join(_ALLOWED_FINDING_SEVERITIES)}",
         )
+    status_key = status.strip().lower() if isinstance(status, str) else _DEFAULT_FINDING_STATUS
+    if status_key not in _ALLOWED_FINDING_STATUSES:
+        # A bogus status previously returned an empty 200 that reads as "no
+        # findings" — a trap, and worse hid the live posture. Reject clearly,
+        # mirroring the severity contract.
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid status '{status}'; accepted values: {', '.join(_ALLOWED_FINDING_STATUSES)}",
+        )
     if cursor and offset:
         raise HTTPException(status_code=400, detail="cursor and offset are mutually exclusive")
     if cursor:
@@ -1865,9 +1890,17 @@ def _list_findings_impl(
         severity=severity,
         scan_id=scan_id,
         window_days=resolved_window,
+        status=status_key,
     )
     cached_bulk_total = get_cached_total(
-        cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest", window_days=resolved_window)
+        cache_key(
+            tenant_id=tenant_id,
+            severity=severity,
+            scan_id=scan_id,
+            origin="bulk_ingest",
+            window_days=resolved_window,
+            status=status_key,
+        )
     )
     if approximate_total or effective_approximate_total:
         # Explicit ``approximate_total=true`` (and the auto-threshold path) must
@@ -1918,6 +1951,11 @@ def _list_findings_impl(
         if severity:
             normalized = severity.lower()
             scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]
+        # In-memory scan findings carry no lifecycle status, so they are treated
+        # as ``open`` (live by construction): the default + ``all`` include them,
+        # ``status=resolved`` excludes them. Reconciles with the hub store's
+        # sargable status predicate for a single open-only basis by default.
+        scan_findings = [item for item in scan_findings if status_matches(item, status_key)]
         if scope_filters:
             scan_findings = [item for item in scan_findings if _row_matches_scope(item, scope_filters)]
         scan_findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
@@ -1944,6 +1982,7 @@ def _list_findings_impl(
                 limit=limit,
                 since=window_since,
                 scope=scope_arg,
+                status=status_key,
             )
         else:
             bulk_result = bulk_list(
@@ -1958,6 +1997,7 @@ def _list_findings_impl(
                 cursor=cursor,
                 since=window_since,
                 scope=scope_arg,
+                status=status_key,
             )
             page_rows = bulk_result[0]
             next_cursor = bulk_result[2] if len(bulk_result) > 2 else None
@@ -1975,6 +2015,7 @@ def _list_findings_impl(
                 origin="bulk_ingest",
                 include_total=include_bulk_total,
                 since=window_since,
+                status=status_key,
             )
             bulk_total = bulk_result[1]
             page_rows = _merged_scan_bulk_page(
@@ -1987,6 +2028,7 @@ def _list_findings_impl(
                 offset=offset,
                 limit=limit,
                 since=window_since,
+                status=status_key,
             )
             resolved_bulk, total_approximate = _resolve_bulk_findings_total(
                 tenant_id=tenant_id,
@@ -1998,6 +2040,7 @@ def _list_findings_impl(
                 page_len=len(page_rows),
                 limit=limit,
                 window_days=resolved_window,
+                status=status_key,
             )
             total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
         else:
@@ -2012,6 +2055,7 @@ def _list_findings_impl(
                 include_total=include_bulk_total,
                 cursor=cursor,
                 since=window_since,
+                status=status_key,
             )
             page_rows = bulk_result[0]
             bulk_total = bulk_result[1]
@@ -2026,6 +2070,7 @@ def _list_findings_impl(
                 page_len=len(page_rows),
                 limit=limit,
                 window_days=resolved_window,
+                status=status_key,
             )
     else:
         bulk_findings = _bulk_ingested_findings_for_tenant(tenant_id)
@@ -2034,6 +2079,7 @@ def _list_findings_impl(
         if severity:
             normalized = severity.lower()
             bulk_findings = [item for item in bulk_findings if str(item.get("severity", "")).lower() == normalized]
+        bulk_findings = [item for item in bulk_findings if status_matches(item, status_key)]
         if scope_filters:
             bulk_findings = [item for item in bulk_findings if _row_matches_scope(item, scope_filters)]
         combined = scan_findings + bulk_findings

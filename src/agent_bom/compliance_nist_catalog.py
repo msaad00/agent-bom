@@ -193,13 +193,13 @@ def build_family_rollup(evaluated_controls: list[dict], catalog: dict[str, Any])
         )
         rec["total"] += 1
     for control in evaluated_controls:
-        rec = fam.get(nist_family(control["control_id"]))
-        if rec is None:
+        frec = fam.get(nist_family(control["control_id"]))
+        if frec is None:
             continue
         st = control["status"]
         if st in ("pass", "fail", "warning", "error"):
-            rec["evaluated"] += 1
-            rec[st] += 1
+            frec["evaluated"] += 1
+            frec[st] += 1
     out: list[dict] = []
     for name in sorted(fam):
         rec = fam[name]

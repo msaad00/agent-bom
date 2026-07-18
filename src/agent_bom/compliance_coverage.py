@@ -189,7 +189,7 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         catalog=get_bundled_attack_techniques(),
         report_label="MITRE ATT&CK",
         bundled_unit="techniques",
-        source_standard_size="~600",
+        source_standard_size="~700",
         coverage="Adversary techniques tagged via CWE → CAPEC → ATT&CK on every blast-radius finding",
     ),
     ComplianceFrameworkMetadata(

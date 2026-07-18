@@ -442,6 +442,32 @@ def _pinecone_get(path: str, api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> t
         return -1, {}
 
 
+def _record_pinecone_coverage_gap(reason: str, detail: str) -> None:
+    """Emit a structured coverage warning when Pinecone could not be evaluated.
+
+    A 401/403/outage must be distinguishable from a genuinely empty account:
+    both otherwise return an empty result and read as "no vector databases".
+    Mirrors the Snowflake inventory-failure coverage-warning contract so the
+    gap surfaces in the report instead of masquerading as a clean empty.
+    """
+    try:
+        from agent_bom.coverage import CoverageWarning
+        from agent_bom.scanners.state import record_coverage_warning
+
+        record_coverage_warning(
+            CoverageWarning(
+                ecosystem="pinecone",
+                release=f"pinecone:{reason}",
+                reason=reason,
+                detail=detail,
+                package_count=0,
+                advisory_rows=0,
+            ).to_dict()
+        )
+    except Exception:  # noqa: BLE001 — coverage evidence is supplementary; never fail discovery
+        logger.debug("Could not record Pinecone coverage warning", exc_info=True)
+
+
 def check_pinecone(api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> list[PineconeIndexResult]:
     """Assess security posture of all Pinecone indexes for the given API key.
 
@@ -466,12 +492,24 @@ def check_pinecone(api_key: str, timeout: int = _DEFAULT_TIMEOUT) -> list[Pineco
     status, data = _pinecone_get("/indexes", api_key, timeout)
     if status == 401:
         logger.warning("Pinecone: invalid or expired API key")
+        _record_pinecone_coverage_gap(
+            "pinecone_auth_failed",
+            "Pinecone API key invalid or expired (HTTP 401); indexes were not evaluated.",
+        )
         return []
     if status == 403:
         logger.warning("Pinecone: API key lacks list-indexes permission")
+        _record_pinecone_coverage_gap(
+            "pinecone_permission_denied",
+            "Pinecone API key lacks list-indexes permission (HTTP 403); indexes were not evaluated.",
+        )
         return []
     if status < 0 or status >= 300:
         logger.debug("Pinecone: unexpected status %d listing indexes", status)
+        _record_pinecone_coverage_gap(
+            "pinecone_api_unavailable",
+            f"Pinecone API returned status {status} listing indexes; indexes were not evaluated.",
+        )
         return []
 
     indexes = data.get("indexes", [])

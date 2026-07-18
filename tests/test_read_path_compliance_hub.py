@@ -424,6 +424,46 @@ class TestCurrentSeverityBreakdown:
         assert store.current_severity_breakdown("t3", origin="bulk_ingest", since=None)["critical"] == 0
 
 
+class TestCurrentKevCount:
+    """current_kev_count reconciles the exec KEV headline with the KEV rows the
+    /v1/findings drill shows — across memory + sqlite backends."""
+
+    def test_counts_kev_flagged_current_findings(self, store) -> None:
+        now = _now()
+        recent = (now - timedelta(days=1)).isoformat()
+        # Mirror production: the SAME payload lands in the ledger AND current-state
+        # so the current row can hydrate the ledger-only ``is_kev`` flag.
+        kev = {"id": "k1", "severity": "high", "origin": "bulk_ingest", "is_kev": True}
+        plain = {"id": "p1", "severity": "high", "origin": "bulk_ingest"}
+        store.add("t1", [kev, plain])
+        store.upsert_current_batch("t1", [kev, plain], observed_at=recent, batch_id="b1", source="test")
+
+        from agent_bom.api import time_window
+
+        since = time_window.window_since_iso(90, now=now)
+        assert store.current_kev_count("t1", origin="bulk_ingest", since=since) == 1
+
+    def test_kev_count_is_tenant_scoped_and_window_bounded(self, store) -> None:
+        now = _now()
+        recent = (now - timedelta(days=1)).isoformat()
+        stale = (now - timedelta(days=400)).isoformat()
+        k_recent = {"id": "a", "severity": "high", "origin": "bulk_ingest", "is_kev": True}
+        k_stale = {"id": "b", "severity": "high", "origin": "bulk_ingest", "is_kev": True}
+        other = {"id": "c", "severity": "high", "origin": "bulk_ingest", "is_kev": True}
+        store.add("t1", [k_recent, k_stale])
+        store.upsert_current_batch("t1", [k_recent], observed_at=recent, batch_id="r", source="test")
+        store.upsert_current_batch("t1", [k_stale], observed_at=stale, batch_id="s", source="test")
+        store.add("t2", [other])
+        store.upsert_current_batch("t2", [other], observed_at=recent, batch_id="o", source="test")
+
+        from agent_bom.api import time_window
+
+        since = time_window.window_since_iso(90, now=now)
+        # Stale (>90d) row excluded; tenant t2's KEV never leaks into t1.
+        assert store.current_kev_count("t1", origin="bulk_ingest", since=since) == 1
+        assert store.current_kev_count("t3", origin="bulk_ingest", since=since) == 0
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # P3 — ordinal keyset does not dup/drop
 # ═══════════════════════════════════════════════════════════════════════════

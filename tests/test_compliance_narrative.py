@@ -220,6 +220,23 @@ def test_framework_has_recommendations():
     assert len(fw.recommendations) >= 1
 
 
+def test_framework_recommendation_references_real_evidence_command():
+    """The evidence-export recommendation must point at a command/endpoint that
+    actually exists — never the phantom ``agent-bom check --framework … --export
+    zip`` (``check`` has no such flags). The real evidence pack is the compliance
+    report API (#honest-cli)."""
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.HIGH), owasp_tags=["LLM05"])
+    report = _make_report(blast_radii=[br])
+    fw = generate_compliance_narrative(report, framework="owasp-llm").framework_narratives[0]
+    joined = "\n".join(fw.recommendations)
+    # The invented flags must be gone…
+    assert "--export zip" not in joined
+    assert "check --framework" not in joined
+    # …and the real evidence-pack endpoint must be referenced with the slug.
+    assert "/v1/compliance/" in joined
+    assert f"/v1/compliance/{fw.slug}/report" in joined
+
+
 # ─── ControlNarrative tests ───────────────────────────────────────────────────
 
 

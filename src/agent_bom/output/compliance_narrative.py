@@ -277,6 +277,7 @@ def _framework_overall_narrative(
 
 def _framework_recommendations(
     display_name: str,
+    slug: str,
     fail_count: int,
     warn_count: int,
     failing_controls: list[ControlNarrative],
@@ -297,8 +298,9 @@ def _framework_recommendations(
         if top_pkgs:
             recs.append(f"Prioritise upgrades to: {', '.join(dict.fromkeys(top_pkgs))}")
     recs.append(
-        f"Export a {display_name} compliance evidence bundle with "
-        "`agent-bom check --framework <framework> --export zip` for auditor submission."
+        f"Export a signed {display_name} evidence bundle from the compliance API "
+        f"(`GET /v1/compliance/{slug}/report`, or the all-framework pack at "
+        "`GET /v1/compliance/report/pack`) for auditor submission."
     )
     return recs
 
@@ -403,7 +405,7 @@ def _build_framework_narrative(
     narrative = _framework_overall_narrative(
         display_name, total_controls, evaluated_count, pass_count, fail_count, warn_count, critical_failing_ids, score
     )
-    recommendations = _framework_recommendations(display_name, fail_count, warn_count, failing_controls)
+    recommendations = _framework_recommendations(display_name, slug, fail_count, warn_count, failing_controls)
 
     return FrameworkNarrative(
         framework=display_name,

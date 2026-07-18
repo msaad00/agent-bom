@@ -323,6 +323,30 @@ def _severity_breakdown_from_current_rows(rows: Iterable[dict[str, Any]]) -> dic
     return counts
 
 
+def _payload_is_kev(payload: Mapping[str, Any] | None) -> bool:
+    """Return True when a finding payload carries a CISA-KEV flag.
+
+    The hub normalises ``cisa_kev`` to ``is_kev`` on store, but accept either so
+    a freshly-ingested or hydrated payload both resolve — matching what the
+    /v1/findings drill shows per row."""
+    if not payload:
+        return False
+    return bool(payload.get("is_kev") or payload.get("cisa_kev"))
+
+
+def _kev_json_cond_sqlite(col: str) -> str:
+    """SQLite predicate: the KEV flag on a JSON column (bool ``true`` or string)."""
+    return (
+        f"json_extract({col}, '$.is_kev') IN (1, 'true', 'True', '1') "
+        f"OR json_extract({col}, '$.cisa_kev') IN (1, 'true', 'True', '1')"
+    )
+
+
+def _current_kev_count_from_rows(rows: Iterable[dict[str, Any]]) -> int:
+    """Count current-state rows whose (hydrated) payload is CISA-KEV flagged."""
+    return sum(1 for row in rows if _payload_is_kev(row.get("payload")))
+
+
 def _framework_slug_counts_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
     from agent_bom.compliance_coverage import normalize_framework_slug
 
@@ -432,6 +456,24 @@ class ComplianceHubStore(Protocol):
         and unbounded), this reads ``hub_findings_current`` so retired / aged
         findings that linger in the ledger never inflate the exec numbers. An
         indexed ``GROUP BY`` — no payload hydration.
+        """
+        ...
+
+    def current_kev_count(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+    ) -> int:
+        """Count CURRENT-STATE findings flagged CISA-KEV, matching the drill.
+
+        Same tenant + ``origin`` + ``since`` read-window predicates as
+        :meth:`current_severity_breakdown`, so the exec KEV headline reconciles
+        with the KEV rows /v1/findings shows. The KEV flag lives in the finding
+        payload (inline, or in the CVE-intel reference for CVE findings), so the
+        SQL backends resolve it from the current row, the ledger payload, and the
+        intel reference — never scan-lane only.
         """
         ...
 
@@ -1078,6 +1120,21 @@ class InMemoryComplianceHubStore:
             rows = list(self._current.get(tenant_id, {}).values())
         rows = _filter_current_rows(rows, severity=None, scan_id=None, origin=origin, since=since, status=status)
         return _severity_breakdown_from_current_rows(rows)
+
+    def current_kev_count(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+    ) -> int:
+        with self._lock:
+            rows = [dict(r) for r in self._current.get(tenant_id, {}).values()]
+        rows = _filter_current_rows(rows, severity=None, scan_id=None, origin=origin, since=since)
+        # Current-state rows keep an overlay-only payload; the KEV flag lives in
+        # the ledger payload, so hydrate first (same source the drill reads).
+        rows = self._hydrate_current_rows(tenant_id, rows)
+        return _current_kev_count_from_rows(rows)
 
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
         with self._lock:
@@ -2055,6 +2112,44 @@ class SQLiteComplianceHubStore:
             key = str(sev or "unknown").lower()
             counts[key] = counts.get(key, 0) + int(count)
         return counts
+
+    def current_kev_count(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+    ) -> int:
+        # Same tenant/since/origin predicates as ``current_severity_breakdown``.
+        # The KEV flag is not a current-state column (the overlay keeps only
+        # sort/filter scalars), so resolve it from the current payload, the joined
+        # ledger payload, and the CVE-intel reference — the exact places the drill
+        # hydrates it from — so the exec KEV count reconciles with the drill.
+        where = ["c.tenant_id = ?"]
+        params: list[Any] = [tenant_id]
+        if since:
+            where.append("c.last_seen >= ?")
+            params.append(since)
+        if origin is not None:
+            where.append("c.origin = ?")
+            params.append(origin)
+        where_sql = " AND ".join(where)
+        kev_cond = " OR ".join(
+            _kev_json_cond_sqlite(col) for col in ("c.payload", "l.payload", "i.payload")
+        )
+        row = self._conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM hub_findings_current c
+            LEFT JOIN compliance_hub_findings l
+                ON l.tenant_id = c.tenant_id AND l.finding_id = c.ledger_finding_id
+            LEFT JOIN hub_cve_intel i
+                ON i.tenant_id = c.tenant_id AND i.cve_id = json_extract(l.payload, '$.intel_ref')
+            WHERE {where_sql} AND ({kev_cond})
+            """,  # nosec B608
+            params,
+        ).fetchone()
+        return int((row[0] if row else 0) or 0)
 
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
         from agent_bom.compliance_coverage import normalize_framework_slug

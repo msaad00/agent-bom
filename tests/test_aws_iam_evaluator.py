@@ -63,6 +63,32 @@ def test_not_action_not_resource_and_implicit_deny() -> None:
     )
 
 
+def test_bool_gated_statement_is_not_scored_as_unconditional_allow() -> None:
+    gated = policy(
+        {
+            "Sid": "mfa-only",
+            "Effect": "Allow",
+            "Action": "s3:GetObject",
+            "Resource": "*",
+            "Condition": {"Bool": {"aws:MultiFactorAuthPresent": True}},
+        }
+    )
+    # No MFA context is supplied: the Bool condition cannot be positively
+    # satisfied, so the statement must NOT flatten into an unconditional allow.
+    result = evaluate_identity_policies([gated], action="s3:GetObject", resource="arn:aws:s3:::bucket/key")
+    assert result.decision is not IamDecision.ALLOW
+    assert result.decision is IamDecision.INDETERMINATE
+
+    # With MFA present in context the Bool condition is satisfied → allow.
+    with_mfa = evaluate_identity_policies(
+        [gated],
+        action="s3:GetObject",
+        resource="arn:aws:s3:::bucket/key",
+        context={"aws:MultiFactorAuthPresent": "true"},
+    )
+    assert with_mfa.decision is IamDecision.ALLOW
+
+
 def test_partial_policy_can_never_produce_allow() -> None:
     partial = normalize_iam_policy_document(
         {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}, {"Effect": "Maybe", "Action": "*"}]}

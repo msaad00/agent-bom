@@ -62,6 +62,15 @@ class PostgresAuditLog:
                 """
             )
             _ensure_tenant_rls(conn, "audit_log", "team_id")
+            # Parity with the ~47 other tenant tables: the checkpoint cache is a
+            # per-tenant summary of the audit_log chain head, so it lives under
+            # the same FORCE ROW LEVEL SECURITY backstop keyed on tenant_id. The
+            # append path writes it under the request tenant context (the same
+            # value it inserts into audit_log.team_id on the same connection, so
+            # it passes WITH CHECK whenever the audit_log insert does); the
+            # cross-tenant startup rebuild below runs under an explicit
+            # bypass_tenant_rls maintenance context.
+            _ensure_tenant_rls(conn, "audit_chain_checkpoint", "tenant_id")
             conn.commit()
         self._hydrate_checkpoints()
 
@@ -70,7 +79,9 @@ class PostgresAuditLog:
         # SECURITY on audit_log hides from a normally-scoped connection (a
         # NOSUPERUSER role would only ever see the 'default' tenant here). This
         # is a trusted startup rebuild, so bind the RLS bypass session for the
-        # cross-tenant read; audit_chain_checkpoint itself carries no RLS policy.
+        # cross-tenant read and the per-tenant checkpoint upsert. Both audit_log
+        # and audit_chain_checkpoint now enforce tenant RLS, so the bypass is
+        # required for this maintenance write to every tenant's checkpoint row.
         with bypass_tenant_rls(audit=False), _tenant_connection(self._pool) as conn:
             row = conn.execute("SELECT COUNT(*) FROM audit_chain_checkpoint").fetchone()
             if row and int(row[0]) > 0:
@@ -100,11 +111,20 @@ class PostgresAuditLog:
             conn.commit()
 
     def _get_checkpoint(self, tenant_id: str) -> _AuditChainCheckpoint | None:
-        with _tenant_connection(self._pool) as conn:
-            row = conn.execute(
-                "SELECT entry_count, head_signature FROM audit_chain_checkpoint WHERE tenant_id = %s",
-                (tenant_id,),
-            ).fetchone()
+        # audit_chain_checkpoint is under FORCE ROW LEVEL SECURITY keyed on
+        # tenant_id, so bind the requested tenant on the connection rather than
+        # relying on the ambient request context — otherwise a verify call for a
+        # tenant other than the ambient one would resolve zero rows and silently
+        # fall back to a full re-scan.
+        token = _current_tenant.set(tenant_id)
+        try:
+            with _tenant_connection(self._pool) as conn:
+                row = conn.execute(
+                    "SELECT entry_count, head_signature FROM audit_chain_checkpoint WHERE tenant_id = %s",
+                    (tenant_id,),
+                ).fetchone()
+        finally:
+            _current_tenant.reset(token)
         if not row:
             return None
         if len(row) >= 3:

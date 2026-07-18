@@ -23,6 +23,7 @@ from pathlib import Path
 
 from agent_bom.parsers.compliance_tags import tag_training_run
 from agent_bom.runtime.patterns import PII_PATTERNS, RESPONSE_INJECTION_PATTERNS
+from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
 
@@ -555,12 +556,7 @@ def discover_training_files(directory: Path) -> list[Path]:
     """Find ML training pipeline metadata files in a directory tree."""
     results: list[Path] = []
 
-    for p in directory.rglob("*"):
-        if any(skip in p.parts for skip in _SKIP_DIRS):
-            continue
-        if not p.is_file():
-            continue
-
+    for p in iter_discovery_files(directory, extra_skip_dirs=frozenset(_SKIP_DIRS)):
         name = p.name
 
         # MLflow

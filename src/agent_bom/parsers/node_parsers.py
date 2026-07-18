@@ -12,12 +12,14 @@ import os
 import re
 from datetime import datetime, timezone
 from functools import lru_cache
+from itertools import islice
 from pathlib import Path
 from urllib.parse import quote
 
 from agent_bom.checksums import parse_sri
 from agent_bom.models import MCPServer, Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
+from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +128,10 @@ def _workspace_package_versions(root: str) -> dict[str, str]:
                 base = workspace_root / pattern[: -len(recursive_suffix)].rstrip("/")
                 if base.is_dir():
                     package_jsons.extend(
-                        pkg_json
-                        for pkg_json in base.rglob("package.json")
-                        if "node_modules" not in pkg_json.parts and ".git" not in pkg_json.parts
+                        islice(
+                            (pkg_json for pkg_json in iter_discovery_files(base) if pkg_json.name == "package.json"),
+                            _MAX_WORKSPACE_PACKAGE_JSONS,
+                        )
                     )
             else:
                 logger.debug("Skipping unsupported recursive workspace pattern %s in %s", pattern, workspace_root)

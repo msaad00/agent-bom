@@ -33,6 +33,25 @@ def _strings(value: Any) -> tuple[str, ...]:
     return tuple(sorted({item.strip() for item in values if isinstance(item, str) and item.strip()}))
 
 
+def _canonical_condition_scalar(item: Any) -> str | None:
+    # bool is a subclass of int, so it must be checked first; a JSON bool/number
+    # condition value must reach the evaluator, not be dropped as a non-string.
+    if isinstance(item, bool):
+        return "true" if item else "false"
+    if isinstance(item, str):
+        stripped = item.strip()
+        return stripped or None
+    if isinstance(item, (int, float)):
+        return str(item)
+    return None
+
+
+def _condition_values(value: Any) -> tuple[str, ...]:
+    values = value if isinstance(value, list) else [value]
+    canonical = {resolved for item in values if (resolved := _canonical_condition_scalar(item)) is not None}
+    return tuple(sorted(canonical))
+
+
 def _conditions(value: Any) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
     if not isinstance(value, Mapping):
         return ()
@@ -43,7 +62,7 @@ def _conditions(value: Any) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
         for key, raw_values in entries.items():
             if not isinstance(key, str):
                 continue
-            values = _strings(raw_values)
+            values = _condition_values(raw_values)
             if values:
                 normalized.append((operator.strip(), key.strip(), values))
     return tuple(sorted(normalized))

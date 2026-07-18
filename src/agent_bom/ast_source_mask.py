@@ -45,7 +45,7 @@ def _consume_heredoc(source: str, start: int) -> tuple[str, int] | None:
 
 
 def mask_line_comments_and_strings(
-    source: str, *, hash_comments: bool = False, heredoc: bool = False
+    source: str, *, hash_comments: bool = False, heredoc: bool = False, backtick_strings: bool = False
 ) -> str:
     """Return ``source`` with comments and quoted literals replaced by spaces.
 
@@ -53,6 +53,11 @@ def mask_line_comments_and_strings(
     ``heredoc`` masks PHP heredoc/nowdoc (``<<<EOT`` / ``<<<'EOT'``) bodies,
     where an identifier such as ``$client->request`` inside a SQL/HTML template
     must not be mistaken for a call site.
+    ``backtick_strings`` masks Go backtick-delimited raw string literals
+    (``` `...` ```), where backslashes are literal and a sink token such as
+    ``exec.Command`` inside the raw string must not be mistaken for a call site.
+    It is opt-in because a backtick means something else in other languages
+    (e.g. a Swift keyword-escaped identifier), so only Go enables it.
     """
     result: list[str] = []
     i = 0
@@ -87,6 +92,11 @@ def mask_line_comments_and_strings(
                 result.append(" ")
                 i += 1
                 continue
+            if backtick_strings and char == "`":
+                state = "raw_string"
+                result.append(" ")
+                i += 1
+                continue
             if char in {"'", '"'}:
                 state = "string"
                 quote = char
@@ -113,6 +123,16 @@ def mask_line_comments_and_strings(
                 i += 2
                 continue
             result.append("\n" if char == "\n" else " ")
+            i += 1
+            continue
+
+        if state == "raw_string":
+            # Go backtick raw strings have no escapes; a literal backtick ends them.
+            if char == "`":
+                state = "code"
+                result.append(" ")
+            else:
+                result.append("\n" if char == "\n" else " ")
             i += 1
             continue
 

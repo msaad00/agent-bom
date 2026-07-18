@@ -8,18 +8,47 @@ Endpoints:
     GET  /v1/cortex/agents/{name}/telemetry  per-agent telemetry
     GET  /v1/cortex/health         Cortex agent health status
     GET  /v1/siem/formats          supported SIEM event formats
+
+Every handler here mines Snowflake ACCESS_HISTORY / QUERY_HISTORY / usage
+history synchronously. Those blocking calls run off the event loop via
+``anyio.to_thread.run_sync`` under an adaptive-backpressure guard (mirroring the
+cloud + fleet read paths) so a slow Snowflake mine can never stall ``/health`` or
+any unrelated request; a burst sheds with a 429 + ``Retry-After`` instead.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Any, Callable, TypeVar
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException
 
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+
+async def _offload(build: Callable[[], _T]) -> _T:
+    """Run a synchronous Snowflake-mining callable off the event loop.
+
+    Guarded by the shared ``governance`` backpressure controller so a pile-up of
+    concurrent mines sheds cleanly (429 + ``Retry-After``) rather than starving
+    the loop.
+    """
+    try:
+        async with adaptive_backpressure("governance"):
+            return await anyio.to_thread.run_sync(build)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
 
 @router.get("/governance", tags=["governance"])
@@ -39,11 +68,16 @@ async def governance_report(days: int = 30):
             detail="SNOWFLAKE_ACCOUNT env var not set. Governance requires Snowflake.",
         )
 
-    try:
+    def _run() -> dict[str, Any]:
         from agent_bom.cloud import discover_governance
 
         report = discover_governance(provider="snowflake", days=days)
         return report.to_dict()
+
+    try:
+        return await _offload(_run)
+    except HTTPException:
+        raise
     except Exception as exc:
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
@@ -68,8 +102,6 @@ async def governance_findings(
     """
     import os
 
-    from agent_bom.api.finding_list_envelope import finding_list_envelope
-
     days = max(1, min(days, 365))
     safe_limit = max(1, min(limit, 1000))
     safe_offset = max(0, offset)
@@ -80,7 +112,8 @@ async def governance_findings(
             detail="SNOWFLAKE_ACCOUNT env var not set.",
         )
 
-    try:
+    def _run() -> dict[str, Any]:
+        from agent_bom.api.finding_list_envelope import finding_list_envelope
         from agent_bom.cloud import discover_governance
 
         report = discover_governance(provider="snowflake", days=days)
@@ -100,6 +133,11 @@ async def governance_findings(
             offset=safe_offset,
             warnings=list(report.warnings),
         )
+
+    try:
+        return await _offload(_run)
+    except HTTPException:
+        raise
     except Exception as exc:
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
@@ -122,11 +160,16 @@ async def activity_timeline(days: int = 30):
             detail="SNOWFLAKE_ACCOUNT env var not set. Activity requires Snowflake.",
         )
 
-    try:
+    def _run() -> dict[str, Any]:
         from agent_bom.cloud import discover_activity
 
         timeline = discover_activity(provider="snowflake", days=days)
         return timeline.to_dict()
+
+    try:
+        return await _offload(_run)
+    except HTTPException:
+        raise
     except Exception as exc:
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
@@ -152,14 +195,20 @@ async def cortex_telemetry(hours: int = 24):
             detail="SNOWFLAKE_ACCOUNT env var not set.",
         )
 
-    try:
+    def _run() -> Any:
         from agent_bom.cloud.snowflake import _get_connection  # type: ignore[attr-defined]
         from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
 
         conn = _get_connection()
-        result = get_cortex_telemetry(conn, hours=hours)
-        conn.close()
-        return result
+        try:
+            return get_cortex_telemetry(conn, hours=hours)
+        finally:
+            conn.close()
+
+    try:
+        return await _offload(_run)
+    except HTTPException:
+        raise
     except Exception as exc:
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
@@ -176,14 +225,20 @@ async def cortex_agent_telemetry(name: str, hours: int = 24):
             detail="SNOWFLAKE_ACCOUNT env var not set.",
         )
 
-    try:
+    def _run() -> Any:
         from agent_bom.cloud.snowflake import _get_connection  # type: ignore[attr-defined]
         from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
 
         conn = _get_connection()
-        result = get_cortex_telemetry(conn, agent_name=name, hours=hours)
-        conn.close()
-        return result
+        try:
+            return get_cortex_telemetry(conn, agent_name=name, hours=hours)
+        finally:
+            conn.close()
+
+    try:
+        return await _offload(_run)
+    except HTTPException:
+        raise
     except Exception as exc:
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
@@ -200,7 +255,7 @@ async def cortex_health():
             detail="SNOWFLAKE_ACCOUNT env var not set.",
         )
 
-    try:
+    def _run() -> dict[str, Any]:
         from agent_bom.cloud.snowflake import _get_connection, _mine_cortex_agent_usage
         from agent_bom.cloud.snowflake_observability import (
             aggregate_agent_metrics,
@@ -208,8 +263,10 @@ async def cortex_health():
         )
 
         conn = _get_connection()
-        records, warnings = _mine_cortex_agent_usage(conn, days=1)
-        conn.close()
+        try:
+            records, warnings = _mine_cortex_agent_usage(conn, days=1)
+        finally:
+            conn.close()
 
         metrics = aggregate_agent_metrics(records, hours=24)
         health = [assess_agent_health(m) for m in metrics]
@@ -225,6 +282,11 @@ async def cortex_health():
             ],
             "warnings": warnings,
         }
+
+    try:
+        return await _offload(_run)
+    except HTTPException:
+        raise
     except Exception as exc:
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc))

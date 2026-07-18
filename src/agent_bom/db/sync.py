@@ -332,9 +332,14 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
         sev_type = sev.get("type", "")
         sev_score = sev.get("score", "")
         if sev_type in ("CVSS_V3", "CVSS_V3_1", "CVSS_V4") and sev_score:
-            cvss_vector = sev_score
+            # Keep score and vector as a matched pair: adopt the vector only from
+            # the entry whose score we take, so a v3.1 score can never pair with a
+            # v4.0 vector from a later entry.
             if cvss_score is None:
-                cvss_score = _normalize_sync_cvss_score(sev_score)
+                parsed_score = _normalize_sync_cvss_score(sev_score)
+                if parsed_score is not None:
+                    cvss_score = parsed_score
+                    cvss_vector = sev_score
 
     # Pull from database_specific (most reliable source for severity + score)
     db_specific = data.get("database_specific", {})

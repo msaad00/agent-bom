@@ -1,6 +1,7 @@
 """Enterprise API routes — auth, audit, exceptions, baselines, trends, SIEM, Jira, FP.
 
 Endpoints:
+    POST   /v1/auth/invitations              create a new tenant + mint its first scoped key (admin)
     POST   /v1/auth/keys                      create API key
     POST   /v1/auth/keys/{key_id}/rotate      rotate API key
     GET    /v1/auth/keys                      list API keys
@@ -32,6 +33,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -51,6 +53,7 @@ from agent_bom.api.models import (
     FindingTriageDecisionRequest,
     FindingTriageRequest,
     FindingTriageVexIngestRequest,
+    InvitationRequest,
     IssueStatusUpdateRequest,
     RotateKeyRequest,
     SAMLLoginRequest,
@@ -901,6 +904,114 @@ async def reset_auth_quota(request: Request) -> None:
         tenant_id=tenant_id,
         previous_overrides=previous,
     )
+
+
+def _slugify_org(organization: str | None) -> str:
+    """Return a short, url-safe slug for a human org name (empty when unusable)."""
+    if not organization:
+        return ""
+    slug = re.sub(r"[^a-z0-9]+", "-", organization.lower()).strip("-")
+    return slug[:32].strip("-")
+
+
+def _new_invited_tenant_id(organization: str | None) -> str:
+    """Mint a fresh, non-colliding tenant id for an invited account.
+
+    The id is ALWAYS server-generated with random entropy so an invite can
+    never target — or leak into — an existing tenant. The optional org slug is
+    a readability prefix only; the random suffix guarantees uniqueness.
+    """
+    from agent_bom.platform_invariants import validate_customer_tenant_id
+
+    slug = _slugify_org(organization)
+    suffix = secrets.token_hex(6)
+    candidate = f"{slug}-{suffix}" if slug else f"tenant-{suffix}"
+    # Random suffix means this can't be reserved; validate defensively anyway.
+    return validate_customer_tenant_id(candidate)
+
+
+def _hosted_invite_url(tenant_id: str) -> str | None:
+    """Build the opt-in hosted sign-in link. Never embeds the raw key.
+
+    Returns None unless ``AGENT_BOM_HOSTED_INVITE_BASE_URL`` is configured, so
+    we never fabricate a link for a deployment that has no hosted front door.
+    """
+    base = (os.environ.get("AGENT_BOM_HOSTED_INVITE_BASE_URL") or "").strip()
+    if not base:
+        return None
+    from urllib.parse import quote
+
+    return f"{base.rstrip('/')}/signin?tenant={quote(tenant_id, safe='')}"
+
+
+@router.post("/auth/invitations", tags=["enterprise"], status_code=201)
+async def create_invitation(request: Request, req: InvitationRequest) -> dict:
+    """Provision a NEW tenant and mint its first scoped API key (admin-only).
+
+    The hosted self-serve replacement for ``scripts/deploy/mint_hosted_admin_key.py``:
+    it creates a brand-new tenant (server-generated id — an invite can never
+    target an existing tenant), mints one scoped API key for it through the
+    same key-minting path every other route uses (no new crypto), and returns
+    a one-time invite payload. The new tenant is bounded by the conservative
+    default tenant quotas automatically (they apply to any tenant with no
+    overrides); the effective bounds are echoed back for operator visibility.
+
+    Admin-only + ``auth.keys:write`` scope (enforced by the API middleware, the
+    same gate as ``POST /v1/auth/keys``). Never accepts a provider secret — it
+    mints a credential, it does not take one (§11 connect-once model). The raw
+    key is returned exactly once in this response body and is never logged.
+    """
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.auth import Role, create_api_key, get_key_store
+    from agent_bom.api.tenant_quota import default_tenant_quotas
+
+    actor = getattr(request.state, "api_key_name", "") or "operator"
+    try:
+        role = Role(req.role)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {req.role}. Must be admin, analyst, or viewer") from None
+
+    tenant_id = _new_invited_tenant_id(req.organization)
+    key_name = _slugify_org(req.organization) or "invited"
+    try:
+        raw_key, api_key = create_api_key(
+            name=f"{key_name}-owner",
+            role=role,
+            expires_at=req.expires_at,
+            scopes=["*"],
+            tenant_id=tenant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+    get_key_store().add(api_key)
+
+    # The new tenant carries no quota overrides, so the process-level defaults
+    # bound it immediately — surface them so the operator sees the applied cap.
+    quota = default_tenant_quotas()
+
+    log_action(
+        "auth.invitation_created",
+        actor=actor,
+        resource=f"tenant/{tenant_id}",
+        tenant_id=tenant_id,
+        role=api_key.role.value,
+        key_id=api_key.key_id,
+        invited_email=req.email or None,
+        expires_at=api_key.expires_at,
+    )
+
+    return {
+        "raw_key": raw_key,
+        "key_id": api_key.key_id,
+        "key_prefix": api_key.key_prefix,
+        "tenant_id": tenant_id,
+        "role": api_key.role.value,
+        "created_at": api_key.created_at,
+        "expires_at": api_key.expires_at,
+        "quota": quota,
+        "invite_url": _hosted_invite_url(tenant_id),
+        "message": ("Store the raw_key securely and deliver it to the invited admin over a trusted channel — it will not be shown again."),
+    }
 
 
 @router.get("/auth/debug", tags=["enterprise"])

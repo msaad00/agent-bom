@@ -164,6 +164,47 @@ AGENT_BOM_SMOKE_CONNECTION_ID="<connection id>" \
 scripts/deploy/hosted_poc_smoke.sh
 ```
 
+### Self-serve invite endpoint
+
+`scripts/deploy/mint_hosted_admin_key.py` is the bootstrap path for the very
+first admin key. Once an operator holds an admin key, the same tenant-and-key
+provisioning is available over the API without shelling into the container:
+
+```bash
+curl -sS -X POST https://demo.agent-bom.com/v1/auth/invitations \
+  -H "X-API-Key: <raw operator admin key>" \
+  -H "Content-Type: application/json" \
+  -d '{"organization": "Acme Corp", "email": "owner@acme.example"}'
+```
+
+The endpoint is admin-only (same RBAC + `auth.keys:write` scope as
+`POST /v1/auth/keys`) and reuses the shared key-minting crypto — it does **not**
+introduce a new key format. It:
+
+- creates a **brand-new tenant** with a server-generated id (an invite can never
+  target or leak into an existing tenant),
+- mints one scoped API key for that tenant (default role `admin`), and
+- returns a one-time invite payload: `raw_key` (shown once, never logged),
+  `tenant_id`, `key_id`, `expires_at`, the applied default `quota`, and — only
+  when `AGENT_BOM_HOSTED_INVITE_BASE_URL` is set — an `invite_url` sign-in link
+  that never carries the key.
+
+Deliver the `raw_key` to the invited admin over a trusted channel; the operator
+still owns who is invited and holds the manual revoke path (`DELETE
+/v1/auth/keys/{key_id}`). The endpoint never accepts a provider secret or any
+per-action credential — it mints a credential, it does not take one.
+
+### Smallest defensible MVP defaults
+
+The new tenant is bounded by the conservative default tenant quotas
+(`active_scan_jobs`, `retained_scan_jobs`, `fleet_agents`, `schedules`) the
+moment it is created — those defaults apply to any tenant with no overrides, and
+per-tenant overrides are managed at `/v1/auth/quota`. For a multi-replica hosted
+deploy, run the **Postgres** rate limiter and set
+`AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1` so rate limiting is cluster-safe and
+fails closed rather than degrading to per-replica in-memory counters. See
+`docs/operations/ENV_VARS.md` for the full rate-limit and quota env reference.
+
 ### Production auth checklist
 
 For the gated POC, users are invited manually and access is revoked manually.

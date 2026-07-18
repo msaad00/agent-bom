@@ -312,11 +312,105 @@ def test_controls_for_cwes_dedupes_and_preserves_order():
     assert fm.controls_for_cwes(["CWE-78", "CWE-89"], "nist_800_53") == ["SI-10", "SI-3"]
 
 
-def test_control_catalog_seam_present_and_empty():
-    """PR2 plugs provenanced catalogs into this registry; PR1 ships it empty."""
+def test_control_catalog_registers_expected_frameworks():
+    """PR2 populates the registry from vendored data (PR1 shipped it empty)."""
     from agent_bom import framework_mapping as fm
 
     assert isinstance(fm.FRAMEWORK_CONTROL_CATALOG, dict)
-    assert fm.FRAMEWORK_CONTROL_CATALOG == {}
-    # Lookup against an unpopulated catalog is safe (returns None), never raises.
-    assert fm.control_spec("cis", "CIS-16.1") is None
+    for slug in ("nist-800-53", "iso-27001", "soc2", "cis"):
+        assert slug in fm.FRAMEWORK_CONTROL_CATALOG
+        assert fm.FRAMEWORK_CONTROL_CATALOG[slug], f"{slug} catalog is empty"
+    # Lookup against an uncatalogued control is still safe (returns None).
+    assert fm.control_spec("nist-800-53", "ZZ-999") is None
+    assert fm.control_spec("no-such-framework", "AC-2") is None
+
+
+def test_nist_control_spec_carries_authoritative_public_domain_title():
+    """NIST 800-53 (public domain / CC0) is vendored with its real title."""
+    from agent_bom import framework_mapping as fm
+
+    spec = fm.control_spec("nist-800-53", "AC-2")
+    assert spec is not None
+    assert spec.control_id == "AC-2"
+    assert spec.title == "Account Management"  # authoritative NIST SP 800-53 title
+    assert spec.reference_only is False
+    assert spec.evidencing_checks == ()  # PR3 curates check -> control
+    # Every control our CWE table maps to must resolve to a real NIST title.
+    for cid in ("AC-3", "AC-6", "AU-2", "CM-7", "IA-5", "SC-8", "SI-3", "SR-3"):
+        assert fm.control_spec("nist-800-53", cid).title
+
+
+def test_nist_catalog_provenance_record_complete():
+    """The vendored NIST catalog records source/version/sha256/license."""
+    from agent_bom import framework_catalog as fc
+
+    prov = fc.nist_catalog_provenance()
+    assert prov["publication"] == "NIST SP 800-53 Rev 5"
+    assert prov["catalog_version"]  # e.g. "5.2.0"
+    assert "CC0" in prov["license"] or "public domain" in prov["license"].lower()
+    src = prov["source"]
+    assert src["url"].startswith("https://raw.githubusercontent.com/usnistgov/oscal-content/")
+    assert src["oscal_release"] and src["oscal_commit"]
+    assert len(src["sha256"]) == 64
+    assert len(prov["normalized_sha256"]) == 64
+
+
+def test_nist_to_iso_crosswalk_resolves_ids_only():
+    """NIST's official crosswalk maps AC-2 to ISO Annex A IDs — never titles."""
+    from agent_bom import framework_mapping as fm
+
+    iso_ids = fm.nist_to_iso("AC-2")
+    assert iso_ids == ["A.5.16", "A.5.18", "A.8.2"]
+    # Only identifiers are present; no ISO control title text leaks through.
+    assert all(i.startswith("A.") for i in iso_ids)
+    assert fm.nist_to_iso("ZZ-999") == []
+
+
+def test_crosswalk_provenance_is_nist_public_domain():
+    from agent_bom import framework_catalog as fc
+
+    prov = fc.crosswalk_provenance()
+    assert prov["mapping_authority"] == "NIST"
+    assert "CC0" in prov["license"] or "public domain" in prov["license"].lower()
+    assert prov["source"]["url"].startswith("https://csrc.nist.gov/")
+    assert len(prov["source"]["sha256"]) == 64
+    # No ISO title/description is stored — only the reference note.
+    assert "identifier only" in prov["iso_reference"].lower()
+
+
+def test_reference_only_frameworks_carry_no_copyrighted_title():
+    """ISO / SOC 2 / CIS specs are reference-only: ID is the fact, no © title."""
+    from agent_bom import framework_mapping as fm
+
+    # A representative sample of official copyrighted titles that MUST NOT appear.
+    forbidden = {
+        "Management of technical vulnerabilities",  # ISO/IEC 27001:2022
+        "Use of cryptography",
+        "Secure coding",
+        "Detection and monitoring of anomalies and events",  # AICPA TSC
+        "Establish and maintain a vulnerability management process",  # CIS v8
+        "Establish and maintain a software inventory",
+    }
+    for slug in ("iso-27001", "soc2", "cis"):
+        catalog = fm.FRAMEWORK_CONTROL_CATALOG[slug]
+        for spec in catalog.values():
+            assert spec.reference_only is True
+            assert spec.title is None or spec.title not in forbidden
+
+    # The specific ISO control AC-2 maps to is catalogued reference-only, no title.
+    a_spec = fm.control_spec("iso-27001", "A.5.16")
+    assert a_spec is not None and a_spec.reference_only is True and a_spec.title is None
+    # A CIS/SOC2 spec resolves and carries our own (non-official) descriptor.
+    assert fm.control_spec("cis", "CIS-07.1").title == "Vulnerability-management program"
+    assert fm.control_spec("soc2", "CC7.1").title == "Anomaly and event detection"
+
+
+def test_vendored_catalog_integrity_and_counts_reconcile():
+    """Digest + published counts must reconcile with the vendored payloads."""
+    from agent_bom import framework_catalog as fc
+
+    assert fc.verify_catalog_integrity() == []
+    # Counts reconcile with the actual populated data.
+    assert fc.nist_catalog_provenance()["control_count"] == len(fc.nist_controls())
+    cross = fc.nist_to_iso_crosswalk()
+    assert fc.crosswalk_provenance()["nist_control_count"] == len(cross)

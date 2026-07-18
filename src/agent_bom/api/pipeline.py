@@ -1209,6 +1209,20 @@ def _run_scan_sync(job: ScanJob) -> None:
         except Exception as enrich_exc:  # noqa: BLE001
             _logger.warning("Estate enrichment skipped: %s", sanitize_error(enrich_exc))
 
+        if req.ai_enrich:
+            try:
+                from agent_bom.ai_enrich import run_ai_enrichment_sync
+
+                run_ai_enrichment_sync(
+                    report,
+                    model=req.ai_model,
+                    deterministic=req.ai_deterministic,
+                )
+            except Exception as ai_exc:  # noqa: BLE001
+                _logger.warning("Advisory AI enrichment skipped: %s", sanitize_error(ai_exc, generic=True))
+                with lock:
+                    job.progress.append("Advisory AI enrichment skipped")
+
         report_json = to_json(report)
         report_json["warnings"] = warnings_all
         with lock:

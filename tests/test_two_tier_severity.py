@@ -301,9 +301,11 @@ def test_preset_ci_sets_warn_on_high():
     # Verify the preset==ci block assigns warn_on_severity via AST inspection
     # (avoids the cost of a full scan invocation).
     import ast
-    import pathlib
+    import inspect
 
-    src = pathlib.Path("src/agent_bom/cli/agents/__init__.py").read_text()
+    from agent_bom.cli.agents import scan
+
+    src = inspect.getsource(scan.callback)
     tree = ast.parse(src)
 
     # Find the preset == "ci" block and verify warn_on_severity assignment

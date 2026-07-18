@@ -24,15 +24,20 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import os
 import random
 import re
 import threading
-from dataclasses import dataclass
+import uuid
+from contextvars import ContextVar
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypeVar
+from urllib.parse import urlsplit
 
 import httpx
 from rich.console import Console
@@ -40,12 +45,13 @@ from rich.console import Console
 from agent_bom import config
 from agent_bom.config import AI_CACHE_MAX_ENTRIES as _MAX_AI_CACHE
 from agent_bom.config import OLLAMA_BASE_URL
-from agent_bom.security import sanitize_command_args
+from agent_bom.security import sanitize_command_args, sanitize_error
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from agent_bom.ai_schemas import MCPConfigSecurityAnalysis
+    from agent_bom.ai_schemas import AIFindingAssessment, MCPConfigSecurityAnalysis
+    from agent_bom.finding import Finding
     from agent_bom.models import AIBOMReport, BlastRadius
     from agent_bom.parsers.skill_audit import SkillAuditResult
     from agent_bom.parsers.skills import SkillScanResult
@@ -81,6 +87,7 @@ def _ai_cache_put(key: str, value: str) -> None:
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 OLLAMA_DEFAULT_MODEL = "llama3.2"
 HF_DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+AI_PROMPT_VERSION = "ai-enrichment.v2"
 
 # Ranked preference for local Ollama models (best for security analysis first)
 OLLAMA_MODEL_PREFERENCE = [
@@ -130,6 +137,7 @@ class AIProviderStatus:
     configured: bool
     available: bool
     reason: str
+    selected_model_ready: bool | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload = self.descriptor.to_dict()
@@ -139,6 +147,7 @@ class AIProviderStatus:
                 "configured": self.configured,
                 "available": self.available,
                 "reason": self.reason,
+                "selected_model_ready": self.selected_model_ready,
             }
         )
         return payload
@@ -250,9 +259,87 @@ def _provider_name_for_model(model: str) -> str:
     return "litellm"
 
 
-def _provider_status(provider_name: str) -> AIProviderStatus:
+def _ollama_endpoint_is_loopback() -> bool:
+    """Return whether the configured Ollama endpoint stays on this host.
+
+    Raw skill/instruction content is eligible only for a loopback Ollama
+    endpoint. Hostnames are not resolved here: treating a DNS name as local
+    would make the trust decision vulnerable to DNS changes and would add a
+    blocking lookup to provider metadata.
+    """
+    try:
+        hostname = (urlsplit(OLLAMA_BASE_URL).hostname or "").strip().lower().rstrip(".")
+    except ValueError:
+        return False
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def _url_is_loopback(value: str) -> bool:
+    """Treat only explicit loopback HTTP(S) endpoints as keyless-local."""
+    try:
+        parsed = urlsplit(value)
+        hostname = (parsed.hostname or "").strip().lower().rstrip(".")
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+_LITELLM_MODEL_CREDENTIALS: dict[str, tuple[str, ...]] = {
+    "anthropic": ("ANTHROPIC_API_KEY",),
+    "azure": ("AZURE_API_KEY", "AZURE_OPENAI_API_KEY"),
+    "bedrock": ("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_WEB_IDENTITY_TOKEN_FILE"),
+    "cohere": ("COHERE_API_KEY",),
+    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    "google": ("GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"),
+    "groq": ("GROQ_API_KEY",),
+    "mistral": ("MISTRAL_API_KEY",),
+    "openai": ("OPENAI_API_KEY",),
+    "openrouter": ("OPENROUTER_API_KEY",),
+    "vertex_ai": ("GOOGLE_APPLICATION_CREDENTIALS",),
+}
+
+
+def _litellm_readiness(model: str) -> tuple[bool, str]:
+    """Return model-specific credential or explicit local-endpoint readiness."""
+    proxy_url = os.environ.get("LITELLM_PROXY_URL", "").strip()
+    if proxy_url:
+        if _url_is_loopback(proxy_url):
+            return True, "keyless loopback LiteLLM proxy configured"
+        if os.environ.get("LITELLM_API_KEY"):
+            return True, "authenticated LiteLLM proxy configured"
+        return False, "LITELLM_API_KEY is required for the configured remote LiteLLM proxy"
+
+    prefix = model.partition("/")[0].lower()
+    if prefix in {"bedrock", "vertex_ai"}:
+        return True, f"{prefix} ambient workload identity chain supported"
+    if prefix == "openai":
+        api_base = (os.environ.get("OPENAI_API_BASE") or os.environ.get("OPENAI_BASE_URL") or "").strip()
+        if api_base and _url_is_loopback(api_base):
+            return True, "keyless loopback OpenAI-compatible endpoint configured"
+
+    credential_names = _LITELLM_MODEL_CREDENTIALS.get(prefix, ("LITELLM_API_KEY",))
+    if any(os.environ.get(name) for name in credential_names):
+        return True, "model credentials configured"
+    return False, f"selected {prefix or 'litellm'} model requires one of: {', '.join(credential_names)}"
+
+
+def _provider_status(provider_name: str, model: str | None = None) -> AIProviderStatus:
     descriptor = AI_PROVIDER_DESCRIPTORS[provider_name]
     if provider_name == "ollama":
+        endpoint_local = _ollama_endpoint_is_loopback()
+        descriptor = replace(descriptor, local=endpoint_local, requires_network=not endpoint_local)
         available = _detect_ollama()
         return AIProviderStatus(
             descriptor=descriptor,
@@ -260,6 +347,7 @@ def _provider_status(provider_name: str) -> AIProviderStatus:
             configured=available,
             available=available,
             reason="available" if available else "ollama is not reachable at the configured local endpoint",
+            selected_model_ready=available,
         )
     if provider_name == "huggingface":
         installed = _check_huggingface()
@@ -270,14 +358,29 @@ def _provider_status(provider_name: str) -> AIProviderStatus:
             configured=configured,
             available=installed and configured,
             reason="available" if installed and configured else "huggingface-hub and HF_TOKEN are required for HuggingFace enrichment",
+            selected_model_ready=installed and configured,
         )
     installed = _check_litellm()
+    if model is None:
+        capability_reason = "adapter installed; selected-model readiness is evaluated during resolution"
+        if not installed:
+            capability_reason = "litellm is not installed"
+        return AIProviderStatus(
+            descriptor=descriptor,
+            installed=installed,
+            configured=installed,
+            available=installed,
+            reason=capability_reason,
+            selected_model_ready=None,
+        )
+    configured, readiness_reason = _litellm_readiness(model)
     return AIProviderStatus(
         descriptor=descriptor,
         installed=installed,
-        configured=installed,
-        available=installed,
-        reason="available" if installed else "litellm is not installed",
+        configured=configured,
+        available=installed and configured,
+        reason="available" if installed and configured else ("litellm is not installed" if not installed else readiness_reason),
+        selected_model_ready=installed and configured,
     )
 
 
@@ -291,7 +394,7 @@ def _resolve_ai_provider(model: str = DEFAULT_MODEL) -> AIProviderResolution:
     requested_model = model
     resolved_model = _resolve_model(model) if model == DEFAULT_MODEL else model
     preferred_name = _provider_name_for_model(resolved_model)
-    preferred_status = _provider_status(preferred_name)
+    preferred_status = _provider_status(preferred_name, resolved_model)
     if preferred_status.available:
         return AIProviderResolution(
             requested_model=requested_model,
@@ -300,28 +403,6 @@ def _resolve_ai_provider(model: str = DEFAULT_MODEL) -> AIProviderResolution:
             available=True,
             status="active",
         )
-
-    if preferred_name == "ollama":
-        hf_status = _provider_status("huggingface")
-        if hf_status.available:
-            return AIProviderResolution(
-                requested_model=requested_model,
-                model=f"huggingface/{HF_DEFAULT_MODEL}",
-                provider=hf_status.descriptor,
-                available=True,
-                status="active",
-                fallback_from=resolved_model,
-            )
-        litellm_status = _provider_status("litellm")
-        if litellm_status.available:
-            return AIProviderResolution(
-                requested_model=requested_model,
-                model=resolved_model,
-                provider=litellm_status.descriptor,
-                available=True,
-                status="active",
-                fallback_from=resolved_model,
-            )
 
     return AIProviderResolution(
         requested_model=requested_model,
@@ -387,9 +468,17 @@ _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"), "<redacted-openai-key>"),
     (re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{16,}\b"), "<redacted-github-token>"),
     (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "<redacted-slack-token>"),
-    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "<redacted-aws-access-key>"),
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "<redacted-aws-access-key>"),
     (re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"), "<redacted-google-key>"),
     (re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"), "<redacted-hf-token>"),
+    # Common bearer material can appear outside an Authorization header.
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b"), "<redacted-jwt>"),
+    # Database/broker URLs often carry userinfo credentials in otherwise useful
+    # finding text. Remove the whole secret-bearing URL before model egress.
+    (
+        re.compile(r"(?i)\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqps?)://[^\s'\"<>]+:[^\s'\"<>@]+@[^\s'\"<>]+"),
+        "<redacted-connection-url>",
+    ),
     # Bearer tokens in headers / auth strings
     (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}"), "Bearer <redacted-token>"),
 )
@@ -454,9 +543,16 @@ def _prepare_prompt(prompt: str) -> str:
 
 def _effective_temperature() -> float:
     """Temperature for a call: 0.0 in deterministic mode, else configured."""
-    if getattr(config, "AI_DETERMINISTIC", False):
+    deterministic = _AI_DETERMINISTIC_OVERRIDE.get()
+    if deterministic is None:
+        deterministic = bool(getattr(config, "AI_DETERMINISTIC", False))
+    if deterministic:
         return 0.0
     return float(getattr(config, "AI_TEMPERATURE", 0.3))
+
+
+_AI_DETERMINISTIC_OVERRIDE: ContextVar[bool | None] = ContextVar("ai_deterministic_override", default=None)
+_AI_RUN_ID: ContextVar[str | None] = ContextVar("ai_run_id", default=None)
 
 
 def _request_timeout() -> float:
@@ -493,14 +589,21 @@ async def retry_async(
             result = await func()
         except retry_on as exc:
             if attempt >= attempts - 1:
-                logger.warning("%s failed after %d attempt(s): %s", label, attempt + 1, exc)
+                logger.warning("%s failed after %d attempt(s): %s", label, attempt + 1, sanitize_error(str(exc), generic=True))
                 return None
             delay = min(base * (2**attempt), ceiling) + random.uniform(0, base)
-            logger.debug("%s retry %d/%d after %.2fs (%s)", label, attempt + 1, attempts - 1, delay, exc)
+            logger.debug(
+                "%s retry %d/%d after %.2fs (%s)",
+                label,
+                attempt + 1,
+                attempts - 1,
+                delay,
+                sanitize_error(str(exc), generic=True),
+            )
             await asyncio.sleep(delay)
             continue
         except Exception as exc:  # non-retryable — degrade, don't raise
-            logger.warning("%s failed (non-retryable): %s", label, exc)
+            logger.warning("%s failed (non-retryable): %s", label, sanitize_error(exc, generic=True))
             return None
         if result is not None:
             return result
@@ -525,6 +628,51 @@ class EnrichmentTask(str, Enum):
     DETECTION = "detection"  # LLM-assisted novel-issue detection (strong)
     TRIAGE = "triage"  # FP reduction / dedup (strong)
     CONFIG_ANALYSIS = "config_analysis"  # MCP config security review
+
+
+@dataclass
+class AICallBudget:
+    """Run-wide cap and accounting for actual provider requests."""
+
+    max_calls: int = 50
+    provider_attempts: int = 0
+    cache_hits: int = 0
+    retries: int = 0
+    attempts_by_task: dict[str, int] = field(default_factory=dict)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.max_calls < 0:
+            raise ValueError("AI provider-attempt budget must be non-negative")
+
+    def try_provider_attempt(self, task: EnrichmentTask | None, *, retry: bool = False) -> bool:
+        """Reserve one provider request before any network/provider call."""
+        task_name = task.value if task is not None else "unspecified"
+        with self._lock:
+            if self.max_calls > 0 and self.provider_attempts >= self.max_calls:
+                return False
+            self.provider_attempts += 1
+            if retry:
+                self.retries += 1
+            self.attempts_by_task[task_name] = self.attempts_by_task.get(task_name, 0) + 1
+            return True
+
+    def record_cache_hit(self) -> None:
+        with self._lock:
+            self.cache_hits += 1
+
+    def to_dict(self) -> dict[str, object]:
+        with self._lock:
+            remaining = None if self.max_calls == 0 else max(self.max_calls - self.provider_attempts, 0)
+            return {
+                "max_provider_attempts": self.max_calls,
+                "provider_attempts": self.provider_attempts,
+                "provider_attempts_remaining": remaining,
+                "cache_hits": self.cache_hits,
+                "retries": self.retries,
+                "exhausted": self.max_calls > 0 and self.provider_attempts >= self.max_calls,
+                "attempts_by_task": dict(sorted(self.attempts_by_task.items())),
+            }
 
 
 # Which tier each task prefers when tiered models are configured.
@@ -632,21 +780,57 @@ def provider_for_model(model: str) -> EnrichmentProvider:
 # ─── LLM calls ───────────────────────────────────────────────────────────────
 
 
-def _cache_key(prompt: str, model: str) -> str:
-    return hashlib.sha256(f"{model}:{prompt}".encode()).hexdigest()
+def _cache_key(
+    prompt: str,
+    model: str,
+    *,
+    task: EnrichmentTask | None = None,
+    provider: str | None = None,
+) -> str:
+    """Hash every execution posture field that can change model output."""
+    prepared_prompt = _prepare_prompt(prompt)
+    posture = {
+        # The cache is process-global for bounded memory reuse, but responses
+        # are evidence belonging to one enrichment run. Run scoping prevents a
+        # concurrent tenant/scan from reusing and relabeling another run's
+        # response while preserving deduplication within the run.
+        "run_id": _AI_RUN_ID.get() or "standalone",
+        "provider": provider or _provider_name_for_model(model),
+        "model": model,
+        "model_revision": str(getattr(config, "AI_MODEL_REVISION", "") or ""),
+        "task": task.value if task is not None else "unspecified",
+        "temperature": _effective_temperature(),
+        "redaction": bool(getattr(config, "AI_REDACT_PROMPTS", True)),
+        "prompt_version": AI_PROMPT_VERSION,
+        "prompt": prepared_prompt,
+    }
+    encoded = json.dumps(posture, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
-async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+async def _call_ollama_direct(
+    prompt: str,
+    model: str,
+    max_tokens: int = 500,
+    *,
+    task: EnrichmentTask | None = None,
+    budget: AICallBudget | None = None,
+) -> Optional[str]:
     """Call Ollama directly via HTTP API (no litellm dependency needed).
 
     The *model* parameter is the bare model name (e.g. ``llama3.2``).
     """
-    key = _cache_key(prompt, f"ollama/{model}")
+    full_model = f"ollama/{model}"
+    key = _cache_key(prompt, full_model, task=task, provider="ollama")
     cached = _ai_cache_get(key)
     if cached is not None:
+        if budget is not None:
+            budget.record_cache_hit()
         return cached
 
     outbound = _prepare_prompt(prompt)
+    if budget is not None and not budget.try_provider_attempt(task):
+        return None
     try:
         async with httpx.AsyncClient(timeout=_request_timeout()) as client:
             resp = await client.post(
@@ -672,23 +856,38 @@ async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) ->
             logger.warning("Ollama returned status %d", resp.status_code)
             return None
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("Ollama connection failed: %s", exc)
+        logger.warning("Ollama connection failed: %s", sanitize_error(exc, generic=True))
         return None
     except Exception as exc:
-        logger.warning("Ollama call failed: %s", exc)
+        logger.warning("Ollama call failed: %s", sanitize_error(exc, generic=True))
         return None
 
 
-async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+async def _call_llm_via_litellm(
+    prompt: str,
+    model: str,
+    max_tokens: int = 500,
+    *,
+    task: EnrichmentTask | None = None,
+    budget: AICallBudget | None = None,
+) -> Optional[str]:
     """Call LLM via litellm with caching and error handling."""
-    key = _cache_key(prompt, model)
+    key = _cache_key(prompt, model, task=task, provider="litellm")
     cached = _ai_cache_get(key)
     if cached is not None:
+        if budget is not None:
+            budget.record_cache_hit()
         return cached
 
     outbound = _prepare_prompt(prompt)
+    attempt_index = 0
 
     async def _once() -> Optional[str]:
+        nonlocal attempt_index
+        is_retry = attempt_index > 0
+        if budget is not None and not budget.try_provider_attempt(task, retry=is_retry):
+            return None
+        attempt_index += 1
         try:
             from litellm import acompletion
         except ImportError:
@@ -714,20 +913,32 @@ async def _call_huggingface(
     prompt: str,
     model: str = HF_DEFAULT_MODEL,
     max_tokens: int = 500,
+    *,
+    task: EnrichmentTask | None = None,
+    budget: AICallBudget | None = None,
 ) -> Optional[str]:
     """Call HuggingFace Inference API (free tier available).
 
     Uses ``huggingface_hub.InferenceClient.chat_completion()``.
     Requires ``HF_TOKEN`` env var for gated models.
     """
-    key = _cache_key(prompt, f"huggingface/{model}")
+    full_model = f"huggingface/{model}"
+    key = _cache_key(prompt, full_model, task=task, provider="huggingface")
     cached = _ai_cache_get(key)
     if cached is not None:
+        if budget is not None:
+            budget.record_cache_hit()
         return cached
 
     outbound = _prepare_prompt(prompt)
+    attempt_index = 0
 
     async def _once() -> Optional[str]:
+        nonlocal attempt_index
+        is_retry = attempt_index > 0
+        if budget is not None and not budget.try_provider_attempt(task, retry=is_retry):
+            return None
+        attempt_index += 1
         try:
             from huggingface_hub import InferenceClient
         except ImportError:
@@ -749,34 +960,28 @@ async def _call_huggingface(
     return text
 
 
-async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+async def _call_llm(
+    prompt: str,
+    model: str,
+    max_tokens: int = 500,
+    *,
+    task: EnrichmentTask | None = None,
+    budget: AICallBudget | None = None,
+) -> Optional[str]:
     """Call LLM via the best available provider.
 
-    Routing:
-    - ``ollama/*`` models → Ollama direct → HuggingFace → litellm
-    - ``huggingface/*`` models → HuggingFace directly
-    - Other models → litellm
+    Provider prefixes are strict data-boundary decisions. In particular, an
+    explicit ``ollama/*`` model never falls back to a remote provider.
     """
     if model.startswith("ollama/"):
         bare_model = model[len("ollama/") :]
-        result = await _call_ollama_direct(prompt, bare_model, max_tokens)
-        if result is not None:
-            return result
-        # Fallback to HuggingFace
-        if _check_huggingface():
-            result = await _call_huggingface(prompt, max_tokens=max_tokens)
-            if result is not None:
-                return result
-        # Fallback to litellm
-        if _check_litellm():
-            return await _call_llm_via_litellm(prompt, model, max_tokens)
-        return None
+        return await _call_ollama_direct(prompt, bare_model, max_tokens, task=task, budget=budget)
 
     if model.startswith("huggingface/"):
         hf_model = model[len("huggingface/") :]
-        return await _call_huggingface(prompt, model=hf_model, max_tokens=max_tokens)
+        return await _call_huggingface(prompt, model=hf_model, max_tokens=max_tokens, task=task, budget=budget)
 
-    return await _call_llm_via_litellm(prompt, model, max_tokens)
+    return await _call_llm_via_litellm(prompt, model, max_tokens, task=task, budget=budget)
 
 
 # ─── Structured output ──────────────────────────────────────────────────────
@@ -871,7 +1076,10 @@ async def _call_ollama_structured(
                     return schema_cls.model_validate_json(text)
         return None
     except Exception as exc:
-        logger.debug("Structured Ollama call failed: %s, falling back to unstructured", exc)
+        logger.debug(
+            "Structured Ollama call failed: %s, falling back to unstructured",
+            sanitize_error(exc, generic=True),
+        )
         return None
 
 
@@ -916,41 +1124,46 @@ async def _call_llm_structured(
 
 def _build_blast_radius_prompt(br: BlastRadius) -> str:
     """Build a prompt for analyzing a single blast radius finding."""
-    agents = ", ".join(a.name for a in br.affected_agents[:5])
-    creds = ", ".join(br.exposed_credentials[:5])
-    tools = ", ".join(t.name for t in br.exposed_tools[:5])
-    owasp = ", ".join(br.owasp_tags[:3])
-
-    return (
+    agents = _bounded_prompt_list([a.name for a in br.affected_agents], item_limit=240, count_limit=5, default="None")
+    creds = _bounded_prompt_list(list(br.exposed_credentials), item_limit=240, count_limit=5, default="None")
+    tools = _bounded_prompt_list([t.name for t in br.exposed_tools], item_limit=240, count_limit=5, default="None")
+    owasp = _bounded_prompt_list(list(br.owasp_tags), item_limit=120, count_limit=3, default="None")
+    prefix = (
         "You are an AI security analyst. Analyze this vulnerability finding "
         "in the context of an AI agent's MCP (Model Context Protocol) tool chain.\n\n"
-        f"Vulnerability: {br.vulnerability.id}\n"
+    )
+    dynamic = (
+        f"Vulnerability: {_bounded_prompt_text(br.vulnerability.id, 240, 'unknown')}\n"
         f"Severity: {br.vulnerability.severity.value} (CVSS: {br.vulnerability.cvss_score or 'N/A'})\n"
-        f"Summary: {br.vulnerability.summary}\n"
-        f"Package: {br.package.name}@{br.package.version} ({br.package.ecosystem})\n"
-        f"Fixed version: {br.vulnerability.fixed_version or 'No fix available'}\n"
+        f"Summary: {_bounded_prompt_text(br.vulnerability.summary, 4000, 'Unavailable')}\n"
+        f"Package: {_bounded_prompt_text(br.package.name, 240, 'unknown')}@"
+        f"{_bounded_prompt_text(br.package.version, 120, 'unknown')} "
+        f"({_bounded_prompt_text(br.package.ecosystem, 80, 'unknown')})\n"
+        f"Fixed version: {_bounded_prompt_text(br.vulnerability.fixed_version, 120, 'No fix available')}\n"
         f"Affected AI agents: {agents}\n"
-        f"Exposed credentials: {creds or 'None'}\n"
-        f"Reachable tools: {tools or 'None'}\n"
-        f"OWASP LLM Top 10 tags: {owasp or 'None'}\n"
+        f"Exposed credentials: {creds}\n"
+        f"Reachable tools: {tools}\n"
+        f"OWASP LLM Top 10 tags: {owasp}\n"
         f"Risk score: {br.risk_score:.1f}/10\n\n"
+    )
+    suffix = (
         "Provide a concise 2-3 sentence analysis covering:\n"
         "1. Why this vulnerability matters specifically in an AI agent context\n"
         "2. How an attacker could exploit this through the agent's tool chain\n"
         "3. The specific business impact given the exposed credentials and tools\n\n"
         "Be specific about the attack path. Do not use generic language."
     )
+    return _compose_bounded_prompt(prefix, dynamic, suffix)
 
 
 def _build_executive_summary_prompt(report: AIBOMReport) -> str:
     """Build a prompt for generating an executive summary."""
-    critical_ids = [br.vulnerability.id for br in report.blast_radii[:5] if br.vulnerability.severity.value == "critical"]
+    critical_ids = [br.vulnerability.id for br in report.blast_radii if br.vulnerability.severity.value == "critical"]
     cred_count = len({c for br in report.blast_radii for c in br.exposed_credentials})
     tool_count = len({t.name for br in report.blast_radii for t in br.exposed_tools})
 
-    return (
-        "You are a CISO's AI security advisor. Write a one-paragraph executive "
-        "summary of this AI agent security scan.\n\n"
+    prefix = "You are a CISO's AI security advisor. Write a one-paragraph executive summary of this AI agent security scan.\n\n"
+    dynamic = (
         f"Scan results:\n"
         f"- {report.total_agents} AI agent(s) scanned\n"
         f"- {report.total_servers} MCP server(s) discovered\n"
@@ -959,30 +1172,41 @@ def _build_executive_summary_prompt(report: AIBOMReport) -> str:
         f"- {len(report.critical_vulns)} critical findings\n"
         f"- {cred_count} unique credentials at risk\n"
         f"- {tool_count} unique tools in blast radius\n"
-        f"- Top critical CVEs: {', '.join(critical_ids) or 'None'}\n\n"
+        f"- Top critical CVEs: "
+        f"{_bounded_prompt_list(list(critical_ids), item_limit=240, count_limit=5, default='None')}\n\n"
+    )
+    suffix = (
         "Write for a non-technical executive audience. Focus on business risk, "
         "not technical details. Include a clear risk rating (Critical/High/Medium/Low) "
         "and 1-2 recommended actions. Keep to one paragraph, 4-6 sentences."
     )
+    return _compose_bounded_prompt(prefix, dynamic, suffix)
 
 
 def _build_threat_chain_prompt(report: AIBOMReport) -> str:
     """Build a prompt for threat chain analysis."""
     chains = []
     for br in report.blast_radii[:5]:
-        agents = ", ".join(a.name for a in br.affected_agents[:2])
-        tools = ", ".join(t.name for t in br.exposed_tools[:3])
-        creds = ", ".join(br.exposed_credentials[:3])
+        agents = _bounded_prompt_list([a.name for a in br.affected_agents], item_limit=240, count_limit=2, default="none")
+        tools = _bounded_prompt_list([t.name for t in br.exposed_tools], item_limit=240, count_limit=3, default="none")
+        creds = _bounded_prompt_list(list(br.exposed_credentials), item_limit=240, count_limit=3, default="none")
         chains.append(
-            f"- {br.vulnerability.id} in {br.package.name}@{br.package.version} | agents: {agents} | tools: {tools} | creds: {creds}"
+            f"- {_bounded_prompt_text(br.vulnerability.id, 240, 'unknown')} in "
+            f"{_bounded_prompt_text(br.package.name, 240, 'unknown')}@"
+            f"{_bounded_prompt_text(br.package.version, 120, 'unknown')} | "
+            f"agents: {agents} | tools: {tools} | creds: {creds}"
         )
+    omitted = max(len(report.blast_radii) - len(chains), 0)
+    if omitted:
+        chains.append(f"... [{omitted} additional blast-radius finding(s) omitted]")
 
-    return (
+    prefix = (
         "You are a red team AI security specialist. Analyze how an attacker could "
         "chain these vulnerabilities through an AI agent's MCP tool access to achieve "
-        "maximum impact.\n\n"
-        f"Vulnerabilities in blast radius:\n"
-        f"{chr(10).join(chains)}\n\n"
+        "maximum impact.\n\nVulnerabilities in blast radius:\n"
+    )
+    dynamic = f"{chr(10).join(chains)}\n\n"
+    suffix = (
         "Describe 1-2 realistic attack chains (3-5 steps each) showing:\n"
         "1. Initial exploitation vector\n"
         "2. Lateral movement through MCP tools\n"
@@ -991,6 +1215,7 @@ def _build_threat_chain_prompt(report: AIBOMReport) -> str:
         "Be specific about which tools and credentials are used at each step. "
         "Format as numbered steps."
     )
+    return _compose_bounded_prompt(prefix, dynamic, suffix)
 
 
 # ─── Enrichment functions ────────────────────────────────────────────────────
@@ -1003,6 +1228,7 @@ async def enrich_blast_radii(
     blast_radii: list[BlastRadius],
     model: str = DEFAULT_MODEL,
     max_calls: int = _DEFAULT_AI_MAX_CALLS,
+    budget: AICallBudget | None = None,
 ) -> int:
     """Add AI-generated risk narratives to blast radius findings.
 
@@ -1040,7 +1266,9 @@ async def enrich_blast_radii(
             break
 
         prompt = _build_blast_radius_prompt(br)
-        result = await _call_llm(prompt, model)
+        result = await _call_llm(prompt, model, task=EnrichmentTask.NARRATIVE, budget=budget)
+        if budget is not None and budget.to_dict()["exhausted"] and result is None:
+            logger.warning("AI provider-attempt budget exhausted before narrative enrichment completed")
         seen_packages[pkg_key] = result
         calls_made += 1
         if result:
@@ -1053,44 +1281,242 @@ async def enrich_blast_radii(
 async def generate_executive_summary(
     report: AIBOMReport,
     model: str = DEFAULT_MODEL,
+    budget: AICallBudget | None = None,
 ) -> Optional[str]:
     """Generate an LLM-powered executive summary of the scan."""
     if not report.blast_radii:
         return None
     if not _has_any_provider(model):
         return None
-
     prompt = _build_executive_summary_prompt(report)
-    return await _call_llm(prompt, model, max_tokens=300)
+    return await _call_llm(prompt, model, max_tokens=300, task=EnrichmentTask.SUMMARY, budget=budget)
 
 
 async def generate_threat_chains(
     report: AIBOMReport,
     model: str = DEFAULT_MODEL,
+    budget: AICallBudget | None = None,
 ) -> list[str]:
     """Generate LLM-powered threat chain analysis."""
     if not report.blast_radii:
         return []
     if not _has_any_provider(model):
         return []
-
     prompt = _build_threat_chain_prompt(report)
-    result = await _call_llm(prompt, model, max_tokens=800)
+    result = await _call_llm(prompt, model, max_tokens=800, task=EnrichmentTask.SUMMARY, budget=budget)
     return [result] if result else []
+
+
+def _bounded_ai_text(value: object, limit: int, default: str = "") -> str:
+    """Normalize untrusted model text into a bounded single string."""
+    if not isinstance(value, str):
+        return default
+    return redact_secrets(value).strip()[:limit] or default
+
+
+_MAX_AI_PROMPT_CHARS = 32_000
+_PROMPT_TRUNCATION_MARKER = "\n... [prompt content omitted to enforce size limit]\n"
+
+
+def _bounded_prompt_text(value: object, limit: int, default: str = "") -> str:
+    """Bound one untrusted prompt field and make any truncation explicit."""
+    if not isinstance(value, str):
+        return default
+    normalized = redact_secrets(value).strip()
+    if not normalized:
+        return default
+    if len(normalized) <= limit:
+        return normalized
+    marker = "... [truncated]"
+    return normalized[: max(limit - len(marker), 0)] + marker
+
+
+def _bounded_prompt_list(values: list[object], *, item_limit: int, count_limit: int, default: str) -> str:
+    """Render a bounded list with an auditable omitted-item marker."""
+    selected = [_bounded_prompt_text(value, item_limit) for value in values[:count_limit]]
+    selected = [value for value in selected if value]
+    omitted = max(len(values) - count_limit, 0)
+    if omitted:
+        selected.append(f"... [{omitted} item(s) omitted]")
+    return ", ".join(selected) or default
+
+
+def _compose_bounded_prompt(prefix: str, dynamic: str, suffix: str) -> str:
+    """Keep provider instructions intact while bounding untrusted dynamic input."""
+    fixed_length = len(prefix) + len(suffix)
+    if fixed_length >= _MAX_AI_PROMPT_CHARS:
+        return (prefix + suffix)[:_MAX_AI_PROMPT_CHARS]
+    budget = _MAX_AI_PROMPT_CHARS - fixed_length
+    if len(dynamic) <= budget:
+        return prefix + dynamic + suffix
+    marker = _PROMPT_TRUNCATION_MARKER
+    retained = max(budget - len(marker), 0)
+    return prefix + dynamic[:retained] + marker[: budget - retained] + suffix
+
+
+def _build_finding_assessment_prompt(findings: list["Finding"]) -> str:
+    """Build a bounded prompt from safe finding fields, excluding raw evidence."""
+    rows = []
+    for finding in findings:
+        rows.append(
+            {
+                "finding_id": finding.id,
+                "type": str(getattr(finding.finding_type, "value", finding.finding_type)),
+                "source": str(getattr(finding.source, "value", finding.source)),
+                "severity": finding.severity,
+                "title": _bounded_ai_text(finding.title, 240),
+                "description": _bounded_ai_text(finding.description, 800),
+                "asset": {
+                    "name": _bounded_ai_text(finding.asset.name, 240),
+                    "type": _bounded_ai_text(finding.asset.asset_type, 80),
+                },
+                "risk_score": finding.risk_score,
+                "reachability": finding.reachability,
+                "is_kev": finding.is_kev,
+                "controls": [f"{tag.framework}:{tag.control}" for tag in finding.controls[:20]],
+            }
+        )
+    return (
+        "Classify and triage these deterministic security findings. Your output is advisory only: "
+        "do not change severity, suppress findings, or invent finding IDs. Return JSON only as "
+        '{"assessments":[{"finding_id":"...","classification":"...",'
+        '"confidence":"high|medium|low","false_positive_likelihood":"high|medium|low",'
+        '"rationale":"...","suggested_controls":["..."]}]}.\nFindings:\n' + json.dumps(rows, separators=(",", ":"))
+    )
+
+
+def _parse_finding_assessments(
+    response: str,
+    *,
+    known_ids: set[str],
+    provider: str,
+    model: str,
+    run_id: str,
+    prompt: str,
+) -> list["AIFindingAssessment"]:
+    from pydantic import ValidationError
+
+    from agent_bom.ai_schemas import (
+        AIFindingAssessment,
+        AIFindingAssessmentResponse,
+        AIProvenance,
+    )
+
+    data = _parse_json_response(response)
+    if not isinstance(data, dict):
+        return []
+    try:
+        parsed = AIFindingAssessmentResponse.model_validate(data)
+    except ValidationError as exc:
+        logger.warning("AI finding assessment response rejected: %s", sanitize_error(exc, generic=True))
+        return []
+
+    accepted: list[AIFindingAssessment] = []
+    seen_ids: set[str] = set()
+    prompt_sha256 = hashlib.sha256(_prepare_prompt(prompt).encode()).hexdigest()
+    response_sha256 = hashlib.sha256(response.encode()).hexdigest()
+    generated_at = datetime.now(timezone.utc)
+    for candidate in parsed.assessments:
+        finding_id = candidate.finding_id
+        if finding_id not in known_ids or finding_id in seen_ids:
+            continue
+        seen_ids.add(finding_id)
+        controls = list(dict.fromkeys(candidate.suggested_controls))[:10]
+        accepted.append(
+            AIFindingAssessment(
+                finding_id=finding_id,
+                classification=candidate.classification,
+                confidence=candidate.confidence,
+                false_positive_likelihood=candidate.false_positive_likelihood,
+                rationale=candidate.rationale,
+                suggested_controls=controls,
+                provenance=AIProvenance(
+                    run_id=run_id,
+                    provider=provider,
+                    model=model,
+                    model_revision=str(getattr(config, "AI_MODEL_REVISION", "") or ""),
+                    prompt_version=AI_PROMPT_VERSION,
+                    prompt_sha256=prompt_sha256,
+                    response_sha256=response_sha256,
+                    generated_at=generated_at,
+                    deterministic=_effective_temperature() == 0.0,
+                    redaction_applied=bool(getattr(config, "AI_REDACT_PROMPTS", True)),
+                ),
+            )
+        )
+    return accepted
+
+
+async def assess_report_findings(
+    report: "AIBOMReport",
+    model: str = DEFAULT_MODEL,
+    *,
+    provider: str = "unknown",
+    budget: AICallBudget | None = None,
+    run_id: str | None = None,
+) -> list["AIFindingAssessment"]:
+    """Return immutable, provenance-scored AI triage for deterministic findings."""
+    if not _has_any_provider(model):
+        return []
+    max_findings = int(getattr(config, "AI_MAX_FINDINGS_PER_RUN", 100))
+    if max_findings < 0:
+        raise ValueError("AGENT_BOM_AI_MAX_FINDINGS must be non-negative")
+    if max_findings == 0:
+        return []
+    findings = report.to_findings()[:max_findings]
+    if not findings:
+        return []
+    batch_size = max(1, min(int(getattr(config, "AI_FINDING_BATCH_SIZE", 20)), 50))
+    assessments: list[AIFindingAssessment] = []
+    active_run_id = run_id or str(uuid.uuid4())
+    for offset in range(0, len(findings), batch_size):
+        batch = findings[offset : offset + batch_size]
+        prompt = _build_finding_assessment_prompt(batch)
+        response = await _call_llm(
+            prompt,
+            model,
+            max_tokens=1800,
+            task=EnrichmentTask.TRIAGE,
+            budget=budget,
+        )
+        if not response:
+            if budget is not None and budget.to_dict()["exhausted"]:
+                logger.warning("AI provider-attempt budget exhausted before finding triage completed")
+                break
+            continue
+        assessments.extend(
+            _parse_finding_assessments(
+                response,
+                known_ids={finding.id for finding in batch},
+                provider=provider,
+                model=model,
+                run_id=active_run_id,
+                prompt=prompt,
+            )
+        )
+    return assessments
 
 
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 
-async def run_ai_enrichment(
+async def _run_ai_enrichment_impl(
     report: AIBOMReport,
     model: str = DEFAULT_MODEL,
     skill_result: "SkillScanResult | None" = None,
     skill_audit: "SkillAuditResult | None" = None,
+    *,
+    gate_ai_findings: bool = False,
 ) -> None:
     """Run all AI enrichment steps on a report. Modifies report in-place."""
+    budget = AICallBudget(max_calls=int(getattr(config, "AI_MAX_CALLS_PER_RUN", 50)))
+    run_id = _AI_RUN_ID.get() or str(uuid.uuid4())
     resolution = _resolve_ai_provider(model)
-    report.ai_enrichment_metadata = resolution.to_metadata()
+    report.ai_enrichment_metadata = {
+        **resolution.to_metadata(),
+        "run_id": run_id,
+        "call_budget": budget.to_dict(),
+    }
     if not resolution.available:
         console.print("  [yellow]No LLM provider available. Skipping AI enrichment.[/yellow]")
         console.print("  [dim]Option 1: Install Ollama (free, local) — ollama.com[/dim]")
@@ -1106,39 +1532,69 @@ async def run_ai_enrichment(
     narrative_model = resolve_task_model(EnrichmentTask.NARRATIVE, model)
     summary_model = resolve_task_model(EnrichmentTask.SUMMARY, model)
     config_model = resolve_task_model(EnrichmentTask.CONFIG_ANALYSIS, model)
+    triage_model = resolve_task_model(EnrichmentTask.TRIAGE, model)
 
     # Provenance: record the full harness posture, not just the primary model.
     report.ai_enrichment_metadata = {
         **resolution.to_metadata(),
         "harness_version": "2",
+        "run_id": run_id,
+        "model_revision": str(getattr(config, "AI_MODEL_REVISION", "") or ""),
+        "prompt_version": AI_PROMPT_VERSION,
         "task_models": {
             "narrative": narrative_model,
             "summary": summary_model,
             "config_analysis": config_model,
+            "triage": triage_model,
         },
         "redaction": bool(getattr(config, "AI_REDACT_PROMPTS", True)),
-        "deterministic": bool(getattr(config, "AI_DETERMINISTIC", False)),
+        "deterministic": _effective_temperature() == 0.0,
         "temperature": _effective_temperature(),
+        "advisory_default": True,
+        "ai_gate_enabled": gate_ai_findings,
+        "call_budget": budget.to_dict(),
     }
 
     console.print(f"\n[bold blue]AI Enrichment[/bold blue]  [dim]model: {model} via {provider}[/dim]\n")
 
+    # Advisory triage is the primary structured surface, so it receives budget
+    # before optional narrative generation on large estates.
+    triage_resolution = _resolve_ai_provider(triage_model)
+    assessments = await assess_report_findings(
+        report,
+        triage_resolution.model if triage_resolution.available else triage_model,
+        provider=triage_resolution.provider.name if triage_resolution.provider else "unknown",
+        budget=budget,
+        run_id=run_id,
+    )
+    total_findings = len(report.to_findings())
+    max_findings = int(getattr(config, "AI_MAX_FINDINGS_PER_RUN", 100))
+    report.ai_enrichment_metadata["triage_scope"] = {
+        "findings_total": total_findings,
+        "findings_offered": min(total_findings, max_findings),
+        "findings_truncated": max(total_findings - max_findings, 0),
+        "assessments_generated": len(assessments),
+    }
+    if assessments:
+        report.ai_finding_assessments = assessments
+        console.print(f"  [green]{len(assessments)} advisory finding assessment(s) generated[/green]")
+
     # Step 1: Enrich blast radii with contextual narratives
     if report.blast_radii:
         console.print("  [cyan]>[/cyan] Generating risk narratives...")
-        enriched = await enrich_blast_radii(report.blast_radii, narrative_model)
+        enriched = await enrich_blast_radii(report.blast_radii, narrative_model, budget=budget)
         console.print(f"  [green]{enriched} finding(s) enriched[/green]")
 
         # Step 2: Generate executive summary
         console.print("  [cyan]>[/cyan] Generating executive summary...")
-        summary = await generate_executive_summary(report, summary_model)
+        summary = await generate_executive_summary(report, summary_model, budget)
         if summary:
             report.executive_summary = summary
             console.print("  [green]Executive summary generated[/green]")
 
         # Step 3: Generate threat chain analysis
         console.print("  [cyan]>[/cyan] Analyzing threat chains...")
-        chains = await generate_threat_chains(report, summary_model)
+        chains = await generate_threat_chains(report, summary_model, budget)
         if chains:
             report.ai_threat_chains = chains
             console.print(f"  [green]{len(chains)} threat chain(s) analyzed[/green]")
@@ -1147,7 +1603,7 @@ async def run_ai_enrichment(
     total_servers = sum(len(a.mcp_servers) for a in report.agents)
     if total_servers > 0:
         console.print("  [cyan]>[/cyan] Analyzing MCP config security...")
-        config_analysis = await analyze_mcp_config_security(report, config_model)
+        config_analysis = await analyze_mcp_config_security(report, config_model, budget)
         if config_analysis:
             report.mcp_config_analysis = config_analysis.model_dump()
             console.print(f"  [green]Config analysis complete (risk: {config_analysis.overall_risk})[/green]")
@@ -1155,11 +1611,46 @@ async def run_ai_enrichment(
     # Step 5: Skill file AI analysis
     if skill_result and skill_audit and skill_result.raw_content:
         console.print("  [cyan]>[/cyan] Analyzing skill file security...")
-        skill_enriched = await enrich_skill_audit(skill_result, skill_audit, model)
+        skill_enriched = await enrich_skill_audit(
+            skill_result,
+            skill_audit,
+            model,
+            gate_ai_findings=gate_ai_findings,
+            budget=budget,
+        )
         if skill_enriched:
             console.print(f"  [green]Skill files analyzed (risk: {skill_audit.ai_overall_risk_level or 'unknown'})[/green]")
         else:
             console.print("  [dim]  Skill analysis could not be completed[/dim]")
+
+    report.ai_enrichment_metadata["call_budget"] = budget.to_dict()
+
+
+async def run_ai_enrichment(
+    report: AIBOMReport,
+    model: str = DEFAULT_MODEL,
+    skill_result: "SkillScanResult | None" = None,
+    skill_audit: "SkillAuditResult | None" = None,
+    *,
+    deterministic: bool | None = None,
+    gate_ai_findings: bool = False,
+) -> None:
+    """Run enrichment with a task-local deterministic-mode override."""
+    deterministic_token = _AI_DETERMINISTIC_OVERRIDE.set(deterministic)
+    run_token = _AI_RUN_ID.set(str(uuid.uuid4()))
+    try:
+        if gate_ai_findings and _effective_temperature() != 0.0:
+            raise ValueError("AI finding gating requires deterministic mode")
+        await _run_ai_enrichment_impl(
+            report,
+            model,
+            skill_result,
+            skill_audit,
+            gate_ai_findings=gate_ai_findings,
+        )
+    finally:
+        _AI_RUN_ID.reset(run_token)
+        _AI_DETERMINISTIC_OVERRIDE.reset(deterministic_token)
 
 
 def run_ai_enrichment_sync(
@@ -1167,15 +1658,33 @@ def run_ai_enrichment_sync(
     model: str = DEFAULT_MODEL,
     skill_result: "SkillScanResult | None" = None,
     skill_audit: "SkillAuditResult | None" = None,
+    *,
+    deterministic: bool | None = None,
+    gate_ai_findings: bool = False,
 ) -> None:
     """Synchronous wrapper for run_ai_enrichment."""
-    asyncio.run(run_ai_enrichment(report, model, skill_result, skill_audit))
+    asyncio.run(
+        run_ai_enrichment(
+            report,
+            model,
+            skill_result,
+            skill_audit,
+            deterministic=deterministic,
+            gate_ai_findings=gate_ai_findings,
+        )
+    )
 
 
 # ─── Skill file AI analysis ──────────────────────────────────────────────────
 
+_MAX_AI_SKILL_FILES = 10
+_MAX_AI_SKILL_FILE_CHARS = 6_000
+_MAX_AI_SKILL_FINDINGS = 100
 
-_VALID_SEVERITIES = {"critical", "high", "medium", "low"}
+
+def _canonical_skill_source_path(value: object) -> str:
+    """Return the exact bounded path representation shown to the provider."""
+    return _bounded_prompt_text(value, 240, "skill-file")
 
 
 def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: list[dict]) -> str:
@@ -1184,17 +1693,41 @@ def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: l
     The prompt asks the model to classify intent, review existing findings,
     detect new threats, and assess overall risk.
     """
-    # Truncate each file to 6000 chars to stay within context limits
+    # Bound the whole request as well as each item. Static scanning still
+    # covers every discovered file; this is only the optional advisory model
+    # view and must not turn a large repository into one unbounded request.
     file_sections = []
-    for filepath, content in raw_content.items():
-        truncated = content[:6000]
-        if len(content) > 6000:
+    selected_files = list(raw_content.items())[:_MAX_AI_SKILL_FILES]
+    for filepath, content in selected_files:
+        safe_path = _canonical_skill_source_path(filepath)
+        redacted_content = redact_secrets(content)
+        truncated = redacted_content[:_MAX_AI_SKILL_FILE_CHARS]
+        if len(redacted_content) > _MAX_AI_SKILL_FILE_CHARS:
             truncated += "\n... [truncated]"
-        file_sections.append(f"### File: {filepath}\n```\n{truncated}\n```")
+        file_sections.append(f"### File: {safe_path}\n```\n{truncated}\n```")
+
+    omitted_files = max(len(raw_content) - len(selected_files), 0)
+    if omitted_files:
+        file_sections.append(f"... [{omitted_files} additional skill file(s) omitted from advisory AI analysis]")
 
     files_text = "\n\n".join(file_sections)
 
-    findings_text = json.dumps(static_findings, indent=2) if static_findings else "[]"
+    selected_findings: list[dict[str, str]] = []
+    for finding in static_findings[:_MAX_AI_SKILL_FINDINGS]:
+        selected_findings.append(
+            {
+                "severity": _bounded_ai_text(finding.get("severity"), 20, "unknown"),
+                "category": _bounded_ai_text(finding.get("category"), 80, "unknown"),
+                "title": _bounded_ai_text(finding.get("title"), 240, "Untitled finding"),
+                "detail": _bounded_ai_text(finding.get("detail"), 500),
+                "source_file": _bounded_ai_text(finding.get("source_file"), 240),
+                "context": _bounded_ai_text(finding.get("context"), 80),
+            }
+        )
+    findings_text = json.dumps(selected_findings, indent=2) if selected_findings else "[]"
+    omitted_findings = max(len(static_findings) - len(selected_findings), 0)
+    if omitted_findings:
+        findings_text += f"\n... [{omitted_findings} additional static finding(s) omitted from advisory AI analysis]"
 
     return (
         "You are an AI security auditor specializing in analyzing skill files "
@@ -1228,12 +1761,15 @@ def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: l
         "    - verdict: 'confirmed' | 'false_positive' | 'severity_adjusted'\n"
         "    - adjusted_severity: string | null (only if severity_adjusted)\n"
         "    - reasoning: string\n"
+        "    - confidence: 'high' | 'medium' | 'low' (required; missing values normalize to low)\n"
         "- new_findings: list of objects, each with:\n"
         "    - severity: 'critical' | 'high' | 'medium' | 'low'\n"
         "    - category: string (one of the threat categories above)\n"
         "    - title: string\n"
         "    - detail: string\n"
-        "    - recommendation: string"
+        "    - recommendation: string\n"
+        "    - confidence: 'high' | 'medium' | 'low'\n"
+        "    - source_file: string (must exactly match one analyzed file path)"
     )
 
 
@@ -1243,11 +1779,19 @@ def _parse_skill_analysis_response(response: str) -> dict | None:
     Uses the generic ``_parse_json_response`` and validates that the result
     contains the expected ``overall_risk_level`` key.
     """
+    from pydantic import ValidationError
+
+    from agent_bom.ai_schemas import SkillAnalysisResult
+
     data = _parse_json_response(response)
-    if data and "overall_risk_level" in data:
-        return data
-    logger.warning("Could not parse skill analysis LLM response as JSON")
-    return None
+    if not isinstance(data, dict):
+        logger.warning("Could not parse skill analysis LLM response as JSON")
+        return None
+    try:
+        return SkillAnalysisResult.model_validate(data).model_dump()
+    except ValidationError as exc:
+        logger.warning("Skill analysis response rejected: %s", sanitize_error(exc, generic=True))
+        return None
 
 
 def _apply_skill_analysis(
@@ -1256,17 +1800,28 @@ def _apply_skill_analysis(
     *,
     ai_source: str | None = None,
     ai_model: str | None = None,
+    gate_ai_findings: bool = False,
+    analyzed_source_files: tuple[str, ...] = (),
 ) -> None:
     """Apply parsed AI analysis results to a SkillAuditResult in-place.
 
-    Updates existing findings with AI verdicts, adds new AI-detected findings,
-    and recalculates the pass/fail status.
+    Updates existing findings with AI verdicts and adds new AI-detected
+    findings. Deterministic pass/fail is preserved unless the caller explicitly
+    opts into AI gating after selecting deterministic model execution.
     """
+    from agent_bom.ai_schemas import SkillAnalysisResult
     from agent_bom.parsers.skill_audit import SkillFinding
 
+    parsed = SkillAnalysisResult.model_validate(ai_data)
+
+    # Capture the deterministic result exactly once, before AI annotations.
+    if audit.deterministic_passed is None:
+        audit.deterministic_passed = audit.passed
+    audit.ai_gate_enabled = gate_ai_findings
+
     # Set top-level AI fields
-    audit.ai_overall_risk_level = ai_data.get("overall_risk_level")
-    audit.ai_skill_summary = ai_data.get("summary")
+    audit.ai_overall_risk_level = parsed.overall_risk_level
+    audit.ai_skill_summary = parsed.summary
 
     # Build a lookup of existing findings by title for matching
     findings_by_title: dict[str, SkillFinding] = {}
@@ -1274,62 +1829,72 @@ def _apply_skill_analysis(
         findings_by_title[finding.title] = finding
 
     # Apply finding reviews
-    for review in ai_data.get("finding_reviews", []):
-        title = review.get("title") or review.get("original_title", "")
+    for review in parsed.finding_reviews:
+        title = review.title or review.original_title
         matched = findings_by_title.get(title)
         if not matched:
             continue
 
-        verdict = review.get("verdict", "confirmed")
-        reasoning = review.get("reasoning", "")
-        matched.ai_analysis = reasoning
+        verdict = review.verdict
+        matched.ai_analysis = review.reasoning
         matched.ai_source = ai_source
         matched.ai_model = ai_model
-        confidence = review.get("confidence")
-        if isinstance(confidence, str) and confidence.lower() in {"high", "medium", "low"}:
-            matched.ai_confidence = confidence.lower()
+        matched.ai_confidence = review.confidence
 
         if verdict == "false_positive":
             matched.ai_adjusted_severity = "false_positive"
         elif verdict == "severity_adjusted":
-            adjusted = review.get("adjusted_severity")
-            if adjusted and adjusted.lower() in _VALID_SEVERITIES:
-                matched.ai_adjusted_severity = adjusted.lower()
+            if review.adjusted_severity is not None:
+                matched.ai_adjusted_severity = review.adjusted_severity
 
     # Add new AI-detected findings
-    for new in ai_data.get("new_findings", []):
-        severity = new.get("severity", "medium").lower()
-        if severity not in _VALID_SEVERITIES:
-            severity = "medium"
-
-        source_file = next(iter(audit.findings), None)
-        source = source_file.source_file if source_file else "unknown"
+    allowed_source_files = {_canonical_skill_source_path(source_file) for source_file in analyzed_source_files}
+    for new in parsed.new_findings:
+        source = new.source_file if new.source_file in allowed_source_files else "unknown"
 
         audit.findings.append(
             SkillFinding(
-                severity=severity,
-                category=new.get("category", "ai_detected"),
-                title=new.get("title", "AI-detected finding"),
-                detail=new.get("detail", ""),
+                severity=new.severity,
+                category=new.category,
+                title=new.title,
+                detail=new.detail,
                 source_file=source,
-                recommendation=new.get("recommendation", ""),
+                recommendation=new.recommendation,
                 context="ai_analysis",
                 ai_source=ai_source,
                 ai_model=ai_model,
-                ai_confidence=str(new.get("confidence", "medium")).lower()
-                if str(new.get("confidence", "medium")).lower() in {"high", "medium", "low"}
-                else "medium",
+                ai_confidence=new.confidence,
+                ai_detected=True,
             )
         )
 
-    # Recalculate passed status: false_positive findings don't count
-    audit.passed = not any(f.severity in ("critical", "high") and f.ai_adjusted_severity != "false_positive" for f in audit.findings)
+    if gate_ai_findings:
+        # Explicit opt-in only: false-positive reviews and AI-detected findings
+        # may affect the result, but only high-confidence model judgments can
+        # change the deterministic gate. Missing confidence normalizes to low.
+        def _blocks_gate(finding: SkillFinding) -> bool:
+            if finding.ai_detected:
+                return finding.ai_confidence == "high" and finding.severity in ("critical", "high")
+            effective_severity = finding.severity
+            if finding.ai_confidence == "high":
+                if finding.ai_adjusted_severity == "false_positive":
+                    return False
+                if finding.ai_adjusted_severity in ("critical", "high", "medium", "low"):
+                    effective_severity = finding.ai_adjusted_severity
+            return effective_severity in ("critical", "high")
+
+        audit.passed = not any(_blocks_gate(finding) for finding in audit.findings)
+    else:
+        audit.passed = audit.deterministic_passed
 
 
 async def enrich_skill_audit(
     skill_result: "SkillScanResult",
     skill_audit: "SkillAuditResult",
     model: str = DEFAULT_MODEL,
+    *,
+    gate_ai_findings: bool = False,
+    budget: AICallBudget | None = None,
 ) -> bool:
     """Orchestrate AI-powered skill file security analysis.
 
@@ -1348,6 +1913,9 @@ async def enrich_skill_audit(
     if not resolution.available:
         logger.debug("No LLM provider available for skill enrichment")
         return False
+    if resolution.provider is None or not resolution.provider.local:
+        logger.warning("Raw skill-file AI analysis skipped because the selected provider is not local")
+        return False
     resolved_model = resolution.model
 
     # Serialize static findings as list of dicts
@@ -1365,7 +1933,13 @@ async def enrich_skill_audit(
 
     # Build prompt and call LLM
     prompt = _build_skill_analysis_prompt(skill_result.raw_content, static_findings)
-    response = await _call_llm(prompt, resolved_model, max_tokens=1500)
+    response = await _call_llm(
+        prompt,
+        resolved_model,
+        max_tokens=1500,
+        task=EnrichmentTask.DETECTION,
+        budget=budget,
+    )
 
     if not response:
         logger.warning("LLM returned empty response for skill analysis")
@@ -1377,12 +1951,18 @@ async def enrich_skill_audit(
         logger.warning("Could not parse LLM skill analysis response")
         return False
 
-    _apply_skill_analysis(
-        skill_audit,
-        ai_data,
-        ai_source=resolution.provider.name if resolution.provider else None,
-        ai_model=resolved_model,
-    )
+    try:
+        _apply_skill_analysis(
+            skill_audit,
+            ai_data,
+            ai_source=resolution.provider.name,
+            ai_model=resolved_model,
+            gate_ai_findings=gate_ai_findings,
+            analyzed_source_files=tuple(list(skill_result.raw_content)[:_MAX_AI_SKILL_FILES]),
+        )
+    except (TypeError, ValueError) as exc:
+        logger.warning("Skill analysis could not be applied: %s", sanitize_error(exc, generic=True))
+        return False
     return True
 
 
@@ -1395,27 +1975,39 @@ def _build_mcp_config_analysis_prompt(report: "AIBOMReport") -> str:
     Examines the full server configuration (not individual CVEs) for
     architectural security risks.
     """
-    server_configs = []
+    server_configs: list[str] = []
+    max_servers = 10
+    total_servers = sum(len(agent.mcp_servers) for agent in report.agents)
     for agent in report.agents[:20]:
-        for server in agent.mcp_servers[:10]:
-            creds = server.credential_names
-            tools = [t.name for t in server.tools[:10]]
-            server_args = sanitize_command_args(server.args[:5])
+        for server in agent.mcp_servers:
+            if len(server_configs) >= max_servers:
+                break
+            creds = _bounded_prompt_list(list(server.credential_names), item_limit=160, count_limit=20, default="none")
+            tools = _bounded_prompt_list([tool.name for tool in server.tools], item_limit=240, count_limit=10, default="unknown")
+            bounded_args = [_bounded_prompt_text(arg, 500) for arg in server.args[:5]]
+            server_args = sanitize_command_args(bounded_args)
             server_configs.append(
-                f"- Server: {server.name}\n"
-                f"  Command: {server.command} {' '.join(server_args)}\n"
+                f"- Server: {_bounded_prompt_text(server.name, 240, 'unknown')}\n"
+                f"  Command: {_bounded_prompt_text(server.command, 500, 'unknown')} {' '.join(server_args)}\n"
                 f"  Transport: {server.transport.value}\n"
-                f"  Tools: {', '.join(tools) or 'unknown'}\n"
-                f"  Credentials: {', '.join(creds) or 'none'}\n"
-                f"  Agent: {agent.name} ({agent.agent_type.value})"
+                f"  Tools: {tools}\n"
+                f"  Credentials: {creds}\n"
+                f"  Agent: {_bounded_prompt_text(agent.name, 240, 'unknown')} ({agent.agent_type.value})"
             )
+        if len(server_configs) >= max_servers:
+            break
 
-    return (
+    omitted_servers = max(total_servers - len(server_configs), 0)
+    if omitted_servers:
+        server_configs.insert(0, f"... [{omitted_servers} additional MCP server(s) omitted from advisory AI analysis]")
+
+    prefix = (
         "You are an AI infrastructure security analyst specializing in MCP "
         "(Model Context Protocol) configurations. Analyze these MCP server "
-        "configurations for security risks.\n\n"
-        f"MCP Server Configurations:\n"
-        f"{chr(10).join(server_configs)}\n\n"
+        "configurations for security risks.\n\nMCP Server Configurations:\n"
+    )
+    dynamic = f"{chr(10).join(server_configs)}\n\n"
+    suffix = (
         "Analyze for:\n"
         "1. **Missing authentication**: Servers with no credential env vars "
         "that expose write/execute tools\n"
@@ -1437,11 +2029,13 @@ def _build_mcp_config_analysis_prompt(report: "AIBOMReport") -> str:
         "    - detail: string\n"
         "    - recommendation: string"
     )
+    return _compose_bounded_prompt(prefix, dynamic, suffix)
 
 
 async def analyze_mcp_config_security(
     report: "AIBOMReport",
     model: str = DEFAULT_MODEL,
+    budget: AICallBudget | None = None,
 ) -> Optional["MCPConfigSecurityAnalysis"]:
     """Run LLM-powered MCP configuration security analysis.
 
@@ -1455,8 +2049,25 @@ async def analyze_mcp_config_security(
         return None
     if not _has_any_provider(model):
         return None
-
     prompt = _build_mcp_config_analysis_prompt(report)
+
+    # Budgeted orchestration uses exactly one provider call. The legacy direct
+    # function path retains native structured output plus its fallback.
+    if budget is not None:
+        raw = await _call_llm(
+            prompt,
+            model,
+            max_tokens=1000,
+            task=EnrichmentTask.CONFIG_ANALYSIS,
+            budget=budget,
+        )
+        parsed = _parse_json_response(raw) if raw else None
+        if parsed:
+            try:
+                return MCPConfigSecurityAnalysis.model_validate(parsed)
+            except (ValueError, TypeError, KeyError) as exc:
+                logger.debug("Failed to validate MCPConfigSecurityAnalysis: %s", sanitize_error(exc, generic=True))
+        return None
 
     # Try structured output first
     result = await _call_llm_structured(prompt, model, MCPConfigSecurityAnalysis, max_tokens=1000)
@@ -1471,5 +2082,5 @@ async def analyze_mcp_config_security(
             try:
                 return MCPConfigSecurityAnalysis.model_validate(parsed)
             except (ValueError, TypeError, KeyError) as exc:
-                logger.debug("Failed to validate MCPConfigSecurityAnalysis: %s", exc)
+                logger.debug("Failed to validate MCPConfigSecurityAnalysis: %s", sanitize_error(exc, generic=True))
     return None

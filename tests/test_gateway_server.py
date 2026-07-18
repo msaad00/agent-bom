@@ -301,6 +301,58 @@ def test_metrics_endpoint_returns_prometheus_text_format() -> None:
     assert "agent_bom_gateway_relays_total" in body
 
 
+def test_handshake_messages_are_not_counted_as_authorized_tool_calls() -> None:
+    """JSON-RPC handshake/discovery traffic must not inflate tool-call KPIs.
+
+    Only ``tools/call`` is an authorized tool invocation. ``initialize`` and
+    ``tools/list`` are forwarded (and still audited) but must not be tagged
+    ``TOOL_CALL_ALLOWED``, or the live feed over-counts calls_today /
+    tool_calls_authorized.
+    """
+    from agent_bom.api.routes.gateway_feed import build_gateway_feed_kpis
+    from agent_bom.runtime.gateway_events import GatewayRuntimeEventType
+
+    audit_events: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        audit_sink=audit_sink,
+    )
+    client = TestClient(create_gateway_app(settings))
+
+    for method in ("initialize", "tools/list"):
+        resp = client.post("/mcp/filesystem", json=_json_rpc(method))
+        assert resp.status_code == 200, resp.text
+
+    resp = client.post(
+        "/mcp/filesystem",
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert resp.status_code == 200
+
+    allowed = [e for e in audit_events if e.get("event_type") == GatewayRuntimeEventType.TOOL_CALL_ALLOWED.value]
+    assert len(allowed) == 1
+    assert allowed[0]["tool"] == "read_file"
+
+    handshake = [e for e in audit_events if e.get("method") in ("initialize", "tools/list")]
+    assert len(handshake) == 2
+    assert all(e.get("action") == "gateway.message" for e in handshake)
+    assert all("event_type" not in e for e in handshake)
+
+    # End-to-end: the feed rollup counts exactly one authorized tool call.
+    kpis = build_gateway_feed_kpis(tenant_id="default", alerts=audit_events, llm_records=[], uptime_seconds=None)
+    assert kpis["tool_calls_authorized"] == 1
+    assert kpis["calls_today"] == 1
+
+
 def test_relay_forwards_to_upstream_and_returns_response() -> None:
     upstream_calls: list[dict[str, Any]] = []
 

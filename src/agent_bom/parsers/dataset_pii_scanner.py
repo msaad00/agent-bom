@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.runtime.patterns import CREDENTIAL_PATTERNS
+from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
 
@@ -596,14 +597,14 @@ def scan_directory_for_pii(
         agg.warnings.append(f"Not a directory: {root}")
         return agg
 
+    candidates = sorted(
+        path
+        for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS)
+        if not any(part in _SKIP_DIRS or part.startswith(".") for part in path.parts)
+        and path.suffix.lower() in _DATASET_EXTENSIONS
+    )
     files_checked = 0
-    for path in sorted(root.rglob("*")):
-        if not path.is_file():
-            continue
-        if any(part in _SKIP_DIRS or part.startswith(".") for part in path.parts):
-            continue
-        if path.suffix.lower() not in _DATASET_EXTENSIONS:
-            continue
+    for path in candidates:
         if files_checked >= max_files:
             agg.warnings.append(f"Reached max_files={max_files} limit; some files not scanned")
             break

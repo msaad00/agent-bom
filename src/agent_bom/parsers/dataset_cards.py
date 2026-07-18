@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.parsers.compliance_tags import tag_dataset
+from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
 
@@ -325,17 +326,14 @@ def discover_dataset_files(directory: Path) -> list[Path]:
     """Find dataset card files in a directory tree."""
     results: list[Path] = []
 
-    for p in directory.rglob("*"):
-        if any(skip in p.parts for skip in _SKIP_DIRS):
-            continue
-
+    for p in iter_discovery_files(directory, extra_skip_dirs=frozenset(_SKIP_DIRS)):
         if p.name == "dataset_info.json":
             results.append(p)
         elif p.name == "dataset_infos.json":
             results.append(p)
-        elif p.suffix == ".dvc" and p.is_file():
+        elif p.suffix == ".dvc":
             results.append(p)
-        elif p.name == "README.md" and p.is_file():
+        elif p.name == "README.md":
             # Only include READMEs that look like dataset cards (in data-like dirs)
             parent_name = p.parent.name.lower()
             # Heuristic: if sibling dataset_info.json exists, or parent looks like a dataset dir

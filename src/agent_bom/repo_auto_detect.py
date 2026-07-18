@@ -120,11 +120,10 @@ def _walk_limited(root: Path, *, max_files: int = 4000) -> list[Path]:
 def project_has_notebooks(root: Path) -> bool:
     if not root.is_dir():
         return False
-    for path in root.rglob("*.ipynb"):
-        if ".ipynb_checkpoints" in path.parts:
-            continue
-        return True
-    return False
+    return any(
+        path.suffix.lower() == ".ipynb"
+        for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS, max_files=4000)
+    )
 
 
 def project_has_sast_targets(root: Path) -> bool:
@@ -143,10 +142,10 @@ def project_has_prompt_templates(root: Path) -> bool:
 def project_has_terraform(root: Path) -> bool:
     if not root.is_dir():
         return False
-    for pattern in ("*.tf", "*.tfvars"):
-        if any(root.rglob(pattern)):
-            return True
-    return False
+    return any(
+        path.suffix.lower() in {".tf", ".tfvars"}
+        for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS, max_files=4000)
+    )
 
 
 def project_has_github_actions(root: Path) -> bool:

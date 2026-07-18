@@ -67,6 +67,7 @@ ALLOWED_TOP_LEVEL_MODULES: frozenset[str] = frozenset(
     'compliance_coverage.py',
     'compliance_hub.py',
     'compliance_hub_ingest.py',
+    'compliance_nist_catalog.py',
     'compliance_utils.py',
     'config.py',
     'constants.py',

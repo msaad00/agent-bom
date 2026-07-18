@@ -6991,6 +6991,81 @@ paths:
       summary: Get Compliance Narrative By Framework
       tags:
       - compliance
+  /v1/compliance/nist-800-53:
+    get:
+      description: "Drill the catalog-backed NIST SP 800-53 Rev 5 line.\n\nReturns\
+        \ per-control status (pass / fail / error / not_evaluated), the\nvendor-asserted\
+        \ evidencing checks behind each evaluated control, a family\nrollup for scale-aware\
+        \ navigation, and the ISO/IEC 27001 attribution derived\nBY ID from NIST's\
+        \ official SP 800-53 \u2192 ISO crosswalk (identifiers only; no\ncopyrighted\
+        \ ISO title text).\n\nThe headline ``summary``/``score``/``status`` are the\
+        \ SAME values the\n``/v1/compliance`` ``nist_800_53_catalog`` line reports\
+        \ (one source of\ntruth). By default only EVALUATED controls are listed \u2014\
+        \ the ~1000-control\n``not_evaluated`` remainder is a count, not a mile-long\
+        \ tower. Pass\n``include_not_evaluated=true`` to enumerate the full catalog;\
+        \ ``status=``\n(comma-separated) filters the displayed control list WITHOUT\
+        \ changing the\ncounts. Declared before ``/compliance/{framework}`` so FastAPI\
+        \ does not treat\n``nist-800-53`` as a tag-mapped framework slug."
+      operationId: get_compliance_nist_800_53_v1_compliance_nist_800_53_get
+      parameters:
+      - in: query
+        name: status
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - in: query
+        name: include_not_evaluated
+        required: false
+        schema:
+          default: false
+          title: Include Not Evaluated
+          type: boolean
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Compliance Nist 800 53 V1 Compliance Nist 800
+                  53 Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Compliance Nist 800 53
+      tags:
+      - compliance
   /v1/compliance/report/pack:
     get:
       description: 'Export one signed evidence pack covering every tag-mapped framework.

@@ -155,7 +155,7 @@ flowchart TB
         M4["Max body size"]
     end
     subgraph BE["Backend - FastAPI"]
-        R["365 REST operations across 43 route modules
+        R["366 REST operations across 43 route modules
 plus 2 WebSocket routes"]
     end
     subgraph ST["Stores - start on SQLite, scale to a cluster without rewrites"]

@@ -1920,6 +1920,71 @@ export interface CISBenchmarkChecksResponse {
   source: string;
 }
 
+/** One scored control on the catalog-backed NIST SP 800-53 line. */
+export interface NistCatalogControl {
+  control_id: string;
+  title: string | null;
+  status: "pass" | "fail" | "warning" | "error" | "not_evaluated";
+  findings: number;
+  evidencing_checks: string[];
+  iso_27001_derived: string[];
+}
+
+/** Family rollup partitioning the full vendored catalog for scale-aware nav. */
+export interface NistCatalogFamily {
+  family: string;
+  total: number;
+  evaluated: number;
+  pass: number;
+  fail: number;
+  warning: number;
+  error: number;
+  not_evaluated: number;
+}
+
+export interface NistCatalogSummary {
+  pass: number;
+  fail: number;
+  warning: number;
+  error: number;
+  evaluated: number;
+  not_evaluated: number;
+  catalog_size: number;
+  coverage_pct: number;
+  score: number;
+}
+
+export interface NistCatalogIsoDerived {
+  source: string;
+  note: string;
+  controls: string[];
+}
+
+/**
+ * Catalog-backed NIST SP 800-53 Rev 5 line — the same shape the `/v1/compliance`
+ * `nist_800_53_catalog` field carries and the `/v1/compliance/nist-800-53` drill
+ * returns (one source of truth). Scored over EVALUATED controls only; ERROR and
+ * not_evaluated are explicit buckets; ISO attribution is by identifier only.
+ */
+export interface NistCatalogLine {
+  framework: "nist-800-53";
+  framework_key: "nist_800_53_catalog";
+  framework_label: string;
+  representation: "catalog";
+  source: string;
+  vendor_asserted: boolean;
+  status: "pass" | "fail" | "warning" | "no_data";
+  score: number;
+  summary: NistCatalogSummary;
+  controls: NistCatalogControl[];
+  iso_27001_derived: NistCatalogIsoDerived;
+}
+
+/** The `/v1/compliance/nist-800-53` drill: catalog line + family rollup. */
+export interface NistCatalogDrill extends NistCatalogLine {
+  families: NistCatalogFamily[];
+}
+
 export interface ComplianceResponse {
   overall_score: number;
   overall_status: "pass" | "warning" | "fail";
@@ -1942,6 +2007,12 @@ export interface ComplianceResponse {
   nist_800_53: ComplianceControl[];
   fedramp: ComplianceControl[];
   pci_dss: ComplianceControl[];
+  /**
+   * Catalog-backed NIST SP 800-53 Rev 5 line, scored INDEPENDENTLY over the full
+   * vendored catalog. Optional so a response predating the catalog scorer still
+   * types; the UI falls back to the drill endpoint as the source of truth.
+   */
+  nist_800_53_catalog?: NistCatalogLine | undefined;
   aisvs_benchmark: AISVSComplianceResponse;
   summary: {
     owasp_pass: number;
@@ -1980,6 +2051,12 @@ export interface ComplianceResponse {
     nist_800_53_pass: number;
     nist_800_53_warn: number;
     nist_800_53_fail: number;
+    nist_800_53_catalog_pass?: number | undefined;
+    nist_800_53_catalog_fail?: number | undefined;
+    nist_800_53_catalog_warning?: number | undefined;
+    nist_800_53_catalog_error?: number | undefined;
+    nist_800_53_catalog_evaluated?: number | undefined;
+    nist_800_53_catalog_not_evaluated?: number | undefined;
     fedramp_pass: number;
     fedramp_warn: number;
     fedramp_fail: number;

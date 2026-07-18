@@ -1,0 +1,19 @@
+# agent-bom gitleaks configuration.
+#
+# Extends the default ruleset (nothing is disabled). When a false-positive
+# PATTERN recurs, add a narrowly-scoped allowlist here; .gitleaksignore stays
+# for genuine one-off fingerprints. Keep every regex anchored to the specific
+# field or shape that misfires — never allowlist by entropy, file glob alone,
+# or a broad keyword that could mask a real credential.
+
+title = "agent-bom"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Compliance framework registry-identifier fields: framework_key holds a registry slug (e.g. the NIST catalog id), not a credential. The generic-api-key rule fires on the _key suffix."
+regexTarget = "line"
+regexes = [
+  '''["']?framework_key["']?\s*[:=]''',
+]

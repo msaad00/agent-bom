@@ -488,3 +488,50 @@ def test_same_control_id_does_not_bleed_between_frameworks():
     assert status_by_slug["fedramp"] == "not_evaluated"
     assert result.remediation_impact
     assert result.remediation_impact[0].frameworks_impacted == ["NIST 800-53"]
+
+
+# ─── PR4: catalog-backed NIST 800-53 line rides the narrative ─────────────────
+
+
+def test_narrative_carries_nist_800_53_catalog_line():
+    """The auditor narrative surfaces the catalog-backed NIST 800-53 line
+    (vendor-asserted), scored over evaluated controls only, with ISO-by-id
+    attribution — the SAME representation the /v1/compliance API line reports."""
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.HIGH), owasp_tags=[])
+    br.nist_800_53_tags = ["SI-10"]  # curated CWE-backed evidencing check
+    report = _make_report(blast_radii=[br])
+
+    result = generate_compliance_narrative(report)
+    catalog = result.nist_800_53_catalog
+    assert catalog["framework_key"] == "nist_800_53_catalog"
+    assert catalog["vendor_asserted"] is True
+    assert catalog["status"] == "fail"
+    by_id = {c["control_id"]: c for c in catalog["controls"]}
+    assert by_id["SI-10"]["status"] == "fail"
+    assert by_id["SI-10"]["evidencing_checks"]
+    # ISO attribution surfaces BY ID only.
+    assert all(i.startswith("A.") for i in catalog["iso_27001_derived"]["controls"])
+
+
+def test_narrative_nist_catalog_no_data_when_unmapped():
+    """Findings that map to no NIST control yield an honest no_data catalog line,
+    never a fabricated pass."""
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.HIGH), owasp_tags=["LLM05"])
+    br.nist_800_53_tags = []
+    report = _make_report(blast_radii=[br])
+    result = generate_compliance_narrative(report)
+    assert result.nist_800_53_catalog["status"] == "no_data"
+    assert result.nist_800_53_catalog["summary"]["evaluated"] == 0
+
+
+def test_narrative_single_framework_filter_scopes_catalog_line():
+    """A single-framework narrative for a non-NIST slug does not carry the NIST
+    catalog line; the nist-800-53 slug does."""
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.HIGH), owasp_tags=["LLM05"])
+    br.nist_800_53_tags = ["SI-10"]
+    report = _make_report(blast_radii=[br])
+
+    owasp = generate_compliance_narrative(report, framework="owasp-llm")
+    assert owasp.nist_800_53_catalog == {}
+    nist = generate_compliance_narrative(report, framework="nist-800-53")
+    assert nist.nist_800_53_catalog["framework_key"] == "nist_800_53_catalog"

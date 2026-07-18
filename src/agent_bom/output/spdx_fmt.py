@@ -321,8 +321,14 @@ def _vulnerability_annotations(vuln: Any, subject: str, *, compliance_tags: list
         statements.append(f"agent-bom:kev-due-date={vuln.kev_due_date}")
     for cwe_id in vuln.cwe_ids:
         statements.append(f"agent-bom:cwe={cwe_id}")
-    for tag in [*list(compliance_tags or []), *_vulnerability_compliance_tags(vuln)]:
+    compliance_statements = [*list(compliance_tags or []), *_vulnerability_compliance_tags(vuln)]
+    for tag in compliance_statements:
         statements.append(f"agent-bom:compliance-tag={tag}")
+    if compliance_statements:
+        # Honesty: these finding→control tags are agent-bom's own asserted
+        # mapping judgment, not an authority-published crosswalk. Label the
+        # provenance so SPDX consumers never read them as official.
+        statements.append("agent-bom:compliance-tag-provenance=vendor-asserted")
 
     return [
         {

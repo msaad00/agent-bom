@@ -20,6 +20,7 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
 }
 import { PageLaneHeader } from "@/components/page-lane";
 import { RankedPathList, type RankedPathRow } from "@/components/ranked-path-list";
+import { AttackPathTechniqueChain } from "@/components/attack-path-technique-chain";
 import { ExposurePathCommandCenter, type ExposurePathView } from "@/components/exposure-path-command-center";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
@@ -497,6 +498,7 @@ function SecurityGraphPageContent() {
           scanId={selectedScanId || undefined}
           view={pathView}
           onViewChange={setPathView}
+          techniquesSlot={selectedAttackPath ? <AttackPathTechniqueChain path={selectedAttackPath} /> : null}
           graphSlot={
             graphData && selectedAttackPath ? (
               <SecurityGraphInvestigation

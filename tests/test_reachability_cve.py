@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agent_bom.ast.js_ts import npm_package_from_module as _npm_package_from_module
 from agent_bom.ast_analyzer import analyze_project
-from agent_bom.ast_js_ts import _npm_package_from_module
 from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach
 from agent_bom.graph.blast_reach import apply_symbol_reachability_to_blast_radii
 from agent_bom.models import BlastRadius, Package, Severity, Vulnerability

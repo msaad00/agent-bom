@@ -29,7 +29,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agent_bom.js_ts_ast import JSTSFunction, JSTSToolRegistration
+    from agent_bom.ast.js_ts import JSTSFunction, JSTSToolRegistration
+from agent_bom.ast.js_ts import JS_TS_EXTS as _JS_TS_EXTS
+from agent_bom.ast.js_ts import build_js_ts_dependency_symbol_reach
+from agent_bom.ast.js_ts import build_js_ts_flow_findings as _build_js_ts_flow_findings
+from agent_bom.ast.js_ts import js_ts_function_key as _js_ts_function_key
+from agent_bom.ast.js_ts import scan_js_ts_file as _scan_js_ts_file
 from agent_bom.ast_csharp import _csharp_method_key, build_csharp_dependency_symbol_reach, load_nuget_namespace_map
 from agent_bom.ast_csharp import scan_csharp_file as _scan_csharp_file
 from agent_bom.ast_go import _go_function_key, build_go_dependency_symbol_reach
@@ -37,9 +42,6 @@ from agent_bom.ast_go import build_go_flow_findings as _build_go_flow_findings
 from agent_bom.ast_go import scan_go_file as _scan_go_file
 from agent_bom.ast_java import _java_method_key, _load_maven_dependency_map, build_java_dependency_symbol_reach
 from agent_bom.ast_java import scan_java_file as _scan_java_file
-from agent_bom.ast_js_ts import _JS_TS_EXTS, _js_ts_function_key, build_js_ts_dependency_symbol_reach
-from agent_bom.ast_js_ts import build_js_ts_flow_findings as _build_js_ts_flow_findings
-from agent_bom.ast_js_ts import scan_js_ts_file as _scan_js_ts_file
 from agent_bom.ast_models import (
     ASTAnalysisResult,
     CallEdge,

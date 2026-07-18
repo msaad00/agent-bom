@@ -137,6 +137,7 @@ class AIProviderStatus:
     configured: bool
     available: bool
     reason: str
+    selected_model_ready: bool | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload = self.descriptor.to_dict()
@@ -146,6 +147,7 @@ class AIProviderStatus:
                 "configured": self.configured,
                 "available": self.available,
                 "reason": self.reason,
+                "selected_model_ready": self.selected_model_ready,
             }
         )
         return payload
@@ -277,7 +279,63 @@ def _ollama_endpoint_is_loopback() -> bool:
         return False
 
 
-def _provider_status(provider_name: str) -> AIProviderStatus:
+def _url_is_loopback(value: str) -> bool:
+    """Treat only explicit loopback HTTP(S) endpoints as keyless-local."""
+    try:
+        parsed = urlsplit(value)
+        hostname = (parsed.hostname or "").strip().lower().rstrip(".")
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+_LITELLM_MODEL_CREDENTIALS: dict[str, tuple[str, ...]] = {
+    "anthropic": ("ANTHROPIC_API_KEY",),
+    "azure": ("AZURE_API_KEY", "AZURE_OPENAI_API_KEY"),
+    "bedrock": ("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_WEB_IDENTITY_TOKEN_FILE"),
+    "cohere": ("COHERE_API_KEY",),
+    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    "google": ("GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"),
+    "groq": ("GROQ_API_KEY",),
+    "mistral": ("MISTRAL_API_KEY",),
+    "openai": ("OPENAI_API_KEY",),
+    "openrouter": ("OPENROUTER_API_KEY",),
+    "vertex_ai": ("GOOGLE_APPLICATION_CREDENTIALS",),
+}
+
+
+def _litellm_readiness(model: str) -> tuple[bool, str]:
+    """Return model-specific credential or explicit local-endpoint readiness."""
+    proxy_url = os.environ.get("LITELLM_PROXY_URL", "").strip()
+    if proxy_url:
+        if _url_is_loopback(proxy_url):
+            return True, "keyless loopback LiteLLM proxy configured"
+        if os.environ.get("LITELLM_API_KEY"):
+            return True, "authenticated LiteLLM proxy configured"
+        return False, "LITELLM_API_KEY is required for the configured remote LiteLLM proxy"
+
+    prefix = model.partition("/")[0].lower()
+    if prefix in {"bedrock", "vertex_ai"}:
+        return True, f"{prefix} ambient workload identity chain supported"
+    if prefix == "openai":
+        api_base = (os.environ.get("OPENAI_API_BASE") or os.environ.get("OPENAI_BASE_URL") or "").strip()
+        if api_base and _url_is_loopback(api_base):
+            return True, "keyless loopback OpenAI-compatible endpoint configured"
+
+    credential_names = _LITELLM_MODEL_CREDENTIALS.get(prefix, ("LITELLM_API_KEY",))
+    if any(os.environ.get(name) for name in credential_names):
+        return True, "model credentials configured"
+    return False, f"selected {prefix or 'litellm'} model requires one of: {', '.join(credential_names)}"
+
+
+def _provider_status(provider_name: str, model: str | None = None) -> AIProviderStatus:
     descriptor = AI_PROVIDER_DESCRIPTORS[provider_name]
     if provider_name == "ollama":
         endpoint_local = _ollama_endpoint_is_loopback()
@@ -289,6 +347,7 @@ def _provider_status(provider_name: str) -> AIProviderStatus:
             configured=available,
             available=available,
             reason="available" if available else "ollama is not reachable at the configured local endpoint",
+            selected_model_ready=available,
         )
     if provider_name == "huggingface":
         installed = _check_huggingface()
@@ -299,14 +358,29 @@ def _provider_status(provider_name: str) -> AIProviderStatus:
             configured=configured,
             available=installed and configured,
             reason="available" if installed and configured else "huggingface-hub and HF_TOKEN are required for HuggingFace enrichment",
+            selected_model_ready=installed and configured,
         )
     installed = _check_litellm()
+    if model is None:
+        capability_reason = "adapter installed; selected-model readiness is evaluated during resolution"
+        if not installed:
+            capability_reason = "litellm is not installed"
+        return AIProviderStatus(
+            descriptor=descriptor,
+            installed=installed,
+            configured=installed,
+            available=installed,
+            reason=capability_reason,
+            selected_model_ready=None,
+        )
+    configured, readiness_reason = _litellm_readiness(model)
     return AIProviderStatus(
         descriptor=descriptor,
         installed=installed,
-        configured=installed,
-        available=installed,
-        reason="available" if installed else "litellm is not installed",
+        configured=configured,
+        available=installed and configured,
+        reason="available" if installed and configured else ("litellm is not installed" if not installed else readiness_reason),
+        selected_model_ready=installed and configured,
     )
 
 
@@ -320,7 +394,7 @@ def _resolve_ai_provider(model: str = DEFAULT_MODEL) -> AIProviderResolution:
     requested_model = model
     resolved_model = _resolve_model(model) if model == DEFAULT_MODEL else model
     preferred_name = _provider_name_for_model(resolved_model)
-    preferred_status = _provider_status(preferred_name)
+    preferred_status = _provider_status(preferred_name, resolved_model)
     if preferred_status.available:
         return AIProviderResolution(
             requested_model=requested_model,
@@ -1050,41 +1124,46 @@ async def _call_llm_structured(
 
 def _build_blast_radius_prompt(br: BlastRadius) -> str:
     """Build a prompt for analyzing a single blast radius finding."""
-    agents = ", ".join(a.name for a in br.affected_agents[:5])
-    creds = ", ".join(br.exposed_credentials[:5])
-    tools = ", ".join(t.name for t in br.exposed_tools[:5])
-    owasp = ", ".join(br.owasp_tags[:3])
-
-    return (
+    agents = _bounded_prompt_list([a.name for a in br.affected_agents], item_limit=240, count_limit=5, default="None")
+    creds = _bounded_prompt_list(list(br.exposed_credentials), item_limit=240, count_limit=5, default="None")
+    tools = _bounded_prompt_list([t.name for t in br.exposed_tools], item_limit=240, count_limit=5, default="None")
+    owasp = _bounded_prompt_list(list(br.owasp_tags), item_limit=120, count_limit=3, default="None")
+    prefix = (
         "You are an AI security analyst. Analyze this vulnerability finding "
         "in the context of an AI agent's MCP (Model Context Protocol) tool chain.\n\n"
-        f"Vulnerability: {br.vulnerability.id}\n"
+    )
+    dynamic = (
+        f"Vulnerability: {_bounded_prompt_text(br.vulnerability.id, 240, 'unknown')}\n"
         f"Severity: {br.vulnerability.severity.value} (CVSS: {br.vulnerability.cvss_score or 'N/A'})\n"
-        f"Summary: {br.vulnerability.summary}\n"
-        f"Package: {br.package.name}@{br.package.version} ({br.package.ecosystem})\n"
-        f"Fixed version: {br.vulnerability.fixed_version or 'No fix available'}\n"
+        f"Summary: {_bounded_prompt_text(br.vulnerability.summary, 4000, 'Unavailable')}\n"
+        f"Package: {_bounded_prompt_text(br.package.name, 240, 'unknown')}@"
+        f"{_bounded_prompt_text(br.package.version, 120, 'unknown')} "
+        f"({_bounded_prompt_text(br.package.ecosystem, 80, 'unknown')})\n"
+        f"Fixed version: {_bounded_prompt_text(br.vulnerability.fixed_version, 120, 'No fix available')}\n"
         f"Affected AI agents: {agents}\n"
-        f"Exposed credentials: {creds or 'None'}\n"
-        f"Reachable tools: {tools or 'None'}\n"
-        f"OWASP LLM Top 10 tags: {owasp or 'None'}\n"
+        f"Exposed credentials: {creds}\n"
+        f"Reachable tools: {tools}\n"
+        f"OWASP LLM Top 10 tags: {owasp}\n"
         f"Risk score: {br.risk_score:.1f}/10\n\n"
+    )
+    suffix = (
         "Provide a concise 2-3 sentence analysis covering:\n"
         "1. Why this vulnerability matters specifically in an AI agent context\n"
         "2. How an attacker could exploit this through the agent's tool chain\n"
         "3. The specific business impact given the exposed credentials and tools\n\n"
         "Be specific about the attack path. Do not use generic language."
     )
+    return _compose_bounded_prompt(prefix, dynamic, suffix)
 
 
 def _build_executive_summary_prompt(report: AIBOMReport) -> str:
     """Build a prompt for generating an executive summary."""
-    critical_ids = [br.vulnerability.id for br in report.blast_radii[:5] if br.vulnerability.severity.value == "critical"]
+    critical_ids = [br.vulnerability.id for br in report.blast_radii if br.vulnerability.severity.value == "critical"]
     cred_count = len({c for br in report.blast_radii for c in br.exposed_credentials})
     tool_count = len({t.name for br in report.blast_radii for t in br.exposed_tools})
 
-    return (
-        "You are a CISO's AI security advisor. Write a one-paragraph executive "
-        "summary of this AI agent security scan.\n\n"
+    prefix = "You are a CISO's AI security advisor. Write a one-paragraph executive summary of this AI agent security scan.\n\n"
+    dynamic = (
         f"Scan results:\n"
         f"- {report.total_agents} AI agent(s) scanned\n"
         f"- {report.total_servers} MCP server(s) discovered\n"
@@ -1093,30 +1172,41 @@ def _build_executive_summary_prompt(report: AIBOMReport) -> str:
         f"- {len(report.critical_vulns)} critical findings\n"
         f"- {cred_count} unique credentials at risk\n"
         f"- {tool_count} unique tools in blast radius\n"
-        f"- Top critical CVEs: {', '.join(critical_ids) or 'None'}\n\n"
+        f"- Top critical CVEs: "
+        f"{_bounded_prompt_list(list(critical_ids), item_limit=240, count_limit=5, default='None')}\n\n"
+    )
+    suffix = (
         "Write for a non-technical executive audience. Focus on business risk, "
         "not technical details. Include a clear risk rating (Critical/High/Medium/Low) "
         "and 1-2 recommended actions. Keep to one paragraph, 4-6 sentences."
     )
+    return _compose_bounded_prompt(prefix, dynamic, suffix)
 
 
 def _build_threat_chain_prompt(report: AIBOMReport) -> str:
     """Build a prompt for threat chain analysis."""
     chains = []
     for br in report.blast_radii[:5]:
-        agents = ", ".join(a.name for a in br.affected_agents[:2])
-        tools = ", ".join(t.name for t in br.exposed_tools[:3])
-        creds = ", ".join(br.exposed_credentials[:3])
+        agents = _bounded_prompt_list([a.name for a in br.affected_agents], item_limit=240, count_limit=2, default="none")
+        tools = _bounded_prompt_list([t.name for t in br.exposed_tools], item_limit=240, count_limit=3, default="none")
+        creds = _bounded_prompt_list(list(br.exposed_credentials), item_limit=240, count_limit=3, default="none")
         chains.append(
-            f"- {br.vulnerability.id} in {br.package.name}@{br.package.version} | agents: {agents} | tools: {tools} | creds: {creds}"
+            f"- {_bounded_prompt_text(br.vulnerability.id, 240, 'unknown')} in "
+            f"{_bounded_prompt_text(br.package.name, 240, 'unknown')}@"
+            f"{_bounded_prompt_text(br.package.version, 120, 'unknown')} | "
+            f"agents: {agents} | tools: {tools} | creds: {creds}"
         )
+    omitted = max(len(report.blast_radii) - len(chains), 0)
+    if omitted:
+        chains.append(f"... [{omitted} additional blast-radius finding(s) omitted]")
 
-    return (
+    prefix = (
         "You are a red team AI security specialist. Analyze how an attacker could "
         "chain these vulnerabilities through an AI agent's MCP tool access to achieve "
-        "maximum impact.\n\n"
-        f"Vulnerabilities in blast radius:\n"
-        f"{chr(10).join(chains)}\n\n"
+        "maximum impact.\n\nVulnerabilities in blast radius:\n"
+    )
+    dynamic = f"{chr(10).join(chains)}\n\n"
+    suffix = (
         "Describe 1-2 realistic attack chains (3-5 steps each) showing:\n"
         "1. Initial exploitation vector\n"
         "2. Lateral movement through MCP tools\n"
@@ -1125,6 +1215,7 @@ def _build_threat_chain_prompt(report: AIBOMReport) -> str:
         "Be specific about which tools and credentials are used at each step. "
         "Format as numbered steps."
     )
+    return _compose_bounded_prompt(prefix, dynamic, suffix)
 
 
 # ─── Enrichment functions ────────────────────────────────────────────────────
@@ -1220,7 +1311,47 @@ def _bounded_ai_text(value: object, limit: int, default: str = "") -> str:
     """Normalize untrusted model text into a bounded single string."""
     if not isinstance(value, str):
         return default
-    return value.strip()[:limit] or default
+    return redact_secrets(value).strip()[:limit] or default
+
+
+_MAX_AI_PROMPT_CHARS = 32_000
+_PROMPT_TRUNCATION_MARKER = "\n... [prompt content omitted to enforce size limit]\n"
+
+
+def _bounded_prompt_text(value: object, limit: int, default: str = "") -> str:
+    """Bound one untrusted prompt field and make any truncation explicit."""
+    if not isinstance(value, str):
+        return default
+    normalized = redact_secrets(value).strip()
+    if not normalized:
+        return default
+    if len(normalized) <= limit:
+        return normalized
+    marker = "... [truncated]"
+    return normalized[: max(limit - len(marker), 0)] + marker
+
+
+def _bounded_prompt_list(values: list[object], *, item_limit: int, count_limit: int, default: str) -> str:
+    """Render a bounded list with an auditable omitted-item marker."""
+    selected = [_bounded_prompt_text(value, item_limit) for value in values[:count_limit]]
+    selected = [value for value in selected if value]
+    omitted = max(len(values) - count_limit, 0)
+    if omitted:
+        selected.append(f"... [{omitted} item(s) omitted]")
+    return ", ".join(selected) or default
+
+
+def _compose_bounded_prompt(prefix: str, dynamic: str, suffix: str) -> str:
+    """Keep provider instructions intact while bounding untrusted dynamic input."""
+    fixed_length = len(prefix) + len(suffix)
+    if fixed_length >= _MAX_AI_PROMPT_CHARS:
+        return (prefix + suffix)[:_MAX_AI_PROMPT_CHARS]
+    budget = _MAX_AI_PROMPT_CHARS - fixed_length
+    if len(dynamic) <= budget:
+        return prefix + dynamic + suffix
+    marker = _PROMPT_TRUNCATION_MARKER
+    retained = max(budget - len(marker), 0)
+    return prefix + dynamic[:retained] + marker[: budget - retained] + suffix
 
 
 def _build_finding_assessment_prompt(findings: list["Finding"]) -> str:
@@ -1551,6 +1682,11 @@ _MAX_AI_SKILL_FILE_CHARS = 6_000
 _MAX_AI_SKILL_FINDINGS = 100
 
 
+def _canonical_skill_source_path(value: object) -> str:
+    """Return the exact bounded path representation shown to the provider."""
+    return _bounded_prompt_text(value, 240, "skill-file")
+
+
 def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: list[dict]) -> str:
     """Build a prompt that sends raw skill file text + static findings to the LLM.
 
@@ -1563,9 +1699,10 @@ def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: l
     file_sections = []
     selected_files = list(raw_content.items())[:_MAX_AI_SKILL_FILES]
     for filepath, content in selected_files:
-        safe_path = _bounded_ai_text(filepath, 240, "skill-file")
-        truncated = content[:_MAX_AI_SKILL_FILE_CHARS]
-        if len(content) > _MAX_AI_SKILL_FILE_CHARS:
+        safe_path = _canonical_skill_source_path(filepath)
+        redacted_content = redact_secrets(content)
+        truncated = redacted_content[:_MAX_AI_SKILL_FILE_CHARS]
+        if len(redacted_content) > _MAX_AI_SKILL_FILE_CHARS:
             truncated += "\n... [truncated]"
         file_sections.append(f"### File: {safe_path}\n```\n{truncated}\n```")
 
@@ -1624,12 +1761,15 @@ def _build_skill_analysis_prompt(raw_content: dict[str, str], static_findings: l
         "    - verdict: 'confirmed' | 'false_positive' | 'severity_adjusted'\n"
         "    - adjusted_severity: string | null (only if severity_adjusted)\n"
         "    - reasoning: string\n"
+        "    - confidence: 'high' | 'medium' | 'low' (required; missing values normalize to low)\n"
         "- new_findings: list of objects, each with:\n"
         "    - severity: 'critical' | 'high' | 'medium' | 'low'\n"
         "    - category: string (one of the threat categories above)\n"
         "    - title: string\n"
         "    - detail: string\n"
-        "    - recommendation: string"
+        "    - recommendation: string\n"
+        "    - confidence: 'high' | 'medium' | 'low'\n"
+        "    - source_file: string (must exactly match one analyzed file path)"
     )
 
 
@@ -1661,6 +1801,7 @@ def _apply_skill_analysis(
     ai_source: str | None = None,
     ai_model: str | None = None,
     gate_ai_findings: bool = False,
+    analyzed_source_files: tuple[str, ...] = (),
 ) -> None:
     """Apply parsed AI analysis results to a SkillAuditResult in-place.
 
@@ -1698,8 +1839,7 @@ def _apply_skill_analysis(
         matched.ai_analysis = review.reasoning
         matched.ai_source = ai_source
         matched.ai_model = ai_model
-        if review.confidence is not None:
-            matched.ai_confidence = review.confidence
+        matched.ai_confidence = review.confidence
 
         if verdict == "false_positive":
             matched.ai_adjusted_severity = "false_positive"
@@ -1708,9 +1848,9 @@ def _apply_skill_analysis(
                 matched.ai_adjusted_severity = review.adjusted_severity
 
     # Add new AI-detected findings
+    allowed_source_files = {_canonical_skill_source_path(source_file) for source_file in analyzed_source_files}
     for new in parsed.new_findings:
-        source_file = next(iter(audit.findings), None)
-        source = source_file.source_file if source_file else "unknown"
+        source = new.source_file if new.source_file in allowed_source_files else "unknown"
 
         audit.findings.append(
             SkillFinding(
@@ -1730,8 +1870,20 @@ def _apply_skill_analysis(
 
     if gate_ai_findings:
         # Explicit opt-in only: false-positive reviews and AI-detected findings
-        # may affect the result. The deterministic baseline remains available.
-        audit.passed = not any(f.severity in ("critical", "high") and f.ai_adjusted_severity != "false_positive" for f in audit.findings)
+        # may affect the result, but only high-confidence model judgments can
+        # change the deterministic gate. Missing confidence normalizes to low.
+        def _blocks_gate(finding: SkillFinding) -> bool:
+            if finding.ai_detected:
+                return finding.ai_confidence == "high" and finding.severity in ("critical", "high")
+            effective_severity = finding.severity
+            if finding.ai_confidence == "high":
+                if finding.ai_adjusted_severity == "false_positive":
+                    return False
+                if finding.ai_adjusted_severity in ("critical", "high", "medium", "low"):
+                    effective_severity = finding.ai_adjusted_severity
+            return effective_severity in ("critical", "high")
+
+        audit.passed = not any(_blocks_gate(finding) for finding in audit.findings)
     else:
         audit.passed = audit.deterministic_passed
 
@@ -1806,6 +1958,7 @@ async def enrich_skill_audit(
             ai_source=resolution.provider.name,
             ai_model=resolved_model,
             gate_ai_findings=gate_ai_findings,
+            analyzed_source_files=tuple(list(skill_result.raw_content)[:_MAX_AI_SKILL_FILES]),
         )
     except (TypeError, ValueError) as exc:
         logger.warning("Skill analysis could not be applied: %s", sanitize_error(exc, generic=True))
@@ -1822,27 +1975,39 @@ def _build_mcp_config_analysis_prompt(report: "AIBOMReport") -> str:
     Examines the full server configuration (not individual CVEs) for
     architectural security risks.
     """
-    server_configs = []
+    server_configs: list[str] = []
+    max_servers = 10
+    total_servers = sum(len(agent.mcp_servers) for agent in report.agents)
     for agent in report.agents[:20]:
-        for server in agent.mcp_servers[:10]:
-            creds = server.credential_names
-            tools = [t.name for t in server.tools[:10]]
-            server_args = sanitize_command_args(server.args[:5])
+        for server in agent.mcp_servers:
+            if len(server_configs) >= max_servers:
+                break
+            creds = _bounded_prompt_list(list(server.credential_names), item_limit=160, count_limit=20, default="none")
+            tools = _bounded_prompt_list([tool.name for tool in server.tools], item_limit=240, count_limit=10, default="unknown")
+            bounded_args = [_bounded_prompt_text(arg, 500) for arg in server.args[:5]]
+            server_args = sanitize_command_args(bounded_args)
             server_configs.append(
-                f"- Server: {server.name}\n"
-                f"  Command: {server.command} {' '.join(server_args)}\n"
+                f"- Server: {_bounded_prompt_text(server.name, 240, 'unknown')}\n"
+                f"  Command: {_bounded_prompt_text(server.command, 500, 'unknown')} {' '.join(server_args)}\n"
                 f"  Transport: {server.transport.value}\n"
-                f"  Tools: {', '.join(tools) or 'unknown'}\n"
-                f"  Credentials: {', '.join(creds) or 'none'}\n"
-                f"  Agent: {agent.name} ({agent.agent_type.value})"
+                f"  Tools: {tools}\n"
+                f"  Credentials: {creds}\n"
+                f"  Agent: {_bounded_prompt_text(agent.name, 240, 'unknown')} ({agent.agent_type.value})"
             )
+        if len(server_configs) >= max_servers:
+            break
 
-    return (
+    omitted_servers = max(total_servers - len(server_configs), 0)
+    if omitted_servers:
+        server_configs.insert(0, f"... [{omitted_servers} additional MCP server(s) omitted from advisory AI analysis]")
+
+    prefix = (
         "You are an AI infrastructure security analyst specializing in MCP "
         "(Model Context Protocol) configurations. Analyze these MCP server "
-        "configurations for security risks.\n\n"
-        f"MCP Server Configurations:\n"
-        f"{chr(10).join(server_configs)}\n\n"
+        "configurations for security risks.\n\nMCP Server Configurations:\n"
+    )
+    dynamic = f"{chr(10).join(server_configs)}\n\n"
+    suffix = (
         "Analyze for:\n"
         "1. **Missing authentication**: Servers with no credential env vars "
         "that expose write/execute tools\n"
@@ -1864,6 +2029,7 @@ def _build_mcp_config_analysis_prompt(report: "AIBOMReport") -> str:
         "    - detail: string\n"
         "    - recommendation: string"
     )
+    return _compose_bounded_prompt(prefix, dynamic, suffix)
 
 
 async def analyze_mcp_config_security(

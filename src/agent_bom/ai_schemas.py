@@ -76,9 +76,9 @@ class AIFindingAssessmentResponse(BaseModel):
 class BlastRadiusAnalysis(BaseModel):
     """Structured output for blast radius risk narrative."""
 
-    agent_context: str = Field(description="Why this vulnerability matters in an AI agent context")
-    attack_path: str = Field(description="How an attacker could exploit via the MCP tool chain")
-    business_impact: str = Field(description="Specific business impact given exposed credentials/tools")
+    agent_context: str = Field(max_length=2000, description="Why this vulnerability matters in an AI agent context")
+    attack_path: str = Field(max_length=2000, description="How an attacker could exploit via the MCP tool chain")
+    business_impact: str = Field(max_length=2000, description="Specific business impact given exposed credentials/tools")
 
     @property
     def narrative(self) -> str:
@@ -89,22 +89,22 @@ class BlastRadiusAnalysis(BaseModel):
 class ExecutiveSummary(BaseModel):
     """Structured output for executive summary."""
 
-    risk_rating: str = Field(description="Critical, High, Medium, or Low")
-    summary: str = Field(description="4-6 sentence executive summary for leadership")
-    recommended_actions: list[str] = Field(description="Top 1-3 recommended actions")
+    risk_rating: str = Field(max_length=32, description="Critical, High, Medium, or Low")
+    summary: str = Field(max_length=4000, description="4-6 sentence executive summary for leadership")
+    recommended_actions: list[str] = Field(max_length=3, description="Top 1-3 recommended actions")
 
 
 class ThreatChain(BaseModel):
     """A single attack chain."""
 
-    name: str = Field(description="Short name for the attack chain")
-    steps: list[str] = Field(description="3-5 step attack chain from initial access to impact")
+    name: str = Field(max_length=240, description="Short name for the attack chain")
+    steps: list[str] = Field(max_length=5, description="3-5 step attack chain from initial access to impact")
 
 
 class ThreatChainAnalysis(BaseModel):
     """Structured output for threat chain analysis."""
 
-    chains: list[ThreatChain] = Field(description="1-2 realistic attack chains")
+    chains: list[ThreatChain] = Field(max_length=2, description="1-2 realistic attack chains")
 
 
 class SkillFindingReview(BaseModel):
@@ -117,7 +117,7 @@ class SkillFindingReview(BaseModel):
     verdict: Literal["confirmed", "false_positive", "severity_adjusted"] = "confirmed"
     adjusted_severity: Literal["critical", "high", "medium", "low"] | None = None
     reasoning: str = Field(default="", max_length=1000)
-    confidence: AIConfidence | None = None
+    confidence: AIConfidence = "low"
 
 
 class SkillNewFinding(BaseModel):
@@ -131,6 +131,7 @@ class SkillNewFinding(BaseModel):
     detail: str = Field(default="", max_length=2000)
     recommendation: str = Field(default="", max_length=1000)
     confidence: AIConfidence = "medium"
+    source_file: str = Field(default="unknown", max_length=240)
 
 
 class SkillAnalysisResult(BaseModel):
@@ -147,16 +148,16 @@ class SkillAnalysisResult(BaseModel):
 class MCPConfigFinding(BaseModel):
     """A single finding from MCP config security analysis."""
 
-    severity: str = Field(description="critical, high, medium, or low")
-    category: str = Field(description="e.g. auth_missing, overpermissive, credential_exposure, awm_pattern, transport_risk")
-    title: str = Field(description="Short finding title")
-    detail: str = Field(description="Explanation of the risk")
-    recommendation: str = Field(description="How to fix or mitigate")
+    severity: str = Field(max_length=32, description="critical, high, medium, or low")
+    category: str = Field(max_length=80, description="e.g. auth_missing, overpermissive, credential_exposure, awm_pattern, transport_risk")
+    title: str = Field(max_length=240, description="Short finding title")
+    detail: str = Field(max_length=2000, description="Explanation of the risk")
+    recommendation: str = Field(max_length=1000, description="How to fix or mitigate")
 
 
 class MCPConfigSecurityAnalysis(BaseModel):
     """Structured output for MCP config security analysis."""
 
-    overall_risk: str = Field(description="Critical, High, Medium, or Low")
-    summary: str = Field(description="2-3 sentence overall assessment")
-    findings: list[MCPConfigFinding] = Field(default_factory=list, description="Individual security findings")
+    overall_risk: str = Field(max_length=32, description="Critical, High, Medium, or Low")
+    summary: str = Field(max_length=4000, description="2-3 sentence overall assessment")
+    findings: list[MCPConfigFinding] = Field(default_factory=list, max_length=100, description="Individual security findings")

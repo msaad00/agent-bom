@@ -135,6 +135,49 @@ def test_build_threat_chain_prompt():
     assert "OPENAI_API_KEY" in prompt
 
 
+def test_narrative_summary_and_threat_prompts_bound_untrusted_fields():
+    """Provider prompts keep adversarial scan metadata within a hard envelope."""
+    from agent_bom.ai_enrich import (
+        _MAX_AI_PROMPT_CHARS,
+        _build_blast_radius_prompt,
+        _build_executive_summary_prompt,
+        _build_threat_chain_prompt,
+    )
+
+    br = _make_blast_radius()
+    br.vulnerability.summary = "summary-" + "x" * (_MAX_AI_PROMPT_CHARS * 2)
+    br.vulnerability.id = "CVE-" + "i" * (_MAX_AI_PROMPT_CHARS * 2)
+    br.vulnerability.severity = Severity.CRITICAL
+    br.package.name = "package-" + "y" * (_MAX_AI_PROMPT_CHARS * 2)
+    br.affected_agents[0].name = "agent-" + "z" * (_MAX_AI_PROMPT_CHARS * 2)
+    br.exposed_credentials = ["credential-" + "c" * 20_000 for _ in range(20)]
+    report = _make_report([br])
+
+    prompts = (
+        _build_blast_radius_prompt(br),
+        _build_executive_summary_prompt(report),
+        _build_threat_chain_prompt(report),
+    )
+
+    assert all(len(prompt) <= _MAX_AI_PROMPT_CHARS for prompt in prompts)
+    assert all("[truncated]" in prompt or "omitted" in prompt for prompt in prompts)
+
+
+def test_prompt_field_redaction_precedes_truncation_for_pem_blocks():
+    """A PEM terminator beyond a field ceiling must not expose the prefix/body."""
+    from agent_bom.ai_enrich import _build_blast_radius_prompt
+
+    br = _make_blast_radius()
+    pem_lines = ["-----BEGIN PRIVATE KEY-----", "SENSITIVEKEYBODY" * 400, "-----END PRIVATE KEY-----"]
+    br.vulnerability.summary = "\n".join(pem_lines)
+
+    prompt = _build_blast_radius_prompt(br)
+
+    assert "<redacted-private-key>" in prompt
+    assert "BEGIN PRIVATE KEY" not in prompt
+    assert "SENSITIVEKEYBODY" not in prompt
+
+
 # ── LLM Call Mocking Tests ─────────────────────────────────────────────────
 
 
@@ -147,6 +190,7 @@ async def test_enrich_blast_radii_with_mock_llm():
 
     with (
         patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict(os.environ, {"OPENAI_API_KEY": "configured"}),
         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="This CVE allows RCE through the OpenClaw agent."),
     ):
         result = await enrich_blast_radii([br])
@@ -163,6 +207,7 @@ async def test_executive_summary_with_mock_llm():
 
     with (
         patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict(os.environ, {"OPENAI_API_KEY": "configured"}),
         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="Critical risk: 1 RCE vulnerability found."),
     ):
         result = await generate_executive_summary(report)
@@ -178,6 +223,7 @@ async def test_threat_chains_with_mock_llm():
 
     with (
         patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict(os.environ, {"OPENAI_API_KEY": "configured"}),
         patch(
             "agent_bom.ai_enrich._call_llm",
             new_callable=AsyncMock,
@@ -225,7 +271,11 @@ async def test_caching_avoids_duplicate_calls():
         call_count += 1
         return "Mocked analysis"
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=True), patch("agent_bom.ai_enrich._call_llm", side_effect=mock_call):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict(os.environ, {"OPENAI_API_KEY": "configured"}),
+        patch("agent_bom.ai_enrich._call_llm", side_effect=mock_call),
+    ):
         result = await enrich_blast_radii([br1, br2])
         assert result == 2
         assert call_count == 1  # Only one LLM call, second reused from cache
@@ -715,7 +765,10 @@ def test_has_any_provider_litellm():
     """Should return True for non-ollama model when litellm installed."""
     from agent_bom.ai_enrich import _has_any_provider
 
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=True):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict(os.environ, {"OPENAI_API_KEY": "configured"}),
+    ):
         assert _has_any_provider("openai/gpt-4o-mini") is True
 
 
@@ -1052,6 +1105,7 @@ def test_apply_skill_analysis_can_gate_with_explicit_opt_in():
                 "original_title": "Shell access via server 'bash'",
                 "verdict": "false_positive",
                 "reasoning": "The file warns against using bash.",
+                "confidence": "high",
             }
         ],
         "new_findings": [],
@@ -1062,6 +1116,45 @@ def test_apply_skill_analysis_can_gate_with_explicit_opt_in():
     assert audit.deterministic_passed is False
     assert audit.ai_gate_enabled is True
     assert audit.passed is True
+
+
+def test_apply_skill_analysis_unscored_review_cannot_suppress_gate():
+    """A missing confidence normalizes low and cannot suppress static evidence."""
+    from agent_bom.ai_enrich import _apply_skill_analysis
+    from agent_bom.parsers.skill_audit import SkillAuditResult, SkillFinding
+
+    audit = SkillAuditResult(
+        findings=[
+            SkillFinding(
+                severity="high",
+                category="shell_access",
+                title="Deterministic shell access",
+                detail="Uses bash",
+                source_file="a.md",
+            )
+        ],
+        passed=False,
+    )
+    _apply_skill_analysis(
+        audit,
+        {
+            "overall_risk_level": "low",
+            "summary": "Provider called the finding benign without a score.",
+            "finding_reviews": [
+                {
+                    "title": "Deterministic shell access",
+                    "verdict": "false_positive",
+                    "reasoning": "Unscored opinion.",
+                }
+            ],
+            "new_findings": [],
+        },
+        gate_ai_findings=True,
+    )
+
+    assert audit.findings[0].ai_confidence == "low"
+    assert audit.findings[0].ai_adjusted_severity == "false_positive"
+    assert audit.passed is False
 
 
 def test_apply_skill_analysis_adds_new_findings():
@@ -1096,6 +1189,83 @@ def test_apply_skill_analysis_adds_new_findings():
     assert audit.passed is True
     assert audit.deterministic_passed is True
     assert audit.ai_gate_enabled is False
+
+
+def test_apply_skill_analysis_attributes_new_findings_only_to_analyzed_paths():
+    """A provider cannot attribute novel evidence to a file it was not shown."""
+    from agent_bom.ai_enrich import _apply_skill_analysis
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+
+    audit = SkillAuditResult(findings=[], passed=True)
+    _apply_skill_analysis(
+        audit,
+        {
+            "overall_risk_level": "high",
+            "summary": "Two proposed findings.",
+            "finding_reviews": [],
+            "new_findings": [
+                {
+                    "severity": "high",
+                    "category": "prompt_injection",
+                    "title": "Observed in second file",
+                    "detail": "Evidence was found in the selected file.",
+                    "recommendation": "Remove it.",
+                    "confidence": "high",
+                    "source_file": "b.md",
+                },
+                {
+                    "severity": "high",
+                    "category": "data_exfiltration",
+                    "title": "Invented path",
+                    "detail": "The model named a file outside its evidence window.",
+                    "recommendation": "Review manually.",
+                    "confidence": "high",
+                    "source_file": "not-analyzed.md",
+                },
+            ],
+        },
+        analyzed_source_files=("a.md", "b.md"),
+    )
+
+    assert [finding.source_file for finding in audit.findings] == ["b.md", "unknown"]
+
+
+def test_apply_skill_analysis_canonicalizes_long_source_path_like_prompt():
+    from agent_bom.ai_enrich import (
+        _apply_skill_analysis,
+        _build_skill_analysis_prompt,
+        _canonical_skill_source_path,
+    )
+    from agent_bom.parsers.skill_audit import SkillAuditResult
+
+    long_path = "nested/" + "very-long-directory/" * 20 + "SKILL.md"
+    canonical_path = _canonical_skill_source_path(long_path)
+    prompt = _build_skill_analysis_prompt({long_path: "safe"}, [])
+    audit = SkillAuditResult(findings=[], passed=True)
+
+    _apply_skill_analysis(
+        audit,
+        {
+            "overall_risk_level": "high",
+            "summary": "Finding echoes the path shown in the prompt.",
+            "finding_reviews": [],
+            "new_findings": [
+                {
+                    "severity": "high",
+                    "category": "prompt_injection",
+                    "title": "Long-path finding",
+                    "detail": "Observed in the selected file.",
+                    "confidence": "high",
+                    "source_file": canonical_path,
+                }
+            ],
+        },
+        analyzed_source_files=(long_path,),
+    )
+
+    assert len(canonical_path) <= 240
+    assert f"### File: {canonical_path}" in prompt
+    assert audit.findings[0].source_file == canonical_path
 
 
 @pytest.mark.asyncio
@@ -1607,6 +1777,28 @@ def test_build_mcp_config_analysis_prompt_redacts_command_args():
 
     assert raw_token not in prompt
     assert "--token <redacted>" in prompt
+
+
+def test_build_mcp_config_analysis_prompt_bounds_fields_and_total_size():
+    from agent_bom.ai_enrich import _MAX_AI_PROMPT_CHARS, _build_mcp_config_analysis_prompt
+
+    huge = "x" * (_MAX_AI_PROMPT_CHARS * 2)
+    servers = [
+        MCPServer(
+            name=f"server-{index}-{huge}",
+            command=huge,
+            args=[huge] * 8,
+            tools=[MCPTool(name=huge, description=huge) for _ in range(12)],
+        )
+        for index in range(12)
+    ]
+    agent = Agent(name=huge, agent_type=AgentType.CUSTOM, config_path="/tmp/a", mcp_servers=servers)
+
+    prompt = _build_mcp_config_analysis_prompt(AIBOMReport(agents=[agent]))
+
+    assert len(prompt) <= _MAX_AI_PROMPT_CHARS
+    assert "[truncated]" in prompt
+    assert "additional MCP server(s) omitted" in prompt
 
 
 @pytest.mark.asyncio

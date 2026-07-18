@@ -32,11 +32,12 @@ are required:
 agent-bom scan . --ai-enrich --ai-deterministic --ai-gate-findings
 ```
 
-This sets model temperature to zero and allows AI false-positive reviews or
-AI-detected skill findings to affect the skill audit and process exit gate. The
-original result is retained as `deterministic_passed`, while `ai_gate_enabled`
-records the opt-in. The general `ai_finding_assessments` surface always remains
-advisory.
+This sets model temperature to zero and allows only **high-confidence** AI
+false-positive reviews, severity adjustments, or AI-detected skill findings to
+affect the skill audit and process exit gate. Missing confidence normalizes to
+`low` and cannot weaken a deterministic gate. The original result is retained
+as `deterministic_passed`, while `ai_gate_enabled` records the opt-in. The
+general `ai_finding_assessments` surface always remains advisory.
 
 Temperature zero improves stability but is not a byte-reproducibility claim:
 hosted providers and model revisions can change. Cache entries are isolated by
@@ -65,14 +66,21 @@ reports total, offered, truncated, and assessed finding counts. Provider
 failures, invalid or oversized JSON, and exhausted budgets degrade to partial or
 absent advice without weakening deterministic gates.
 
+The generic provider inventory reports an installed LiteLLM adapter as a
+capability with `selected_model_ready: null`; it does not claim that an
+arbitrary model is configured. A selected model resolves active only when it
+has its provider-specific credential, an authenticated LiteLLM proxy, an
+explicit loopback OpenAI-compatible/LiteLLM endpoint, or a supported Bedrock or
+Vertex ambient workload-identity chain.
+
 ## Exact prompt data boundary
 
 | Task | Prompt material | Remote eligible |
 |---|---|---|
 | Finding triage | Finding ID/type/source/severity, bounded title and description, bounded asset name/type, risk/reachability/KEV state, and up to 20 control tags; no raw evidence | Yes, only after explicit `--ai-enrich`/API opt-in and provider configuration |
 | Narrative/summary | Bounded scan and vulnerability context, package coordinates, agent/tool names, and credential variable names; no credential values | Yes, after explicit opt-in |
-| MCP config analysis | Up to 20 agents × 10 servers, sanitized command arguments, transport, tool names, and credential variable names | Yes, after explicit opt-in |
-| Skill detection/review | Up to 10 discovered skill files × 6,000 characters, plus up to 100 bounded static finding summaries; omissions are explicit in the prompt | **No. Ollama is local only when its configured URL uses a loopback host; non-loopback Ollama and all other remote selections skip this task.** |
+| MCP config analysis | Up to 10 servers across the first 20 agents, sanitized and bounded command arguments, transport, tool names, and credential variable names; omissions are explicit | Yes, after explicit opt-in |
+| Skill detection/review | Up to 10 discovered skill files × 6,000 characters, plus up to 100 bounded static finding summaries; omissions are explicit, and returned source paths must match a file offered to the model | **No. Ollama is local only when its configured URL uses a loopback host; non-loopback Ollama and all other remote selections skip this task.** |
 
 Recognizable credentials are redacted at every provider boundary. Secret
 redaction is defense in depth, not a general source-code anonymizer, which is why

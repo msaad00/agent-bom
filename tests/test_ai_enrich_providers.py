@@ -157,8 +157,65 @@ def test_provider_availability_reflects_detection():
         assert OllamaProvider().is_available() is True
     with patch("agent_bom.ai_enrich._detect_ollama", return_value=False):
         assert OllamaProvider().is_available() is False
-    with patch("agent_bom.ai_enrich._check_litellm", return_value=True):
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict("os.environ", {}, clear=True),
+    ):
         assert LiteLLMProvider().is_available() is True
+
+
+def test_litellm_capability_is_independent_from_selected_model_readiness():
+    """An Anthropic-only install is capable, while OpenAI resolution stays strict."""
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict("os.environ", {"ANTHROPIC_API_KEY": "configured"}, clear=True),
+    ):
+        capability = next(item for item in ai_enrich.describe_ai_providers() if item["name"] == "litellm")
+        anthropic = ai_enrich._resolve_ai_provider("anthropic/claude-sonnet-5")
+        openai = ai_enrich._resolve_ai_provider("openai/gpt-4o-mini")
+
+    assert capability["installed"] is True
+    assert capability["available"] is True
+    assert capability["selected_model_ready"] is None
+    assert anthropic.available is True
+    assert openai.available is False
+
+
+@pytest.mark.parametrize("model", ["bedrock/anthropic.claude-3", "vertex_ai/gemini-2.0-flash"])
+def test_litellm_resolution_allows_ambient_workload_identity(model):
+    """Bedrock and Vertex SDK ambient identity chains are not env-key gated."""
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict("os.environ", {}, clear=True),
+    ):
+        resolution = ai_enrich._resolve_ai_provider(model)
+
+    assert resolution.available is True
+    assert resolution.status == "active"
+
+
+@pytest.mark.parametrize(
+    ("model", "environment", "expected"),
+    [
+        ("openai/gpt-4o-mini", {}, False),
+        ("openai/gpt-4o-mini", {"ANTHROPIC_API_KEY": "wrong-provider"}, False),
+        ("openai/gpt-4o-mini", {"OPENAI_API_KEY": "configured"}, True),
+        ("anthropic/claude-sonnet-5", {"ANTHROPIC_API_KEY": "configured"}, True),
+        ("openai/local", {"OPENAI_API_BASE": "http://127.0.0.1:8000/v1"}, True),
+        ("openai/remote", {"OPENAI_API_BASE": "https://models.example.com/v1"}, False),
+        ("custom/model", {"LITELLM_PROXY_URL": "http://localhost:4000"}, True),
+    ],
+)
+def test_litellm_status_requires_model_appropriate_readiness(model, environment, expected):
+    """An installed adapter is not active until its selected model can authenticate."""
+    with (
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
+        patch.dict("os.environ", environment, clear=True),
+    ):
+        status = ai_enrich._provider_status("litellm", model)
+
+    assert status.configured is expected
+    assert status.available is expected
 
 
 @pytest.mark.parametrize(

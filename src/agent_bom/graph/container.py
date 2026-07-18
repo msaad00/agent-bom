@@ -17,6 +17,71 @@ from agent_bom.graph.util import _now_iso
 
 
 @dataclass(slots=True)
+class TechniqueMapping:
+    """A typed MITRE ATT&CK / ATLAS technique mapped to one hop of an attack path.
+
+    These are *potential* techniques derived from the graph's observed evidence
+    (the hop's edge relationship type + the target node's entity type + the
+    edge's evidence), NOT a claim that the technique was detected being used.
+    ``technique_id`` / ``tactics`` always resolve against the bundled catalog
+    (see :mod:`agent_bom.graph.attack_path_mitre`); a hop whose evidence maps to
+    no known technique is simply left without a mapping (fail-closed).
+    """
+
+    hop_index: int  # 0-based position in the kill-chain edge sequence
+    technique_id: str  # e.g. "T1078" (ATT&CK) or "AML.T0053" (ATLAS)
+    technique_name: str = ""
+    catalog: str = "attack"  # "attack" | "atlas"
+    tactics: list[str] = field(default_factory=list)
+    provenance: str = ""  # observed evidence that produced the mapping
+    confidence: float = 0.0  # 0..1 signal, never an assertion of activity
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "hop_index": self.hop_index,
+            "technique_id": self.technique_id,
+            "technique_name": self.technique_name,
+            "catalog": self.catalog,
+            "tactics": self.tactics,
+            "provenance": self.provenance,
+            "confidence": self.confidence,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TechniqueMapping:
+        return cls(
+            hop_index=int(data.get("hop_index", 0)),
+            technique_id=data["technique_id"],
+            technique_name=data.get("technique_name", ""),
+            catalog=data.get("catalog", "attack"),
+            tactics=list(data.get("tactics", [])),
+            provenance=data.get("provenance", ""),
+            confidence=float(data.get("confidence", 0.0)),
+        )
+
+
+def technique_mappings_from_json(raw: object) -> list["TechniqueMapping"]:
+    """Decode persisted ``technique_mappings`` JSON into typed objects.
+
+    Tolerant of legacy rows: ``None`` / empty / malformed values yield ``[]``.
+    """
+    import json
+
+    if not raw:
+        return []
+    if isinstance(raw, (str, bytes, bytearray)):
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    else:
+        data = raw
+    if not isinstance(data, list):
+        return []
+    return [TechniqueMapping.from_dict(m) for m in data if isinstance(m, dict)]
+
+
+@dataclass(slots=True)
 class AttackPath:
     """Precomputed attack path between two nodes."""
 
@@ -29,6 +94,14 @@ class AttackPath:
     credential_exposure: list[str] = field(default_factory=list)
     tool_exposure: list[str] = field(default_factory=list)
     vuln_ids: list[str] = field(default_factory=list)
+    # Typed MITRE ATT&CK / ATLAS techniques mapped from this path's observed
+    # evidence, ordered by hop. Potential/mapped techniques for the kill-chain
+    # sequence — never a claim of observed attacker activity.
+    technique_mappings: list[TechniqueMapping] = field(default_factory=list)
+
+    def mitre_technique_ids(self) -> list[str]:
+        """Deduped, sorted technique IDs mapped across all hops (convenience)."""
+        return sorted({m.technique_id for m in self.technique_mappings})
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -41,6 +114,8 @@ class AttackPath:
             "credential_exposure": self.credential_exposure,
             "tool_exposure": self.tool_exposure,
             "vuln_ids": self.vuln_ids,
+            "technique_mappings": [m.to_dict() for m in self.technique_mappings],
+            "mitre_technique_ids": self.mitre_technique_ids(),
         }
 
     @classmethod
@@ -55,6 +130,7 @@ class AttackPath:
             credential_exposure=data.get("credential_exposure", []),
             tool_exposure=data.get("tool_exposure", []),
             vuln_ids=data.get("vuln_ids", []),
+            technique_mappings=[TechniqueMapping.from_dict(m) for m in data.get("technique_mappings", [])],
         )
 
 

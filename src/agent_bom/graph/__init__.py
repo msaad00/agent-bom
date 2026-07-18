@@ -15,7 +15,9 @@ from agent_bom.graph.container import (
     GraphFilterOptions,
     InteractionRisk,
     LegendEntry,
+    TechniqueMapping,
     UnifiedGraph,
+    technique_mappings_from_json,
 )
 from agent_bom.graph.dependency_reach import (
     PackageReachability,
@@ -84,6 +86,8 @@ __all__ = [
     "UnifiedGraph",
     "AttackPath",
     "InteractionRisk",
+    "TechniqueMapping",
+    "technique_mappings_from_json",
     "GraphFilterOptions",
     "LegendEntry",
     "SemanticCluster",

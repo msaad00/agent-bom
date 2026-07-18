@@ -1094,6 +1094,17 @@ def build_unified_graph_from_report(
         )
         _logger.warning("attack-path fusion failed: analysis_error")
 
+    # Enrich every materialised attack path with typed MITRE ATT&CK / ATLAS
+    # technique mappings derived from the path's observed evidence (edge
+    # relationship + node type), so persistence/API/exports carry the typed
+    # kill-chain sequence. Potential techniques, never detected activity.
+    try:
+        from agent_bom.graph.attack_path_mitre import apply_attack_path_technique_mappings
+
+        apply_attack_path_technique_mappings(graph)
+    except Exception:  # noqa: BLE001
+        _logger.warning("attack-path technique mapping failed: analysis_error")
+
     # Cost (FinOps) fusion: attach LLM spend to agent/resource nodes, roll it up
     # the CONTAINS hierarchy, and flag nodes that are BOTH high-cost AND
     # high-risk. Runs LAST so it sees every exposure/toxic/critical flag the
@@ -5590,6 +5601,33 @@ def _wire_network_entry_exposure_paths(
                     )
 
 
+def _role_last_used_at(usage_evidence: Any) -> str | None:
+    """Newest real last-accessed timestamp across role usage-evidence records.
+
+    Threads bounded AWS Access Advisor / RoleLastUsed telemetry
+    (:mod:`agent_bom.cloud.aws_iam_evidence`) onto the identity node so NHI
+    governance dormancy uses a real last-used signal. Returns ``None`` when no
+    record carries a timestamp — absent telemetry must never be turned into a
+    false "never used" (fail-closed); the role then stays not-evaluated for
+    dormancy rather than being fabricated as dormant.
+    """
+    if not isinstance(usage_evidence, Mapping):
+        return None
+    records = usage_evidence.get("records")
+    if not isinstance(records, list):
+        return None
+    newest: str | None = None
+    for record in records:
+        if not isinstance(record, Mapping):
+            continue
+        raw = record.get("last_accessed_at")
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        if newest is None or raw > newest:
+            newest = raw
+    return newest
+
+
 def _add_inventory_principal(
     graph: UnifiedGraph,
     principal: dict[str, Any],
@@ -5608,23 +5646,35 @@ def _add_inventory_principal(
         return
     entity_type = _identity_entity_type(principal_type)
     principal_node_id = _identity_node_id(entity_type, provider, principal_id)
+    node_attributes: dict[str, Any] = {
+        "principal_id": principal_id,
+        "principal_name": principal_name,
+        "principal_type": principal_type,
+        "directory_principal_id": _clean_graph_part(principal.get("principal_id")),
+        "principal_email": _clean_graph_part(principal.get("email")),
+        "principal_resource_id": _clean_graph_part(principal.get("arn")),
+        "cloud_provider": provider,
+        "privilege_level": _clean_graph_part(principal.get("privilege_level")) or "unknown",
+        "iam_path": _clean_graph_part(principal.get("path")),
+        "source": "cloud-inventory",
+    }
+    # Thread collected role usage evidence so NHI governance dormancy uses a real
+    # last-used signal. Only a real timestamp sets ``last_used_at`` — absent
+    # telemetry leaves the field unset so dormancy stays fail-closed.
+    usage_evidence = principal.get("usage_evidence")
+    if isinstance(usage_evidence, Mapping):
+        state = usage_evidence.get("state")
+        if isinstance(state, str) and state.strip():
+            node_attributes["usage_evidence_state"] = state
+        last_used = _role_last_used_at(usage_evidence)
+        if last_used:
+            node_attributes["last_used_at"] = last_used
     graph.add_node(
         UnifiedNode(
             id=principal_node_id,
             entity_type=entity_type,
             label=principal_name,
-            attributes={
-                "principal_id": principal_id,
-                "principal_name": principal_name,
-                "principal_type": principal_type,
-                "directory_principal_id": _clean_graph_part(principal.get("principal_id")),
-                "principal_email": _clean_graph_part(principal.get("email")),
-                "principal_resource_id": _clean_graph_part(principal.get("arn")),
-                "cloud_provider": provider,
-                "privilege_level": _clean_graph_part(principal.get("privilege_level")) or "unknown",
-                "iam_path": _clean_graph_part(principal.get("path")),
-                "source": "cloud-inventory",
-            },
+            attributes=node_attributes,
             data_sources=data_sources,
             dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
         )
@@ -5705,6 +5755,17 @@ def _add_inventory_principal(
             )
         )
 
+    # AWS Access-Advisor right-sizing evidence: each service the principal is
+    # granted, carrying its last-used timestamp (or None = never used), as a
+    # HAS_PERMISSION grant edge the CIEM over-privilege emitter reads.
+    _add_access_advisor_grants(
+        graph,
+        principal,
+        principal_node_id=principal_node_id,
+        provider=provider,
+        data_sources=data_sources,
+    )
+
     # Direct access to the account's inventoried resources. The effective-
     # permissions overlay turns CAN_ACCESS (+ assume/trust chains) into the
     # HAS_PERMISSION transitive closure; admin-privileged principals reach
@@ -5720,6 +5781,67 @@ def _add_inventory_principal(
                     evidence={"source": "cloud-inventory", "basis": f"{privilege}_privilege"},
                 )
             )
+
+
+def _add_access_advisor_grants(
+    graph: UnifiedGraph,
+    principal: dict[str, Any],
+    *,
+    principal_node_id: str,
+    provider: str,
+    data_sources: list[str],
+) -> None:
+    """Bridge AWS Access-Advisor usage evidence into per-service grant edges.
+
+    Emits one ``HAS_PERMISSION`` edge per granted service, carrying the service's
+    Access-Advisor ``last_used_at`` (``None`` = never used) so the CIEM
+    over-privilege emitter can right-size. Only emitted when Access Advisor
+    returned complete evidence (``state == "available"``) — denied/pending/
+    unavailable evidence yields no edges, so absence is never read as unused.
+    """
+    evidence = principal.get("usage_evidence")
+    if not isinstance(evidence, dict) or str(evidence.get("state") or "") != "available":
+        return
+    records = evidence.get("records")
+    if not isinstance(records, list):
+        return
+    for record in records:
+        if not isinstance(record, dict) or str(record.get("state") or "") != "available":
+            continue
+        service = _clean_graph_part(record.get("service_namespace"))
+        if not service:
+            continue
+        last_accessed = record.get("last_accessed_at")
+        last_used = last_accessed if isinstance(last_accessed, str) and last_accessed.strip() else None
+        service_node_id = _identity_node_id(EntityType.RESOURCE, provider, f"{principal_node_id}:{service}")
+        graph.add_node(
+            UnifiedNode(
+                id=service_node_id,
+                entity_type=EntityType.RESOURCE,
+                label=service,
+                attributes={
+                    "cloud_provider": provider,
+                    "cloud_service": service,
+                    "kind": "iam_service_permission",
+                    "source": "access-advisor",
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+            )
+        )
+        graph.add_edge(
+            UnifiedEdge(
+                source=principal_node_id,
+                target=service_node_id,
+                relationship=RelationshipType.HAS_PERMISSION,
+                evidence={
+                    "source": "access-advisor",
+                    "access_advisor": True,
+                    "service_namespace": service,
+                    "last_used_at": last_used,
+                },
+            )
+        )
 
 
 def _add_inventory_group(

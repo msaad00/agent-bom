@@ -868,9 +868,7 @@ def scan(
                     f"Recent CVEs may be missed."
                 )
             if require_fresh_db or require_fresh_db_env():
-                con.print(
-                    "[red]--require-fresh-db is set and the local vuln DB is stale — failing (exit 3).[/red]"
-                )
+                con.print("[red]--require-fresh-db is set and the local vuln DB is stale — failing (exit 3).[/red]")
                 sys.exit(3)
 
     # ── IaC-only fast path ───────────────────────────────────────────────────
@@ -977,9 +975,7 @@ def scan(
                 "provided, so there is nothing to scan."
             )
 
-    _explicit_target_scan = bool(
-        inventory or sbom_file or images or image_tars or filesystem_paths or k8s or external_scan_path
-    )
+    _explicit_target_scan = bool(inventory or sbom_file or images or image_tars or filesystem_paths or k8s or external_scan_path)
     if project and not skill_only and not no_discover and not _explicit_target_scan:
         from agent_bom.repo_auto_detect import expand_project_scan_targets
 
@@ -1002,10 +998,7 @@ def scan(
             agent_projects = auto_targets.agent_projects
             ai_inventory_paths = auto_targets.ai_inventory_paths
             if not quiet:
-                con.print(
-                    "[dim]Auto-detected project scan surfaces: "
-                    f"{', '.join(auto_targets.auto_enabled)}[/dim]"
-                )
+                con.print(f"[dim]Auto-detected project scan surfaces: {', '.join(auto_targets.auto_enabled)}[/dim]")
 
     # Step 1–1g4: Local discovery
     _step_t0 = _time.monotonic()
@@ -2065,6 +2058,9 @@ def scan(
                 if report.nhi_governance_findings:
                     _n_nhi = len(report.nhi_governance_findings)
                     con.print(f"  [green]✓[/green] NHI governance: {_n_nhi} finding(s)")
+                if report.ciem_over_privilege_findings_data:
+                    _n_ciem = len(report.ciem_over_privilege_findings_data)
+                    con.print(f"  [green]✓[/green] CIEM over-privilege: {_n_ciem} finding(s)")
             except Exception as _gderiv_err:  # noqa: BLE001
                 import logging as _tlog
 
@@ -2532,14 +2528,10 @@ def scan(
                 report.runtime_correlation["observe_enforce"] = _oe.to_dict()
             if _oe.proposals:
                 _mode_label = "ENFORCE (opt-in)" if _oe.enforced else "propose-only (audit)"
-                con.print(
-                    f"\n  [yellow]⚑[/yellow] Observe→enforce: {len(_oe.proposals)} gateway block-rule "
-                    f"proposal(s) [{_mode_label}]"
-                )
+                con.print(f"\n  [yellow]⚑[/yellow] Observe→enforce: {len(_oe.proposals)} gateway block-rule proposal(s) [{_mode_label}]")
                 for _p in _oe.proposals[:5]:
                     con.print(
-                        f"    [yellow]▸[/yellow] block tool:{_p.tool_name} — "
-                        f"{', '.join(_p.vulnerability_ids)} (called {_p.call_count}x)"
+                        f"    [yellow]▸[/yellow] block tool:{_p.tool_name} — {', '.join(_p.vulnerability_ids)} (called {_p.call_count}x)"
                     )
                 if not _oe.enforced:
                     con.print(
@@ -2717,10 +2709,7 @@ def scan(
         and _vuln_freshness.mode == "offline"
         and _vuln_freshness.record_count == 0
     ):
-        con.print(
-            "[yellow]No local advisory DB — run 'agent-bom db update' "
-            "(or drop --offline). Coverage may be incomplete.[/yellow]"
-        )
+        con.print("[yellow]No local advisory DB — run 'agent-bom db update' (or drop --offline). Coverage may be incomplete.[/yellow]")
 
     # ── Posture summary mode (--posture) ──────────────────────────────────────
     if posture:

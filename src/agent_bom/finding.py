@@ -55,6 +55,7 @@ class FindingType(str, Enum):
     MCP_BLOCKLIST = "MCP_BLOCKLIST"  # Curated malicious/suspicious MCP server match
     COMBINATION = "COMBINATION"  # Toxic combination — multiple signals chained into one exploitable path
     MALICIOUS_PACKAGE = "MALICIOUS_PACKAGE"  # Known-malicious / typosquat package with no CVE row
+    CIEM_OVER_PRIVILEGE = "CIEM_OVER_PRIVILEGE"  # Cloud identity granted permissions it never uses (right-sizing)
 
 
 class FindingSource(str, Enum):

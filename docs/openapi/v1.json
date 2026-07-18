@@ -17985,6 +17985,66 @@
                               "relationships"
                             ],
                             "type": "object"
+                          },
+                          "mitre_technique_ids": {
+                            "description": "Deduped technique IDs mapped across the path's hops (convenience projection).",
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "technique_mappings": {
+                            "items": {
+                              "additionalProperties": false,
+                              "description": "A typed MITRE ATT&CK / ATLAS technique mapped to one hop of the attack path, derived from the path's observed graph evidence (edge relationship + node type). These are potential/mapped techniques for the kill-chain sequence, NOT a claim of detected attacker activity. Technique and tactic IDs resolve against the bundled catalog.",
+                              "properties": {
+                                "catalog": {
+                                  "enum": [
+                                    "attack",
+                                    "atlas"
+                                  ],
+                                  "type": "string"
+                                },
+                                "confidence": {
+                                  "maximum": 1.0,
+                                  "minimum": 0.0,
+                                  "type": "number"
+                                },
+                                "hop_index": {
+                                  "description": "0-based position in the kill-chain edge sequence.",
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "provenance": {
+                                  "description": "The observed edge evidence that produced the mapping.",
+                                  "type": "string"
+                                },
+                                "tactics": {
+                                  "description": "Catalog-resolved tactic phase names / IDs.",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "technique_id": {
+                                  "description": "ATT&CK (e.g. T1078) or ATLAS (e.g. AML.T0053) technique ID.",
+                                  "type": "string"
+                                },
+                                "technique_name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "hop_index",
+                                "technique_id",
+                                "catalog",
+                                "tactics",
+                                "provenance",
+                                "confidence"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           }
                         },
                         "type": "object"

@@ -706,7 +706,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.13', '3.14']
+        # PRs run the mainstream interpreter only; pushes to main run the full
+        # matrix (plus coverage on 3.11 below). Interpreter-specific drift is
+        # rare and still caught on main within one merge — this keeps PR
+        # wall-clock near the 4-5 minute mark instead of ~10.
+        python-version: ${{ github.event_name == 'pull_request' && fromJSON('["3.13"]') || fromJSON('["3.11", "3.13", "3.14"]') }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -1037,6 +1041,9 @@ jobs:
 
       - name: Verify cloud benchmark inventory (no catalog/registry/classification drift)
         run: python scripts/check_benchmark_drift.py
+
+      - name: Verify vendored framework catalog (NIST 800-53 + ISO crosswalk integrity)
+        run: python scripts/check_framework_catalog.py
 
       - name: Verify product surface contract
         run: python scripts/check_product_surface_contract.py

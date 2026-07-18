@@ -23,18 +23,23 @@ _HIGH_RISK = high_risk_severities()
 
 # ─── Catalog ──────────────────────────────────────────────────────────────────
 
+# NOTE — the descriptors below are agent-bom's OWN short wording for each Annex A
+# control area, not the official ISO/IEC 27001:2022 control titles. ISO 27001 is
+# copyrighted, so its control text is NOT reproduced or redistributed here; only
+# the Annex A control **identifier** (the fact) is used. Consult the standard for
+# the official titles: https://www.iso.org/standard/27001
 ISO_27001: dict[str, str] = {
     # A.5 — Organizational controls
-    "A.5.19": "Information security in supplier relationships",
-    "A.5.20": "Addressing information security within supplier agreements",
-    "A.5.21": "Managing information security in the ICT supply chain",
-    "A.5.23": "Information security for use of cloud services",
-    "A.5.28": "Collection of evidence",
+    "A.5.19": "Supplier-relationship information security",
+    "A.5.20": "Security terms in supplier agreements",
+    "A.5.21": "ICT supply-chain security management",
+    "A.5.23": "Cloud-service information security",
+    "A.5.28": "Incident evidence collection",
     # A.8 — Technological controls
-    "A.8.8": "Management of technical vulnerabilities",
-    "A.8.9": "Configuration management",
-    "A.8.24": "Use of cryptography",
-    "A.8.28": "Secure coding",
+    "A.8.8": "Technical vulnerability management",
+    "A.8.9": "System configuration management",
+    "A.8.24": "Use of cryptographic protection",
+    "A.8.28": "Secure development / coding practices",
 }
 
 

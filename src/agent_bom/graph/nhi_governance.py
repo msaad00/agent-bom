@@ -25,6 +25,13 @@ the three core NHI governance analytics that close the 2026-06-19 audit gap:
    dormancy. The score is written back onto the ``managed_identity`` node so the
    graph, API, and findings all rank the same way.
 
+The verdict covers every non-human identity type in the graph — Azure/
+discovered ``managed_identity`` nodes plus AWS IAM ``role`` and GCP
+``service_account`` nodes — so CIEM over-grant / dormant / orphan findings span
+all three clouds. For the cloud-inventory role/service-account types, which do
+not carry owner or last-used as a first-class contract, absent evidence is
+fail-closed: it is never turned into a dormant / over-grant / orphan verdict.
+
 Reference-only: consumes labels, timestamps, and edge metadata already in the
 graph; never touches secret material and never raises into the builder.
 """
@@ -47,6 +54,19 @@ from agent_bom.graph.types import EntityType, RelationshipType
 _OVERLAY_SOURCE = "nhi-governance"
 
 DEFAULT_DORMANT_DAYS = 90
+
+# Identity node types that carry a governance verdict. MANAGED_IDENTITY (Azure /
+# discovered NHIs) is the original; ROLE (AWS IAM roles, Snowflake roles) and
+# SERVICE_ACCOUNT (GCP service accounts) are governed too so CIEM over-grant /
+# dormant findings cover AWS and GCP, not just Azure.
+_GOVERNED_ENTITY_TYPES = frozenset({EntityType.MANAGED_IDENTITY, EntityType.ROLE, EntityType.SERVICE_ACCOUNT})
+
+# For these types the base cloud inventory does NOT carry owner / last-used as a
+# first-class contract, so ABSENT evidence must never be turned into a dormant /
+# over-grant / orphan verdict (fail-closed). MANAGED_IDENTITY keeps its legacy
+# "no timestamp == dormant" / "no owner == orphaned" semantics because the NHI
+# discovery overlay always supplies those fields.
+_STRICT_EVIDENCE_TYPES = frozenset({EntityType.ROLE, EntityType.SERVICE_ACCOUNT})
 
 # Permission/scope edges that count as a *granted* capability for right-sizing.
 _GRANT_RELS = frozenset({RelationshipType.HAS_PERMISSION, RelationshipType.SCOPED_TO})
@@ -185,6 +205,20 @@ def _granted_targets(graph: UnifiedGraph, node_id: str) -> dict[str, str | None]
     return granted
 
 
+def _node_provider(attrs: Mapping[str, Any]) -> str | None:
+    """Provider attribution for an identity node.
+
+    MANAGED_IDENTITY nodes carry ``provider``; cloud-inventory ROLE /
+    SERVICE_ACCOUNT nodes carry ``cloud_provider``. Read either so AWS/GCP
+    findings are attributed correctly.
+    """
+    for key in ("provider", "cloud_provider"):
+        value = attrs.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 def _exposed_targets(graph: UnifiedGraph, targets: set[str]) -> bool:
     return any(graph.nodes.get(tid) is not None and bool(graph.nodes[tid].attributes.get("internet_exposed")) for tid in targets)
 
@@ -210,19 +244,29 @@ def evaluate_identity_governance(
         for key, vals in usage.items():
             usage_map[str(key)] = {str(v) for v in vals}
 
-    identities = [n for n in graph.nodes.values() if n.entity_type == EntityType.MANAGED_IDENTITY]
+    identities = [n for n in graph.nodes.values() if n.entity_type in _GOVERNED_ENTITY_TYPES]
     results: list[IdentityGovernance] = []
     for node in identities[:_MAX_IDENTITIES]:
         attrs = node.attributes
+        strict = node.entity_type in _STRICT_EVIDENCE_TYPES
         identity_id = str(attrs.get("identity_id") or node.id)
         owner = attrs.get("owner")
         owner_str = str(owner).strip() if isinstance(owner, str) and str(owner).strip() else None
 
         granted = _granted_targets(graph, node.id)
-        observed = set(usage_map.get(identity_id, set())) | set(usage_map.get(node.id, set()))
-        # Edge-level last_used markers count as observed usage for that target.
-        observed |= {tid for tid, last_used in granted.items() if last_used}
-        unused = sorted(tid for tid in granted if tid not in observed)
+        # Observed usage: a caller-supplied usage map keyed by identity_id or node
+        # id, plus any per-target ``last_used_at`` marker on the grant edges.
+        mapped_usage = set(usage_map.get(identity_id, set())) | set(usage_map.get(node.id, set()))
+        edge_usage = {tid for tid, last_used in granted.items() if last_used}
+        observed = mapped_usage | edge_usage
+        has_observed_signal = bool(mapped_usage or edge_usage)
+        if strict and not has_observed_signal:
+            # Fail-closed: without a per-target usage signal for an AWS/GCP
+            # identity we cannot claim any grant is unused — never fabricate an
+            # over-grant from absent evidence.
+            unused: list[str] = []
+        else:
+            unused = sorted(tid for tid in granted if tid not in observed)
 
         # ── Dormancy ──
         last_used_at = attrs.get("last_used_at")
@@ -231,10 +275,18 @@ def evaluate_identity_governance(
         if last_used_dt is not None:
             dormancy_days = max(0, _days_since(last_used_dt, now))
             is_dormant = dormancy_days >= window
+        elif strict:
+            # No real last-used telemetry for an AWS/GCP identity → not
+            # assessable. Fail-closed: absence of evidence is never dormancy.
+            is_dormant = False
         else:
             # No usage timestamp at all → treat as dormant (never-observed).
             is_dormant = True
-        is_orphaned = owner_str is None
+        # Orphan detection needs an owner *contract*: MANAGED_IDENTITY always
+        # carries an ``owner`` attribute (empty when unowned), so a missing owner
+        # is a real orphan. Cloud-inventory ROLE/SERVICE_ACCOUNT nodes carry no
+        # owner key, so their absence is "not tracked", not "orphaned".
+        is_orphaned = ("owner" in attrs) and owner_str is None if strict else owner_str is None
 
         # ── Privilege / exposure ──
         is_privileged = bool(attrs.get("escalates_to_admin") or attrs.get("is_admin") or attrs.get("privilege_level") == "admin")
@@ -246,7 +298,7 @@ def evaluate_identity_governance(
             {
                 "id": identity_id,
                 "name": node.label,
-                "provider": attrs.get("provider"),
+                "provider": _node_provider(attrs),
                 "credential_expires_at": attrs.get("credential_expires_at"),
                 "last_rotated": attrs.get("last_rotated") or attrs.get("created_at"),
             },
@@ -295,7 +347,7 @@ def evaluate_identity_governance(
                 node_id=node.id,
                 identity_id=identity_id,
                 name=node.label,
-                provider=attrs.get("provider") if isinstance(attrs.get("provider"), str) else None,
+                provider=_node_provider(attrs),
                 owner=owner_str,
                 risk_score=risk_score,
                 risk_band=_risk_band(risk_score),

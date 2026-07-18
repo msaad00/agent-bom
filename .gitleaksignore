@@ -34,3 +34,8 @@ e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:360
 # History-only false positive from a synthetic token-shape redaction fixture.
 # The fixture verifies that prompt sanitization removes the value.
 8b56ca26dfb1f9a575f21678fa8f33be113fc231:tests/test_ai_enrich_providers.py:jwt:47
+
+# False positive: a literal JSON field name/value pair in the compliance
+# scorecard response ("framework_key": "nist_800_53_catalog") — a registry
+# identifier, not a credential. generic-api-key fires on the _key suffix.
+0e43ed628801d7c2d4fbdd7e3a01b07fda2b113b:src/agent_bom/api/routes/compliance.py:generic-api-key:534

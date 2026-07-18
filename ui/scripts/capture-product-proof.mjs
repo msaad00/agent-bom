@@ -805,14 +805,28 @@ const gatewayAudit = [
 }));
 
 function overviewResponse() {
-  const domain = (label, href, metric, metricLabel, status, detail = {}) => ({
+  const domain = (label, href, metric, metricLabel, status, detail = {}, graphHref) => ({
     label,
     href,
+    ...(graphHref ? { graph_href: graphHref } : {}),
     metric,
     metric_label: metricLabel,
     status,
     detail,
   });
+  // Reachable-CVE histogram for the demo estate — sums to the 26 open findings
+  // so the metric never contradicts its severity strip (overview honesty rule).
+  const vulnSeverity = { critical: 9, high: 13, medium: 4, low: 0, unrated: 0 };
+  const zeroSeverity = { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 };
+  // Coverage lanes are overlapping posture lenses, not a partition: the demo's
+  // 26 reachable CVEs are both Vuln-management findings and AI-posture findings.
+  const coverage = [
+    { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 0, severity: { ...zeroSeverity } },
+    { domain: "vuln", label: "Vuln mgmt", href: "/findings?domain=vuln", count: 26, severity: { ...vulnSeverity } },
+    { domain: "aspm", label: "AppSec / ASPM", href: "/findings?domain=aspm", count: 0, severity: { ...zeroSeverity } },
+    { domain: "dspm", label: "DSPM", href: "/findings?domain=dspm", count: 0, severity: { ...zeroSeverity } },
+    { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 26, severity: { ...vulnSeverity } },
+  ];
   return {
     schema_version: "overview.v1",
     tenant_id: "default",
@@ -828,13 +842,24 @@ function overviewResponse() {
       credential_exposed: 3,
       scans: 3,
       latest_scan_at: CREATED_AT,
+      hub_findings: 26,
     },
+    coverage,
     domains: {
-      cloud: domain("Cloud", "/connections", 4, "connected surfaces", "warn", { mode: "read-only" }),
-      runtime: domain("Runtime", "/gateway", 247, "blocked today", "critical", { mode: "enforce" }),
-      cost: domain("Cost", "/cost", 18, "agent budgets", "ok", { forecast: "stable" }),
-      identity: domain("Identity", "/identity", 3, "keys rotated", "warn", { scim: "enabled" }),
-      ops: domain("Ops", "/jobs", 3, "completed scans", "ok", { scheduler: "enabled" }),
+      cloud: domain("Cloud posture", "/connections", 4, "accounts connected", "ok", { accounts: 4, sources: ["demo-scan"] }),
+      vuln: domain(
+        "Vuln / SCA",
+        "/findings?issue=vulnerability",
+        26,
+        "open CVEs",
+        "critical",
+        { critical: 9, high: 13, packages: 148, severity: { ...vulnSeverity } },
+      ),
+      code: domain("Code / repo", "/scan", 3, "repo scans", "ok", { repo_scans: 3, packages: 148 }),
+      runtime: domain("Runtime", "/gateway", 247, "active surfaces", "critical", { active_surfaces: 247 }),
+      cost: domain("LLM Cost", "/cost", 18.4, "USD tracked", "ok", { total_cost_usd: 18.4, total_calls: 2106 }),
+      identity: domain("NHI / Identity", "/identity", 18, "identities + agents", "warn", { managed_identities: 3, fleet_agents: 15 }),
+      ops: domain("Ops", "/jobs", 3, "completed scans", "ok", { done: 3, failed: 0, running: 0, packages: 148 }),
     },
     top_risks: [
       {
@@ -1127,6 +1152,14 @@ async function fulfill(route, body, status = 200) {
 }
 
 async function installRoutes(page) {
+  // The gateway live-feed panel opens the proxy metrics WebSocket on mount. With
+  // no backend behind the capture dev server the handshake would fail and emit a
+  // fatal console error, so mock the socket here: accept the client connection
+  // (fires onopen → "live" indicator) and stream a single metrics tick.
+  await page.routeWebSocket(/\/ws\/proxy\/metrics/, (ws) => {
+    ws.onMessage(() => {});
+    ws.send(JSON.stringify({ total_tool_calls: 4485, total_blocked: 247 }));
+  });
   await page.route("**/health", (route) => fulfill(route, { status: "ok", version: RELEASE_VERSION }));
   await page.route("**/v1/compliance", (route) => fulfill(route, {
     overall_score: 72,

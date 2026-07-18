@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 if TYPE_CHECKING:
     from agent_bom.ai_schemas import AIFindingAssessment
@@ -363,8 +363,8 @@ class Package:
     resolved_version: Optional[str] = None  # Exact version selected after resolution, when known
     version_confidence: Optional[str] = None  # ADR-007 confidence enum for the resolved version
     version_resolved_at: Optional[str] = None  # Timestamp when version was resolved
-    version_evidence: list[dict] = field(default_factory=list)  # Structured evidence for version source
-    version_conflicts: list[dict] = field(default_factory=list)  # Conflicting source/version observations
+    version_evidence: list[dict[str, Any]] = field(default_factory=list)  # Structured evidence for version source
+    version_conflicts: list[dict[str, Any]] = field(default_factory=list)  # Conflicting source/version observations
     floating_reference: bool = False  # True when the package/source ref is mutable (latest/main/no digest)
     floating_reference_reason: Optional[str] = None  # Why the ref is mutable
     is_malicious: bool = False  # True if flagged as known malicious (MAL- prefix in OSV)
@@ -405,7 +405,7 @@ class Package:
     maintainer_count: Optional[int] = None
     source_repo: Optional[str] = None
     occurrences: list[PackageOccurrence] = field(default_factory=list)  # Layer/file provenance for concrete package observations
-    discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this package asset
+    discovery_provenance: Optional[dict[str, Any]] = None  # Sanitized discovery provenance contract for this package asset
 
     @property
     def stable_id(self) -> str:
@@ -485,10 +485,10 @@ class MCPTool:
     description: str
     discovery_source: Optional[str] = None
     discovery_confidence: Optional[str] = None
-    input_schema: Optional[dict] = None
+    input_schema: Optional[dict[str, Any]] = None
     declared_capabilities: list[str] = field(default_factory=list)
     schema_findings: list[str] = field(default_factory=list)
-    schema_rule_findings: list[dict] = field(default_factory=list)
+    schema_rule_findings: list[dict[str, Any]] = field(default_factory=list)
     server_canonical_id: Optional[str] = None  # Owning server scope (stamped by MCPServer)
 
     @property
@@ -653,7 +653,7 @@ class MCPServer:
     security_intelligence: list[dict[str, object]] = field(default_factory=list)
     surface: ServerSurface = ServerSurface.MCP
     discovery_sources: list[str] = field(default_factory=list)
-    discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this server asset
+    discovery_provenance: Optional[dict[str, Any]] = None  # Sanitized discovery provenance contract for this server asset
 
     def __post_init__(self) -> None:
         """Scope child tool/resource/prompt identities to this server."""
@@ -784,15 +784,15 @@ class Agent:
     last_seen: Optional[str] = None
     parent_agent: Optional[str] = None  # Parent agent name (for spawn tree / delegation)
     metadata: dict[str, object] = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
-    automation_settings: list = field(default_factory=list)  # Risky automation settings (scheduled tasks, etc.)
-    discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this agent asset
+    automation_settings: list[Any] = field(default_factory=list)  # Risky automation settings (scheduled tasks, etc.)
+    discovery_provenance: Optional[dict[str, Any]] = None  # Sanitized discovery provenance contract for this agent asset
     # Per-run discovery envelope (#2083): trust contract for THIS scan run
     # -- scan_mode, discovery_scope, permissions_used, redaction_status.
     # Stored as a dict so the model stays JSON-friendly without dragging
     # `discovery_envelope.DiscoveryEnvelope` into the import path; producers
     # populate via `DiscoveryEnvelope.to_dict()` and consumers can re-hydrate
     # via `DiscoveryEnvelope.from_dict()`.
-    discovery_envelope: Optional[dict] = None
+    discovery_envelope: Optional[dict[str, Any]] = None
 
     def __post_init__(self) -> None:
         """Backfill lifecycle fields for legacy Agent construction paths."""
@@ -878,7 +878,7 @@ class BlastRadius:
     # Multi-hop delegation fields
     hop_depth: int = 1  # How many hops from the vulnerable package (1 = direct)
     delegation_chain: list[str] = field(default_factory=list)  # e.g. ["server1→agent1→server2→agent2"]
-    transitive_agents: list[dict] = field(default_factory=list)  # Agents reached via delegation
+    transitive_agents: list[dict[str, Any]] = field(default_factory=list)  # Agents reached via delegation
     transitive_credentials: list[str] = field(default_factory=list)  # Credentials exposed transitively
     transitive_risk_score: float = 0.0  # Risk score weighted by hop distance
 
@@ -1097,51 +1097,55 @@ class AIBOMReport:
     tool_version: str = ""
     executive_summary: Optional[str] = None  # LLM-generated executive summary
     ai_threat_chains: list[str] = field(default_factory=list)  # LLM-generated threat chain analyses
-    mcp_config_analysis: Optional[dict] = None  # LLM-powered MCP config security analysis
-    ai_enrichment_metadata: Optional[dict] = None  # Non-secret provider/model provenance for AI-generated fields
+    mcp_config_analysis: Optional[dict[str, Any]] = None  # LLM-powered MCP config security analysis
+    ai_enrichment_metadata: Optional[dict[str, Any]] = None  # Non-secret provider/model provenance for AI-generated fields
     ai_finding_assessments: list[AIFindingAssessment] = field(default_factory=list)
-    skill_audit_data: Optional[dict] = None  # Serialized SkillAuditResult (set by CLI)
-    trust_assessment_data: Optional[dict] = None  # Serialized TrustAssessmentResult (set by CLI)
-    prompt_scan_data: Optional[dict] = None  # Serialized PromptScanResult (set by CLI)
-    model_files: list[dict] = field(default_factory=list)
-    model_manifests: list[dict] = field(default_factory=list)
-    model_provenance: list[dict] = field(default_factory=list)  # HuggingFace provenance results
-    model_hash_verification_data: Optional[dict] = None  # Serialized model hash verification report
-    model_supply_chain_data: Optional[dict] = None  # Consolidated model file/provenance/hash summary
-    enforcement_data: Optional[dict] = None  # Serialized EnforcementReport (set by CLI)
-    context_graph_data: Optional[dict] = None  # Serialized context graph (set by CLI)
-    license_report: Optional[dict] = None  # Serialized license compliance report
-    vex_data: Optional[dict] = None  # Serialized VEX document
-    toxic_combinations: Optional[list] = None  # Serialized ToxicCombination list
-    prioritized_findings: Optional[list] = None  # Priority-ordered findings
-    sast_data: Optional[dict] = None  # Serialized SAST scan results (Semgrep)
-    aws_organization_data: Optional[dict] = None  # AWS Organizations: org/OUs/accounts/SCPs hierarchy
-    cis_benchmark_data: Optional[dict] = None  # Serialized CIS AWS Benchmark results
-    snowflake_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Snowflake Benchmark results
-    snowflake_object_graph_data: Optional[dict] = None  # Snowflake tables/views + OBJECT_DEPENDENCIES lineage
-    snowflake_login_anomalies_data: Optional[dict] = None  # Snowflake impossible-travel / login-anomaly detection
-    snowflake_exfil_graph_data: Optional[dict] = None  # Snowflake egress: outbound shares, external stages, sensitive objects
-    snowflake_auth_posture_data: Optional[dict] = None  # Snowflake per-user auth matrix + network policies (MFA/key-pair/password)
-    snowflake_services_data: Optional[dict] = None  # Snowflake compute (warehouses) + database/schema containment hierarchy
-    snowflake_pipeline_data: Optional[dict] = None  # Snowflake data-pipeline objects: tasks, streams, pipes
-    snowflake_integrations_data: Optional[dict] = None  # Snowflake account integrations: storage/API/external-access/security/catalog
-    snowflake_external_data_data: Optional[dict] = None  # Snowflake open-table-format + external data: iceberg + external tables
-    snowflake_governance_data: Optional[dict] = (
+    skill_audit_data: Optional[dict[str, Any]] = None  # Serialized SkillAuditResult (set by CLI)
+    trust_assessment_data: Optional[dict[str, Any]] = None  # Serialized TrustAssessmentResult (set by CLI)
+    prompt_scan_data: Optional[dict[str, Any]] = None  # Serialized PromptScanResult (set by CLI)
+    model_files: list[dict[str, Any]] = field(default_factory=list)
+    model_manifests: list[dict[str, Any]] = field(default_factory=list)
+    model_provenance: list[dict[str, Any]] = field(default_factory=list)  # HuggingFace provenance results
+    model_hash_verification_data: Optional[dict[str, Any]] = None  # Serialized model hash verification report
+    model_supply_chain_data: Optional[dict[str, Any]] = None  # Consolidated model file/provenance/hash summary
+    enforcement_data: Optional[dict[str, Any]] = None  # Serialized EnforcementReport (set by CLI)
+    context_graph_data: Optional[dict[str, Any]] = None  # Serialized context graph (set by CLI)
+    license_report: Optional[dict[str, Any]] = None  # Serialized license compliance report
+    vex_data: Optional[dict[str, Any]] = None  # Serialized VEX document
+    toxic_combinations: Optional[list[Any]] = None  # Serialized ToxicCombination list
+    prioritized_findings: Optional[list[Any]] = None  # Priority-ordered findings
+    sast_data: Optional[dict[str, Any]] = None  # Serialized SAST scan results (Semgrep)
+    aws_organization_data: Optional[dict[str, Any]] = None  # AWS Organizations: org/OUs/accounts/SCPs hierarchy
+    cis_benchmark_data: Optional[dict[str, Any]] = None  # Serialized CIS AWS Benchmark results
+    snowflake_cis_benchmark_data: Optional[dict[str, Any]] = None  # Serialized CIS Snowflake Benchmark results
+    snowflake_object_graph_data: Optional[dict[str, Any]] = None  # Snowflake tables/views + OBJECT_DEPENDENCIES lineage
+    snowflake_login_anomalies_data: Optional[dict[str, Any]] = None  # Snowflake impossible-travel / login-anomaly detection
+    snowflake_exfil_graph_data: Optional[dict[str, Any]] = None  # Snowflake egress: outbound shares, external stages, sensitive objects
+    snowflake_auth_posture_data: Optional[dict[str, Any]] = (
+        None  # Snowflake per-user auth matrix + network policies (MFA/key-pair/password)
+    )
+    snowflake_services_data: Optional[dict[str, Any]] = None  # Snowflake compute (warehouses) + database/schema containment hierarchy
+    snowflake_pipeline_data: Optional[dict[str, Any]] = None  # Snowflake data-pipeline objects: tasks, streams, pipes
+    snowflake_integrations_data: Optional[dict[str, Any]] = (
+        None  # Snowflake account integrations: storage/API/external-access/security/catalog
+    )
+    snowflake_external_data_data: Optional[dict[str, Any]] = None  # Snowflake open-table-format + external data: iceberg + external tables
+    snowflake_governance_data: Optional[dict[str, Any]] = (
         None  # Snowflake governance: ACCESS_HISTORY reads + Cortex agent telemetry + derived findings
     )
-    snowflake_activity_data: Optional[dict] = (
+    snowflake_activity_data: Optional[dict[str, Any]] = (
         None  # Snowflake activity timeline: QUERY_HISTORY (365d) + AI observability events (summarized)
     )
-    azure_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Azure Benchmark results
-    gcp_cis_benchmark_data: Optional[dict] = None  # Serialized CIS GCP Benchmark results
-    databricks_cis_benchmark_data: Optional[dict] = None  # Serialized Databricks Security Best Practices results
-    aisvs_benchmark_data: Optional[dict] = None  # Serialized AISVS compliance results
-    vector_db_scan_data: Optional[list] = None  # Serialized vector DB security assessments
-    gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
-    iac_findings_data: Optional[dict] = None  # Serialized IaC misconfiguration findings (set by CLI)
+    azure_cis_benchmark_data: Optional[dict[str, Any]] = None  # Serialized CIS Azure Benchmark results
+    gcp_cis_benchmark_data: Optional[dict[str, Any]] = None  # Serialized CIS GCP Benchmark results
+    databricks_cis_benchmark_data: Optional[dict[str, Any]] = None  # Serialized Databricks Security Best Practices results
+    aisvs_benchmark_data: Optional[dict[str, Any]] = None  # Serialized AISVS compliance results
+    vector_db_scan_data: Optional[list[Any]] = None  # Serialized vector DB security assessments
+    gpu_infra_data: Optional[dict[str, Any]] = None  # Serialized GPU/AI compute infra scan results
+    iac_findings_data: Optional[dict[str, Any]] = None  # Serialized IaC misconfiguration findings (set by CLI)
     # Graph toxic-combination findings (serialized Finding dicts; set at the graph-build call site).
     # Rehydrated into the unified Finding stream by to_findings() so they reach --fail-on-severity.
-    toxic_combination_findings_data: Optional[list] = None
+    toxic_combination_findings_data: Optional[list[Any]] = None
     # NHI/CIEM governance findings (over-grant, dormant/orphaned, high-risk NHIs)
     # materialized from the unified graph at the scan call site. Held as Finding
     # objects (not serialized directly); folded into the unified stream by
@@ -1149,26 +1153,26 @@ class AIBOMReport:
     nhi_governance_findings: list["Finding"] = field(default_factory=list)
     # CIEM over-privilege findings (serialized Finding dicts; set at the graph-build call site).
     # Right-sizing from AWS Access-Advisor usage evidence; rehydrated by to_findings().
-    ciem_over_privilege_findings_data: Optional[list] = None
+    ciem_over_privilege_findings_data: Optional[list[Any]] = None
     # Estate-wide cloud asset inventory; one provider payload or a per-provider list (opt-in AGENT_BOM_CLOUD_INVENTORY)
-    cloud_inventory_data: Optional[Union[dict, list]] = None
-    identity_discovery_data: Optional[dict] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
+    cloud_inventory_data: Optional[Union[dict[str, Any], list[Any]]] = None
+    identity_discovery_data: Optional[dict[str, Any]] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
     # Cloud audit-trail behavioral payload(s); per-provider list of aggregated
     # (principal, resource, action) edges + findings (opt-in AGENT_BOM_AUDIT_TRAIL, read-only)
-    cloud_audit_trail_data: Optional[Union[dict, list]] = None
-    runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
-    delta_data: Optional[dict] = None  # Baseline/delta comparison metadata for CI gate outputs
-    scan_performance_data: Optional[dict] = None  # Cache coverage / scan latency metadata
-    vuln_data_freshness: Optional[dict] = None  # Vuln-data source/age/staleness snapshot (set by CLI; surfaced to API/MCP)
-    training_pipelines: Optional[dict] = None  # Serialized TrainingPipelineScanResult
-    dataset_cards: Optional[dict] = None  # Serialized DatasetScanResult
-    serving_configs: Optional[list] = None  # Serialized ServingConfig list
-    browser_extensions: Optional[dict] = None  # Serialized browser extension scan results
-    ai_inventory_data: Optional[dict] = None  # AI component source scan results (SDK imports, models, keys)
-    project_inventory_data: Optional[dict] = None  # Project manifest / lockfile inventory summary
-    introspection_data: Optional[dict] = None  # Runtime MCP introspection results (tools, resources, drift)
-    health_check_data: Optional[dict] = None  # MCP server reachability/health results
-    runtime_session_graph: Optional[dict] = None  # Structured runtime session graph/timeline evidence
+    cloud_audit_trail_data: Optional[Union[dict[str, Any], list[Any]]] = None
+    runtime_correlation: Optional[dict[str, Any]] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
+    delta_data: Optional[dict[str, Any]] = None  # Baseline/delta comparison metadata for CI gate outputs
+    scan_performance_data: Optional[dict[str, Any]] = None  # Cache coverage / scan latency metadata
+    vuln_data_freshness: Optional[dict[str, Any]] = None  # Vuln-data source/age/staleness snapshot (set by CLI; surfaced to API/MCP)
+    training_pipelines: Optional[dict[str, Any]] = None  # Serialized TrainingPipelineScanResult
+    dataset_cards: Optional[dict[str, Any]] = None  # Serialized DatasetScanResult
+    serving_configs: Optional[list[Any]] = None  # Serialized ServingConfig list
+    browser_extensions: Optional[dict[str, Any]] = None  # Serialized browser extension scan results
+    ai_inventory_data: Optional[dict[str, Any]] = None  # AI component source scan results (SDK imports, models, keys)
+    project_inventory_data: Optional[dict[str, Any]] = None  # Project manifest / lockfile inventory summary
+    introspection_data: Optional[dict[str, Any]] = None  # Runtime MCP introspection results (tools, resources, drift)
+    health_check_data: Optional[dict[str, Any]] = None  # MCP server reachability/health results
+    runtime_session_graph: Optional[dict[str, Any]] = None  # Structured runtime session graph/timeline evidence
 
     # Unified Finding stream (issue #566 — Phase 1).
     # Populated alongside blast_radii for backward compatibility.
@@ -1186,7 +1190,7 @@ class AIBOMReport:
     # data source does not carry advisories for an OS release present in the scan
     # target (typically end-of-life) — a low/zero count there must NOT be read as
     # a clean bill of health.
-    coverage_warnings: list[dict] = field(default_factory=list)
+    coverage_warnings: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def has_mcp_context(self) -> bool:

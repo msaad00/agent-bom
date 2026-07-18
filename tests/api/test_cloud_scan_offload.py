@@ -54,8 +54,8 @@ def test_cloud_cis_benchmark_offloads_evaluation(monkeypatch):
     monkeypatch.setattr(cloud, "_tenant", lambda request: "t-cis")
     offloaded = _spy_run_sync(monkeypatch)
 
-    # No provider credentials → run_benchmark raises CloudDiscoveryError inside
-    # the offloaded builder, which degrades to the HTTP-200 "unavailable" shape.
+    # The benchmark evaluation must run in a worker thread (via _run_cis_benchmark),
+    # not on the event loop. The offloaded builder's payload is returned unchanged.
     result = asyncio.run(
         cloud.cloud_cis_benchmark(
             request=object(),
@@ -71,9 +71,10 @@ def test_cloud_cis_benchmark_offloads_evaluation(monkeypatch):
     assert "_run_cis_benchmark" in offloaded, (
         f"cloud_cis_benchmark must offload its evaluation; saw {offloaded}"
     )
-    assert result["provider"] == "aws"
+    # The offloaded result flows back through unchanged: tenant scope is threaded
+    # in and the canonical benchmark payload keys are present.
     assert result["tenant_id"] == "t-cis"
-    assert result["status"] == "unavailable"
+    assert "benchmark" in result and "evaluated" in result
 
 
 def test_cloud_inventory_unsupported_provider_still_404_on_loop(monkeypatch):

@@ -112,6 +112,7 @@ ALLOWED_TOP_LEVEL_MODULES: frozenset[str] = frozenset(
     'firewall_client.py',
     'fleet_scan.py',
     'floating_refs.py',
+    'framework_catalog.py',
     'framework_mapping.py',
     'gateway.py',
     'gateway_policy_templates.py',

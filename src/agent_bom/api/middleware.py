@@ -17,6 +17,8 @@ from collections.abc import Sequence
 from functools import lru_cache
 from typing import TYPE_CHECKING, cast
 
+import anyio.to_thread
+
 from agent_bom import __version__
 from agent_bom.api.auth import get_key_store
 from agent_bom.api.browser_session import (
@@ -1252,7 +1254,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         store = get_key_store()
         if store.has_keys():
-            api_key = store.verify(raw_key)
+            # ``store.verify`` runs a ~21ms scrypt derivation (in-memory store) or
+            # a blocking DB read (Postgres store); offload it to a worker thread so
+            # it never stalls the async event loop while unrelated requests wait.
+            api_key = await anyio.to_thread.run_sync(store.verify, raw_key)
             if api_key:
                 required = self._required_role(request.method, request.url.path)
                 required_role = Role(required)
@@ -1588,22 +1593,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def _build_store(self):
         return _build_rate_limit_store(self._window)
 
-    def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
+    async def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
         tenant_id = getattr(request.state, "tenant_id", "").strip() or None
         auth_method = str(getattr(request.state, "auth_method", "") or "")
         if tenant_id and tenant_id != "default" and auth_method in _TENANT_SCOPED_AUTH_METHODS:
             return tenant_id
         if raw_key:
-            resolved = get_key_store().verify(raw_key)
+            # ``verify`` runs the same ~21ms scrypt (or a blocking DB read) as the
+            # auth middleware. When APIKeyMiddleware has already authenticated the
+            # request the guard above short-circuits, but in the anonymous/demo
+            # deployment (APIKeyMiddleware removed) this is the only verify on the
+            # request path — offload it so rate-limit bucketing never stalls the
+            # event loop.
+            resolved = await anyio.to_thread.run_sync(get_key_store().verify, raw_key)
             if resolved and resolved.tenant_id:
                 return resolved.tenant_id
         return None
 
-    def _bucket_key(self, request: StarletteRequest, is_scan: bool) -> str:
+    async def _bucket_key(self, request: StarletteRequest, is_scan: bool) -> str:
         bucket_type = "scan" if is_scan else "read"
         auth = request.headers.get("authorization", "")
         raw_key = auth[7:] if auth.startswith("Bearer ") else request.headers.get("x-api-key", "")
-        tenant_scope = self._resolve_tenant_scope(request, raw_key)
+        tenant_scope = await self._resolve_tenant_scope(request, raw_key)
         if tenant_scope:
             scope = f"tenant:{tenant_scope}"
         elif raw_key:
@@ -1636,7 +1647,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         is_scan = request.url.path.startswith("/v1/scan") and request.method == "POST"
         limit = self._scan_rpm if is_scan else self._read_rpm
 
-        key = self._bucket_key(request, is_scan)
+        key = await self._bucket_key(request, is_scan)
         hit_count, reset_at = await asyncio.to_thread(self._store.hit, key, now)
         remaining = max(0, limit - hit_count)
 

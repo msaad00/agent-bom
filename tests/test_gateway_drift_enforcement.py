@@ -226,3 +226,75 @@ def test_loopback_enforce_allows_legacy_unbound_identity_for_development():
     client = TestClient(create_gateway_app(_settings("enforce")))
     resp = client.post("/mcp/filesystem", json=_call(token="token-a", tool="run_shell"))
     assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
+
+
+# ── Open-incident lookup cap must not silently under-enforce (honest partial) ──
+
+
+def _seed_many_open_incidents(count: int, *, blueprint_id: str = "unrelated", tenant_id: str = "default") -> None:
+    """Seed more open incidents than the lookup cap, none matching the caller."""
+    store = InMemoryDriftIncidentStore()
+    for i in range(count):
+        store.upsert(
+            DriftIncident(
+                incident_id=f"bulk-{i}",
+                tenant_id=tenant_id,
+                blueprint_id=f"{blueprint_id}-{i}",
+                status="drift_detected",
+                drift_score=0.5,
+                violation_count=1,
+                warning_count=0,
+                top_violations=[{"tool_name": "some_other_tool"}],
+                first_detected_at="2026-06-05T00:00:00Z",
+                last_detected_at=f"2026-06-05T00:{i % 60:02d}:00Z",
+            )
+        )
+    set_drift_incident_store(store)
+
+
+def test_lookup_over_cap_returns_unavailable_not_clean_pass():
+    from agent_bom.gateway_server import _DRIFT_INCIDENT_LOOKUP_CAP, _open_drift_violates_tool
+
+    _seed_many_open_incidents(_DRIFT_INCIDENT_LOOKUP_CAP + 5)
+    result = _open_drift_violates_tool("default", "finance", "run_shell")
+    assert result.unavailable is True
+    assert result.violates is False
+    assert str(_DRIFT_INCIDENT_LOOKUP_CAP) in result.reason
+
+
+def test_lookup_under_cap_returns_clean_pass():
+    from agent_bom.gateway_server import _DRIFT_INCIDENT_LOOKUP_CAP, _open_drift_violates_tool
+
+    _seed_many_open_incidents(_DRIFT_INCIDENT_LOOKUP_CAP - 5)
+    result = _open_drift_violates_tool("default", "finance", "run_shell")
+    assert result.unavailable is False
+    assert result.violates is False
+
+
+def test_secured_enforce_fails_closed_when_open_incidents_exceed_cap():
+    from agent_bom.gateway_server import _DRIFT_INCIDENT_LOOKUP_CAP
+
+    _identity_id, token = _managed_identity(blueprint_id="finance")
+    _seed_many_open_incidents(_DRIFT_INCIDENT_LOOKUP_CAP + 5)
+    client = TestClient(create_gateway_app(_settings("enforce", listener_host="0.0.0.0")))
+    resp = client.post(
+        "/mcp/filesystem",
+        headers={"Authorization": "Bearer gateway-transport-token"},
+        json=_call(token=token, tool="run_shell"),
+    )
+    assert _is_blocked(resp), resp.text
+    assert resp.json()["error"]["data"]["policy_source"] == "drift_enforcement"
+
+
+def test_observable_enforce_audits_partial_coverage_when_over_cap():
+    from agent_bom.gateway_server import _DRIFT_INCIDENT_LOOKUP_CAP
+
+    _identity_id, token = _managed_identity(blueprint_id="finance")
+    _seed_many_open_incidents(_DRIFT_INCIDENT_LOOKUP_CAP + 5)
+    audit: list[dict[str, Any]] = []
+    client = TestClient(create_gateway_app(_settings("enforce", audit=audit)))
+    resp = client.post("/mcp/filesystem", json=_call(token=token, tool="run_shell"))
+    # Loopback/observable enforce does not block, but the partial-coverage gap is
+    # surfaced as an explicit audit signal rather than a silent clean pass.
+    assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
+    assert any(e.get("action") == "gateway.drift_binding_unavailable" for e in audit)

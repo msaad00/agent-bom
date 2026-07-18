@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
-from agent_bom.api.audit_log import AuditEntry, _AuditChainCheckpoint, _verify_audit_chain_with_checkpoint
+from agent_bom.api.audit_log import (
+    _MAX_APPEND_RETRIES,
+    AuditEntry,
+    _AuditChainCheckpoint,
+    _verify_audit_chain_with_checkpoint,
+)
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.baseline import TrendPoint
 
@@ -17,6 +23,23 @@ from .postgres_common import (
     _tenant_connection,
     bypass_tenant_rls,
 )
+
+logger = logging.getLogger(__name__)
+
+# Name of the per-tenant chain-head uniqueness guard. A concurrent fork violates
+# it (SQLSTATE 23505), which `append` catches to re-read the head and re-link.
+_AUDIT_FORK_GUARD_INDEX = "audit_log_team_prevsig_uniq"
+
+
+def _is_chain_fork_conflict(exc: Exception) -> bool:
+    """True when ``exc`` is a unique violation on the chain fork-guard index."""
+    if getattr(exc, "sqlstate", None) != "23505":
+        return False
+    diag = getattr(exc, "diag", None)
+    constraint = getattr(diag, "constraint_name", None) if diag else None
+    # entry_id is a fresh uuid4 per entry, so an unlabeled unique violation on
+    # this INSERT path is a fork race on (team_id, prev_signature).
+    return constraint in (None, "", _AUDIT_FORK_GUARD_INDEX)
 
 
 class PostgresAuditLog:
@@ -72,7 +95,36 @@ class PostgresAuditLog:
             # bypass_tenant_rls maintenance context.
             _ensure_tenant_rls(conn, "audit_chain_checkpoint", "tenant_id")
             conn.commit()
+        self._ensure_fork_guard_index()
         self._hydrate_checkpoints()
+
+    def _ensure_fork_guard_index(self) -> None:
+        """Serialize the hash chain at the DB via per-tenant head uniqueness.
+
+        ``UNIQUE (team_id, prev_signature)`` lets at most one row link to any
+        given predecessor (and exactly one genesis, ``prev_signature = ''``, per
+        tenant — the column is ``NOT NULL DEFAULT ''`` so no NULL defeats it), so
+        two writers across threadpool workers or ``uvicorn --workers N`` processes
+        cannot fork the chain: the loser's INSERT is rejected and retried against
+        the advanced head. Built defensively — pre-existing forks in older data
+        would fail index creation, so we log rather than refuse to start; appends
+        still retry, but forks cannot be rejected until the data is reconciled.
+        """
+        try:
+            with self._pool.connection() as conn:
+                conn.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_AUDIT_FORK_GUARD_INDEX} "
+                    "ON audit_log (team_id, prev_signature)"
+                )
+                conn.commit()
+        except Exception:
+            logger.warning(
+                "Could not create audit_log fork-guard unique index %s "
+                "(pre-existing chain forks?); appends will retry but forks cannot "
+                "be rejected at the DB until the existing rows are reconciled",
+                _AUDIT_FORK_GUARD_INDEX,
+                exc_info=True,
+            )
 
     def _hydrate_checkpoints(self) -> None:
         # Enumerating DISTINCT team_id spans every tenant, which FORCE ROW LEVEL
@@ -175,28 +227,42 @@ class PostgresAuditLog:
 
     def append(self, entry: AuditEntry) -> None:
         tenant_id = str((entry.details or {}).get("tenant_id") or _current_tenant.get())
-        prev_sig = self._latest_signature_for_tenant(tenant_id)
-        entry.prev_signature = prev_sig
-        entry.sign()
-        with _tenant_connection(self._pool) as conn:
-            conn.execute(
-                """INSERT INTO audit_log
-                   (entry_id, timestamp, action, actor, resource, team_id, details, prev_signature, hmac_signature)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (
-                    entry.entry_id,
-                    entry.timestamp,
-                    entry.action,
-                    entry.actor,
-                    entry.resource,
-                    tenant_id,
-                    json.dumps(entry.details),
-                    entry.prev_signature,
-                    entry.hmac_signature,
-                ),
-            )
-            self._upsert_checkpoint(conn, tenant_id, entry.hmac_signature)
-            conn.commit()
+        # The head read and the INSERT run on separate connections, so nothing
+        # serializes them in-process — and across `uvicorn --workers N` processes
+        # nothing could. The DB-level UNIQUE (team_id, prev_signature) rejects a
+        # fork: a writer that lost the race re-reads the advanced head, re-signs,
+        # and re-inserts. Both statements share one transaction so a rejected
+        # INSERT rolls back its checkpoint bump too.
+        attempts = 0
+        while True:
+            attempts += 1
+            entry.prev_signature = self._latest_signature_for_tenant(tenant_id)
+            entry.sign()
+            try:
+                with _tenant_connection(self._pool) as conn:
+                    conn.execute(
+                        """INSERT INTO audit_log
+                           (entry_id, timestamp, action, actor, resource, team_id, details, prev_signature, hmac_signature)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                        (
+                            entry.entry_id,
+                            entry.timestamp,
+                            entry.action,
+                            entry.actor,
+                            entry.resource,
+                            tenant_id,
+                            json.dumps(entry.details),
+                            entry.prev_signature,
+                            entry.hmac_signature,
+                        ),
+                    )
+                    self._upsert_checkpoint(conn, tenant_id, entry.hmac_signature)
+                    conn.commit()
+            except Exception as exc:
+                if _is_chain_fork_conflict(exc) and attempts <= _MAX_APPEND_RETRIES:
+                    continue
+                raise
+            break
         self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
 
     def list_entries(

@@ -1551,13 +1551,20 @@ def print_remediation_plan(report: AIBOMReport) -> None:
             if tags:
                 _console().print(f"     [dim]mitigates:[/dim]  {' '.join(tags)}")
 
-            # Risk narrative — what happens if NOT fixed
+            # Risk narrative — what happens if NOT fixed. Suppress the
+            # credential-reach clause entirely when the fix frees no
+            # credentials, so it never reads "can reach no credentials".
+            via = f" via {', '.join(item['agents'][:2])}" if item["agents"] else ""
+            through = f" through {', '.join(item['tools'][:3])}" if item["tools"] else ""
+            if item["creds"]:
+                reach = f"can reach [yellow]{', '.join(item['creds'][:2])}[/yellow]{via}{through}"
+            elif item["agents"] or item["tools"]:
+                reach = f"widens the attack surface{via}{through}"
+            else:
+                reach = "widens the attack surface on this dependency"
             _console().print(
                 f"     [dim red]⚠ if not fixed:[/dim red] "
-                f"[dim]attacker exploiting {item['vulns'][0]} can reach "
-                f"{'[yellow]' + ', '.join(item['creds'][:2]) + '[/yellow]' if item['creds'] else 'no credentials'} "
-                f"via {', '.join(item['agents'][:2])}"
-                f"{' through ' + ', '.join(item['tools'][:3]) if item['tools'] else ''}[/dim]"
+                f"[dim]attacker exploiting {item['vulns'][0]} {reach}[/dim]"
             )
             _console().print()
 

@@ -431,6 +431,171 @@ def test_compliance_summary_with_scan_counts_evaluated_controls():
     _clear_jobs()
 
 
+def _cis_benchmark_result(checks: list[dict], *, cloud_key: str = "cis_benchmark") -> dict:
+    """Build a result_extra dict carrying a serialized CIS benchmark blob.
+
+    ``cloud_key`` selects the provider slot used by the JSON output layer
+    (``cis_benchmark`` for AWS, ``azure_cis_benchmark`` for Azure, etc.) —
+    the exact keys /v1/cis/checks reads via build_cis_benchmark_check_rows.
+    """
+    return {"scan_id": "cis-scan", cloud_key: {"checks": checks}}
+
+
+def test_compliance_surfaces_cis_foundations_benchmark_line():
+    """A cloud account with CIS Foundations Benchmark PASS/FAIL/ERROR checks must
+    surface a dedicated benchmark-backed CIS-Foundations line with an honest
+    pass/(pass+fail+error) denominator — the scorecard previously ignored
+    ``cis_benchmark_data`` entirely, so a failing CIS account read green."""
+    _clear_jobs()
+    _add_done_job(
+        [],
+        result_extra=_cis_benchmark_result(
+            [
+                {"check_id": "2.1.1", "title": "S3 SSE", "status": "PASS", "severity": "high"},
+                {"check_id": "2.1.2", "title": "S3 public", "status": "FAIL", "severity": "high"},
+                {"check_id": "1.4", "title": "Root MFA", "status": "ERROR", "severity": "critical"},
+                {"check_id": "1.5", "title": "Manual", "status": "NOT_APPLICABLE", "severity": "low"},
+            ]
+        ),
+    )
+    client = TestClient(app)
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    line = data["cis_foundations_benchmark"]
+    assert line["framework_key"] == "cis_foundations_benchmark"
+    assert line["representation"] == "benchmark"
+    # evaluated = pass + fail + error (NOT not_applicable); score = pass/evaluated.
+    assert line["summary"] == {
+        "pass": 1,
+        "fail": 1,
+        "error": 1,
+        "not_applicable": 1,
+        "evaluated": 3,
+        "score": 33.3,
+    }
+    assert line["status"] == "fail"
+    # ERROR is a distinct bucket — not folded into pass, not folded into fail.
+    assert line["summary"]["error"] == 1
+    assert line["summary"]["pass"] == 1
+    assert line["summary"]["fail"] == 1
+    # Summary counters mirror the benchmark line.
+    assert data["summary"]["cis_foundations_pass"] == 1
+    assert data["summary"]["cis_foundations_fail"] == 1
+    assert data["summary"]["cis_foundations_error"] == 1
+    assert data["summary"]["cis_foundations_evaluated"] == 3
+    _clear_jobs()
+
+
+def test_failing_cis_account_is_not_green():
+    """The core defect: a cloud account failing CIS controls (and with NO
+    CVE-derived findings) previously read overall_status=no_data / score 0 as if
+    nothing were wrong. It must now read fail."""
+    _clear_jobs()
+    _add_done_job(
+        [],
+        result_extra=_cis_benchmark_result(
+            [
+                {"check_id": "2.1.2", "title": "S3 public", "status": "FAIL", "severity": "high"},
+                {"check_id": "2.1.1", "title": "S3 SSE", "status": "PASS", "severity": "high"},
+            ]
+        ),
+    )
+    client = TestClient(app)
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    assert data["overall_status"] == "fail"
+    assert data["overall_score"] < 100.0
+    assert data["cis_foundations_benchmark"]["status"] == "fail"
+    _clear_jobs()
+
+
+def test_cis_foundations_error_only_is_not_a_clean_pass():
+    """ERROR (permission-denied / unevaluable) must never read as a clean pass:
+    an account whose evaluable checks pass but has an unevaluable control is
+    warning, not pass, and error is excluded from the numerator."""
+    _clear_jobs()
+    _add_done_job(
+        [],
+        result_extra=_cis_benchmark_result(
+            [
+                {"check_id": "2.1.1", "title": "S3 SSE", "status": "PASS", "severity": "high"},
+                {"check_id": "1.4", "title": "Root MFA", "status": "ERROR", "severity": "critical"},
+            ]
+        ),
+    )
+    client = TestClient(app)
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    line = data["cis_foundations_benchmark"]
+    assert line["summary"]["error"] == 1
+    assert line["summary"]["fail"] == 0
+    # score = pass / (pass + fail + error) = 1/2 = 50.0 — unevaluable ≠ pass.
+    assert line["summary"]["score"] == 50.0
+    assert line["status"] == "warning"
+    assert data["overall_status"] == "warning"
+    _clear_jobs()
+
+
+def test_cis_foundations_does_not_double_count_cis_controls_v8():
+    """The CIS Foundations Benchmark line (CIS-2.1.1 taxonomy) and the CVE-driven
+    CIS Controls v8 line (safeguard CIS-02.1 taxonomy) are distinct surfaces —
+    neither counts the other's data, so nothing is conflated."""
+    _clear_jobs()
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2025-7777",
+                "severity": "high",
+                "package": "openssl",
+                "cis_tags": ["CIS-07.1"],  # Controls v8 safeguard
+            }
+        ],
+        result_extra=_cis_benchmark_result([{"check_id": "2.1.2", "title": "S3 public", "status": "FAIL", "severity": "high"}]),
+    )
+    client = TestClient(app)
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    # Foundations line reflects the benchmark FAIL only (1 evaluated check).
+    assert data["cis_foundations_benchmark"]["summary"]["fail"] == 1
+    assert data["cis_foundations_benchmark"]["summary"]["evaluated"] == 1
+
+    # Controls v8 line (cis_controls, cis_tags) reflects the CVE safeguard only —
+    # the benchmark FAIL never appears there (different taxonomy / no shared id).
+    cis_controls = data["cis_controls"]
+    failed_v8 = [c for c in cis_controls if c["status"] == "fail"]
+    assert all(c["control_id"] == "CIS-07.1" for c in failed_v8)
+    assert all(not c["control_id"].startswith("CIS-2.1") for c in cis_controls)
+    _clear_jobs()
+
+
+def test_cis_foundations_reconciles_with_cis_checks():
+    """The benchmark-backed scorecard line's counts must reconcile with
+    /v1/cis/checks — both derive from the same build_cis_benchmark_check_rows
+    data with the same latest-per-(cloud,check_id) dedup."""
+    _clear_jobs()
+    checks = [
+        {"check_id": "2.1.1", "title": "a", "status": "PASS", "severity": "high"},
+        {"check_id": "2.1.2", "title": "b", "status": "FAIL", "severity": "high"},
+        {"check_id": "2.1.3", "title": "c", "status": "FAIL", "severity": "medium"},
+        {"check_id": "1.4", "title": "d", "status": "ERROR", "severity": "critical"},
+    ]
+    _add_done_job([], result_extra=_cis_benchmark_result(checks))
+    client = TestClient(app)
+
+    scorecard = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()["cis_foundations_benchmark"]["summary"]
+    rows = client.get("/v1/cis/checks?limit=500", headers=_AUTH_HEADERS).json()["checks"]
+
+    tally = {"pass": 0, "fail": 0, "error": 0}
+    for row in rows:
+        st = str(row["status"]).lower()
+        if st in tally:
+            tally[st] += 1
+    assert scorecard["pass"] == tally["pass"]
+    assert scorecard["fail"] == tally["fail"]
+    assert scorecard["error"] == tally["error"]
+    _clear_jobs()
+
+
 def test_posture_has_proxy_flips_on_proxy_alert_ingest():
     """audit P1-B: ingesting proxy alerts via /v1/proxy/audit must flip
     the ``has_proxy`` posture flag on /v1/posture/counts.

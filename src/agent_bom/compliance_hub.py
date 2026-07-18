@@ -131,7 +131,13 @@ _SOURCE_BASELINE: dict[FindingSource, tuple[str, ...]] = {
         FRAMEWORK_ATLAS,
     ),
     FindingSource.CONTAINER: _CONTAINER_FRAMEWORKS,
-    FindingSource.CLOUD_CIS: _CLOUD_POSTURE_FRAMEWORKS,
+    # A CIS Foundations Benchmark check (CIS-2.1.1 …) authoritatively asserts the
+    # CIS control it failed and nothing more. There is no authoritative
+    # CIS-Foundations → SOC2/ISO-27001/NIST-800-53 crosswalk in the repo, so the
+    # prior wholesale fan-out (_CLOUD_POSTURE_FRAMEWORKS) over-claimed
+    # cross-framework coverage. Assert only CIS; a specific SOC2/ISO/NIST claim
+    # must wait on an authoritative crosswalk (tracked follow-up).
+    FindingSource.CLOUD_CIS: (FRAMEWORK_CIS,),
     FindingSource.CLOUD_SECURITY: tuple(framework for framework in _CLOUD_POSTURE_FRAMEWORKS if framework != FRAMEWORK_CIS),
     FindingSource.SBOM: (
         FRAMEWORK_NIST_CSF,
@@ -207,7 +213,12 @@ def select_frameworks(
 
     selected.update(_SOURCE_BASELINE.get(source, ()))
 
-    if asset_type and not (source == FindingSource.CLOUD_SECURITY and asset_type == "cloud_resource"):
+    # Cloud-posture sources already carry an authoritative source baseline; the
+    # broad cloud_resource asset addition (_CLOUD_POSTURE_FRAMEWORKS) would
+    # re-introduce the SOC2/ISO/NIST-800-53 over-claim they were narrowed away
+    # from, so skip it for those sources.
+    _cloud_posture_sources = {FindingSource.CLOUD_SECURITY, FindingSource.CLOUD_CIS}
+    if asset_type and not (source in _cloud_posture_sources and asset_type == "cloud_resource"):
         selected.update(_ASSET_TYPE_ADDITIONS.get(asset_type, ()))
 
     if finding_type:

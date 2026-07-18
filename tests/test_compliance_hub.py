@@ -75,11 +75,14 @@ _AI_FRAMEWORK_SET = {
             "container",
             {FRAMEWORK_CIS, FRAMEWORK_NIST_CSF, FRAMEWORK_PCI_DSS, FRAMEWORK_SOC2},
         ),
-        # Cloud CIS posture → CIS + SOC2 + ISO + NIST 800-53
+        # Cloud CIS posture → CIS only. A CIS Foundations Benchmark failure
+        # authoritatively asserts the CIS control it failed; there is no
+        # authoritative CIS-Foundations → SOC2/ISO/NIST crosswalk in the repo, so
+        # fanning out to those frameworks over-claims (narrowed).
         (
             FindingSource.CLOUD_CIS,
             "cloud_resource",
-            {FRAMEWORK_CIS, FRAMEWORK_SOC2, FRAMEWORK_ISO_27001, FRAMEWORK_NIST_800_53},
+            {FRAMEWORK_CIS},
         ),
         # SBOM / supply chain → NIST CSF + SOC2 + PCI
         (FindingSource.SBOM, "package", {FRAMEWORK_NIST_CSF, FRAMEWORK_SOC2, FRAMEWORK_PCI_DSS}),
@@ -153,6 +156,18 @@ def test_injection_finding_pulls_in_ai_frameworks_even_from_neutral_source() -> 
 def test_cis_fail_pulls_in_cis_even_when_source_does_not() -> None:
     selected = set(select_frameworks(FindingSource.SAST, finding_type=FindingType.CIS_FAIL))
     assert FRAMEWORK_CIS in selected
+
+
+def test_cloud_cis_posture_is_narrowed_to_cis_only() -> None:
+    """A CIS Foundations Benchmark finding must NOT claim SOC2 / ISO 27001 /
+    NIST 800-53 — there is no authoritative CIS-Foundations → those crosswalk in
+    the repo, so the prior wholesale fan-out over-claimed cross-framework
+    coverage. The honest floor is the CIS framework the check actually failed."""
+    selected = set(select_frameworks(FindingSource.CLOUD_CIS, asset_type="cloud_resource"))
+    assert selected == {FRAMEWORK_CIS}, f"CLOUD_CIS should assert only CIS; got {sorted(selected)}"
+    assert FRAMEWORK_SOC2 not in selected
+    assert FRAMEWORK_ISO_27001 not in selected
+    assert FRAMEWORK_NIST_800_53 not in selected
 
 
 # ─── External imports — auto-detect / catch-all ─────────────────────────────

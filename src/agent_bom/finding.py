@@ -842,6 +842,16 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
             "benchmark": "Databricks Security Best Practices" if is_vendor_best_practice else "CIS",
         },
     )
+    # Populate applicable_frameworks via the hub selection table, consistent with
+    # every other finding generator (blast_radius/malicious/auth). Previously this
+    # converter set only compliance_tags, leaving applicable_frameworks empty so
+    # the finding was invisible in the hub posture aggregation. CIS providers
+    # resolve to the CIS framework only (no fabricated SOC2/ISO/NIST crosswalk);
+    # vendor best-practice providers keep their source baseline.
+    from agent_bom.compliance_hub import apply_hub_classification
+
+    apply_hub_classification(finding)
+
     # Reference pattern for the advisory-remediation foundation: attach the
     # structured fix + least-privilege-to-apply + runbook artifact. Advisory
     # only — agent-bom recommends, the user applies.

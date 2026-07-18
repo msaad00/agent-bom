@@ -12,6 +12,7 @@ from agent_bom.graph.container import (
     ENTITY_LEGEND,
     RELATIONSHIP_LEGEND,
     AttackPath,
+    Campaign,
     GraphFilterOptions,
     InteractionRisk,
     LegendEntry,
@@ -85,6 +86,7 @@ __all__ = [
     # Container
     "UnifiedGraph",
     "AttackPath",
+    "Campaign",
     "InteractionRisk",
     "TechniqueMapping",
     "technique_mappings_from_json",

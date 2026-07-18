@@ -215,6 +215,9 @@ class MockConnection:
                     elif "tenant_id = %s" in sql_lower:
                         rows = [r for r in rows if r[3] == params[0]]
                 cursor.rows = [(r[-1],) for r in rows]
+            elif "from fleet_agents" in sql_lower and "select data" in sql_lower:
+                rows = list(self._store.get("fleet_agents", {}).values())
+                cursor.rows = [(r[-1],) for r in rows]
             elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at, triggered_by" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
                 summary_rows = []

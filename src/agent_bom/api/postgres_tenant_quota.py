@@ -18,7 +18,8 @@ class PostgresTenantQuotaStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "tenant_quotas")
+            if not ensure_postgres_schema_version(conn, "tenant_quotas"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS tenant_quota_overrides (
                     tenant_id TEXT PRIMARY KEY,

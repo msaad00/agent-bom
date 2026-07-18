@@ -539,7 +539,11 @@ class PostgresRateLimitStore:
         self._init_tables()
 
     def _init_tables(self) -> None:
+        from agent_bom.api.storage_schema import ensure_postgres_schema_version
+
         with self._pool.connection() as conn:
+            if not ensure_postgres_schema_version(conn, "rate_limits"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS api_rate_limit_hits (
                     bucket_key TEXT NOT NULL,

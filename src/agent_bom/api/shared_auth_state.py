@@ -240,10 +240,10 @@ class PostgresAuthState:
     """Postgres-backed backend. Cluster-safe across replicas.
 
     Each method opens a short-lived connection from the existing pool
-    in :mod:`agent_bom.api.postgres_common`. Schema is created lazily on
-    first use, and surfaces no errors back to the caller — failures
-    degrade to the in-memory fallback (with a one-shot warning per
-    process) rather than blocking the auth loop.
+    in :mod:`agent_bom.api.postgres_common`. Migrated deployments validate
+    their schema marker on first use; isolated development pools retain the
+    explicit bootstrap path. Failures degrade to the in-memory fallback (with
+    a one-shot warning per process) rather than blocking the auth loop.
     """
 
     name = "postgres"
@@ -258,12 +258,14 @@ class PostgresAuthState:
             return True
         try:
             from agent_bom.api.postgres_common import _get_pool
+            from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
             pool = _get_pool()
             with pool.connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SCHEMA_SQL)
-                conn.commit()
+                if ensure_postgres_schema_version(conn, "shared_auth_state"):
+                    with conn.cursor() as cur:
+                        cur.execute(_SCHEMA_SQL)
+                    conn.commit()
             self._schema_ready = True
             return True
         except Exception as exc:  # noqa: BLE001

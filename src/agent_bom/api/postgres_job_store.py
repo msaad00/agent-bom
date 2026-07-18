@@ -34,7 +34,8 @@ class PostgresJobStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "scan_jobs")
+            if not ensure_postgres_schema_version(conn, "scan_jobs"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_jobs (
                     job_id TEXT PRIMARY KEY,

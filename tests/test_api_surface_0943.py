@@ -123,6 +123,11 @@ def test_scan_id_filter_still_returns_that_scan(client_with_scans) -> None:
 
 
 def test_findings_fixture_ignores_and_restores_unrelated_bulk_state() -> None:
+    # Hermetic warm phase: the assertions below read through the global job
+    # store and findings-count cache, so leftover state from tests scheduled
+    # earlier on any xdist worker must not leak in.
+    reset_findings_count_cache()
+    set_job_store(InMemoryJobStore())
     unrelated_store = InMemoryComplianceHubStore()
     set_compliance_hub_store(unrelated_store)
     unrelated = [{"id": "unrelated:bulk", "severity": "low", "origin": "bulk_ingest"}]

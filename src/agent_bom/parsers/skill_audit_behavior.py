@@ -930,8 +930,8 @@ def _collect_js_ts_call_names(block: str, *, language_hint: str) -> set[str]:
     analyze_js_ts_block: Any | None = None
     ast_unavailable_error: type[Exception] = RuntimeError
     try:
-        from agent_bom.js_ts_ast import JSTSAstUnavailableError
-        from agent_bom.js_ts_ast import analyze_js_ts_block as analyze_js_ts_block_impl
+        from agent_bom.ast.js_ts import JSTSAstUnavailableError
+        from agent_bom.ast.js_ts import analyze_js_ts_block as analyze_js_ts_block_impl
 
         analyze_js_ts_block = analyze_js_ts_block_impl
         ast_unavailable_error = JSTSAstUnavailableError

@@ -762,6 +762,94 @@ def test_nist_catalog_line_no_data_when_nothing_mapped():
     _clear_jobs()
 
 
+# ─── PR4: NIST 800-53 catalog drill endpoint (surface lock-in) ───────────────
+
+
+def test_nist_800_53_drill_reconciles_with_compliance_line():
+    """GET /v1/compliance/nist-800-53 returns the SAME summary as the
+    /v1/compliance nist_800_53_catalog line (one source of truth) and lists the
+    evaluated controls with vendor-asserted provenance + ISO-by-id attribution."""
+    _clear_jobs()
+    _nist_catalog_scenario()
+    client = TestClient(app)
+    line = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()["nist_800_53_catalog"]
+    drill = client.get("/v1/compliance/nist-800-53", headers=_AUTH_HEADERS).json()
+
+    # Reconciliation: the drill's headline numbers equal the aggregate line's.
+    assert drill["framework"] == "nist-800-53"
+    assert drill["framework_key"] == "nist_800_53_catalog"
+    assert drill["vendor_asserted"] is True
+    assert drill["summary"] == line["summary"]
+    assert drill["score"] == line["score"]
+    assert drill["status"] == line["status"]
+
+    by_id = {c["control_id"]: c for c in drill["controls"]}
+    assert by_id["SI-10"]["status"] == "fail"
+    assert by_id["SC-28"]["status"] == "pass"
+    assert by_id["AC-6"]["status"] == "error"
+    # Vendor-asserted evidencing checks ride the drill.
+    assert by_id["SI-10"]["evidencing_checks"]
+    # ISO by ID only, derived, no title text.
+    assert by_id["AC-2"]["iso_27001_derived"] == ["A.5.16", "A.5.18", "A.8.2"]
+    assert all(i.startswith("A.") for i in drill["iso_27001_derived"]["controls"])
+
+    # Default drill does NOT dump the ~1000-row not_evaluated tower (scale).
+    assert all(c["status"] in ("pass", "fail", "warning", "error") for c in drill["controls"])
+
+
+def test_nist_800_53_drill_family_rollup_reconciles():
+    """The family rollup partitions the full catalog and its evaluated counts sum
+    back to the line's evaluated total (scale-aware navigation, honest counts)."""
+    _clear_jobs()
+    _nist_catalog_scenario()
+    client = TestClient(app)
+    drill = client.get("/v1/compliance/nist-800-53", headers=_AUTH_HEADERS).json()
+
+    families = drill["families"]
+    assert families, "family rollup must be present for scale-aware UI grouping"
+    # Every evaluated control belongs to exactly one family; totals reconcile.
+    assert sum(f["evaluated"] for f in families) == drill["summary"]["evaluated"]
+    assert sum(f["total"] for f in families) == drill["summary"]["catalog_size"]
+    assert sum(f["fail"] for f in families) == drill["summary"]["fail"]
+    # AC family carries the AC-2 / AC-3 / AC-6 evaluated controls.
+    ac = next(f for f in families if f["family"] == "AC")
+    assert ac["evaluated"] >= 3
+
+
+def test_nist_800_53_drill_status_filter_and_not_evaluated_opt_in():
+    """?status= filters the control list; ?include_not_evaluated=true opts into
+    the full catalog listing (still one honest set of counts)."""
+    _clear_jobs()
+    _nist_catalog_scenario()
+    client = TestClient(app)
+
+    only_fail = client.get("/v1/compliance/nist-800-53?status=fail", headers=_AUTH_HEADERS).json()
+    assert only_fail["controls"]
+    assert all(c["status"] == "fail" for c in only_fail["controls"])
+    # Summary is unchanged by the display filter (counts are the source of truth).
+    assert only_fail["summary"]["pass"] == 1
+
+    full = client.get("/v1/compliance/nist-800-53?include_not_evaluated=true", headers=_AUTH_HEADERS).json()
+    statuses = {c["control_id"]: c["status"] for c in full["controls"]}
+    assert len(full["controls"]) == full["summary"]["catalog_size"]
+    # A curated-but-unrun control appears as not_evaluated (never a silent pass).
+    not_eval = [cid for cid, s in statuses.items() if s == "not_evaluated"]
+    assert len(not_eval) == full["summary"]["not_evaluated"]
+
+
+def test_nist_800_53_drill_no_data_is_honest():
+    """A completed scan with no NIST-mapped evidence drills to no_data, never a
+    fabricated 100% pass."""
+    _clear_jobs()
+    _add_done_job([{"vulnerability_id": "CVE-x", "severity": "high", "owasp_tags": ["LLM05"]}])
+    client = TestClient(app)
+    drill = client.get("/v1/compliance/nist-800-53", headers=_AUTH_HEADERS).json()
+    assert drill["status"] == "no_data"
+    assert drill["score"] == 0.0
+    assert drill["summary"]["evaluated"] == 0
+    _clear_jobs()
+
+
 def test_posture_has_proxy_flips_on_proxy_alert_ingest():
     """audit P1-B: ingesting proxy alerts via /v1/proxy/audit must flip
     the ``has_proxy`` posture flag on /v1/posture/counts.

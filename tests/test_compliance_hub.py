@@ -170,6 +170,22 @@ def test_cloud_cis_posture_is_narrowed_to_cis_only() -> None:
     assert FRAMEWORK_NIST_800_53 not in selected
 
 
+def test_cloud_security_best_practice_asserts_no_official_framework() -> None:
+    """A vendor security best-practice finding (FindingSource.CLOUD_SECURITY, e.g.
+    Databricks) must NOT claim SOC2 / ISO 27001 / NIST 800-53 specific-framework
+    coverage. These checks are vendor best practices, explicitly NOT official
+    CIS/SOC2/ISO/NIST controls, and there is no authoritative crosswalk in the
+    repo — so the honest floor is to assert no official framework at all. The
+    vendor-best-practice designation lives in the finding type / source / title,
+    not in applicable_frameworks (which holds only official framework slugs)."""
+    selected = set(select_frameworks(FindingSource.CLOUD_SECURITY, asset_type="cloud_resource"))
+    assert selected == set(), f"CLOUD_SECURITY best practices must assert no official framework; got {sorted(selected)}"
+    assert FRAMEWORK_SOC2 not in selected
+    assert FRAMEWORK_ISO_27001 not in selected
+    assert FRAMEWORK_NIST_800_53 not in selected
+    assert FRAMEWORK_CIS not in selected
+
+
 # ─── External imports — auto-detect / catch-all ─────────────────────────────
 
 

@@ -138,7 +138,16 @@ _SOURCE_BASELINE: dict[FindingSource, tuple[str, ...]] = {
     # cross-framework coverage. Assert only CIS; a specific SOC2/ISO/NIST claim
     # must wait on an authoritative crosswalk (tracked follow-up).
     FindingSource.CLOUD_CIS: (FRAMEWORK_CIS,),
-    FindingSource.CLOUD_SECURITY: tuple(framework for framework in _CLOUD_POSTURE_FRAMEWORKS if framework != FRAMEWORK_CIS),
+    # Vendor security best practices (e.g. Databricks) are explicitly NOT official
+    # CIS/SOC2/ISO/NIST controls, and there is no authoritative crosswalk from
+    # them to those frameworks in the repo. Claiming SOC2/ISO-27001/NIST-800-53
+    # coverage (the prior wholesale fan-out) over-claims, so assert no official
+    # framework — the vendor-best-practice designation lives in the finding type
+    # (CLOUD_BEST_PRACTICE_*), source, title, and evidence, not in
+    # applicable_frameworks (which holds only official framework slugs). A
+    # finding-shape refinement (e.g. CREDENTIAL_EXPOSURE) can still add frameworks
+    # on its own authority; the source baseline just asserts nothing.
+    FindingSource.CLOUD_SECURITY: (),
     FindingSource.SBOM: (
         FRAMEWORK_NIST_CSF,
         FRAMEWORK_SOC2,

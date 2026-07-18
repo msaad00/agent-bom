@@ -5700,6 +5700,17 @@ def _add_inventory_principal(
             )
         )
 
+    # AWS Access-Advisor right-sizing evidence: each service the principal is
+    # granted, carrying its last-used timestamp (or None = never used), as a
+    # HAS_PERMISSION grant edge the CIEM over-privilege emitter reads.
+    _add_access_advisor_grants(
+        graph,
+        principal,
+        principal_node_id=principal_node_id,
+        provider=provider,
+        data_sources=data_sources,
+    )
+
     # Direct access to the account's inventoried resources. The effective-
     # permissions overlay turns CAN_ACCESS (+ assume/trust chains) into the
     # HAS_PERMISSION transitive closure; admin-privileged principals reach
@@ -5715,6 +5726,67 @@ def _add_inventory_principal(
                     evidence={"source": "cloud-inventory", "basis": f"{privilege}_privilege"},
                 )
             )
+
+
+def _add_access_advisor_grants(
+    graph: UnifiedGraph,
+    principal: dict[str, Any],
+    *,
+    principal_node_id: str,
+    provider: str,
+    data_sources: list[str],
+) -> None:
+    """Bridge AWS Access-Advisor usage evidence into per-service grant edges.
+
+    Emits one ``HAS_PERMISSION`` edge per granted service, carrying the service's
+    Access-Advisor ``last_used_at`` (``None`` = never used) so the CIEM
+    over-privilege emitter can right-size. Only emitted when Access Advisor
+    returned complete evidence (``state == "available"``) — denied/pending/
+    unavailable evidence yields no edges, so absence is never read as unused.
+    """
+    evidence = principal.get("usage_evidence")
+    if not isinstance(evidence, dict) or str(evidence.get("state") or "") != "available":
+        return
+    records = evidence.get("records")
+    if not isinstance(records, list):
+        return
+    for record in records:
+        if not isinstance(record, dict) or str(record.get("state") or "") != "available":
+            continue
+        service = _clean_graph_part(record.get("service_namespace"))
+        if not service:
+            continue
+        last_accessed = record.get("last_accessed_at")
+        last_used = last_accessed if isinstance(last_accessed, str) and last_accessed.strip() else None
+        service_node_id = _identity_node_id(EntityType.RESOURCE, provider, f"{principal_node_id}:{service}")
+        graph.add_node(
+            UnifiedNode(
+                id=service_node_id,
+                entity_type=EntityType.RESOURCE,
+                label=service,
+                attributes={
+                    "cloud_provider": provider,
+                    "cloud_service": service,
+                    "kind": "iam_service_permission",
+                    "source": "access-advisor",
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+            )
+        )
+        graph.add_edge(
+            UnifiedEdge(
+                source=principal_node_id,
+                target=service_node_id,
+                relationship=RelationshipType.HAS_PERMISSION,
+                evidence={
+                    "source": "access-advisor",
+                    "access_advisor": True,
+                    "service_namespace": service,
+                    "last_used_at": last_used,
+                },
+            )
+        )
 
 
 def _add_inventory_group(

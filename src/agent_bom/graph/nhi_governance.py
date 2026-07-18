@@ -39,8 +39,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.api.credential_expiry import classify_credential
-from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
 from agent_bom.graph.container import UnifiedGraph
+from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 
 _OVERLAY_SOURCE = "nhi-governance"
@@ -350,7 +351,7 @@ def build_nhi_governance_findings(
             labels = [_target_label(graph, tid) for tid in v.unused_targets[:20]]
             findings.append(
                 Finding(
-                    finding_type=FindingType.CREDENTIAL_EXPOSURE,
+                    finding_type=FindingType.CIEM_OVER_PRIVILEGE,
                     source=FindingSource.MCP_SCAN,
                     asset=asset,
                     severity="medium" if v.is_privileged else "low",
@@ -407,6 +408,133 @@ def build_nhi_governance_findings(
             )
 
     return findings
+
+
+# Identity node types that carry AWS Access-Advisor service grants (cloud IAM
+# principals + agent-bom-issued/discovered NHIs). Access-Advisor evidence is
+# only ever attached to AWS roles/users today; the wider set future-proofs the
+# emitter without changing behaviour where no such edge exists.
+_CIEM_IDENTITY_TYPES = frozenset(
+    {
+        EntityType.ROLE,
+        EntityType.USER,
+        EntityType.SERVICE_ACCOUNT,
+        EntityType.SERVICE_PRINCIPAL,
+        EntityType.FEDERATED_IDENTITY,
+        EntityType.MANAGED_IDENTITY,
+    }
+)
+
+
+def _access_advisor_grants(graph: UnifiedGraph, node_id: str) -> dict[str, str | None]:
+    """Return {granted service target id: last_used_at} for Access-Advisor edges.
+
+    Only edges explicitly marked ``access_advisor`` are considered, so effective-
+    permission closure edges and other grants are never mistaken for observed
+    (or unobserved) usage. ``None`` marks a granted-but-never-used service.
+    """
+    grants: dict[str, str | None] = {}
+    for edge in graph.adjacency.get(node_id, []):
+        if edge.relationship not in _GRANT_RELS:
+            continue
+        evidence = edge.evidence
+        if not isinstance(evidence, Mapping) or not evidence.get("access_advisor"):
+            continue
+        raw = evidence.get("last_used_at")
+        last_used = str(raw) if isinstance(raw, str) and raw.strip() else None
+        if edge.target not in grants or (last_used and not grants[edge.target]):
+            grants[edge.target] = last_used
+    return grants
+
+
+def _is_privileged_identity(node: UnifiedNode) -> bool:
+    attrs = node.attributes
+    return bool(
+        attrs.get("escalates_to_admin")
+        or attrs.get("is_admin")
+        or attrs.get("can_escalate_privilege")
+        or str(attrs.get("privilege_level") or "").strip().lower() == "admin"
+    )
+
+
+def build_ciem_over_privilege_findings(graph: UnifiedGraph) -> list[Finding]:
+    """Emit CIEM over-privilege findings from AWS Access-Advisor usage evidence.
+
+    An identity granted a service it has never accessed (Access-Advisor reports
+    no ``last_authenticated``) is over-privileged and should be right-sized. Only
+    identities carrying Access-Advisor grant edges are evaluated, and only
+    never-used grants are flagged — where evidence is absent nothing is claimed
+    (honest counts). Never raises into the pipeline.
+    """
+    findings: list[Finding] = []
+    for node in graph.nodes.values():
+        if node.entity_type not in _CIEM_IDENTITY_TYPES:
+            continue
+        grants = _access_advisor_grants(graph, node.id)
+        if not grants:
+            continue
+        unused = sorted(tid for tid, last_used in grants.items() if not last_used)
+        if not unused:
+            continue
+        labels = [_target_label(graph, tid) for tid in unused]
+        granted_count = len(grants)
+        used_count = granted_count - len(unused)
+        privileged = _is_privileged_identity(node)
+        provider = str(node.attributes.get("cloud_provider") or "").strip() or None
+        identifier = str(node.attributes.get("principal_id") or node.attributes.get("identity_id") or node.id)
+        asset = Asset(name=node.label, asset_type="identity", identifier=identifier, location=provider)
+        shown = labels[:20]
+        overflow = "…" if len(labels) > 20 else "."
+        findings.append(
+            Finding(
+                finding_type=FindingType.CIEM_OVER_PRIVILEGE,
+                source=FindingSource.GRAPH_ANALYSIS,
+                asset=asset,
+                severity="medium" if privileged else "low",
+                title=f"Over-privileged identity: {node.label} has {len(unused)} unused permission(s)",
+                description=(
+                    f"Identity '{node.label}' is granted access to {granted_count} service(s) but AWS Access Advisor "
+                    f"shows it has used only {used_count}. Right-size by removing the never-used grants: "
+                    f"{', '.join(shown)}{overflow}"
+                ),
+                remediation_guidance=(
+                    "Remove or scope down the never-used service permissions to enforce least privilege. "
+                    "Confirm against a full Access-Advisor observation window before pruning."
+                ),
+                evidence={
+                    "ciem": "over_privilege",
+                    "analysis": "access_advisor_rightsizing",
+                    "identity_id": identifier,
+                    "cloud_provider": provider,
+                    "granted_count": granted_count,
+                    "used_count": used_count,
+                    "unused_permission_count": len(unused),
+                    "unused_permissions": shown,
+                    "privileged": privileged,
+                },
+                risk_score=round(min(10.0, 4.0 + (2.0 if privileged else 0.0) + min(len(unused), 4)), 2),
+                is_actionable=True,
+                impact_category="over_privilege",
+                id=stable_id("ciem_over_privilege", node.id, *unused),
+            )
+        )
+    return findings
+
+
+def build_ciem_over_privilege_findings_data(graph: UnifiedGraph) -> list[dict[str, Any]]:
+    """Serializable form stored on the report at the graph-build call site.
+
+    Mirrors the toxic-combination side-block: the report carries the dicts and
+    :meth:`AIBOMReport.to_findings` rehydrates them into the unified stream.
+    """
+    return [f.to_dict() for f in build_ciem_over_privilege_findings(graph)]
+
+
+def ciem_over_privilege_findings_from_data(data: list[dict[str, Any]] | None) -> list[Finding]:
+    """Rehydrate stored CIEM over-privilege dicts into Findings (preserves type)."""
+    from agent_bom.graph.toxic_findings import toxic_combination_findings_from_data
+
+    return toxic_combination_findings_from_data(data or [])
 
 
 def apply_nhi_governance(
@@ -602,7 +730,10 @@ __all__ = [
     "IdentityGovernance",
     "apply_nhi_governance",
     "apply_nhi_governance_with_findings",
+    "build_ciem_over_privilege_findings",
+    "build_ciem_over_privilege_findings_data",
     "build_nhi_governance_findings",
+    "ciem_over_privilege_findings_from_data",
     "describe_nhi_governance_posture",
     "describe_nhi_lifecycle_posture",
     "dormant_days",

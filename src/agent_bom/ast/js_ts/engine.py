@@ -2,9 +2,9 @@
 
 Layering
 --------
-* **This module** (``js_ts_ast``) is the *engine*: real syntax trees for
+* **This module** (``agent_bom.ast.js_ts.engine``) is the engine: real syntax trees for
   imports, call sites, and tool registrations.
-* **``ast_js_ts``** is the *facade* used by ``ast_analyzer`` — it calls
+* **``agent_bom.ast.js_ts.facade``** is used by ``ast_analyzer`` — it calls
   ``analyze_js_ts_block`` here when the parser runtime is available, and
   otherwise falls back to regex helpers.
 

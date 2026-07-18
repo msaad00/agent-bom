@@ -95,3 +95,20 @@ def test_legacy_modules_warn_deprecation():
     messages = [str(entry.message) for entry in caught if issubclass(entry.category, DeprecationWarning)]
     assert any("agent_bom.ast.js_ts" in message for message in messages)
     assert len(messages) >= 2
+
+
+def test_legacy_wildcard_imports_preserve_public_api():
+    facade_namespace: dict[str, object] = {}
+    engine_namespace: dict[str, object] = {}
+
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        exec("from agent_bom.ast_js_ts import *", facade_namespace)
+        exec("from agent_bom.js_ts_ast import *", engine_namespace)
+
+    assert callable(facade_namespace["scan_js_ts_file"])
+    assert callable(facade_namespace["build_js_ts_flow_findings"])
+    assert callable(facade_namespace["build_js_ts_dependency_symbol_reach"])
+    assert callable(engine_namespace["analyze_js_ts_block"])
+    assert "JSTSAstAnalysis" in engine_namespace
+    assert "JSImportRef" in engine_namespace

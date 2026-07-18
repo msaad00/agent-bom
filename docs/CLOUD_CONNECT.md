@@ -538,6 +538,48 @@ tags, stale-worker protection, and a tenant-scoped SQLite state store. The
 injected-SDK adapters consume that state; no production scheduler or Azure/GCP
 CLI surface invokes them yet.
 
+## 7c. Runtime/EDR workload evidence (optional, read-only, additive)
+
+Disk side-scan is agentless and point-in-time. When an operator *already* runs an
+EDR or runtime sensor, agent-bom can ingest that source's signals to **enrich**
+the same canonical workloads — process executions, IOC detections, network
+connections, file-integrity events, behavioural alerts. There is **no mandatory
+host agent**: agent-bom neither installs nor requires a sensor, and runtime
+evidence never replaces disk evidence.
+
+Ingest is hardened and fails closed (`runtime_workload_evidence.py`):
+
+- **Authenticated source.** Each source registers with a hashed shared secret;
+  a batch is accepted only after a constant-time secret check. Tenant, provider,
+  and account are taken from the authenticated source — a payload that claims a
+  different provider/account is rejected (confused-deputy guard).
+- **Freshness + provenance.** Every signal records `observed_at`, `source_id`,
+  and `source_kind`; a signal older than the freshness window is rejected, as is
+  one with no workload reference or an unparseable timestamp.
+- **Deduplicated + isolated.** Signals dedup on
+  `(tenant, provider, account, workload, dedup_key)`; that key leads every store
+  query and is part of the dedup identity, so two tenants can carry the same
+  logical signal without one dropping or leaking. Durable persistence has
+  in-memory, SQLite (restart- and cross-process-safe), and Postgres backends
+  (`runtime_workload_evidence_store.py`).
+- **Metadata only.** Raw block bytes, file contents, and secret values are
+  redacted at construction; only bounded metadata references are retained.
+
+**Honesty — additive, never a cleanliness claim.** Every evidence summary carries
+`clean_workload_assertion: false`. A workload with no matching runtime signal is
+marked `no_runtime_signal`, never "clean". Enrichment annotates workloads,
+findings, and the nodes an attack-path campaign already traverses; it never adds a
+graph edge, so reachability stays edge-derived and is never fabricated.
+
+Wired today: findings surfaced by `GET /v1/findings` (and the overview /
+compliance / observability reads that share the enricher) gain a
+`workload_runtime_evidence` field on workload-scoped rows once a tenant has
+signals; the JSON API export carries it automatically. A graph-join helper
+annotates CWPP workload nodes for a matching tenant. Not yet locked in (stage 4):
+a dedicated ingest REST endpoint, CLI/MCP ingest surface, a scheduler that pulls
+from sources, typed SARIF/report export fields, the live graph/campaign route
+invocation, and any UI panel. No credentialed live source smoke is claimed.
+
 ---
 
 ## 8. Why it scales and stays accurate

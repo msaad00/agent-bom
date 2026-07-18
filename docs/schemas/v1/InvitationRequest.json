@@ -1,0 +1,49 @@
+{
+  "additionalProperties": false,
+  "description": "Body for POST /v1/auth/invitations \u2014 admin provisions a NEW tenant.\n\nDeliberately never accepts a provider secret / credential: the endpoint\nMINTS a key, it does not take one (connect-once model, \u00a711). ``extra`` is\nforbidden so a stray secret field is rejected with 422 rather than ignored.",
+  "properties": {
+    "email": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Email"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
+    "organization": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Organization"
+    },
+    "role": {
+      "default": "admin",
+      "title": "Role",
+      "type": "string"
+    }
+  },
+  "title": "InvitationRequest",
+  "type": "object"
+}

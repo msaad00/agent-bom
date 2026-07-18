@@ -2361,6 +2361,35 @@ components:
       - packages
       title: IntelPackageMatchRequest
       type: object
+    InvitationRequest:
+      additionalProperties: false
+      description: "Body for POST /v1/auth/invitations \u2014 admin provisions a NEW\
+        \ tenant.\n\nDeliberately never accepts a provider secret / credential: the\
+        \ endpoint\nMINTS a key, it does not take one (connect-once model, \xA711).\
+        \ ``extra`` is\nforbidden so a stray secret field is rejected with 422 rather\
+        \ than ignored."
+      properties:
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        expires_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expires At
+        organization:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Organization
+        role:
+          default: admin
+          title: Role
+          type: string
+      title: InvitationRequest
+      type: object
     IssueStatusUpdateRequest:
       additionalProperties: false
       properties:
@@ -4650,6 +4679,45 @@ paths:
                 type: object
           description: Successful Response
       summary: Auth Debug
+      tags:
+      - enterprise
+  /v1/auth/invitations:
+    post:
+      description: "Provision a NEW tenant and mint its first scoped API key (admin-only).\n\
+        \nThe hosted self-serve replacement for ``scripts/deploy/mint_hosted_admin_key.py``:\n\
+        it creates a brand-new tenant (server-generated id \u2014 an invite can never\n\
+        target an existing tenant), mints one scoped API key for it through the\n\
+        same key-minting path every other route uses (no new crypto), and returns\n\
+        a one-time invite payload. The new tenant is bounded by the conservative\n\
+        default tenant quotas automatically (they apply to any tenant with no\noverrides);\
+        \ the effective bounds are echoed back for operator visibility.\n\nAdmin-only\
+        \ + ``auth.keys:write`` scope (enforced by the API middleware, the\nsame gate\
+        \ as ``POST /v1/auth/keys``). Never accepts a provider secret \u2014 it\n\
+        mints a credential, it does not take one (\xA711 connect-once model). The\
+        \ raw\nkey is returned exactly once in this response body and is never logged."
+      operationId: create_invitation_v1_auth_invitations_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Create Invitation V1 Auth Invitations Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Create Invitation
       tags:
       - enterprise
   /v1/auth/keys:

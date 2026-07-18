@@ -137,6 +137,11 @@
       "schema": "HealthResponse.json"
     },
     {
+      "doc": "Body for POST /v1/auth/invitations \u2014 admin provisions a NEW tenant.",
+      "name": "InvitationRequest",
+      "schema": "InvitationRequest.json"
+    },
+    {
       "doc": "",
       "name": "IssueStatusUpdateRequest",
       "schema": "IssueStatusUpdateRequest.json"

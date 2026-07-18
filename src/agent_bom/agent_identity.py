@@ -15,9 +15,14 @@ Two supported token formats:
   (``{token: agent_id}``).
 
 Policy keys:
-- ``jwks_uri``: URL to a JWKS endpoint for signature verification
+- ``jwks_uri``: URL to a JWKS endpoint for signature verification. When set
+  directly, ``expected_audience`` MUST also be set or JWT verification fails
+  closed — otherwise a validly-signed token minted for a different relying
+  party by the same IdP keys would be accepted (audience confusion).
 - ``oidc_issuer``: OIDC issuer base URL; ``jwks_uri`` auto-discovered via
-  ``{issuer}/.well-known/openid-configuration``
+  ``{issuer}/.well-known/openid-configuration`` (issuer is pinned)
+- ``expected_audience`` / ``expected_issuer``: pinned ``aud`` / ``iss`` claims;
+  ``expected_audience`` is required alongside a direct ``jwks_uri``
 - ``require_agent_identity``: if true, calls without a valid identity are
   blocked
 - ``agent_tokens``: opaque token → agent_id mapping
@@ -312,6 +317,16 @@ def resolve_agent_id(token: str, policy: dict) -> tuple[str, str | None]:
         jwks_uri = _resolve_jwks_uri(policy)
         if jwks_uri:
             expected_audience, expected_issuer = _resolve_expected_aud_iss(policy)
+            # Fail closed on audience confusion: a directly-configured jwks_uri
+            # MUST pin an audience. Without it, a validly-signed token minted by
+            # the same IdP keys for a DIFFERENT relying party would be accepted
+            # (verify_aud=False). A jwks_uri derived from oidc_issuer already pins
+            # the issuer, so this requirement is scoped to the direct config.
+            if policy.get("jwks_uri") and not expected_audience:
+                return (
+                    ANONYMOUS,
+                    "JWT audience pinning required: set expected_audience (and ideally expected_issuer) when configuring jwks_uri directly",
+                )
             verified, sig_err = _verify_jwt_signature(
                 token,
                 jwks_uri,

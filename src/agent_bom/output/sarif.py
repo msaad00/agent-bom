@@ -54,11 +54,10 @@ def _sarif_fingerprint_fields(
             "agent-bom/v1": hashlib.sha256(stable_input.encode()).hexdigest(),
         },
         "partialFingerprints": {
-            "primaryLocationLineHash": hashlib.sha256(
-                f"{artifact_uri}:{start_line}".encode()
-            ).hexdigest(),
+            "primaryLocationLineHash": hashlib.sha256(f"{artifact_uri}:{start_line}".encode()).hexdigest(),
         },
     }
+
 
 # GitHub Security tab uses security-severity (0.0–10.0) for granular sorting.
 # Ranges per docs.github.com: >9.0=critical, 7.0–8.9=high, 4.0–6.9=medium, 0.1–3.9=low
@@ -486,6 +485,27 @@ def _ensure_cve_sarif_rule(
     )
 
 
+def _ai_assessment_result_properties(assessment: Any) -> dict[str, Any]:
+    """Advisory AI-triage fields for a SARIF result, namespaced under agent-bom.
+
+    The triage assessment is advisory only (it never changes severity or
+    suppression); it is joined onto the finding it describes by ``finding_id``
+    so a SARIF consumer sees the classification inline instead of only in the
+    JSON side-block.
+    """
+    props: dict[str, Any] = {
+        "agent-bom:ai_classification": assessment.classification,
+        "agent-bom:ai_confidence": assessment.confidence,
+        "agent-bom:ai_false_positive_likelihood": assessment.false_positive_likelihood,
+    }
+    rationale = (assessment.rationale or "").strip()
+    if rationale:
+        props["agent-bom:ai_rationale"] = _sanitize_sarif_text("description", rationale, fallback="")
+    if assessment.suggested_controls:
+        props["agent-bom:ai_suggested_controls"] = list(assessment.suggested_controls)
+    return props
+
+
 def _cve_sarif_result(
     report: AIBOMReport,
     finding: Finding,
@@ -495,6 +515,7 @@ def _cve_sarif_result(
     level: str,
     pkg_name: str,
     pkg_version: str,
+    ai_assessment: Any = None,
 ) -> dict:
     exposure_path = exposure_path_for_report_finding(finding, rank=rank)
     affected = ", ".join(str(name) for name in finding.affected_agents)
@@ -580,6 +601,8 @@ def _cve_sarif_result(
     framework_props = _framework_tag_properties(finding)
     if framework_props:
         result_properties.update(framework_props)
+    if ai_assessment is not None:
+        result_properties.update(_ai_assessment_result_properties(ai_assessment))
     result["properties"] = result_properties
     suppressions = _suppression_entries(finding)
     if suppressions:
@@ -606,6 +629,11 @@ def to_sarif(
     rules: list[dict[str, Any]] = []
     results: list[dict[str, Any]] = []
     seen_rule_ids: set[str] = set()
+    # Advisory AI-triage assessments keyed by the finding_id they describe, so
+    # each is joined onto its finding's result instead of only the JSON block.
+    ai_assessments_by_finding: dict[str, Any] = {
+        assessment.finding_id: assessment for assessment in getattr(report, "ai_finding_assessments", []) or []
+    }
 
     # Stable-sort the CVE stream so exposure_path.rank never flips on score ties:
     # primary key is descending unified risk, tie-broken by finding id. This keeps
@@ -645,6 +673,7 @@ def to_sarif(
                 level=level,
                 pkg_name=pkg_name,
                 pkg_version=pkg_version,
+                ai_assessment=ai_assessments_by_finding.get(finding.id),
             )
         )
 

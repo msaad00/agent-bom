@@ -30,6 +30,7 @@ import logging
 import os
 import time
 import uuid
+from collections.abc import Mapping
 from functools import partial
 from pathlib import Path
 from typing import Annotated, Any
@@ -1526,25 +1527,17 @@ def _canonical_scope_filters(
 
 
 def _row_matches_scope(row: dict[str, Any], filters: dict[str, str]) -> bool:
-    """Return True when a finding row matches every active scope filter.
+    """Scope/domain predicate for a finding row.
 
-    The ``domain`` facet matches against the finding's overlapping coverage-lens
-    set, not just its primary domain, so ``domain=aspm`` returns SAST + secrets +
-    repo dependencies + IaC, and ``domain=vuln`` returns every CVE (mirroring the
-    overlapping coverage lanes on the overview).
+    Thin wrapper over :func:`agent_bom.finding_scope.row_matches_scope` — the one
+    source of truth shared with the hub store's scope-filtered keyset path so the
+    in-memory scan-finding filter and the bulk-ingest store filter can never
+    diverge on the overlapping-lens semantics. Retained under this name because
+    ``routes/cloud.py`` imports it.
     """
-    from agent_bom.finding_scope import domain_for_row, lenses_for_row
+    from agent_bom.finding_scope import row_matches_scope
 
-    for key in ("provider", "account_ref", "environment"):
-        wanted = filters.get(key)
-        if wanted is not None and str(row.get(key) or "").strip().lower() != wanted:
-            return False
-    wanted_domain = filters.get("domain")
-    if wanted_domain is not None:
-        lenses = lenses_for_row(row) or ({domain_for_row(row) or ""} if domain_for_row(row) else set())
-        if wanted_domain not in lenses:
-            return False
-    return True
+    return row_matches_scope(row, filters)
 
 
 def _resolve_bulk_findings_total(
@@ -1623,17 +1616,22 @@ def _merged_scan_bulk_page(
     offset: int,
     limit: int,
     since: str | None = None,
+    scope: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Merge pre-sorted scan findings with bulk hub pages without O(table) work.
 
     Streams two sorted sources with a two-pointer walk so deep ``offset`` does
     not require loading ``offset + limit`` bulk rows up front or re-sorting the
-    full combined window in memory.
+    full combined window in memory. When ``scope`` is set the bulk source is
+    refilled by keyset cursor (the scope-filtered store path is cursor-only, not
+    offset-addressable) so the merge still streams a bounded window per chunk.
     """
     scan_i = 0
     bulk_remote_offset = 0
     bulk_buf: list[dict[str, Any]] = []
     bulk_i = 0
+    bulk_cursor: str | None = None
+    bulk_exhausted = False
 
     # Only the current-state store path carries the ``since`` predicate; when a
     # window is active pass it through, otherwise stay byte-compatible with the
@@ -1641,7 +1639,30 @@ def _merged_scan_bulk_page(
     since_kwargs = {"since": since} if since else {}
 
     def _refill_bulk() -> bool:
-        nonlocal bulk_buf, bulk_i, bulk_remote_offset
+        nonlocal bulk_buf, bulk_i, bulk_remote_offset, bulk_cursor, bulk_exhausted
+        if scope:
+            if bulk_exhausted:
+                bulk_buf = []
+                bulk_i = 0
+                return False
+            bulk_result = bulk_list(
+                tenant_id,
+                limit=_BULK_MERGE_CHUNK,
+                sort=sort_key,
+                severity=severity,
+                scan_id=scan_id,
+                origin="bulk_ingest",
+                include_total=False,
+                cursor=bulk_cursor,
+                scope=dict(scope),
+                **since_kwargs,
+            )
+            bulk_buf = bulk_result[0]
+            bulk_cursor = bulk_result[2] if len(bulk_result) > 2 else None
+            if not bulk_cursor:
+                bulk_exhausted = True
+            bulk_i = 0
+            return bool(bulk_buf)
         bulk_result = bulk_list(
             tenant_id,
             limit=_BULK_MERGE_CHUNK,
@@ -1869,32 +1890,80 @@ def _list_findings_impl(
     # returns that scan's rows verbatim.
     from agent_bom.api.findings_current import current_scan_findings
 
-    scan_findings = current_scan_findings(
-        _completed_jobs_for_tenant(tenant_id),
-        since=window_since,
-        scan_id=scan_id,
-        iter_findings=_iter_scan_findings,
-    )
-    if severity:
-        normalized = severity.lower()
-        scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]
     scope_filters = _canonical_scope_filters(provider, account, environment, domain)
-    if scope_filters:
-        scan_findings = [item for item in scan_findings if _row_matches_scope(item, scope_filters)]
-    scan_findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
 
     store = get_compliance_hub_store()
     bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
+    has_current_page = callable(getattr(store, "list_current_page", None))
     total_approximate = False
     next_cursor: str | None = None
     warnings: list[str] = []
-    if cursor and scan_findings:
-        warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
-    # When scope/domain filters are active, page over the fully-materialized
-    # combined list so ``total``/``count`` stay honest (the keyset store path
-    # does not carry the scope predicates). No scope filter -> unchanged fast
-    # path, so existing pagination behavior is byte-for-byte backward compatible.
-    if callable(bulk_list) and not scope_filters:
+
+    if cursor:
+        # Cursor pages page bulk-ingested findings ONLY; the in-memory scan
+        # findings only ever appear on page 1, so their full current-state fold is
+        # discarded here. Skip that O(all-completed-jobs) fold entirely and derive
+        # the "page-1-only" warning from a cheap completed-jobs presence check
+        # instead of computing findings we throw away.
+        scan_findings: list[dict[str, Any]] = []
+        if _completed_jobs_for_tenant(tenant_id):
+            warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
+    else:
+        scan_findings = current_scan_findings(
+            _completed_jobs_for_tenant(tenant_id),
+            since=window_since,
+            scan_id=scan_id,
+            iter_findings=_iter_scan_findings,
+        )
+        if severity:
+            normalized = severity.lower()
+            scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]
+        if scope_filters:
+            scan_findings = [item for item in scan_findings if _row_matches_scope(item, scope_filters)]
+        scan_findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
+
+    # Scope/domain filters run INSIDE the store on pre-enrichment current rows,
+    # batched + keyset-paged (provider/account/environment live in the JSON
+    # payload and ``domain`` is a computed overlapping-lens SET, so neither can be
+    # a single SQL predicate). This keeps the fast keyset path — a scoped page
+    # never materializes the whole tenant and ``next_cursor`` is emitted — while
+    # ``total`` is honestly approximate (no O(table) COUNT under a scope filter).
+    if scope_filters and has_current_page and callable(bulk_list):
+        scope_arg = dict(scope_filters)
+        if scan_findings and not cursor:
+            # scan findings (already scope-filtered) merge onto page 1 exactly
+            # like the unfiltered branch; the bulk source is scope-filtered too.
+            page_rows = _merged_scan_bulk_page(
+                scan_findings,
+                bulk_list=bulk_list,
+                tenant_id=tenant_id,
+                sort_key=sort_key,
+                severity=severity,
+                scan_id=scan_id,
+                offset=offset,
+                limit=limit,
+                since=window_since,
+                scope=scope_arg,
+            )
+        else:
+            bulk_result = bulk_list(
+                tenant_id,
+                limit=limit,
+                offset=0 if cursor else offset,
+                sort=sort_key,
+                severity=severity,
+                scan_id=scan_id,
+                origin="bulk_ingest",
+                include_total=False,
+                cursor=cursor,
+                since=window_since,
+                scope=scope_arg,
+            )
+            page_rows = bulk_result[0]
+            next_cursor = bulk_result[2] if len(bulk_result) > 2 else None
+        total = None
+        total_approximate = True
+    elif callable(bulk_list) and not scope_filters:
         if scan_findings and not cursor:
             bulk_result = bulk_list(
                 tenant_id,

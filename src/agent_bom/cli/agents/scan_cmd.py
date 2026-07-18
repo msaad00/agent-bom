@@ -18,8 +18,6 @@ import click
 from rich.console import Console
 
 from agent_bom.cli._common import (
-    SEVERITY_ORDER,
-    _build_agents_from_inventory,
     _make_console,
     _sync_runtime_consoles,
     logger,
@@ -29,44 +27,15 @@ from agent_bom.cli.agents._cloud import run_benchmarks, run_cloud_discovery
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._discovery import run_local_discovery
 from agent_bom.cli.agents._modes import apply_demo_mode, apply_self_scan_mode, validate_skill_mode
-from agent_bom.cli.agents._output import _format_text, _print_text, render_output
+from agent_bom.cli.agents._output import render_output
 from agent_bom.cli.agents._post import compute_exit_code, run_integrations
 from agent_bom.cli.agents._posture import render_posture_summary
 from agent_bom.cli.agents._preflight import run_iac_only_scan
-from agent_bom.cli.agents._self_scan import _build_self_scan_inventory
 from agent_bom.cli.options import scan_options
 from agent_bom.models import AIBOMReport
 from agent_bom.output import (
-    export_badge,
-    export_cyclonedx,
-    export_html,
-    export_json,
-    export_prometheus,
-    export_sarif,
-    export_spdx,
-    print_agent_tree,
-    print_attack_flow_tree,
-    print_blast_radius,
-    print_compact_agents,
-    print_compact_blast_radius,
-    print_compact_export_hint,
-    print_compact_remediation,
-    print_compact_summary,
     print_diff,
-    print_export_hint,
-    print_policy_results,
-    print_posture_summary,
-    print_remediation_plan,
-    print_severity_chart,
-    print_summary,
-    print_threat_frameworks,
-    push_otlp,
-    push_to_gateway,
-    to_cyclonedx,
     to_json,
-    to_prometheus,
-    to_sarif,
-    to_spdx,
 )
 from agent_bom.resolver import consume_performance_stats as consume_resolution_performance
 from agent_bom.scanners import (
@@ -1869,7 +1838,6 @@ def scan(
     _findings.extend(evaluate_mcp_auth_posture(agents))
 
     # Generate deterministic scan ID from content fingerprint (same inputs → same ID)
-    import hashlib as _hashlib
     import uuid as _uuid
 
     _scan_ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")

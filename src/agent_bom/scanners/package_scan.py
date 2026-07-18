@@ -1,5 +1,10 @@
 """Package and agent vulnerability scanning implementation."""
 
+# Several imports below intentionally remain available as legacy monkeypatch
+# targets on ``agent_bom.scanners``. They are compatibility surface even when
+# this implementation module does not reference them directly.
+# ruff: noqa: F401
+
 from __future__ import annotations
 
 import asyncio

@@ -1,5 +1,9 @@
 """Vulnerability scanning — re-exports for ``agent_bom.scanners`` public surface."""
 
+import sys
+from types import ModuleType
+
+from agent_bom.scanners import package_scan as _package_scan
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
 from agent_bom.scanners.package_scan import (
     _AI_FRAMEWORK_PACKAGES,
@@ -20,12 +24,14 @@ from agent_bom.scanners.package_scan import (
     _local_vuln_to_vulnerability,
     _osv_ecosystems_for_package,
     _parse_cvss4_vector,
+    _scan_cache_instance,
     _scan_packages_db_conn,
     _scan_packages_local_db,
     _strip_extras,
     _suppress_unfixed_os_advisories,
     build_vulnerabilities,
     compliance_mode,
+    console,
     create_client,
     deduplicate_packages,
     default_scan_options,
@@ -98,12 +104,14 @@ __all__ = [
     "_parse_cvss4_vector",
     "_scan_packages_db_conn",
     "_scan_packages_local_db",
+    "_scan_cache_instance",
     "_strip_extras",
     "_suppress_unfixed_os_advisories",
     "advisory_id_severity_fallback",
     "build_vulnerabilities",
     "builtin_scanner_registrations",
     "compliance_mode",
+    "console",
     "create_client",
     "consume_scan_performance",
     "consume_scan_warnings",
@@ -135,3 +143,15 @@ __all__ = [
     "set_offline_mode",
     "severity_from_label",
 ]
+
+
+class _ScannersModule(ModuleType):
+    """Synchronize legacy package patches with the implementation module."""
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if hasattr(_package_scan, name):
+            setattr(_package_scan, name, value)
+        super().__setattr__(name, value)
+
+
+sys.modules[__name__].__class__ = _ScannersModule

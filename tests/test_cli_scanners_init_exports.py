@@ -48,12 +48,14 @@ SCANNERS_PUBLIC_SYMBOLS = (
     "_parse_cvss4_vector",
     "_scan_packages_db_conn",
     "_scan_packages_local_db",
+    "_scan_cache_instance",
     "_strip_extras",
     "_suppress_unfixed_os_advisories",
     "advisory_id_severity_fallback",
     "build_vulnerabilities",
     "builtin_scanner_registrations",
     "compliance_mode",
+    "console",
     "create_client",
     "consume_scan_performance",
     "consume_scan_warnings",
@@ -115,3 +117,15 @@ def test_scanners_init_is_reexport_only() -> None:
     assert scanners.scan_packages is package_scan.scan_packages
     assert scanners.ECOSYSTEM_MAP is package_scan.ECOSYSTEM_MAP
     assert inspect.getsourcefile(scanners.scan_packages) == inspect.getsourcefile(package_scan.scan_packages)
+
+
+def test_scanners_init_forwards_legacy_mutable_patch_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    scanners = importlib.import_module("agent_bom.scanners")
+    package_scan = importlib.import_module("agent_bom.scanners.package_scan")
+    sentinel = object()
+
+    monkeypatch.setattr(scanners, "console", sentinel)
+    monkeypatch.setattr(scanners, "_scan_cache_instance", sentinel)
+
+    assert package_scan.console is sentinel
+    assert package_scan._scan_cache_instance is sentinel

@@ -370,3 +370,32 @@ def test_capped_graph_surfaces_skipped_signal():
     assert stats["privilege_escalations"] == 0
     assert stats["skipped"] is True
     assert "principal_cap_exceeded" in stats["skipped_reason"]
+
+
+def test_capped_graph_persists_skipped_analysis_status_on_graph():
+    # The capped result must ALSO be persisted on the graph's analysis_status map
+    # (the same honest SKIPPED contract fusion uses) so the read API can report
+    # "escalation NOT computed" rather than letting 0 escalations read as clean.
+    from agent_bom.graph.effective_permissions import _MAX_PRINCIPALS
+
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    for i in range(_MAX_PRINCIPALS + 1):
+        g.add_node(UnifiedNode(id=f"user:{i}", entity_type=EntityType.USER, label=f"u{i}"))
+    apply_effective_permissions(g)
+    status = g.analysis_status.get("effective_permissions")
+    assert status is not None
+    assert status.status.value == "skipped"
+    assert "principal_cap_exceeded" in status.reason_codes
+    # surfaces through stats() the API already serializes
+    assert g.stats()["analysis_status"]["effective_permissions"]["status"] == "skipped"
+
+
+def test_computed_graph_persists_complete_analysis_status_on_graph():
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:a", entity_type=EntityType.USER, label="a"))
+    g.add_node(UnifiedNode(id="cloud:r", entity_type=EntityType.CLOUD_RESOURCE, label="r"))
+    g.add_edge(UnifiedEdge(source="user:a", target="cloud:r", relationship=RelationshipType.CAN_ACCESS))
+    apply_effective_permissions(g)
+    status = g.analysis_status.get("effective_permissions")
+    assert status is not None
+    assert status.status.value == "complete"

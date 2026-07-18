@@ -260,10 +260,10 @@ class MockConnection:
                     scan_id = params[1] if len(params) > 1 else ""
                     requested_sources = set(params[2:])
                     rows = [
-                        r for r in rows if r[11] == tenant_id and r[10] == scan_id and (not requested_sources or r[0] in requested_sources)
+                        r for r in rows if r[12] == tenant_id and r[11] == scan_id and (not requested_sources or r[0] in requested_sources)
                     ]
                 rows.sort(key=lambda r: (-float(r[3]), str(r[0]), str(r[1])))
-                cursor.rows = [(r[0], r[1], r[5], r[6], r[3], r[4], r[7], r[8], r[9]) for r in rows]
+                cursor.rows = [(r[0], r[1], r[5], r[6], r[3], r[4], r[7], r[8], r[9], r[10]) for r in rows]
             elif params:
                 for table_data in self._store.values():
                     for pk, row in table_data.items():
@@ -1651,6 +1651,52 @@ def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool,
     assert paths[0].tool_exposure == ["run_shell"]
     select_sql = "\n".join(sql for sql, _params in mock_pool._conn.executed if "FROM attack_paths" in sql)
     assert "source_node IN" in select_sql
+
+
+def test_graph_store_attack_paths_preserve_technique_mappings(mock_pool):
+    """Typed MITRE mappings survive the Postgres persist→load path (fake conn)."""
+    from agent_bom.api.postgres_store import PostgresGraphStore
+    from agent_bom.graph import AttackPath, EntityType, TechniqueMapping, UnifiedGraph, UnifiedNode
+
+    store = PostgresGraphStore(pool=mock_pool)
+    graph = UnifiedGraph(scan_id="scan-graph", tenant_id="tenant-alpha")
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
+    graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-0001"))
+    graph.attack_paths.append(
+        AttackPath(
+            source="agent:a",
+            target="vuln:cve",
+            hops=["agent:a", "vuln:cve"],
+            edges=["vulnerable_to"],
+            composite_risk=9.4,
+            summary="agent-a reaches CVE-2026-0001",
+            technique_mappings=[
+                TechniqueMapping(
+                    hop_index=0,
+                    technique_id="T1190",
+                    technique_name="Exploit Public-Facing Application",
+                    catalog="attack",
+                    tactics=["initial-access"],
+                    provenance="observed vulnerable_to edge into vulnerability 'vuln:cve'",
+                    confidence=0.85,
+                )
+            ],
+        )
+    )
+    store.save_graph(graph)
+
+    paths = store.attack_paths_for_sources(tenant_id="tenant-alpha", scan_id="scan-graph", source_ids={"agent:a"})
+    assert len(paths) == 1
+    mappings = paths[0].technique_mappings
+    assert len(mappings) == 1
+    assert mappings[0].technique_id == "T1190"
+    assert mappings[0].hop_index == 0
+    assert mappings[0].tactics == ["initial-access"]
+    assert mappings[0].catalog == "attack"
+
+    # The INSERT must include the technique_mappings column (generated SQL check).
+    insert_sql = "\n".join(sql for sql, _p in mock_pool._conn.executed if "INSERT INTO attack_paths" in sql)
+    assert "technique_mappings" in insert_sql
 
 
 def test_scan_cache_put_get(mock_pool):

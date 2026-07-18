@@ -820,6 +820,21 @@ class RotateKeyRequest(BaseModel):
     overlap_seconds: int | None = None
 
 
+class InvitationRequest(BaseModel):
+    """Body for POST /v1/auth/invitations — admin provisions a NEW tenant.
+
+    Deliberately never accepts a provider secret / credential: the endpoint
+    MINTS a key, it does not take one (connect-once model, §11). ``extra`` is
+    forbidden so a stray secret field is rejected with 422 rather than ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    organization: str | None = None
+    role: str = "admin"
+    email: str | None = None
+    expires_at: str | None = None
+
+
 class TenantQuotaUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     active_scan_jobs: int | None = Field(default=None, ge=0)

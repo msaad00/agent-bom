@@ -498,3 +498,8 @@ AGENT_BOM_ENFORCE_CORRELATED_BLOCKS
 # by the connect-once Jira integration so credentials can rotate at runtime.
 AGENT_BOM_JIRA_OAUTH_CLIENT_ID
 AGENT_BOM_JIRA_OAUTH_CLIENT_SECRET
+
+# Optional hosted sign-in base URL, read at request time by the invite endpoint
+# (POST /v1/auth/invitations) so operators can set the invite link target without
+# a restart. Presentation-only; never carries a secret. No scalar config knob.
+AGENT_BOM_HOSTED_INVITE_BASE_URL

@@ -224,3 +224,44 @@ def test_cloud_inventory_single_provider():
     payload = json.loads(result.output)
     assert len(payload["providers"]) == 1
     assert payload["providers"][0]["provider"] == "aws"
+
+
+def test_cloud_inventory_projects_indeterminate_authorization_evidence(monkeypatch):
+    report = {
+        "provider": "azure",
+        "status": "ok",
+        "authorization_evidence": {
+            "required_sources": ["role_assignments", "role_definitions"],
+            "sources": [
+                {"name": "role_assignments", "state": "complete", "diagnostics": ["secret-value"]},
+                {"name": "role_definitions", "state": "access_denied", "diagnostics": ["Bearer secret"]},
+            ],
+        },
+    }
+    monkeypatch.setattr("agent_bom.cloud.azure_inventory.discover_inventory", lambda **_kwargs: report)
+
+    result = CliRunner().invoke(main, ["cloud", "inventory", "--provider", "azure", "--format", "json"])
+
+    assert result.exit_code == 0
+    summary = json.loads(result.output)["providers"][0]["authorization_evidence"]
+    assert summary == {
+        "complete_source_count": 1,
+        "indeterminate_source_count": 1,
+        "partial_source_count": 0,
+        "required_source_count": 2,
+        "status": "indeterminate",
+    }
+    assert "secret-value" not in result.output
+    assert "Bearer secret" not in result.output
+
+
+def test_cloud_inventory_projects_missing_authorization_evidence_as_indeterminate(monkeypatch):
+    report = {"provider": "gcp", "status": "ok", "authorization_evidence": None}
+    monkeypatch.setattr("agent_bom.cloud.gcp_inventory.discover_inventory", lambda **_kwargs: report)
+
+    result = CliRunner().invoke(main, ["cloud", "inventory", "--provider", "gcp", "--format", "json"])
+
+    assert result.exit_code == 0
+    summary = json.loads(result.output)["providers"][0]["authorization_evidence"]
+    assert summary["status"] == "indeterminate"
+    assert summary["required_source_count"] == 0

@@ -7,6 +7,8 @@ distinguish a proven empty policy set from evidence that was never collected.
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -28,6 +30,118 @@ class EvidenceSourceState(StrEnum):
     STALE = "stale"
     TRUNCATED = "truncated"
     UNAVAILABLE = "unavailable"
+
+
+class AuthorizationEvidenceStatus(StrEnum):
+    """Public completeness verdict for authorization evidence collection."""
+
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    INDETERMINATE = "indeterminate"
+
+
+@dataclass(frozen=True)
+class AuthorizationEvidenceSummary:
+    """Count-only, non-secret projection safe for REST and MCP responses."""
+
+    status: AuthorizationEvidenceStatus
+    required_source_count: int
+    complete_source_count: int
+    partial_source_count: int
+    indeterminate_source_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status.value,
+            "required_source_count": self.required_source_count,
+            "complete_source_count": self.complete_source_count,
+            "partial_source_count": self.partial_source_count,
+            "indeterminate_source_count": self.indeterminate_source_count,
+        }
+
+
+_PARTIAL_SOURCE_STATES = {
+    EvidenceSourceState.PARTIAL.value,
+    EvidenceSourceState.STALE.value,
+    EvidenceSourceState.TRUNCATED.value,
+}
+
+
+def summarize_authorization_evidence(payload: Mapping[str, Any]) -> AuthorizationEvidenceSummary:
+    """Summarize required-source coverage without projecting raw evidence.
+
+    Diagnostics, provenance, binding identifiers, conditions, and permissions
+    are intentionally ignored. Unknown, missing, denied, disabled, and
+    unsupported sources remain indeterminate (fail closed).
+    """
+    raw_required = payload.get("required_sources")
+    required = (
+        tuple(dict.fromkeys(str(name) for name in raw_required if isinstance(name, str) and name))
+        if isinstance(raw_required, (list, tuple))
+        else ()
+    )
+    raw_sources = payload.get("sources")
+    sources = tuple(source for source in raw_sources if isinstance(source, Mapping)) if isinstance(raw_sources, list) else ()
+    names = [str(source.get("name") or "") for source in sources]
+    name_counts = Counter(names)
+
+    complete = partial = indeterminate = 0
+    for name in required:
+        matches = [source for source in sources if source.get("name") == name]
+        if not matches:
+            indeterminate += 1
+            continue
+        states = {str(source.get("state") or "").strip().lower() for source in matches}
+        if name_counts[name] > 1 or states & _PARTIAL_SOURCE_STATES:
+            partial += 1
+        elif states == {EvidenceSourceState.COMPLETE.value}:
+            complete += 1
+        else:
+            indeterminate += 1
+
+    if not required or indeterminate:
+        status = AuthorizationEvidenceStatus.INDETERMINATE
+    elif partial:
+        status = AuthorizationEvidenceStatus.PARTIAL
+    else:
+        status = AuthorizationEvidenceStatus.COMPLETE
+    return AuthorizationEvidenceSummary(
+        status=status,
+        required_source_count=len(required),
+        complete_source_count=complete,
+        partial_source_count=partial,
+        indeterminate_source_count=indeterminate,
+    )
+
+
+def authorization_evidence_gap_reason_codes(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return bounded metric reasons without exposing source names or diagnostics."""
+    raw_required = payload.get("required_sources")
+    required = tuple(str(item) for item in raw_required if isinstance(item, str)) if isinstance(raw_required, list) else ()
+    raw_sources = payload.get("sources")
+    sources = tuple(source for source in raw_sources if isinstance(source, Mapping)) if isinstance(raw_sources, list) else ()
+    if not sources:
+        return ("evidence_missing",)
+
+    reasons: set[str] = set()
+    name_counts = Counter(str(source.get("name") or "") for source in sources)
+    for source in sources:
+        state = str(source.get("state") or "unavailable").strip().lower()
+        if state != EvidenceSourceState.COMPLETE.value:
+            reasons.add(state if state in _PUBLIC_GAP_REASON_CODES else "unavailable")
+    if not required:
+        reasons.add("required_sources_missing")
+    for name in required:
+        if name_counts[name] == 0:
+            reasons.add("required_source_missing")
+        elif name_counts[name] > 1:
+            reasons.add("duplicate_source")
+    return tuple(sorted(reasons))
+
+
+_PUBLIC_GAP_REASON_CODES = frozenset(
+    {"partial", "access_denied", "disabled", "sdk_missing", "unsupported", "stale", "truncated", "unavailable"}
+)
 
 
 _SOURCE_STATE_SEVERITY: dict[EvidenceSourceState, int] = {
@@ -296,6 +410,8 @@ __all__ = [
     "AuthorizationEffect",
     "AuthorizationEvaluation",
     "AuthorizationEvidenceBundle",
+    "AuthorizationEvidenceStatus",
+    "AuthorizationEvidenceSummary",
     "AuthorizationPlane",
     "AuthorizationProvider",
     "AuthorizationRequest",
@@ -305,4 +421,6 @@ __all__ = [
     "PrincipalMembership",
     "ResourceAncestry",
     "RoleDefinitionEvidence",
+    "authorization_evidence_gap_reason_codes",
+    "summarize_authorization_evidence",
 ]

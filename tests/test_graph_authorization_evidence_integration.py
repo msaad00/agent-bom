@@ -319,6 +319,28 @@ def test_authorization_decision_and_status_survive_persistence_and_graph_api(tmp
     )
 
 
+def test_authorization_evidence_graph_state_is_tenant_isolated(tmp_path) -> None:
+    store = SQLiteGraphStore(tmp_path / "authorization-tenant-graph.db")
+    alpha = build_unified_graph_from_report(
+        {"scan_id": "shared-scan", "cloud_inventory": _azure_inventory()},
+        tenant_id="tenant-alpha",
+    )
+    beta = build_unified_graph_from_report(
+        {"scan_id": "shared-scan", "cloud_inventory": _gcp_inventory(conditional=True)},
+        tenant_id="tenant-beta",
+    )
+    store.save_graph(alpha)
+    store.save_graph(beta)
+
+    loaded_alpha = store.load_graph(scan_id="shared-scan", tenant_id="tenant-alpha")
+    loaded_beta = store.load_graph(scan_id="shared-scan", tenant_id="tenant-beta")
+
+    assert "authorization_evidence:azure" in loaded_alpha.analysis_status
+    assert "authorization_evidence:gcp" not in loaded_alpha.analysis_status
+    assert "authorization_evidence:gcp" in loaded_beta.analysis_status
+    assert "authorization_evidence:azure" not in loaded_beta.analysis_status
+
+
 def test_authoritative_gcp_evidence_suppresses_legacy_org_role_reachability() -> None:
     inventory = _gcp_inventory(conditional=True)
     inventory["gcp_organization"] = {

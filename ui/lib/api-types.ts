@@ -3225,6 +3225,14 @@ export interface CloudConnectionUpdateRequest {
   scan_interval_minutes: number | null;
 }
 
+export interface AuthorizationEvidenceSummary {
+  status: "complete" | "partial" | "indeterminate";
+  required_source_count: number;
+  complete_source_count: number;
+  partial_source_count: number;
+  indeterminate_source_count: number;
+}
+
 export interface CloudConnectionScanInventory {
   provider: string;
   /** Present for AWS/Azure/GCP; "ok" for Snowflake. */
@@ -3244,6 +3252,8 @@ export interface CloudConnectionScanInventory {
   /** Snowflake discovery count (Cortex/MCP agents). */
   agent_count?: number;
   warnings?: string[];
+  /** Count-only authorization evidence state. Raw bindings and diagnostics are never returned here. */
+  authorization_evidence?: AuthorizationEvidenceSummary | null;
 }
 
 export interface CloudConnectionScanCis {

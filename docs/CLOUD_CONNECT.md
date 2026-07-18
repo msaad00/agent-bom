@@ -158,6 +158,26 @@ template, one uniform flow around it.
 This is the same code path for the CLI and the API, so both surfaces produce
 identical results.
 
+### Authorization evidence completeness
+
+Azure RBAC and GCP IAM scans report whether every required authorization feed
+was collected as `complete`, `partial`, or `indeterminate`. The authenticated
+cloud-connection API, MCP inventory summary, CLI summary, and connection UI
+expose only aggregate source counts. Raw bindings, conditions, diagnostics,
+provider paths, and provenance stay in the tenant-scoped scan artifact and are
+never copied into operator summaries.
+
+`partial` and `indeterminate` are fail-closed states: they do not prove access
+and they never fall back to name- or privilege-label heuristics on a supported
+authorization-evidence path. The graph API records the same limitation under
+`analysis_status.authorization_evidence:<provider>`.
+
+CI verifies Azure/GCP parity, incomplete-source behavior, heuristic
+containment, and tenant-isolated graph persistence with deterministic fixtures.
+Credentialed Azure/GCP smoke evidence remains environment-owned; a fixture run
+proves the contract but is not a claim that a particular customer tenant was
+successfully scanned.
+
 ---
 
 ## 3. AWS — connect in two steps

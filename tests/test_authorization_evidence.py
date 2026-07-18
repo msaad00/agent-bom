@@ -13,6 +13,7 @@ from agent_bom.cloud.authorization_evidence import (
     EvidenceSourceState,
     ResourceAncestry,
     RoleDefinitionEvidence,
+    summarize_authorization_evidence,
 )
 
 
@@ -73,6 +74,47 @@ def test_bundle_serializes_source_completeness_and_provenance() -> None:
         }
     ]
     assert json.loads(json.dumps(payload)) == payload
+
+
+def test_authorization_summary_counts_complete_partial_and_indeterminate_without_diagnostics() -> None:
+    payload = {
+        "provider": "gcp",
+        "required_sources": ["allow_policies", "deny_policies", "role_definitions", "ancestry"],
+        "sources": [
+            {"name": "allow_policies", "state": "complete", "diagnostics": ["token=secret"]},
+            {"name": "deny_policies", "state": "partial", "provenance": ["private/path"]},
+            {"name": "role_definitions", "state": "access_denied", "diagnostics": ["arn:secret"]},
+        ],
+        "bindings": [{"binding_id": "sensitive-binding"}],
+    }
+
+    summary = summarize_authorization_evidence(payload)
+
+    assert summary.to_dict() == {
+        "status": "indeterminate",
+        "required_source_count": 4,
+        "complete_source_count": 1,
+        "partial_source_count": 1,
+        "indeterminate_source_count": 2,
+    }
+    assert "secret" not in json.dumps(summary.to_dict())
+
+
+def test_authorization_summary_is_complete_only_when_every_required_source_is_complete() -> None:
+    summary = summarize_authorization_evidence(
+        {
+            "required_sources": ["bindings", "roles"],
+            "sources": [
+                {"name": "bindings", "state": "complete"},
+                {"name": "roles", "state": "complete"},
+            ],
+        }
+    )
+
+    assert summary.status == "complete"
+    assert summary.complete_source_count == 2
+    assert summary.partial_source_count == 0
+    assert summary.indeterminate_source_count == 0
 
 
 def test_missing_required_source_is_not_complete() -> None:

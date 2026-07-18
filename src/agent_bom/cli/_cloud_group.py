@@ -650,6 +650,8 @@ def inventory_cmd(
     if provider in ("gcp", "all"):
         reports.append(gcp_inventory.discover_inventory(project_id=project))
 
+    reports = [_project_authorization_posture(report) for report in reports]
+
     if output_format == "json":
         click.echo(_json.dumps({"providers": reports}, indent=2, sort_keys=True, default=str))
         return
@@ -665,6 +667,7 @@ def inventory_cmd(
     table.add_column("Status")
     table.add_column("Assets")
     table.add_column("Warnings", justify="right")
+    table.add_column("Authorization")
     any_disabled = False
     for rep in reports:
         status = str(rep.get("status", "unknown"))
@@ -676,6 +679,7 @@ def inventory_cmd(
             f"[{style}]{status}[/{style}]",
             _asset_summary(rep),
             str(len(rep.get("warnings") or [])),
+            str((rep.get("authorization_evidence") or {}).get("status", "not_applicable")),
         )
     con.print(table)
     if any_disabled:
@@ -686,6 +690,28 @@ def inventory_cmd(
         )
     con.print()
 
+
+def _project_authorization_posture(report: dict) -> dict:
+    """Expose bounded authorization posture without policy or diagnostic data."""
+    projected = dict(report)
+    provider = str(projected.get("provider", "unknown"))
+    evidence = projected.pop("authorization_evidence", None)
+    if provider not in {"azure", "gcp"}:
+        if evidence is not None:
+            projected["authorization_evidence"] = evidence
+        return projected
+
+    from agent_bom.cloud.authorization_evidence import authorization_evidence_gap_reason_codes, summarize_authorization_evidence
+
+    evidence_payload = evidence if isinstance(evidence, dict) else {}
+    summary = summarize_authorization_evidence(evidence_payload)
+    projected["authorization_evidence"] = summary.to_dict()
+    reason_codes = authorization_evidence_gap_reason_codes(evidence_payload)
+
+    from agent_bom.api.metrics import record_authorization_evidence
+
+    record_authorization_evidence(provider=provider, status=summary.status.value, reason_codes=reason_codes)
+    return projected
 
 # Report keys that are lists but NOT asset collections — excluded from the count
 # so the summary auto-includes every resource type a provider adds without drift.

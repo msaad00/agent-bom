@@ -576,6 +576,56 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     );
   });
 
+  it("shows authorization evidence completeness without exposing raw evidence records", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [{ ...CREATED_RECORD, provider: "azure" }],
+      count: 1,
+    });
+    apiMock.scanCloudConnection.mockResolvedValue({
+      schema_version: "cloud.connections.scan.v1",
+      connection_id: "conn-1",
+      tenant_id: "tenant-acme",
+      provider: "azure",
+      scan_id: "azure-scan-1",
+      inventory: {
+        provider: "azure",
+        resource_count: 4,
+        identity_count: 2,
+        authorization_evidence: {
+          status: "partial",
+          required_source_count: 3,
+          complete_source_count: 2,
+          partial_source_count: 1,
+          indeterminate_source_count: 0,
+        },
+      },
+      cis_benchmark: {
+        benchmark: "CIS Azure",
+        benchmark_version: "2.0",
+        passed: 1,
+        failed: 0,
+        total: 1,
+        pass_rate: 1,
+      },
+      audit_metadata: { read_only: true, writes_performed: false, note: "Read-only scan." },
+      connection: { ...CREATED_RECORD, provider: "azure", status: "active" },
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Run scan" }));
+    await waitFor(() => expect(apiMock.scanCloudConnection).toHaveBeenCalledWith("conn-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Production account" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "Production account" });
+    expect(within(drawer).getByText("Authorization evidence")).toBeInTheDocument();
+    expect(within(drawer).getByText("Partial")).toBeInTheDocument();
+    expect(within(drawer).getByText(/2 of 3 required evidence sources are complete/i)).toBeInTheDocument();
+    expect(within(drawer).queryByText(/binding|diagnostic/i)).not.toBeInTheDocument();
+  });
+
   it("keeps one direct scan action in the connection drawer", async () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",

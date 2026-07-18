@@ -445,6 +445,26 @@ disallow_incomplete_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 
+# Phase 2+5 (#1969): modules brought under the stricter profile that also
+# bans implicit ``Any`` generics (``dict``/``list`` without parameters).
+# Applied module-by-module; expand this list as each module is de-genericized.
+# Not a global flip — the base [tool.mypy] settings stay unchanged.
+[[tool.mypy.overrides]]
+module = [
+    "agent_bom.models",
+    "agent_bom.api.findings_current",
+    "agent_bom.api.oidc",
+    "agent_bom.api.postgres_fleet_store",
+    "agent_bom.api.finding_list_envelope",
+    "agent_bom.api.time_window",
+    "agent_bom.api.cost_owner",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+warn_return_any = true
+warn_unused_ignores = true
+
 [tool.ruff]
 line-length = 140  # Relaxed from 120 for CLI help strings
 target-version = "py311"

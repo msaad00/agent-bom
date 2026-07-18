@@ -715,10 +715,13 @@ jobs:
     permissions:
       contents: read
     needs: changes
-    # Skip the suite only when the classifier positively says the PR cannot
-    # affect Python (docs/UI/deploy-only). Fail closed: a classifier failure
-    # or missing output runs the suite.
-    if: always() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true')
+    # The job itself always runs: "Test (Python 3.13)" is a REQUIRED context,
+    # and a matrix job skipped at job level never expands its matrix, so the
+    # required check would sit at "Expected" forever and block auto-merge.
+    # The heavy STEPS below skip instead when the classifier positively says
+    # the PR cannot affect Python (docs/UI/deploy-only); the job then reports
+    # success in seconds. Fail closed: a classifier failure runs the suite.
+    if: always()
     strategy:
       fail-fast: false
       matrix:
@@ -735,9 +738,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
+        if: github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         run: uv sync --frozen --extra dev --extra api --extra mcp-server
 
       - name: Run tests
+        if: github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         run: |
           # Keep PR matrix worker count bounded on hosted runners. `-n auto`
           # can overcommit CPU/RAM enough for GitHub to terminate the runner
@@ -766,7 +771,7 @@ jobs:
         # underlying tests are already executed by the previous step; this job
         # re-runs *just* the three guard files so the CI summary names them
         # clearly and points operators at scripts/rebaseline_graph_edges.py.
-        if: always()
+        if: always() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true')
         run: |
           set +e
           uv run pytest \
@@ -795,6 +800,7 @@ jobs:
         # Runs agent-bom's own DCM scanner against agent-bom's own DCM migrations.
         # Proves the scanner is alive, its rules fire on real SQL, and our own
         # migration files are clean (or surface known findings explicitly).
+        if: github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         run: |
           uv run python - <<'PYEOF'
           from pathlib import Path

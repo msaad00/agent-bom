@@ -8,8 +8,8 @@ import pytest
 
 from agent_bom.security import (
     SecurityError,
+    require_recognized_launcher,
     sanitize_error,
-    validate_command,
     validate_image_ref,
 )
 
@@ -163,22 +163,27 @@ class TestErrorSanitization:
 # ─── Proxy Command Validation ────────────────────────────────────────────────
 
 
-class TestProxyCommandValidation:
-    """Proxy should validate commands before spawning."""
+class TestProxyLaunchHygiene:
+    """Proxy rejects unrecognized launcher binaries before spawning.
 
-    def test_allowed_commands_accepted(self):
-        """npx, uvx, python, etc. should be allowed."""
+    This is a misconfiguration/typo guard, NOT isolation: a recognized
+    launcher (python, node, docker) can still run arbitrary code. Actual
+    isolation is the container sandbox (agent_bom.proxy_sandbox, --isolate).
+    """
+
+    def test_known_launchers_accepted(self):
+        """npx, uvx, python, etc. are recognized MCP launchers."""
         for cmd in ["npx", "uvx", "python", "python3", "node", "deno", "bun"]:
-            validate_command(cmd)  # Should not raise
+            require_recognized_launcher(cmd)  # Should not raise
 
-    def test_arbitrary_commands_rejected(self):
-        """Random executables should be rejected."""
+    def test_unrecognized_binaries_rejected(self):
+        """Binaries outside the recognized launcher set are refused."""
         with pytest.raises(SecurityError):
-            validate_command("bash")
+            require_recognized_launcher("bash")
         with pytest.raises(SecurityError):
-            validate_command("/usr/bin/evil")
+            require_recognized_launcher("/usr/bin/evil")
         with pytest.raises(SecurityError):
-            validate_command("curl")
+            require_recognized_launcher("curl")
 
 
 # ─── Safe Path Validation ────────────────────────────────────────────────────

@@ -44,7 +44,7 @@ from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_li
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
-from agent_bom.security import sanitize_text, validate_arguments, validate_command
+from agent_bom.security import require_recognized_launcher, sanitize_text, validate_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -1523,8 +1523,11 @@ async def run_proxy(
         # carries the same posture detail in machine-readable form.
         logger.warning(warning)
 
-    # Validate the effective server command before spawning
-    validate_command(_command_name_for_validation(server_cmd[0], sandbox_evidence))
+    # Launch-hygiene checks on the effective server command before spawning.
+    # These catch typos and shell-interpolation configs; they are NOT the
+    # isolation boundary — that is the container sandbox wired above
+    # (agent_bom.proxy_sandbox, --isolate).
+    require_recognized_launcher(_command_name_for_validation(server_cmd[0], sandbox_evidence))
     if len(server_cmd) > 1:
         validate_arguments(list(server_cmd[1:]))
 

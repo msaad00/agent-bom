@@ -12,6 +12,7 @@ from agent_bom.security import (
     _is_obfuscated_credential,
     _shannon_entropy,
     create_safe_subprocess_env,
+    require_recognized_launcher,
     sanitize_command_args,
     sanitize_env_vars,
     sanitize_error,
@@ -19,7 +20,6 @@ from agent_bom.security import (
     sanitize_path_label,
     sanitize_url,
     validate_arguments,
-    validate_command,
     validate_environment,
     validate_file_size,
     validate_image_ref,
@@ -45,22 +45,37 @@ def test_sanitize_log_label_bounds_length():
 
 
 # ---------------------------------------------------------------------------
-# validate_command
+# require_recognized_launcher — launch-hygiene check, NOT a sandbox
 # ---------------------------------------------------------------------------
 
 
-def test_validate_command_allowed():
-    validate_command("npx")
-    validate_command("python3")
+def test_require_recognized_launcher_accepts_known_launchers():
+    require_recognized_launcher("npx")
+    require_recognized_launcher("python3")
 
 
-def test_validate_command_rejected():
+def test_require_recognized_launcher_rejects_unknown_binary():
     with pytest.raises(SecurityError):
-        validate_command("rm")
+        require_recognized_launcher("rm")
+
+
+def test_require_recognized_launcher_error_points_at_real_isolation():
+    """The rejection message must not present the launcher list as a sandbox.
+
+    The list is a misconfiguration guard; actual isolation is the container
+    sandbox (``agent_bom.proxy_sandbox``, ``--isolate``). The error text must
+    say so, so operators are never led to believe passing this check confers
+    isolation.
+    """
+    with pytest.raises(SecurityError) as excinfo:
+        require_recognized_launcher("bash")
+    message = str(excinfo.value)
+    assert "not a sandbox" in message
+    assert "--isolate" in message
 
 
 # ---------------------------------------------------------------------------
-# validate_arguments
+# validate_arguments — config-hygiene metacharacter check, not an exec control
 # ---------------------------------------------------------------------------
 
 

@@ -56,6 +56,12 @@ def _dep(permission: str) -> Any:
 router = APIRouter(dependencies=[_dep("read")])
 _logger = logging.getLogger(__name__)
 
+# Cap on audit entries pulled into a single signed evidence bundle. When the
+# window holds more than this the bundle marks itself truncated (honest partial
+# evidence) rather than silently presenting the capped set as the complete
+# window; consumers paginate the full trail via /v1/audit.
+_AUDIT_EVIDENCE_FETCH_LIMIT = 10_000
+
 _CLUSTER_SCAN_SOURCES = {"gpu_infra", "k8s"}
 _CI_CD_SCAN_SOURCES = {"github_actions"}
 _REGISTRY_SCAN_SOURCES = {"external_scan", "image", "sbom"}
@@ -1364,8 +1370,13 @@ async def export_compliance_report(
 
     store = get_audit_log()
     audit_since_iso = since_dt.isoformat()
-    # Cap audit fetch at 10k for export sanity; consumers paginate further via /v1/audit
-    audit_entries = store.list_entries(since=audit_since_iso, limit=10_000, tenant_id=tenant_id)
+    # Cap audit fetch for export sanity; consumers paginate further via /v1/audit.
+    # ``list_entries`` returns most-recent-first, so hitting the cap drops the
+    # OLDEST in-window entries — the bundle must say so rather than present a
+    # partial window as complete.
+    audit_fetch_limit = _AUDIT_EVIDENCE_FETCH_LIMIT
+    audit_entries = store.list_entries(since=audit_since_iso, limit=audit_fetch_limit, tenant_id=tenant_id)
+    audit_truncated = len(audit_entries) >= audit_fetch_limit
     until_iso = until_dt.isoformat()
     audit_in_window = [e for e in audit_entries if audit_since_iso <= (e.timestamp or "") <= until_iso]
     verified, tampered = _verify_audit_entries(audit_in_window)
@@ -1416,6 +1427,8 @@ async def export_compliance_report(
             "control_count": len(controls),
             "finding_count": total_findings,
             "audit_event_count": len(audit_in_window),
+            "audit_events_truncated": audit_truncated,
+            "audit_event_limit": audit_fetch_limit,
             "completed_scan_count": completed_scan_count,
         },
         "summary": {
@@ -1432,6 +1445,7 @@ async def export_compliance_report(
             "verified": verified,
             "tampered": tampered,
             "checked": len(audit_in_window),
+            "truncated": audit_truncated,
         },
         "signature_algorithm": signing_algorithm,
         "threat_model": {
@@ -1575,7 +1589,11 @@ async def export_compliance_pack(
 
     store = get_audit_log()
     audit_since_iso = since_dt.isoformat()
-    audit_entries = store.list_entries(since=audit_since_iso, limit=10_000, tenant_id=tenant_id)
+    # Same honest-truncation contract as the single-framework report: a window
+    # deeper than the cap is marked truncated, never presented as complete.
+    audit_fetch_limit = _AUDIT_EVIDENCE_FETCH_LIMIT
+    audit_entries = store.list_entries(since=audit_since_iso, limit=audit_fetch_limit, tenant_id=tenant_id)
+    audit_truncated = len(audit_entries) >= audit_fetch_limit
     until_iso = until_dt.isoformat()
     audit_in_window = [e for e in audit_entries if audit_since_iso <= (e.timestamp or "") <= until_iso]
     verified, tampered = _verify_audit_entries(audit_in_window)
@@ -1636,6 +1654,8 @@ async def export_compliance_pack(
             "control_count": total_controls,
             "finding_count": total_findings,
             "audit_event_count": len(audit_in_window),
+            "audit_events_truncated": audit_truncated,
+            "audit_event_limit": audit_fetch_limit,
             "completed_scan_count": completed_scan_count,
         },
         "summary": {
@@ -1648,6 +1668,7 @@ async def export_compliance_pack(
             "verified": verified,
             "tampered": tampered,
             "checked": len(audit_in_window),
+            "truncated": audit_truncated,
         },
         "signature_algorithm": signing_algorithm,
     }

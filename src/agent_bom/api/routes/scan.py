@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import time
 import uuid
@@ -366,6 +367,66 @@ def _derive_bulk_finding_id(row: dict[str, Any], *, source: str) -> str:
     return canonical_finding_id(source, str(rule), str(location), str(package))
 
 
+def _coerce_bulk_severity(value: Any, *, ordinal: int) -> str:
+    """Validate/normalise a bulk finding's severity, failing closed on bad types.
+
+    A non-string severity (nested object, number, list) cannot be honestly
+    mapped to a severity bucket — accepting it materialised a row that leaked the
+    value verbatim and never matched the severity filter. Reject it with a 422.
+    A string severity is normalised to the canonical enum; an unrecognised label
+    maps to ``unknown`` explicitly (never leaked as-is).
+    """
+    if value is None:
+        return "unknown"
+    if not isinstance(value, str):
+        raise HTTPException(
+            status_code=422,
+            detail=f"finding {ordinal}: severity must be a string severity label, not {type(value).__name__}",
+        )
+    from agent_bom.graph.severity import normalize_severity
+
+    return normalize_severity(value)
+
+
+def _coerce_bulk_cvss(value: Any, *, ordinal: int) -> float | None:
+    """Validate/coerce a bulk finding's cvss_score to a 0.0-10.0 float or null.
+
+    A non-numeric string (``"NaNstring"``), a nested object, NaN/inf, or an
+    out-of-range number cannot be an honest CVSS base score — accepting it left a
+    value that never matched a cvss filter. Reject it with a 422. ``None`` /
+    absent is allowed (no score); a numeric string that parses cleanly in range
+    is coerced to float.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise HTTPException(
+            status_code=422,
+            detail=f"finding {ordinal}: cvss_score must be a number in 0.0-10.0 or null, not bool",
+        )
+    if isinstance(value, (int, float)):
+        score = float(value)
+    elif isinstance(value, str):
+        try:
+            score = float(value)
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"finding {ordinal}: cvss_score {value!r} is not a number in 0.0-10.0",
+            ) from None
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail=f"finding {ordinal}: cvss_score must be a number in 0.0-10.0 or null, not {type(value).__name__}",
+        )
+    if not math.isfinite(score) or not (0.0 <= score <= 10.0):
+        raise HTTPException(
+            status_code=422,
+            detail=f"finding {ordinal}: cvss_score must be a finite number within 0.0-10.0",
+        )
+    return score
+
+
 def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str, ordinal: int) -> dict[str, Any]:
     payload = dict(row)
     client_id = row.get("id")
@@ -373,7 +434,14 @@ def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str,
     # resends collapse (idempotent) rather than mint a fresh batch_id:ordinal.
     payload["id"] = str(client_id) if client_id else _derive_bulk_finding_id(row, source=source)
     payload.setdefault("source", source)
-    payload.setdefault("severity", "unknown")
+    # Fail closed on garbage severity/cvss types instead of materialising a row
+    # that leaks the value verbatim and never matches the severity/cvss filter.
+    payload["severity"] = _coerce_bulk_severity(row.get("severity"), ordinal=ordinal)
+    cvss = _coerce_bulk_cvss(row.get("cvss_score"), ordinal=ordinal)
+    if cvss is None:
+        payload.pop("cvss_score", None)
+    else:
+        payload["cvss_score"] = cvss
     payload["origin"] = "bulk_ingest"
     payload["batch_id"] = batch_id
     payload["bulk_ordinal"] = ordinal

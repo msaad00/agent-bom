@@ -1299,6 +1299,11 @@
             "title": "Tampered",
             "type": "integer"
           },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
           "verified": {
             "default": 0,
             "title": "Verified",
@@ -1590,6 +1595,16 @@
             "default": 0,
             "title": "Audit Event Count",
             "type": "integer"
+          },
+          "audit_event_limit": {
+            "default": 0,
+            "title": "Audit Event Limit",
+            "type": "integer"
+          },
+          "audit_events_truncated": {
+            "default": false,
+            "title": "Audit Events Truncated",
+            "type": "boolean"
           },
           "completed_scan_count": {
             "default": 0,

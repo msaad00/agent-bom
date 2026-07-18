@@ -1089,6 +1089,17 @@ def build_unified_graph_from_report(
         )
         _logger.warning("attack-path fusion failed: analysis_error")
 
+    # Enrich every materialised attack path with typed MITRE ATT&CK / ATLAS
+    # technique mappings derived from the path's observed evidence (edge
+    # relationship + node type), so persistence/API/exports carry the typed
+    # kill-chain sequence. Potential techniques, never detected activity.
+    try:
+        from agent_bom.graph.attack_path_mitre import apply_attack_path_technique_mappings
+
+        apply_attack_path_technique_mappings(graph)
+    except Exception:  # noqa: BLE001
+        _logger.warning("attack-path technique mapping failed: analysis_error")
+
     # Cost (FinOps) fusion: attach LLM spend to agent/resource nodes, roll it up
     # the CONTAINS hierarchy, and flag nodes that are BOTH high-cost AND
     # high-risk. Runs LAST so it sees every exposure/toxic/critical flag the

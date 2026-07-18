@@ -84,6 +84,41 @@ _SEMANTIC_LAYER_LABELS = {
     GraphSemanticLayer.CI.value: "CI/CD",
 }
 
+_TECHNIQUE_MAPPING_OPENAPI_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "A typed MITRE ATT&CK / ATLAS technique mapped to one hop of the attack path, "
+        "derived from the path's observed graph evidence (edge relationship + node type). "
+        "These are potential/mapped techniques for the kill-chain sequence, NOT a claim of "
+        "detected attacker activity. Technique and tactic IDs resolve against the bundled catalog."
+    ),
+    "required": ["hop_index", "technique_id", "catalog", "tactics", "provenance", "confidence"],
+    "properties": {
+        "hop_index": {"type": "integer", "minimum": 0, "description": "0-based position in the kill-chain edge sequence."},
+        "technique_id": {"type": "string", "description": "ATT&CK (e.g. T1078) or ATLAS (e.g. AML.T0053) technique ID."},
+        "technique_name": {"type": "string"},
+        "catalog": {"type": "string", "enum": ["attack", "atlas"]},
+        "tactics": {"type": "array", "items": {"type": "string"}, "description": "Catalog-resolved tactic phase names / IDs."},
+        "provenance": {"type": "string", "description": "The observed edge evidence that produced the mapping."},
+        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+    },
+    "additionalProperties": False,
+}
+
+_ATTACK_PATH_ITEM_OPENAPI_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "exposure_path": None,  # filled after _EXPOSURE_PATH_OPENAPI_SCHEMA is defined
+        "technique_mappings": {"type": "array", "items": _TECHNIQUE_MAPPING_OPENAPI_SCHEMA},
+        "mitre_technique_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Deduped technique IDs mapped across the path's hops (convenience projection).",
+        },
+    },
+    "additionalProperties": True,
+}
+
 _EXPOSURE_PATH_OPENAPI_SCHEMA: dict[str, Any] = {
     "type": "object",
     "description": "Investigation-first exposure path shared by graph views and report exports.",
@@ -111,6 +146,8 @@ _EXPOSURE_PATH_OPENAPI_SCHEMA: dict[str, Any] = {
         "provenance": {"type": "object", "additionalProperties": True},
     },
 }
+
+_ATTACK_PATH_ITEM_OPENAPI_SCHEMA["properties"]["exposure_path"] = _EXPOSURE_PATH_OPENAPI_SCHEMA
 
 _FIX_FIRST_VIEW_OPENAPI_RESPONSE: dict[str, Any] = {
     "description": "Fix-first graph view with ranked cards and embedded ExposurePath payloads.",
@@ -154,13 +191,7 @@ _ATTACK_PATHS_OPENAPI_RESPONSE: dict[str, Any] = {
                     "edges": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
                     "attack_paths": {
                         "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "exposure_path": _EXPOSURE_PATH_OPENAPI_SCHEMA,
-                            },
-                            "additionalProperties": True,
-                        },
+                        "items": _ATTACK_PATH_ITEM_OPENAPI_SCHEMA,
                     },
                     "stats": {
                         "type": "object",
@@ -1052,6 +1083,25 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
     return paths
 
 
+def _with_technique_mappings(paths: list[AttackPath], graph: UnifiedGraph) -> list[AttackPath]:
+    """Ensure every path carries typed MITRE mappings derived from its evidence.
+
+    Persisted paths already carry mappings from build time; route-derived paths
+    (governance / toxic-combination / fallback vuln chains) are enriched here so
+    the API surfaces the same typed kill-chain sequence for a pure-render UI.
+    Never raises into the route.
+    """
+    try:
+        from agent_bom.graph.attack_path_mitre import derive_attack_path_techniques
+
+        for path in paths:
+            if not path.technique_mappings:
+                path.technique_mappings = derive_attack_path_techniques(path, graph)
+    except Exception:  # noqa: BLE001
+        pass
+    return paths
+
+
 def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     """Derive fix-first paths when a snapshot lacks materialised path rows.
 
@@ -1067,10 +1117,13 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     """
     governance_paths = _derived_governance_attack_paths(graph) + _derived_toxic_combination_paths(graph)
     if graph.attack_paths:
-        return sorted(
-            list(graph.attack_paths) + governance_paths,
-            key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
-            reverse=True,
+        return _with_technique_mappings(
+            sorted(
+                list(graph.attack_paths) + governance_paths,
+                key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+                reverse=True,
+            ),
+            graph,
         )
 
     incoming: dict[str, list] = {}
@@ -1161,10 +1214,13 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     )
 
     paths.extend(governance_paths)
-    return sorted(
-        paths,
-        key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
-        reverse=True,
+    return _with_technique_mappings(
+        sorted(
+            paths,
+            key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+            reverse=True,
+        ),
+        graph,
     )
 
 

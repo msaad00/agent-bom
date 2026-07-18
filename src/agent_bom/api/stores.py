@@ -83,9 +83,7 @@ def _compact_terminal_job(job: ScanJob) -> ScanJob:
             compact_result["scan_timestamp"] = compact_result["generated_at"]
         scorecard = job.result.get("posture_scorecard")
         if isinstance(scorecard, dict):
-            compact_result["posture_scorecard"] = {
-                key: scorecard[key] for key in ("grade", "score", "summary") if key in scorecard
-            }
+            compact_result["posture_scorecard"] = {key: scorecard[key] for key in ("grade", "score", "summary") if key in scorecard}
         scan_sources = job.result.get("scan_sources")
         if isinstance(scan_sources, list):
             compact_result["scan_sources"] = scan_sources
@@ -164,7 +162,15 @@ def _get_idempotency_store() -> Any:
     if _idempotency_store is None:
         with _store_lock:
             if _idempotency_store is None:
-                if os.environ.get("AGENT_BOM_DB"):
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    # Multi-replica deployments must share idempotency state so a
+                    # retried write is recognized on any replica; a per-process
+                    # in-memory map would silently drop the same-key-different-body
+                    # 409 guarantee across replicas / restarts.
+                    from agent_bom.api.idempotency_store import PostgresIdempotencyStore
+
+                    _idempotency_store = PostgresIdempotencyStore()
+                elif os.environ.get("AGENT_BOM_DB"):
                     from agent_bom.api.idempotency_store import SQLiteIdempotencyStore
 
                     _idempotency_store = SQLiteIdempotencyStore(os.environ["AGENT_BOM_DB"])

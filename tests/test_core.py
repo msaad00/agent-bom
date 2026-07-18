@@ -3653,6 +3653,59 @@ def test_print_remediation_no_crash(sample_report):
     print_remediation_plan(sample_report)
 
 
+def test_remediation_narrative_omits_reach_clause_when_no_credentials():
+    """The risk narrative must not read "attacker … can reach no credentials".
+
+    When a fix frees zero credentials the credential-reach clause is meaningless
+    and reads as noise — suppress it (P2 honesty)."""
+    from rich.console import Console
+
+    import agent_bom.output as output_mod
+    from agent_bom.models import (
+        Agent,
+        AgentType,
+        AIBOMReport,
+        BlastRadius,
+        MCPServer,
+        Package,
+        Severity,
+        Vulnerability,
+    )
+    from agent_bom.output import print_remediation_plan
+
+    vuln = Vulnerability(
+        id="CVE-2025-9999",
+        summary="reachable bug",
+        severity=Severity.HIGH,
+        fixed_version="2.0.0",
+    )
+    agent = Agent(name="claude", agent_type=AgentType.CLAUDE_CODE, config_path="/tmp")
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=Package(name="requests", version="1.0.0", ecosystem="pypi"),
+        affected_servers=[MCPServer(name="srv")],
+        affected_agents=[agent],
+        exposed_credentials=[],  # <- no credentials reachable
+        exposed_tools=[],
+        risk_score=6.0,
+    )
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+
+    recorder = Console(record=True, width=200, force_terminal=False)
+    original = output_mod.console
+    output_mod.console = recorder
+    try:
+        print_remediation_plan(report)
+    finally:
+        output_mod.console = original
+    text = recorder.export_text()
+
+    assert "no credentials" not in text
+    # The narrative still renders and still names the exploited vuln.
+    assert "if not fixed:" in text
+    assert "CVE-2025-9999" in text
+
+
 def test_json_ai_bom_identity(sample_report):
     """JSON output declares document_type and spec_version for AI-BOM identity."""
     data = to_json(sample_report)

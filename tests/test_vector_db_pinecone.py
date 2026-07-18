@@ -230,3 +230,50 @@ def test_discover_calls_check_pinecone_with_key():
     mock_check.assert_called_once_with("sk-test-key", timeout=3)
     assert len(result) == 1
     assert result[0].index_name == "env-idx"
+
+
+# ── Coverage-gap signalling (auth / API failures must not read as empty) ───────
+
+
+def _drain_coverage_warnings() -> list[dict]:
+    from agent_bom.scanners.state import consume_coverage_warnings
+
+    return consume_coverage_warnings()
+
+
+def test_403_emits_coverage_warning_not_clean_empty():
+    _drain_coverage_warnings()  # start clean
+    with patch("agent_bom.cloud.vector_db._pinecone_get", return_value=(403, {})):
+        result = check_pinecone("no-permission-key")
+    assert result == []
+    warnings = _drain_coverage_warnings()
+    reasons = {w.get("reason") for w in warnings}
+    assert "pinecone_permission_denied" in reasons
+    gap = next(w for w in warnings if w["reason"] == "pinecone_permission_denied")
+    assert gap["ecosystem"] == "pinecone"
+    assert "403" in gap["detail"]
+
+
+def test_401_emits_coverage_warning():
+    _drain_coverage_warnings()
+    with patch("agent_bom.cloud.vector_db._pinecone_get", return_value=(401, {})):
+        check_pinecone("bad-key")
+    reasons = {w.get("reason") for w in _drain_coverage_warnings()}
+    assert "pinecone_auth_failed" in reasons
+
+
+def test_api_outage_emits_coverage_warning():
+    _drain_coverage_warnings()
+    with patch("agent_bom.cloud.vector_db._pinecone_get", return_value=(503, {})):
+        check_pinecone("key")
+    reasons = {w.get("reason") for w in _drain_coverage_warnings()}
+    assert "pinecone_api_unavailable" in reasons
+
+
+def test_empty_account_records_no_coverage_warning():
+    _drain_coverage_warnings()
+    with patch("agent_bom.cloud.vector_db._pinecone_get", return_value=(200, {"indexes": []})):
+        result = check_pinecone("valid-key")
+    assert result == []
+    # A genuinely empty account must stay distinguishable from an auth/API gap.
+    assert _drain_coverage_warnings() == []

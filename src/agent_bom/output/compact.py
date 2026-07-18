@@ -740,11 +740,14 @@ def print_compact_export_hint(report: AIBOMReport) -> None:
     from agent_bom.output import console
 
     vuln_color = "red" if report.total_vulnerabilities > 0 else "green"
+    # Label this per-package CVE-instance total with an explicit scope so it
+    # never reads as the same number as the scan-lane finding count or the
+    # severity breakdown (they legitimately differ — see honest-counts).
     console.print(
         f"\n  [bold]{report.total_agents} agents[/bold] · "
         f"[bold]{report.total_servers} servers[/bold] · "
         f"[bold]{report.total_packages} packages[/bold] · "
-        f"[bold {vuln_color}]{report.total_vulnerabilities} vulns[/bold {vuln_color}]"
+        f"[bold {vuln_color}]{report.total_vulnerabilities} package CVEs[/bold {vuln_color}]"
     )
 
 

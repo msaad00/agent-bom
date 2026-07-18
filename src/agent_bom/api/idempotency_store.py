@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
-from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.storage_schema import ensure_postgres_schema_version, ensure_sqlite_schema_version
 
 # Fixed namespace for content-derived batch ids so an identical write resent
 # without an ``Idempotency-Key`` header still collapses onto one logical batch
@@ -247,3 +248,105 @@ class SQLiteIdempotencyStore:
         # Prune expired keys on write so the table cannot grow without bound.
         self._prune()
         self._conn.commit()
+
+
+class PostgresIdempotencyStore:
+    """PostgreSQL-backed idempotency store for multi-replica deployments.
+
+    Mirrors :class:`SQLiteIdempotencyStore` semantics — replay the cached
+    response for a repeated ``Idempotency-Key``, raise
+    :class:`IdempotencyConflictError` (surfaced as HTTP 409) when the same key
+    is reused with a different request body, and prune past-TTL rows on write —
+    but shares state across every API replica through Postgres. The per-process
+    :class:`InMemoryIdempotencyStore` fallback silently dropped that guarantee
+    on clustered Postgres deployments: a retried ``POST /v1/findings/bulk`` that
+    landed on a different replica (or after a restart) was not recognized.
+
+    The table is tenant-scoped and registered under ``FORCE ROW LEVEL SECURITY``
+    via the shared :func:`_ensure_tenant_rls` helper, exactly like every other
+    control-plane table, so it never bypasses the tenancy backstop.
+    """
+
+    def __init__(self, pool: ConnectionPool | None = None, ttl_hours: int | None = None) -> None:
+        self._pool = pool or _get_pool()
+        self._ttl_hours = ttl_hours
+        self._init_tables()
+
+    def _init_tables(self) -> None:
+        with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "idempotency")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS idempotency_keys (
+                    endpoint TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    request_hash TEXT NOT NULL DEFAULT '',
+                    response_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (endpoint, tenant_id, source_id, idempotency_key)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at)")
+            _ensure_tenant_rls(conn, "idempotency_keys", "tenant_id")
+            conn.commit()
+
+    def _prune(self, conn: Any) -> None:
+        """Delete idempotency keys past the TTL (keyed on ``idx_idempotency_created_at``)."""
+        ttl = self._ttl_hours if self._ttl_hours is not None else _idempotency_ttl_hours()
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(ttl)))).isoformat()
+        conn.execute("DELETE FROM idempotency_keys WHERE created_at < %s", (cutoff,))
+
+    def get(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        *,
+        request_hash: str = "",
+    ) -> dict[str, Any] | None:
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                """SELECT response_json, request_hash FROM idempotency_keys
+                   WHERE endpoint = %s AND tenant_id = %s AND source_id = %s AND idempotency_key = %s""",
+                (endpoint, tenant_id, source_id, idempotency_key),
+            ).fetchone()
+        if row:
+            _ensure_request_hash_matches(str(row[1] or ""), request_hash)
+        return json.loads(row[0]) if row else None
+
+    def put(
+        self,
+        endpoint: str,
+        tenant_id: str,
+        source_id: str,
+        idempotency_key: str,
+        response: dict[str, Any],
+        *,
+        request_hash: str = "",
+    ) -> None:
+        with _tenant_connection(self._pool) as conn:
+            conn.execute(
+                """INSERT INTO idempotency_keys
+                   (endpoint, tenant_id, source_id, idempotency_key, request_hash, response_json, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (endpoint, tenant_id, source_id, idempotency_key) DO UPDATE SET
+                       request_hash = EXCLUDED.request_hash,
+                       response_json = EXCLUDED.response_json,
+                       created_at = EXCLUDED.created_at""",
+                (
+                    endpoint,
+                    tenant_id,
+                    source_id,
+                    idempotency_key,
+                    request_hash,
+                    json.dumps(response, sort_keys=True),
+                    _utcnow(),
+                ),
+            )
+            # Prune expired keys on write so the table cannot grow without bound.
+            self._prune(conn)
+            conn.commit()

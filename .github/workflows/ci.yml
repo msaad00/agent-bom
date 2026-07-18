@@ -1035,6 +1035,9 @@ jobs:
       - name: Verify doc counts (MCP tools, detectors, pages) match source
         run: python scripts/check-counts.py
 
+      - name: Verify cloud benchmark inventory (no catalog/registry/classification drift)
+        run: python scripts/check_benchmark_drift.py
+
       - name: Verify product surface contract
         run: python scripts/check_product_surface_contract.py
 

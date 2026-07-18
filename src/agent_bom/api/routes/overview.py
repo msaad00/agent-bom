@@ -133,7 +133,6 @@ _SEVERITY_KEYS = ("critical", "high", "medium", "low")
 # now carries it so ``sum(severity.values())`` reconciles with the counted total.
 _UNRATED_KEY = "unrated"
 _ALL_SEVERITY_KEYS = (*_SEVERITY_KEYS, _UNRATED_KEY)
-_HUB_SEVERITY_KEYS = ("critical", "high", "medium", "low", "info", "unknown")
 
 # Coverage lanes — the five security domains, in display order (issue #3946).
 # Symmetric posture-management family: CSPM · ASPM · DSPM · AISPM, plus Vuln
@@ -728,6 +727,40 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
     return empty
 
 
+def _hub_kev_snapshot(request: Request) -> int:
+    """Count of hub-ingested findings flagged CISA-KEV (same window/origin as the
+    severity snapshot).
+
+    The exec KEV headline used to source KEV from the scan-lane rollup only, so a
+    connector/bulk-ingested KEV finding showed in the /v1/findings drill but never
+    moved the headline. This reads the hub current-state via the store's
+    ``current_kev_count`` (the same spine the drill hydrates KEV from) so the two
+    reconcile. Memoised per tenant with the severity snapshot's invalidation
+    contract; degrades to 0 if the hub store is unavailable.
+    """
+    from agent_bom.api import hub_overview_cache
+
+    tenant_id = _tenant_id(request)
+    cached = hub_overview_cache.get_cached_kev(tenant_id)
+    if cached is not None:
+        return cached
+    try:
+        from agent_bom.api import time_window
+        from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+        store = get_compliance_hub_store()
+        counter = getattr(store, "current_kev_count", None)
+        if not callable(counter):
+            return 0
+        since = time_window.window_since_iso(time_window.normalize_window_days(None))
+        count = int(counter(tenant_id, origin="bulk_ingest", since=since) or 0)
+    except Exception:  # pragma: no cover - hub store optional
+        _logger.debug("hub kev snapshot failed", exc_info=True)
+        return 0
+    hub_overview_cache.set_cached_kev(tenant_id, count)
+    return count
+
+
 _HUB_TOP_RISK_LIMIT = 10
 
 
@@ -797,25 +830,30 @@ def _merge_top_risks(*groups: list[dict[str, Any]], limit: int = 10) -> list[dic
 def _combined_severity(scan_severity: dict[str, int], hub_severity: dict[str, int]) -> dict[str, int]:
     """Merge scan + hub-ingested severity into the five reconciled buckets.
 
-    The hub histogram carries ``info``/``unknown`` bands the exec-score model
-    doesn't rate — they fold into ``unrated`` so nothing is dropped and the
-    merged buckets still sum to the true counted total (the same invariant PR1's
-    coverage lanes hold).
+    The hub histogram carries bands the exec-score model doesn't rate —
+    ``info``/``unknown``/``none`` and any vendor-specific label — which ALL fold
+    into ``unrated`` so nothing is dropped and the merged buckets still sum to the
+    true counted total (the same invariant PR1's coverage lanes hold). Folding
+    only ``info``/``unknown`` previously dropped a ``none``-severity hub finding
+    from ``total`` while /v1/findings still counted it (``none`` is an accepted
+    findings filter) — an exec/drill mismatch (#3961).
     """
     merged = {key: int(scan_severity.get(key, 0) or 0) for key in _ALL_SEVERITY_KEYS}
-    for band in ("critical", "high", "medium", "low"):
-        merged[band] += int(hub_severity.get(band, 0) or 0)
-    merged[_UNRATED_KEY] += int(hub_severity.get("info", 0) or 0) + int(hub_severity.get("unknown", 0) or 0)
+    for band, count in hub_severity.items():
+        key = str(band).strip().lower()
+        merged[key if key in _SEVERITY_KEYS else _UNRATED_KEY] += int(count or 0)
     return merged
 
 
-def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]) -> dict[str, int]:
+def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int], hub_kev: int = 0) -> dict[str, int]:
     """The single exec-facing severity source of truth (#3961).
 
     Both the ``/v1/overview`` headline and ``/v1/posture/counts`` derive their
     critical/high/… from THIS reconciliation of the canonical, windowed scan
     current state with hub-ingested current evidence. The honest ``unrated``
     bucket is carried through and the buckets sum to ``total`` (no silent drop).
+    ``kev`` reconciles the scan-lane rollup with hub-ingested KEV findings so a
+    connector/pushed KEV finding moves the headline, not just the drill.
     """
     combined = _combined_severity(estate["severity"], hub_severity)
     return {
@@ -825,7 +863,7 @@ def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]
         "low": combined["low"],
         "unrated": combined[_UNRATED_KEY],
         "total": sum(combined.values()),
-        "kev": int(estate.get("kev", 0) or 0),
+        "kev": int(estate.get("kev", 0) or 0) + int(hub_kev or 0),
         "credential_exposed": int(estate.get("credential_exposed", 0) or 0),
     }
 
@@ -863,7 +901,9 @@ def exec_severity_counts(request: Request, jobs: list[Any]) -> dict[str, int]:
     ``_reconciled_exec_counts`` directly to avoid a second pass.
     """
     estate = _estate_rollup(jobs)
-    return _reconciled_exec_counts(_exec_estate(estate, jobs), _hub_severity_snapshot(request))
+    return _reconciled_exec_counts(
+        _exec_estate(estate, jobs), _hub_severity_snapshot(request), _hub_kev_snapshot(request)
+    )
 
 
 def _exec_posture(
@@ -871,6 +911,7 @@ def _exec_posture(
     scan_posture: dict[str, Any],
     estate: dict[str, Any],
     hub_severity: dict[str, int],
+    hub_kev: int = 0,
 ) -> dict[str, Any]:
     """Compute the configurable exec risk score from the honest estate counts.
 
@@ -893,7 +934,7 @@ def _exec_posture(
     config = resolve_exec_score_config(_tenant_id(request))
     return compute_exec_score(
         severity=combined,
-        kev=int(estate.get("kev", 0) or 0),
+        kev=int(estate.get("kev", 0) or 0) + int(hub_kev or 0),
         exposure=int(estate.get("credential_exposed", 0) or 0),
         # Live count of failing compliance frameworks, accumulated in the same
         # estate rollup (#3962): a framework with a critical/high finding fails.
@@ -986,24 +1027,34 @@ def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_sev
     estate = _estate_rollup(jobs)
     exec_estate = _exec_estate(estate, jobs)
     coverage = estate["coverage"]
-    posture = _exec_posture(request, _posture_snapshot(jobs), exec_estate, hub_severity)
+    hub_kev = _hub_kev_snapshot(request)
+    posture = _exec_posture(request, _posture_snapshot(jobs), exec_estate, hub_severity, hub_kev)
     runtime = _runtime_snapshot(request, jobs)
     cost = _cost_snapshot(request)
     identity = _identity_snapshot(request)
 
-    hub_findings = sum(int(hub_severity.get(k, 0) or 0) for k in _HUB_SEVERITY_KEYS)
+    # Sum EVERY hub band (incl. ``none`` / vendor-specific), not just the six
+    # canonical keys, so the hub-findings count never silently drops a band the
+    # exec total (via ``_combined_severity``) still carries.
+    hub_findings = sum(int(v or 0) for v in hub_severity.values())
     # Headline severity reads the SAME reconciled source of truth that
     # /v1/posture/counts reads — the unified spine folded with hub-ingested
     # evidence — never the CVE-only blast_radius (#3961). Both exec surfaces
     # route through ``_reconciled_exec_counts`` so they can never disagree.
-    exec_counts = _reconciled_exec_counts(exec_estate, hub_severity)
+    exec_counts = _reconciled_exec_counts(exec_estate, hub_severity, hub_kev)
     headline_critical = exec_counts["critical"]
     headline_high = exec_counts["high"]
     critical_high = headline_critical + headline_high
 
     cloud_accounts = _cloud_account_count(request)
     repo_scans = _repo_scan_count(jobs)
-    vuln_severity = estate["vuln_severity"]
+    # Fold hub-ingested (pushed) findings into the Vuln/SCA tile so a push-only
+    # estate (findings pushed, no scan job) can't show "0 open CVEs · ok" while
+    # /findings?domain=vuln returns real highs (#3962). Derived from the same hub
+    # spine the drill reads, so the tile reconciles with its own drill-down.
+    vuln_severity = _combined_severity(estate["vuln_severity"], hub_severity)
+    vuln_metric = int(estate["unique_cves"]) + hub_findings
+    vuln_kev = exec_counts["kev"]
 
     # Fold hub-ingested findings into the exec top-risk strip so a
     # connector/bulk-ingested estate (scan jobs alone) no longer renders an empty
@@ -1027,13 +1078,13 @@ def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_sev
             "label": "Vuln / SCA",
             "href": "/findings?issue=vulnerability",
             "graph_href": _cloud_graph_href(vuln_severity),
-            "metric": estate["unique_cves"],
+            "metric": vuln_metric,
             "metric_label": "open CVEs",
             "status": _status_for(vuln_severity["critical"], vuln_severity["high"]),
             "detail": {
                 "critical": vuln_severity["critical"],
                 "high": vuln_severity["high"],
-                "kev": estate["kev"],
+                "kev": vuln_kev,
                 "packages": estate["unique_packages"],
                 # Full histogram (incl. ``unrated``) so the UI never renders a
                 # metric that contradicts its severity strip.
@@ -1098,7 +1149,7 @@ def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_sev
             "critical": headline_critical,
             "high": headline_high,
             "critical_high": critical_high,
-            "kev": estate["kev"],
+            "kev": exec_counts["kev"],
             "credential_exposed": estate["credential_exposed"],
             "scans": estate["scan_count"],
             "latest_scan_at": estate["latest_scan_at"],

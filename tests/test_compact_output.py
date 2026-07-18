@@ -509,7 +509,26 @@ def test_compact_export_hint():
     assert "agents" in output
     assert "servers" in output
     assert "packages" in output
-    assert "vulns" in output
+    # The per-package CVE-instance total is labelled with an explicit scope so it
+    # can't read as the same metric as the scan-lane finding count (honesty).
+    assert "package CVEs" in output
+
+
+def test_compact_export_hint_vuln_total_is_scope_labeled():
+    """The export-hint vuln total must NOT reuse the bare word "vulns".
+
+    The demo prints three different vuln totals — scan findings, the
+    severity-with-unknowns breakdown, and this per-package CVE-instance count.
+    Reusing the identical word "vulns" for all three reads as one contradicting
+    metric; this total is scoped as "package CVEs" (#honest-counts)."""
+    pkg = Package(name="requests", version="1.0.0", ecosystem="pypi", vulnerabilities=[_vuln()])
+    server = _make_server(packages=[pkg])
+    report = AIBOMReport(agents=[_make_agent(servers=[server])])
+    output = _plain(_capture(print_compact_export_hint, report))
+    assert report.total_vulnerabilities >= 1
+    assert f"{report.total_vulnerabilities} package CVEs" in output
+    # The ambiguous bare "N vulns" phrasing is gone.
+    assert " vulns" not in output
 
 
 def test_compact_cis_posture_uses_govern_lane():

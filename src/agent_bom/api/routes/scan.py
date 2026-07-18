@@ -41,6 +41,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
+from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
 from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
 from agent_bom.api.idempotency_store import (
@@ -1775,6 +1776,11 @@ async def list_findings(
     ``/health`` and unrelated endpoints. Under genuine saturation the guard
     sheds excess reads with ``429 + Retry-After`` instead of degrading every
     route. Normal single-reader load never trips it.
+
+    ``offset`` is a compatibility path capped at 10,000 (a deep ``OFFSET`` scans
+    linearly): past the ceiling the endpoint returns ``400`` and steers callers
+    to ``cursor``/``next_cursor``, the unbounded-depth pagination contract shared
+    with ``/v1/compliance/hub/findings``.
     """
     try:
         async with adaptive_backpressure("findings"):
@@ -1872,6 +1878,14 @@ def _list_findings_impl(
         )
     if cursor and offset:
         raise HTTPException(status_code=400, detail="cursor and offset are mutually exclusive")
+    if offset > _HUB_LIST_OFFSET_CEILING:
+        # Deep OFFSET scans linearly; mirror the sibling hub list route and cap
+        # the compatibility offset path. Cursor pagination is the unbounded-depth
+        # contract, so steer deep walks there instead of degrading the read path.
+        raise HTTPException(
+            status_code=400,
+            detail=f"offset exceeds ceiling {_HUB_LIST_OFFSET_CEILING}; use cursor pagination for deeper walks",
+        )
     if cursor:
         try:
             decode_finding_cursor(cursor, expected_sort=sort_key)

@@ -9,10 +9,10 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
+    from agent_bom.ai_schemas import AIFindingAssessment
     from agent_bom.finding import Finding
 
 from agent_bom.advisory_sources import merge_advisory_sources
-from agent_bom.ai_schemas import AIFindingAssessment
 from agent_bom.canonical_ids import (
     canonical_agent_id,
     canonical_mcp_prompt_id,

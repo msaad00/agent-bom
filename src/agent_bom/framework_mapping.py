@@ -37,9 +37,15 @@ evidencing_checks, ...)}``. It is populated from the vendored data in
   official ISO / AICPA / CIS title, none of which are vendored anywhere in this
   tree.
 
-``control_spec()`` is the read seam; ``evidencing_checks`` stays empty here
-(PR3 curates check -> control). ``nist_to_iso()`` exposes NIST's own official
-SP 800-53 Rev 5 -> ISO/IEC 27001:2022 crosswalk (ISO referenced by ID only).
+``control_spec()`` is the read seam. PR3 curates ``evidencing_checks`` for
+``nist-800-53`` from two VENDOR-ASSERTED, in-repo sources: the CWE -> NIST
+controls already in ``CWE_COMPLIANCE_MAP`` (inverted into ``cwe:<CWE-ID>``
+checks) and the conservative ``CIS_FOUNDATIONS_TO_NIST_800_53`` table
+(``cis:<cloud>:<check_id>`` checks). Neither is an authority-published
+crosswalk; both are check -> control judgments (which agent-bom check evidences
+which NIST control), not control-to-control mappings. ``nist_to_iso()`` exposes
+NIST's own official SP 800-53 Rev 5 -> ISO/IEC 27001:2022 crosswalk (ISO
+referenced by ID only).
 """
 
 from __future__ import annotations
@@ -69,6 +75,9 @@ __all__ = [
     "select_frameworks",
     "is_framework_relevant",
     "ALL_FRAMEWORKS",
+    "CIS_FOUNDATIONS_TO_NIST_800_53",
+    "nist_controls_for_cis_check",
+    "NIST_800_53_EVIDENCED_CONTROLS",
 ]
 
 
@@ -390,6 +399,103 @@ def is_framework_relevant(
     )
 
 
+# ─── PR3: check -> NIST 800-53 control curation (VENDOR-ASSERTED) ─────────────
+# Two curated, in-repo sources decide which agent-bom check evidences which NIST
+# SP 800-53 Rev 5 control. Neither is an authority-published crosswalk; both are
+# agent-bom's own asserted "our check evidences this control" judgment (see the
+# module docstring — this is check -> control, NOT control-to-control).
+#
+#   1. CWE -> NIST controls: reused verbatim from ``CWE_COMPLIANCE_MAP`` (already
+#      curated in-repo). Every CVE/CWE finding evidences the controls its CWE
+#      maps to. Inverted into ``cwe:<CWE-ID>`` evidencing checks below — zero new
+#      assertion, so it inherits that table's provenance.
+#
+#   2. CIS Foundations Benchmark check -> NIST controls: the small, conservative
+#      table below. Only unambiguous control-objective matches are mapped (a CIS
+#      check and a NIST control addressing the same objective); anything unclear
+#      is deliberately left unmapped (honest — unmapped is fine). Scoped to the
+#      AWS CIS Foundations Benchmark, whose check numbering is the most stable and
+#      widely-referenced. Keyed by ``(cloud, check_id)`` because CIS check numbers
+#      are provider-specific. Every referenced NIST control id is validated
+#      against the vendored catalog by the test-suite.
+CIS_FOUNDATIONS_TO_NIST_800_53: dict[tuple[str, str], tuple[str, ...]] = {
+    # ── Identity & access (CIS section 1) ───────────────────────────────────
+    ("aws", "1.4"): ("AC-6", "IA-5"),  # no root access key
+    ("aws", "1.5"): ("IA-2",),  # MFA for root
+    ("aws", "1.6"): ("IA-2",),  # hardware MFA for root
+    ("aws", "1.7"): ("AC-6",),  # eliminate day-to-day root use
+    ("aws", "1.8"): ("IA-5",),  # password policy: min length
+    ("aws", "1.9"): ("IA-5",),  # password policy: reuse prevention
+    ("aws", "1.10"): ("IA-2",),  # MFA for all console IAM users
+    ("aws", "1.12"): ("AC-2", "IA-5"),  # disable credentials unused >= 45 days
+    ("aws", "1.14"): ("IA-5",),  # rotate access keys every 90 days
+    ("aws", "1.15"): ("AC-6",),  # permissions only via groups/roles
+    ("aws", "1.16"): ("AC-6",),  # no full-admin ("*:*") policies attached
+    # ── Data protection at rest / boundary (CIS section 2) ───────────────────
+    ("aws", "2.1.1"): ("AC-3", "SC-7"),  # S3 account-level public access block
+    ("aws", "2.1.2"): ("SC-28",),  # S3 server-side encryption
+    ("aws", "2.2.1"): ("SC-28",),  # EBS default encryption
+    ("aws", "2.3.1"): ("SC-28",),  # RDS encryption at rest
+    ("aws", "2.4.1"): ("SC-12",),  # KMS customer-managed key rotation
+    # ── Logging & audit (CIS section 3) ──────────────────────────────────────
+    ("aws", "3.1"): ("AU-2", "AU-12"),  # CloudTrail enabled in all regions
+    ("aws", "3.2"): ("AU-9",),  # CloudTrail log file validation
+    ("aws", "3.3"): ("AC-3", "SC-7"),  # CloudTrail S3 bucket not public
+    ("aws", "3.4"): ("AU-6",),  # CloudTrail -> CloudWatch Logs
+    ("aws", "3.5"): ("AU-2",),  # management events in all regions
+    ("aws", "3.7"): ("SC-28",),  # CloudTrail logs encrypted with KMS
+    ("aws", "3.9"): ("AU-2",),  # VPC flow logging
+    ("aws", "3.10"): ("AU-2",),  # S3 object-level write logging
+    ("aws", "3.11"): ("AU-2",),  # S3 object-level read logging
+    # ── Monitoring / alerting (CIS section 4) ────────────────────────────────
+    ("aws", "4.1"): ("SI-4",),  # alarm: unauthorized API calls
+    ("aws", "4.2"): ("SI-4",),  # alarm: console sign-in without MFA
+    ("aws", "4.3"): ("SI-4",),  # alarm: root account usage
+    ("aws", "4.4"): ("SI-4",),  # alarm: IAM policy changes
+    ("aws", "4.5"): ("SI-4",),  # alarm: CloudTrail config changes
+    ("aws", "4.16"): ("SI-4",),  # Security Hub enabled
+    # ── Network boundary (CIS section 5) ─────────────────────────────────────
+    ("aws", "5.1"): ("SC-7",),  # NACLs restrict admin-port ingress
+    ("aws", "5.2"): ("SC-7",),  # security groups restrict admin-port ingress
+    ("aws", "5.3"): ("SC-7",),  # default security group restricts all traffic
+    ("aws", "5.5"): ("SC-7",),  # no unrestricted 0.0.0.0/0 ingress to all ports
+    ("aws", "5.6"): ("AU-2",),  # VPC flow logging
+}
+
+
+def nist_controls_for_cis_check(cloud: str, check_id: str) -> list[str]:
+    """Return the NIST 800-53 controls a CIS Foundations check evidences.
+
+    Vendor-asserted objective match (see ``CIS_FOUNDATIONS_TO_NIST_800_53``);
+    empty list when the check has no defensible NIST mapping. The result is
+    sorted so callers get a stable order.
+    """
+    return sorted(CIS_FOUNDATIONS_TO_NIST_800_53.get((cloud, check_id), ()))
+
+
+# Set of NIST controls with at least one curated evidencing check. Populated by
+# ``_build_framework_control_catalog``; the ``/v1/compliance`` NIST catalog line
+# scores against exactly this set so its evaluated denominator reconciles with
+# the curated check -> control mapping (never the looser vuln-intrinsic tags).
+NIST_800_53_EVIDENCED_CONTROLS: frozenset[str] = frozenset()
+
+
+def _nist_evidencing_checks() -> dict[str, list[str]]:
+    """Invert the two curated sources into ``{nist_control_id: [check, ...]}``.
+
+    CWE checks are namespaced ``cwe:<CWE-ID>``; CIS Foundations checks are
+    ``cis:<cloud>:<check_id>``. Deterministic (sorted) so the catalog is stable.
+    """
+    checks: dict[str, set[str]] = {}
+    for cwe, frameworks in CWE_COMPLIANCE_MAP.items():
+        for control_id in frameworks.get("nist_800_53", []):
+            checks.setdefault(control_id, set()).add(f"cwe:{cwe.upper()}")
+    for (cloud, check_id), controls in CIS_FOUNDATIONS_TO_NIST_800_53.items():
+        for control_id in controls:
+            checks.setdefault(control_id, set()).add(f"cis:{cloud}:{check_id}")
+    return {control_id: sorted(values) for control_id, values in checks.items()}
+
+
 # ─── Populate the provenanced control catalog (import-time, once) ─────────────
 
 
@@ -407,10 +513,21 @@ def _build_framework_control_catalog() -> None:
     from agent_bom.iso_27001 import ISO_27001
     from agent_bom.soc2 import SOC2_TSC
 
+    global NIST_800_53_EVIDENCED_CONTROLS
+
+    # PR3: curated check -> control mapping (vendor-asserted), keyed by control.
+    evidencing = _nist_evidencing_checks()
     FRAMEWORK_CONTROL_CATALOG[FRAMEWORK_NIST_800_53] = {
-        control_id: ControlSpec(control_id=control_id, title=spec["title"])
+        control_id: ControlSpec(
+            control_id=control_id,
+            title=spec["title"],
+            evidencing_checks=tuple(evidencing.get(control_id, ())),
+        )
         for control_id, spec in framework_catalog.nist_controls().items()
     }
+    NIST_800_53_EVIDENCED_CONTROLS = frozenset(
+        cid for cid, checks in evidencing.items() if cid in FRAMEWORK_CONTROL_CATALOG[FRAMEWORK_NIST_800_53] and checks
+    )
 
     # ISO 27001 (reference-only): every Annex A control NIST's crosswalk cites,
     # plus the IDs our own taggers use. Title = our own descriptor if we have

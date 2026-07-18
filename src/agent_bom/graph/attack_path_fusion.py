@@ -365,24 +365,57 @@ def apply_attack_path_fusion(graph: UnifiedGraph) -> dict[str, object]:
     Idempotent w.r.t. fusion: existing fusion-sourced paths are replaced so a
     re-run does not duplicate them. Other attack paths (lateral, governance) are
     preserved. Returns counts. Never raises into the builder.
+
+    Large estates (> ``_MAX_NODES``) no longer skip: they run the bounded,
+    partitioned campaign engine (:mod:`agent_bom.graph.attack_path_campaigns`),
+    which yields bounded fused paths + prioritized campaigns with an honest
+    ``LIMITED / partitioned`` completeness status (never a fabricated clean/complete
+    result). Smaller estates keep the exact prior whole-graph behaviour.
     """
+    if len(graph.nodes) > _MAX_NODES:
+        return _apply_partitioned_campaigns(graph)
+
     computation = _compute_fused_attack_paths(graph)
     fused = computation.paths
     # Drop any prior fusion output, keep everything else.
     graph.attack_paths = [p for p in graph.attack_paths if not _is_fusion_path(p)]
     graph.attack_paths.extend(fused)
+    graph.attack_campaigns = _cluster_small_graph_campaigns(graph, fused)
     graph.analysis_status[_ANALYZER] = computation.status
-    result: dict[str, object] = {
+    return {
         "fused_attack_paths": len(fused),
         "max_fused_risk": int(round(max((p.composite_risk for p in fused), default=0.0))),
+        "campaign_count": len(graph.attack_campaigns),
         "analysis_status": computation.status.to_dict(),
     }
-    # Surface the node-budget cap so 0 paths on a large estate reads as "skipped"
-    # rather than "genuinely none".
-    if len(graph.nodes) > _MAX_NODES:
-        result["skipped"] = True
-        result["skipped_reason"] = f"node_cap_exceeded:{len(graph.nodes)}>{_MAX_NODES}"
-    return result
+
+
+def _cluster_small_graph_campaigns(graph: UnifiedGraph, fused: list[AttackPath]):
+    """Cluster whole-graph fused paths into campaigns for a consistent surface."""
+    from agent_bom.graph.attack_path_campaigns import _cluster_campaigns, _partition_key
+
+    partition_of = {nid: _partition_key(node) for nid, node in graph.nodes.items()}
+    return _cluster_campaigns(graph, fused, partition_of)
+
+
+def _apply_partitioned_campaigns(graph: UnifiedGraph) -> dict[str, object]:
+    """Run the bounded partitioned engine and materialise its output on the graph."""
+    from agent_bom.graph.attack_path_campaigns import compute_partitioned_campaigns
+
+    result = compute_partitioned_campaigns(graph)
+    graph.attack_paths = [p for p in graph.attack_paths if not _is_fusion_path(p)]
+    graph.attack_paths.extend(result.paths)
+    graph.attack_campaigns = result.campaigns
+    graph.analysis_status[_ANALYZER] = result.status
+    return {
+        "fused_attack_paths": len(result.paths),
+        "max_fused_risk": int(round(max((p.composite_risk for p in result.paths), default=0.0))),
+        "campaign_count": len(result.campaigns),
+        "bounded": True,
+        "partitioned": True,
+        "campaigns": [c.to_dict() for c in result.campaigns],
+        "analysis_status": result.status.to_dict(),
+    }
 
 
 def _is_fusion_path(path: AttackPath) -> bool:

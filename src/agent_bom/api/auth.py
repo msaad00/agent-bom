@@ -471,8 +471,15 @@ class KeyStore:
         return [k for k in keys if k.tenant_id == tenant_id]
 
     def verify(self, raw_key: str) -> ApiKey | None:
+        # Hold the lock only long enough to snapshot the key list; the expensive
+        # scrypt derivation in ``verify_api_key`` then runs lock-free so it
+        # neither stalls the caller under the lock nor serializes concurrent
+        # verifies (each worker thread derives independently). ``is_usable()`` is
+        # still evaluated at match time, so revocation/expiry semantics are
+        # unchanged.
         with self._lock:
-            return verify_api_key(raw_key, self._keys)
+            keys_snapshot = list(self._keys)
+        return verify_api_key(raw_key, keys_snapshot)
 
     def has_keys(self) -> bool:
         with self._lock:

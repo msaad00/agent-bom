@@ -37,6 +37,25 @@ describe("lodBandForZoom", () => {
 });
 
 describe("effectiveLodBandForGraph", () => {
+  it("keeps bounded estate roll-ups as readable drill-down cards", () => {
+    expect(
+      effectiveLodBandForGraph("cluster", {
+        sourceNodeCount: 2,
+        renderedNodeCount: 2,
+        clusterCount: 0,
+        rollupActive: true,
+      }),
+    ).toBe("detail");
+    expect(
+      effectiveLodBandForGraph("summary", {
+        sourceNodeCount: 2,
+        renderedNodeCount: 2,
+        clusterCount: 0,
+        rollupActive: true,
+      }),
+    ).toBe("detail");
+  });
+
   it("keeps labeled summary rendering when cluster aggregation did not collapse nodes", () => {
     expect(
       effectiveLodBandForGraph("cluster", {

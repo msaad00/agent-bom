@@ -39,6 +39,7 @@ export interface LodGraphShape {
   sourceNodeCount: number;
   renderedNodeCount: number;
   clusterCount: number;
+  rollupActive?: boolean | undefined;
 }
 
 /**
@@ -47,6 +48,12 @@ export interface LodGraphShape {
  * dots, so keep the labeled summary renderer even below the cluster zoom.
  */
 export function effectiveLodBandForGraph(band: LodBand, shape: LodGraphShape): LodBand {
+  // A hierarchy roll-up is already bounded to the current scope. Its cards
+  // carry the label, evidence summary, and drill-down affordance, so replacing
+  // them with generic LOD dots/summary pills makes the decision surface
+  // unreadable and removes the explicit container marker used by automation.
+  if (shape.rollupActive) return "detail";
+
   if (band !== "cluster") return band;
 
   const sourceNodeCount = Math.max(0, shape.sourceNodeCount);

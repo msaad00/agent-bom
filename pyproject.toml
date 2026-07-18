@@ -445,6 +445,22 @@ disallow_incomplete_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 
+# Phase 5 (#1969): tighten one strictness notch further — ban bare/implicit
+# generics (`dict`/`list` -> `dict[str, Any]`/`list[Any]`) so serialized-payload
+# fields declare their shape instead of degrading to `Any`. Applied
+# module-by-module; expand this list as each module is de-genericized. Not a
+# global flip — the base [tool.mypy] settings stay unchanged.
+[[tool.mypy.overrides]]
+module = [
+    "agent_bom.models",
+    "agent_bom.api.findings_current",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+warn_return_any = true
+warn_unused_ignores = true
+
 [tool.ruff]
 line-length = 140  # Relaxed from 120 for CLI help strings
 target-version = "py311"

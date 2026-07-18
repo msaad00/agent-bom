@@ -97,6 +97,7 @@ import {
   type ConnectDepth,
 } from "@/lib/cloud-connect-wizard";
 import { serviceEntry } from "@/lib/service-registry";
+import { authorizationEvidenceCopy } from "@/lib/authorization-evidence";
 import { vendorLogo } from "@/lib/vendor-logos";
 import { FirstRunJourney } from "@/components/first-run-journey";
 import {
@@ -2814,6 +2815,9 @@ function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
   const { inventory, cis_benchmark: cis } = result;
   const isSnowflake = inventory.agent_count != null;
   const warnings = inventory.warnings ?? [];
+  const authorizationCopy = inventory.authorization_evidence
+    ? authorizationEvidenceCopy(inventory.authorization_evidence)
+    : null;
   return (
     <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2839,6 +2843,21 @@ function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
         />
         <StatTile icon={KeyRound} label="CIS pass rate" value={formatPassRate(cis.pass_rate)} />
       </div>
+      {authorizationCopy ? (
+        <div className="mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="inline-flex items-center gap-1.5 text-xs font-medium text-[color:var(--foreground)]">
+              <Shield className="h-3.5 w-3.5 text-sky-500" /> Authorization evidence
+            </p>
+            <span className="rounded-full border border-[color:var(--border-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--text-secondary)]">
+              {authorizationCopy.label}
+            </span>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-5 text-[color:var(--text-secondary)]">
+            {authorizationCopy.detail}
+          </p>
+        </div>
+      ) : null}
       {warnings.length > 0 ? (
         <p className="mt-3 text-[11px] leading-5 text-amber-300">{warnings.join(" · ")}</p>
       ) : null}

@@ -11,6 +11,7 @@ key-pair connection) plus the per-provider read-only scan-launch route.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import sqlite3
 import sys
@@ -1694,6 +1695,35 @@ def test_summarize_inventory_payload_redacts_raw_warnings() -> None:
     assert warnings == ["2 provider discovery warning(s) — see server logs for detail."]
     blob = " ".join(warnings)
     assert "Traceback" not in blob and "AccessDenied" not in blob and "arn:aws:iam" not in blob
+
+
+def test_summarize_inventory_payload_projects_authorization_coverage_without_secret_fields() -> None:
+    from agent_bom.mcp_tools.posture import _summarize_inventory_payload
+
+    payload = {
+        "status": "partial",
+        "subscription_id": "subscription-1",
+        "authorization_evidence": {
+            "required_sources": ["assignments", "roles"],
+            "sources": [
+                {"name": "assignments", "state": "complete", "diagnostics": ["safe-looking but private"]},
+                {"name": "roles", "state": "partial", "provenance": ["/private/provider/path"]},
+            ],
+            "bindings": [{"binding_id": "do-not-project"}],
+        },
+    }
+
+    summary = _summarize_inventory_payload("azure", payload)
+
+    assert summary["authorization_evidence"] == {
+        "status": "partial",
+        "required_source_count": 2,
+        "complete_source_count": 1,
+        "partial_source_count": 1,
+        "indeterminate_source_count": 0,
+    }
+    assert "private" not in json.dumps(summary)
+    assert "do-not-project" not in json.dumps(summary)
 
 
 # Sensitive raw exception text (KMS broker / encryption path) must never reach the

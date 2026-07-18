@@ -155,7 +155,7 @@ def _summarize_inventory_payload(provider: str, payload: dict[str, Any]) -> dict
     public_warnings = [f"{warning_count} provider discovery warning(s) — see server logs for detail."] if warning_count else []
     raw_status = str(payload.get("status", "unknown") or "unknown").strip().lower()
     public_status = raw_status if raw_status in _PUBLIC_INVENTORY_STATUSES else "unknown"
-    return {
+    summary = {
         "provider": provider,
         "status": public_status,
         "account": payload.get("account_id") or payload.get("subscription_id") or payload.get("project_id") or None,
@@ -171,6 +171,22 @@ def _summarize_inventory_payload(provider: str, payload: dict[str, Any]) -> dict
         },
         "warnings": public_warnings,
     }
+    authorization_evidence = payload.get("authorization_evidence")
+    if isinstance(authorization_evidence, dict):
+        from agent_bom.api.metrics import record_authorization_evidence
+        from agent_bom.cloud.authorization_evidence import (
+            authorization_evidence_gap_reason_codes,
+            summarize_authorization_evidence,
+        )
+
+        evidence_summary = summarize_authorization_evidence(authorization_evidence)
+        summary["authorization_evidence"] = evidence_summary.to_dict()
+        record_authorization_evidence(
+            provider=str(provider).strip().lower(),
+            status=evidence_summary.status.value,
+            reason_codes=authorization_evidence_gap_reason_codes(authorization_evidence),
+        )
+    return summary
 
 
 async def cloud_inventory_impl(

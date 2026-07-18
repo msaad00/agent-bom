@@ -72,7 +72,28 @@ _compliance_exports = _LabelledCounter()  # labelled by algorithm (Ed25519, HMAC
 _compliance_export_bytes = _LabelledCounter()  # labelled by framework key
 _scan_completions = _LabelledCounter()  # labelled by status (done, failed, cancelled)
 _gateway_relays = _LabelledCounter()  # labelled by "<upstream>|<outcome>"
+_authorization_evidence = _LabelledCounter()  # labelled by "<provider>|<status>"
+_authorization_evidence_gaps = _LabelledCounter()  # labelled by "<provider>|<reason>"
 _scan_jobs_active = _Gauge()  # in-flight scans (queued + running)
+
+_AUTHORIZATION_PROVIDERS = frozenset({"azure", "gcp"})
+_AUTHORIZATION_STATUSES = frozenset({"complete", "partial", "indeterminate"})
+_AUTHORIZATION_REASON_CODES = frozenset(
+    {
+        "access_denied",
+        "disabled",
+        "duplicate_source",
+        "evidence_missing",
+        "partial",
+        "required_source_missing",
+        "required_sources_missing",
+        "sdk_missing",
+        "stale",
+        "truncated",
+        "unavailable",
+        "unsupported",
+    }
+)
 
 
 def record_auth_failure(reason: str) -> None:
@@ -139,6 +160,16 @@ def record_gateway_relay(upstream: str, outcome: str) -> None:
     _gateway_relays.inc(f"{upstream}|{outcome}")
 
 
+def record_authorization_evidence(*, provider: str, status: str, reason_codes: tuple[str, ...]) -> None:
+    """Record bounded, non-secret authorization collection posture."""
+    safe_provider = provider if provider in _AUTHORIZATION_PROVIDERS else "unknown"
+    safe_status = status if status in _AUTHORIZATION_STATUSES else "indeterminate"
+    _authorization_evidence.inc(f"{safe_provider}|{safe_status}")
+    for reason in set(reason_codes):
+        safe_reason = reason if reason in _AUTHORIZATION_REASON_CODES else "unknown"
+        _authorization_evidence_gaps.inc(f"{safe_provider}|{safe_reason}")
+
+
 def render_prometheus_lines() -> list[str]:
     """Return Prometheus text-format lines for all in-process counters."""
     lines: list[str] = []
@@ -197,6 +228,24 @@ def render_prometheus_lines() -> list[str]:
         upstream, _, outcome = label.partition("|")
         lines.append(f'agent_bom_gateway_relays_total{{upstream="{upstream}",outcome="{outcome}"}} {count}')
 
+    evidence = _authorization_evidence.snapshot()
+    lines.append("# HELP agent_bom_authorization_evidence_total Cloud authorization evidence collections by posture")
+    lines.append("# TYPE agent_bom_authorization_evidence_total counter")
+    if not evidence:
+        lines.append('agent_bom_authorization_evidence_total{provider="none",status="indeterminate"} 0')
+    for label, count in sorted(evidence.items()):
+        provider, _, status = label.partition("|")
+        lines.append(f'agent_bom_authorization_evidence_total{{provider="{provider}",status="{status}"}} {count}')
+
+    gaps = _authorization_evidence_gaps.snapshot()
+    lines.append("# HELP agent_bom_authorization_evidence_gaps_total Cloud authorization evidence gaps by reason code")
+    lines.append("# TYPE agent_bom_authorization_evidence_gaps_total counter")
+    if not gaps:
+        lines.append('agent_bom_authorization_evidence_gaps_total{provider="none",reason="none"} 0')
+    for label, count in sorted(gaps.items()):
+        provider, _, reason = label.partition("|")
+        lines.append(f'agent_bom_authorization_evidence_gaps_total{{provider="{provider}",reason="{reason}"}} {count}')
+
     return lines
 
 
@@ -209,6 +258,8 @@ def reset_for_tests() -> None:
         _compliance_export_bytes,
         _scan_completions,
         _gateway_relays,
+        _authorization_evidence,
+        _authorization_evidence_gaps,
     ):
         with counter._lock:  # noqa: SLF001
             counter._values.clear()  # noqa: SLF001

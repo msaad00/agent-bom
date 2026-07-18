@@ -5585,6 +5585,33 @@ def _wire_network_entry_exposure_paths(
                     )
 
 
+def _role_last_used_at(usage_evidence: Any) -> str | None:
+    """Newest real last-accessed timestamp across role usage-evidence records.
+
+    Threads bounded AWS Access Advisor / RoleLastUsed telemetry
+    (:mod:`agent_bom.cloud.aws_iam_evidence`) onto the identity node so NHI
+    governance dormancy uses a real last-used signal. Returns ``None`` when no
+    record carries a timestamp — absent telemetry must never be turned into a
+    false "never used" (fail-closed); the role then stays not-evaluated for
+    dormancy rather than being fabricated as dormant.
+    """
+    if not isinstance(usage_evidence, Mapping):
+        return None
+    records = usage_evidence.get("records")
+    if not isinstance(records, list):
+        return None
+    newest: str | None = None
+    for record in records:
+        if not isinstance(record, Mapping):
+            continue
+        raw = record.get("last_accessed_at")
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        if newest is None or raw > newest:
+            newest = raw
+    return newest
+
+
 def _add_inventory_principal(
     graph: UnifiedGraph,
     principal: dict[str, Any],
@@ -5603,23 +5630,35 @@ def _add_inventory_principal(
         return
     entity_type = _identity_entity_type(principal_type)
     principal_node_id = _identity_node_id(entity_type, provider, principal_id)
+    node_attributes: dict[str, Any] = {
+        "principal_id": principal_id,
+        "principal_name": principal_name,
+        "principal_type": principal_type,
+        "directory_principal_id": _clean_graph_part(principal.get("principal_id")),
+        "principal_email": _clean_graph_part(principal.get("email")),
+        "principal_resource_id": _clean_graph_part(principal.get("arn")),
+        "cloud_provider": provider,
+        "privilege_level": _clean_graph_part(principal.get("privilege_level")) or "unknown",
+        "iam_path": _clean_graph_part(principal.get("path")),
+        "source": "cloud-inventory",
+    }
+    # Thread collected role usage evidence so NHI governance dormancy uses a real
+    # last-used signal. Only a real timestamp sets ``last_used_at`` — absent
+    # telemetry leaves the field unset so dormancy stays fail-closed.
+    usage_evidence = principal.get("usage_evidence")
+    if isinstance(usage_evidence, Mapping):
+        state = usage_evidence.get("state")
+        if isinstance(state, str) and state.strip():
+            node_attributes["usage_evidence_state"] = state
+        last_used = _role_last_used_at(usage_evidence)
+        if last_used:
+            node_attributes["last_used_at"] = last_used
     graph.add_node(
         UnifiedNode(
             id=principal_node_id,
             entity_type=entity_type,
             label=principal_name,
-            attributes={
-                "principal_id": principal_id,
-                "principal_name": principal_name,
-                "principal_type": principal_type,
-                "directory_principal_id": _clean_graph_part(principal.get("principal_id")),
-                "principal_email": _clean_graph_part(principal.get("email")),
-                "principal_resource_id": _clean_graph_part(principal.get("arn")),
-                "cloud_provider": provider,
-                "privilege_level": _clean_graph_part(principal.get("privilege_level")) or "unknown",
-                "iam_path": _clean_graph_part(principal.get("path")),
-                "source": "cloud-inventory",
-            },
+            attributes=node_attributes,
             data_sources=data_sources,
             dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
         )

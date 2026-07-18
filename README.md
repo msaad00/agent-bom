@@ -103,8 +103,7 @@ Deeper module and surface detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 flowchart TB
     subgraph callers ["Callers"]
         direction LR
-        UI["Next.js UI<br/>human cockpit"]
-        HL["Headless<br/>CLI · MCP server · agents / CI"]
+        UI["Next.js UI<br/>human cockpit"] ~~~ HL["Headless<br/>CLI · MCP server · agents / CI"]
     end
     subgraph plane ["Control plane — one seam for every caller"]
         direction LR

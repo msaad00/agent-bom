@@ -58,6 +58,7 @@ from agent_bom.governance import (
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 from agent_bom.security import sanitize_error
 
+from .aws_inventory import record_discovery_failure
 from .base import CloudDiscoveryError
 from .normalization import (
     build_cloud_origin,
@@ -65,9 +66,56 @@ from .normalization import (
     coerce_int_or_none,
     coerce_truthy,
     resolve_env_or_value,
+    sanitize_discovery_warning,
 )
 
 logger = logging.getLogger(__name__)
+
+# Security-relevant Snowflake inventory surfaces that must never fail silently.
+_SNOWFLAKE_INVENTORY_FAILURES: dict[str, str] = {
+    "cortex_agents": "SHOW AGENTS IN ACCOUNT",
+    "mcp_servers": "SHOW MCP SERVERS IN ACCOUNT",
+    "grants_to_roles": "SELECT on SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "grants_to_users": "SELECT on SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "live_role_grants": "SHOW GRANTS TO/OF ROLE",
+}
+
+
+def _record_snowflake_inventory_failure(
+    *,
+    exc: BaseException,
+    resource_type: str,
+    inventory_key: str,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
+) -> None:
+    """Translate a failed Snowflake inventory read into warnings + coverage evidence."""
+    permission = _SNOWFLAKE_INVENTORY_FAILURES.get(inventory_key, inventory_key)
+    record_discovery_failure(
+        exc=exc,
+        resource_type=resource_type,
+        permission=permission,
+        cloud="snowflake",
+        warnings=warnings,
+        missing=missing,
+    )
+    try:
+        from agent_bom.coverage import CoverageWarning
+        from agent_bom.scanners.state import record_coverage_warning
+
+        record_coverage_warning(
+            CoverageWarning(
+                ecosystem="snowflake",
+                release=f"snowflake:{inventory_key}",
+                reason="inventory_evaluation_failed",
+                detail=sanitize_discovery_warning(exc),
+                package_count=0,
+                advisory_rows=0,
+            ).to_dict()
+        )
+    except Exception:  # noqa: BLE001 — coverage evidence is supplementary; never fail discovery
+        logger.debug("Could not record Snowflake inventory coverage warning", exc_info=True)
+
 
 # Backwards-compatible aliases for the shared cloud helpers. Call sites and
 # tests may reference either the shared public names or these private aliases.
@@ -787,9 +835,10 @@ def _discover_snowflake_notebooks(
 
             except ValueError as exc:
                 warnings.append(f"Skipping Snowflake notebook with unsafe identifier: {sanitize_error(exc)}")
-            except Exception:
-                # DESCRIBE NOTEBOOK may not be available on all editions
-                pass
+            except Exception as exc:
+                warnings.append(
+                    f"Could not describe Snowflake notebook {nb_name!r}: {sanitize_error(exc)}"
+                )
 
             server = MCPServer(
                 name=f"sf-notebook:{nb_name}",
@@ -904,7 +953,12 @@ def _discover_cortex_agents(
             agents.append(agent)
 
     except Exception as exc:
-        warnings.append(f"Could not list Cortex Agents: {sanitize_error(exc)}")
+        _record_snowflake_inventory_failure(
+            exc=exc,
+            resource_type="Cortex Agents",
+            inventory_key="cortex_agents",
+            warnings=warnings,
+        )
 
     finally:
         cursor.close()
@@ -969,7 +1023,12 @@ def _discover_mcp_servers(
             agents.append(agent)
 
     except Exception as exc:
-        warnings.append(f"Could not list Snowflake MCP Servers: {sanitize_error(exc)}")
+        _record_snowflake_inventory_failure(
+            exc=exc,
+            resource_type="Snowflake MCP Servers",
+            inventory_key="mcp_servers",
+            warnings=warnings,
+        )
 
     finally:
         cursor.close()
@@ -1449,7 +1508,12 @@ def _mine_grants_to_roles(
             )
 
     except Exception as exc:
-        warnings.append(f"Could not query GRANTS_TO_ROLES: {sanitize_error(exc)}")
+        _record_snowflake_inventory_failure(
+            exc=exc,
+            resource_type="GRANTS_TO_ROLES",
+            inventory_key="grants_to_roles",
+            warnings=warnings,
+        )
 
     finally:
         cursor.close()
@@ -2048,7 +2112,12 @@ def _discover_sf_grants(conn: Any, warnings: list[str]) -> tuple[list[dict[str, 
                 }
             )
     except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not query GRANTS_TO_ROLES: {sanitize_error(exc)}")
+        _record_snowflake_inventory_failure(
+            exc=exc,
+            resource_type="GRANTS_TO_ROLES",
+            inventory_key="grants_to_roles",
+            warnings=warnings,
+        )
     finally:
         cursor.close()
 
@@ -2066,7 +2135,12 @@ def _discover_sf_grants(conn: Any, warnings: list[str]) -> tuple[list[dict[str, 
             if user_name and role:
                 memberships.append({"user": user_name, "role": role})
     except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not query GRANTS_TO_USERS: {sanitize_error(exc)}")
+        _record_snowflake_inventory_failure(
+            exc=exc,
+            resource_type="GRANTS_TO_USERS",
+            inventory_key="grants_to_users",
+            warnings=warnings,
+        )
     finally:
         cursor.close()
 
@@ -2350,7 +2424,12 @@ def _live_role_grants(conn: Any, role_names: list[str], warnings_list: list[str]
                         }
                     )
         except Exception as exc:  # noqa: BLE001
-            warnings_list.append(f"Could not read grants TO role {role_name!r}: {sanitize_error(exc)}")
+            _record_snowflake_inventory_failure(
+                exc=exc,
+                resource_type=f"grants TO role {role_name!r}",
+                inventory_key="live_role_grants",
+                warnings=warnings_list,
+            )
         finally:
             cursor.close()
 
@@ -2371,7 +2450,12 @@ def _live_role_grants(conn: Any, role_names: list[str], warnings_list: list[str]
                     # The grantee role is a member of this role (grantee → role_name).
                     _add_role_membership(grantee, role_name)
         except Exception as exc:  # noqa: BLE001
-            warnings_list.append(f"Could not read grants OF role {role_name!r}: {sanitize_error(exc)}")
+            _record_snowflake_inventory_failure(
+                exc=exc,
+                resource_type=f"grants OF role {role_name!r}",
+                inventory_key="live_role_grants",
+                warnings=warnings_list,
+            )
         finally:
             cursor.close()
 

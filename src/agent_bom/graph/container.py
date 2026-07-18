@@ -105,6 +105,12 @@ class UnifiedGraph:
     interaction_risks: list[InteractionRisk] = field(default_factory=list)
     analysis_status: dict[str, GraphAnalysisStatus] = field(default_factory=dict)
 
+    # NHI-governance findings materialized during the build (over-grant, dormant/
+    # orphaned, high-risk identities). Held as opaque Finding objects so callers
+    # (CLI scan_cmd + API pipeline) can route them into the unified finding
+    # stream without the container importing the finding module.
+    nhi_governance_findings: list[Any] = field(default_factory=list)
+
     scan_id: str = ""
     tenant_id: str = ""
     created_at: str = ""

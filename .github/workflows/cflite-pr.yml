@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Fuzzing exercises Python parsers only — skip on docs/UI/deploy-only PRs.
+    # Not a required check, so workflow-level path filtering is safe here.
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.clusterfuzzlite/**'
+      - '.github/workflows/cflite-pr.yml'
   schedule:
     - cron: '0 4 * * 1'  # Weekly batch fuzzing — Monday 04:00 UTC
   workflow_dispatch:

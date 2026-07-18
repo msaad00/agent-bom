@@ -21,6 +21,14 @@ from typing import Any
 
 FINDING_LIST_SCHEMA_VERSION = "v1"
 
+# Shared compatibility ceiling for ``limit``/``offset`` pagination across every
+# finding-list surface (``/v1/findings`` and ``/v1/compliance/hub/findings``).
+# Deep ``OFFSET`` scans linearly, so past this ceiling callers must follow
+# ``next_cursor`` (the keyset path is the unbounded-depth contract). Lives here —
+# the module both routes already import — so the two surfaces share ONE ceiling
+# instead of a per-route constant that could drift.
+HUB_LIST_OFFSET_CEILING = 10_000
+
 # The canonical key set every finding-list envelope must expose. Contract tests
 # assert equality against this so a new divergent shape fails loudly.
 FINDING_LIST_ENVELOPE_KEYS: tuple[str, ...] = (

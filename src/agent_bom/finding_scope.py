@@ -18,6 +18,7 @@ and ingest converters can import them without a cycle:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -308,3 +309,29 @@ def lenses_for_row(row: dict) -> frozenset[str]:
         return frozenset(lenses)
     evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else None
     return frozenset(lenses | security_lenses_for(source, ftype, evidence))
+
+
+def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:
+    """Return True when a finding row matches every active scope filter.
+
+    Single source of truth for the ``/v1/findings`` scope predicate, shared by
+    the route (in-memory scan findings) and the hub store (bulk-ingested current
+    rows) so the two paths can never diverge on the overlapping-lens semantics.
+
+    ``provider`` / ``account_ref`` / ``environment`` are exact, lowercased
+    equality checks. ``domain`` matches membership in the finding's overlapping
+    coverage-lens set (:func:`lenses_for_row`), so ``domain=aspm`` returns
+    SAST + secrets + repo dependencies + IaC and ``domain=vuln`` returns every
+    CVE. The caller is responsible for pre-canonicalizing the filter values
+    (lowercased/trimmed, ``appsec_sca`` -> ``aspm`` legacy alias applied).
+    """
+    for key in ("provider", "account_ref", "environment"):
+        wanted = filters.get(key)
+        if wanted is not None and str(row.get(key) or "").strip().lower() != wanted:
+            return False
+    wanted_domain = filters.get("domain")
+    if wanted_domain is not None:
+        lenses = lenses_for_row(row) or ({domain_for_row(row) or ""} if domain_for_row(row) else set())
+        if wanted_domain not in lenses:
+            return False
+    return True

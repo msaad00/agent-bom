@@ -364,6 +364,30 @@ export interface UnifiedEdge {
   activity_id: number;
 }
 
+/**
+ * A typed MITRE ATT&CK / ATLAS technique mapped to one hop of an attack path.
+ *
+ * These are *potential* techniques derived from the graph's observed evidence
+ * (the hop's edge relationship + target entity type + edge evidence), NOT a
+ * claim that the technique was detected being used. A hop whose evidence maps
+ * to no known technique is simply left without a mapping (fail-closed). Mirrors
+ * the Python `TechniqueMapping` (agent_bom.graph.container).
+ */
+export interface TechniqueMapping {
+  /** 0-based position in the kill-chain edge sequence. */
+  hop_index: number;
+  /** e.g. "T1078" (ATT&CK) or "AML.T0053" (ATLAS). */
+  technique_id: string;
+  technique_name: string;
+  /** "attack" | "atlas". */
+  catalog: string;
+  tactics: string[];
+  /** Observed evidence that produced the mapping. */
+  provenance: string;
+  /** 0..1 signal, never an assertion of activity. */
+  confidence: number;
+}
+
 export interface AttackPath {
   source: string;
   target: string;
@@ -374,6 +398,14 @@ export interface AttackPath {
   credential_exposure: string[];
   tool_exposure: string[];
   vuln_ids: string[];
+  /**
+   * Potential ATT&CK/ATLAS techniques mapped from this path's observed
+   * evidence, ordered by hop. Optional so older graph snapshots without the
+   * field still parse. Mapped/potential — never observed attacker activity.
+   */
+  technique_mappings?: TechniqueMapping[];
+  /** Deduped, sorted technique IDs across all hops (convenience). */
+  mitre_technique_ids?: string[];
 }
 
 export interface InteractionRisk {

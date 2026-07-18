@@ -17,6 +17,7 @@ import "@xyflow/react/dist/style.css";
 import { AlertTriangle, Layers, Loader2, Radar, Route, ShieldAlert } from "lucide-react";
 
 import { AttackPathCard } from "@/components/attack-path-card";
+import { AttackPathTechniqueChain } from "@/components/attack-path-technique-chain";
 import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
 import { GraphAnalysisStatusBanner } from "@/components/graph-analysis-status";
 import {
@@ -2941,6 +2942,7 @@ function GraphPageInner() {
                   tags={[selectedAttackPath.summary || "No summary provided"]}
                   wide
                 />
+                <AttackPathTechniqueChain path={selectedAttackPath} />
                 {selectedAttackPath.vuln_ids.length > 0 && (
                   <PathTagList
                     label="Findings"

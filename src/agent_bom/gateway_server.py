@@ -2199,7 +2199,23 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             quarantine = False
             quarantine_reason = ""
             policy_source = "file"
-            if allowed and scoped_identity is not None and not scoped_identity.tool_allowed(tool_name):
+            # A managed (``abi_``) token carries a per-identity tool scope; if the
+            # identity store was unavailable we could not load that scope, so the
+            # call must fail closed rather than forward unscoped even when the
+            # token still resolves to an agent via a policy mapping. A non-managed
+            # token legitimately has no identity scope and is unaffected.
+            if (
+                allowed
+                and scoped_identity is None
+                and managed_identity_lookup_unavailable
+                and (identity_token or "").startswith("abi_")
+            ):
+                allowed, reason, policy_source = (
+                    False,
+                    "managed identity store unavailable; tool scope cannot be verified",
+                    "identity_scope",
+                )
+            elif allowed and scoped_identity is not None and not scoped_identity.tool_allowed(tool_name):
                 try:
                     from agent_bom.api.agent_identity_store import active_jit_grant_for_tool, get_agent_identity_store
 
@@ -2443,28 +2459,37 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     client_id=_request_client_id(request),
                     attributes=_request_context_attributes(request),
                 )
+                # Conditional-access rules are a fixed fail-closed lane: an
+                # evaluate_conditional_rules error ALWAYS denies and is never
+                # softened by AGENT_BOM_GATEWAY_FAIL_MODE (matches the store-backed
+                # conditional-access lane and docs/RUNTIME_FAIL_MODES.md).
                 try:
                     cond_decision, cond_reason, _cond_rule = evaluate_conditional_rules(current_policy, decision_ctx)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("gateway conditional-rules evaluation error: %s", _sanitize_for_log(exc))
+                    cond_decision, cond_reason = GatewayDecision.DENY, "conditional rules evaluation error"
+                # Policy plugins follow the gateway fail-mode knob (fail-open
+                # forwards on a plugin engine error, fail-closed denies).
+                try:
                     plugin_decision, plugin_reason, _plugin_name = evaluate_policy_plugins(
                         decision_ctx,
                         current_policy,
                         fail_closed=fail_closed,
                     )
-                    eval_error = False
+                    plugin_eval_error = False
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("gateway conditional/plugin evaluation error: %s", _sanitize_for_log(exc))
-                    cond_decision = plugin_decision = GatewayDecision.ALLOW
-                    cond_reason = plugin_reason = ""
-                    eval_error = True
+                    logger.warning("gateway plugin evaluation error: %s", _sanitize_for_log(exc))
+                    plugin_decision, plugin_reason = GatewayDecision.ALLOW, ""
+                    plugin_eval_error = True
                 # Compose: DENY outranks QUARANTINE outranks ALLOW. Conditional
                 # rules win ties over plugins (an explicit policy deny is stronger
-                # than a third-party quarantine). A fail-closed eval error denies.
+                # than a third-party quarantine). A fail-closed plugin eval error denies.
                 _rank = {GatewayDecision.ALLOW: 0, GatewayDecision.QUARANTINE: 1, GatewayDecision.DENY: 2}
                 if _rank[plugin_decision] > _rank[cond_decision]:
                     composed, composed_reason, composed_source = plugin_decision, plugin_reason, "policy_plugin"
                 else:
                     composed, composed_reason, composed_source = cond_decision, cond_reason, "conditional_access"
-                if eval_error and fail_closed:
+                if plugin_eval_error and fail_closed:
                     allowed, reason, policy_source = False, "policy evaluation error", "conditional_access"
                 elif composed == GatewayDecision.DENY:
                     allowed, reason, policy_source = False, composed_reason, composed_source

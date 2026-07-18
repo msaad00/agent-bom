@@ -109,9 +109,7 @@ def _is_admin_equivalent(policies: Sequence[NormalizedIamPolicy]) -> bool:
     return False
 
 
-def _normalized_policies_for(
-    principal: UnifiedNode, attached_policies: Sequence[UnifiedNode]
-) -> list[NormalizedIamPolicy]:
+def _normalized_policies_for(principal: UnifiedNode, attached_policies: Sequence[UnifiedNode]) -> list[NormalizedIamPolicy]:
     """Collect normalized IAM policies from a principal's inline + attached documents.
 
     Documents may be carried on the principal node itself (inline policies) or on
@@ -195,32 +193,39 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     #      (already computed from real actions upstream) for policies with no
     #      inline document on the node.
     #   3. A name/keyword heuristic (AdministratorAccess / *FullAccess / wildcard),
-    #      used ONLY as a degraded fallback when neither policy documents nor a
-    #      scanner classification are available — the basis is noted on the node.
+    #      used as a degraded fallback when neither a scanner classification nor
+    #      AUTHORITATIVE (COMPLETE) policy evidence is available — the basis is
+    #      noted on the node. Evidence that is only PARTIAL/incomplete cannot
+    #      authoritatively evaluate the admin probes (the evaluator returns
+    #      INDETERMINATE), so it must NOT suppress the heuristic: a role with
+    #      AdministratorAccess attached alongside a single malformed statement
+    #      still fails toward flagging a possible admin (safe direction).
     admin_principals: set[str] = set()
     admin_via_evaluation = 0
     admin_via_scanner = 0
     admin_via_heuristic = 0
     for p in principals:
         docs = _normalized_policies_for(p, attached_policy_nodes.get(p.id, ()))
+        # Evidence is authoritative only when EVERY collected document is COMPLETE.
+        # A single PARTIAL document means the evaluator's non-ALLOW verdict is
+        # inconclusive, not a real "not admin" — it must not gate out the heuristic.
+        evidence_authoritative = bool(docs) and all(d.completeness is EvidenceCompleteness.COMPLETE for d in docs)
         basis: str | None = None
-        if docs:
-            # The evaluator has real policy evidence for this identity: its verdict
-            # is authoritative; the keyword heuristic is not consulted.
-            if _is_admin_equivalent(docs):
-                basis = "policy_evaluation"
-                admin_via_evaluation += 1
-            elif p.id in admin_by_policy_actions:
-                basis = "scanner_actions"
-                admin_via_scanner += 1
-            else:
-                # Evaluated and NOT admin — record the (non-admin) evaluation basis
-                # so consumers can see this was a real verdict, not a missing guess.
-                p.attributes["admin_equivalence_basis"] = "policy_evaluation"
+        if docs and _is_admin_equivalent(docs):
+            # Real policy evaluation ALLOWs an unrestricted admin/escalation action.
+            basis = "policy_evaluation"
+            admin_via_evaluation += 1
         elif p.id in admin_by_policy_actions:
             basis = "scanner_actions"
             admin_via_scanner += 1
+        elif evidence_authoritative:
+            # Evaluated on COMPLETE evidence and authoritatively NOT admin — record
+            # the (non-admin) evaluation basis and do NOT consult the keyword
+            # heuristic (this was a real verdict, not a missing guess).
+            p.attributes["admin_equivalence_basis"] = "policy_evaluation"
         else:
+            # No documents, OR only PARTIAL/incomplete evidence (non-authoritative):
+            # fall back to the name/keyword heuristic and fail toward flagging.
             haystack = " ".join([p.label, *attached_policy_labels.get(p.id, [])]).lower().replace(" ", "")
             if any(kw in haystack for kw in _ADMIN_PRIVILEGE_KEYWORDS):
                 basis = "name_heuristic"

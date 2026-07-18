@@ -9,6 +9,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from agent_bom.ast_analyzer import analyze_project
+from agent_bom.ast_go import scan_go_file
 from agent_bom.cli import main
 
 
@@ -639,7 +640,7 @@ def test_analyze_project_surfaces_swift_dependency_symbol_reach(tmp_path: Path) 
         encoding="utf-8",
     )
     (tmp_path / "Server.swift").write_text(
-        'import Alamofire\n\n'
+        "import Alamofire\n\n"
         "func register(server: MCPServer) {\n"
         '    server.tool("fetch_url", fetchUrl)\n'
         "}\n\n"
@@ -663,7 +664,7 @@ def test_analyze_project_swift_bare_helper_call_chain(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (tmp_path / "Server.swift").write_text(
-        'import Alamofire\n\n'
+        "import Alamofire\n\n"
         "func register(server: MCPServer) {\n"
         '    server.tool("fetch_url", handler)\n'
         "}\n\n"
@@ -954,6 +955,87 @@ def test_analyze_project_scans_go_source_for_tools_prompts_and_exec(tmp_path: Pa
     assert any(prompt.file_path == "server.go" for prompt in result.prompts)
     assert any(tool.name == "run_cmd" and tool.file_path == "server.go" for tool in result.tools)
     assert any(finding.category == "go_dangerous_call" and finding.sink == "exec.Command" for finding in result.flow_findings)
+
+
+def test_scan_go_file_ignores_sink_tokens_in_comments_and_strings(tmp_path: Path):
+    go_file = tmp_path / "commented.go"
+    go_file.write_text(
+        "package main\n\n"
+        "func main() {\n"
+        '    // exec.Command("sh", "-c", "ls") lives only in a line comment\n'
+        "    /* os.WriteFile(path, data, 0644) lives only in a block comment\n"
+        "       and template.JS(payload) too */\n"
+        '    msg := "template.HTML(userInput) is only a string literal"\n'
+        '    other := "ioutil.WriteFile(path, data, 0644) also just a string"\n'
+        '    raw := `exec.Command("rm", "-rf", "/") inside a backtick raw string\n'
+        "       and CreateChatCompletion spanning lines`\n"
+        '    note := "the model calls Messages.Create somewhere"\n'
+        "    _ = msg\n"
+        "    _ = other\n"
+        "    _ = raw\n"
+        "    _ = note\n"
+        "}\n"
+    )
+
+    _, _, _, flow_findings, _, _, _ = scan_go_file(go_file, "commented.go")
+
+    assert not [f for f in flow_findings if f.category == "go_dangerous_call"]
+    assert not [f for f in flow_findings if f.category == "go_llm_call"]
+
+
+def test_scan_go_file_flags_real_dangerous_and_llm_calls(tmp_path: Path):
+    go_file = tmp_path / "real.go"
+    go_file.write_text(
+        "package main\n\n"
+        'import "os/exec"\n\n'
+        "func main() {\n"
+        '    exec.Command("sh", "-c", "ls")\n'
+        "    template.HTML(userInput)\n"
+        "    client.CreateChatCompletion(ctx, req)\n"
+        "}\n"
+    )
+
+    _, _, _, flow_findings, _, _, _ = scan_go_file(go_file, "real.go")
+
+    dangerous = {f.sink for f in flow_findings if f.category == "go_dangerous_call"}
+    assert "exec.Command" in dangerous
+    assert "template.HTML" in dangerous
+    assert any(f.category == "go_llm_call" and f.sink == "openai.ChatCompletion" for f in flow_findings)
+
+
+def test_scan_go_file_ignores_call_sites_in_comments_and_strings(tmp_path: Path):
+    go_file = tmp_path / "handler.go"
+    go_file.write_text(
+        "package main\n\n"
+        "func handler() error {\n"
+        '    // exec.Command("sh", "-c", "ls") in a comment must not be a call site\n'
+        '    log := "exec.Command was requested"\n'
+        "    raw := `os.WriteFile(path, data, 0644)`\n"
+        "    _ = log\n"
+        "    _ = raw\n"
+        "    return nil\n"
+        "}\n"
+    )
+
+    _, _, _, _, _, _, go_analysis = scan_go_file(go_file, "handler.go")
+    assert go_analysis is not None
+    handler = go_analysis.functions["handler"]
+
+    assert handler.dangerous_call_sites == []
+    assert not [site for site in handler.call_sites if site.name in {"exec.Command", "os.WriteFile"}]
+
+
+def test_scan_go_file_records_real_dangerous_call_sites(tmp_path: Path):
+    go_file = tmp_path / "handler_real.go"
+    go_file.write_text(
+        'package main\n\nimport "os/exec"\n\nfunc handler(cmd string) error {\n    return exec.Command("sh", "-c", cmd).Run()\n}\n'
+    )
+
+    _, _, _, _, _, _, go_analysis = scan_go_file(go_file, "handler_real.go")
+    assert go_analysis is not None
+    handler = go_analysis.functions["handler"]
+
+    assert any(site.name == "exec.Command" for site in handler.dangerous_call_sites)
 
 
 def test_analyze_project_reports_js_ts_dom_xss_pattern(tmp_path: Path):

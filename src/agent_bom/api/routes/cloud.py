@@ -236,6 +236,61 @@ def _snowflake_inventory() -> tuple[dict[str, Any], dict[str, Any]]:
     return summary, raw_payload
 
 
+def _build_inventory_payload(
+    tenant_id: str, selected: list[str], scoped_region: str | None
+) -> dict[str, Any]:
+    """Synchronous estate inventory body — runs off the event loop in a worker thread.
+
+    Calls the same ``discover_inventory`` functions the CLI/MCP use and reduces
+    each provider payload to the identical non-secret count shape. Kept as a
+    module-level function (not a closure) so the offload seam is spy-able and the
+    payload construction is unit-testable.
+    """
+    from agent_bom.cloud import aws_inventory, azure_inventory, gcp_inventory
+    from agent_bom.mcp_tools.posture import _summarize_inventory_payload
+
+    raw_payloads: list[dict[str, Any]] = []
+    summaries: list[dict[str, Any]] = []
+    if "aws" in selected:
+        payload = aws_inventory.discover_inventory(region=scoped_region)
+        raw_payloads.append(payload)
+        summaries.append(_summarize_inventory_payload("aws", payload))
+    if "azure" in selected:
+        payload = azure_inventory.discover_inventory()
+        raw_payloads.append(payload)
+        summaries.append(_summarize_inventory_payload("azure", payload))
+    if "gcp" in selected:
+        payload = gcp_inventory.discover_inventory()
+        raw_payloads.append(payload)
+        summaries.append(_summarize_inventory_payload("gcp", payload))
+    if "snowflake" in selected:
+        # Snowflake discovery returns AI resources (Agents), not the infra
+        # payload the other providers emit, so it is projected onto the same
+        # canonical summary fields here rather than through
+        # _summarize_inventory_payload. Graceful when the gate/creds are absent.
+        sf_summary, sf_payload = _snowflake_inventory()
+        raw_payloads.append(sf_payload)
+        summaries.append(sf_summary)
+
+    any_enabled = any(s["status"] != "disabled" for s in summaries)
+    return {
+        "schema_version": "cloud.inventory.summary.v1",
+        "tenant_id": tenant_id,
+        "status": "ok" if any_enabled else "disabled",
+        "total_resources": sum(s["resource_count"] for s in summaries),
+        "total_identities": sum(s["identity_count"] for s in summaries),
+        "providers": [_redact_summary(s) for s in summaries],
+        "audit_metadata": _audit_metadata(raw_payloads),
+        "note": (
+            "Estate-wide inventory is opt-in per provider via AGENT_BOM_CLOUD_INVENTORY / "
+            "AGENT_BOM_AZURE_INVENTORY / AGENT_BOM_GCP_INVENTORY / AGENT_BOM_SNOWFLAKE_INVENTORY. "
+            "Reference-only counts; no resource secrets are returned. For Snowflake, resource_count "
+            "reflects discovered AI resources (Cortex agents, MCP servers, notebooks); the infra "
+            "node_summary keys stay zero."
+        ),
+    }
+
+
 @router.get("/cloud/{provider}/inventory")
 async def cloud_inventory(
     request: Request,
@@ -270,49 +325,19 @@ async def cloud_inventory(
         raise HTTPException(status_code=400, detail=f"Invalid region format: {region}")
 
     try:
-        from agent_bom.cloud import aws_inventory, azure_inventory, gcp_inventory
-        from agent_bom.mcp_tools.posture import _summarize_inventory_payload
-
-        raw_payloads: list[dict[str, Any]] = []
-        summaries: list[dict[str, Any]] = []
-        if "aws" in selected:
-            payload = aws_inventory.discover_inventory(region=scoped_region)
-            raw_payloads.append(payload)
-            summaries.append(_summarize_inventory_payload("aws", payload))
-        if "azure" in selected:
-            payload = azure_inventory.discover_inventory()
-            raw_payloads.append(payload)
-            summaries.append(_summarize_inventory_payload("azure", payload))
-        if "gcp" in selected:
-            payload = gcp_inventory.discover_inventory()
-            raw_payloads.append(payload)
-            summaries.append(_summarize_inventory_payload("gcp", payload))
-        if "snowflake" in selected:
-            # Snowflake discovery returns AI resources (Agents), not the infra
-            # payload the other providers emit, so it is projected onto the same
-            # canonical summary fields here rather than through
-            # _summarize_inventory_payload. Graceful when the gate/creds are absent.
-            sf_summary, sf_payload = _snowflake_inventory()
-            raw_payloads.append(sf_payload)
-            summaries.append(sf_summary)
-
-        any_enabled = any(s["status"] != "disabled" for s in summaries)
-        return {
-            "schema_version": "cloud.inventory.summary.v1",
-            "tenant_id": tenant_id,
-            "status": "ok" if any_enabled else "disabled",
-            "total_resources": sum(s["resource_count"] for s in summaries),
-            "total_identities": sum(s["identity_count"] for s in summaries),
-            "providers": [_redact_summary(s) for s in summaries],
-            "audit_metadata": _audit_metadata(raw_payloads),
-            "note": (
-                "Estate-wide inventory is opt-in per provider via AGENT_BOM_CLOUD_INVENTORY / "
-                "AGENT_BOM_AZURE_INVENTORY / AGENT_BOM_GCP_INVENTORY / AGENT_BOM_SNOWFLAKE_INVENTORY. "
-                "Reference-only counts; no resource secrets are returned. For Snowflake, resource_count "
-                "reflects discovered AI resources (Cortex agents, MCP servers, notebooks); the infra "
-                "node_summary keys stay zero."
-            ),
-        }
+        # Provider discovery runs synchronous SDK/network calls; offload the whole
+        # scan to a worker thread under backpressure so a live inventory can never
+        # stall the event loop (a burst sheds with a 429 instead).
+        async with adaptive_backpressure("cloud_inventory"):
+            return await anyio.to_thread.run_sync(
+                _build_inventory_payload, tenant_id, selected, scoped_region
+            )
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -320,6 +345,85 @@ async def cloud_inventory(
         # message so no exception/stack detail is exposed over REST.
         _logger.exception("Cloud inventory failed")
         raise HTTPException(status_code=500, detail="Cloud inventory failed; see server logs.") from exc
+
+
+def _run_cis_benchmark(
+    tenant_id: str,
+    requested: str,
+    check_list: list[str] | None,
+    region_arg: str | None,
+    profile_arg: str | None,
+    subscription_id: str,
+    project_id: str,
+) -> dict[str, Any]:
+    """Synchronous CIS benchmark body — runs off the event loop in a worker thread.
+
+    Calls the same provider ``run_benchmark`` functions the CLI/MCP use and
+    returns the report's canonical ``to_dict()`` shape unchanged. A missing SDK /
+    credentials degrades to the HTTP-200 ``unavailable`` envelope exactly as
+    before. Kept module-level so the offload seam is spy-able and testable.
+    """
+    from agent_bom.cloud import CloudDiscoveryError
+
+    report: Any
+    try:
+        if requested == "aws":
+            from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
+
+            report = run_aws_cis(region=region_arg, profile=profile_arg, checks=check_list)
+        elif requested == "azure":
+            from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
+
+            report = run_azure_cis(subscription_id=subscription_id.strip() or None, checks=check_list)
+        elif requested == "snowflake":
+            from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_snowflake_cis
+
+            # Snowflake has no region/profile/subscription/project scoping; its
+            # account/user/authenticator come from the standard read-only env
+            # credentials (SNOWFLAKE_ACCOUNT/USER + key-pair/SSO), mirroring how
+            # the CLI/MCP snowflake CIS path resolves them. When the connector or
+            # credentials are absent, run_benchmark raises CloudDiscoveryError and
+            # the handler below degrades to the same HTTP-200 "unavailable" shape
+            # as the other providers — never a 500.
+            report = run_snowflake_cis(checks=check_list)
+        else:  # gcp
+            from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+
+            report = run_gcp_cis(project_id=project_id.strip() or None, checks=check_list)
+    except CloudDiscoveryError:
+        # Provider SDK absent / credentials unavailable degrades to a clear
+        # error envelope (HTTP 200) — exactly as the MCP cis_benchmark tool
+        # does — never a 500. Keeps REST / MCP shape parity for the no-SDK path.
+        # Log only a canonical allowlisted provider label — a literal chosen by
+        # comparison, never the user string or the exception (avoids log injection
+        # + exception-detail exposure; CR/LF strip alone isn't a recognized barrier).
+        if requested == "aws":
+            provider_label = "aws"
+        elif requested == "azure":
+            provider_label = "azure"
+        elif requested == "gcp":
+            provider_label = "gcp"
+        elif requested == "snowflake":
+            provider_label = "snowflake"
+        else:
+            provider_label = "unknown"
+        _logger.warning("Cloud CIS benchmark unavailable for %s", provider_label)
+        return {
+            "error": "Provider SDK or credentials unavailable for this benchmark.",
+            "provider": requested,
+            "tenant_id": tenant_id,
+            "status": "unavailable",
+        }
+
+    result = report.to_dict()
+    result.setdefault("tenant_id", tenant_id)
+    result["audit_metadata"] = {
+        "read_only": True,
+        "writes_performed": False,
+        "provider": requested,
+        "note": "CIS benchmark is read-only; checks evaluate posture without mutating any resource.",
+    }
+    return result
 
 
 @router.get("/cloud/{provider}/cis-benchmark")
@@ -359,67 +463,26 @@ async def cloud_cis_benchmark(
         )
 
     try:
-        from agent_bom.cloud import CloudDiscoveryError
-
-        report: Any
-        try:
-            if requested == "aws":
-                from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
-
-                report = run_aws_cis(region=region_arg, profile=profile_arg, checks=check_list)
-            elif requested == "azure":
-                from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
-
-                report = run_azure_cis(subscription_id=subscription_id.strip() or None, checks=check_list)
-            elif requested == "snowflake":
-                from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_snowflake_cis
-
-                # Snowflake has no region/profile/subscription/project scoping; its
-                # account/user/authenticator come from the standard read-only env
-                # credentials (SNOWFLAKE_ACCOUNT/USER + key-pair/SSO), mirroring how
-                # the CLI/MCP snowflake CIS path resolves them. When the connector or
-                # credentials are absent, run_benchmark raises CloudDiscoveryError and
-                # the handler below degrades to the same HTTP-200 "unavailable" shape
-                # as the other providers — never a 500.
-                report = run_snowflake_cis(checks=check_list)
-            else:  # gcp
-                from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
-
-                report = run_gcp_cis(project_id=project_id.strip() or None, checks=check_list)
-        except CloudDiscoveryError:
-            # Provider SDK absent / credentials unavailable degrades to a clear
-            # error envelope (HTTP 200) — exactly as the MCP cis_benchmark tool
-            # does — never a 500. Keeps REST / MCP shape parity for the no-SDK path.
-            # Log only a canonical allowlisted provider label — a literal chosen by
-            # comparison, never the user string or the exception (avoids log injection
-            # + exception-detail exposure; CR/LF strip alone isn't a recognized barrier).
-            if requested == "aws":
-                provider_label = "aws"
-            elif requested == "azure":
-                provider_label = "azure"
-            elif requested == "gcp":
-                provider_label = "gcp"
-            elif requested == "snowflake":
-                provider_label = "snowflake"
-            else:
-                provider_label = "unknown"
-            _logger.warning("Cloud CIS benchmark unavailable for %s", provider_label)
-            return {
-                "error": "Provider SDK or credentials unavailable for this benchmark.",
-                "provider": requested,
-                "tenant_id": tenant_id,
-                "status": "unavailable",
-            }
-
-        result = report.to_dict()
-        result.setdefault("tenant_id", tenant_id)
-        result["audit_metadata"] = {
-            "read_only": True,
-            "writes_performed": False,
-            "provider": requested,
-            "note": "CIS benchmark is read-only; checks evaluate posture without mutating any resource.",
-        }
-        return result
+        # A full CIS benchmark runs synchronous provider SDK/network evaluation;
+        # offload it to a worker thread under backpressure so it never stalls the
+        # event loop (a burst sheds with a 429 instead).
+        async with adaptive_backpressure("cloud_cis"):
+            return await anyio.to_thread.run_sync(
+                _run_cis_benchmark,
+                tenant_id,
+                requested,
+                check_list,
+                region_arg,
+                profile_arg,
+                subscription_id,
+                project_id,
+            )
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001

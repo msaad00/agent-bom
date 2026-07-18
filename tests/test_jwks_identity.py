@@ -167,8 +167,11 @@ def test_resolve_agent_id_jwks_blocks_on_invalid_signature():
     import httpx
 
     token = _make_jwt({"sub": "agent-bad"})
+    # expected_audience is required for a direct jwks_uri; set it so this test
+    # exercises the signature-verification path (not the audience-pin gate).
+    policy = {"jwks_uri": "https://idp.example.com/jwks", "expected_audience": "svc"}
     with patch("httpx.get", side_effect=httpx.ConnectError("unreachable")):
-        agent_id, err = resolve_agent_id(token, {"jwks_uri": "https://idp.example.com/jwks"})
+        agent_id, err = resolve_agent_id(token, policy)
     assert agent_id == ANONYMOUS
     assert err is not None
     assert "signature" in err.lower() or "unreachable" in err.lower()
@@ -251,9 +254,7 @@ def test_verify_jwt_wrong_audience_rejected_when_pinned():
     key = _signing_key()
     token = _signed_identity_jwt(key, aud="service-b")
     with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
-        verified, err = _verify_jwt_signature(
-            token, "https://idp/jwks", expected_audience="service-a", expected_issuer="https://issuer-b"
-        )
+        verified, err = _verify_jwt_signature(token, "https://idp/jwks", expected_audience="service-a", expected_issuer="https://issuer-b")
     assert not verified
     assert err and "claim mismatch" in err
 
@@ -262,9 +263,7 @@ def test_verify_jwt_wrong_issuer_rejected_when_pinned():
     key = _signing_key()
     token = _signed_identity_jwt(key, iss="https://issuer-b")
     with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
-        verified, err = _verify_jwt_signature(
-            token, "https://idp/jwks", expected_audience="service-b", expected_issuer="https://issuer-a"
-        )
+        verified, err = _verify_jwt_signature(token, "https://idp/jwks", expected_audience="service-b", expected_issuer="https://issuer-a")
     assert not verified
     assert err and "claim mismatch" in err
 
@@ -273,9 +272,7 @@ def test_verify_jwt_matching_aud_iss_accepted():
     key = _signing_key()
     token = _signed_identity_jwt(key)
     with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
-        verified, err = _verify_jwt_signature(
-            token, "https://idp/jwks", expected_audience="service-b", expected_issuer="https://issuer-b"
-        )
+        verified, err = _verify_jwt_signature(token, "https://idp/jwks", expected_audience="service-b", expected_issuer="https://issuer-b")
     assert verified
     assert err is None
 
@@ -308,12 +305,14 @@ def test_resolve_agent_id_accepts_matching_aud_iss():
     assert agent_id == "agent-x"
 
 
-def test_resolve_agent_id_backcompat_no_expected_aud_iss():
-    # Without pinned aud/iss the token still validates on signature alone.
+def test_resolve_agent_id_direct_jwks_without_audience_is_rejected():
+    # A direct jwks_uri with NO expected_audience must fail closed: a validly-signed
+    # token minted by the same IdP keys for a DIFFERENT relying party would otherwise
+    # be accepted (audience confusion). The operator must pin expected_audience.
     key = _signing_key()
-    token = _signed_identity_jwt(key, sub="agent-x", aud="anything", iss="https://whatever")
+    token = _signed_identity_jwt(key, sub="agent-x", aud="some-other-service", iss="https://whatever")
     policy = {"jwks_uri": "https://idp/jwks"}
     with patch("agent_bom.agent_identity._fetch_jwks", return_value=key.jwks()):
         agent_id, err = resolve_agent_id(token, policy)
-    assert err is None
-    assert agent_id == "agent-x"
+    assert agent_id == ANONYMOUS
+    assert err and "audience" in err.lower() and "expected_audience" in err

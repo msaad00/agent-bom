@@ -99,10 +99,31 @@ def parse_fixed_version(
     allow_prerelease: bool = False,
 ) -> Optional[str]:
     """Extract fixed version from OSV affected data."""
-    from agent_bom.version_utils import compare_version_order, is_prerelease_version
+    from agent_bom.version_utils import (
+        compare_version_order,
+        is_prerelease_version,
+        version_in_range,
+    )
 
     norm_inputs = candidate_package_names(package_name, ecosystem, source_package)
     prerelease_candidate: Optional[str] = None
+    # ``same_branch_fix`` is the fix from the affected branch that actually
+    # CONTAINS the installed version (introduced <= current < fixed); it is
+    # preferred so a multi-branch advisory never advises a cross-branch jump
+    # (e.g. urllib3 1.26.4 -> 1.26.18, not the 2.x fix 2.0.7). ``fallback_fix``
+    # (earliest valid fix) is used only when no branch contains the version.
+    same_branch_fix: Optional[str] = None
+    fallback_fix: Optional[str] = None
+    has_current = bool(current_version and current_version not in ("unknown", "latest", ""))
+
+    def _consider_fallback(candidate: str) -> None:
+        nonlocal fallback_fix
+        if fallback_fix is None:
+            fallback_fix = candidate
+            return
+        order = compare_version_order(candidate, fallback_fix, ecosystem)
+        if order is not None and order < 0:
+            fallback_fix = candidate
 
     for affected in vuln_data.get("affected", []):
         pkg = affected.get("package", {})
@@ -121,37 +142,56 @@ def parse_fixed_version(
             )
             continue
         osv_norm = normalize_package_name(pkg_name, osv_eco)
-        if osv_norm in norm_inputs:
-            for rng in affected.get("ranges", []):
-                for event in rng.get("events", []):
-                    if "fixed" not in event:
-                        continue
-                    fixed = event["fixed"]
-                    if not is_valid_fix_version(fixed):
-                        continue
-                    try:
-                        if current_version and current_version not in ("unknown", "latest", ""):
-                            current_cmp = compare_version_order(current_version, fixed, ecosystem)
-                            if current_cmp is not None and current_cmp > 0:
-                                _logger.debug(
-                                    "Skipping fix %s < current %s for %s",
-                                    fixed,
-                                    current_version,
-                                    package_name,
-                                )
-                                continue
-                        if not is_prerelease_version(fixed, ecosystem):
-                            return fixed
-                        if prerelease_candidate is None:
-                            prerelease_candidate = fixed
-                    except Exception as exc:  # noqa: BLE001
-                        _logger.debug("Version parse failed for %r: %s", fixed, exc)
-                        if current_version and current_version not in ("unknown", "latest", ""):
-                            current_cmp = compare_version_order(current_version, fixed, ecosystem)
-                            if current_cmp is not None and current_cmp > 0:
-                                continue
-                        if not is_prerelease_version(fixed, ecosystem):
-                            return fixed
+        if osv_norm not in norm_inputs:
+            continue
+        for rng in affected.get("ranges", []):
+            introduced: Optional[str] = None
+            for event in rng.get("events", []):
+                if "introduced" in event:
+                    introduced = event.get("introduced") or None
+                    continue
+                if "fixed" not in event:
+                    continue
+                fixed = event["fixed"]
+                if not is_valid_fix_version(fixed):
+                    continue
+                try:
+                    if has_current:
+                        current_cmp = compare_version_order(current_version, fixed, ecosystem)
+                        if current_cmp is not None and current_cmp > 0:
+                            _logger.debug(
+                                "Skipping fix %s < current %s for %s",
+                                fixed,
+                                current_version,
+                                package_name,
+                            )
+                            continue
+                    prerelease = is_prerelease_version(fixed, ecosystem)
+                except Exception as exc:  # noqa: BLE001
+                    _logger.debug("Version parse failed for %r: %s", fixed, exc)
+                    if has_current:
+                        current_cmp = compare_version_order(current_version, fixed, ecosystem)
+                        if current_cmp is not None and current_cmp > 0:
+                            continue
+                    prerelease = False
+
+                if prerelease:
+                    if prerelease_candidate is None:
+                        prerelease_candidate = fixed
+                    continue
+
+                if (
+                    has_current
+                    and same_branch_fix is None
+                    and version_in_range(current_version, introduced, fixed, None, ecosystem)
+                ):
+                    same_branch_fix = fixed
+                _consider_fallback(fixed)
+
+    if same_branch_fix is not None:
+        return same_branch_fix
+    if fallback_fix is not None:
+        return fallback_fix
     if allow_prerelease:
         return prerelease_candidate
     if prerelease_candidate:

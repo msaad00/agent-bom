@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 import sqlite3
@@ -207,8 +208,10 @@ def test_rate_limit_tenant_resolution_propagates_key_store_errors(monkeypatch: p
 
     set_key_store(BrokenStore())
     try:
+        # ``_resolve_tenant_scope`` is async now (it offloads the blocking scrypt
+        # verify off the event loop); the store error must still propagate.
         with pytest.raises(RuntimeError, match="key store unavailable"):
-            middleware._resolve_tenant_scope(request, "agentbom_test")
+            asyncio.run(middleware._resolve_tenant_scope(request, "agentbom_test"))
     finally:
         set_key_store(KeyStore())
 

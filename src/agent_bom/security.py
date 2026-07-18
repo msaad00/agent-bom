@@ -491,6 +491,22 @@ def _key_looks_sensitive(key: object) -> bool:
     return any(re.search(pattern, str(key).lower()) for pattern in SENSITIVE_PATTERNS)
 
 
+# Fields whose string members are credential *env-var names* — identifiers such
+# as ``OPENAI_API_KEY`` — not secret values.  The key text ("credential…")
+# matches SENSITIVE_PATTERNS, so without this exception every name would redact
+# to ``***REDACTED***``; downstream the graph exporter mints node IDs from these
+# labels and set-dedups them, collapsing distinct credentials into one phantom
+# node and inventing cross-agent ``reaches_tool``/``exposes_cred`` edges.  Only
+# the VALUE of a credential is sensitive, and values are never carried here.
+_CREDENTIAL_IDENTIFIER_KEYS = frozenset(
+    {"credential_env_vars", "credential_env_var", "credential_names", "credential_refs"}
+)
+
+
+def _key_is_credential_identifier(key: object) -> bool:
+    return str(key or "").strip().lower().replace("-", "_") in _CREDENTIAL_IDENTIFIER_KEYS
+
+
 def _key_looks_like_url(key: object) -> bool:
     key_text = str(key).lower()
     return key_text in {"url", "uri", "endpoint", "webhook"} or key_text.endswith(("_url", "_uri", "_endpoint", "_webhook"))
@@ -550,6 +566,11 @@ def sanitize_sensitive_payload(value: object, *, key: object | None = None, max_
     if value is None or isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
+        # A credential env-var NAME is an identifier, not a secret value.  Keep
+        # it intact so distinct credentials stay distinct graph nodes; still
+        # redact defensively if the string itself looks like a leaked secret.
+        if _key_is_credential_identifier(key) and not _looks_sensitive_value(value):
+            return sanitize_text(value, max_len=max_str_len)
         if key is not None and _key_looks_sensitive(key):
             return "***REDACTED***"
         if key is not None and _key_looks_like_email(key):

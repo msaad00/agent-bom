@@ -43,6 +43,33 @@ def test_normalizes_allow_deny_resource_and_conditions_deterministically() -> No
     assert policy.statements[1].not_actions == ("iam:Get*",)
 
 
+def test_bool_and_numeric_condition_values_are_retained_not_dropped() -> None:
+    policy = normalize_iam_policy_document(
+        {
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:GetObject",
+                    "Resource": "*",
+                    "Condition": {
+                        "Bool": {"aws:MultiFactorAuthPresent": True},
+                        "NumericLessThan": {"s3:max-keys": 10},
+                        "DateGreaterThan": {"aws:CurrentTime": "2026-01-01T00:00:00Z"},
+                    },
+                }
+            ]
+        }
+    )
+
+    # A JSON bool/number condition value must survive normalization so the
+    # evaluator still sees the guardrail instead of an empty (unconditional) tuple.
+    assert policy.statements[0].conditions == (
+        ("Bool", "aws:MultiFactorAuthPresent", ("true",)),
+        ("DateGreaterThan", "aws:CurrentTime", ("2026-01-01T00:00:00Z",)),
+        ("NumericLessThan", "s3:max-keys", ("10",)),
+    )
+
+
 def test_invalid_provider_statements_are_partial_not_exceptions() -> None:
     policy = normalize_iam_policy_document(
         {

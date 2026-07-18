@@ -596,6 +596,172 @@ def test_cis_foundations_reconciles_with_cis_checks():
     _clear_jobs()
 
 
+# ─── PR3: NIST 800-53 catalog-backed scoring line ────────────────────────────
+
+
+def _nist_catalog_scenario() -> None:
+    """Seed one estate exercising every NIST-catalog status transition.
+
+    CVE finding tagged SI-10 (curated CWE evidence) -> fail; a second finding
+    tagged only RA-5 (a vuln-intrinsic tag with NO curated check -> control
+    mapping) -> must stay not_evaluated so the line reconciles with the curated
+    evidencing_checks. AWS CIS Foundations checks drive pass/fail/error/N-A.
+    """
+    _add_done_job(
+        [
+            {
+                "vulnerability_id": "CVE-2025-1000",
+                "severity": "high",
+                "package": "flask",
+                "nist_800_53_tags": ["SI-10"],
+            },
+            {
+                "vulnerability_id": "CVE-2025-2000",
+                "severity": "critical",
+                "package": "requests",
+                "nist_800_53_tags": ["RA-5"],  # not a curated check -> control
+            },
+        ],
+        result_extra=_cis_benchmark_result(
+            [
+                {"check_id": "2.1.2", "title": "S3 SSE", "status": "PASS", "severity": "high"},  # SC-28 pass
+                {"check_id": "2.1.1", "title": "S3 public", "status": "FAIL", "severity": "high"},  # AC-3, SC-7 fail
+                {"check_id": "1.12", "title": "Unused creds", "status": "FAIL", "severity": "medium"},  # AC-2, IA-5 fail
+                {"check_id": "1.4", "title": "Root key", "status": "ERROR", "severity": "critical"},  # AC-6, IA-5 err
+                {"check_id": "1.5", "title": "Manual", "status": "NOT_APPLICABLE", "severity": "low"},  # IA-2 ignored
+            ]
+        ),
+    )
+
+
+def test_compliance_surfaces_nist_800_53_catalog_line():
+    """A NIST-mapped estate surfaces a catalog-backed 800-53 line scored over
+    EVALUATED controls only, with an explicit ERROR bucket and a not_evaluated
+    remainder against the full vendored catalog."""
+    from agent_bom.framework_mapping import FRAMEWORK_CONTROL_CATALOG
+
+    _clear_jobs()
+    _nist_catalog_scenario()
+    client = TestClient(app)
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    line = data["nist_800_53_catalog"]
+    assert line["framework_key"] == "nist_800_53_catalog"
+    assert line["representation"] == "catalog"
+    assert line["vendor_asserted"] is True
+
+    catalog_size = len(FRAMEWORK_CONTROL_CATALOG["nist-800-53"])
+    summary = line["summary"]
+    # fail: SI-10, AC-3, SC-7, AC-2, IA-5 (fail beats the 1.4 error) = 5
+    # pass: SC-28 = 1 ; error: AC-6 = 1 ; warning: 0
+    assert summary["fail"] == 5
+    assert summary["pass"] == 1
+    assert summary["error"] == 1
+    assert summary["warning"] == 0
+    assert summary["evaluated"] == 7  # pass + fail + warning + error
+    assert summary["catalog_size"] == catalog_size
+    assert summary["not_evaluated"] == catalog_size - 7
+    # Score is over evaluated controls only: 1 pass / 7 evaluated.
+    assert summary["score"] == 14.3
+    assert line["score"] == 14.3
+    assert line["status"] == "fail"
+
+    by_id = {c["control_id"]: c for c in line["controls"]}
+    assert by_id["SI-10"]["status"] == "fail"
+    assert by_id["AC-2"]["status"] == "fail"
+    assert by_id["SC-28"]["status"] == "pass"
+    assert by_id["AC-6"]["status"] == "error"  # unevaluable, not pass/fail
+    assert by_id["IA-5"]["status"] == "fail"  # fail (1.12) wins over error (1.4)
+    # Reconciliation: controls with no curated check are never on this line.
+    assert "RA-5" not in by_id  # vuln-intrinsic tag, not a curated check
+    assert "IA-2" not in by_id  # only a NOT_APPLICABLE check touched it
+    # Only evaluated controls are listed (no 1000-row not_evaluated tower).
+    assert all(c["status"] in ("pass", "fail", "warning", "error") for c in line["controls"])
+    _clear_jobs()
+
+
+def test_nist_catalog_line_iso_attribution_is_derived_by_id_only():
+    """A failing NIST control surfaces its ISO 27001 attribution BY ID ONLY,
+    labeled as derived from NIST's official SP 800-53 -> ISO crosswalk — never an
+    ISO control title (copyrighted)."""
+    from agent_bom.framework_mapping import nist_to_iso
+
+    _clear_jobs()
+    _nist_catalog_scenario()
+    client = TestClient(app)
+    line = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()["nist_800_53_catalog"]
+
+    # AC-2 is the canonical example: NIST maps it to A.5.16 / A.5.18 / A.8.2.
+    ac2 = next(c for c in line["controls"] if c["control_id"] == "AC-2")
+    assert ac2["iso_27001_derived"] == nist_to_iso("AC-2") == ["A.5.16", "A.5.18", "A.8.2"]
+
+    derived = line["iso_27001_derived"]
+    assert "crosswalk" in derived["note"].lower()
+    assert derived["source"] == "nist_800_53_to_iso_27001_crosswalk"
+    # Identifiers only — every entry is an ISO Annex A id, no title text leaks.
+    assert all(i.startswith("A.") for i in derived["controls"])
+    assert "A.5.16" in derived["controls"]
+    # Only failing controls contribute (SC-28 passed -> its ISO ids not implicated
+    # unless another failing control shares them).
+    assert derived["controls"] == sorted(set(derived["controls"]))
+    _clear_jobs()
+
+
+def test_nist_catalog_line_is_independent_and_does_not_move_overall():
+    """The catalog line is scored INDEPENDENTLY: its pass/fail must not be folded
+    into overall_score (that would double-count the same CVE/CIS evidence already
+    driving the existing lines). The existing CIS Foundations line is unchanged."""
+    _clear_jobs()
+    # CIS-only estate: no CVE tags. overall is driven by the CIS Foundations fold
+    # exactly as before PR3.
+    _add_done_job(
+        [],
+        result_extra=_cis_benchmark_result(
+            [
+                {"check_id": "2.1.2", "title": "S3 SSE", "status": "PASS", "severity": "high"},
+                {"check_id": "2.1.1", "title": "S3 public", "status": "FAIL", "severity": "high"},
+                {"check_id": "1.12", "title": "Unused creds", "status": "FAIL", "severity": "medium"},
+                {"check_id": "1.4", "title": "Root key", "status": "ERROR", "severity": "critical"},
+                {"check_id": "1.5", "title": "Manual", "status": "NOT_APPLICABLE", "severity": "low"},
+            ]
+        ),
+    )
+    client = TestClient(app)
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    # cis_foundations fold: pass=1, fail=2, error=1 -> evaluated 4, score 25.0.
+    assert data["cis_foundations_benchmark"]["summary"] == {
+        "pass": 1,
+        "fail": 2,
+        "error": 1,
+        "not_applicable": 1,
+        "evaluated": 4,
+        "score": 25.0,
+    }
+    assert data["overall_status"] == "fail"
+    assert data["overall_score"] == 25.0  # NOT dragged further by the NIST line
+
+    # The NIST catalog line still reports its own (independent) failing controls.
+    nist_line = data["nist_800_53_catalog"]
+    assert nist_line["summary"]["fail"] >= 3  # AC-3, SC-7, AC-2, IA-5
+    # Its counts are NOT added into the overall aggregate summary.
+    assert "nist_800_53_catalog_fail" in data["summary"]
+    _clear_jobs()
+
+
+def test_nist_catalog_line_no_data_when_nothing_mapped():
+    """An estate with a completed scan but no NIST-mapped evidence yields an
+    honest no_data line, not a false 100% pass."""
+    _clear_jobs()
+    _add_done_job([{"vulnerability_id": "CVE-x", "severity": "high", "owasp_tags": ["LLM05"]}])
+    client = TestClient(app)
+    line = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()["nist_800_53_catalog"]
+    assert line["summary"]["evaluated"] == 0
+    assert line["status"] == "no_data"
+    assert line["score"] == 0.0
+    _clear_jobs()
+
+
 def test_posture_has_proxy_flips_on_proxy_alert_ingest():
     """audit P1-B: ingesting proxy alerts via /v1/proxy/audit must flip
     the ``has_proxy`` posture flag on /v1/posture/counts.

@@ -360,6 +360,10 @@ def _aggregate_cis_foundations_checks(jobs: list[Any]) -> dict[str, Any]:
     seen: set[tuple[str, str]] = set()
     counts = {"pass": 0, "fail": 0, "error": 0, "not_applicable": 0, "other": 0}
     providers: dict[str, dict[str, int]] = {}
+    # Deduped latest status per logical (cloud, check_id) — consumed by the NIST
+    # 800-53 catalog line to map a CIS Foundations check to the NIST controls it
+    # evidences (framework_mapping.nist_controls_for_cis_check).
+    statuses: dict[tuple[str, str], str] = {}
     for row in all_rows:
         key = (str(row.get("cloud") or ""), str(row.get("check_id") or ""))
         if key in seen:
@@ -368,10 +372,11 @@ def _aggregate_cis_foundations_checks(jobs: list[Any]) -> dict[str, Any]:
         status = str(row.get("status") or "").lower()
         bucket = status if status in ("pass", "fail", "error", "not_applicable") else "other"
         counts[bucket] += 1
+        statuses[key] = status
         cloud = str(row.get("cloud") or "unknown")
         prov = providers.setdefault(cloud, {"pass": 0, "fail": 0, "error": 0, "not_applicable": 0, "other": 0})
         prov[bucket] += 1
-    return {"counts": counts, "providers": providers, "total_checks": len(seen)}
+    return {"counts": counts, "providers": providers, "total_checks": len(seen), "statuses": statuses}
 
 
 def _build_cis_foundations_line(agg: dict[str, Any]) -> dict[str, Any]:
@@ -421,6 +426,138 @@ def _build_cis_foundations_line(agg: dict[str, Any]) -> dict[str, Any]:
             "score": score,
         },
         "providers": agg["providers"],
+    }
+
+
+# Order used to collapse multiple evidence signals on one NIST control into a
+# single status. Higher wins: a real weakness (fail/warning) beats an
+# unevaluable check (error) which beats a clean pass; a control with no run
+# check stays not_evaluated (never a silent pass).
+_NIST_STATUS_RANK = {"not_evaluated": 0, "pass": 1, "error": 2, "warning": 3, "fail": 4}
+
+
+def _build_nist_800_53_catalog_line(
+    all_blast: list[dict],
+    cis_statuses: dict[tuple[str, str], str],
+    scan_count: int,
+) -> dict[str, Any]:
+    """Score the full vendored NIST SP 800-53 Rev 5 catalog over EVALUATED
+    controls only, using PR3's curated (vendor-asserted) check -> control map.
+
+    A control is *evaluated* when at least one mapped check ran: a CVE/CWE
+    finding whose ``nist_800_53_tags`` include a curated (evidencing_checks)
+    control, or a CIS Foundations check the vendor-asserted table maps to it.
+    Findings can only fail/warn (absence of a CVE is never a pass); a CIS check
+    contributes pass/fail/error. ERROR is an explicit bucket — counted toward the
+    evaluated denominator but never the numerator. Controls with no run check are
+    ``not_evaluated`` against the full catalog. Scored INDEPENDENTLY: this line is
+    never folded into ``overall_score`` (the same evidence already drives the
+    existing per-framework lines — folding it would double-count).
+    """
+    from agent_bom import framework_mapping as fm
+
+    catalog = fm.FRAMEWORK_CONTROL_CATALOG.get(fm.FRAMEWORK_NIST_800_53, {})
+    evidenced = fm.NIST_800_53_EVIDENCED_CONTROLS
+
+    # Finding-driven severity per curated control (worst-severity -> status via
+    # the shared _evaluated_control_status helper the rest of the scorecard uses).
+    finding_sev: dict[str, dict[str, int]] = {}
+    finding_count: dict[str, int] = {}
+    for br in all_blast:
+        for control_id in br.get("nist_800_53_tags", []) or []:
+            if control_id not in evidenced:
+                continue  # vuln-intrinsic tag with no curated check -> reconcile out
+            sev = str(br.get("severity") or "").lower()
+            bucket = finding_sev.setdefault(control_id, {"critical": 0, "high": 0, "medium": 0, "low": 0})
+            if sev in bucket:
+                bucket[sev] += 1
+            finding_count[control_id] = finding_count.get(control_id, 0) + 1
+
+    # CIS-driven statuses per control via the vendor-asserted CIS -> NIST table.
+    cis_by_control: dict[str, set[str]] = {}
+    for (cloud, check_id), status in cis_statuses.items():
+        if status not in ("pass", "fail", "error"):
+            continue  # not_applicable / unknown never evaluate a control
+        for control_id in fm.nist_controls_for_cis_check(cloud, check_id):
+            cis_by_control.setdefault(control_id, set()).add(status)
+
+    controls: list[dict[str, Any]] = []
+    tally = {"pass": 0, "fail": 0, "warning": 0, "error": 0}
+    for control_id in sorted(evidenced):
+        signals: set[str] = set()
+        if control_id in finding_sev:
+            fstatus = _evaluated_control_status(finding_sev[control_id])
+            if fstatus != "not_evaluated":  # all-unrated findings are not evidence
+                signals.add(fstatus)
+        for cis_status in cis_by_control.get(control_id, set()):
+            signals.add("warning" if cis_status == "warn" else cis_status)
+        if not signals:
+            continue  # curated control, but nothing ran -> not_evaluated
+        status = max(signals, key=lambda s: _NIST_STATUS_RANK[s])
+        tally[status] += 1
+        spec = catalog.get(control_id)
+        iso_ids = fm.nist_to_iso(control_id) if status == "fail" else []
+        controls.append(
+            {
+                "control_id": control_id,
+                "title": spec.title if spec else None,
+                "status": status,
+                "findings": finding_count.get(control_id, 0),
+                "evidencing_checks": list(spec.evidencing_checks) if spec else [],
+                "iso_27001_derived": iso_ids,
+            }
+        )
+
+    passed, failed, warned, errored = tally["pass"], tally["fail"], tally["warning"], tally["error"]
+    evaluated = passed + failed + warned + errored
+    catalog_size = len(catalog)
+    not_evaluated = catalog_size - evaluated
+    score = round((passed / evaluated) * 100, 1) if evaluated > 0 else 0.0
+    coverage_pct = round((evaluated / catalog_size) * 100, 2) if catalog_size > 0 else 0.0
+
+    if scan_count == 0 or evaluated == 0:
+        status = "no_data"
+    elif failed > 0:
+        status = "fail"
+    elif warned > 0 or errored > 0:
+        status = "warning"
+    else:
+        status = "pass"
+
+    # Emergent cross-framework: failing NIST controls implicate ISO Annex A
+    # controls via NIST's own official SP 800-53 -> ISO 27001 crosswalk. Surface
+    # BY ID ONLY (ISO titles are copyrighted), clearly labeled as derived.
+    iso_derived_ids = sorted({iso for c in controls if c["status"] == "fail" for iso in c["iso_27001_derived"]})
+
+    return {
+        "framework": "nist-800-53",
+        "framework_key": "nist_800_53_catalog",
+        "framework_label": "NIST SP 800-53 Rev 5",
+        "representation": "catalog",
+        "source": "framework_control_catalog",
+        "vendor_asserted": True,
+        "status": status,
+        "score": score,
+        "summary": {
+            "pass": passed,
+            "fail": failed,
+            "warning": warned,
+            "error": errored,
+            "evaluated": evaluated,
+            "not_evaluated": not_evaluated,
+            "catalog_size": catalog_size,
+            "coverage_pct": coverage_pct,
+            "score": score,
+        },
+        "controls": controls,
+        "iso_27001_derived": {
+            "source": "nist_800_53_to_iso_27001_crosswalk",
+            "note": (
+                "ISO/IEC 27001:2022 Annex A control IDs implicated by the failing NIST controls, "
+                "derived from NIST's official SP 800-53 Rev 5 -> ISO 27001 crosswalk (identifiers only)."
+            ),
+            "controls": iso_derived_ids,
+        },
     }
 
 
@@ -592,6 +729,15 @@ async def get_compliance(request: Request) -> dict:
         if not_evaluated:
             summary[f"{metadata.summary_prefix}_not_evaluated"] = not_evaluated
     cis_foundations_line = _build_cis_foundations_line(cis_foundations_agg)
+    # PR3: catalog-backed NIST 800-53 line, scored INDEPENDENTLY over evaluated
+    # controls only (curated check -> control map). Deliberately NOT folded into
+    # overall_score/overall_status — the same CVE/CIS evidence already drives the
+    # existing per-framework lines, so folding would double-count.
+    nist_800_53_catalog_line = _build_nist_800_53_catalog_line(
+        all_blast,
+        cis_foundations_agg.get("statuses", {}),
+        scan_count,
+    )
     summary.update(
         {
             "aisvs_pass": aisvs_summary["pass"],
@@ -603,6 +749,12 @@ async def get_compliance(request: Request) -> dict:
             "cis_foundations_error": cis_foundations_line["summary"]["error"],
             "cis_foundations_not_applicable": cis_foundations_line["summary"]["not_applicable"],
             "cis_foundations_evaluated": cis_foundations_line["summary"]["evaluated"],
+            "nist_800_53_catalog_pass": nist_800_53_catalog_line["summary"]["pass"],
+            "nist_800_53_catalog_fail": nist_800_53_catalog_line["summary"]["fail"],
+            "nist_800_53_catalog_warning": nist_800_53_catalog_line["summary"]["warning"],
+            "nist_800_53_catalog_error": nist_800_53_catalog_line["summary"]["error"],
+            "nist_800_53_catalog_evaluated": nist_800_53_catalog_line["summary"]["evaluated"],
+            "nist_800_53_catalog_not_evaluated": nist_800_53_catalog_line["summary"]["not_evaluated"],
         }
     )
 
@@ -616,6 +768,7 @@ async def get_compliance(request: Request) -> dict:
         "scan_sources": sorted(all_scan_sources),
         "aisvs_benchmark": aisvs,
         "cis_foundations_benchmark": cis_foundations_line,
+        "nist_800_53_catalog": nist_800_53_catalog_line,
         "summary": summary,
     }
     for metadata in TAG_MAPPED_FRAMEWORKS:

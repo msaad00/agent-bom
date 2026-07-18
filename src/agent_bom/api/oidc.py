@@ -43,7 +43,7 @@ import logging
 import os
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional, cast
 from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import urlopen
@@ -64,10 +64,10 @@ class _JwksCache:
     """Thread-safe cache for OIDC JWKS (JSON Web Key Sets)."""
 
     def __init__(self) -> None:
-        self._cache: dict[str, tuple[dict, float]] = {}  # url → (jwks, fetched_at)
+        self._cache: dict[str, tuple[dict[str, Any], float]] = {}  # url → (jwks, fetched_at)
         self._lock = threading.Lock()
 
-    def get(self, jwks_uri: str) -> dict:
+    def get(self, jwks_uri: str) -> dict[str, Any]:
         """Return cached JWKS or fetch fresh copy if stale/absent."""
         with self._lock:
             entry = self._cache.get(jwks_uri)
@@ -133,7 +133,7 @@ def _validate_tenant_claim_value(value: object) -> str:
 # ── Discovery ──────────────────────────────────────────────────────────────────
 
 
-def _fetch_json(url: str) -> dict:
+def _fetch_json(url: str) -> dict[str, Any]:
     # Defense-in-depth: validate even operator-supplied URLs to block SSRF
     # via misconfigured AGENT_BOM_OIDC_ISSUER pointing at internal services.
     from agent_bom.security import validate_url
@@ -141,12 +141,14 @@ def _fetch_json(url: str) -> dict:
     validate_url(url)
     try:
         with urlopen(url, timeout=_OIDC_TIMEOUT) as resp:  # noqa: S310  # nosec B310 — validated above
-            return json.loads(resp.read())
+            # json.loads is typed to return Any; OIDC discovery/JWKS endpoints
+            # always return a JSON object, so narrow to the documented shape.
+            return cast("dict[str, Any]", json.loads(resp.read()))
     except (URLError, OSError, json.JSONDecodeError) as exc:
         raise OIDCError(f"Failed to fetch {url}: {exc}") from exc
 
 
-def discover_oidc(issuer: str) -> dict:
+def discover_oidc(issuer: str) -> dict[str, Any]:
     """Fetch the OIDC discovery document for ``issuer``.
 
     Args:
@@ -220,7 +222,7 @@ def verify_oidc_token(
     jwks_uri: Optional[str] = None,
     required_nonce: Optional[str] = None,
     allowed_jwks_uris: tuple[str, ...] = (),
-) -> dict:
+) -> dict[str, Any]:
     """Verify an OIDC JWT and return its claims.
 
     Fetches the issuer's JWKS (cached for 1 hour) and verifies the token
@@ -263,7 +265,7 @@ def verify_oidc_token(
     except Exception as exc:
         raise OIDCError(f"Failed to resolve signing key: {exc}") from exc
 
-    decode_kwargs: dict = {
+    decode_kwargs: dict[str, Any] = {
         "algorithms": list(OIDC_ALLOWED_ALGORITHMS),
         "issuer": issuer,
         "options": {"require": ["exp", "iat", "iss"]},
@@ -304,7 +306,7 @@ def verify_oidc_token(
 # ── Role mapping ───────────────────────────────────────────────────────────────
 
 
-def claims_to_role(claims: dict, role_claim: str = "agent_bom_role") -> str:
+def claims_to_role(claims: dict[str, Any], role_claim: str = "agent_bom_role") -> str:
     """Map OIDC JWT claims to an agent-bom role string.
 
     Checks ``role_claim`` in the JWT, then falls back to ``roles`` and
@@ -342,7 +344,7 @@ def claims_to_role(claims: dict, role_claim: str = "agent_bom_role") -> str:
     return "viewer"
 
 
-def claims_have_role_signal(claims: dict, role_claim: str = "agent_bom_role") -> bool:
+def claims_have_role_signal(claims: dict[str, Any], role_claim: str = "agent_bom_role") -> bool:
     """Return True when claims include an explicit recognizable role signal."""
     admin_values = {"admin", "administrator", "superuser"}
     analyst_values = {"analyst", "security-analyst", "engineer", "developer"}
@@ -361,7 +363,7 @@ def claims_have_role_signal(claims: dict, role_claim: str = "agent_bom_role") ->
     return False
 
 
-def claims_to_tenant(claims: dict, tenant_claim: str = "tenant_id") -> str | None:
+def claims_to_tenant(claims: dict[str, Any], tenant_claim: str = "tenant_id") -> str | None:
     """Map OIDC JWT claims to a tenant identifier."""
     tenant_val = claims.get(tenant_claim)
     if tenant_val not in (None, ""):
@@ -375,7 +377,7 @@ def claims_to_tenant(claims: dict, tenant_claim: str = "tenant_id") -> str | Non
     return None
 
 
-def _decode_unverified_claims(token: str) -> dict:
+def _decode_unverified_claims(token: str) -> dict[str, Any]:
     """Read JWT claims without verifying the signature so issuer routing can occur."""
     parts = token.split(".")
     if len(parts) != 3:
@@ -497,7 +499,7 @@ class OIDCConfig:
             raise OIDCError("JWT missing issuer claim required for tenant-bound OIDC")
         return self._provider_for_issuer(issuer)
 
-    def _provider_for_claims(self, claims: dict) -> OIDCConfig:
+    def _provider_for_claims(self, claims: dict[str, Any]) -> OIDCConfig:
         if not self.tenant_providers:
             return self
         issuer = str(claims.get("iss") or "").strip()
@@ -505,7 +507,7 @@ class OIDCConfig:
             raise OIDCError("JWT missing issuer claim required for tenant-bound OIDC")
         return self._provider_for_issuer(issuer)
 
-    def _validate_bound_tenant(self, claims: dict) -> None:
+    def _validate_bound_tenant(self, claims: dict[str, Any]) -> None:
         if self.tenant_id is None:
             return
         tenant_id = claims_to_tenant(claims, self.tenant_claim)
@@ -518,7 +520,7 @@ class OIDCConfig:
         if self.require_tenant_claim:
             raise OIDCError(f"JWT missing required tenant claim '{self.tenant_claim}'")
 
-    def verify(self, token: str) -> tuple[dict, str]:
+    def verify(self, token: str) -> tuple[dict[str, Any], str]:
         """Verify a JWT and return ``(claims, role)``.
 
         Raises:
@@ -543,7 +545,7 @@ class OIDCConfig:
         role = claims_to_role(claims, provider.role_claim)
         return claims, role
 
-    def resolve_tenant(self, claims: dict) -> str:
+    def resolve_tenant(self, claims: dict[str, Any]) -> str:
         """Resolve tenant context from claims or fail closed when required."""
         provider = self._provider_for_claims(claims)
         tenant_id = claims_to_tenant(claims, provider.tenant_claim)

@@ -2043,28 +2043,28 @@ def scan(
 
             _ug = build_unified_graph_from_report(_graph_json, scan_id=_scan_id, tenant_id=_resolve_cli_tenant_id())
 
-            # Graph toxic-combination evaluator: now that every overlay has
-            # enriched the unified graph, run the declarative rules and route the
-            # resulting findings into the unified stream so they reach the
-            # --fail-on-severity gate and machine outputs (mirrors cloud CIS).
+            # Graph-derived findings: now that every overlay has enriched the
+            # unified graph, surface NHI-governance + toxic-combination findings
+            # into the unified stream so they reach the --fail-on-severity gate and
+            # machine outputs (mirrors cloud CIS). Shared with the API scan
+            # pipeline so both paths emit the same finding categories.
             try:
-                from agent_bom.graph.toxic_findings import build_toxic_combination_findings_data
+                from agent_bom.graph.scan_findings import attach_graph_derived_findings
 
-                _toxic_findings_data = build_toxic_combination_findings_data(_ug)
-                if _toxic_findings_data:
-                    report.toxic_combination_findings_data = _toxic_findings_data
-                    con.print(f"  [green]✓[/green] Toxic combinations: {len(_toxic_findings_data)} finding(s)")
-
-                from agent_bom.graph.nhi_governance import build_ciem_over_privilege_findings_data
-
-                _ciem_findings_data = build_ciem_over_privilege_findings_data(_ug)
-                if _ciem_findings_data:
-                    report.ciem_over_privilege_findings_data = _ciem_findings_data
-                    con.print(f"  [green]✓[/green] CIEM over-privilege: {len(_ciem_findings_data)} finding(s)")
-            except Exception as _toxic_err:  # noqa: BLE001
+                attach_graph_derived_findings(report, _ug)
+                if report.toxic_combination_findings_data:
+                    _n_toxic = len(report.toxic_combination_findings_data)
+                    con.print(f"  [green]✓[/green] Toxic combinations: {_n_toxic} finding(s)")
+                if report.nhi_governance_findings:
+                    _n_nhi = len(report.nhi_governance_findings)
+                    con.print(f"  [green]✓[/green] NHI governance: {_n_nhi} finding(s)")
+                if report.ciem_over_privilege_findings_data:
+                    _n_ciem = len(report.ciem_over_privilege_findings_data)
+                    con.print(f"  [green]✓[/green] CIEM over-privilege: {_n_ciem} finding(s)")
+            except Exception as _gderiv_err:  # noqa: BLE001
                 import logging as _tlog
 
-                _tlog.getLogger(__name__).debug("Toxic-combination evaluation skipped: %s", _toxic_err)
+                _tlog.getLogger(__name__).debug("Graph-derived findings evaluation skipped: %s", _gderiv_err)
 
             _graph_db_path = default_graph_db_path()
             _graph_db_path.parent.mkdir(parents=True, exist_ok=True)

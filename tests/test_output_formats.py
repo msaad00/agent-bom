@@ -633,7 +633,7 @@ class TestMarkdown:
 
         md = to_markdown(report, [br])
 
-        assert "| Severity | CVE | Package | Version | Fix | CVSS | EPSS | KEV | CWE | Tags | Source | Agents |" in md
+        assert "| Severity | CVE | Package | Version | Fix | CVSS | EPSS | KEV | Reach | CWE | Tags | Source | Agents |" in md
         assert "0.8123" in md
         assert "Yes" in md
         assert "CWE-79, CWE-352" in md

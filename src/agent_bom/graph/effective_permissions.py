@@ -28,6 +28,7 @@ from agent_bom.cloud.aws_iam_evidence import (
     NormalizedIamPolicy,
     normalize_iam_policy_document,
 )
+from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import InteractionRisk, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -62,6 +63,8 @@ _ASSUME_RELS = frozenset({RelationshipType.ASSUMES, RelationshipType.INHERITS})
 
 _MAX_PRINCIPALS = 5000
 _MAX_DEPTH = 6
+
+_ANALYZER = "effective_permissions"
 _ADMIN_PRIVILEGE_KEYWORDS = ("administratoraccess", "fullaccess", "poweruseraccess", "iamfullaccess", "*:*", "admin", "owner", "root")
 
 # Admin-equivalence probes for real IAM evaluation. A policy that ALLOWs any of
@@ -134,17 +137,31 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
     Returns counts of permission edges added and escalation chains found. Never
     raises into the builder.
     """
+    limits = {"max_principals": _MAX_PRINCIPALS, "max_depth": _MAX_DEPTH}
     principals = [n for n in graph.nodes.values() if n.entity_type in _PRINCIPAL_TYPES]
     if not principals:
+        graph.analysis_status[_ANALYZER] = GraphAnalysisStatus(
+            status=GraphAnalysisState.COMPLETE,
+            limits=limits,
+            observed={"principal_count": 0, "privilege_escalations": 0},
+        )
         return {"has_permission_edges": 0, "privilege_escalations": 0}
     if len(principals) > _MAX_PRINCIPALS:
-        # Capped, NOT "no escalations". Surface a signal (log + returned reason) so
-        # consumers can distinguish "too big to compute" from "genuinely clean".
+        # Capped, NOT "no escalations". Persist the honest SKIPPED status on the
+        # graph (the same analysis_status contract fusion uses, surfaced through
+        # ``stats()``) AND return a reason so consumers can distinguish "too big
+        # to compute" from "genuinely clean".
         _logger.warning(
             "effective-permissions capped: %d principals exceed cap %d; "
             "privilege-escalation NOT computed for this graph (result is 'skipped', not 'none')",
             len(principals),
             _MAX_PRINCIPALS,
+        )
+        graph.analysis_status[_ANALYZER] = GraphAnalysisStatus(
+            status=GraphAnalysisState.SKIPPED,
+            reason_codes=("principal_cap_exceeded",),
+            limits=limits,
+            observed={"principal_count": len(principals), "privilege_escalations": 0},
         )
         return {
             "has_permission_edges": 0,
@@ -326,6 +343,16 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
             )
             escalations += 1
 
+    graph.analysis_status[_ANALYZER] = GraphAnalysisStatus(
+        status=GraphAnalysisState.COMPLETE,
+        limits=limits,
+        observed={
+            "principal_count": len(principals),
+            "has_permission_edges": edges_added,
+            "privilege_escalations": escalations,
+            "admin_principals": len(admin_principals),
+        },
+    )
     return {
         "has_permission_edges": edges_added,
         "privilege_escalations": escalations,

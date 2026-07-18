@@ -23,7 +23,17 @@ if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 from agent_bom.db import graph_store as sqlite_graph_store
-from agent_bom.graph import AttackPath, EntityType, NodeDimensions, NodeStatus, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from agent_bom.graph import (
+    AttackPath,
+    EntityType,
+    NodeDimensions,
+    NodeStatus,
+    RelationshipType,
+    UnifiedEdge,
+    UnifiedGraph,
+    UnifiedNode,
+    technique_mappings_from_json,
+)
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 
@@ -897,7 +907,7 @@ class SQLiteGraphStore:
             rows = conn.execute(
                 f"""
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids
+                       summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
                 FROM attack_paths
                 WHERE tenant_id = ? AND scan_id = ? AND source_node IN ({placeholders})
                 """,  # nosec B608 - placeholders are generated internally
@@ -914,6 +924,7 @@ class SQLiteGraphStore:
                     credential_exposure=json.loads(row["credential_exposure"]),
                     tool_exposure=json.loads(row["tool_exposure"]),
                     vuln_ids=json.loads(row["vuln_ids"]),
+                    technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                 )
                 for row in rows
             ]
@@ -943,7 +954,7 @@ class SQLiteGraphStore:
             rows = conn.execute(
                 """
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids
+                       summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
                 FROM attack_paths
                 WHERE tenant_id = ? AND scan_id = ?
                 ORDER BY composite_risk DESC, source_node ASC, target_node ASC
@@ -965,6 +976,7 @@ class SQLiteGraphStore:
                         credential_exposure=json.loads(row["credential_exposure"]),
                         tool_exposure=json.loads(row["tool_exposure"]),
                         vuln_ids=json.loads(row["vuln_ids"]),
+                        technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                     )
                     for row in rows
                 ],

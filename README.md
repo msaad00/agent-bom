@@ -126,7 +126,9 @@ flowchart TB
   (multi-replica), plus a correlated graph store.
 - **Headless parity** — the MCP server and CLI expose the same evidence to
   agents and CI, not just the UI. Server mode advertises
-  75 MCP tools, 6 resources, and 8 workflow prompts.
+  75 MCP tools, 6 resources, and 8 workflow prompts; registry metadata lives
+  in the committed Smithery manifest and Glama listing, with install and
+  liveness checks in the integration docs.
 
 </details>
 

@@ -131,8 +131,23 @@ _SOURCE_BASELINE: dict[FindingSource, tuple[str, ...]] = {
         FRAMEWORK_ATLAS,
     ),
     FindingSource.CONTAINER: _CONTAINER_FRAMEWORKS,
-    FindingSource.CLOUD_CIS: _CLOUD_POSTURE_FRAMEWORKS,
-    FindingSource.CLOUD_SECURITY: tuple(framework for framework in _CLOUD_POSTURE_FRAMEWORKS if framework != FRAMEWORK_CIS),
+    # A CIS Foundations Benchmark check (CIS-2.1.1 …) authoritatively asserts the
+    # CIS control it failed and nothing more. There is no authoritative
+    # CIS-Foundations → SOC2/ISO-27001/NIST-800-53 crosswalk in the repo, so the
+    # prior wholesale fan-out (_CLOUD_POSTURE_FRAMEWORKS) over-claimed
+    # cross-framework coverage. Assert only CIS; a specific SOC2/ISO/NIST claim
+    # must wait on an authoritative crosswalk (tracked follow-up).
+    FindingSource.CLOUD_CIS: (FRAMEWORK_CIS,),
+    # Vendor security best practices (e.g. Databricks) are explicitly NOT official
+    # CIS/SOC2/ISO/NIST controls, and there is no authoritative crosswalk from
+    # them to those frameworks in the repo. Claiming SOC2/ISO-27001/NIST-800-53
+    # coverage (the prior wholesale fan-out) over-claims, so assert no official
+    # framework — the vendor-best-practice designation lives in the finding type
+    # (CLOUD_BEST_PRACTICE_*), source, title, and evidence, not in
+    # applicable_frameworks (which holds only official framework slugs). A
+    # finding-shape refinement (e.g. CREDENTIAL_EXPOSURE) can still add frameworks
+    # on its own authority; the source baseline just asserts nothing.
+    FindingSource.CLOUD_SECURITY: (),
     FindingSource.SBOM: (
         FRAMEWORK_NIST_CSF,
         FRAMEWORK_SOC2,
@@ -207,7 +222,12 @@ def select_frameworks(
 
     selected.update(_SOURCE_BASELINE.get(source, ()))
 
-    if asset_type and not (source == FindingSource.CLOUD_SECURITY and asset_type == "cloud_resource"):
+    # Cloud-posture sources already carry an authoritative source baseline; the
+    # broad cloud_resource asset addition (_CLOUD_POSTURE_FRAMEWORKS) would
+    # re-introduce the SOC2/ISO/NIST-800-53 over-claim they were narrowed away
+    # from, so skip it for those sources.
+    _cloud_posture_sources = {FindingSource.CLOUD_SECURITY, FindingSource.CLOUD_CIS}
+    if asset_type and not (source in _cloud_posture_sources and asset_type == "cloud_resource"):
         selected.update(_ASSET_TYPE_ADDITIONS.get(asset_type, ()))
 
     if finding_type:

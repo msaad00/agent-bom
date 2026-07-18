@@ -329,6 +329,101 @@ def _evaluated_control_status(sev_breakdown: dict[str, int]) -> str:
     return "not_evaluated"
 
 
+def _aggregate_cis_foundations_checks(jobs: list[Any]) -> dict[str, Any]:
+    """Deduped CIS Foundations Benchmark status rollup across a tenant's scans.
+
+    Reuses ``build_cis_benchmark_check_rows`` + the same latest-per-(cloud,
+    check_id) dedup as ``/v1/cis/checks`` so the scorecard's benchmark line
+    reconciles with that endpoint by construction.
+
+    This is the CIS *Foundations Benchmark* taxonomy (``CIS-2.1.1`` …), a
+    different standard from the CVE-driven CIS Controls v8 line (safeguard
+    ``CIS-02.1`` …) built elsewhere in :func:`get_compliance`. The two never
+    share identifiers, so no control is counted in both lines.
+    """
+    from agent_bom.analytics_contract import build_cis_benchmark_check_rows
+
+    all_rows: list[dict[str, Any]] = []
+    for job in jobs:
+        if job.status != JobStatus.DONE or not isinstance(getattr(job, "result", None), dict):
+            continue
+        all_rows.extend(
+            build_cis_benchmark_check_rows(
+                job.result,
+                str(job.result.get("scan_id") or job.job_id),
+                measured_at=getattr(job, "completed_at", None) or getattr(job, "created_at", None),
+            )
+        )
+    # Newest measurement per logical (cloud, check_id) wins — identical dedup to
+    # the /v1/cis/checks scan_jobs fallback so the two surfaces agree.
+    all_rows.sort(key=lambda row: (str(row.get("measured_at") or ""), -int(row.get("priority") or 0)), reverse=True)
+    seen: set[tuple[str, str]] = set()
+    counts = {"pass": 0, "fail": 0, "error": 0, "not_applicable": 0, "other": 0}
+    providers: dict[str, dict[str, int]] = {}
+    for row in all_rows:
+        key = (str(row.get("cloud") or ""), str(row.get("check_id") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        status = str(row.get("status") or "").lower()
+        bucket = status if status in ("pass", "fail", "error", "not_applicable") else "other"
+        counts[bucket] += 1
+        cloud = str(row.get("cloud") or "unknown")
+        prov = providers.setdefault(cloud, {"pass": 0, "fail": 0, "error": 0, "not_applicable": 0, "other": 0})
+        prov[bucket] += 1
+    return {"counts": counts, "providers": providers, "total_checks": len(seen)}
+
+
+def _build_cis_foundations_line(agg: dict[str, Any]) -> dict[str, Any]:
+    """Shape the benchmark-backed CIS Foundations scorecard line.
+
+    Denominator is honest: ``evaluated = pass + fail + error`` (NOT_APPLICABLE
+    checks are excluded from the score). ERROR is an explicit bucket — an
+    unevaluable control (permission-denied / unreadable, which the eval layer
+    correctly refuses to PASS) is neither pass nor fail, and never inflates the
+    numerator.
+    """
+    counts = agg["counts"]
+    passed = int(counts["pass"])
+    failed = int(counts["fail"])
+    errored = int(counts["error"])
+    not_applicable = int(counts["not_applicable"])
+    evaluated = passed + failed + errored
+    score = round((passed / evaluated) * 100, 1) if evaluated > 0 else 0.0
+
+    if not agg["total_checks"]:
+        status = "no_data"
+    elif failed > 0:
+        status = "fail"
+    elif errored > 0:
+        # Everything evaluable passed, but some controls were unevaluable — not a
+        # clean pass. Surface as warning so the reader knows coverage is partial.
+        status = "warning"
+    elif evaluated > 0:
+        status = "pass"
+    else:
+        status = "no_data"  # only NOT_APPLICABLE checks — nothing was evaluated
+
+    return {
+        "framework": "cis-foundations",
+        "framework_key": "cis_foundations_benchmark",
+        "framework_label": "CIS Foundations Benchmark",
+        "representation": "benchmark",
+        "source": "cis_benchmark_data",
+        "status": status,
+        "score": score,
+        "summary": {
+            "pass": passed,
+            "fail": failed,
+            "error": errored,
+            "not_applicable": not_applicable,
+            "evaluated": evaluated,
+            "score": score,
+        },
+        "providers": agg["providers"],
+    }
+
+
 @router.get("/compliance", tags=["compliance"])
 async def get_compliance(request: Request) -> dict:
     """Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,
@@ -436,16 +531,35 @@ async def get_compliance(request: Request) -> dict:
     total_pass = sum(s[0] for s in status_totals)
     total_warn = sum(s[1] for s in status_totals)
     total_fail = sum(s[2] for s in status_totals)
-    # Score over EVALUATED controls only (those with mapped findings). A control
-    # with no findings is not_evaluated, never a silent pass — otherwise every
-    # never-triggered bundled control inflates the score toward 100. Matches the
-    # narrative so a benign/empty estate can't read as "fully compliant".
-    evaluated_controls = total_pass + total_warn + total_fail
-    overall_score = round((total_pass / evaluated_controls) * 100, 1) if evaluated_controls > 0 else 0.0
 
-    if total_fail > 0:
+    # Wire the CIS Foundations Benchmark posture (report.cis_benchmark_data + the
+    # azure/gcp/snowflake/databricks siblings) into the aggregate. Previously the
+    # scorecard derived every status ONLY from CVE-tag data, so a cloud account
+    # failing CIS controls read green/no_data. The benchmark is a DIFFERENT
+    # taxonomy than the CVE-driven CIS Controls v8 line, kept as its own labeled
+    # line below; here we only fold its pass/fail/error into the top-line so a
+    # failing CIS account can't read as compliant. ERROR is unevaluable — counted
+    # toward the evaluated denominator (drags the score down) but never the
+    # numerator.
+    cis_foundations_agg = _aggregate_cis_foundations_checks(tenant_jobs)
+    bench_pass = int(cis_foundations_agg["counts"]["pass"])
+    bench_fail = int(cis_foundations_agg["counts"]["fail"])
+    bench_error = int(cis_foundations_agg["counts"]["error"])
+
+    # Score over EVALUATED controls/checks only (CVE controls with mapped
+    # findings + benchmark pass/fail/error). A CVE control with no findings is
+    # not_evaluated, never a silent pass — otherwise every never-triggered bundled
+    # control inflates the score toward 100. Matches the narrative so a
+    # benign/empty estate can't read as "fully compliant".
+    aggregate_pass = total_pass + bench_pass
+    aggregate_fail = total_fail + bench_fail
+    evaluated_controls = aggregate_pass + total_warn + aggregate_fail + bench_error
+    overall_score = round((aggregate_pass / evaluated_controls) * 100, 1) if evaluated_controls > 0 else 0.0
+
+    if aggregate_fail > 0:
         overall_status = "fail"
-    elif total_warn > 0:
+    elif total_warn > 0 or bench_error > 0:
+        # A benchmark ERROR (unevaluable control) is not a clean pass either.
         overall_status = "warning"
     elif evaluated_controls > 0:
         overall_status = "pass"
@@ -477,12 +591,18 @@ async def get_compliance(request: Request) -> dict:
         not_evaluated = len(controls_list) - passed - warned - failed
         if not_evaluated:
             summary[f"{metadata.summary_prefix}_not_evaluated"] = not_evaluated
+    cis_foundations_line = _build_cis_foundations_line(cis_foundations_agg)
     summary.update(
         {
             "aisvs_pass": aisvs_summary["pass"],
             "aisvs_fail": aisvs_summary["fail"],
             "aisvs_error": aisvs_summary["error"],
             "aisvs_not_applicable": aisvs_summary["not_applicable"],
+            "cis_foundations_pass": cis_foundations_line["summary"]["pass"],
+            "cis_foundations_fail": cis_foundations_line["summary"]["fail"],
+            "cis_foundations_error": cis_foundations_line["summary"]["error"],
+            "cis_foundations_not_applicable": cis_foundations_line["summary"]["not_applicable"],
+            "cis_foundations_evaluated": cis_foundations_line["summary"]["evaluated"],
         }
     )
 
@@ -495,6 +615,7 @@ async def get_compliance(request: Request) -> dict:
         "has_agent_context": has_agent_context,
         "scan_sources": sorted(all_scan_sources),
         "aisvs_benchmark": aisvs,
+        "cis_foundations_benchmark": cis_foundations_line,
         "summary": summary,
     }
     for metadata in TAG_MAPPED_FRAMEWORKS:

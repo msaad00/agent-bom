@@ -26,20 +26,37 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_ENTERPRISE_STIX_URL = "https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json"
-_CAPEC_STIX_URL = "https://raw.githubusercontent.com/mitre/cti/master/capec/2.1/stix-capec.json"
+# Pinned official first-party STIX releases (supply-chain hygiene: an immutable
+# git tag + versioned filename, never a mutable ``master`` branch). Refreshing to
+# a newer release means bumping these three constants and re-running the refresh
+# path (``refresh_bundled_catalog``); the recorded digest then pins the exact
+# bytes so the artifact is reproducible.
+_ATTACK_RELEASE = "18.1"
+_CAPEC_RELEASE = "3.5"
+_ENTERPRISE_STIX_URL = (
+    "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/"
+    f"v{_ATTACK_RELEASE}/enterprise-attack/enterprise-attack-{_ATTACK_RELEASE}.json"
+)
+_CAPEC_STIX_URL = f"https://raw.githubusercontent.com/mitre/cti/CAPEC-v{_CAPEC_RELEASE}/capec/2.1/stix-capec.json"
 
+# The 14 MITRE ATT&CK Enterprise tactics (v18.1). Techniques are kept when they
+# belong to at least one of these kill-chain phases; Reconnaissance (TA0043) and
+# Resource Development (TA0042) are first-class members of this set.
 TOP_TACTIC_PHASE_NAMES = frozenset(
     [
+        "reconnaissance",
+        "resource-development",
         "initial-access",
         "execution",
+        "persistence",
         "privilege-escalation",
         "defense-evasion",
         "credential-access",
         "discovery",
+        "lateral-movement",
         "collection",
-        "exfiltration",
         "command-and-control",
+        "exfiltration",
         "impact",
     ]
 )
@@ -68,10 +85,14 @@ def _empty_catalog(source: str = "unavailable") -> dict:
         "catalog_type": "mitre_attack",
         "source": source,
         "attack_version": "unavailable",
+        "attack_release": "unavailable",
         "updated_at": "",
         "fetched_at": 0,
         "normalized_sha256": "",
         "sources": {},
+        "technique_count": 0,
+        "tactic_count": 0,
+        "tactics": {},
         "techniques": {},
         "cwe_to_attack": {},
     }
@@ -84,11 +105,13 @@ def _catalog_metadata(catalog: dict) -> dict:
         "catalog_type": catalog.get("catalog_type", "mitre_attack"),
         "source": catalog.get("source", "unknown"),
         "attack_version": catalog.get("attack_version", "unknown"),
+        "attack_release": catalog.get("attack_release", "unknown"),
         "updated_at": catalog.get("updated_at", ""),
         "fetched_at": catalog.get("fetched_at", 0),
         "normalized_sha256": catalog.get("normalized_sha256", ""),
         "sources": catalog.get("sources", {}),
         "technique_count": len(catalog.get("techniques", {})),
+        "tactic_count": len(catalog.get("tactics", {})),
         "cwe_mapping_count": len(catalog.get("cwe_to_attack", {})),
         "path": catalog.get("_path", ""),
     }
@@ -116,10 +139,14 @@ def _load_catalog_file(path: Path) -> Optional[dict]:
     data.setdefault("catalog_id", "mitre_attack_enterprise_capec")
     data.setdefault("catalog_type", "mitre_attack")
     data.setdefault("source", "synced" if path == _sync_catalog_path() else "bundled")
+    data.setdefault("attack_release", data.get("attack_version", "unknown"))
     data.setdefault("updated_at", "")
     data.setdefault("fetched_at", 0)
     data.setdefault("normalized_sha256", "")
     data.setdefault("sources", {})
+    data.setdefault("tactics", {})
+    data.setdefault("tactic_count", len(data.get("tactics", {})))
+    data.setdefault("technique_count", len(data.get("techniques", {})))
     data["_path"] = str(path)
     return data
 
@@ -204,6 +231,32 @@ def _parse_attack_stix(stix_bundle: dict) -> tuple[str, dict[str, dict]]:
     return version, techniques
 
 
+def _parse_attack_tactics(stix_bundle: dict) -> dict[str, dict]:
+    """Extract the Enterprise tactics keyed by ATT&CK tactic ID (``TAxxxx``).
+
+    Only non-deprecated ``x-mitre-tactic`` objects whose short name is one of the
+    in-scope :data:`TOP_TACTIC_PHASE_NAMES` are returned, so a future upstream
+    tactic the rest of the pipeline does not yet handle is not silently adopted.
+    """
+    tactics: dict[str, dict] = {}
+    for obj in stix_bundle.get("objects", []):
+        if obj.get("type") != "x-mitre-tactic":
+            continue
+        if obj.get("x_mitre_deprecated") or obj.get("revoked"):
+            continue
+        shortname = obj.get("x_mitre_shortname", "")
+        if shortname not in TOP_TACTIC_PHASE_NAMES:
+            continue
+        tactic_id = next(
+            (r.get("external_id", "") for r in obj.get("external_references", []) if r.get("source_name") == "mitre-attack"),
+            "",
+        )
+        if not tactic_id.startswith("TA"):
+            continue
+        tactics[tactic_id] = {"shortname": shortname, "name": obj.get("name", shortname)}
+    return tactics
+
+
 def _parse_capec_stix(capec_bundle: dict, attack_techniques: dict[str, dict]) -> dict[str, list[str]]:
     objects = capec_bundle.get("objects", [])
     capec_stix_to_external: dict[str, str] = {}
@@ -284,7 +337,9 @@ def _parse_capec_stix(capec_bundle: dict, attack_techniques: dict[str, dict]) ->
 def _normalize_catalog(
     *,
     version: str,
+    release: str,
     techniques: dict[str, dict],
+    tactics: dict[str, dict],
     cwe_to_attack: dict[str, list[str]],
     source: str,
     fetched_at: float,
@@ -292,8 +347,10 @@ def _normalize_catalog(
 ) -> dict:
     core = {
         "techniques": techniques,
+        "tactics": tactics,
         "cwe_to_attack": cwe_to_attack,
         "attack_version": version,
+        "attack_release": release,
     }
     normalized_sha256 = hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return {
@@ -301,11 +358,12 @@ def _normalize_catalog(
         "catalog_id": "mitre_attack_enterprise_capec",
         "catalog_type": "mitre_attack",
         "source": source,
-        "attack_version": version,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "fetched_at": fetched_at,
         "normalized_sha256": normalized_sha256,
         "sources": source_hashes,
+        "technique_count": len(techniques),
+        "tactic_count": len(tactics),
         **core,
     }
 
@@ -315,47 +373,81 @@ def _write_catalog(catalog: dict, path: Path) -> None:
     path.write_text(json.dumps(catalog, separators=(",", ":")))
 
 
+def _refresh_from_upstream(source: str) -> Optional[dict]:
+    """Fetch the pinned STIX releases and normalize them into a catalog.
+
+    Returns ``None`` when either pinned bundle cannot be fetched so callers can
+    fall back to the last-known-good catalog. Records unambiguous provenance:
+    the pinned release, source URL, source digest, fetch time, and the technique
+    and tactic counts.
+    """
+    attack_text = _fetch_text(_ENTERPRISE_STIX_URL)
+    capec_text = _fetch_text(_CAPEC_STIX_URL)
+    if not attack_text or not capec_text:
+        return None
+
+    attack_bundle = json.loads(attack_text)
+    capec_bundle = json.loads(capec_text)
+    version, techniques = _parse_attack_stix(attack_bundle)
+    tactics = _parse_attack_tactics(attack_bundle)
+    cwe_to_attack = _parse_capec_stix(capec_bundle, techniques)
+
+    source_hashes = {
+        "enterprise_attack": {
+            "url": _ENTERPRISE_STIX_URL,
+            "release": _ATTACK_RELEASE,
+            "sha256": hashlib.sha256(attack_text.encode()).hexdigest(),
+        },
+        "capec": {
+            "url": _CAPEC_STIX_URL,
+            "release": _CAPEC_RELEASE,
+            "sha256": hashlib.sha256(capec_text.encode()).hexdigest(),
+        },
+    }
+    return _normalize_catalog(
+        version=version,
+        release=_ATTACK_RELEASE,
+        techniques=techniques,
+        tactics=tactics,
+        cwe_to_attack=cwe_to_attack,
+        source=source,
+        fetched_at=time.time(),
+        source_hashes=source_hashes,
+    )
+
+
 def sync_catalog(output_path: Path | None = None) -> dict:
-    """Fetch and normalize the upstream MITRE ATT&CK + CAPEC catalog.
+    """Fetch and normalize the pinned MITRE ATT&CK + CAPEC releases.
 
     Writes the last-known-good synced catalog to ``~/.agent-bom/catalogs`` by
     default and returns the normalized catalog. If refresh fails, falls back to
     the existing synced catalog, then the bundled catalog.
     """
-    attack_text = _fetch_text(_ENTERPRISE_STIX_URL)
-    capec_text = _fetch_text(_CAPEC_STIX_URL)
-
-    if not attack_text or not capec_text:
+    catalog = _refresh_from_upstream(source="synced")
+    if catalog is None:
         fallback = _load_synced_catalog() or _load_bundled_catalog()
         logger.warning("MITRE sync failed; using last-known-good catalog from %s", fallback.get("source", "unknown"))
         return fallback
 
-    attack_bundle = json.loads(attack_text)
-    capec_bundle = json.loads(capec_text)
-    version, techniques = _parse_attack_stix(attack_bundle)
-    cwe_to_attack = _parse_capec_stix(capec_bundle, techniques)
-
-    fetched_at = time.time()
-    source_hashes = {
-        "enterprise_attack": {
-            "url": _ENTERPRISE_STIX_URL,
-            "sha256": hashlib.sha256(attack_text.encode()).hexdigest(),
-        },
-        "capec": {
-            "url": _CAPEC_STIX_URL,
-            "sha256": hashlib.sha256(capec_text.encode()).hexdigest(),
-        },
-    }
-    catalog = _normalize_catalog(
-        version=version,
-        techniques=techniques,
-        cwe_to_attack=cwe_to_attack,
-        source="synced",
-        fetched_at=fetched_at,
-        source_hashes=source_hashes,
-    )
-
     target = output_path or _sync_catalog_path()
+    _write_catalog(catalog, target)
+    catalog["_path"] = str(target)
+    return catalog
+
+
+def refresh_bundled_catalog(output_path: Path | None = None) -> dict:
+    """Regenerate the in-repo *bundled* ATT&CK/CAPEC catalog from pinned releases.
+
+    This is the maintainer refresh path for the shipped artifact
+    (:data:`_BUNDLED_CATALOG_PATH`). It reuses the same fetch/parse/normalize
+    pipeline as :func:`sync_catalog` but stamps ``source="bundled"`` and requires
+    the network fetch to succeed (a fabricated or partial security reference is
+    worse than a stale one, so it raises rather than silently falling back).
+    """
+    catalog = _refresh_from_upstream(source="bundled")
+    if catalog is None:
+        raise RuntimeError("Unable to fetch pinned MITRE ATT&CK/CAPEC STIX releases; refusing to write a partial catalog.")
+    target = output_path or _BUNDLED_CATALOG_PATH
     _write_catalog(catalog, target)
     catalog["_path"] = str(target)
     return catalog
@@ -400,5 +492,20 @@ def get_cwe_to_attack() -> dict[str, list[str]]:
     return build_catalog().get("cwe_to_attack", {})
 
 
+def get_tactics() -> dict[str, dict]:
+    """Return ``{tactic_id: {shortname, name}}`` from the active ATT&CK catalog."""
+    return build_catalog().get("tactics", {})
+
+
+def get_bundled_tactics() -> dict[str, dict]:
+    """Return the Enterprise tactics from the bundled catalog only (offline)."""
+    return _load_bundled_catalog().get("tactics", {})
+
+
 def get_attack_version() -> str:
     return build_catalog().get("attack_version", "unknown")
+
+
+def get_attack_release() -> str:
+    """Return the pinned ATT&CK release identifier for the active catalog."""
+    return build_catalog().get("attack_release", "unknown")

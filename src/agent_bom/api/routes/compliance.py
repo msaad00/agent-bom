@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.credential_rotation import build_credential_rotation_governance
+from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
 from agent_bom.api.stores import (
     _get_analytics_store,
@@ -2079,7 +2080,6 @@ def _unpack_hub_list_page(result: tuple[Any, ...]) -> tuple[list[dict[str, Any]]
     return page, total, next_cursor
 
 
-_HUB_LIST_OFFSET_CEILING = 10_000
 _HUB_LIST_CURSOR_VERSION = 1
 
 

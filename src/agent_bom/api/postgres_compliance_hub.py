@@ -9,7 +9,7 @@ share ingested findings across replicas.
 from __future__ import annotations
 
 import threading
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from agent_bom.api.compliance_hub_store import (
@@ -25,7 +25,10 @@ from agent_bom.api.compliance_hub_store import (
     _redact_finding,
     _redact_findings,
     _severity_rank,
+    collect_scope_filtered_page,
     compute_effective_reach_score,
+    scope_filter_batch_size,
+    status_sql_predicate,
 )
 from agent_bom.api.finding_cursor import (
     cursor_from_current_row,
@@ -847,11 +850,13 @@ class PostgresComplianceHubStore:
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> dict[str, int]:
         # GROUP BY the materialised ``severity`` on the current-state table with
-        # the SAME tenant/since/origin predicates ``list_current_page`` counts on,
-        # so the exec headline reconciles exactly with the ``/v1/findings``
-        # drill-down and retired/aged ledger rows never inflate it (#3961/#4009).
+        # the SAME tenant/since/origin/status predicates ``list_current_page``
+        # counts on, so the exec headline reconciles exactly with the
+        # ``/v1/findings`` drill-down and retired/aged/resolved rows never inflate
+        # it (#3961/#4009).
         where = ["tenant_id = %s"]
         params: list[Any] = [tenant_id]
         if since:
@@ -860,6 +865,10 @@ class PostgresComplianceHubStore:
         if origin is not None:
             where.append("origin = %s")
             params.append(origin)
+        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
+        if status_sql:
+            where.append(status_sql)
+            params.extend(status_params)
         where_sql = " AND ".join(where)
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
@@ -1192,6 +1201,8 @@ class PostgresComplianceHubStore:
         include_total: bool = True,
         cursor: str | None = None,
         since: str | None = None,
+        scope: Mapping[str, str] | None = None,
+        status: str | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
@@ -1223,6 +1234,29 @@ class PostgresComplianceHubStore:
             # partial index apply (a bound param is not provably non-empty) (#3926).
             where.append("scan_id <> '' AND scan_id = %s")
             params.append(scan_id)
+        # Lifecycle-status filter over the sargable ``status`` column. In the base
+        # predicate so it applies in BOTH the fast keyset path and the scoped
+        # batched path (base_where flows into the scope fetch_batch). The
+        # default-open path rides idx_hub_findings_current_tenant_open_reach.
+        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
+        if status_sql:
+            where.append(status_sql)
+            params.extend(status_params)
+        if scope:
+            # provider/account_ref/environment/domain live in the JSON payload and
+            # ``domain`` is a computed overlapping-lens SET — not a single SQL
+            # predicate. Run the scope filter INSIDE the store on pre-enrichment
+            # current rows, batched + keyset-paged, so a scoped page never
+            # materializes the whole tenant. total is None (approximate) here.
+            return self._list_current_page_scoped(
+                base_where=list(where),
+                base_params=list(params),
+                tenant_id=tenant_id,
+                normalized_sort=normalized_sort,
+                limit=limit,
+                cursor=cursor,
+                scope=scope,
+            )
         if cursor:
             keyset_sql, keyset_params = postgres_keyset_clause(normalized_sort, cursor)
             where.append(keyset_sql.removeprefix(" AND "))
@@ -1272,6 +1306,65 @@ class PostgresComplianceHubStore:
         if has_more and hydrated_rows:
             next_cursor = cursor_from_current_row(hydrated_rows[-1], sort=normalized_sort)
         return out, total, next_cursor
+
+    def _list_current_page_scoped(
+        self,
+        *,
+        base_where: Sequence[str],
+        base_params: Sequence[Any],
+        tenant_id: str,
+        normalized_sort: str,
+        limit: int,
+        cursor: str | None,
+        scope: Mapping[str, str],
+    ) -> FindingCursorPage:
+        from agent_bom.api.finding_lifecycle import enriched_finding_payload
+        from agent_bom.finding_scope import row_matches_scope
+
+        order_sql = _postgres_current_order_clause(normalized_sort)
+
+        with _tenant_connection(self._pool) as conn:
+            has_ledger_col = _postgres_current_has_ledger_col(conn)
+            payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
+
+            def fetch_batch(batch_cursor: str | None, batch_limit: int) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], str | None]:
+                where = list(base_where)
+                params = list(base_params)
+                if batch_cursor:
+                    keyset_sql, keyset_params = postgres_keyset_clause(normalized_sort, batch_cursor)
+                    where.append(keyset_sql.removeprefix(" AND "))
+                    params.extend(keyset_params)
+                where_sql = " AND ".join(where)
+                fetch_limit = batch_limit + 1
+                rows = conn.execute(
+                    f"""
+                    SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                           cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                           updated_at, {payload_select}
+                    FROM hub_findings_current
+                    WHERE {where_sql} {order_sql} LIMIT %s
+                    """,  # nosec B608
+                    (*params, fetch_limit),
+                ).fetchall()
+                current_rows = [_postgres_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
+                more = len(current_rows) > batch_limit
+                if more:
+                    current_rows = current_rows[:batch_limit]
+                hydrated = _hydrate_postgres_current_rows(conn, tenant_id, current_rows)
+                pairs = [(row, enriched_finding_payload(row)) for row in hydrated]
+                batch_next = cursor_from_current_row(hydrated[-1], sort=normalized_sort) if more and hydrated else None
+                return pairs, batch_next
+
+            page_limit = max(0, int(limit))
+            payloads, next_cursor = collect_scope_filtered_page(
+                fetch_batch,
+                predicate=lambda payload: row_matches_scope(payload, scope),
+                page_limit=page_limit,
+                start_cursor=cursor,
+                sort=normalized_sort,
+                batch_size=scope_filter_batch_size(page_limit),
+            )
+        return payloads, None, next_cursor
 
     def reconcile_current_absent(
         self,

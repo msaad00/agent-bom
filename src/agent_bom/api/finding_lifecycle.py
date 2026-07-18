@@ -188,6 +188,9 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_reach
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_cvss
     ON hub_findings_current(tenant_id, LOWER(severity), cvss_score DESC, last_seen DESC, canonical_id ASC)
     WHERE severity != '';
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_open_reach
+    ON hub_findings_current(tenant_id, effective_reach_score DESC, last_seen DESC, canonical_id ASC)
+    WHERE status IN ('open', 'reopened');
 """
 
 
@@ -266,6 +269,9 @@ _CURRENT_LIFECYCLE_SORT_INDEXES_POSTGRES = (
     "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_cvss "
     "ON hub_findings_current(tenant_id, LOWER(severity), cvss_score DESC, last_seen DESC, canonical_id ASC) "
     "WHERE severity <> ''",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_open_reach "
+    "ON hub_findings_current(tenant_id, effective_reach_score DESC, last_seen DESC, canonical_id ASC) "
+    "WHERE status IN ('open', 'reopened')",
 )
 
 # Origin-scoped composite index — created after the ``origin`` column migration

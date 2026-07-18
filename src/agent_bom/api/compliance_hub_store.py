@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, Protocol
 
 from agent_bom.api.finding_cursor import (
@@ -84,6 +84,125 @@ _LIST_PAGE_SORTS = ("effective_reach", "cvss", "severity", "ordinal")
 # ``symbol_reachability_from_payload`` for every row on every request (#4049).
 # Stripped from every returned payload so it never leaks into API output.
 _REACH_SORT_KEY = "__reach_sort__"
+
+# Bounds for the store-internal scope-filtered keyset batch fetch: never
+# materialize the whole tenant table to serve a scoped page. A single batch of
+# pre-enrichment current rows is hydrated at a time; the loop advances by keyset
+# cursor until it has ``page_limit + 1`` matches or the stream is exhausted.
+_SCOPE_FILTER_MIN_BATCH = 200
+_SCOPE_FILTER_MAX_BATCH = 1000
+
+
+def scope_filter_batch_size(page_limit: int) -> int:
+    """Bounded batch size for the scope-filtered keyset scan (never the table)."""
+    return min(_SCOPE_FILTER_MAX_BATCH, max(_SCOPE_FILTER_MIN_BATCH, int(page_limit) + 1))
+
+
+# Lifecycle-status filter — a single source of truth shared by every read
+# surface (list_current_page + current_severity_breakdown, all backends) and the
+# route. ``status`` is a real, sargable column on ``hub_findings_current``
+# (DEFAULT 'open'); the live posture is open OR reopened. The store-level param
+# defaults to ``None`` (no predicate = all history) so existing callers are
+# unchanged; the API route defaults the *user-facing* filter to ``open``.
+_LIVE_STATUSES = ("open", "reopened")
+STATUS_FILTERS = ("open", "resolved", "all")
+
+
+def normalize_status_filter(status: str | None) -> str | None:
+    """Canonicalize a lifecycle-status filter.
+
+    ``None`` -> ``None`` (no predicate; legacy all-history behavior). ``open`` /
+    ``resolved`` / ``all`` pass through. An unrecognized value collapses to
+    ``None`` (never silently HIDES rows — the route validates + 422s the user).
+    """
+    if status is None:
+        return None
+    key = status.strip().lower()
+    return key if key in STATUS_FILTERS else None
+
+
+def status_sql_predicate(status: str | None, placeholder: str = "?") -> tuple[str, list[Any]]:
+    """SQL fragment + params for the lifecycle-status filter over ``status``.
+
+    ``open`` (live posture) -> ``status IN (open, reopened)``; ``resolved`` ->
+    ``status = resolved``; ``None`` / ``all`` -> no predicate. Rides the
+    ``status`` column (and the open partial index for the default sort/COUNT), so
+    it stays sargable — no filesort.
+    """
+    normalized = normalize_status_filter(status)
+    if normalized == "open":
+        return f"status IN ({placeholder}, {placeholder})", ["open", "reopened"]
+    if normalized == "resolved":
+        return f"status = {placeholder}", ["resolved"]
+    return "", []
+
+
+def status_matches(row: Mapping[str, Any], status: str | None) -> bool:
+    """In-memory mirror of :func:`status_sql_predicate`.
+
+    A row with no explicit lifecycle status is treated as ``open`` — scan
+    findings (no reconcile lifecycle) are live by construction, so the default
+    and ``all`` include them and ``resolved`` excludes them.
+    """
+    normalized = normalize_status_filter(status)
+    if normalized is None or normalized == "all":
+        return True
+    payload = row.get("payload") if isinstance(row.get("payload"), Mapping) else {}
+    row_status = str(row.get("status") or (payload or {}).get("status") or "open").strip().lower() or "open"
+    if normalized == "open":
+        return row_status in _LIVE_STATUSES
+    return row_status == "resolved"
+
+
+def collect_scope_filtered_page(
+    fetch_batch: Callable[[str | None, int], tuple[list[tuple[dict[str, Any], dict[str, Any]]], str | None]],
+    *,
+    predicate: Callable[[dict[str, Any]], bool],
+    page_limit: int,
+    start_cursor: str | None,
+    sort: str,
+    batch_size: int,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Collect one scope-filtered keyset page without materializing the table.
+
+    ``fetch_batch(cursor, limit)`` returns ``(items, batch_next_cursor)`` where
+    ``items`` is a list of ``(current_row, enriched_payload)`` pairs in keyset
+    order after ``cursor``; ``current_row`` carries the sort fields
+    (effective_reach_score / cvss_score / severity_rank / ledger_ordinal +
+    last_seen / first_seen / canonical_id) and ``enriched_payload`` is what the
+    route sees. ``batch_next_cursor`` is ``None`` when the underlying stream is
+    exhausted.
+
+    The loop applies ``predicate`` to each ``enriched_payload``, collecting
+    matches until it holds ``page_limit + 1`` (enough to know a further page
+    exists) or the stream ends. ``next_cursor`` is derived from the LAST EMITTED
+    match's ``current_row`` — never a discarded probe row — so the next page
+    resumes strictly after it: 0 duplicates, 0 dropped rows across pages, and the
+    filtered order matches the unfiltered keyset order restricted to the matching
+    subset. Returns ``(enriched_payloads[:page_limit], next_cursor)``.
+    """
+    page_limit = max(0, int(page_limit))
+    if page_limit == 0:
+        return [], None
+    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    batch_cursor = start_cursor
+    while len(matches) <= page_limit:
+        items, batch_next = fetch_batch(batch_cursor, batch_size)
+        for current_row, enriched in items:
+            if predicate(enriched):
+                matches.append((current_row, enriched))
+                if len(matches) > page_limit:
+                    break
+        if len(matches) > page_limit or batch_next is None:
+            break
+        batch_cursor = batch_next
+    has_more = len(matches) > page_limit
+    emitted = matches[:page_limit]
+    payloads = [enriched for (_current, enriched) in emitted]
+    next_cursor = None
+    if has_more and emitted:
+        next_cursor = cursor_from_current_row(emitted[-1][0], sort=sort)
+    return payloads, next_cursor
 
 
 def _severity_rank(payload: dict[str, Any]) -> int:
@@ -299,16 +418,20 @@ class ComplianceHubStore(Protocol):
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> dict[str, int]:
         """Per-severity counts over CURRENT-STATE rows matching the drill-down.
 
         Mirrors :meth:`list_current_page`'s COUNT filters (tenant + ``origin``
-        + ``since`` read-window) so the exec headline reconciles EXACTLY with
-        ``/v1/findings`` — a click-through can never disagree with the headline.
-        Unlike :meth:`severity_breakdown` (which scans the append-only ledger,
-        all-origin and unbounded), this reads ``hub_findings_current`` so retired
-        / aged findings that linger in the ledger never inflate the exec numbers.
-        An indexed ``GROUP BY`` — no payload hydration.
+        + ``since`` read-window + lifecycle ``status``) so the exec headline
+        reconciles EXACTLY with ``/v1/findings`` — a click-through can never
+        disagree with the headline. ``status`` (``open`` = live posture,
+        open+reopened / ``resolved`` / ``all``; ``None`` = all history) keeps
+        resolved findings out of the exec headline by default. Unlike
+        :meth:`severity_breakdown` (which scans the append-only ledger, all-origin
+        and unbounded), this reads ``hub_findings_current`` so retired / aged
+        findings that linger in the ledger never inflate the exec numbers. An
+        indexed ``GROUP BY`` — no payload hydration.
         """
         ...
 
@@ -349,11 +472,26 @@ class ComplianceHubStore(Protocol):
         include_total: bool = True,
         cursor: str | None = None,
         since: str | None = None,
+        scope: Mapping[str, str] | None = None,
+        status: str | None = None,
     ) -> FindingCursorPage:
         """Return a page from ``hub_findings_current`` with lifecycle fields merged.
 
         ``since`` (ISO-8601 cutoff) bounds the page to findings whose
         ``last_seen`` is within the read window; ``None`` returns all history.
+
+        ``status`` filters the sargable lifecycle column (``open`` = live posture
+        open+reopened / ``resolved`` / ``all``; ``None`` = no predicate). It rides
+        the ``status`` column (+ open partial index) and applies in BOTH the fast
+        keyset path and the scoped batched path.
+
+        ``scope`` (keys ``provider`` / ``account_ref`` / ``environment`` /
+        ``domain``, already canonicalized/lowercased by the caller) applies the
+        overlapping-lens scope predicate INSIDE the store on pre-enrichment
+        current rows, batched + keyset-paged so a scoped page never materializes
+        the whole tenant. When ``scope`` is set the exact O(table) ``COUNT(*)`` is
+        skipped and ``total`` is ``None`` (the route flags it approximate); when
+        ``scope`` is falsy behavior is unchanged.
         """
         ...
 
@@ -875,10 +1013,11 @@ class InMemoryComplianceHubStore:
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> dict[str, int]:
         with self._lock:
             rows = list(self._current.get(tenant_id, {}).values())
-        rows = _filter_current_rows(rows, severity=None, scan_id=None, origin=origin, since=since)
+        rows = _filter_current_rows(rows, severity=None, scan_id=None, origin=origin, since=since, status=status)
         return _severity_breakdown_from_current_rows(rows)
 
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
@@ -992,13 +1131,28 @@ class InMemoryComplianceHubStore:
         include_total: bool = True,
         cursor: str | None = None,
         since: str | None = None,
+        scope: Mapping[str, str] | None = None,
+        status: str | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
         normalized_sort = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
+        if scope:
+            return self._list_current_page_scoped(
+                tenant_id,
+                limit=limit,
+                sort=normalized_sort,
+                severity=severity,
+                scan_id=scan_id,
+                origin=origin,
+                cursor=cursor,
+                since=since,
+                scope=scope,
+                status=status,
+            )
         with self._lock:
             rows = list(self._current.get(tenant_id, {}).values())
-        rows = _filter_current_rows(rows, severity=severity, scan_id=scan_id, origin=origin, since=since)
+        rows = _filter_current_rows(rows, severity=severity, scan_id=scan_id, origin=origin, since=since, status=status)
         total = len(rows) if include_total else None
         rows.sort(key=_current_page_sort_key(normalized_sort))
         if cursor:
@@ -1030,6 +1184,54 @@ class InMemoryComplianceHubStore:
         if has_more and rows:
             next_cursor = cursor_from_current_row(rows[-1], sort=normalized_sort)
         return enriched, total, next_cursor
+
+    def _list_current_page_scoped(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        sort: str,
+        severity: str | None,
+        scan_id: str | None,
+        origin: str | None,
+        cursor: str | None,
+        since: str | None,
+        scope: Mapping[str, str],
+        status: str | None = None,
+    ) -> FindingCursorPage:
+        from agent_bom.api.finding_lifecycle import enriched_finding_payload
+        from agent_bom.finding_scope import row_matches_scope
+
+        # The process-local store is already fully materialized; a single batch
+        # (the whole filtered+sorted stream after the cursor) feeds the shared
+        # keyset collector, so scope semantics and next_cursor emission match the
+        # SQL backends exactly. total is None under a scope filter (approximate).
+        def fetch_batch(batch_cursor: str | None, _batch_limit: int) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], str | None]:
+            with self._lock:
+                rows = list(self._current.get(tenant_id, {}).values())
+            rows = _filter_current_rows(rows, severity=severity, scan_id=scan_id, origin=origin, since=since, status=status)
+            rows.sort(key=_current_page_sort_key(sort))
+            if batch_cursor:
+                primary, last_seen, canonical_id = decode_finding_cursor(batch_cursor, expected_sort=sort)
+                rows = [
+                    row
+                    for row in rows
+                    if row_is_after_cursor(row, sort=sort, primary=primary, last_seen=last_seen, canonical_id=canonical_id)
+                ]
+            hydrated = self._hydrate_current_rows(tenant_id, [dict(row) for row in rows])
+            pairs = [(row, enriched_finding_payload(row)) for row in hydrated]
+            return pairs, None
+
+        page_limit = max(0, int(limit))
+        payloads, next_cursor = collect_scope_filtered_page(
+            fetch_batch,
+            predicate=lambda payload: row_matches_scope(payload, scope),
+            page_limit=page_limit,
+            start_cursor=cursor,
+            sort=sort,
+            batch_size=scope_filter_batch_size(page_limit),
+        )
+        return payloads, None, next_cursor
 
     def reconcile_current_absent(
         self,
@@ -1192,7 +1394,10 @@ def _filter_current_rows(
     scan_id: str | None,
     origin: str | None,
     since: str | None = None,
+    status: str | None = None,
 ) -> list[dict[str, Any]]:
+    if status is not None:
+        rows = [r for r in rows if status_matches(r, status)]
     if origin is not None:
         rows = [r for r in rows if (r.get("payload") or {}).get("origin") == origin]
     if severity is not None:
@@ -1658,11 +1863,13 @@ class SQLiteComplianceHubStore:
         *,
         origin: str | None = None,
         since: str | None = None,
+        status: str | None = None,
     ) -> dict[str, int]:
         # GROUP BY the materialised ``severity`` column on the current-state
-        # table, applying the SAME tenant/since/origin predicates
+        # table, applying the SAME tenant/since/origin/status predicates
         # ``list_current_page`` counts on, so the exec headline reconciles
-        # exactly with the ``/v1/findings`` drill-down (#3961/#4009).
+        # exactly with the ``/v1/findings`` drill-down (#3961/#4009). The
+        # lifecycle ``status`` filter keeps resolved rows out of the headline.
         where = ["tenant_id = ?"]
         params: list[Any] = [tenant_id]
         if since:
@@ -1671,6 +1878,10 @@ class SQLiteComplianceHubStore:
         if origin is not None:
             where.append("origin = ?")
             params.append(origin)
+        status_sql, status_params = status_sql_predicate(status)
+        if status_sql:
+            where.append(status_sql)
+            params.extend(status_params)
         where_sql = " AND ".join(where)
         rows = self._conn.execute(
             f"""
@@ -1800,6 +2011,8 @@ class SQLiteComplianceHubStore:
         include_total: bool = True,
         cursor: str | None = None,
         since: str | None = None,
+        scope: Mapping[str, str] | None = None,
+        status: str | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
@@ -1833,6 +2046,29 @@ class SQLiteComplianceHubStore:
             # partial index (it cannot prove a bound param is non-empty) (#3926).
             where.append("scan_id = ? AND scan_id != ''")
             params.append(scan_id)
+        # Lifecycle-status filter over the sargable ``status`` column. Added to
+        # the base predicate so it applies in BOTH the fast keyset path and the
+        # scoped batched path (base_where flows into the scope fetch_batch). The
+        # default-open path rides idx_hub_findings_current_tenant_open_reach.
+        status_sql, status_params = status_sql_predicate(status)
+        if status_sql:
+            where.append(status_sql)
+            params.extend(status_params)
+        if scope:
+            # provider/account_ref/environment/domain live in the JSON payload and
+            # ``domain`` is a computed overlapping-lens SET — not a single SQL
+            # predicate. Run the scope filter INSIDE the store on pre-enrichment
+            # current rows, batched + keyset-paged, so a scoped page never
+            # materializes the whole tenant. total is None (approximate) here.
+            return self._list_current_page_scoped(
+                base_where=list(where),
+                base_params=list(params),
+                tenant_id=tenant_id,
+                normalized_sort=normalized_sort,
+                limit=limit,
+                cursor=cursor,
+                scope=scope,
+            )
         if cursor:
             keyset_sql, keyset_params = sqlite_keyset_clause(normalized_sort, cursor)
             where.append(keyset_sql.removeprefix(" AND "))
@@ -1882,6 +2118,63 @@ class SQLiteComplianceHubStore:
         if has_more and hydrated_rows:
             next_cursor = cursor_from_current_row(hydrated_rows[-1], sort=normalized_sort)
         return out, total, next_cursor
+
+    def _list_current_page_scoped(
+        self,
+        *,
+        base_where: Sequence[str],
+        base_params: Sequence[Any],
+        tenant_id: str,
+        normalized_sort: str,
+        limit: int,
+        cursor: str | None,
+        scope: Mapping[str, str],
+    ) -> FindingCursorPage:
+        from agent_bom.api.finding_lifecycle import enriched_finding_payload
+        from agent_bom.finding_scope import row_matches_scope
+
+        order_sql = _sqlite_current_order_clause(normalized_sort)
+        has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
+        payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
+
+        def fetch_batch(batch_cursor: str | None, batch_limit: int) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], str | None]:
+            where = list(base_where)
+            params = list(base_params)
+            if batch_cursor:
+                keyset_sql, keyset_params = sqlite_keyset_clause(normalized_sort, batch_cursor)
+                where.append(keyset_sql.removeprefix(" AND "))
+                params.extend(keyset_params)
+            where_sql = " AND ".join(where)
+            fetch_limit = batch_limit + 1
+            rows = self._conn.execute(
+                f"""
+                SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                       cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                       updated_at, {payload_select}
+                FROM hub_findings_current
+                WHERE {where_sql} {order_sql} LIMIT ?
+                """,  # nosec B608
+                [*params, fetch_limit],
+            ).fetchall()
+            current_rows = [_sqlite_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
+            more = len(current_rows) > batch_limit
+            if more:
+                current_rows = current_rows[:batch_limit]
+            hydrated = _hydrate_sqlite_current_rows(self._conn, tenant_id, current_rows)
+            pairs = [(row, enriched_finding_payload(row)) for row in hydrated]
+            batch_next = cursor_from_current_row(hydrated[-1], sort=normalized_sort) if more and hydrated else None
+            return pairs, batch_next
+
+        page_limit = max(0, int(limit))
+        payloads, next_cursor = collect_scope_filtered_page(
+            fetch_batch,
+            predicate=lambda payload: row_matches_scope(payload, scope),
+            page_limit=page_limit,
+            start_cursor=cursor,
+            sort=normalized_sort,
+            batch_size=scope_filter_batch_size(page_limit),
+        )
+        return payloads, None, next_cursor
 
     def reconcile_current_absent(
         self,

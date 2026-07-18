@@ -710,10 +710,12 @@ def _hub_severity_snapshot(request: Request) -> dict[str, int]:
         current_breakdown = getattr(store, "current_severity_breakdown", None)
         if callable(current_breakdown):
             # Same default read-window ``/v1/findings`` applies (window_days
-            # unset ⇒ server default ≈90d) and the same ``bulk_ingest`` origin
-            # scope, so the headline == the drill-down for the same window.
+            # unset ⇒ server default ≈90d), the same ``bulk_ingest`` origin scope,
+            # AND the same default OPEN lifecycle basis — resolved findings must
+            # not inflate the exec headline. So the headline == the drill-down for
+            # the same window + live posture (P1: lifecycle-aware exec read).
             since = time_window.window_since_iso(time_window.normalize_window_days(None))
-            counts = current_breakdown(tenant_id, origin="bulk_ingest", since=since) or {}
+            counts = current_breakdown(tenant_id, origin="bulk_ingest", since=since, status="open") or {}
         else:
             breakdown = getattr(store, "severity_breakdown", None)
             if not callable(breakdown):
@@ -833,6 +835,7 @@ def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]
 def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
     """Severity histogram with the exact scan semantics of ``/v1/findings``."""
     from agent_bom.api import time_window
+    from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.api.findings_current import current_scan_findings
     from agent_bom.api.routes.scan import _iter_scan_findings
 
@@ -845,6 +848,11 @@ def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
     )
     severity = _empty_severity()
     for row in findings:
+        # Default OPEN basis, matching ``/v1/findings`` and the hub snapshot so
+        # the exec headline derives from live findings only. Scan findings carry
+        # no lifecycle status, so they count as open by construction.
+        if not status_matches(row, "open"):
+            continue
         severity[_bucket(str(row.get("severity") or ""), severity)] += 1
     return severity
 

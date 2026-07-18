@@ -1209,6 +1209,10 @@ def to_json(report: AIBOMReport) -> dict:
         result["mcp_config_analysis"] = report.mcp_config_analysis
     if report.ai_enrichment_metadata:
         result["ai_enrichment_metadata"] = report.ai_enrichment_metadata
+    if report.ai_finding_assessments:
+        result["ai_finding_assessments"] = [
+            assessment.model_dump(mode="json") for assessment in report.ai_finding_assessments
+        ]
 
     # Skill security audit (only when skill files were scanned)
     if report.skill_audit_data:

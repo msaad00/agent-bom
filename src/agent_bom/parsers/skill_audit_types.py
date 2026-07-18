@@ -25,6 +25,7 @@ class SkillFinding:
     ai_source: str | None = None  # Provider that generated ai_analysis / AI-detected finding
     ai_model: str | None = None  # Model identifier that generated ai_analysis / AI-detected finding
     ai_confidence: str | None = None  # high | medium | low, as reported or assigned by AI review
+    ai_detected: bool = False  # immutable origin marker; category remains model-proposed taxonomy
     evidence_source: str = "static_config"  # static_text | static_config | ast_python | ast_js | external_registry
     confidence: str = "medium"  # high | medium | low
     source_line: int | None = None
@@ -40,6 +41,8 @@ class SkillAuditResult:
     servers_checked: int = 0
     credentials_checked: int = 0
     passed: bool = True  # no critical/high findings
+    deterministic_passed: bool | None = None  # pass/fail before optional AI advice is applied
+    ai_gate_enabled: bool = False  # true only for explicit deterministic-mode opt-in
     behavioral_summary: dict[str, object] = field(default_factory=dict)
     ai_skill_summary: str | None = None  # LLM-generated overall narrative
     ai_overall_risk_level: str | None = None  # "critical"|"high"|"medium"|"low"|"safe"

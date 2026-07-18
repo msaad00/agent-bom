@@ -4160,6 +4160,28 @@
             "title": "Agent Projects",
             "type": "array"
           },
+          "ai_deterministic": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Deterministic"
+          },
+          "ai_enrich": {
+            "default": false,
+            "title": "Ai Enrich",
+            "type": "boolean"
+          },
+          "ai_model": {
+            "default": "openai/gpt-4o-mini",
+            "maxLength": 256,
+            "title": "Ai Model",
+            "type": "string"
+          },
           "auto_update_db": {
             "default": false,
             "title": "Auto Update Db",
@@ -4313,10 +4335,10 @@
             "anyOf": [
               {
                 "enum": [
-                  "low",
-                  "medium",
+                  "critical",
                   "high",
-                  "critical"
+                  "medium",
+                  "low"
                 ],
                 "type": "string"
               },

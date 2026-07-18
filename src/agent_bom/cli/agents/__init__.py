@@ -367,6 +367,8 @@ def scan(
     hc_timeout: float,
     ai_enrich: bool,
     ai_model: str,
+    ai_deterministic: Optional[bool],
+    ai_gate_findings: bool,
     aws: bool,
     aws_region: Optional[str],
     aws_profile: Optional[str],
@@ -497,6 +499,11 @@ def scan(
                 --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
     """
     import time as _time
+
+    if ai_gate_findings and not ai_enrich:
+        raise click.UsageError("--ai-gate-findings requires --ai-enrich")
+    if ai_gate_findings and not ai_deterministic:
+        raise click.UsageError("--ai-gate-findings requires --ai-deterministic")
 
     # `--inventory-only` is a deprecated hidden alias for `--no-discover`.
     no_discover = no_discover or inventory_only
@@ -2423,6 +2430,8 @@ def scan(
             model=ai_model,
             skill_result=_skill_result_obj,
             skill_audit=_skill_audit_obj,
+            deterministic=ai_deterministic,
+            gate_ai_findings=ai_gate_findings,
         )
 
         if _skill_audit_obj:
@@ -2443,6 +2452,7 @@ def scan(
                         "ai_source": f.ai_source,
                         "ai_model": f.ai_model,
                         "ai_confidence": f.ai_confidence,
+                        "ai_detected": f.ai_detected,
                     }
                     for f in _skill_audit_obj.findings
                 ],
@@ -2450,6 +2460,8 @@ def scan(
                 "servers_checked": _skill_audit_obj.servers_checked,
                 "credentials_checked": _skill_audit_obj.credentials_checked,
                 "passed": _skill_audit_obj.passed,
+                "deterministic_passed": _skill_audit_obj.deterministic_passed,
+                "ai_gate_enabled": _skill_audit_obj.ai_gate_enabled,
                 "ai_skill_summary": _skill_audit_obj.ai_skill_summary,
                 "ai_overall_risk_level": _skill_audit_obj.ai_overall_risk_level,
             }

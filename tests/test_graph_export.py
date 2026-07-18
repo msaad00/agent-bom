@@ -203,6 +203,85 @@ def test_credential_to_tool_reaches_edges_export_with_evidence():
         os.unlink(path)
 
 
+def test_redacted_report_keeps_distinct_credential_nodes_and_no_phantom_edges():
+    """Regression: credential env-var NAMES are identifiers, not secret values.
+
+    The report-write path (``to_redacted_json`` → ``sanitize_sensitive_payload``)
+    must not collapse distinct credential names into one ``***REDACTED***`` label.
+    A collapse mints a single ``cred:***REDACTED***`` node that set-dedups across
+    unrelated agents and invents phantom cross-agent ``reaches_tool`` edges.
+    """
+    from agent_bom.security import sanitize_sensitive_payload
+
+    agent_a = _agent(
+        "agent-a",
+        [
+            _server(
+                "openai-srv",
+                has_creds=True,
+                tools=[{"name": "chat"}],
+                credential_env_vars=["OPENAI_API_KEY"],
+            ),
+            _server(
+                "vector-srv",
+                has_creds=True,
+                tools=[{"name": "vector_search"}],
+                credential_env_vars=["VECTOR_DB_TOKEN"],
+            ),
+        ],
+    )
+    agent_b = _agent(
+        "agent-b",
+        [
+            _server(
+                "browser-srv",
+                has_creds=True,
+                tools=[{"name": "browse"}],
+                credential_env_vars=["BROWSER_SESSION_TOKEN"],
+            ),
+            _server(
+                "anthropic-srv",
+                has_creds=True,
+                tools=[{"name": "complete"}],
+                credential_env_vars=["ANTHROPIC_API_KEY"],
+            ),
+        ],
+    )
+    raw = _make_scan_json([agent_a, agent_b])
+
+    # Run through the exact redaction the report writer applies before persistence.
+    redacted = sanitize_sensitive_payload(raw)
+    assert isinstance(redacted, dict)
+
+    path = _write_scan(redacted)
+    try:
+        graph = load_graph_from_scan(path)
+    finally:
+        os.unlink(path)
+
+    cred_nodes = {node.id for node in graph.nodes if node.kind == "credential"}
+    # (a) each distinct credential stays its own node — no collapse to one label.
+    assert cred_nodes == {
+        "cred:OPENAI_API_KEY",
+        "cred:VECTOR_DB_TOKEN",
+        "cred:BROWSER_SESSION_TOKEN",
+        "cred:ANTHROPIC_API_KEY",
+    }
+    assert "cred:***REDACTED***" not in cred_nodes
+
+    # (b) no phantom cross-agent credential→tool edge: every reaches_tool edge
+    # must connect a credential and a tool that belong to the SAME server.
+    for edge in graph.edges:
+        if edge.kind != "reaches_tool":
+            continue
+        target_node = next(node for node in graph.nodes if node.id == edge.target)
+        server_id = target_node.attributes.get("server")
+        cred_node = next(node for node in graph.nodes if node.id == edge.source)
+        assert cred_node.attributes.get("server") == server_id, (
+            f"phantom cross-server edge {edge.source} -> {edge.target}"
+        )
+
+
 def test_vulnerable_package_gets_pkg_vuln_kind():
     pkg = _pkg("lodash", "4.17.20", "npm", vulns=[_vuln("CVE-2021-23337")])
     data = _make_scan_json([_agent("a", [_server("s", [pkg])])])

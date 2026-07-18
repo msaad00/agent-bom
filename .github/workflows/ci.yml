@@ -756,9 +756,9 @@ jobs:
             PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-2}"
           fi
           if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist loadscope
+            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
           else
-            uv run pytest tests/ -q --tb=short -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist loadscope
+            uv run pytest tests/ -q --tb=short -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
           fi
 
       - name: Graph accuracy guards (#2259 — round-trip + edge-count + visual-diff)

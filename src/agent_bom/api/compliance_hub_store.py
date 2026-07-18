@@ -923,35 +923,94 @@ class InMemoryComplianceHubStore:
         self._current_observations: dict[str, set[tuple[str, str]]] = {}
         self._lock = threading.Lock()
 
+    def _invalidate_ingest_caches(self, tenant_id: str) -> None:
+        from agent_bom.api import hub_overview_cache
+        from agent_bom.api.findings_count_cache import invalidate_tenant
+
+        invalidate_tenant(tenant_id)
+        hub_overview_cache.invalidate_tenant(tenant_id)
+
+    def _add_locked(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        """Append the batch to the ledger. Caller MUST hold ``self._lock``."""
+        bucket = self._by_tenant.setdefault(tenant_id, [])
+        slots = self._slots.setdefault(tenant_id, {})
+        for payload in findings:
+            if not isinstance(payload, dict):
+                continue
+            slim = normalize_finding_payload_for_store(tenant_id, payload)
+            stored = _redact_finding(slim)
+            # Materialise the effective-reach composite once at ingest so the
+            # read-path sort never re-derives it per row (#4049). Mirrors the
+            # SQL backends materialising the ``effective_reach_score`` column.
+            stored[_REACH_SORT_KEY] = compute_effective_reach_score(stored)
+            finding_id = str(stored.get("id") or "")
+            if finding_id and finding_id in slots:
+                # Refresh payload, keep original ingest position.
+                bucket[slots[finding_id]] = stored
+                continue
+            if finding_id:
+                slots[finding_id] = len(bucket)
+            bucket.append(stored)
+        return len(bucket)
+
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         with self._lock:
-            bucket = self._by_tenant.setdefault(tenant_id, [])
-            slots = self._slots.setdefault(tenant_id, {})
-            for payload in findings:
-                if not isinstance(payload, dict):
-                    continue
-                slim = normalize_finding_payload_for_store(tenant_id, payload)
-                stored = _redact_finding(slim)
-                # Materialise the effective-reach composite once at ingest so the
-                # read-path sort never re-derives it per row (#4049). Mirrors the
-                # SQL backends materialising the ``effective_reach_score`` column.
-                stored[_REACH_SORT_KEY] = compute_effective_reach_score(stored)
-                finding_id = str(stored.get("id") or "")
-                if finding_id and finding_id in slots:
-                    # Refresh payload, keep original ingest position.
-                    bucket[slots[finding_id]] = stored
-                    continue
-                if finding_id:
-                    slots[finding_id] = len(bucket)
-                bucket.append(stored)
-            total = len(bucket)
+            total = self._add_locked(tenant_id, findings)
         if findings:
-            from agent_bom.api import hub_overview_cache
-            from agent_bom.api.findings_count_cache import invalidate_tenant
-
-            invalidate_tenant(tenant_id)
-            hub_overview_cache.invalidate_tenant(tenant_id)
+            self._invalidate_ingest_caches(tenant_id)
         return total
+
+    def ingest_batch_atomic(
+        self,
+        tenant_id: str,
+        findings: list[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str,
+        reconcile_absent: bool,
+        present_canonical_ids: set[str],
+    ) -> tuple[int, int]:
+        """Ledger append + current upsert (+ reconcile) as one atomic unit.
+
+        The three writes ran as separate lock acquisitions, so a failure between
+        them left the ledger appended while current-state stayed behind. Here all
+        three run under a single lock; on failure the pre-batch snapshot is
+        restored so nothing is partially applied. Mirrors the SQL backends'
+        single-transaction seam. Returns ``(new_total, reconciled)``.
+        """
+        clean = _redact_findings(findings)
+        with self._lock:
+            snap_bucket = list(self._by_tenant.get(tenant_id, []))
+            snap_slots = dict(self._slots.get(tenant_id, {}))
+            snap_current = {k: dict(v) for k, v in self._current.get(tenant_id, {}).items()}
+            snap_obs = set(self._current_observations.get(tenant_id, set()))
+            try:
+                total = self._add_locked(tenant_id, findings)
+                self._upsert_current_locked(
+                    tenant_id,
+                    clean,
+                    observed_at=observed_at,
+                    batch_id=batch_id,
+                    source=source,
+                )
+                reconciled = 0
+                if reconcile_absent:
+                    reconciled = self._reconcile_locked(
+                        tenant_id,
+                        present_canonical_ids=present_canonical_ids,
+                        observed_at=observed_at,
+                        scope_source=source,
+                    )
+            except Exception:
+                self._by_tenant[tenant_id] = snap_bucket
+                self._slots[tenant_id] = snap_slots
+                self._current[tenant_id] = snap_current
+                self._current_observations[tenant_id] = snap_obs
+                raise
+        if findings or reconcile_absent:
+            self._invalidate_ingest_caches(tenant_id)
+        return total, reconciled
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
         with self._lock:
@@ -1045,6 +1104,48 @@ class InMemoryComplianceHubStore:
             hub_overview_cache.invalidate_tenant(tenant_id)
         return removed
 
+    def _upsert_current_locked(
+        self,
+        tenant_id: str,
+        clean: Sequence[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str = "",
+    ) -> None:
+        """Upsert current-state for a redacted batch. Caller MUST hold the lock."""
+        from agent_bom.api.finding_lifecycle import (
+            apply_observation_to_current,
+            lifecycle_metrics,
+            resolve_canonical_id,
+        )
+
+        now = _now_utc_iso()
+        current = self._current.setdefault(tenant_id, {})
+        observations = self._current_observations.setdefault(tenant_id, set())
+        for payload in clean:
+            canonical = resolve_canonical_id(payload, source=source)
+            obs_key = (canonical, batch_id)
+            if obs_key in observations:
+                continue
+            observations.add(obs_key)
+            merged = apply_observation_to_current(
+                current.get(canonical),
+                canonical_id=canonical,
+                observed_at=observed_at,
+                metrics=lifecycle_metrics(payload),
+                payload=payload,
+                updated_at=now,
+            )
+            finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
+            if finding_id:
+                merged["ledger_finding_id"] = finding_id
+                merged["payload"] = current_state_overlay(payload)
+                merged["ledger_ordinal"] = self._slots.get(tenant_id, {}).get(finding_id, _LEDGER_ORDINAL_SENTINEL)
+            else:
+                merged["ledger_ordinal"] = _LEDGER_ORDINAL_SENTINEL
+            current[canonical] = merged
+
     def upsert_current_batch(
         self,
         tenant_id: str,
@@ -1054,39 +1155,15 @@ class InMemoryComplianceHubStore:
         batch_id: str,
         source: str = "",
     ) -> None:
-        from agent_bom.api.finding_lifecycle import (
-            apply_observation_to_current,
-            lifecycle_metrics,
-            resolve_canonical_id,
-        )
-
         clean = _redact_findings(findings)
-        now = _now_utc_iso()
         with self._lock:
-            current = self._current.setdefault(tenant_id, {})
-            observations = self._current_observations.setdefault(tenant_id, set())
-            for payload in clean:
-                canonical = resolve_canonical_id(payload, source=source)
-                obs_key = (canonical, batch_id)
-                if obs_key in observations:
-                    continue
-                observations.add(obs_key)
-                merged = apply_observation_to_current(
-                    current.get(canonical),
-                    canonical_id=canonical,
-                    observed_at=observed_at,
-                    metrics=lifecycle_metrics(payload),
-                    payload=payload,
-                    updated_at=now,
-                )
-                finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
-                if finding_id:
-                    merged["ledger_finding_id"] = finding_id
-                    merged["payload"] = current_state_overlay(payload)
-                    merged["ledger_ordinal"] = self._slots.get(tenant_id, {}).get(finding_id, _LEDGER_ORDINAL_SENTINEL)
-                else:
-                    merged["ledger_ordinal"] = _LEDGER_ORDINAL_SENTINEL
-                current[canonical] = merged
+            self._upsert_current_locked(
+                tenant_id,
+                clean,
+                observed_at=observed_at,
+                batch_id=batch_id,
+                source=source,
+            )
 
     def _ledger_payload_map(self, tenant_id: str, finding_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
         slots = self._slots.get(tenant_id, {})
@@ -1233,6 +1310,34 @@ class InMemoryComplianceHubStore:
         )
         return payloads, None, next_cursor
 
+    def _reconcile_locked(
+        self,
+        tenant_id: str,
+        *,
+        present_canonical_ids: set[str],
+        observed_at: str,
+        scope_source: str | None = None,
+    ) -> int:
+        """Resolve absent open findings. Caller MUST hold ``self._lock``."""
+        now = _now_utc_iso()
+        updated = 0
+        current = self._current.setdefault(tenant_id, {})
+        for canonical_id, row in list(current.items()):
+            if str(row.get("status") or "") not in ("open", "reopened"):
+                continue
+            if canonical_id in present_canonical_ids:
+                continue
+            payload = row.get("payload") or {}
+            if scope_source is not None and str(payload.get("source") or "") != scope_source:
+                continue
+            merged = dict(row)
+            merged["status"] = "resolved"
+            merged["resolved_at"] = observed_at
+            merged["updated_at"] = now
+            current[canonical_id] = merged
+            updated += 1
+        return updated
+
     def reconcile_current_absent(
         self,
         tenant_id: str,
@@ -1241,25 +1346,13 @@ class InMemoryComplianceHubStore:
         observed_at: str,
         scope_source: str | None = None,
     ) -> int:
-        now = _now_utc_iso()
-        updated = 0
         with self._lock:
-            current = self._current.setdefault(tenant_id, {})
-            for canonical_id, row in list(current.items()):
-                if str(row.get("status") or "") not in ("open", "reopened"):
-                    continue
-                if canonical_id in present_canonical_ids:
-                    continue
-                payload = row.get("payload") or {}
-                if scope_source is not None and str(payload.get("source") or "") != scope_source:
-                    continue
-                merged = dict(row)
-                merged["status"] = "resolved"
-                merged["resolved_at"] = observed_at
-                merged["updated_at"] = now
-                current[canonical_id] = merged
-                updated += 1
-        return updated
+            return self._reconcile_locked(
+                tenant_id,
+                present_canonical_ids=present_canonical_ids,
+                observed_at=observed_at,
+                scope_source=scope_source,
+            )
 
 
 # ─── SQLite backend ─────────────────────────────────────────────────────────
@@ -1702,13 +1795,21 @@ class SQLiteComplianceHubStore:
         with self._ingest_stats_lock:
             return self._next_ordinal_by_tenant[tenant_id]
 
-    def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
-        if not findings:
-            self._bootstrap_ingest_stats(tenant_id)
-            with self._ingest_stats_lock:
-                if tenant_id in self._finding_count_by_tenant:
-                    return self._finding_count_by_tenant[tenant_id]
-            return self.count(tenant_id)
+    def _invalidate_ingest_caches(self, tenant_id: str) -> None:
+        from agent_bom.api import hub_overview_cache
+        from agent_bom.api.findings_count_cache import invalidate_tenant
+
+        invalidate_tenant(tenant_id)
+        hub_overview_cache.invalidate_tenant(tenant_id)
+
+    def _ledger_insert_no_commit(self, tenant_id: str, findings: list[dict[str, Any]]) -> tuple[int, int, int]:
+        """Append the batch to the ledger WITHOUT committing.
+
+        Returns ``(new_rows, next_ord, num_rows)`` so the caller can commit (or
+        roll back) as part of a larger transaction and only then advance the
+        cached ordinal/total. The commit and the post-commit stat/cache updates
+        are the caller's responsibility (see ``add`` / ``ingest_batch_atomic``).
+        """
         now = _now_utc_iso()
         next_ord = self._next_ordinal(tenant_id)
         rows: list[tuple[Any, ...]] = []
@@ -1763,17 +1864,74 @@ class SQLiteComplianceHubStore:
             """,
             rows,
         )
-        self._conn.commit()
-        if rows:
-            from agent_bom.api import hub_overview_cache
-            from agent_bom.api.findings_count_cache import invalidate_tenant
+        return new_rows, next_ord, len(rows)
 
-            invalidate_tenant(tenant_id)
-            hub_overview_cache.invalidate_tenant(tenant_id)
+    def _commit_ledger_stats(self, tenant_id: str, next_ord: int, num_rows: int, new_rows: int) -> int:
+        """Advance the cached ordinal/total AFTER the ledger write committed."""
         with self._ingest_stats_lock:
-            self._next_ordinal_by_tenant[tenant_id] = next_ord + len(rows)
+            self._next_ordinal_by_tenant[tenant_id] = next_ord + num_rows
             self._finding_count_by_tenant[tenant_id] += new_rows
             return self._finding_count_by_tenant[tenant_id]
+
+    def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        if not findings:
+            self._bootstrap_ingest_stats(tenant_id)
+            with self._ingest_stats_lock:
+                if tenant_id in self._finding_count_by_tenant:
+                    return self._finding_count_by_tenant[tenant_id]
+            return self.count(tenant_id)
+        new_rows, next_ord, num_rows = self._ledger_insert_no_commit(tenant_id, findings)
+        self._conn.commit()
+        if num_rows:
+            self._invalidate_ingest_caches(tenant_id)
+        return self._commit_ledger_stats(tenant_id, next_ord, num_rows, new_rows)
+
+    def ingest_batch_atomic(
+        self,
+        tenant_id: str,
+        findings: list[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str,
+        reconcile_absent: bool,
+        present_canonical_ids: set[str],
+    ) -> tuple[int, int]:
+        """Ledger append + current upsert (+ reconcile) in ONE transaction.
+
+        ``add`` / ``upsert_current_batch`` / ``reconcile_current_absent`` each
+        committed independently, so a crash between the ledger commit and the
+        current-state upsert left ``tenant_total`` inflated while the findings
+        never appeared in any list. Threading all three writes through a single
+        ``with conn`` block (commit on success, rollback on failure) makes a
+        mid-batch failure roll BOTH back, mirroring the Postgres seam. The cached
+        ordinal/total is advanced only after the commit succeeds. Returns
+        ``(new_total, reconciled)``.
+        """
+        conn = self._conn
+        with conn:  # sqlite3 connection: commit on success, rollback on exception
+            if findings:
+                new_rows, next_ord, num_rows = self._ledger_insert_no_commit(tenant_id, findings)
+            else:
+                new_rows, next_ord, num_rows = 0, self._next_ordinal(tenant_id), 0
+            self._upsert_current_no_commit(
+                tenant_id,
+                findings,
+                observed_at=observed_at,
+                batch_id=batch_id,
+                source=source,
+            )
+            reconciled = 0
+            if reconcile_absent:
+                reconciled = self._reconcile_current_absent_no_commit(
+                    tenant_id,
+                    present_canonical_ids=present_canonical_ids,
+                    observed_at=observed_at,
+                    scope_source=source,
+                )
+        self._invalidate_ingest_caches(tenant_id)
+        new_total = self._commit_ledger_stats(tenant_id, next_ord, num_rows, new_rows)
+        return new_total, reconciled
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
@@ -1955,7 +2113,7 @@ class SQLiteComplianceHubStore:
             hub_overview_cache.invalidate_tenant(tenant_id)
         return removed
 
-    def upsert_current_batch(
+    def _upsert_current_no_commit(
         self,
         tenant_id: str,
         findings: Sequence[dict[str, Any]],
@@ -1978,6 +2136,23 @@ class SQLiteComplianceHubStore:
                 source=source,
                 has_ledger_col=has_ledger_col,
             )
+
+    def upsert_current_batch(
+        self,
+        tenant_id: str,
+        findings: Sequence[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str = "",
+    ) -> None:
+        self._upsert_current_no_commit(
+            tenant_id,
+            findings,
+            observed_at=observed_at,
+            batch_id=batch_id,
+            source=source,
+        )
         self._conn.commit()
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
@@ -2176,7 +2351,7 @@ class SQLiteComplianceHubStore:
         )
         return payloads, None, next_cursor
 
-    def reconcile_current_absent(
+    def _reconcile_current_absent_no_commit(
         self,
         tenant_id: str,
         *,
@@ -2212,6 +2387,22 @@ class SQLiteComplianceHubStore:
                 [observed_at, now, *params, *chunk],
             )
             total += int(cur.rowcount or 0)
+        return total
+
+    def reconcile_current_absent(
+        self,
+        tenant_id: str,
+        *,
+        present_canonical_ids: set[str],
+        observed_at: str,
+        scope_source: str | None = None,
+    ) -> int:
+        total = self._reconcile_current_absent_no_commit(
+            tenant_id,
+            present_canonical_ids=present_canonical_ids,
+            observed_at=observed_at,
+            scope_source=scope_source,
+        )
         self._conn.commit()
         return total
 

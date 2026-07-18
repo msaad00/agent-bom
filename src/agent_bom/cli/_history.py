@@ -583,6 +583,64 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
     sys.exit(1 if remaining else 0)
 
 
+def _render_nist_catalog_markdown(lines: list, catalog: dict) -> None:
+    """Render the catalog-backed NIST 800-53 line + per-control drill.
+
+    Surfaces the same evaluated-only score, honest not_evaluated/ERROR buckets,
+    vendor-asserted provenance, and ISO-by-id attribution the API reports — the
+    human equivalent of the ``nist_800_53_catalog`` JSON (agent) output.
+    """
+    if not catalog:
+        return
+    summary = catalog.get("summary", {})
+    label = catalog.get("framework_label", "NIST SP 800-53")
+    lines.extend([f"## {label} (vendor-asserted)", ""])
+    if catalog.get("status") == "no_data":
+        lines.extend(
+            [
+                "No NIST 800-53 control was evaluated by this scan (no mapped evidence). "
+                "Reported as not evaluated, not compliant.",
+                "",
+            ]
+        )
+        return
+    lines.append(
+        f"Status: `{catalog.get('status')}` · Score: `{catalog.get('score')}/100` "
+        f"(over {summary.get('evaluated', 0)} evaluated controls)"
+    )
+    lines.append(
+        f"- Pass: {summary.get('pass', 0)} · Fail: {summary.get('fail', 0)} · "
+        f"Warning: {summary.get('warning', 0)} · ERROR: {summary.get('error', 0)}"
+    )
+    lines.append(
+        f"- Evaluated: {summary.get('evaluated', 0)} · Not evaluated: {summary.get('not_evaluated', 0)} "
+        f"of {summary.get('catalog_size', 0)} · Coverage: {summary.get('coverage_pct', 0)}%"
+    )
+    lines.append("")
+
+    graded = [c for c in catalog.get("controls", []) if c.get("status") in ("fail", "error", "warning")]
+    if graded:
+        lines.append("Controls needing attention:")
+        lines.append("")
+        lines.append("| Control | Status | Findings | ISO 27001 (derived, by id) |")
+        lines.append("| --- | --- | --- | --- |")
+        for control in sorted(graded, key=lambda c: c["control_id"]):
+            iso_ids = ", ".join(control.get("iso_27001_derived", [])) or "—"
+            lines.append(
+                f"| {control['control_id']} | {control['status']} | {control.get('findings', 0)} | {iso_ids} |"
+            )
+        lines.append("")
+
+    iso_block = catalog.get("iso_27001_derived", {})
+    iso_controls = iso_block.get("controls", []) if isinstance(iso_block, dict) else []
+    if iso_controls:
+        lines.append(
+            "ISO/IEC 27001:2022 Annex A control ids implicated via NIST's official crosswalk "
+            f"(identifiers only): {', '.join(iso_controls)}"
+        )
+        lines.append("")
+
+
 @click.command("compliance-narrative")
 @click.argument("scan_file", type=click.Path(exists=True))
 @click.option(
@@ -614,6 +672,7 @@ def compliance_narrative_cmd(scan_file: str, framework: Optional[str], output_fo
                 for recommendation in fw.recommendations:
                     lines.append(f"- {recommendation}")
                 lines.append("")
+        _render_nist_catalog_markdown(lines, narrative.nist_800_53_catalog)
         if narrative.remediation_impact:
             lines.extend(["## Remediation Impact", ""])
             for impact in narrative.remediation_impact:

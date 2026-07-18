@@ -223,6 +223,29 @@ def test_sarif_spans_multiple_finding_families(sarif_doc: dict) -> None:
     assert any(rid.startswith("ai-inventory/") for rid in rule_ids)  # AI inventory
 
 
+def test_sarif_framework_taxonomy_labels_mappings_vendor_asserted() -> None:
+    """The finding→control framework taxonomy must be labeled vendor-asserted
+    (agent-bom's own mapping judgment, not an authority crosswalk), with taxa as
+    control IDs only (no copyrighted control-title text)."""
+    from agent_bom.output.sarif import to_sarif
+
+    report = _multi_finding_report()
+    report.blast_radii[0].nist_800_53_tags = ["SI-10"]
+    report.blast_radii[0].iso_27001_tags = ["A.8.8"]
+    doc = to_sarif(report)
+    taxonomies = doc["runs"][0]["tool"]["driver"].get("supportedTaxonomies") or doc["runs"][0].get("taxonomies") or []
+    # taxonomies live under run.taxonomies in this exporter
+    taxonomies = doc["runs"][0].get("taxonomies", [])
+    by_name = {t["name"]: t for t in taxonomies}
+    nist = by_name["nist-800-53"]
+    assert nist["properties"]["agent-bom:mappingProvenance"] == "vendor-asserted"
+    # taxa are IDs only — the control id appears, never a title/description.
+    taxa_ids = {t["id"] for t in nist["taxa"]}
+    assert "SI-10" in taxa_ids
+    assert all(set(t.keys()) <= {"id", "name"} for t in nist["taxa"])
+    assert all(t["name"] == t["id"] for t in nist["taxa"])  # name == id, no title text
+
+
 def _full_chain_report() -> AIBOMReport:
     """A report whose blast radius spans agent → server → package → CVE → tool."""
     vuln = Vulnerability(

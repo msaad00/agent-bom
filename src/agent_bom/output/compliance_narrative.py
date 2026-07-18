@@ -132,6 +132,11 @@ class ComplianceNarrative:
     remediation_impact: list[RemediationImpact]
     risk_narrative: str
     generated_at: str  # ISO 8601
+    # Catalog-backed NIST SP 800-53 Rev 5 line (vendor-asserted), scored over
+    # EVALUATED controls only, with ISO-by-id attribution — the same
+    # representation the /v1/compliance API line reports (one source of truth).
+    # Empty dict when a single-framework narrative is scoped to a non-NIST slug.
+    nist_800_53_catalog: dict = field(default_factory=dict)
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -736,10 +741,22 @@ def generate_compliance_narrative(
         generated_at=generated_at,
     )
 
+    # Catalog-backed NIST 800-53 line (vendor-asserted, scored over evaluated
+    # controls only). The narrative path has no CIS Foundations checks, so CIS
+    # statuses are empty; scan_count is 1 when the report carries findings (a
+    # scan ran) so an unmapped estate reads no_data, never a false pass. Included
+    # for the full narrative and the nist-800-53 single-framework narrative only.
+    nist_800_53_catalog: dict = {}
+    if framework is None or framework == "nist-800-53":
+        from agent_bom.compliance_nist_catalog import build_nist_800_53_catalog_line
+
+        nist_800_53_catalog = build_nist_800_53_catalog_line(blast_dicts, {}, 1 if blast_dicts else 0)
+
     return ComplianceNarrative(
         executive_summary=executive_summary,
         framework_narratives=framework_narratives,
         remediation_impact=remediation_impact,
         risk_narrative=risk_narrative,
         generated_at=generated_at,
+        nist_800_53_catalog=nist_800_53_catalog,
     )

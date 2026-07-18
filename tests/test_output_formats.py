@@ -850,6 +850,9 @@ def test_spdx_vulnerability_annotations_preserve_enrichment_and_compliance_metad
     assert "agent-bom:cwe=CWE-352" in statements
     assert "agent-bom:compliance-tag=owasp_llm:LLM05" in statements
     assert "agent-bom:compliance-tag=soc2:CC7.1" in statements
+    # Honesty: the emitted compliance tags are agent-bom's own asserted
+    # finding→control mappings, labeled vendor-asserted, never "official".
+    assert "agent-bom:compliance-tag-provenance=vendor-asserted" in statements
 
 
 def test_spdx_vulnerability_annotations_use_unified_findings_without_blast_radii():

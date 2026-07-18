@@ -54,6 +54,7 @@ jobs:
       docs: ${{ steps.classify.outputs.docs }}
       endpoint: ${{ steps.classify.outputs.endpoint }}
       postgres: ${{ steps.classify.outputs.postgres }}
+      python: ${{ steps.classify.outputs.python }}
       ui: ${{ steps.classify.outputs.ui }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -101,6 +102,14 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|deploy/supabase/postgres/)'; then
             postgres=true
           fi
+          # Python test suite: skip only when a PR clearly cannot affect it
+          # (docs/UI/deploy-only changes). Conservative by construction —
+          # anything under src/, tests/, scripts/, data/, packaging, or the
+          # CI definition itself runs the suite.
+          python=false
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|scripts/|pyproject\.toml|uv\.lock|action\.yml|contracts/|data/|\.github/workflows/ci\.yml$|\.github/actions/)'; then
+            python=true
+          fi
           if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|site-docs/deployment/aws-company-rollout\.md$)'; then
             endpoint=true
           fi
@@ -114,6 +123,7 @@ jobs:
             echo "docs=${docs}"
             echo "endpoint=${endpoint}"
             echo "postgres=${postgres}"
+            echo "python=${python}"
             echo "ui=${ui}"
           } >> "$GITHUB_OUTPUT"
           {
@@ -125,6 +135,7 @@ jobs:
             echo "- Docs strict build required: \`${docs}\`"
             echo "- Endpoint packaging required: \`${endpoint}\`"
             echo "- Real Postgres integration required: \`${postgres}\`"
+            echo "- Python test suite required: \`${python}\`"
             echo "- UI Validate (lint + test + build + e2e) required: \`${ui}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -703,6 +714,11 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
+    needs: changes
+    # Skip the suite only when the classifier positively says the PR cannot
+    # affect Python (docs/UI/deploy-only). Fail closed: a classifier failure
+    # or missing output runs the suite.
+    if: always() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -730,7 +746,11 @@ jobs:
           # timeout); 3.13/3.14 drop to 2 so the parallel run's peak RAM stays
           # under the hosted-runner limit (4 heavy interpreters OOM the VM,
           # surfacing as "runner received a shutdown signal" / exit 143).
-          if [ "${{ matrix.python-version }}" = "3.11" ]; then
+          # PRs run a single matrix job (3.13), so it gets 3 workers there —
+          # one below the OOM threshold observed at 4 — to cut PR wall-clock.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-3}"
+          elif [ "${{ matrix.python-version }}" = "3.11" ]; then
             PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-4}"
           else
             PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-2}"
@@ -1093,6 +1113,9 @@ jobs:
     permissions:
       contents: read
     needs: [security, lint, test]
+    # Build still runs when the classifier legitimately skipped the test
+    # suite (docs-only PRs); a failed or cancelled test still blocks it.
+    if: ${{ !cancelled() && needs.security.result == 'success' && needs.lint.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 

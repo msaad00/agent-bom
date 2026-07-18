@@ -34,6 +34,7 @@ from agent_bom.graph import (
     UnifiedGraph,
     UnifiedNode,
     _now_iso,
+    technique_mappings_from_json,
 )
 from agent_bom.graph.analysis import (
     GraphAnalysisStatus,
@@ -167,6 +168,7 @@ CREATE TABLE IF NOT EXISTS attack_paths (
     credential_exposure TEXT DEFAULT '[]',
     tool_exposure   TEXT DEFAULT '[]',
     vuln_ids        TEXT DEFAULT '[]',
+    technique_mappings TEXT DEFAULT '[]',
     scan_id         TEXT NOT NULL,
     tenant_id       TEXT NOT NULL DEFAULT 'default',
     computed_at     TEXT NOT NULL,
@@ -302,6 +304,8 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
         conn.execute("ALTER TABLE attack_paths ADD COLUMN summary TEXT DEFAULT ''")
     if "tool_exposure" not in existing_columns:
         conn.execute("ALTER TABLE attack_paths ADD COLUMN tool_exposure TEXT DEFAULT '[]'")
+    if "technique_mappings" not in existing_columns:
+        conn.execute("ALTER TABLE attack_paths ADD COLUMN technique_mappings TEXT DEFAULT '[]'")
     edge_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_edges)").fetchall()}
     # v3 adds replay metadata. Empty valid_from is interpreted as first_seen for
     # stores created before this migration, so old snapshots remain queryable.
@@ -828,8 +832,9 @@ def save_graph_streaming(
             INSERT OR REPLACE INTO attack_paths (
                 source_node, target_node, hop_count, composite_risk,
                 summary, path_nodes, path_edges, credential_exposure,
-                tool_exposure, vuln_ids, scan_id, tenant_id, computed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tool_exposure, vuln_ids, technique_mappings, scan_id,
+                tenant_id, computed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ap.source,
@@ -842,6 +847,7 @@ def save_graph_streaming(
                 json.dumps(ap.credential_exposure),
                 json.dumps(ap.tool_exposure),
                 json.dumps(ap.vuln_ids),
+                json.dumps([m.to_dict() for m in ap.technique_mappings]),
                 scan,
                 tenant,
                 now,
@@ -1015,6 +1021,7 @@ def load_graph(
                     credential_exposure=json.loads(row["credential_exposure"]),
                     tool_exposure=json.loads(row["tool_exposure"]),
                     vuln_ids=json.loads(row["vuln_ids"]),
+                    technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                 )
             )
 

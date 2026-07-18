@@ -1,4 +1,5 @@
 """HTML section renderers (summary, tables, graph data, CIS, compliance)."""
+
 from __future__ import annotations
 
 import json
@@ -19,6 +20,7 @@ from agent_bom.output.finding_views import (
     package_name,
     package_version,
     ranked_cve_findings,
+    reachability_label,
     severity_value,
 )
 from agent_bom.output.html._common import (
@@ -33,6 +35,9 @@ from agent_bom.security import sanitize_launch_command, sanitize_path_label
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
     from agent_bom.models import AIBOMReport, BlastRadius
+
+# Reachability cell colors, keyed by the state from ``reachability_label``.
+_REACH_COLOR = {"reachable": "#f87171", "unreachable": "#64748b", "unknown": "#475569"}
 
 
 def _pager_controls(table_id: str, total: int, page_size: int = _PAGE_SIZE) -> str:
@@ -56,7 +61,7 @@ def _pager_controls(table_id: str, total: int, page_size: int = _PAGE_SIZE) -> s
         f'<option value="50"{" selected" if page_size == 50 else ""}>50</option>'
         '<option value="100">100</option>'
         '<option value="250">250</option>'
-        '</select></label>'
+        "</select></label>"
         "</div>"
     )
 
@@ -72,10 +77,7 @@ def _chart_data(findings: list["Finding"]) -> str:
             sev_counts[sev] += 1
 
     top10 = sorted(findings, key=lambda finding: float(finding.risk_score or 0.0), reverse=True)[:10]
-    blast_labels = [
-        f"{(finding.cve_id or finding.title)[:16]}/{package_name(finding)[:14]}"
-        for finding in top10
-    ]
+    blast_labels = [f"{(finding.cve_id or finding.title)[:16]}/{package_name(finding)[:14]}" for finding in top10]
     blast_scores = [round(float(finding.risk_score or 0.0), 2) for finding in top10]
     blast_colors = [_SEV_COLOR.get(severity_value(finding), "#6b7280") for finding in top10]
 
@@ -219,6 +221,8 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
         key=lambda finding: severity_policy_rank(severity_value(finding)),
         reverse=True,
     )
+    # Advisory AI-triage assessments joined by the finding id they describe.
+    ai_assessments = {assessment.finding_id: assessment for assessment in getattr(report, "ai_finding_assessments", []) or []}
     rows = []
     for idx, finding in enumerate(sorted_findings):
         sev = severity_value(finding)
@@ -249,8 +253,28 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
             if finding.fixed_version
             else '<span style="color:#475569">No fix</span>'
         )
+        reach_label, reach_state = reachability_label(finding)
+        reach_color = _REACH_COLOR.get(reach_state, "#475569")
+        reach_title = {
+            "reachable": "Vulnerable code is reached from an entrypoint",
+            "unreachable": "Package present but not reached from any entrypoint",
+            "unknown": "Reachability engine did not produce a verdict",
+        }.get(reach_state, "")
+        reach_cell = (
+            f'<span class="reach-badge" data-reach="{reach_state}" title="{reach_title}" '
+            f'style="font-size:.68rem;color:{reach_color}">{reach_label}</span>'
+        )
         summary_text = (finding.description or "")[:90]
         summary = _esc(summary_text) if summary_text else '<span style="color:#475569;font-style:italic">Run --enrich</span>'
+        assessment = ai_assessments.get(finding.id)
+        if assessment is not None:
+            summary += (
+                f'<div class="ai-triage" style="margin-top:4px;font-size:.66rem;color:#a5b4fc">'
+                f'<span class="badge-ai" title="AI triage (advisory)">AI</span> '
+                f"{_esc(assessment.classification)} "
+                f'<span style="color:#94a3b8">&middot; FP&nbsp;likelihood: {_esc(assessment.false_positive_likelihood)}</span>'
+                f"</div>"
+            )
         agents_s = ", ".join(_esc(name) for name in finding.affected_agents) or "<span style='color:#334155'>&mdash;</span>"
         creds_s = (
             " ".join(f'<code style="color:#fbbf24">{_esc(c)}</code>' for c in finding.exposed_credentials)
@@ -276,6 +300,7 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
         rows.append(
             f'<tr class="pg-row{pg_cls}" data-severity="{sev}" data-kev="{"1" if finding.is_kev else "0"}" '
             f'data-exploit-likelihood="{exploit_level}" '
+            f'data-reachability="{reach_state}" '
             f'data-match-tier="{_esc(tier or "")}" '
             f'data-cvss="{finding.cvss_score if finding.cvss_score else 0}">'
             f'<td><code class="vuln-id">{_esc(vuln_id)}</code>{tier_hint}</td>'
@@ -285,6 +310,7 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
             f"<td>{cvss_bar}</td>"
             f'<td style="text-align:center;font-size:.82rem;color:#94a3b8">{epss}</td>'
             f'<td style="text-align:center">{kev}</td>'
+            f'<td style="text-align:center">{reach_cell}</td>'
             f"<td>{fix}</td>"
             f'<td style="font-size:.78rem;color:#94a3b8">{agents_s}</td>'
             f'<td style="font-size:.78rem">{creds_s}</td>'
@@ -292,7 +318,7 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
             f"</tr>"
         )
 
-    headers = ["Vuln ID", "Severity", "Package", "CVSS", "EPSS", "KEV", "Fix", "Affected Agents", "Exposed Creds", "Summary"]
+    headers = ["Vuln ID", "Severity", "Package", "CVSS", "EPSS", "KEV", "Reach", "Fix", "Affected Agents", "Exposed Creds", "Summary"]
 
     filter_bar = (
         '<div class="vuln-filter-bar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;'
@@ -558,7 +584,7 @@ def _policy_findings_section(findings: list["Finding"]) -> str:
         f'<div class="table-wrap"><table class="data-table sortable paginated" id="policyFindingsTable">'
         f"<thead><tr>{header_html}</tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div>"
-        f'{_pager_controls("policyFindingsTable", len(rows))}'
+        f"{_pager_controls('policyFindingsTable', len(rows))}"
         f"</div></section>"
     )
 
@@ -724,6 +750,7 @@ _CIS_CLOUD_LABELS = {
     "databricks": ("Databricks", "databricks_cis_benchmark_data"),
 }
 
+
 def _cis_evidence_html(check: dict) -> str:
     """Affected-resource evidence cell: resource IDs when present, else text."""
     resources = check.get("resource_ids") or []
@@ -776,9 +803,7 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
         band_color = "#16a34a" if pass_rate >= 90 else "#eab308" if pass_rate >= 70 else "#ef4444"
 
         # Verdict + per-severity failed counts for the summary header.
-        sev_counts = {
-            s: sum(1 for c in failed if (c.get("severity") or "").lower() == s) for s in SEVERITY_THRESHOLD_LABELS
-        }
+        sev_counts = {s: sum(1 for c in failed if (c.get("severity") or "").lower() == s) for s in SEVERITY_THRESHOLD_LABELS}
         if errored and not evaluated:
             verdict_text, verdict_color = "ERROR", "#dc2626"
         elif errored:

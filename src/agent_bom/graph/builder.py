@@ -1043,9 +1043,14 @@ def build_unified_graph_from_report(
     # Runs after effective-permissions + CNAPP so it sees HAS_PERMISSION edges,
     # escalation flags, and internet-exposure markers. No-op when no NHIs exist.
     try:
-        from agent_bom.graph.nhi_governance import apply_nhi_governance
+        from agent_bom.graph.nhi_governance import apply_nhi_governance_with_findings
 
-        apply_nhi_governance(graph)
+        _nhi_summary, _nhi_findings = apply_nhi_governance_with_findings(graph)
+        # Stash the materialized findings on the graph so the shared scan callers
+        # (CLI scan_cmd + API pipeline) can route them into the unified finding
+        # stream. The node-annotation side effects are identical to the previous
+        # apply_nhi_governance(graph) call; only the findings are new.
+        graph.nhi_governance_findings = _nhi_findings
     except Exception:  # noqa: BLE001
         _logger.warning("NHI governance overlay failed", exc_info=True)
 

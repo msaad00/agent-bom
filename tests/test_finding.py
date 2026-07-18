@@ -416,6 +416,26 @@ def test_blast_radius_to_finding_compliance_tags_carried():
     assert finding.soc2_tags == ["CC7.1"]
 
 
+def test_cloud_cis_check_to_finding_sets_applicable_frameworks():
+    """cloud_cis_check_to_finding must populate applicable_frameworks (via
+    apply_hub_classification) like every other generator — previously it set only
+    compliance_tags, leaving applicable_frameworks empty so the finding was
+    invisible in the hub posture aggregation."""
+    from agent_bom.finding import cloud_cis_check_to_finding
+
+    check = {"check_id": "2.1.2", "title": "S3 public", "status": "FAIL", "severity": "high"}
+    finding = cloud_cis_check_to_finding(check, "aws")
+
+    assert finding.applicable_frameworks, "applicable_frameworks must be populated"
+    # A CIS Foundations benchmark failure authoritatively asserts the CIS control.
+    assert "cis" in finding.applicable_frameworks
+    # But it must NOT fabricate a specific SOC2/ISO/NIST crosswalk — there is no
+    # authoritative CIS-Foundations → SOC2/ISO/NIST-800-53 mapping in the repo.
+    assert "soc2" not in finding.applicable_frameworks
+    assert "iso-27001" not in finding.applicable_frameworks
+    assert "nist-800-53" not in finding.applicable_frameworks
+
+
 def test_blast_radius_to_finding_risk_score():
     br = _make_blast_radius()
     finding = blast_radius_to_finding(br)

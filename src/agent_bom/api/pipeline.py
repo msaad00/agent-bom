@@ -35,6 +35,7 @@ from agent_bom.api.stores import (
     _jobs_put,
 )
 from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
+from agent_bom.graph.scan_findings import attach_graph_derived_findings
 from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
@@ -1222,6 +1223,25 @@ def _run_scan_sync(job: ScanJob) -> None:
                 _logger.warning("Advisory AI enrichment skipped: %s", sanitize_error(ai_exc, generic=True))
                 with lock:
                     job.progress.append("Advisory AI enrichment skipped")
+
+        # Graph-derived findings: build the unified graph once (after every report
+        # side block is set) and surface NHI-governance + toxic-combination findings
+        # onto the report so the hosted scan reaches CLI parity — before to_json()
+        # serializes the unified stream. Best-effort: never fails the scan. MCP
+        # tool-rule findings derive from report tools inside to_findings(), so they
+        # need no graph and are already covered.
+        try:
+            from agent_bom.graph.builder import build_unified_graph_from_report
+
+            _interim_json = to_json(report)
+            _findings_graph = build_unified_graph_from_report(
+                _interim_json,
+                scan_id=job.job_id,
+                tenant_id=job.tenant_id or "",
+            )
+            attach_graph_derived_findings(report, _findings_graph)
+        except Exception as gderiv_exc:  # noqa: BLE001
+            _logger.warning("Graph-derived findings surfacing skipped: %s", sanitize_error(gderiv_exc))
 
         report_json = to_json(report)
         report_json["warnings"] = warnings_all

@@ -109,8 +109,31 @@ def _merge_dependencies(dependencies: list[dict]) -> list[dict]:
     return [{"ref": ref, "dependsOn": sorted(by_ref[ref])} for ref in sorted(by_ref)]
 
 
+def _cwe_ids_to_integers(cwe_ids: list[str]) -> list[int]:
+    """Map ``["CWE-94", "CWE-502"]`` to the CycloneDX-native integer form.
+
+    CDX 1.7 ``cwes`` is an array of integer CWE IDs (``>= 1``). Non-numeric or
+    malformed entries are dropped rather than invented.
+    """
+    ints: list[int] = []
+    for raw in cwe_ids:
+        match = re.search(r"(\d+)", str(raw))
+        if not match:
+            continue
+        value = int(match.group(1))
+        if value >= 1 and value not in ints:
+            ints.append(value)
+    return ints
+
+
 def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str) -> dict:
-    """Build one package-scoped CycloneDX vulnerability observation."""
+    """Build one package-scoped CycloneDX vulnerability observation.
+
+    Carries the enrichment other exporters already surface: CWE weaknesses via
+    the native ``cwes`` array, EPSS as an ``other``-method rating, and CISA KEV
+    plus EPSS detail as namespaced ``agent-bom:`` properties (KEV/EPSS have no
+    first-class CDX 1.7 vulnerability slot).
+    """
     ratings: list[dict[str, object]] = []
     if vuln.cvss_score:
         ratings.append(
@@ -122,6 +145,16 @@ def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str) -> dict:
         )
     else:
         ratings.append({"severity": vuln.severity.value})
+    if vuln.epss_score is not None:
+        # EPSS is a probability (0.0–1.0), not a CVSS-style severity — surface it
+        # as an `other`-method rating attributed to the EPSS source.
+        ratings.append(
+            {
+                "source": {"name": "EPSS", "url": "https://www.first.org/epss/"},
+                "score": vuln.epss_score,
+                "method": "other",
+            }
+        )
     entry: dict = {
         "id": vuln.id,
         "description": vuln.summary or f"See {vuln.id} for details",
@@ -129,6 +162,24 @@ def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str) -> dict:
         "ratings": ratings,
         "affects": [{"ref": pkg_ref}],
     }
+    cwes = _cwe_ids_to_integers(vuln.cwe_ids)
+    if cwes:
+        entry["cwes"] = cwes
+    vuln_properties: list[dict[str, str]] = []
+    if vuln.is_kev:
+        vuln_properties.append({"name": "agent-bom:kev", "value": "true"})
+        if vuln.kev_date_added:
+            vuln_properties.append({"name": "agent-bom:kev_date_added", "value": vuln.kev_date_added})
+        if vuln.kev_due_date:
+            vuln_properties.append({"name": "agent-bom:kev_due_date", "value": vuln.kev_due_date})
+    if vuln.epss_score is not None:
+        vuln_properties.append({"name": "agent-bom:epss_score", "value": str(vuln.epss_score)})
+    if vuln.epss_percentile is not None:
+        vuln_properties.append({"name": "agent-bom:epss_percentile", "value": str(vuln.epss_percentile)})
+    if vuln.is_kev or vuln.epss_score is not None:
+        vuln_properties.append({"name": "agent-bom:exploit_likelihood", "value": vuln.exploit_likelihood})
+    if vuln_properties:
+        entry["properties"] = vuln_properties
     if vuln.fixed_version:
         entry["recommendation"] = f"Upgrade to {vuln.fixed_version}"
     if vuln.vex_status:
@@ -155,9 +206,7 @@ def _merge_vulnerability_observation(by_id: dict[str, dict], observation: dict) 
         by_id[vuln_id] = observation
         return
     affected_refs = {
-        str(affected.get("ref"))
-        for affected in [*existing.get("affects", []), *observation.get("affects", [])]
-        if affected.get("ref")
+        str(affected.get("ref")) for affected in [*existing.get("affects", []), *observation.get("affects", [])] if affected.get("ref")
     }
     existing["affects"] = [{"ref": ref} for ref in sorted(affected_refs)]
 

@@ -147,6 +147,14 @@ def test_databricks_findings_are_vendor_best_practices_and_still_gate(status: st
     assert finding.evidence["benchmark"] == "Databricks Security Best Practices"
     assert not any(tag.startswith("CIS-") for tag in finding.compliance_tags)
     assert "cis" not in finding.applicable_frameworks
+    # A vendor best-practice finding must not claim official SOC2/ISO/NIST
+    # framework coverage — there is no authoritative crosswalk, so the honest
+    # floor is no official framework (the best-practice designation lives in the
+    # finding type / source / title, not applicable_frameworks).
+    assert "soc2" not in finding.applicable_frameworks
+    assert "iso-27001" not in finding.applicable_frameworks
+    assert "nist-800-53" not in finding.applicable_frameworks
+    assert finding.applicable_frameworks == []
     assert _gate(r) == 1
 
 

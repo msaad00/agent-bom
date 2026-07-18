@@ -9,7 +9,8 @@ level in each framework's ``tag_blast_radius()`` function.
 
 from __future__ import annotations
 
-from agent_bom.constants import AI_PACKAGES, CWE_COMPLIANCE_MAP, TRAINING_DATA_PACKAGES
+from agent_bom.constants import AI_PACKAGES, TRAINING_DATA_PACKAGES
+from agent_bom.framework_mapping import controls_for_cwes
 from agent_bom.models import Package, Severity, Vulnerability
 
 _HIGH_RISK = frozenset({Severity.CRITICAL, Severity.HIGH})
@@ -41,10 +42,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if is_ai and is_high:
         owasp_llm.append("LLM04")
     if cwe_ids:
-        for cwe in cwe_ids:
-            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("owasp_llm", []):
-                if t not in owasp_llm:
-                    owasp_llm.append(t)
+        for t in controls_for_cwes(cwe_ids, "owasp_llm", normalize=False):
+            if t not in owasp_llm:
+                owasp_llm.append(t)
     if owasp_llm:
         tags["owasp_llm"] = sorted(set(owasp_llm))
 
@@ -83,10 +83,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if is_kev:
         nist_csf.append("RS.MI-02")
     if cwe_ids:
-        for cwe in cwe_ids:
-            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("nist_csf", []):
-                if t not in nist_csf:
-                    nist_csf.append(t)
+        for t in controls_for_cwes(cwe_ids, "nist_csf", normalize=False):
+            if t not in nist_csf:
+                nist_csf.append(t)
     tags["nist_csf"] = sorted(set(nist_csf))
 
     # ── NIST 800-53 Rev 5 ───────────────────────────────────────────────
@@ -100,10 +99,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if has_fix:
         nist_53.append("CM-6")
     if cwe_ids:
-        for cwe in cwe_ids:
-            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("nist_800_53", []):
-                if t not in nist_53:
-                    nist_53.append(t)
+        for t in controls_for_cwes(cwe_ids, "nist_800_53", normalize=False):
+            if t not in nist_53:
+                nist_53.append(t)
     tags["nist_800_53"] = sorted(set(nist_53))
 
     # ── FedRAMP (Moderate baseline) ──────────────────────────────────
@@ -122,10 +120,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if is_kev:
         cis.append("CIS-16.12")
     if cwe_ids:
-        for cwe in cwe_ids:
-            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("cis", []):
-                if t not in cis:
-                    cis.append(t)
+        for t in controls_for_cwes(cwe_ids, "cis", normalize=False):
+            if t not in cis:
+                cis.append(t)
     tags["cis"] = sorted(set(cis))
 
     # ── ISO 27001:2022 ──────────────────────────────────────────────────
@@ -139,10 +136,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if has_fix:
         iso.append("A.8.28")
     if cwe_ids:
-        for cwe in cwe_ids:
-            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("iso_27001", []):
-                if t not in iso:
-                    iso.append(t)
+        for t in controls_for_cwes(cwe_ids, "iso_27001", normalize=False):
+            if t not in iso:
+                iso.append(t)
     tags["iso_27001"] = sorted(set(iso))
 
     # ── SOC 2 TSC ───────────────────────────────────────────────────────
@@ -156,10 +152,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if has_fix:
         soc2.append("CC8.1")
     if cwe_ids:
-        for cwe in cwe_ids:
-            for t in CWE_COMPLIANCE_MAP.get(cwe, {}).get("soc2", []):
-                if t not in soc2:
-                    soc2.append(t)
+        for t in controls_for_cwes(cwe_ids, "soc2", normalize=False):
+            if t not in soc2:
+                soc2.append(t)
     tags["soc2"] = sorted(set(soc2))
 
     # ── EU AI Act ───────────────────────────────────────────────────────

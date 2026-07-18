@@ -6,15 +6,15 @@ the same way: *given a finding, which compliance frameworks apply?*
 Without this, every adapter (SARIF, CycloneDX, native scanner, external
 imports) re-implements the mapping ad hoc — leading to the same finding
 landing under different framework sets depending on which entry point
-loaded it. The hub centralises the selection table from issue #1044 so
-the answer is one function call regardless of source.
+loaded it. The hub centralises the selection so the answer is one function
+call regardless of source.
 
-This is PR A (foundation): pure mapping engine + test matrix. PR B wires
-the engine into ingestion adapters; PR C exposes hub aggregation
-endpoints + dashboard surface; PR D locks in cross-format invariants.
-
-The table below is the source of truth. Adding a new finding source or
-asset type means adding a row here, not editing every adapter.
+The framework slug vocabulary and the source/asset/finding-type selection
+table now live in :mod:`agent_bom.framework_mapping` — the unified mapping
+layer that is the single source of truth for "which framework controls does
+this signal evidence". The hub re-exports the selection API for backward
+compatibility and adds :func:`apply_hub_classification`, which projects that
+selection onto a ``Finding``'s ``applicable_frameworks``.
 """
 
 from __future__ import annotations
@@ -22,201 +22,55 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_bom.compliance_coverage import normalize_framework_slug
-from agent_bom.finding import FindingSource, FindingType
+
+# The framework vocabulary + selection engine were consolidated into
+# ``framework_mapping``. Re-exported here so existing callers importing these
+# names from ``compliance_hub`` keep working unchanged.
+from agent_bom.framework_mapping import (
+    ALL_FRAMEWORKS,
+    FRAMEWORK_ATLAS,
+    FRAMEWORK_ATTACK,
+    FRAMEWORK_CIS,
+    FRAMEWORK_CMMC,
+    FRAMEWORK_EU_AI_ACT,
+    FRAMEWORK_FEDRAMP,
+    FRAMEWORK_ISO_27001,
+    FRAMEWORK_NIST_800_53,
+    FRAMEWORK_NIST_AI_RMF,
+    FRAMEWORK_NIST_CSF,
+    FRAMEWORK_OWASP_AGENTIC,
+    FRAMEWORK_OWASP_LLM,
+    FRAMEWORK_OWASP_MCP,
+    FRAMEWORK_PCI_DSS,
+    FRAMEWORK_SOC2,
+    is_framework_relevant,
+    select_frameworks,
+)
 
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
 
-# ─── Framework slugs ─────────────────────────────────────────────────────────
-# Aligned with `agent_bom.compliance_coverage.TAG_MAPPED_FRAMEWORKS` slugs.
-# Keep this list in sync — the slug is what flows through the API surface.
-
-FRAMEWORK_OWASP_LLM = "owasp-llm"
-FRAMEWORK_OWASP_MCP = "owasp-mcp"
-FRAMEWORK_OWASP_AGENTIC = "owasp-agentic"
-FRAMEWORK_ATLAS = "atlas"
-FRAMEWORK_ATTACK = "attack"
-FRAMEWORK_NIST_AI_RMF = "nist"
-FRAMEWORK_NIST_CSF = "nist-csf"
-FRAMEWORK_NIST_800_53 = "nist-800-53"
-FRAMEWORK_FEDRAMP = "fedramp"
-FRAMEWORK_EU_AI_ACT = "eu-ai-act"
-FRAMEWORK_ISO_27001 = "iso-27001"
-FRAMEWORK_SOC2 = "soc2"
-FRAMEWORK_CIS = "cis"
-FRAMEWORK_CMMC = "cmmc"
-FRAMEWORK_PCI_DSS = "pci-dss"
-
-ALL_FRAMEWORKS: tuple[str, ...] = (
-    FRAMEWORK_OWASP_LLM,
-    FRAMEWORK_OWASP_MCP,
-    FRAMEWORK_OWASP_AGENTIC,
-    FRAMEWORK_ATLAS,
-    FRAMEWORK_ATTACK,
-    FRAMEWORK_NIST_AI_RMF,
-    FRAMEWORK_NIST_CSF,
-    FRAMEWORK_NIST_800_53,
-    FRAMEWORK_FEDRAMP,
-    FRAMEWORK_EU_AI_ACT,
-    FRAMEWORK_ISO_27001,
-    FRAMEWORK_SOC2,
-    FRAMEWORK_CIS,
-    FRAMEWORK_CMMC,
-    FRAMEWORK_PCI_DSS,
-)
-
-
-_AI_FRAMEWORKS: tuple[str, ...] = (
-    FRAMEWORK_OWASP_LLM,
-    FRAMEWORK_OWASP_MCP,
-    FRAMEWORK_OWASP_AGENTIC,
-    FRAMEWORK_ATLAS,
-    FRAMEWORK_ATTACK,
-    FRAMEWORK_NIST_AI_RMF,
-    FRAMEWORK_EU_AI_ACT,
-)
-
-_ENTERPRISE_FRAMEWORKS: tuple[str, ...] = (
-    FRAMEWORK_NIST_CSF,
-    FRAMEWORK_ISO_27001,
-    FRAMEWORK_SOC2,
-)
-
-_GOV_FRAMEWORKS: tuple[str, ...] = (
-    FRAMEWORK_NIST_800_53,
-    FRAMEWORK_FEDRAMP,
-    FRAMEWORK_CMMC,
-)
-
-_CONTAINER_FRAMEWORKS: tuple[str, ...] = (
-    FRAMEWORK_CIS,
-    FRAMEWORK_NIST_CSF,
-    FRAMEWORK_PCI_DSS,
-    FRAMEWORK_SOC2,
-)
-
-_CLOUD_POSTURE_FRAMEWORKS: tuple[str, ...] = (
-    FRAMEWORK_CIS,
-    FRAMEWORK_SOC2,
-    FRAMEWORK_ISO_27001,
-    FRAMEWORK_NIST_800_53,
-)
-
-# External SARIF/CSV/JSON imports without AI asset signals should not inherit
-# the full AI framework set — those slugs are added via asset_type / finding_type
-# refinements (agent, mcp_server, INJECTION, etc.).
-_EXTERNAL_BASELINE: tuple[str, ...] = (
-    FRAMEWORK_NIST_CSF,
-    FRAMEWORK_SOC2,
-    FRAMEWORK_ISO_27001,
-    FRAMEWORK_CIS,
-    FRAMEWORK_PCI_DSS,
-)
-
-
-# ─── Source → framework selection table (the source of truth) ───────────────
-# Issue #1044 specifies this mapping. Each source carries a baseline list of
-# frameworks that always apply; asset type and finding type can refine.
-
-_SOURCE_BASELINE: dict[FindingSource, tuple[str, ...]] = {
-    FindingSource.MCP_SCAN: _AI_FRAMEWORKS,
-    FindingSource.SKILL: _AI_FRAMEWORKS,
-    FindingSource.PROXY: (
-        FRAMEWORK_OWASP_LLM,
-        FRAMEWORK_OWASP_AGENTIC,
-        FRAMEWORK_ATLAS,
-    ),
-    FindingSource.BROWSER_EXT: (
-        FRAMEWORK_OWASP_LLM,
-        FRAMEWORK_ATLAS,
-    ),
-    FindingSource.CONTAINER: _CONTAINER_FRAMEWORKS,
-    FindingSource.CLOUD_CIS: _CLOUD_POSTURE_FRAMEWORKS,
-    FindingSource.CLOUD_SECURITY: tuple(framework for framework in _CLOUD_POSTURE_FRAMEWORKS if framework != FRAMEWORK_CIS),
-    FindingSource.SBOM: (
-        FRAMEWORK_NIST_CSF,
-        FRAMEWORK_SOC2,
-        FRAMEWORK_PCI_DSS,
-    ),
-    FindingSource.SAST: (
-        FRAMEWORK_NIST_CSF,
-        FRAMEWORK_SOC2,
-        FRAMEWORK_PCI_DSS,
-    ),
-    FindingSource.FILESYSTEM: (
-        FRAMEWORK_CIS,
-        FRAMEWORK_SOC2,
-    ),
-    FindingSource.EXTERNAL: _EXTERNAL_BASELINE,
-}
-
-
-# Asset-type refinements: when the source baseline is broad, asset shape
-# narrows it. These are *additive* — they don't shrink the baseline.
-_ASSET_TYPE_ADDITIONS: dict[str, tuple[str, ...]] = {
-    "mcp_server": _AI_FRAMEWORKS,
-    "agent": _AI_FRAMEWORKS,
-    "tool": _AI_FRAMEWORKS,
-    "skill": _AI_FRAMEWORKS,
-    "container": _CONTAINER_FRAMEWORKS,
-    "cloud_resource": _CLOUD_POSTURE_FRAMEWORKS,
-    "iac_resource": (FRAMEWORK_CIS, FRAMEWORK_NIST_800_53, FRAMEWORK_FEDRAMP),
-}
-
-
-# Finding-type refinements: a CREDENTIAL_EXPOSURE on any source pulls in
-# enterprise auditing frameworks; LICENSE pulls in supply-chain governance.
-_FINDING_TYPE_ADDITIONS: dict[FindingType, tuple[str, ...]] = {
-    FindingType.CREDENTIAL_EXPOSURE: _ENTERPRISE_FRAMEWORKS,
-    FindingType.LICENSE: (FRAMEWORK_NIST_CSF, FRAMEWORK_SOC2),
-    FindingType.INJECTION: _AI_FRAMEWORKS,
-    FindingType.EXFILTRATION: _AI_FRAMEWORKS + (FRAMEWORK_SOC2,),
-    FindingType.CIS_FAIL: (FRAMEWORK_CIS,),
-    FindingType.CIS_ERROR: (FRAMEWORK_CIS,),
-    FindingType.CLOUD_BEST_PRACTICE_FAIL: (),
-    FindingType.CLOUD_BEST_PRACTICE_ERROR: (),
-}
-
-
-def select_frameworks(
-    source: FindingSource,
-    asset_type: str | None = None,
-    finding_type: FindingType | None = None,
-    *,
-    include_gov: bool = False,
-) -> list[str]:
-    """Return the list of framework slugs that apply to a finding context.
-
-    Args:
-        source: Which scanner / ingestion path produced the finding.
-        asset_type: The Asset.asset_type (e.g. "mcp_server", "container",
-            "cloud_resource", "package", "agent"). Optional but recommended.
-        finding_type: The FindingType (e.g. CREDENTIAL_EXPOSURE, INJECTION).
-            Adds finding-shape-specific frameworks on top of the source
-            baseline.
-        include_gov: When True, layer FedRAMP / NIST 800-53 / CMMC on top.
-            Off by default because most tenants don't operate under those
-            programs; the dashboard / API can opt in per tenant.
-
-    Returns:
-        Deduplicated list of framework slugs in stable order, drawn from
-        ALL_FRAMEWORKS so callers can match against
-        compliance_coverage.TAG_MAPPED_FRAMEWORKS.
-    """
-    selected: set[str] = set()
-
-    selected.update(_SOURCE_BASELINE.get(source, ()))
-
-    if asset_type and not (source == FindingSource.CLOUD_SECURITY and asset_type == "cloud_resource"):
-        selected.update(_ASSET_TYPE_ADDITIONS.get(asset_type, ()))
-
-    if finding_type:
-        selected.update(_FINDING_TYPE_ADDITIONS.get(finding_type, ()))
-
-    if include_gov:
-        selected.update(_GOV_FRAMEWORKS)
-
-    return [f for f in ALL_FRAMEWORKS if f in selected]
+__all__ = [
+    "ALL_FRAMEWORKS",
+    "FRAMEWORK_ATLAS",
+    "FRAMEWORK_ATTACK",
+    "FRAMEWORK_CIS",
+    "FRAMEWORK_CMMC",
+    "FRAMEWORK_EU_AI_ACT",
+    "FRAMEWORK_FEDRAMP",
+    "FRAMEWORK_ISO_27001",
+    "FRAMEWORK_NIST_800_53",
+    "FRAMEWORK_NIST_AI_RMF",
+    "FRAMEWORK_NIST_CSF",
+    "FRAMEWORK_OWASP_AGENTIC",
+    "FRAMEWORK_OWASP_LLM",
+    "FRAMEWORK_OWASP_MCP",
+    "FRAMEWORK_PCI_DSS",
+    "FRAMEWORK_SOC2",
+    "select_frameworks",
+    "is_framework_relevant",
+    "apply_hub_classification",
+]
 
 
 def apply_hub_classification(finding: "Finding", *, include_gov: bool = False) -> "Finding":
@@ -252,24 +106,3 @@ def apply_hub_classification(finding: "Finding", *, include_gov: bool = False) -
         slug for slug in finding.applicable_frameworks if slug not in ALL_FRAMEWORKS
     ]
     return finding
-
-
-def is_framework_relevant(
-    framework_slug: str,
-    source: FindingSource,
-    asset_type: str | None = None,
-    finding_type: FindingType | None = None,
-    *,
-    include_gov: bool = False,
-) -> bool:
-    """Return True if `framework_slug` applies to this finding context.
-
-    Convenience wrapper for filtering — equivalent to checking membership
-    in `select_frameworks(...)` but cheaper for single-framework checks.
-    """
-    return framework_slug in select_frameworks(
-        source,
-        asset_type,
-        finding_type,
-        include_gov=include_gov,
-    )

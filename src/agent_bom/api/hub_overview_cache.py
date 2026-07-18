@@ -38,8 +38,15 @@ class _Entry:
     expires_at: float
 
 
+@dataclass(frozen=True)
+class _KevEntry:
+    count: int
+    expires_at: float
+
+
 _lock = threading.Lock()
 _entries: dict[str, _Entry] = {}
+_kev_entries: dict[str, _KevEntry] = {}
 
 
 def get_cached_severity(tenant_id: str) -> dict[str, int] | None:
@@ -67,13 +74,43 @@ def set_cached_severity(tenant_id: str, counts: dict[str, int]) -> None:
         _entries[tenant_id] = _Entry(counts=dict(counts), expires_at=now + ttl)
 
 
+def get_cached_kev(tenant_id: str) -> int | None:
+    """Return the memoised hub KEV count, or ``None`` on miss/disabled TTL.
+
+    Shares the severity histogram's invalidation contract (every hub mutation
+    clears both), so a hit is exact and reconciles with the drill by
+    construction — the KEV count derives from the same current-state spine."""
+    ttl = _ttl_seconds()
+    if ttl <= 0:
+        return None
+    now = time.monotonic()
+    with _lock:
+        entry = _kev_entries.get(tenant_id)
+        if entry is None or entry.expires_at <= now:
+            if entry is not None:
+                _kev_entries.pop(tenant_id, None)
+            return None
+        return entry.count
+
+
+def set_cached_kev(tenant_id: str, count: int) -> None:
+    ttl = _ttl_seconds()
+    if ttl <= 0:
+        return
+    now = time.monotonic()
+    with _lock:
+        _kev_entries[tenant_id] = _KevEntry(count=int(count), expires_at=now + ttl)
+
+
 def invalidate_tenant(tenant_id: str) -> None:
     """Drop the cached histogram for a tenant after any hub-ledger mutation."""
     with _lock:
         _entries.pop(tenant_id, None)
+        _kev_entries.pop(tenant_id, None)
 
 
 def reset_hub_overview_cache() -> None:
     """Test helper — never call from production code."""
     with _lock:
         _entries.clear()
+        _kev_entries.clear()

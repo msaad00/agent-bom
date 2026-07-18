@@ -47,6 +47,11 @@ from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _g
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
+def _kev_json_cond_postgres(col: str) -> str:
+    """Postgres predicate: the CISA-KEV flag on a JSONB payload column."""
+    return f"({col}->>'is_kev') IN ('true', 't', '1') OR ({col}->>'cisa_kev') IN ('true', 't', '1')"
+
+
 def _invalidate_overview_severity(tenant_id: str) -> None:
     """Drop the memoised /v1/overview severity histogram after a ledger change.
 
@@ -876,6 +881,43 @@ class PostgresComplianceHubStore:
             key = str(sev or "unknown").lower()
             counts[key] = counts.get(key, 0) + int(count)
         return counts
+
+    def current_kev_count(
+        self,
+        tenant_id: str,
+        *,
+        origin: str | None = None,
+        since: str | None = None,
+    ) -> int:
+        # Same tenant/since/origin predicates as ``current_severity_breakdown``.
+        # The KEV flag is not a current-state column, so resolve it from the
+        # current payload, the joined ledger payload, and the CVE-intel reference
+        # — the same places the drill hydrates it — so the exec KEV count
+        # reconciles with the /v1/findings KEV rows (#3961).
+        where = ["c.tenant_id = %s"]
+        params: list[Any] = [tenant_id]
+        if since:
+            where.append("c.last_seen >= %s")
+            params.append(since)
+        if origin is not None:
+            where.append("c.origin = %s")
+            params.append(origin)
+        where_sql = " AND ".join(where)
+        kev_cond = " OR ".join(_kev_json_cond_postgres(col) for col in ("c.payload", "l.payload", "i.payload"))
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM hub_findings_current c
+                LEFT JOIN compliance_hub_findings l
+                    ON l.tenant_id = c.tenant_id AND l.finding_id = c.ledger_finding_id
+                LEFT JOIN hub_cve_intel i
+                    ON i.tenant_id = c.tenant_id AND i.cve_id = (l.payload->>'intel_ref')
+                WHERE {where_sql} AND ({kev_cond})
+                """,  # nosec B608
+                tuple(params),
+            ).fetchone()
+        return int(row[0]) if row else 0
 
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
         from agent_bom.compliance_coverage import normalize_framework_slug

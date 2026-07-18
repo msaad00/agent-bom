@@ -321,3 +321,60 @@ def evaluate_server_tools(tools: list["MCPTool"]) -> list[MCPRuleFinding]:
     for tool in tools:
         out.extend(evaluate_tool(tool))
     return out
+
+
+def mcp_rule_finding_to_finding(
+    rule: dict,
+    *,
+    tool_name: str = "",
+    tool_stable_id: str | None = None,
+    server_name: str = "",
+    location: str | None = None,
+    agent_name: str = "",
+):
+    """Convert one stored ``schema_rule_findings`` dict into a unified ``Finding``.
+
+    The MCP tool-schema analyzer stores its violations on
+    ``MCPTool.schema_rule_findings`` (a list of :meth:`MCPRuleFinding.to_dict`
+    payloads) and only ever surfaced them inside JSON tool blocks. Mapping each to
+    a :class:`~agent_bom.finding.Finding` routes them through the unified stream so
+    the severity gate and SARIF see them too. The finding id is derived
+    deterministically from the rule id + owning tool so re-running a scan yields a
+    stable, dedupe-friendly id (idempotent hub ingest).
+    """
+    from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
+
+    rid = str(rule.get("rule_id") or "mcp-tool-rule")
+    prop = rule.get("property_name")
+    tname = str(rule.get("tool_name") or tool_name or "unknown-tool")
+    asset = Asset(
+        name=tname,
+        asset_type="mcp_tool",
+        identifier=tool_stable_id or (f"mcp_tool:{server_name}:{tname}" if server_name else f"mcp_tool:{tname}"),
+        location=location,
+    )
+    evidence = {
+        "mcp_tool_rule": rid,
+        "rule_id": rid,
+        "tool_name": tname,
+        "property_name": prop,
+        "message": rule.get("message"),
+        "detail": rule.get("evidence"),
+        "server_name": server_name or None,
+        "agent_name": agent_name or None,
+    }
+    return Finding(
+        finding_type=FindingType.INJECTION,
+        source=FindingSource.MCP_SCAN,
+        asset=asset,
+        severity=str(rule.get("severity") or "medium"),
+        title=str(rule.get("title") or f"MCP tool-schema rule {rid} on {tname}"),
+        description=str(rule.get("message") or ""),
+        owasp_tags=list(rule.get("owasp_tags") or []),
+        owasp_mcp_tags=list(rule.get("owasp_mcp_tags") or []),
+        cwe_ids=list(rule.get("cwe_ids") or []),
+        evidence=evidence,
+        is_actionable=True,
+        impact_category="mcp_tool_rule",
+        id=stable_id("mcp_tool_rule", rid, tname, str(prop or "")),
+    )

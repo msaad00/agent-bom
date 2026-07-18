@@ -1142,6 +1142,11 @@ class AIBOMReport:
     # Graph toxic-combination findings (serialized Finding dicts; set at the graph-build call site).
     # Rehydrated into the unified Finding stream by to_findings() so they reach --fail-on-severity.
     toxic_combination_findings_data: Optional[list] = None
+    # NHI/CIEM governance findings (over-grant, dormant/orphaned, high-risk NHIs)
+    # materialized from the unified graph at the scan call site. Held as Finding
+    # objects (not serialized directly); folded into the unified stream by
+    # to_findings() so the API path reaches CLI parity for identity governance.
+    nhi_governance_findings: list["Finding"] = field(default_factory=list)
     # Estate-wide cloud asset inventory; one provider payload or a per-provider list (opt-in AGENT_BOM_CLOUD_INVENTORY)
     cloud_inventory_data: Optional[Union[dict, list]] = None
     identity_discovery_data: Optional[dict] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
@@ -1268,6 +1273,48 @@ class AIBOMReport:
 
         return toxic_combination_findings_from_data(self.toxic_combination_findings_data)
 
+    def _nhi_governance_findings(self) -> "list[Finding]":
+        """NHI/CIEM governance findings, surfaced from the graph-derived side block.
+
+        The scan call site (CLI + API) computes these over the unified graph and
+        stores the Finding objects on ``nhi_governance_findings``. Surfacing them
+        here routes identity over-grant / dormant / orphaned risks through
+        ``--fail-on-severity`` and every machine output, matching the CLI path.
+        """
+        return list(self.nhi_governance_findings or [])
+
+    def _mcp_tool_rule_findings(self) -> "list[Finding]":
+        """MCP tool-schema rule violations lifted into the unified stream.
+
+        The MCP analyzer stores its violations on each ``MCPTool.schema_rule_findings``
+        and previously only emitted them inside JSON tool blocks — so the severity
+        gate and SARIF never saw them. Convert each stored rule dict to a Finding.
+        Derived on the fly from the report's own tools, so it needs no side block
+        and stays idempotent (stable ids from rule id + tool).
+        """
+        from agent_bom.mcp_tool_rules import mcp_rule_finding_to_finding
+
+        findings: list[Finding] = []
+        seen: set[str] = set()
+        for agent in self.agents:
+            for server in getattr(agent, "mcp_servers", []) or []:
+                for tool in getattr(server, "tools", []) or []:
+                    for raw in getattr(tool, "schema_rule_findings", []) or []:
+                        if not isinstance(raw, dict):
+                            continue
+                        finding = mcp_rule_finding_to_finding(
+                            raw,
+                            tool_name=getattr(tool, "name", ""),
+                            tool_stable_id=getattr(tool, "canonical_id", None),
+                            server_name=getattr(server, "name", ""),
+                            agent_name=getattr(agent, "name", ""),
+                        )
+                        if finding.id in seen:
+                            continue
+                        seen.add(finding.id)
+                        findings.append(finding)
+        return findings
+
     def to_findings(self) -> "list[Finding]":
         """Return the unified findings list, auto-populating from blast_radii if empty.
 
@@ -1290,6 +1337,10 @@ class AIBOMReport:
         base.extend(finding for finding in self._cloud_cis_findings() if finding.id not in cis_existing)
         toxic_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._toxic_combination_findings() if finding.id not in toxic_existing)
+        nhi_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._nhi_governance_findings() if finding.id not in nhi_existing)
+        mcp_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._mcp_tool_rule_findings() if finding.id not in mcp_existing)
         gov_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._snowflake_governance_findings() if finding.id not in gov_existing)
         malicious_existing = {getattr(f, "id", None) for f in base}

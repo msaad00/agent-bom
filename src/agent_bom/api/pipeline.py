@@ -323,6 +323,33 @@ def pipeline_dag_events_jsonl(job: ScanJob) -> str:
     return "\n".join(json.dumps(record, sort_keys=True) for record in records)
 
 
+def _surface_graph_derived_findings(
+    report: Any,
+    *,
+    scan_id: str,
+    tenant_id: str,
+) -> None:
+    """Attach graph-derived findings (NHI-governance, toxic-combination) to the report.
+
+    The unified graph built here — with its node dict, edge list, and adjacency /
+    reverse-adjacency indexes — plus the interim JSON are locals of this helper, so
+    they are released when it returns. Scoping them keeps the surfacing graph from
+    outliving the call and overlapping the persist phase's own graph rebuild, which
+    would otherwise leave the full-scan path holding two full current graphs at the
+    persist peak (#4055/#4075).
+    """
+    from agent_bom.graph.builder import build_unified_graph_from_report
+    from agent_bom.output import to_json
+
+    interim_json = to_json(report)
+    findings_graph = build_unified_graph_from_report(
+        interim_json,
+        scan_id=scan_id,
+        tenant_id=tenant_id,
+    )
+    attach_graph_derived_findings(report, findings_graph)
+
+
 def _persist_graph_snapshot(
     job: ScanJob,
     report_json: dict[str, Any],
@@ -1230,16 +1257,17 @@ def _run_scan_sync(job: ScanJob) -> None:
         # serializes the unified stream. Best-effort: never fails the scan. MCP
         # tool-rule findings derive from report tools inside to_findings(), so they
         # need no graph and are already covered.
+        #
+        # The surfacing graph + its interim JSON are scoped to the helper so they
+        # are released before the persist phase rebuilds the graph — otherwise the
+        # full-scan path holds two full current graphs (each with its own node
+        # dict, edge list, and adjacency indexes) at the persist peak (#4055/#4075).
         try:
-            from agent_bom.graph.builder import build_unified_graph_from_report
-
-            _interim_json = to_json(report)
-            _findings_graph = build_unified_graph_from_report(
-                _interim_json,
+            _surface_graph_derived_findings(
+                report,
                 scan_id=job.job_id,
                 tenant_id=job.tenant_id or "",
             )
-            attach_graph_derived_findings(report, _findings_graph)
         except Exception as gderiv_exc:  # noqa: BLE001
             _logger.warning("Graph-derived findings surfacing skipped: %s", sanitize_error(gderiv_exc))
 

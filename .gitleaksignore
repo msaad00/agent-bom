@@ -41,10 +41,3 @@ e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:360
 0e43ed628801d7c2d4fbdd7e3a01b07fda2b113b:src/agent_bom/api/routes/compliance.py:generic-api-key:534
 # History-only: earlier revision of the note above quoted the flagged pair.
 523c32e9b3c52b355c33cc67bac34e670ff6167f:.gitleaksignore:generic-api-key:39
-
-# False positives: the framework-library surface declares its NIST catalog
-# registry identifier in fields whose names end in _key across the API types,
-# UI test fixture, and catalog module — registry ids, not credentials.
-1909a366b5e9a5f2c7827393602f448a63f6f612:ui/lib/api-types.ts:generic-api-key:1971
-1909a366b5e9a5f2c7827393602f448a63f6f612:ui/tests/compliance-nist-catalog.test.tsx:generic-api-key:14
-eb61a063cce566930a6b0da61733c79dc3a71af4:src/agent_bom/compliance_nist_catalog.py:generic-api-key:146

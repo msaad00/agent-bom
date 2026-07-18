@@ -241,7 +241,13 @@ def test_check_identity_unknown_token_required_blocks():
 def test_check_identity_sanitizes_error_before_logging(caplog, monkeypatch):
     token = _make_jwt({"sub": "agent-x"}, header={"alg": "RS256", "kid": "line1\nline2"})
     msg = _msg_with_identity(token)
-    policy = {"require_agent_identity": True, "jwks_uri": "https://idp.example.invalid/jwks"}
+    # expected_audience is required for a direct jwks_uri; set it so verification
+    # reaches the header/kid decode where the sanitized error under test surfaces.
+    policy = {
+        "require_agent_identity": True,
+        "jwks_uri": "https://idp.example.invalid/jwks",
+        "expected_audience": "svc",
+    }
     monkeypatch.setattr(identity_mod, "_fetch_jwks", lambda _uri: {"keys": []})
 
     caplog.set_level(logging.DEBUG, logger="agent_bom.agent_identity")

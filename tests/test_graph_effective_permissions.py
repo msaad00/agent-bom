@@ -235,15 +235,11 @@ def test_resource_scoped_admin_action_is_not_flagged_admin():
     # evaluation (unlike a bare action/name match) respects resource scope.
     scoped = {
         "Version": "2012-10-17",
-        "Statement": [
-            {"Effect": "Allow", "Action": "iam:PutUserPolicy", "Resource": "arn:aws:iam::111122223333:user/self-service"}
-        ],
+        "Statement": [{"Effect": "Allow", "Action": "iam:PutUserPolicy", "Resource": "arn:aws:iam::111122223333:user/self-service"}],
     }
     g = UnifiedGraph(scan_id="s", tenant_id="t")
     g.add_node(UnifiedNode(id="role:scoped", entity_type=EntityType.ROLE, label="scoped-role"))
-    g.add_node(
-        UnifiedNode(id="pol:scoped", entity_type=EntityType.POLICY, label="scoped-policy", attributes={"policy_document": scoped})
-    )
+    g.add_node(UnifiedNode(id="pol:scoped", entity_type=EntityType.POLICY, label="scoped-policy", attributes={"policy_document": scoped}))
     g.add_edge(UnifiedEdge(source="role:scoped", target="pol:scoped", relationship=RelationshipType.ATTACHED))
 
     apply_effective_permissions(g)
@@ -262,11 +258,7 @@ def test_explicit_deny_overrides_wildcard_allow_in_evaluation():
     }
     g = UnifiedGraph(scan_id="s", tenant_id="t")
     g.add_node(UnifiedNode(id="role:locked", entity_type=EntityType.ROLE, label="AdministratorAccess-lookalike"))
-    g.add_node(
-        UnifiedNode(
-            id="pol:locked", entity_type=EntityType.POLICY, label="locked", attributes={"policy_document": deny_over_allow}
-        )
-    )
+    g.add_node(UnifiedNode(id="pol:locked", entity_type=EntityType.POLICY, label="locked", attributes={"policy_document": deny_over_allow}))
     g.add_edge(UnifiedEdge(source="role:locked", target="pol:locked", relationship=RelationshipType.ATTACHED))
 
     apply_effective_permissions(g)
@@ -292,14 +284,73 @@ def test_keyword_fallback_still_fires_when_no_document_available():
     assert stats["admin_via_heuristic"] >= 1
 
 
+_PARTIAL_DOC = {
+    "Version": "2012-10-17",
+    "Statement": [
+        {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::team-scratch/*"},
+        {"Effect": "Allow"},  # malformed: no Action/NotAction -> policy normalizes to PARTIAL
+    ],
+}
+
+
+def test_admin_name_heuristic_not_suppressed_under_partial_evidence():
+    # A role with AdministratorAccess attached ALONGSIDE a policy carrying a single
+    # malformed statement. The malformed statement makes the evaluated evidence
+    # INCOMPLETE (INDETERMINATE for the admin probes), so policy evaluation cannot
+    # confirm admin — but that non-authoritative verdict must NOT suppress the name
+    # heuristic. The role is a real admin and must fail toward flagging.
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:runner", entity_type=EntityType.ROLE, label="batch-runner"))
+    g.add_node(UnifiedNode(id="pol:admin", entity_type=EntityType.POLICY, label="AdministratorAccess"))
+    g.add_node(
+        UnifiedNode(
+            id="pol:scratch",
+            entity_type=EntityType.POLICY,
+            label="team-scratch",
+            attributes={"policy_document": _PARTIAL_DOC},
+        )
+    )
+    g.add_edge(UnifiedEdge(source="role:runner", target="pol:admin", relationship=RelationshipType.ATTACHED))
+    g.add_edge(UnifiedEdge(source="role:runner", target="pol:scratch", relationship=RelationshipType.ATTACHED))
+
+    apply_effective_permissions(g)
+    # Fail-closed: the AdministratorAccess name signal is honored because the policy
+    # evidence is only PARTIAL (not an authoritative "not admin" verdict).
+    assert g.nodes["role:runner"].attributes.get("admin_equivalent") is True
+    assert g.nodes["role:runner"].attributes.get("admin_equivalence_basis") == "name_heuristic"
+
+
+def test_complete_evidence_not_admin_still_suppresses_name_heuristic():
+    # Positive control: when the ONLY evidence is COMPLETE and authoritatively shows
+    # not-admin, an admin-ish NAME must remain suppressed (no false positive). This
+    # is the case the fix must NOT flip.
+    complete_not_admin = {
+        "Version": "2012-10-17",
+        "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::only/*"}],
+    }
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="role:look", entity_type=EntityType.ROLE, label="AdministratorAccess-lookalike"))
+    g.add_node(
+        UnifiedNode(
+            id="pol:ro",
+            entity_type=EntityType.POLICY,
+            label="read-only",
+            attributes={"policy_document": complete_not_admin},
+        )
+    )
+    g.add_edge(UnifiedEdge(source="role:look", target="pol:ro", relationship=RelationshipType.ATTACHED))
+
+    apply_effective_permissions(g)
+    assert g.nodes["role:look"].attributes.get("admin_equivalent") is not True
+    assert g.nodes["role:look"].attributes.get("admin_equivalence_basis") == "policy_evaluation"
+
+
 def test_scanner_privilege_level_admin_is_honored_without_document():
     # The scanner's action-derived privilege_level == "admin" on an attached policy
     # is a real signal (not a keyword) and is basis "scanner_actions".
     g = UnifiedGraph(scan_id="s", tenant_id="t")
     g.add_node(UnifiedNode(id="role:svc", entity_type=EntityType.ROLE, label="svc-role"))
-    g.add_node(
-        UnifiedNode(id="pol:x", entity_type=EntityType.POLICY, label="custom-x", attributes={"privilege_level": "admin"})
-    )
+    g.add_node(UnifiedNode(id="pol:x", entity_type=EntityType.POLICY, label="custom-x", attributes={"privilege_level": "admin"}))
     g.add_edge(UnifiedEdge(source="role:svc", target="pol:x", relationship=RelationshipType.ATTACHED))
 
     apply_effective_permissions(g)

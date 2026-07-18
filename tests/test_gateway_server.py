@@ -28,6 +28,7 @@ from agent_bom.api.auth import Role
 from agent_bom.api.tracing import parse_traceparent
 from agent_bom.gateway_server import GatewaySettings, GatewayUpstreamRelay, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
 
 
 def _simple_registry() -> UpstreamRegistry:
@@ -134,7 +135,37 @@ def test_healthz_lists_configured_upstreams() -> None:
             "dlp_enabled": False,
             "dlp_mode": "disabled",
         },
+        "fail_mode_runtime": {
+            "policy_fail_mode": "closed",
+            "subsystems": gateway_fail_mode_matrix("closed"),
+        },
     }
+
+
+def test_healthz_publishes_fail_mode_matrix_default_closed() -> None:
+    settings = GatewaySettings(registry=_simple_registry(), policy={})
+    client = TestClient(create_gateway_app(settings))
+    payload = client.get("/healthz").json()["fail_mode_runtime"]
+    assert payload["policy_fail_mode"] == "closed"
+    subsystems = {row["subsystem"]: row for row in payload["subsystems"]}
+    assert subsystems["policy_engine"]["posture"] == "fail_closed"
+    assert subsystems["caller_identity"]["posture"] == "fail_closed"
+    assert subsystems["drift_enforcement"]["posture"] == "fail_open"
+    assert subsystems["audit_export"]["posture"] == "fail_open"
+
+
+def test_healthz_fail_mode_matrix_reflects_explicit_open_mode() -> None:
+    settings = GatewaySettings(registry=_simple_registry(), policy={}, fail_mode="open")
+    client = TestClient(create_gateway_app(settings))
+    payload = client.get("/healthz").json()["fail_mode_runtime"]
+    assert payload["policy_fail_mode"] == "open"
+    subsystems = {row["subsystem"]: row for row in payload["subsystems"]}
+    # Configurable lanes flip with the fail mode …
+    assert subsystems["policy_engine"]["posture"] == "fail_open"
+    assert subsystems["firewall_policy"]["posture"] == "fail_open"
+    # … security decision lanes never soften.
+    assert subsystems["caller_identity"]["posture"] == "fail_closed"
+    assert subsystems["conditional_access"]["posture"] == "fail_closed"
 
 
 def test_healthz_reports_policy_reload_runtime(tmp_path: Path) -> None:

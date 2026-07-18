@@ -81,6 +81,7 @@ from agent_bom.proxy_policy import (
     summarize_policy_bundle,
 )
 from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan_tool_response
+from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
 from agent_bom.runtime.gateway_events import GatewayRuntimeEventType, build_gateway_runtime_event
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 from agent_bom.security import sanitize_error, sanitize_text
@@ -1333,6 +1334,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "dlp_enabled": settings.dlp_enabled,
                 "dlp_mode": settings.dlp_mode if settings.dlp_enabled else "disabled",
             },
+            # Honest fail-open/fail-closed posture per enforcement subsystem
+            # (docs/RUNTIME_FAIL_MODES.md). Resolved once at app build; the
+            # matrix itself is static documentation-as-data from
+            # agent_bom.runtime.fail_mode.
+            "fail_mode_runtime": {
+                "policy_fail_mode": resolved_fail_mode,
+                "subsystems": gateway_fail_mode_matrix(resolved_fail_mode),
+            },
         }
         if settings.enable_visual_leak_detection:
             from agent_bom.runtime.visual_leak_detector import visual_leak_runtime_health
@@ -2501,12 +2510,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             if allowed and dlp_config.enabled:
                 arg_findings = scan_tool_call(tool_name, arguments, dlp_config)
                 arg_blocked = dlp_config.mode == "enforce" and any(f.blocked for f in arg_findings)
-                arg_redacted = (
-                    dlp_config.mode == "enforce"
-                    and dlp_config.pii_action == "redact"
-                    and bool(arg_findings)
-                    and not arg_blocked
-                )
+                arg_redacted = dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and bool(arg_findings) and not arg_blocked
                 if arg_findings and settings.audit_sink is not None:
                     typed_arg_event = (
                         _typed_runtime_event(
@@ -2823,10 +2827,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             resp_findings = scan_tool_response(result_text, dlp_config)
             result_blocked = dlp_config.mode == "enforce" and any(f.blocked for f in resp_findings)
             result_redacted = (
-                dlp_config.mode == "enforce"
-                and dlp_config.pii_action == "redact"
-                and bool(resp_findings)
-                and not result_blocked
+                dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and bool(resp_findings) and not result_blocked
             )
             if resp_findings and settings.audit_sink is not None:
                 typed_result_event: dict[str, Any] = {}

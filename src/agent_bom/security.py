@@ -17,11 +17,16 @@ from urllib.parse import urlsplit, urlunsplit
 logger = logging.getLogger(__name__)
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
-# Allowed executables for MCP servers (security allowlist).
-# Includes package managers, runtimes, and container tools commonly used
-# to launch MCP servers. Adding a binary here means discovery won't block
-# the server — it does NOT mean the binary is safe to run untrusted.
-ALLOWED_COMMANDS = {
+# Recognized MCP server launcher binaries (package managers, runtimes, and
+# container tools commonly used to launch MCP servers).
+#
+# This list is a misconfiguration/typo guard for the stdio proxy spawn path —
+# it is NOT a sandbox and NOT an isolation boundary. Every binary here can
+# execute arbitrary code with the proxy's full host privileges; membership
+# only means the command *shape* looks like a plausible MCP launcher. The
+# actual execution control is container isolation via
+# ``agent_bom.proxy_sandbox`` (``--isolate`` / AGENT_BOM_MCP_SANDBOX).
+KNOWN_MCP_LAUNCHERS = {
     # JavaScript/TypeScript runtimes & package managers
     "npx",
     "npm",
@@ -64,7 +69,10 @@ DANGEROUS_ENV_VARS = {
     "NODE_OPTIONS",  # Can inject malicious code
 }
 
-# Shell metacharacters that indicate potential injection
+# Shell metacharacters rejected by validate_arguments. agent-bom itself spawns
+# MCP servers via an exec array (never a shell), so these characters are not
+# interpreted on our spawn path; the check flags configs that appear to expect
+# shell interpolation. Config hygiene, not an execution control.
 SHELL_METACHARACTERS = {";", "|", "&", "$", "`", "<", ">", "\n", "\r"}
 
 # Patterns for sensitive data (for redaction)
@@ -94,30 +102,49 @@ class SecurityError(Exception):
     pass
 
 
-def validate_command(command: str) -> None:
+def require_recognized_launcher(command: str) -> None:
     """
-    Validate that a command is in the allowed list.
+    Require that *command* is a recognized MCP launcher binary.
+
+    This is a launch-hygiene check that catches typos and obviously
+    misconfigured server commands before the proxy spawns them. It provides
+    NO isolation: every recognized launcher (``python``, ``node``,
+    ``docker``, …) can still execute arbitrary code as the host user.
+    Passing this check must never be read as "the server is sandboxed" —
+    the real execution control is container isolation via
+    ``agent_bom.proxy_sandbox`` (``--isolate``).
 
     Args:
-        command: The command to validate
+        command: The launcher command to check
 
     Raises:
-        SecurityError: If command is not allowed
+        SecurityError: If command is not a recognized MCP launcher
     """
-    if command not in ALLOWED_COMMANDS:
-        raise SecurityError(f"Command '{command}' is not in the allowed list. Allowed commands: {', '.join(sorted(ALLOWED_COMMANDS))}")
-    logger.debug(f"Command '{command}' validated successfully")
+    if command not in KNOWN_MCP_LAUNCHERS:
+        raise SecurityError(
+            f"Command '{command}' is not a recognized MCP launcher. Recognized launchers: "
+            f"{', '.join(sorted(KNOWN_MCP_LAUNCHERS))}. This check guards against misconfigured "
+            "server commands only — it is not a sandbox. Use container isolation (--isolate) "
+            "to restrict what a server can do."
+        )
+    logger.debug(f"Command '{command}' is a recognized MCP launcher")
 
 
 def validate_arguments(args: list[str]) -> None:
     """
-    Validate command arguments for shell metacharacters.
+    Reject command arguments containing shell metacharacters.
+
+    Config-hygiene check: agent-bom spawns MCP servers via an exec array
+    (never through a shell), so these characters are not interpreted on our
+    spawn path. An argument that contains them was almost certainly written
+    for shell interpolation and indicates a misconfigured server entry.
+    This is not an execution control and confers no isolation.
 
     Args:
         args: List of command arguments
 
     Raises:
-        SecurityError: If dangerous characters found
+        SecurityError: If shell metacharacters found
     """
     for arg in args:
         for char in SHELL_METACHARACTERS:
@@ -772,19 +799,24 @@ def create_safe_subprocess_env() -> dict[str, str]:
 
 def validate_mcp_server_config(server_config: dict) -> None:
     """
-    Validate an MCP server configuration for security issues.
+    Validate an MCP server configuration for hygiene issues before launch.
+
+    Checks launcher recognition, argument shape, and dangerous environment
+    variables. These are misconfiguration guards, not isolation — a config
+    that passes still runs with full host privileges unless container
+    isolation (``agent_bom.proxy_sandbox``, ``--isolate``) is enabled.
 
     Args:
         server_config: MCP server configuration dictionary
 
     Raises:
-        SecurityError: If configuration has security issues
+        SecurityError: If configuration fails a hygiene check
     """
-    # Validate command (remote/URL-based servers don't require a local command)
+    # Check the launcher (remote/URL-based servers don't require a local command)
     command = server_config.get("command", "")
     has_url = bool(server_config.get("url") or server_config.get("uri"))
     if not has_url:
-        validate_command(command)
+        require_recognized_launcher(command)
 
     # Validate arguments
     args = server_config.get("args", [])
@@ -849,7 +881,7 @@ def sanitize_error(exc: Exception | str, generic: bool = False) -> str:
 # Export all validation functions
 __all__ = [
     "SecurityError",
-    "validate_command",
+    "require_recognized_launcher",
     "validate_arguments",
     "validate_environment",
     "validate_path",

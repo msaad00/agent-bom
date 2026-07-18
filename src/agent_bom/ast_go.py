@@ -24,6 +24,7 @@ from agent_bom.ast_signal_utils import (
     check_prompt_risks,
     classify_prompt_type,
 )
+from agent_bom.ast_source_mask import mask_line_comments_and_strings
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -298,8 +299,13 @@ def _canonicalize_go_call_name(raw_name: str, alias_map: dict[str, str]) -> str:
 
 
 def _go_call_sites(body: str, *, line_offset: int, alias_map: dict[str, str]) -> list[_GoCallSite]:
+    # Mask comments and string/backtick-raw-string literals so sink tokens such
+    # as ``exec.Command`` mentioned inside them are never treated as call sites.
+    # Masking preserves character positions and newlines, so line numbers stay
+    # accurate. Mirrors the php/ruby/java/rust/swift/csharp call-site passes.
+    masked = mask_line_comments_and_strings(body, backtick_strings=True)
     call_sites: list[_GoCallSite] = []
-    for match in _GO_CALL_RE.finditer(body):
+    for match in _GO_CALL_RE.finditer(masked):
         raw_name = match.group("name")
         if raw_name in _GO_CALL_SKIP:
             continue
@@ -307,7 +313,7 @@ def _go_call_sites(body: str, *, line_offset: int, alias_map: dict[str, str]) ->
         if canonical in _GO_CALL_SKIP:
             continue
         open_index = match.end() - 1
-        args_segment = _balanced_segment(body, open_index, open_char="(", close_char=")")
+        args_segment = _balanced_segment(masked, open_index, open_char="(", close_char=")")
         argument_names: list[list[str]] = []
         if args_segment is not None:
             args_text, _ = args_segment
@@ -315,7 +321,7 @@ def _go_call_sites(body: str, *, line_offset: int, alias_map: dict[str, str]) ->
         call_sites.append(
             _GoCallSite(
                 name=canonical,
-                line_number=line_offset + body[: match.start()].count("\n"),
+                line_number=line_offset + masked[: match.start()].count("\n"),
                 argument_names=argument_names,
             )
         )
@@ -1017,8 +1023,12 @@ def scan_go_file(
         )
 
     entrypoint = tools[0].name if tools else "module"
+    # Mask comments and string/backtick-raw-string literals so sink/LLM tokens
+    # mentioned inside them are not reported as real dangerous or LLM calls.
+    # Masking preserves positions and newlines, so line numbers stay accurate.
+    masked_source = mask_line_comments_and_strings(source, backtick_strings=True)
     for sink_name, pattern in [*_GO_DANGEROUS_PATTERNS, *_GO_LLM_PATTERNS]:
-        for match in pattern.finditer(source):
+        for match in pattern.finditer(masked_source):
             category = "go_llm_call" if sink_name.startswith(("openai", "anthropic")) else "go_dangerous_call"
             title = "Go source invokes an LLM client" if category == "go_llm_call" else "Go source invokes a dangerous capability"
             flow_findings.append(

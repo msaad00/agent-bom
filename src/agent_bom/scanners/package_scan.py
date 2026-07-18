@@ -130,6 +130,10 @@ class ScanOptions:
     resolve_transitive: bool = False
     prefer_local_db: bool = False
     demo_advisories: bool = False
+    # Target project directory (the ``-p`` path) for local install resolution.
+    # When set, bare/floating versions are resolved against the target — its
+    # virtualenv for pip, the dir itself for npm/go — never the scanner host.
+    project_dir: Optional[str] = None
 
 
 def default_scan_options(
@@ -139,6 +143,7 @@ def default_scan_options(
     prefer_local_db: bool | None = None,
     offline: bool | None = None,
     demo_advisories: bool = False,
+    project_dir: str | None = None,
 ) -> ScanOptions:
     """Build per-scan options while preserving legacy offline defaults."""
 
@@ -150,7 +155,30 @@ def default_scan_options(
             prefer_local_db if prefer_local_db is not None else _scanners_patchable("prefer_local_db")
         ),
         demo_advisories=demo_advisories,
+        project_dir=project_dir,
     )
+
+
+def _target_venv_python(project_dir: str | None) -> str | None:
+    """Return a Python interpreter inside the TARGET project's virtualenv.
+
+    Local pip resolution must reflect what is installed in the *target* project,
+    not the scanner host. Only a virtualenv shipped with the target counts; when
+    none exists we resolve nothing rather than stamping a host version.
+    """
+    if not project_dir:
+        return None
+    root = Path(project_dir)
+    for rel in (
+        (".venv", "bin", "python"),
+        ("venv", "bin", "python"),
+        (".venv", "Scripts", "python.exe"),
+        ("venv", "Scripts", "python.exe"),
+    ):
+        candidate = root.joinpath(*rel)
+        if candidate.exists():
+            return str(candidate)
+    return None
 
 
 class IncompleteScanError(RuntimeError):
@@ -1030,10 +1058,16 @@ async def scan_packages(
 
             local_resolved = 0
 
-            # Resolve pip packages from locally installed versions
+            # Local install resolution reflects the TARGET project (the ``-p``
+            # path), never the scanner host. Without a target dir we resolve
+            # nothing here and let the honest registry/floating paths take over.
+            target_dir = scan_options.project_dir
+
+            # Resolve pip packages from the target project's virtualenv only.
             pip_unresolved = [p for p in unresolved if p.ecosystem.lower() == "pypi"]
-            if pip_unresolved:
-                pip_versions = resolve_pip_versions()
+            venv_python = _target_venv_python(target_dir)
+            if pip_unresolved and venv_python:
+                pip_versions = resolve_pip_versions(venv_python)
                 for pkg in pip_unresolved:
                     installed_ver = (
                         pip_versions.get(pkg.name.lower())
@@ -1046,13 +1080,10 @@ async def scan_packages(
                         pkg.version_source = "installed"
                         local_resolved += 1
 
-            # Resolve npm packages from locally installed versions
+            # Resolve npm packages from the target project directory.
             npm_unresolved = [p for p in unresolved if p.ecosystem.lower() == "npm"]
-            if npm_unresolved:
-                from pathlib import Path as _NpmPath
-
-                # Try CWD — npm ls reports the full dependency tree
-                npm_versions = resolve_npm_versions(_NpmPath.cwd())
+            if npm_unresolved and target_dir:
+                npm_versions = resolve_npm_versions(Path(target_dir))
                 for pkg in npm_unresolved:
                     installed_ver = npm_versions.get(pkg.name)
                     if installed_ver:
@@ -1061,12 +1092,10 @@ async def scan_packages(
                         pkg.version_source = "installed"
                         local_resolved += 1
 
-            # Resolve Go packages from locally installed versions
+            # Resolve Go packages from the target project directory.
             go_unresolved = [p for p in unresolved if p.ecosystem.lower() == "go"]
-            if go_unresolved:
-                from pathlib import Path as _GoPath
-
-                go_versions = resolve_go_versions(_GoPath.cwd())
+            if go_unresolved and target_dir:
+                go_versions = resolve_go_versions(Path(target_dir))
                 for pkg in go_unresolved:
                     installed_ver = go_versions.get(pkg.name)
                     if installed_ver:
@@ -1758,6 +1787,7 @@ def scan_agents_sync(
     offline: bool | None = None,
     prefer_local_db: bool | None = None,
     demo_advisories: bool = False,
+    project_dir: str | None = None,
     options: ScanOptions | None = None,
 ) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
@@ -1767,6 +1797,7 @@ def scan_agents_sync(
         prefer_local_db=prefer_local_db,
         offline=offline,
         demo_advisories=demo_advisories,
+        project_dir=project_dir,
     )
     if enable_enrichment:
         blast_radii = asyncio.run(

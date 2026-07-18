@@ -29,9 +29,51 @@ _GIT_REF_FLOATING_REASON = (
 )
 
 
+#: Operators that pin an exact installed version. Everything else (``>=``,
+#: ``<``, ``~=``, ``!=`` or a ``==x.*`` wildcard) is a range/constraint and does
+#: not identify the installed version.
+_EXACT_OPERATORS = {"==", "==="}
+
+
 def _looks_like_git_requirement(url: str) -> bool:
     lowered = url.lower()
     return lowered.startswith(("git+", "git@", "git://")) or "git+" in lowered
+
+
+def _requirement_package(name: str, operator: str, version: str, *, is_direct: bool) -> Package:
+    """Build a Package for a ``name<op>version`` declaration line.
+
+    An exact ``==`` pin is reported as the installed version. A range/inequality
+    (``>=``/``<``/``~=``/``!=`` or a ``==x.*`` wildcard) does NOT identify an
+    installed version — the named bound is a constraint the resolved version may
+    even exclude (``<2.3`` excludes 2.3). Emitting ``pkg@<bound>`` as an exact pin
+    is a fabricated fact, so a range is recorded as a floating declaration
+    reference with lowered confidence instead. Packages come from a declaration
+    manifest (no runtime/import proof), so reachability is ``declaration_only``.
+    """
+    if operator in _EXACT_OPERATORS and "*" not in version:
+        return Package(
+            name=name,
+            version=version,
+            ecosystem="pypi",
+            purl=f"pkg:pypi/{name}@{version}",
+            is_direct=is_direct,
+            reachability_evidence="declaration_only",
+        )
+    return Package(
+        name=name,
+        version="unknown",
+        ecosystem="pypi",
+        is_direct=is_direct,
+        declared_version=f"{operator}{version}",
+        floating_reference=True,
+        floating_reference_reason=(
+            f"declared as a version constraint ({operator}{version}), not an exact "
+            "pin — the installed version is unknown and may differ from the bound"
+        ),
+        version_confidence="low",
+        reachability_evidence="declaration_only",
+    )
 
 
 def _git_reference_package(line: str, *, is_direct: bool = True) -> Package | None:
@@ -61,6 +103,7 @@ def _git_reference_package(line: str, *, is_direct: bool = True) -> Package | No
         floating_reference=True,
         floating_reference_reason=_GIT_REF_FLOATING_REASON,
         version_confidence="low",
+        reachability_evidence="declaration_only",
     )
 
 
@@ -264,16 +307,8 @@ def parse_pip_packages(directory: Path) -> list[Package]:
             # Parse name==version, name>=version, etc.
             match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
             if match:
-                name, _, version = match.groups()
-                packages.append(
-                    Package(
-                        name=name,
-                        version=version,
-                        ecosystem="pypi",
-                        purl=f"pkg:pypi/{name}@{version}",
-                        is_direct=True,
-                    )
-                )
+                name, operator, version = match.groups()
+                packages.append(_requirement_package(name, operator, version, is_direct=True))
             else:
                 # Just a name, no version
                 name_match = re.match(r"^([a-zA-Z0-9_.-]+)", line)
@@ -284,6 +319,7 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                             version="unknown",
                             ecosystem="pypi",
                             is_direct=True,
+                            reachability_evidence="declaration_only",
                         )
                     )
 
@@ -319,16 +355,8 @@ def parse_pip_packages(directory: Path) -> list[Package]:
             for dep in deps:
                 match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", dep)
                 if match:
-                    name, _, version = match.groups()
-                    packages.append(
-                        Package(
-                            name=name,
-                            version=version,
-                            ecosystem="pypi",
-                            purl=f"pkg:pypi/{name}@{version}",
-                            is_direct=True,
-                        )
-                    )
+                    name, operator, version = match.groups()
+                    packages.append(_requirement_package(name, operator, version, is_direct=True))
         except Exception as e:
             logger.debug(f"Failed to parse pyproject.toml at {pyproject}: {e}")
 
@@ -350,16 +378,8 @@ def _parse_requirements_lines(lines: list[str], is_direct: bool = True) -> list[
             continue
         m = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
         if m:
-            req_name, _, req_version = m.groups()
-            packages.append(
-                Package(
-                    name=req_name,
-                    version=req_version,
-                    ecosystem="pypi",
-                    purl=f"pkg:pypi/{req_name}@{req_version}",
-                    is_direct=is_direct,
-                )
-            )
+            req_name, operator, req_version = m.groups()
+            packages.append(_requirement_package(req_name, operator, req_version, is_direct=is_direct))
         else:
             bare = re.match(r"^([a-zA-Z0-9_.-]+)", line)
             if bare:
@@ -369,6 +389,7 @@ def _parse_requirements_lines(lines: list[str], is_direct: bool = True) -> list[
                         version="unknown",
                         ecosystem="pypi",
                         is_direct=is_direct,
+                        reachability_evidence="declaration_only",
                     )
                 )
     return packages

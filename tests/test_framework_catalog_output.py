@@ -18,8 +18,8 @@ def test_json_output_includes_framework_catalog_metadata():
         "fetched_at": 0,
         "normalized_sha256": "abc123",
         "sources": {},
-        "technique_count": 557,
-        "cwe_mapping_count": 146,
+        "technique_count": 691,
+        "cwe_mapping_count": 109,
         "path": "/tmp/catalog.json",
     }
 
@@ -27,4 +27,4 @@ def test_json_output_includes_framework_catalog_metadata():
         payload = to_json(report)
 
     assert payload["framework_catalogs"]["mitre_attack"]["attack_version"] == "ATT&CK vTEST"
-    assert payload["framework_catalogs"]["mitre_attack"]["technique_count"] == 557
+    assert payload["framework_catalogs"]["mitre_attack"]["technique_count"] == 691

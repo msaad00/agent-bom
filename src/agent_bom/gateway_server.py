@@ -2510,12 +2510,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             if allowed and dlp_config.enabled:
                 arg_findings = scan_tool_call(tool_name, arguments, dlp_config)
                 arg_blocked = dlp_config.mode == "enforce" and any(f.blocked for f in arg_findings)
-                arg_redacted = (
-                    dlp_config.mode == "enforce"
-                    and dlp_config.pii_action == "redact"
-                    and bool(arg_findings)
-                    and not arg_blocked
-                )
+                arg_redacted = dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and bool(arg_findings) and not arg_blocked
                 if arg_findings and settings.audit_sink is not None:
                     typed_arg_event = (
                         _typed_runtime_event(
@@ -2832,10 +2827,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             resp_findings = scan_tool_response(result_text, dlp_config)
             result_blocked = dlp_config.mode == "enforce" and any(f.blocked for f in resp_findings)
             result_redacted = (
-                dlp_config.mode == "enforce"
-                and dlp_config.pii_action == "redact"
-                and bool(resp_findings)
-                and not result_blocked
+                dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and bool(resp_findings) and not result_blocked
             )
             if resp_findings and settings.audit_sink is not None:
                 typed_result_event: dict[str, Any] = {}

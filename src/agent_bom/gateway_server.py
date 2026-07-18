@@ -81,6 +81,7 @@ from agent_bom.proxy_policy import (
     summarize_policy_bundle,
 )
 from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan_tool_response
+from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
 from agent_bom.runtime.gateway_events import GatewayRuntimeEventType, build_gateway_runtime_event
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 from agent_bom.security import sanitize_error, sanitize_text
@@ -1332,6 +1333,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "tool_scope_mapped_tools": len(settings.tool_scope_map),
                 "dlp_enabled": settings.dlp_enabled,
                 "dlp_mode": settings.dlp_mode if settings.dlp_enabled else "disabled",
+            },
+            # Honest fail-open/fail-closed posture per enforcement subsystem
+            # (docs/RUNTIME_FAIL_MODES.md). Resolved once at app build; the
+            # matrix itself is static documentation-as-data from
+            # agent_bom.runtime.fail_mode.
+            "fail_mode_runtime": {
+                "policy_fail_mode": resolved_fail_mode,
+                "subsystems": gateway_fail_mode_matrix(resolved_fail_mode),
             },
         }
         if settings.enable_visual_leak_detection:

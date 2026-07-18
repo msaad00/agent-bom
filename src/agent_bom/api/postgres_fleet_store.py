@@ -9,18 +9,25 @@ Requires ``pip install 'agent-bom[postgres]'``.
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING, Any
 
 from agent_bom.api.postgres_common import (
+    ConnectionPool,
     _ensure_tenant_rls,
     _get_pool,
     _tenant_connection,
 )
 
+if TYPE_CHECKING:
+    # Imported lazily at runtime (inside methods) to avoid a circular import
+    # with fleet_store; TYPE_CHECKING keeps the annotations resolvable.
+    from .fleet_store import FleetAgent, FleetLifecycleState
+
 
 class PostgresFleetStore:
     """PostgreSQL-backed fleet agent persistence."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -58,7 +65,7 @@ class PostgresFleetStore:
             _ensure_tenant_rls(conn, "fleet_agents", "tenant_id")
             conn.commit()
 
-    def put(self, agent) -> None:
+    def put(self, agent: FleetAgent) -> None:
         data = agent.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
@@ -85,7 +92,7 @@ class PostgresFleetStore:
             )
             conn.commit()
 
-    def get(self, agent_id: str, *, tenant_id: str):
+    def get(self, agent_id: str, *, tenant_id: str) -> FleetAgent | None:
         from .fleet_store import FleetAgent
 
         with _tenant_connection(self._pool) as conn:
@@ -98,7 +105,7 @@ class PostgresFleetStore:
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
             return FleetAgent.model_validate_json(raw)
 
-    def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None):
+    def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None) -> FleetAgent | None:
         from .fleet_store import FleetAgent
 
         with _tenant_connection(self._pool) as conn:
@@ -114,7 +121,7 @@ class PostgresFleetStore:
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
             return FleetAgent.model_validate_json(raw)
 
-    def get_by_name(self, name: str):
+    def get_by_name(self, name: str) -> FleetAgent | None:
         from .fleet_store import FleetAgent
 
         with _tenant_connection(self._pool) as conn:
@@ -131,23 +138,23 @@ class PostgresFleetStore:
                 (agent_id, tenant_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
-    def list_all(self) -> list:
+    def list_all(self) -> list[FleetAgent]:
         from .fleet_store import FleetAgent
 
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT data FROM fleet_agents ORDER BY name").fetchall()
             return [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
-    def list_summary(self) -> list[dict]:
+    def list_summary(self) -> list[dict[str, Any]]:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 "SELECT agent_id, canonical_id, name, lifecycle_state, trust_score FROM fleet_agents ORDER BY name"
             ).fetchall()
             return [{"agent_id": r[0], "canonical_id": r[1], "name": r[2], "lifecycle_state": r[3], "trust_score": r[4]} for r in rows]
 
-    def list_by_tenant(self, tenant_id: str) -> list:
+    def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]:
         from .fleet_store import FleetAgent
 
         with _tenant_connection(self._pool) as conn:
@@ -165,7 +172,7 @@ class PostgresFleetStore:
         include_quarantined: bool = False,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list, int]:
+    ) -> tuple[list[FleetAgent], int]:
         from .fleet_store import FleetAgent
 
         clauses = ["tenant_id = %s"]
@@ -210,12 +217,12 @@ class PostgresFleetStore:
             agents = [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
             return agents, int(total_row[0] if total_row else 0)
 
-    def list_tenants(self) -> list[dict]:
+    def list_tenants(self) -> list[dict[str, Any]]:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT tenant_id, COUNT(*) as cnt FROM fleet_agents GROUP BY tenant_id ORDER BY tenant_id").fetchall()
             return [{"tenant_id": r[0], "agent_count": r[1]} for r in rows]
 
-    def update_state(self, agent_id: str, state) -> bool:
+    def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
                 "UPDATE fleet_agents SET lifecycle_state = %s WHERE agent_id = %s",
@@ -233,9 +240,9 @@ class PostgresFleetStore:
                         (json.dumps(data), agent_id),
                     )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
-    def batch_put(self, agents: list) -> int:
+    def batch_put(self, agents: list[FleetAgent]) -> int:
         count = 0
         for agent in agents:
             self.put(agent)

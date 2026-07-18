@@ -10,6 +10,11 @@
       "title": "Tampered",
       "type": "integer"
     },
+    "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+    },
     "verified": {
       "default": 0,
       "title": "Verified",

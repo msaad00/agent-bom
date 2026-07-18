@@ -1146,6 +1146,9 @@ class AIBOMReport:
     # Graph toxic-combination findings (serialized Finding dicts; set at the graph-build call site).
     # Rehydrated into the unified Finding stream by to_findings() so they reach --fail-on-severity.
     toxic_combination_findings_data: Optional[list[Any]] = None
+    # CIEM over-privilege findings (serialized Finding dicts; set at the graph-build call site).
+    # Right-sizing from AWS Access-Advisor usage evidence; rehydrated by to_findings().
+    ciem_over_privilege_findings_data: Optional[list[Any]] = None
     # Estate-wide cloud asset inventory; one provider payload or a per-provider list (opt-in AGENT_BOM_CLOUD_INVENTORY)
     cloud_inventory_data: Optional[Union[dict[str, Any], list[Any]]] = None
     identity_discovery_data: Optional[dict[str, Any]] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
@@ -1272,6 +1275,20 @@ class AIBOMReport:
 
         return toxic_combination_findings_from_data(self.toxic_combination_findings_data)
 
+    def _ciem_over_privilege_findings(self) -> "list[Finding]":
+        """CIEM over-privilege findings, rehydrated from the side block.
+
+        Access-Advisor right-sizing findings are serialized on
+        ``ciem_over_privilege_findings_data`` at the graph-build call site;
+        surfacing them here routes them through ``--fail-on-severity`` and every
+        machine output (JSON/SARIF/CSV), mirroring the toxic-combination block.
+        """
+        if not self.ciem_over_privilege_findings_data:
+            return []
+        from agent_bom.graph.nhi_governance import ciem_over_privilege_findings_from_data
+
+        return ciem_over_privilege_findings_from_data(self.ciem_over_privilege_findings_data)
+
     def to_findings(self) -> "list[Finding]":
         """Return the unified findings list, auto-populating from blast_radii if empty.
 
@@ -1294,6 +1311,8 @@ class AIBOMReport:
         base.extend(finding for finding in self._cloud_cis_findings() if finding.id not in cis_existing)
         toxic_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._toxic_combination_findings() if finding.id not in toxic_existing)
+        ciem_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._ciem_over_privilege_findings() if finding.id not in ciem_existing)
         gov_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._snowflake_governance_findings() if finding.id not in gov_existing)
         malicious_existing = {getattr(f, "id", None) for f in base}

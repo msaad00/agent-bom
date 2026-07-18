@@ -84,10 +84,25 @@ def test_parse_extracts_technique_in_scope():
     assert "execution" in techniques["T1059"]["tactics"]
 
 
-def test_parse_excludes_out_of_scope_tactic():
+def test_parse_includes_reconnaissance_tactic():
+    # Reconnaissance (TA0043) is one of the 14 Enterprise tactics and is in scope.
     bundle = _attack_bundle([_technique("attack-pattern--recon", "T1595", "Active Scanning", ["reconnaissance"])])
     _, techniques = _parse_attack_stix(bundle)
-    assert "T1595" not in techniques  # reconnaissance not in TOP_TACTIC_PHASE_NAMES
+    assert "T1595" in techniques
+    assert "reconnaissance" in techniques["T1595"]["tactics"]
+
+
+def test_parse_includes_resource_development_tactic():
+    # Resource Development (TA0042) is one of the 14 Enterprise tactics.
+    bundle = _attack_bundle([_technique("attack-pattern--rd", "T1583", "Acquire Infrastructure", ["resource-development"])])
+    _, techniques = _parse_attack_stix(bundle)
+    assert "T1583" in techniques
+
+
+def test_parse_excludes_unknown_tactic():
+    bundle = _attack_bundle([_technique("attack-pattern--x", "T9998", "Bogus", ["not-a-real-tactic"])])
+    _, techniques = _parse_attack_stix(bundle)
+    assert "T9998" not in techniques  # phase name not in TOP_TACTIC_PHASE_NAMES
 
 
 def test_parse_excludes_deprecated():
@@ -118,13 +133,13 @@ def test_parse_multiple_techniques():
         [
             _technique("attack-pattern--a", "T1059", "Execution Tech", ["execution"]),
             _technique("attack-pattern--b", "T1552", "Cred Tech", ["credential-access"]),
-            _technique("attack-pattern--c", "T1595", "Recon Tech", ["reconnaissance"]),  # out of scope
+            _technique("attack-pattern--c", "T1595", "Recon Tech", ["reconnaissance"]),  # now in scope
         ]
     )
     _, techniques = _parse_attack_stix(bundle)
     assert "T1059" in techniques
     assert "T1552" in techniques
-    assert "T1595" not in techniques
+    assert "T1595" in techniques
 
 
 def test_all_parsed_tactics_in_top_scope():
@@ -396,8 +411,13 @@ def test_top_tactics_is_frozenset():
 
 
 def test_top_tactics_count():
-    """Exactly 10 tactics are in scope."""
-    assert len(TOP_TACTIC_PHASE_NAMES) == 10
+    """All 14 MITRE ATT&CK Enterprise tactics are in scope."""
+    assert len(TOP_TACTIC_PHASE_NAMES) == 14
+
+
+def test_reconnaissance_and_resource_development_in_scope():
+    assert "reconnaissance" in TOP_TACTIC_PHASE_NAMES
+    assert "resource-development" in TOP_TACTIC_PHASE_NAMES
 
 
 def test_top_tactics_all_lowercase_hyphenated():

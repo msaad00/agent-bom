@@ -2949,10 +2949,10 @@ components:
         min_severity:
           anyOf:
           - enum:
-            - critical
-            - high
-            - medium
             - low
+            - medium
+            - high
+            - critical
             type: string
           - type: 'null'
           title: Min Severity

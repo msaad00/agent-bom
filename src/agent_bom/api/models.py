@@ -68,6 +68,15 @@ ScanConnectorName = Annotated[str, Field(max_length=_SCAN_CONNECTOR_MAX_LENGTH)]
 ScanGlobPattern = Annotated[str, Field(max_length=_SCAN_GLOB_MAX_LENGTH)]
 ScanSinglePath = Annotated[str, Field(max_length=_SCAN_PATH_MAX_LENGTH)]
 
+_SCAN_SEVERITY_ORDER = ("low", "medium", "high", "critical")
+
+
+def _stabilize_scan_severity_schema(schema: dict[str, Any]) -> None:
+    """Keep OpenAPI output stable across Python ``Literal`` implementations."""
+    for variant in schema.get("anyOf", ()):
+        if "enum" in variant:
+            variant["enum"] = list(_SCAN_SEVERITY_ORDER)
+
 
 class _BoundedProgress(list[str]):
     """List that keeps only the latest configured API progress events."""
@@ -182,7 +191,10 @@ class ScanRequest(BaseModel):
     exclude_servers: list[ScanGlobPattern] = Field(default_factory=list)
     """Exclude MCP servers matching these name patterns."""
 
-    min_severity: Literal["low", "medium", "high", "critical"] | None = None
+    min_severity: Annotated[
+        Literal["low", "medium", "high", "critical"] | None,
+        Field(json_schema_extra=_stabilize_scan_severity_schema),
+    ] = None
     """Minimum severity to include in results (low/medium/high/critical)."""
 
     @field_validator("format", "min_severity", mode="before")

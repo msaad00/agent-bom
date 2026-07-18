@@ -204,10 +204,10 @@
           "anyOf": [
             {
               "enum": [
-                "critical",
-                "high",
+                "low",
                 "medium",
-                "low"
+                "high",
+                "critical"
               ],
               "type": "string"
             },

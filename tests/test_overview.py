@@ -209,15 +209,19 @@ def _ingest_hub_findings(findings: list[dict], *, tenant_id: str = "default") ->
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     store = get_compliance_hub_store()
-    store.add(tenant_id, findings)
     now = datetime.now(timezone.utc).isoformat()
-    current = []
+    # The real ingest (``hub_ingest_store_writes``) appends the SAME payloads to
+    # the ledger and the current-state table, so their finding ids match and the
+    # current row can hydrate ledger-only fields (e.g. is_kev). Mirror that here —
+    # normalise once, then write the identical list to both.
+    payloads = []
     for idx, row in enumerate(findings):
         payload = dict(row)
         payload.setdefault("id", str(row.get("finding_id") or row.get("id") or f"hub-{idx}"))
         payload["origin"] = "bulk_ingest"
-        current.append(payload)
-    store.upsert_current_batch(tenant_id, current, observed_at=now, batch_id="hub-test-batch", source="test")
+        payloads.append(payload)
+    store.add(tenant_id, payloads)
+    store.upsert_current_batch(tenant_id, payloads, observed_at=now, batch_id="hub-test-batch", source="test")
 
 
 def test_overview_counts_bulk_ingested_findings() -> None:
@@ -371,6 +375,83 @@ def test_overview_hub_findings_do_not_upgrade_failing_scan() -> None:
 
 def client_get_overview() -> dict:
     return TestClient(app).get("/v1/overview", headers=_AUTH_HEADERS).json()
+
+
+def test_overview_none_severity_hub_finding_counted_in_exec_total() -> None:
+    """A ``none``-severity hub finding is counted in the drill, so it must be in
+    the exec total too — folded into ``unrated``, never silently dropped (#3961).
+
+    Before the fix ``_combined_severity`` folded only ``info``/``unknown`` into
+    ``unrated`` and ``none`` fell out of ``total`` while /v1/findings still
+    counted it — an exec/drill mismatch.
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    _ingest_hub_findings(
+        [
+            {"finding_id": "N-1", "severity": "none", "title": "no severity"},
+            {"finding_id": "H-1", "severity": "high", "title": "warn"},
+        ]
+    )
+    client = TestClient(app)
+    counts = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+    # ``none`` folds into the honest unrated bucket, and the total counts both.
+    assert counts["unrated"] >= 1
+    assert counts["total"] == 2
+    # Reconciles EXACTLY with the drill: /v1/findings counts the same rows.
+    findings = client.get("/v1/findings", headers=_AUTH_HEADERS).json()
+    assert counts["total"] == findings["total"]
+
+    get_compliance_hub_store().clear("default")
+
+
+def test_overview_hub_kev_finding_moves_exec_kev_count() -> None:
+    """A KEV-flagged hub finding shows in the drill, so it must move the exec KEV
+    headline/counts — sourced from the same combined spine, not scan-lane only.
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    _ingest_hub_findings(
+        [
+            {"finding_id": "K-1", "severity": "high", "title": "kev bug", "is_kev": True},
+            {"finding_id": "P-1", "severity": "high", "title": "plain"},
+        ]
+    )
+    client = TestClient(app)
+    data = client.get("/v1/overview", headers=_AUTH_HEADERS).json()
+    assert data["headline"]["kev"] >= 1
+    counts = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+    assert counts["kev"] >= 1
+
+    get_compliance_hub_store().clear("default")
+
+
+def test_overview_vuln_tile_reflects_pushed_findings_without_scan() -> None:
+    """`findings push` (no scan job) must not leave the Vuln/SCA tile at
+    "0 open CVEs · ok" while /findings?domain=vuln returns real highs (#3962).
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    _ingest_hub_findings(
+        [
+            {"finding_id": "V-1", "severity": "high", "title": "cve", "vulnerability_id": "CVE-2025-1"},
+            {"finding_id": "V-2", "severity": "critical", "title": "cve2", "vulnerability_id": "CVE-2025-2"},
+        ]
+    )
+    data = client_get_overview()
+    vuln = data["domains"]["vuln"]
+    # A green "ok" tile can no longer sit over pushed critical/high findings.
+    assert vuln["metric"] > 0
+    assert vuln["status"] != "ok"
+    assert vuln["status"] in {"critical", "warn"}
+
+    get_compliance_hub_store().clear("default")
 
 
 def test_overview_severity_sum_equals_unique_cves_with_unknown_severity() -> None:

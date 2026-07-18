@@ -338,6 +338,13 @@ def _agent_is_quarantined(tenant_id: str, source_agent: str) -> bool:
     return False
 
 
+# Upper bound on open incidents fetched per drift enforcement check. When a
+# tenant has more open incidents than this, we cannot rule out a violation in the
+# untraversed tail, so the lookup returns ``unavailable`` (honest partial signal)
+# rather than silently under-enforcing on the capped result.
+_DRIFT_INCIDENT_LOOKUP_CAP = 200
+
+
 @dataclass(frozen=True)
 class _DriftLookup:
     violates: bool = False
@@ -359,7 +366,7 @@ def _open_drift_violates_tool(tenant_id: str, blueprint_id: str, tool_name: str)
     try:
         from agent_bom.api.drift_incident_store import get_drift_incident_store
 
-        incidents = get_drift_incident_store().list(tenant_id, include_resolved=False, limit=200)
+        incidents = get_drift_incident_store().list(tenant_id, include_resolved=False, limit=_DRIFT_INCIDENT_LOOKUP_CAP)
     except Exception as exc:  # noqa: BLE001
         logger.warning("gateway drift check failed: %s", _sanitize_for_log(exc))
         return _DriftLookup(unavailable=True, reason="drift incident store unavailable")
@@ -376,6 +383,19 @@ def _open_drift_violates_tool(tenant_id: str, blueprint_id: str, tool_name: str)
                 violates=True,
                 reason=f"tool '{tool_name}' is outside role blueprint '{blueprint_id}'",
             )
+    if len(incidents) >= _DRIFT_INCIDENT_LOOKUP_CAP:
+        # The open-incident set was capped, so a violation may exist in the tail
+        # we never inspected. Surface this as unavailable (partial) instead of a
+        # clean pass, so enforce-mode callers fail closed rather than silently
+        # under-enforce for the tenant's tail incidents.
+        logger.warning(
+            "gateway drift check truncated at %d open incidents for tenant; enforcement coverage is partial",
+            _DRIFT_INCIDENT_LOOKUP_CAP,
+        )
+        return _DriftLookup(
+            unavailable=True,
+            reason=f"open drift incidents exceed lookup cap ({_DRIFT_INCIDENT_LOOKUP_CAP}); enforcement coverage partial",
+        )
     return _DriftLookup()
 
 
@@ -2908,21 +2928,29 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 upstream_response["result"] = _redact_obj_pii(upstream_response.get("result"))
 
         if settings.audit_sink is not None:
-            await settings.audit_sink(
-                {
-                    "action": "gateway.tool_call" if is_tools_call(message) else "gateway.message",
-                    "upstream": upstream.name,
-                    "tenant_id": tenant_id,
-                    "method": message.get("method"),
-                    "tool": message.get("params", {}).get("name") if is_tools_call(message) else None,
-                    **_typed_runtime_event(
+            _forward_is_tool_call = is_tools_call(message)
+            forward_audit_event: dict[str, Any] = {
+                "action": "gateway.tool_call" if _forward_is_tool_call else "gateway.message",
+                "upstream": upstream.name,
+                "tenant_id": tenant_id,
+                "method": message.get("method"),
+                "tool": message.get("params", {}).get("name") if _forward_is_tool_call else None,
+            }
+            # Only an actual tools/call is an authorized tool invocation. JSON-RPC
+            # handshake / discovery traffic (initialize, tools/list, notifications)
+            # is forwarded too but must not be tagged TOOL_CALL_ALLOWED, or the live
+            # feed would inflate calls_today / tool_calls_authorized with
+            # non-invocation messages.
+            if _forward_is_tool_call:
+                forward_audit_event.update(
+                    _typed_runtime_event(
                         GatewayRuntimeEventType.TOOL_CALL_ALLOWED,
                         decision="allow",
                         policy_source=resolved_policy_source,
-                        tool=str(message.get("params", {}).get("name") or message.get("method") or ""),
-                    ),
-                }
-            )
+                        tool=str(message.get("params", {}).get("name") or ""),
+                    )
+                )
+            await settings.audit_sink(forward_audit_event)
         response_headers = dict(rate_limit_headers)
         response_headers["traceparent"] = str(trace_meta["traceparent"])
         if trace_meta["tracestate"]:

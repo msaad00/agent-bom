@@ -10,9 +10,10 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from agent_bom.cli import main
+from agent_bom.cli.agents._discovery import _aggregate_sast_path_results
 from agent_bom.mcp_server_metadata import build_server_card
 from agent_bom.mcp_tools.scanning import code_scan_impl
-from agent_bom.sast import SASTExecutionStatus, SASTScanError
+from agent_bom.sast import SASTExecutionStatus, SASTResult, SASTScanError
 from agent_bom.scanners.registry import list_registered_scanners
 
 
@@ -108,3 +109,46 @@ def test_mcp_code_scan_returns_typed_sanitized_failure(monkeypatch, tmp_path: Pa
     assert result["status_reason"] == "unexpected_failure"
     assert result["status_detail"] == "SAST execution failed."
     assert secret not in json.dumps(result)
+
+
+# ── Multi-path aggregation: a failure in ANY --code path must survive ──────────
+
+
+def _failed_result() -> dict:
+    return SASTResult(
+        execution_status=SASTExecutionStatus.FAILED,
+        status_reason="semgrep_unavailable",
+        status_detail="Semgrep is unavailable; install it or import an existing SARIF report.",
+    ).to_dict()
+
+
+def _clean_result() -> dict:
+    return SASTResult(execution_status=SASTExecutionStatus.CLEAN).to_dict()
+
+
+def test_earlier_path_failure_not_masked_by_later_path_success() -> None:
+    # First path failed, a later path scanned clean: the summary must still fail.
+    aggregated = _aggregate_sast_path_results([_failed_result(), _clean_result()])
+    assert aggregated["execution_status"] == "failed"
+    assert aggregated["status_reason"] == "semgrep_unavailable"
+
+
+def test_later_path_failure_reflected_in_summary() -> None:
+    aggregated = _aggregate_sast_path_results([_clean_result(), _failed_result()])
+    assert aggregated["execution_status"] == "failed"
+
+
+def test_first_failure_reason_preserved_across_multiple_failures() -> None:
+    first = SASTResult(
+        execution_status=SASTExecutionStatus.FAILED,
+        status_reason="offline_no_local_config",
+        status_detail="Offline mode found no local Semgrep rule configuration.",
+    ).to_dict()
+    second = _failed_result()
+    aggregated = _aggregate_sast_path_results([first, second])
+    assert aggregated["status_reason"] == "offline_no_local_config"
+
+
+def test_all_clean_paths_stay_clean() -> None:
+    aggregated = _aggregate_sast_path_results([_clean_result(), _clean_result()])
+    assert aggregated["execution_status"] == "clean"

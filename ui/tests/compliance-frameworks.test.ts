@@ -119,6 +119,33 @@ function sampleCompliance(overrides: Partial<ComplianceResponse> = {}): Complian
         metadata: {},
       },
     },
+    nist_800_53_catalog: {
+      framework: "nist-800-53",
+      framework_key: "nist_800_53_catalog",
+      framework_label: "NIST SP 800-53 Rev 5",
+      representation: "catalog",
+      source: "framework_control_catalog",
+      vendor_asserted: true,
+      status: "no_data",
+      score: 0,
+      summary: {
+        pass: 0,
+        fail: 0,
+        warning: 0,
+        error: 0,
+        evaluated: 0,
+        not_evaluated: 1014,
+        catalog_size: 1014,
+        coverage_pct: 0,
+        score: 0,
+      },
+      controls: [],
+      iso_27001_derived: {
+        source: "nist_800_53_to_iso_27001_crosswalk",
+        note: "ISO/IEC 27001:2022 Annex A control IDs implicated by the failing NIST controls.",
+        controls: [],
+      },
+    },
     ...overrides,
   };
 }

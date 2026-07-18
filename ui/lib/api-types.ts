@@ -1920,6 +1920,85 @@ export interface CISBenchmarkChecksResponse {
   source: string;
 }
 
+/**
+ * One control from the vendored NIST SP 800-53 Rev 5 catalog, scored by
+ * `agent_bom.compliance_nist_catalog.build_nist_800_53_catalog_line` /
+ * `build_nist_800_53_drill`. `evidencing_checks` and `iso_27001_derived` are
+ * both VENDOR-ASSERTED (curated mapping tables, not an authority-published
+ * crosswalk for the former; NIST's own SP 800-53 -> ISO crosswalk, IDs only,
+ * for the latter) — never render `iso_27001_derived` as ISO title text.
+ */
+export interface Nist80053CatalogControl {
+  control_id: string;
+  title: string | null;
+  status: "pass" | "fail" | "warning" | "error" | "not_evaluated";
+  findings: number;
+  evidencing_checks: string[];
+  iso_27001_derived: string[];
+}
+
+export interface Nist80053CatalogSummary {
+  pass: number;
+  fail: number;
+  warning: number;
+  error: number;
+  evaluated: number;
+  not_evaluated: number;
+  catalog_size: number;
+  coverage_pct: number;
+  score: number;
+}
+
+export interface Nist80053IsoDerived {
+  source: string;
+  note: string;
+  controls: string[];
+}
+
+/**
+ * The `nist_800_53_catalog` line on `GET /v1/compliance` — catalog-backed
+ * scoring over EVALUATED controls only (never the ~1000-row not_evaluated
+ * tower). Scored independently of `overall_score` (see
+ * `compliance_nist_catalog.py`); `vendor_asserted` is always `true` — label it
+ * "vendor-asserted" in the UI, never "official".
+ */
+export interface Nist80053CatalogResponse {
+  framework: "nist-800-53";
+  framework_key: "nist_800_53_catalog";
+  framework_label: string;
+  representation: "catalog";
+  source: string;
+  vendor_asserted: true;
+  status: "pass" | "fail" | "warning" | "no_data";
+  score: number;
+  summary: Nist80053CatalogSummary;
+  controls: Nist80053CatalogControl[];
+  iso_27001_derived: Nist80053IsoDerived;
+}
+
+/** One NIST 800-53 family (AC, AU, SC, …) rollup over the FULL catalog. */
+export interface Nist80053Family {
+  family: string;
+  total: number;
+  evaluated: number;
+  pass: number;
+  fail: number;
+  warning: number;
+  error: number;
+  not_evaluated: number;
+}
+
+/**
+ * `GET /v1/compliance/nist-800-53` — the engineer drill. Same
+ * `summary`/`score`/`status` as the catalog line (one source of truth), plus
+ * a family rollup for scale-aware navigation over 1000+ controls. `controls`
+ * lists evaluated controls by default; pass `include_not_evaluated: true` to
+ * enumerate the full catalog.
+ */
+export interface Nist80053DrillResponse extends Nist80053CatalogResponse {
+  families: Nist80053Family[];
+}
+
 export interface ComplianceResponse {
   overall_score: number;
   overall_status: "pass" | "warning" | "fail";
@@ -1943,6 +2022,7 @@ export interface ComplianceResponse {
   fedramp: ComplianceControl[];
   pci_dss: ComplianceControl[];
   aisvs_benchmark: AISVSComplianceResponse;
+  nist_800_53_catalog: Nist80053CatalogResponse;
   summary: {
     owasp_pass: number;
     owasp_warn: number;

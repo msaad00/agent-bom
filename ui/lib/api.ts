@@ -69,6 +69,7 @@ import type {
   ComplianceNarrativeResponse,
   AISVSComplianceResponse,
   ComplianceResponse,
+  Nist80053DrillResponse,
   CISBenchmarkChecksResponse,
   FrameworkCatalogsResponse,
   AgentDetailResponse,
@@ -279,6 +280,12 @@ export type {
   AISVSBenchmark,
   AISVSComplianceResponse,
   ComplianceResponse,
+  Nist80053CatalogControl,
+  Nist80053CatalogSummary,
+  Nist80053IsoDerived,
+  Nist80053CatalogResponse,
+  Nist80053Family,
+  Nist80053DrillResponse,
   CISBenchmarkCheck,
   CISBenchmarkRemediation,
   CISBenchmarkChecksResponse,
@@ -1080,6 +1087,22 @@ export const api = {
 
   /** Latest tenant-scoped OWASP AISVS benchmark posture */
   getAISVSCompliance: () => get<AISVSComplianceResponse>("/v1/compliance/aisvs"),
+
+  /**
+   * Drill the catalog-backed NIST SP 800-53 Rev 5 line: family rollup +
+   * per-control evidence. `summary`/`score`/`status` match the
+   * `nist_800_53_catalog` line on `getCompliance()` (one source of truth).
+   * `status` filters the displayed control list without changing counts;
+   * `include_not_evaluated` enumerates the full ~1000-control catalog instead
+   * of just the evaluated subset — leave it off by default.
+   */
+  getNist80053Catalog: (params?: { status?: string; include_not_evaluated?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.include_not_evaluated) query.set("include_not_evaluated", "true");
+    const qs = query.toString();
+    return get<Nist80053DrillResponse>(`/v1/compliance/nist-800-53${qs ? `?${qs}` : ""}`);
+  },
 
   /**
    * Tenant-scoped cloud CIS benchmark checks with structured remediation.

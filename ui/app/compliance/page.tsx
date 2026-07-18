@@ -29,6 +29,7 @@ import {
   Search,
   Download,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
 import {
@@ -40,6 +41,7 @@ import {
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
+import { Nist80053CatalogDetail } from "@/components/nist-800-53-catalog-detail";
 import { FrameworkIcon } from "@/components/framework-icon";
 import {
   complianceFrameworkSummaries,
@@ -642,6 +644,21 @@ function CompliancePageContent() {
             placeholder="Select a framework to review its controls and evidence."
             data-testid="compliance-split"
           />
+
+          <Collapsible
+            title="NIST SP 800-53 Rev 5"
+            subtitle={
+              isNotEvaluated(data.nist_800_53_catalog.status)
+                ? "Vendor-asserted catalog — not evaluated yet"
+                : `Vendor-asserted · ${data.nist_800_53_catalog.score}% score · ${data.nist_800_53_catalog.summary.evaluated.toLocaleString()} evaluated · ${data.nist_800_53_catalog.summary.not_evaluated.toLocaleString()} not evaluated · ${data.nist_800_53_catalog.summary.error} error · ${data.nist_800_53_catalog.summary.coverage_pct}% coverage`
+            }
+            icon={ShieldCheck}
+            defaultOpen={true}
+            scrollMaxHeight="34rem"
+            data-testid="nist-800-53-catalog-section"
+          >
+            <Nist80053CatalogDetail />
+          </Collapsible>
 
           <Collapsible
             title="Cloud CIS benchmark drill-down"

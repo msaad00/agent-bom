@@ -13,6 +13,14 @@ vi.mock("@/components/cis-benchmark-detail", () => ({
   CISBenchmarkDetail: () => <div>cis benchmark</div>,
 }));
 
+// NIST 800-53 catalog drill also fetches its own data on mount — stub it so
+// this page test only verifies the always-visible exec-line wiring (sourced
+// straight off the already-loaded getCompliance() fixture below), leaving the
+// per-control drill behavior to nist-800-53-catalog-detail.test.tsx.
+vi.mock("@/components/nist-800-53-catalog-detail", () => ({
+  Nist80053CatalogDetail: () => <div>nist 800-53 catalog drill</div>,
+}));
+
 const { compliance } = vi.hoisted(() => {
   const control = (
     code: string,
@@ -76,6 +84,33 @@ const { compliance } = vi.hoisted(() => {
       fedramp: [],
       pci_dss: [],
       aisvs_benchmark: { checks: [], summary: {} },
+      nist_800_53_catalog: {
+        framework: "nist-800-53",
+        framework_key: "nist_800_53_catalog",
+        framework_label: "NIST SP 800-53 Rev 5",
+        representation: "catalog",
+        source: "framework_control_catalog",
+        vendor_asserted: true,
+        status: "fail" as const,
+        score: 62.5,
+        summary: {
+          pass: 3,
+          fail: 4,
+          warning: 1,
+          error: 0,
+          evaluated: 8,
+          not_evaluated: 1006,
+          catalog_size: 1014,
+          coverage_pct: 0.79,
+          score: 62.5,
+        },
+        controls: [],
+        iso_27001_derived: {
+          source: "nist_800_53_to_iso_27001_crosswalk",
+          note: "ISO/IEC 27001:2022 Annex A control IDs implicated by the failing NIST controls.",
+          controls: [],
+        },
+      },
       summary: {
         ...emptySummary,
         owasp_pass: 1,
@@ -100,6 +135,9 @@ vi.mock("@/lib/api", async () => {
       getHubPosture: vi
         .fn()
         .mockResolvedValue({ totals: { combined: 0, native: 0, hub: 0 } }),
+      // The catalog drill component is mocked out above, but stub its API
+      // call too in case any other codepath reaches it during this test.
+      getNist80053Catalog: vi.fn().mockResolvedValue(compliance.nist_800_53_catalog),
     },
   };
 });
@@ -122,6 +160,25 @@ describe("CompliancePage (dense restyle)", () => {
     await waitFor(() =>
       expect(screen.getByText("Prompt Injection")).toBeInTheDocument(),
     );
+  });
+
+  it("surfaces the NIST SP 800-53 catalog exec line, visible without expanding", async () => {
+    render(<CompliancePage />);
+    await screen.findByTestId("compliance-kpi-strip");
+
+    // The exec-altitude headline (score + honest evaluated/not_evaluated/error
+    // buckets + coverage) comes straight off the already-loaded getCompliance()
+    // fixture, so it is visible even though the drill Collapsible defaults open
+    // and its child component (the per-control drill) is mocked out above.
+    const section = screen.getByTestId("nist-800-53-catalog-section");
+    expect(within(section).getByText("NIST SP 800-53 Rev 5")).toBeInTheDocument();
+    expect(within(section).getByText(/vendor-asserted/i)).toBeInTheDocument();
+    expect(within(section).getByText(/62\.5% score/)).toBeInTheDocument();
+    expect(within(section).getByText(/8 evaluated/)).toBeInTheDocument();
+    expect(within(section).getByText(/1,006 not evaluated/)).toBeInTheDocument();
+    expect(within(section).getByText(/0 error/)).toBeInTheDocument();
+    expect(within(section).getByText(/0\.79% coverage/)).toBeInTheDocument();
+    expect(within(section).getByText("nist 800-53 catalog drill")).toBeInTheDocument();
   });
 
   it("opens the control drawer when a control row is clicked", async () => {

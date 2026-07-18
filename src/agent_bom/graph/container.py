@@ -135,6 +135,67 @@ class AttackPath:
 
 
 @dataclass(slots=True)
+class Campaign:
+    """A deterministic cluster of fused attack paths converging on one crown jewel.
+
+    Campaigns are the large-estate decision surface: instead of thousands of raw
+    paths, an operator sees a handful of prioritized campaigns, each grouping every
+    kill-chain that terminates at the same crown-jewel data store. Identity is
+    derived from ``tenant_id`` + the jewel's canonical id, so the *same estate*
+    yields the *same* ``campaign_id`` across runs and backends.
+    """
+
+    campaign_id: str
+    crown_jewel: str
+    crown_jewel_label: str
+    partition: str
+    owner: str
+    business_impact: str
+    exploitability: float
+    expected_risk_reduction: float
+    path_count: int
+    top_path_summary: str
+    cross_partition: bool
+    evidence: list[str] = field(default_factory=list)
+    member_paths: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "campaign_id": self.campaign_id,
+            "crown_jewel": self.crown_jewel,
+            "crown_jewel_label": self.crown_jewel_label,
+            "partition": self.partition,
+            "owner": self.owner,
+            "business_impact": self.business_impact,
+            "exploitability": self.exploitability,
+            "expected_risk_reduction": self.expected_risk_reduction,
+            "path_count": self.path_count,
+            "top_path_summary": self.top_path_summary,
+            "cross_partition": self.cross_partition,
+            "evidence": self.evidence,
+            "member_paths": self.member_paths,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Campaign:
+        return cls(
+            campaign_id=str(data["campaign_id"]),
+            crown_jewel=str(data.get("crown_jewel", "")),
+            crown_jewel_label=str(data.get("crown_jewel_label", "")),
+            partition=str(data.get("partition", "")),
+            owner=str(data.get("owner", "")),
+            business_impact=str(data.get("business_impact", "")),
+            exploitability=float(data.get("exploitability", 0.0)),
+            expected_risk_reduction=float(data.get("expected_risk_reduction", 0.0)),
+            path_count=int(data.get("path_count", 0)),
+            top_path_summary=str(data.get("top_path_summary", "")),
+            cross_partition=bool(data.get("cross_partition", False)),
+            evidence=list(data.get("evidence", [])),
+            member_paths=list(data.get("member_paths", [])),
+        )
+
+
+@dataclass(slots=True)
 class InteractionRisk:
     """Cross-agent interaction risk pattern."""
 
@@ -178,6 +239,7 @@ class UnifiedGraph:
     _edge_keys: set[tuple[str, str, str]] = field(default_factory=set, repr=False)
 
     attack_paths: list[AttackPath] = field(default_factory=list)
+    attack_campaigns: list[Campaign] = field(default_factory=list)
     interaction_risks: list[InteractionRisk] = field(default_factory=list)
     analysis_status: dict[str, GraphAnalysisStatus] = field(default_factory=dict)
 
@@ -676,6 +738,7 @@ class UnifiedGraph:
             "severity_counts": dict(severity_counts),
             "relationship_types": dict(rel_counts),
             "attack_path_count": len(self.attack_paths),
+            "attack_campaign_count": len(self.attack_campaigns),
             "interaction_risk_count": len(self.interaction_risks),
             "max_attack_path_risk": max((p.composite_risk for p in self.attack_paths), default=0.0),
             "highest_interaction_risk": max((r.risk_score for r in self.interaction_risks), default=0.0),
@@ -692,6 +755,7 @@ class UnifiedGraph:
             "nodes": [n.to_dict() for n in self.nodes.values()],
             "edges": [e.to_dict() for e in self.edges],
             "attack_paths": [p.to_dict() for p in self.attack_paths],
+            "attack_campaigns": [c.to_dict() for c in self.attack_campaigns],
             "interaction_risks": [r.to_dict() for r in self.interaction_risks],
             "analysis_status": analysis_status_map_to_dict(self.analysis_status),
             "stats": self.stats(),
@@ -711,6 +775,8 @@ class UnifiedGraph:
             graph.add_edge(UnifiedEdge.from_dict(ed))
         for pd in data.get("attack_paths", []):
             graph.attack_paths.append(AttackPath.from_dict(pd))
+        for cd in data.get("attack_campaigns", []):
+            graph.attack_campaigns.append(Campaign.from_dict(cd))
         for rd in data.get("interaction_risks", []):
             graph.interaction_risks.append(InteractionRisk.from_dict(rd))
         return graph

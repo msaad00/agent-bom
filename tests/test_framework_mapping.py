@@ -334,7 +334,9 @@ def test_nist_control_spec_carries_authoritative_public_domain_title():
     assert spec.control_id == "AC-2"
     assert spec.title == "Account Management"  # authoritative NIST SP 800-53 title
     assert spec.reference_only is False
-    assert spec.evidencing_checks == ()  # PR3 curates check -> control
+    # PR3 curates check -> control: AC-2 (Account Management) is evidenced by the
+    # AWS CIS Foundations "credentials unused >= 45 days are disabled" check only.
+    assert spec.evidencing_checks == ("cis:aws:1.12",)
     # Every control our CWE table maps to must resolve to a real NIST title.
     for cid in ("AC-3", "AC-6", "AU-2", "CM-7", "IA-5", "SC-8", "SI-3", "SR-3"):
         assert fm.control_spec("nist-800-53", cid).title
@@ -403,6 +405,63 @@ def test_reference_only_frameworks_carry_no_copyrighted_title():
     # A CIS/SOC2 spec resolves and carries our own (non-official) descriptor.
     assert fm.control_spec("cis", "CIS-07.1").title == "Vulnerability-management program"
     assert fm.control_spec("soc2", "CC7.1").title == "Anomaly and event detection"
+
+
+# ─── PR3: check -> NIST 800-53 control curation (vendor-asserted) ─────────────
+
+
+def test_nist_evidencing_checks_reuse_cwe_compliance_map():
+    """Every CWE the in-repo CWE_COMPLIANCE_MAP maps to a NIST control appears as
+    a ``cwe:<CWE-ID>`` evidencing check on that control's spec — 100% reuse of
+    already-curated data, no new assertion."""
+    from agent_bom import framework_mapping as fm
+    from agent_bom.constants import CWE_COMPLIANCE_MAP
+
+    for cwe, frameworks in CWE_COMPLIANCE_MAP.items():
+        for control_id in frameworks.get("nist_800_53", []):
+            spec = fm.control_spec("nist-800-53", control_id)
+            assert spec is not None, f"{control_id} missing from NIST catalog"
+            assert f"cwe:{cwe}" in spec.evidencing_checks
+
+    # SI-10 (Information Input Validation) is evidenced by the injection CWEs.
+    si10 = fm.control_spec("nist-800-53", "SI-10")
+    assert "cwe:CWE-89" in si10.evidencing_checks
+    # Every evidencing check carries a recognised, namespaced provenance prefix.
+    assert all(c.startswith(("cwe:", "cis:")) for c in si10.evidencing_checks)
+
+
+def test_nist_evidencing_checks_include_vendor_asserted_cis_mapping():
+    """A defensible CIS-Foundations-check -> NIST-control objective match is
+    surfaced as a ``cis:<cloud>:<check_id>`` evidencing check (vendor-asserted)."""
+    from agent_bom import framework_mapping as fm
+
+    # Public-S3 account block evidences boundary protection + access enforcement.
+    assert fm.nist_controls_for_cis_check("aws", "2.1.1") == ["AC-3", "SC-7"]
+    # S3 server-side encryption evidences protection of data at rest.
+    assert "SC-28" in fm.nist_controls_for_cis_check("aws", "2.1.2")
+    # Unknown check / cloud -> empty, never KeyError.
+    assert fm.nist_controls_for_cis_check("aws", "99.99") == []
+    assert fm.nist_controls_for_cis_check("no-such-cloud", "2.1.1") == []
+
+    # The mapping is reflected on the control specs (both directions reconcile).
+    ac3 = fm.control_spec("nist-800-53", "AC-3")
+    assert "cis:aws:2.1.1" in ac3.evidencing_checks
+    # Every NIST control the CIS table references resolves to a real NIST title.
+    for (_cloud, _check), controls in fm.CIS_FOUNDATIONS_TO_NIST_800_53.items():
+        for control_id in controls:
+            assert fm.control_spec("nist-800-53", control_id).title
+
+
+def test_nist_evidenced_controls_set_matches_specs():
+    """The exported evidenced-controls set equals the controls whose spec carries
+    at least one evidencing check — the route's reconciliation seam."""
+    from agent_bom import framework_mapping as fm
+
+    derived = {cid for cid, spec in fm.FRAMEWORK_CONTROL_CATALOG["nist-800-53"].items() if spec.evidencing_checks}
+    assert derived == set(fm.NIST_800_53_EVIDENCED_CONTROLS)
+    # AC-2 is evidenced only via the CIS table; SI-10 only via CWE; both present.
+    assert "AC-2" in derived
+    assert "SI-10" in derived
 
 
 def test_vendored_catalog_integrity_and_counts_reconcile():

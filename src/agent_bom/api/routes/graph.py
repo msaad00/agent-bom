@@ -1394,6 +1394,7 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
         "nodes": [n.to_dict() for n in paged_nodes],
         "edges": [e.to_dict() for e in paged_edges],
         "attack_paths": attack_paths,
+        "attack_campaigns": [c.to_dict() for c in graph.attack_campaigns],
         "interaction_risks": interaction_risks,
         "stats": stats,
         "pagination": pagination,

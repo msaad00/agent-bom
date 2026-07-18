@@ -290,9 +290,11 @@ def test_genuine_assumes_chain_still_fuses():
     assert any(p.source == "res:web" and p.target == "ds:X" for p in paths)
 
 
-def test_oversized_graph_surfaces_skipped_signal():
-    """A graph past the node budget returns 0 paths but the apply-level result must
-    mark it 'skipped' so a large estate is not misread as 'no attack paths'."""
+def test_oversized_graph_runs_bounded_partitioned_campaigns():
+    """A graph past the node budget no longer skips wholesale (issue #4156): the
+    apply-level result runs the bounded partitioned engine, yields fused paths +
+    campaigns, and reports an honest LIMITED / partitioned status — never SKIPPED,
+    never falsely COMPLETE."""
     g = UnifiedGraph(scan_id="s", tenant_id="t")
     g.add_node(UnifiedNode(id="entry", entity_type=EntityType.CLOUD_RESOURCE, label="e", attributes={"internet_exposed": True}))
     g.add_node(UnifiedNode(id="data_store:x", entity_type=EntityType.DATA_STORE, label="d", attributes={"data_sensitivity": "sensitive"}))
@@ -300,12 +302,14 @@ def test_oversized_graph_surfaces_skipped_signal():
     for i in range(_MAX_NODES + 1):
         g.add_node(UnifiedNode(id=f"pad{i}", entity_type=EntityType.PACKAGE, label=f"p{i}"))
     stats = apply_attack_path_fusion(g)
-    assert stats["fused_attack_paths"] == 0
-    assert stats["skipped"] is True
-    assert "node_cap_exceeded" in stats["skipped_reason"]
-    assert stats["analysis_status"]["status"] == "skipped"
-    assert stats["analysis_status"]["reason_codes"] == ["node_cap_exceeded"]
-    assert g.analysis_status["attack_path_fusion"].status.value == "skipped"
+    assert stats["fused_attack_paths"] >= 1
+    assert stats["partitioned"] is True
+    assert stats["bounded"] is True
+    assert stats["campaign_count"] >= 1
+    assert "skipped" not in stats
+    assert stats["analysis_status"]["status"] == "limited"
+    assert "partitioned" in stats["analysis_status"]["reason_codes"]
+    assert g.analysis_status["attack_path_fusion"].status.value == "limited"
 
 
 def test_node_boost_recognizes_admin_equivalent():

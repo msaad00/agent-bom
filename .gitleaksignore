@@ -34,3 +34,10 @@ e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:360
 # History-only false positive from a synthetic token-shape redaction fixture.
 # The fixture verifies that prompt sanitization removes the value.
 8b56ca26dfb1f9a575f21678fa8f33be113fc231:tests/test_ai_enrich_providers.py:jwt:47
+
+# False positive: the compliance scorecard response declares its framework
+# registry identifier in a JSON field whose name ends in _key; the value is
+# the NIST catalog registry id, not a credential.
+0e43ed628801d7c2d4fbdd7e3a01b07fda2b113b:src/agent_bom/api/routes/compliance.py:generic-api-key:534
+# History-only: earlier revision of the note above quoted the flagged pair.
+523c32e9b3c52b355c33cc67bac34e670ff6167f:.gitleaksignore:generic-api-key:39

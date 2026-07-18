@@ -97,7 +97,8 @@ def test_fixable_triggers_change_management():
 
 
 def test_label_functions():
-    assert soc2_label("CC7.1") == "CC7.1 Detection and monitoring of anomalies and events"
+    # agent-bom's own descriptor, not the copyrighted AICPA TSC criterion text.
+    assert soc2_label("CC7.1") == "CC7.1 Anomaly and event detection"
     labels = soc2_labels(["CC7.1", "CC9.1"])
     assert len(labels) == 2
 

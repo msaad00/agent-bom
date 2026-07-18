@@ -97,6 +97,7 @@ export function ExposurePathCommandCenter({
   view: controlledView,
   onViewChange,
   graphSlot,
+  techniquesSlot,
 }: {
   path: ExposurePath;
   actions?: ExposurePathCommandAction[] | undefined;
@@ -116,6 +117,12 @@ export function ExposurePathCommandCenter({
    * disconnected panel further down the page.
    */
   graphSlot?: React.ReactNode | undefined;
+  /**
+   * Mapped ATT&CK/ATLAS kill-chain for the selected path, rendered under the
+   * path view. Fed from the raw AttackPath (the transformed ExposurePath does
+   * not carry technique mappings); renders nothing when the path has none.
+   */
+  techniquesSlot?: React.ReactNode | undefined;
 }) {
   const [internalView, setInternalView] = useState<ExposurePathView>("path");
   const view = controlledView ?? internalView;
@@ -198,6 +205,8 @@ export function ExposurePathCommandCenter({
             Interactive graph loads here once graph evidence is available for this snapshot.
           </section>
         )}
+
+        {techniquesSlot}
 
         <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/70">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-[color:var(--foreground)] [&::-webkit-details-marker]:hidden">

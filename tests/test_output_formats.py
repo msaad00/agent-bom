@@ -855,6 +855,26 @@ def test_spdx_vulnerability_annotations_preserve_enrichment_and_compliance_metad
     assert "agent-bom:compliance-tag-provenance=vendor-asserted" in statements
 
 
+def test_cyclonedx_vulnerability_carries_vendor_asserted_compliance_tags():
+    """CycloneDX vulnerability properties carry the vendor-asserted framework
+    control tags (NIST/ISO ids) with an explicit provenance label — ids only,
+    never copyrighted control-title text."""
+    from agent_bom.output.cyclonedx_fmt import to_cyclonedx
+
+    vuln = _make_enriched_vuln()
+    vuln.compliance_tags = {"nist_800_53": ["SI-10"], "iso_27001": ["A.8.8"]}
+    pkg = _make_pkg("web-lib", "1.0.0")
+    pkg.vulnerabilities = [vuln]
+    report = _make_report(agents=[_make_agent(servers=[_make_server(packages=[pkg])])], blast_radii=[_make_blast_radius(pkg=pkg, vuln=vuln)])
+
+    cdx = to_cyclonedx(report)
+    vuln_entry = next(v for v in cdx.get("vulnerabilities", []) if v["id"] == vuln.id)
+    props = {(p["name"], p["value"]) for p in vuln_entry.get("properties", [])}
+    assert ("agent-bom:compliance-tag", "nist_800_53:SI-10") in props
+    assert ("agent-bom:compliance-tag", "iso_27001:A.8.8") in props
+    assert ("agent-bom:compliance-tag-provenance", "vendor-asserted") in props
+
+
 def test_spdx_vulnerability_annotations_use_unified_findings_without_blast_radii():
     vuln = _make_enriched_vuln()
     vuln.id = "CVE-2026-4242"

@@ -178,6 +178,21 @@ def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str) -> dict:
         vuln_properties.append({"name": "agent-bom:epss_percentile", "value": str(vuln.epss_percentile)})
     if vuln.is_kev or vuln.epss_score is not None:
         vuln_properties.append({"name": "agent-bom:exploit_likelihood", "value": vuln.exploit_likelihood})
+    # Framework control attribution (CDX 1.7 has no first-class vulnerability
+    # slot for compliance mappings) as namespaced properties: framework:control
+    # IDs only — no copyrighted control-title text — labeled vendor-asserted so
+    # consumers never read agent-bom's own mapping judgment as an official
+    # crosswalk.
+    compliance_tags = getattr(vuln, "compliance_tags", None) or {}
+    emitted_compliance = False
+    if isinstance(compliance_tags, dict):
+        for framework, controls in sorted(compliance_tags.items()):
+            control_list = [controls] if isinstance(controls, str) else list(controls or [])
+            for control in control_list:
+                vuln_properties.append({"name": "agent-bom:compliance-tag", "value": f"{framework}:{control}"})
+                emitted_compliance = True
+    if emitted_compliance:
+        vuln_properties.append({"name": "agent-bom:compliance-tag-provenance", "value": "vendor-asserted"})
     if vuln_properties:
         entry["properties"] = vuln_properties
     if vuln.fixed_version:

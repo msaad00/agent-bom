@@ -69,6 +69,7 @@ import type {
   ComplianceNarrativeResponse,
   AISVSComplianceResponse,
   ComplianceResponse,
+  NistCatalogDrill,
   CISBenchmarkChecksResponse,
   FrameworkCatalogsResponse,
   AgentDetailResponse,
@@ -279,6 +280,12 @@ export type {
   AISVSBenchmark,
   AISVSComplianceResponse,
   ComplianceResponse,
+  NistCatalogDrill,
+  NistCatalogLine,
+  NistCatalogControl,
+  NistCatalogFamily,
+  NistCatalogSummary,
+  NistCatalogIsoDerived,
   CISBenchmarkCheck,
   CISBenchmarkRemediation,
   CISBenchmarkChecksResponse,
@@ -1077,6 +1084,20 @@ export const api = {
 
   /** Compliance posture across all completed scans */
   getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
+
+  /**
+   * Catalog-backed NIST SP 800-53 Rev 5 drill: per-control status, evidencing
+   * checks, family rollup, and ISO-27001-by-id attribution. `status` filters the
+   * displayed list without changing the counts; `include_not_evaluated`
+   * enumerates the full ~1000-control catalog.
+   */
+  getComplianceNist80053: (opts?: { status?: string; includeNotEvaluated?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.status) params.set("status", opts.status);
+    if (opts?.includeNotEvaluated) params.set("include_not_evaluated", "true");
+    const qs = params.toString();
+    return get<NistCatalogDrill>(`/v1/compliance/nist-800-53${qs ? `?${qs}` : ""}`);
+  },
 
   /** Latest tenant-scoped OWASP AISVS benchmark posture */
   getAISVSCompliance: () => get<AISVSComplianceResponse>("/v1/compliance/aisvs"),

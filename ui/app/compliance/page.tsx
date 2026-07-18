@@ -40,6 +40,7 @@ import {
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
+import { ComplianceNistCatalog } from "@/components/compliance-nist-catalog";
 import { FrameworkIcon } from "@/components/framework-icon";
 import {
   complianceFrameworkSummaries,
@@ -642,6 +643,8 @@ function CompliancePageContent() {
             placeholder="Select a framework to review its controls and evidence."
             data-testid="compliance-split"
           />
+
+          <ComplianceNistCatalog />
 
           <Collapsible
             title="Cloud CIS benchmark drill-down"

@@ -13,6 +13,7 @@ calling the handler in isolation.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 import pytest
 from starlette.testclient import TestClient
@@ -181,6 +182,7 @@ def test_invite_url_present_only_when_base_configured_and_carries_no_secret(invi
     monkeypatch.setenv("AGENT_BOM_HOSTED_INVITE_BASE_URL", "https://app.example.com")
     body = _create_invitation(invite_ctx, invite_ctx.raw_admin, organization="Acme").json()
     assert body["invite_url"] is not None
-    assert body["invite_url"].startswith("https://app.example.com")
-    assert body["tenant_id"] in body["invite_url"]
+    parsed = urlparse(body["invite_url"])
+    assert (parsed.scheme, parsed.netloc) == ("https", "app.example.com")
+    assert body["tenant_id"] in parsed.path + "?" + parsed.query
     assert body["raw_key"] not in body["invite_url"]

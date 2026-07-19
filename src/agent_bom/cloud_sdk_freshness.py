@@ -30,12 +30,20 @@ Design (matches the deterministic, nothing-silent trust posture):
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = 1
+
+# Dated known-latest reference for the pinned cloud-SDK floors. Bundled in the
+# package data dir so the pin-drift signal is offline and reproducible; carries
+# its own retrieval date + source (provenance) so the signal never implies
+# freshness it cannot back up.
+REFERENCE_PATH = Path(__file__).resolve().parent / "data" / "cloud_sdk_reference.json"
 
 # How far ahead a scheduled retirement is still surfaced as a live "deprecating"
 # signal when a legacy SDK is present. Purely cosmetic today (any not-yet-removed
@@ -267,6 +275,9 @@ def cloud_sdk_freshness_summary(
         # Provider-API retirement posture (Azure AD Graph, oauth2client, …):
         # a legacy-SDK exposure signal that complements the version-floor check.
         "deprecations": cloud_api_deprecation_summary(installed=installed),
+        # Pin-level drift: how far the repo's pinned floors lag the ecosystem,
+        # measured against a dated in-repo reference (provenance-honest, offline).
+        "pin_drift": cloud_sdk_pin_drift_summary(),
     }
 
 
@@ -521,3 +532,321 @@ def cloud_api_deprecation_summary(
         "gated": [a["api"] for a in posture["gated"]],
         "warnings": [w["message"] for w in posture["warnings"]],
     }
+
+
+# ---------------------------------------------------------------------------
+# Pin-level drift: the repo's pinned floor vs a dated known-latest reference
+# ---------------------------------------------------------------------------
+#
+# The installed-vs-floor check above answers "is my *install* at least at the
+# floor we ship?". This third signal answers the complementary question the
+# floor alone can never see: "is the *floor itself* lagging the ecosystem?" —
+# i.e. has the pin silently rotted while every install dutifully met it? It is
+# offline and provenance-honest: it compares the pinned floor to a bundled,
+# dated ``known_latest`` reference and NEVER claims a pin is current without
+# that reference (a missing reference reads as "unknown / last checked never").
+#
+# This is a non-blocking signal. The *enforcing* half is the pin-reference gate
+# (:func:`evaluate_pin_reference_gate`, run by ``scripts/check_cloud_sdk_drift``
+# in CI), which keeps the pins and the dated reference in lockstep so provenance
+# stays fresh and a pin can never quietly fall below the reference floor. Hard
+# blocking on ecosystem-latest is deliberately NOT done (per #3835 non-goals).
+
+
+def load_sdk_reference(path: Path | None = None) -> dict[str, Any]:
+    """Load the dated cloud-SDK reference, or ``{}`` on any failure.
+
+    Never raises: a missing, unreadable, or malformed reference degrades to an
+    empty mapping so the caller surfaces an honest ``unknown`` rather than a
+    fabricated ``current``.
+    """
+    ref_path = path or REFERENCE_PATH
+    try:
+        data = json.loads(ref_path.read_text())
+    except Exception:  # noqa: BLE001 - reference is advisory, never fatal
+        return {}
+    if not isinstance(data, dict) or not isinstance(data.get("sdks"), list):
+        return {}
+    return data
+
+
+def _version_gap(floor: str, latest: str) -> dict[str, int] | None:
+    """Return ``{"major", "minor"}`` releases ``latest`` is ahead of ``floor``.
+
+    ``None`` when either version cannot be parsed so the caller stays honest.
+    """
+    try:
+        from packaging.version import InvalidVersion, Version
+    except Exception:  # noqa: BLE001 - degrade to unknown, never raise
+        return None
+    try:
+        f = Version(floor)
+        latest_v = Version(latest)
+    except (InvalidVersion, Exception):  # noqa: BLE001
+        return None
+    fr = (f.release + (0, 0))[:2]
+    lr = (latest_v.release + (0, 0))[:2]
+    major = lr[0] - fr[0]
+    minor = lr[1] - fr[1] if major == 0 else 0
+    return {"major": max(0, major), "minor": max(0, minor)}
+
+
+def _months_between(start: str | None, end: str | None) -> int | None:
+    """Whole-month gap between two ISO dates (approx, 30-day months), or None."""
+    try:
+        if not start or not end:
+            return None
+        s = date.fromisoformat(start)
+        e = date.fromisoformat(end)
+    except ValueError:
+        return None
+    days = (e - s).days
+    if days <= 0:
+        return 0
+    return days // 30
+
+
+def _is_behind(floor: str, latest: str) -> bool | None:
+    try:
+        from packaging.version import InvalidVersion, Version
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        f = Version(floor)
+        latest_v = Version(latest)
+    except (InvalidVersion, Exception):  # noqa: BLE001
+        return None
+    # "Behind" at the minor granularity we pin at: compare major.minor only, so
+    # a floor of 1.34 against a latest of 1.34.51 reads as current (same line).
+    return (latest_v.release + (0, 0))[:2] > (f.release + (0, 0))[:2]
+
+
+def cloud_sdk_pin_drift(
+    *,
+    reference: Mapping[str, Any] | None = None,
+    floors: Iterable[SdkFloor] = RECOMMENDED_FLOORS,
+) -> dict[str, Any]:
+    """Compute how far the pinned floors lag the dated known-latest reference.
+
+    Offline + provenance-honest: reads the bundled reference (or an injected one)
+    and reports, per anchor SDK, whether the pinned floor is ``behind`` /
+    ``current`` / ``unknown`` versus ``known_latest``, with the version and
+    approximate-month gap. The reference's retrieval date + source ride along so
+    the signal is self-describing and never implies freshness it cannot back up.
+
+    A missing / empty reference yields ``status="unknown"`` and
+    ``last_checked=None`` — every SDK reads ``unknown``, never ``current``.
+    """
+    ref = dict(reference) if reference is not None else load_sdk_reference()
+    retrieved = ref.get("retrieved") if ref else None
+    source = ref.get("source") if ref else None
+    by_dist = {s.get("distribution"): s for s in ref.get("sdks", [])} if ref else {}
+
+    sdks: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    behind_count = 0
+
+    for floor in floors:
+        entry = by_dist.get(floor.distribution)
+        row: dict[str, Any] = {
+            "provider": floor.provider,
+            "distribution": floor.distribution,
+            "floor": floor.floor,
+            "known_latest": entry.get("known_latest") if entry else None,
+            "retrieved": retrieved,
+            "source": source,
+            "versions_behind": None,
+            "months_behind": None,
+        }
+        if not entry or not entry.get("known_latest"):
+            row["status"] = "unknown"
+            row["message"] = f"{floor.distribution}: no dated reference available (last checked: never) — pin currency is unknown."
+            sdks.append(row)
+            continue
+
+        latest = entry["known_latest"]
+        behind = _is_behind(floor.floor, latest)
+        if behind is None:
+            row["status"] = "unknown"
+            row["message"] = (
+                f"{floor.distribution}: could not compare pinned floor {floor.floor} "
+                f"against known-latest {latest} — pin currency is unknown."
+            )
+        elif behind:
+            gap = _version_gap(floor.floor, latest)
+            months = _months_between(entry.get("floor_released"), entry.get("latest_released"))
+            row["status"] = "behind"
+            row["versions_behind"] = gap
+            row["months_behind"] = months
+            span = ""
+            if gap:
+                if gap["major"] > 0:
+                    span = f"{gap['major']} major version(s)"
+                elif gap["minor"] > 0:
+                    span = f"{gap['minor']} minor release(s)"
+            age = f", ~{months} months" if months else ""
+            row["message"] = (
+                f"{floor.distribution} floor {floor.floor} is behind known-latest {latest}"
+                + (f" ({span}{age})" if span else age)
+                + f" as of {retrieved}."
+            )
+            warnings.append(row["message"])
+            behind_count += 1
+        else:
+            row["status"] = "current"
+            row["message"] = f"{floor.distribution} floor {floor.floor} is current with known-latest {latest} (as of {retrieved})."
+        sdks.append(row)
+
+    if not ref:
+        status = "unknown"
+    elif behind_count:
+        status = "stale"
+    else:
+        status = "ok"
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "check": "pinned-floor-vs-dated-known-latest (offline reference)",
+        "status": status,
+        "retrieved": retrieved,
+        "source": source,
+        "last_checked": retrieved,
+        "behind_count": behind_count,
+        "sdks": sdks,
+        "warnings": warnings,
+    }
+
+
+def cloud_sdk_pin_drift_summary(
+    *,
+    reference: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Compact pin-drift block for ``--agent-mode`` metadata."""
+    drift = cloud_sdk_pin_drift(reference=reference)
+    return {
+        "status": drift["status"],
+        "last_checked": drift["last_checked"],
+        "source": drift["source"],
+        "behind_count": drift["behind_count"],
+        "behind": [
+            {
+                "distribution": s["distribution"],
+                "floor": s["floor"],
+                "known_latest": s["known_latest"],
+                "months_behind": s["months_behind"],
+            }
+            for s in drift["sdks"]
+            if s["status"] == "behind"
+        ],
+        "warnings": drift["warnings"],
+    }
+
+
+def pyproject_sdk_floors(pyproject_path: Path | None = None) -> dict[str, str]:
+    """Parse the anchor cloud-SDK ``>=`` floors from ``pyproject.toml`` extras.
+
+    Returns ``{distribution: floor}`` for the anchors in :data:`RECOMMENDED_FLOORS`
+    that appear in ``[project.optional-dependencies]``. Used by the CI drift gate
+    to compare the *actual* pins against the dated reference.
+    """
+    import tomllib
+
+    root = pyproject_path or (Path(__file__).resolve().parent.parent.parent / "pyproject.toml")
+    anchors = {f.distribution for f in RECOMMENDED_FLOORS}
+    floors: dict[str, str] = {}
+    try:
+        data = tomllib.loads(root.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+    extras = data.get("project", {}).get("optional-dependencies", {})
+    for specs in extras.values():
+        if not isinstance(specs, list):
+            continue
+        for spec in specs:
+            if not isinstance(spec, str) or ">=" not in spec:
+                continue
+            name, _, ver = spec.partition(">=")
+            name = name.strip()
+            if name in anchors and name not in floors:
+                floors[name] = ver.strip()
+    return floors
+
+
+def evaluate_pin_reference_gate(
+    *,
+    pyproject_floors: Mapping[str, str],
+    reference: Mapping[str, Any] | None = None,
+    floors: Iterable[SdkFloor] = RECOMMENDED_FLOORS,
+) -> dict[str, Any]:
+    """The enforcing pin-reference gate (pure logic for the CI drift check).
+
+    For every anchor SDK, asserts the reference lists it, ``pyproject.toml``
+    declares a floor for it, and the declared floor is **not below** the
+    reference floor. A violation on any of these means the pins and the dated
+    reference have drifted out of lockstep — either a pin quietly fell behind
+    the reference, or the reference/pin was bumped without the other. Returns
+    ``{"ok", "violations", "checked"}``; the script exits non-zero when not ok.
+    """
+    from packaging.version import InvalidVersion, Version
+
+    ref = dict(reference) if reference is not None else load_sdk_reference()
+    ref_by_dist = {s.get("distribution"): s for s in ref.get("sdks", [])} if ref else {}
+
+    anchor_list = list(floors)
+    violations: list[dict[str, Any]] = []
+
+    for anchor in anchor_list:
+        dist = anchor.distribution
+        ref_entry = ref_by_dist.get(dist)
+        if not ref_entry or not ref_entry.get("floor"):
+            violations.append(
+                {
+                    "distribution": dist,
+                    "pyproject_floor": pyproject_floors.get(dist),
+                    "reference_floor": None,
+                    "code": "missing_in_reference",
+                    "message": f"{dist} is not covered by the dated reference — add it with its provenance.",
+                }
+            )
+            continue
+        ref_floor = str(ref_entry["floor"])
+        pj_floor = pyproject_floors.get(dist)
+        if pj_floor is None:
+            violations.append(
+                {
+                    "distribution": dist,
+                    "pyproject_floor": None,
+                    "reference_floor": ref_floor,
+                    "code": "missing_in_pyproject",
+                    "message": f"{dist} is in the reference but no >= floor is pinned in pyproject.toml.",
+                }
+            )
+            continue
+        try:
+            below = Version(pj_floor) < Version(ref_floor)
+        except (InvalidVersion, Exception):  # noqa: BLE001
+            violations.append(
+                {
+                    "distribution": dist,
+                    "pyproject_floor": pj_floor,
+                    "reference_floor": ref_floor,
+                    "code": "unparseable",
+                    "message": f"{dist}: could not compare pyproject floor {pj_floor} with reference floor {ref_floor}.",
+                }
+            )
+            continue
+        if below:
+            violations.append(
+                {
+                    "distribution": dist,
+                    "pyproject_floor": pj_floor,
+                    "reference_floor": ref_floor,
+                    "code": "below_reference",
+                    "message": (
+                        f"{dist} pyproject floor {pj_floor} fell behind the reference floor "
+                        f"{ref_floor} — bump the pin or refresh the reference."
+                    ),
+                }
+            )
+
+    return {"ok": not violations, "violations": violations, "checked": len(anchor_list)}

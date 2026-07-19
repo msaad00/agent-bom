@@ -30,6 +30,7 @@ def doctor_cmd() -> None:
     platform_checks: list[tuple[str, str, str]] = []
     cloud_sdk_checks: list[tuple[str, str, str]] = []
     cloud_api_checks: list[tuple[str, str, str]] = []
+    pin_drift_checks: list[tuple[str, str, str]] = []
 
     # Python version
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -164,6 +165,29 @@ def doctor_cmd() -> None:
     except Exception:
         cloud_api_checks.append(("Cloud API deprecations", "check unavailable", "info"))
 
+    # Cloud SDK pin drift — how far the repo's own pinned version floors lag the
+    # ecosystem, measured against a dated in-repo reference (offline, provenance-
+    # honest). Complements the installed-vs-floor check above: that answers "is
+    # my install at the floor?"; this answers "is the floor itself stale?". A
+    # non-blocking signal; never claims "current" without the dated reference.
+    try:
+        from agent_bom.cloud_sdk_freshness import cloud_sdk_pin_drift
+
+        drift = cloud_sdk_pin_drift()
+        _drift_status_map = {"current": "ok", "behind": "warn", "unknown": "info"}
+        checked_on = drift["last_checked"] or "never"
+        for sdk in drift["sdks"]:
+            if sdk["status"] == "current":
+                value = f"floor {sdk['floor']} current with latest {sdk['known_latest']} (as of {checked_on})"
+            elif sdk["status"] == "behind":
+                months = f", ~{sdk['months_behind']}mo" if sdk["months_behind"] else ""
+                value = f"floor {sdk['floor']} behind latest {sdk['known_latest']}{months} (as of {checked_on})"
+            else:
+                value = f"floor {sdk['floor']} — pin currency unknown (last checked {checked_on})"
+            pin_drift_checks.append((sdk["distribution"], value, _drift_status_map.get(sdk["status"], "info")))
+    except Exception:
+        pin_drift_checks.append(("Cloud SDK pin drift", "check unavailable", "info"))
+
     checks = [*core_checks, *runtime_checks, *platform_checks]
     warns = sum(1 for _, _, s in checks if s == "warn")
 
@@ -194,6 +218,7 @@ def doctor_cmd() -> None:
                 "platform": _section(platform_checks),
                 "cloud_sdk": _section(cloud_sdk_checks),
                 "cloud_api_deprecations": _section(cloud_api_checks),
+                "cloud_sdk_pin_drift": _section(pin_drift_checks),
                 "capabilities": capabilities,
                 "coverage": coverage,
                 "ready": warns == 0,
@@ -212,6 +237,7 @@ def doctor_cmd() -> None:
     _print_section(console, "Platform integrations", platform_checks)
     _print_section(console, "Cloud SDK freshness", cloud_sdk_checks)
     _print_section(console, "Cloud API deprecations", cloud_api_checks)
+    _print_section(console, "Cloud SDK pin drift", pin_drift_checks)
 
     # Nothing-silent capability view — every gated feature with its state and
     # unlock path, so a skipped/degraded capability is never silent.

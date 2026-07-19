@@ -4514,6 +4514,62 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             )
         )
         resource_ids.append(node_id)
+        # Redacted DSPM content-sampling evidence rides onto the resource node so
+        # the CNAPP/DSPM overlay's ``content_classification`` reader promotes the
+        # DATA_STORE companion to a sensitive crown jewel (parity with the DB path
+        # below). Copied verbatim — it is already redacted (types/counts only).
+        bucket_classification = bucket.get("content_classification")
+        if isinstance(bucket_classification, dict):
+            graph.nodes[node_id].attributes["content_classification"] = bucket_classification
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
+                )
+            )
+
+    # ── DSPM databases → CLOUD_RESOURCE (RDS/Postgres/warehouse content stores) ──
+    # A ``dspm_databases`` record carries the redacted database content-scan
+    # classification (``agent-bom.dspm.database_scan.v1``). Materialize each as a
+    # data-store-labelled CLOUD_RESOURCE carrying the classification so the CNAPP
+    # overlay attaches a DATA_STORE companion and, when publicly reachable, the
+    # public→sensitive toxic-combination path fires — the same surface S3/GCS
+    # content sampling feeds. Never raises into the builder.
+    for db in original_inventory.get("dspm_databases", []) or []:
+        if not isinstance(db, dict):
+            continue
+        db_name = _clean_graph_part(db.get("name"))
+        if not db_name:
+            continue
+        db_classification = db.get("content_classification")
+        db_attributes: dict[str, Any] = {
+            "resource_id": db.get("id") or db.get("arn") or db_name,
+            "resource_name": db_name,
+            "resource_type": "database",
+            "resource_kind": _clean_graph_part(db.get("engine")) or "database",
+            "cloud_provider": provider,
+            "cloud_service": "dspm-database",
+            "location": _clean_graph_part(db.get("location")) or region,
+            "internet_exposed": bool(db.get("publicly_accessible")),
+            "is_data_store": True,
+            "account_id": db.get("account_id") or account_id,
+        }
+        if isinstance(db_classification, dict):
+            db_attributes["content_classification"] = db_classification
+        node_id = f"cloud_resource:{provider}:database:{db_name}"
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.CLOUD_RESOURCE,
+                # Label carries the "database" data-store keyword so the CNAPP
+                # overlay's data-store match fires and builds the companion.
+                label=f"database: {db_name}",
+                attributes=db_attributes,
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="dspm"),
+            )
+        )
+        resource_ids.append(node_id)
         if account_node_id:
             graph.add_edge(
                 UnifiedEdge(

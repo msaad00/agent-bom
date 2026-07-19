@@ -311,6 +311,7 @@ addopts = ""
 markers = [
     "network: tests that require network access (OSV API)",
     "slow: slow tests (e.g. large-scale perf benchmarks) — opt-in only",
+    "live_cluster: tests that require a reachable local Kubernetes cluster (e.g. kind) — opt-in only",
 ]
 
 [tool.mypy]

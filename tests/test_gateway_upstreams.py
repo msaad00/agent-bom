@@ -528,3 +528,36 @@ def test_fetch_discovered_upstreams_hits_expected_path(monkeypatch: pytest.Monke
     assert captured["headers"]["Authorization"] == "Bearer abc"
     assert captured["timeout"] == 10.0
     assert result == {"upstreams": []}
+
+
+def test_discovery_response_cannot_forge_private_network_approval():
+    registry = UpstreamRegistry.from_discovery_response(
+        {
+            "upstreams": [
+                {
+                    "name": "shadow",
+                    "url": "http://127.0.0.1:8080/mcp",
+                    "private_network_approved": True,
+                }
+            ]
+        }
+    )
+
+    upstream = registry.get("shadow")
+    assert upstream is not None
+    assert upstream.private_network_approved is False
+
+
+def test_operator_yaml_marks_private_network_as_approved(tmp_path):
+    config = tmp_path / "upstreams.yaml"
+    config.write_text("upstreams:\n  - name: internal\n    url: http://mcp.internal:8080/mcp\n")
+
+    upstream = UpstreamRegistry.from_yaml(config).get("internal")
+
+    assert upstream is not None
+    assert upstream.private_network_approved is True
+
+
+def test_upstream_url_rejects_embedded_credentials():
+    with pytest.raises(UpstreamConfigError, match="must not contain embedded credentials"):
+        UpstreamConfig(name="unsafe", url="https://token@example.com/mcp")

@@ -35,6 +35,11 @@ Important boundaries:
   POSTs JSON-RPC upstream and does not run a persistent SSE upstream client
 - discovered upstreams always come back with `auth: "none"`
 - credentials stay in Secrets and are overlaid locally through `--upstreams`
+- discovered upstreams are public-network-only by default; a private/VPC or
+  in-cluster destination must be overlaid in operator-authored YAML
+- each new connection resolves and validates every DNS answer, connects to the
+  approved IP, ignores proxy environment variables, and does not follow
+  redirects; cloud metadata and link-local destinations are always denied
 
 ## Minimal prerequisites
 
@@ -77,6 +82,9 @@ upstreams:
     auth: bearer
     token_env: GITHUB_MCP_TOKEN
 ```
+
+The overlay is also the explicit approval boundary when a discovered MCP uses
+private DNS. Repeat its `name` and `url` in the local file; the local entry wins.
 
 ## Validation flow
 

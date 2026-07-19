@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Protocol
 
-from agent_bom.security import sanitize_log_label
+from agent_bom.security import redact_secret_url, sanitize_error, sanitize_log_label
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,10 @@ class WebhookAlertSink:
         from agent_bom.security import validate_url
 
         validate_url(url)
+        if isinstance(retries, bool) or not isinstance(retries, int) or not 0 <= retries <= 10:
+            raise ValueError("retries must be an integer between 0 and 10")
+        if not math.isfinite(timeout) or not 0 < timeout <= 300:
+            raise ValueError("timeout must be a finite value between 0 and 300 seconds")
         self.url = url
         self.retries = retries
         self.timeout = timeout
@@ -116,14 +121,18 @@ class WebhookAlertSink:
                 if resp.status_code >= 500 and attempt < self.retries:
                     time.sleep(0.5 * (2**attempt))
                     continue  # Retry on 5xx
-                logger.warning("Webhook alert to %s returned HTTP %d", self.url, resp.status_code)
+                logger.warning("Webhook alert to %s returned HTTP %d", redact_secret_url(self.url), resp.status_code)
                 return
             except Exception as exc:  # noqa: BLE001
                 last_err = exc
                 if attempt < self.retries:
                     time.sleep(0.5 * (2**attempt))
                     continue
-        logger.warning("Failed to send webhook alert to %s: %s", self.url, last_err)
+        logger.warning(
+            "Failed to send webhook alert to %s: %s",
+            redact_secret_url(self.url),
+            sanitize_error(last_err or "delivery failed"),
+        )
 
 
 class FileAlertSink:

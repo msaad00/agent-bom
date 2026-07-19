@@ -42,7 +42,7 @@ def _seed_outbox(path: Path, tenant: str = "tenant-alpha") -> tuple[WebhookOutbo
     destination = WebhookDestination(
         destination_id="siem",
         tenant_id=tenant,
-        url="https://siem.example.test/webhook",
+        url="https://siem.example.test/webhook/SUPERSECRET?token=ALSOSECRET",
         signing_secret="secret",
     )
     row_id = outbox.enqueue(event, destination)
@@ -62,6 +62,9 @@ def test_outbox_stats_and_records_are_tenant_scoped(tmp_path: Path) -> None:
     assert body["stats"]["by_status"] == {"pending": 1}
     assert body["records"][0]["destination_id"] == "siem"
     assert body["records"][0]["tenant_id"] == "tenant-alpha"
+    assert body["records"][0]["url"].startswith("https://siem.example.test/")
+    assert "SUPERSECRET" not in body["records"][0]["url"]
+    assert "ALSOSECRET" not in body["records"][0]["url"]
     assert beta.json()["count"] == 0
 
 

@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import secrets
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 
@@ -96,7 +97,7 @@ def _tenant_id(request: Request) -> str:
 
 
 def _tenant_jobs(request: Request) -> list:
-    return _get_store().list_all(tenant_id=_tenant_id(request))
+    return cast(list, _get_store().list_all(tenant_id=_tenant_id(request)))
 
 
 def _credential_rotation_governance(tenant_id: str) -> dict[str, Any]:
@@ -1347,9 +1348,9 @@ def _scan_request_payload(job: Any) -> dict:
     if request is None:
         return {}
     if hasattr(request, "model_dump"):
-        return request.model_dump(exclude_none=True)
+        return cast(dict, request.model_dump(exclude_none=True))
     if hasattr(request, "dict"):
-        return request.dict(exclude_none=True)
+        return cast(dict, request.dict(exclude_none=True))
     if isinstance(request, dict):
         return {k: v for k, v in request.items() if v is not None}
     return {}
@@ -1685,7 +1686,7 @@ async def export_compliance_report(
         payload = ("\n".join(lines) + "\n").encode()
         record_compliance_export(signing_algorithm, framework_key, len(payload))
 
-        async def _iter_chunks(data: bytes, chunk_size: int = 64 * 1024):
+        async def _iter_chunks(data: bytes, chunk_size: int = 64 * 1024) -> AsyncIterator[bytes]:
             for offset in range(0, len(data), chunk_size):
                 yield data[offset : offset + chunk_size]
 
@@ -1920,7 +1921,7 @@ async def get_posture_scorecard(request: Request) -> dict:
 
     scorecard = latest_result.get("posture_scorecard")
     if scorecard:
-        return scorecard
+        return cast(dict, scorecard)
 
     return {
         "grade": "N/A",

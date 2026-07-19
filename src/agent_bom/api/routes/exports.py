@@ -149,7 +149,7 @@ async def get_export_destination(request: Request, destination_id: str, _role: A
 
 
 @router.delete("/exports/destinations/{destination_id}", tags=["exports"], status_code=204)
-async def delete_export_destination(request: Request, destination_id: str, _role: Any = _WRITE_DEP):
+async def delete_export_destination(request: Request, destination_id: str, _role: Any = _WRITE_DEP) -> None:
     tenant_id = require_request_tenant_id(request)
     if not get_export_destination_store().delete(tenant_id, destination_id):
         raise HTTPException(status_code=404, detail=f"Export destination {destination_id} not found")
@@ -257,7 +257,7 @@ async def list_export_schedules(request: Request, _role: Any = _READ_DEP) -> lis
 
 
 @router.delete("/exports/schedules/{schedule_id}", tags=["exports"], status_code=204)
-async def delete_export_schedule(request: Request, schedule_id: str, _role: Any = _WRITE_DEP):
+async def delete_export_schedule(request: Request, schedule_id: str, _role: Any = _WRITE_DEP) -> None:
     tenant_id = require_request_tenant_id(request)
     if not get_export_schedule_store().delete(schedule_id, tenant_id=tenant_id):
         raise HTTPException(status_code=404, detail=f"Export schedule {schedule_id} not found")

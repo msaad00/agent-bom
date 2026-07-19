@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import asdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
@@ -31,6 +32,9 @@ from agent_bom.security import (
     sanitize_text,
     sanitize_url,
 )
+
+if TYPE_CHECKING:
+    from agent_bom.models import Agent
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -193,7 +197,7 @@ def _observation_ids(agent: Any, server: Any) -> tuple[str, str | None]:
     return current, legacy
 
 
-def _agent_count_by_class(agents) -> dict[str, int]:
+def _agent_count_by_class(agents: Iterable[Agent]) -> dict[str, int]:
     """Split discovered agents into AI clients vs background agents (additive).
 
     Excludes synthetic SBOM/image wrappers. Lets clients render one authoritative
@@ -210,7 +214,7 @@ def _agent_count_by_class(agents) -> dict[str, int]:
 
 
 def _serialize_agent(
-    agent,
+    agent: Agent,
     *,
     fleet_agent: dict[str, Any] | None = None,
     scan_history_index: dict[tuple[str, str], dict[str, Any]] | None = None,

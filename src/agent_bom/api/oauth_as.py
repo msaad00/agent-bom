@@ -46,7 +46,11 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
+    from fastapi.responses import Response
 
 logger = logging.getLogger(__name__)
 
@@ -676,20 +680,20 @@ def _basic_auth_from_header(authorization: str | None) -> tuple[str, str] | None
     return client_id, secret
 
 
-def build_oauth_as_router(server: OAuthAuthorizationServer):
+def build_oauth_as_router(server: OAuthAuthorizationServer) -> APIRouter:
     """Build a FastAPI router exposing the OAuth 2.1 AS endpoints.
 
     Mounted on the gateway app so a standard MCP client can discover the AS via
     ``/.well-known/oauth-authorization-server`` and complete the PKCE flow.
     """
     from fastapi import APIRouter, Request
-    from fastapi.responses import JSONResponse, RedirectResponse
+    from fastapi.responses import JSONResponse, RedirectResponse, Response
 
     # The module uses ``from __future__ import annotations`` so route-handler
     # type hints are strings; FastAPI resolves them against the module globals.
     # Expose the FastAPI symbols there so ``request: Request`` resolves to the
     # real type (otherwise FastAPI treats it as a query parameter).
-    globals().update({"Request": Request, "JSONResponse": JSONResponse, "RedirectResponse": RedirectResponse})
+    globals().update({"Request": Request, "JSONResponse": JSONResponse, "RedirectResponse": RedirectResponse, "Response": Response})
 
     router = APIRouter()
 
@@ -733,7 +737,7 @@ def build_oauth_as_router(server: OAuthAuthorizationServer):
         return JSONResponse(registered, status_code=201)
 
     @router.get("/oauth/authorize")
-    async def authorize(request: Request):
+    async def authorize(request: Request) -> Response:
         params = dict(request.query_params)
         try:
             location = server.authorize(params)

@@ -29,7 +29,10 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 # Minimum keys MCP OAuth / OIDC discovery clients expect.
 _REQUIRED_DISCOVERY_KEYS = (
@@ -170,7 +173,7 @@ def validate_oidc_discovery_document(doc: dict[str, Any]) -> None:
             raise OIDCDiscoveryShimError(f"{list_key} must be a non-empty list")
 
 
-def build_oidc_discovery_shim_router(config: OIDCDiscoveryShimConfig):
+def build_oidc_discovery_shim_router(config: OIDCDiscoveryShimConfig) -> APIRouter:
     """Expose ``/.well-known/openid-configuration`` for the shim issuer."""
     from fastapi import APIRouter
     from fastapi.responses import JSONResponse

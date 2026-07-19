@@ -15,7 +15,7 @@ import time
 import uuid
 from collections.abc import Sequence
 from functools import lru_cache
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import anyio.to_thread
 
@@ -37,10 +37,10 @@ if TYPE_CHECKING:
     from agent_bom.api.auth import Role
     from agent_bom.api.oidc import OIDCConfig
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request as StarletteRequest
-from starlette.responses import JSONResponse
-from starlette.types import ASGIApp
+from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Message
 
 from agent_bom.api.dashboard_csp import dashboard_csp_header, describe_dashboard_csp_posture
 from agent_bom.security import sanitize_text
@@ -529,7 +529,7 @@ class InMemoryRateLimitStore:
 class PostgresRateLimitStore:
     """Shared sliding-window limiter backed by Postgres for horizontal scaling."""
 
-    def __init__(self, window_seconds: int = 60, pool=None) -> None:
+    def __init__(self, window_seconds: int = 60, pool: Any = None) -> None:
         self._window = window_seconds
         if pool is None:
             from agent_bom.api.postgres_store import _get_pool
@@ -582,7 +582,7 @@ class PostgresRateLimitStore:
 class TrustHeadersMiddleware(BaseHTTPMiddleware):
     """Add trust + standard security headers to every response."""
 
-    async def dispatch(self, request: StarletteRequest, call_next):
+    async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         trace_meta = make_request_trace(dict(request.headers))
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         request.state.request_id = request_id
@@ -1111,7 +1111,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             return True
         return False
 
-    async def _serve_anonymous(self, request: StarletteRequest, call_next):
+    async def _serve_anonymous(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         """Serve a credential-less request as the configured NO_AUTH_ROLE.
 
         The anonymous identity is subject to the exact same per-route role gate
@@ -1142,7 +1142,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.auth_method = "anonymous"
         return await self._call_with_tenant_context(request, call_next)
 
-    async def dispatch(self, request: StarletteRequest, call_next):
+    async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         # CORS preflight (OPTIONS) MUST bypass auth: browsers do not attach
         # Authorization headers to preflights (CORS spec / Fetch §3.2.2).
         # Rejecting them with 401 before CORSMiddleware runs blocks every
@@ -1316,7 +1316,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         base = scim_base_path()
         return path == base or path.startswith(base + "/")
 
-    async def _try_scim_bearer_auth(self, request: StarletteRequest, call_next):
+    async def _try_scim_bearer_auth(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         """Authenticate dedicated SCIM provisioning traffic.
 
         SCIM uses its own bearer token and tenant binding so IdP lifecycle
@@ -1350,7 +1350,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.auth_method = "scim_bearer"
         return await self._call_with_tenant_context(request, call_next)
 
-    async def _try_browser_session_auth(self, request: StarletteRequest, call_next, token: str):
+    async def _try_browser_session_auth(self, request: StarletteRequest, call_next: RequestResponseEndpoint, token: str) -> Response:
         from agent_bom.api.auth import Role, get_key_store
 
         try:
@@ -1405,7 +1405,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.auth_method = auth_method
         return await self._call_with_tenant_context(request, call_next)
 
-    async def _try_proxy_header_auth(self, request: StarletteRequest, call_next):
+    async def _try_proxy_header_auth(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response | None:
         if not self._trusted_proxy_auth:
             return None
 
@@ -1500,7 +1500,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             _logger.exception("Failed to record trusted proxy authentication audit event")
         return await self._call_with_tenant_context(request, call_next)
 
-    async def _call_with_tenant_context(self, request: StarletteRequest, call_next):
+    async def _call_with_tenant_context(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         tenant_token = None
         try:
             if os.environ.get("AGENT_BOM_POSTGRES_URL"):
@@ -1525,7 +1525,7 @@ MAX_RATE_LIMIT_RPM = 60_000
 DEFAULT_GLOBAL_IP_RATE_LIMIT_RPM = DEFAULT_READ_RATE_LIMIT_RPM * 4
 
 
-def _build_rate_limit_store(window_seconds: int):
+def _build_rate_limit_store(window_seconds: int) -> InMemoryRateLimitStore | PostgresRateLimitStore:
     """Build the shared/in-memory limiter store with fail-closed semantics."""
     if os.environ.get("AGENT_BOM_POSTGRES_URL"):
         try:
@@ -1596,7 +1596,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._window = 60
         self._store = self._build_store()
 
-    def _build_store(self):
+    def _build_store(self) -> InMemoryRateLimitStore | PostgresRateLimitStore:
         return _build_rate_limit_store(self._window)
 
     async def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
@@ -1641,7 +1641,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return True
         return False
 
-    async def dispatch(self, request: StarletteRequest, call_next):
+    async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         if self._is_dashboard_static_asset(request.url.path, request.method):
             return await call_next(request)
 
@@ -1698,7 +1698,7 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         return f"global-ip:{client_ip}"
 
-    async def dispatch(self, request: StarletteRequest, call_next):
+    async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         if RateLimitMiddleware._is_dashboard_static_asset(request.url.path, request.method):
             return await call_next(request)
 
@@ -1935,7 +1935,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         # 0 disables the floor entirely (debug/load-test escape hatch).
         return max(0, value)
 
-    async def dispatch(self, request: StarletteRequest, call_next):
+    async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         content_length = request.headers.get("content-length")
         if content_length:
             try:
@@ -1996,10 +1996,10 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
             # Re-inject the drained body so downstream handlers can read it
             body = b"".join(chunks)
 
-            async def _receive():
+            async def _receive() -> Message:
                 return {"type": "http.request", "body": body, "more_body": False}
 
-            request._receive = _receive  # type: ignore[attr-defined]
+            request._receive = _receive
 
         return await call_next(request)
 
@@ -2119,7 +2119,7 @@ def install_error_envelope(application: object) -> None:
     def _correlation_id(request: StarletteRequest) -> str:
         return getattr(request.state, "request_id", "") or request.headers.get("x-request-id") or str(uuid.uuid4())
 
-    async def http_exception_handler(request: StarletteRequest, exc: HTTPException):
+    async def http_exception_handler(request: StarletteRequest, exc: HTTPException) -> JSONResponse:
         if request.url.path.startswith("/scim/"):
             from agent_bom.api.scim import scim_error_body
 
@@ -2141,7 +2141,7 @@ def install_error_envelope(application: object) -> None:
             headers=getattr(exc, "headers", None),
         )
 
-    async def starlette_http_exception_handler(request: StarletteRequest, exc: StarletteHTTPException):
+    async def starlette_http_exception_handler(request: StarletteRequest, exc: StarletteHTTPException) -> JSONResponse:
         return _build_error_envelope(
             status_code=exc.status_code,
             detail=exc.detail,
@@ -2149,7 +2149,7 @@ def install_error_envelope(application: object) -> None:
             headers=getattr(exc, "headers", None),
         )
 
-    async def validation_exception_handler(request: StarletteRequest, exc: RequestValidationError):
+    async def validation_exception_handler(request: StarletteRequest, exc: RequestValidationError) -> JSONResponse:
         return _build_error_envelope(
             status_code=422,
             detail=_json_safe_validation_errors(exc.errors()),

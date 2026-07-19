@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, NoReturn, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, NoReturn, Protocol, cast
 
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
@@ -86,10 +86,13 @@ def _client_from_config(config: NeptuneGraphConfig) -> GremlinClientProtocol:
             "Neptune graph backend requires gremlin-python. Install it in the control-plane environment "
             "or inject a Gremlin client in tests."
         ) from exc
-    return Client(
-        config.endpoint,
-        config.traversal_source,
-        message_serializer=GraphSONSerializersV3d0(),
+    return cast(
+        GremlinClientProtocol,
+        Client(
+            config.endpoint,
+            config.traversal_source,
+            message_serializer=GraphSONSerializersV3d0(),
+        ),
     )
 
 
@@ -297,7 +300,7 @@ class NeptuneGraphStore:
         snapshots = self.list_snapshots(tenant_id=tenant_id, limit=1000)
         for index, snapshot in enumerate(snapshots):
             if snapshot["scan_id"] == before_scan_id and index + 1 < len(snapshots):
-                return snapshots[index + 1]["scan_id"]
+                return cast(str, snapshots[index + 1]["scan_id"])
         return ""
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> list[dict[str, Any]]:

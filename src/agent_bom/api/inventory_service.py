@@ -279,7 +279,7 @@ async def build_asset_list(
     facet_active = bool((environment or "").strip() or (provider or "").strip() or (source or "").strip())
     predicate = _facet_predicate(environment or "", provider or "", source or "")
 
-    async def _fetch(page_cursor: str | None, page_offset: int, page_limit: int):
+    async def _fetch(page_cursor: str | None, page_offset: int, page_limit: int) -> tuple[Any, int, str | None]:
         """Return (nodes, total, next_cursor) from the active store call."""
         try:
             if query:

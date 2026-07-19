@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from agent_bom.api.oidc import OIDCError, claims_have_role_signal, claims_to_role, claims_to_tenant
@@ -148,7 +148,7 @@ def _build_request_context(acs_url: str, saml_response: str, relay_state: str | 
     }
 
 
-def _build_saml_auth(request_context: dict[str, Any], settings: dict[str, Any]):
+def _build_saml_auth(request_context: dict[str, Any], settings: dict[str, Any]) -> Any:
     _check_saml_support()
     from onelogin.saml2.auth import OneLogin_Saml2_Auth
 
@@ -251,7 +251,7 @@ class SAMLConfig:
         errors = settings.validate_metadata(metadata)
         if errors:
             raise SAMLError(f"Invalid generated SAML metadata: {', '.join(errors)}")
-        return metadata
+        return cast(str, metadata)
 
     def verify_response(self, saml_response: str, relay_state: str | None = None) -> SAMLAssertion:
         if not saml_response.strip():

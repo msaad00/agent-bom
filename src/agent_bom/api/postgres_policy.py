@@ -126,7 +126,7 @@ class PostgresPolicyStore:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(sql, params)
             conn.commit()
-            return cursor.rowcount > 0
+            return int(cursor.rowcount) > 0
 
     def list_policies(self, tenant_id: str | None = None, enabled: bool | None = None, mode: str | None = None) -> list:
         from .policy_store import GatewayPolicy
@@ -307,7 +307,7 @@ class PostgresScheduleStore:
                     (schedule_id, tenant_id),
                 )
             conn.commit()
-            return cursor.rowcount > 0
+            return int(cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list:
         from .schedule_store import ScanSchedule
@@ -406,7 +406,7 @@ class PostgresSourceStore:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute("DELETE FROM control_plane_sources WHERE source_id = %s", (source_id,))
             conn.commit()
-            return cursor.rowcount > 0
+            return int(cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list:
         from .models import SourceRecord
@@ -507,7 +507,7 @@ class PostgresCredentialRefStore:
                 (credential_ref_id, tenant_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return int(cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list:
         from .models import CredentialRefRecord

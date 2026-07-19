@@ -1162,7 +1162,7 @@ class AIBOMReport:
     )
     azure_cis_benchmark_data: Optional[dict[str, Any]] = None  # Serialized CIS Azure Benchmark results
     gcp_cis_benchmark_data: Optional[dict[str, Any]] = None  # Serialized CIS GCP Benchmark results
-    databricks_cis_benchmark_data: Optional[dict[str, Any]] = None  # Serialized Databricks Security Best Practices results
+    databricks_security_data: Optional[dict[str, Any]] = None  # Serialized Databricks Security Best Practices results (canonical)
     aisvs_benchmark_data: Optional[dict[str, Any]] = None  # Serialized AISVS compliance results
     vector_db_scan_data: Optional[list[Any]] = None  # Serialized vector DB security assessments
     gpu_infra_data: Optional[dict[str, Any]] = None  # Serialized GPU/AI compute infra scan results
@@ -1258,6 +1258,21 @@ class AIBOMReport:
             from agent_bom import __version__
 
             self.tool_version = __version__
+
+    @property
+    def databricks_cis_benchmark_data(self) -> Optional[dict[str, Any]]:
+        """Deprecated alias for ``databricks_security_data``.
+
+        Databricks has no official CIS benchmark; the canonical field is
+        ``databricks_security_data`` (vendor security best practices). This
+        CIS-named property is retained for backward compatibility with existing
+        clients and delegates both read and write to the canonical field.
+        """
+        return self.databricks_security_data
+
+    @databricks_cis_benchmark_data.setter
+    def databricks_cis_benchmark_data(self, value: Optional[dict[str, Any]]) -> None:
+        self.databricks_security_data = value
 
     @property
     def total_agents(self) -> int:
@@ -1490,7 +1505,7 @@ class AIBOMReport:
             ("azure", self.azure_cis_benchmark_data),
             ("gcp", self.gcp_cis_benchmark_data),
             ("snowflake", self.snowflake_cis_benchmark_data),
-            ("databricks", self.databricks_cis_benchmark_data),
+            ("databricks", self.databricks_security_data),
         ):
             if not isinstance(data, dict):
                 continue

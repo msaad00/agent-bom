@@ -872,8 +872,28 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         compliance_tags_from_finding_row,
     )
 
-    runtime_index = build_tenant_runtime_evidence_index(str(getattr(job, "tenant_id", None) or "default"))
+    tenant_id = str(getattr(job, "tenant_id", None) or "default")
+    runtime_index = build_tenant_runtime_evidence_index(tenant_id)
     incidents = result.get("runtime_incident_feedback") if isinstance(result.get("runtime_incident_feedback"), list) else []
+
+    # CWPP runtime/EDR workload evidence (#4158 stage 3): additive, read-only.
+    # Only workload-scoped rows are annotated, and only when this tenant actually
+    # has runtime signals — an empty index leaves every row untouched, so absence
+    # of runtime data is never rendered as a clean workload. Reachability is never
+    # invented here.
+    from agent_bom.cloud.runtime_workload_evidence import (
+        RuntimeWorkloadEvidenceIndex,
+        attach_workload_runtime_evidence_to_finding,
+    )
+    from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
+
+    workload_runtime_index: RuntimeWorkloadEvidenceIndex | None = None
+    try:
+        _wl_index = RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id)
+        if not _wl_index.is_empty():
+            workload_runtime_index = _wl_index
+    except Exception:  # noqa: BLE001 - runtime evidence is additive; never break the read path
+        workload_runtime_index = None
 
     def _attach_reach(row: dict[str, Any]) -> dict[str, Any]:
         from agent_bom.symbol_reach_triage import adjust_effective_reach_breakdown, symbol_reachability_from_payload
@@ -898,7 +918,10 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
             row.setdefault("effective_reach_score", composite)
             row.setdefault("effective_reach_band", band_from_composite(composite))
         row.setdefault("framework_tags", compliance_tags_from_finding_row(row))
-        return attach_runtime_evidence_to_finding(row, runtime_index, incidents=incidents)
+        attach_runtime_evidence_to_finding(row, runtime_index, incidents=incidents)
+        if workload_runtime_index is not None:
+            attach_workload_runtime_evidence_to_finding(row, workload_runtime_index)
+        return row
 
     # Collapse the three per-vulnerability representations (unified ``findings``
     # stream, ``blast_radius`` projection, nested ``package_vulnerability``) onto

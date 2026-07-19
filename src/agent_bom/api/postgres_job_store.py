@@ -172,6 +172,13 @@ class PostgresJobStore:
     def put(self, job) -> None:
         data = job.model_dump_json()
         with _tenant_connection(self._pool) as conn:
+            # scan_jobs.team_id references the teams registry (FK root) in the
+            # migration-owned schema; tenants are created dynamically, so the
+            # tenant's team row is provisioned on first write (idempotent).
+            conn.execute(
+                "INSERT INTO teams (team_id, name, slug) VALUES (%s, %s, %s) ON CONFLICT (team_id) DO NOTHING",
+                (job.tenant_id, job.tenant_id, job.tenant_id),
+            )
             conn.execute(
                 """INSERT INTO scan_jobs (
                        job_id, status, created_at, completed_at, team_id, batch_id, parent_job_id,

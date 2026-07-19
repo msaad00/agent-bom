@@ -1207,11 +1207,34 @@ GRANT USAGE ON SCHEMA public TO agent_bom_readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO agent_bom_readonly;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_readonly;
 
--- The bootstrap owner remains an administrative migration identity. It is
--- never used by the API. Tenant RLS is enforced through the separate
--- NOSUPERUSER/NOBYPASSRLS agent_bom_app runtime role above; attempting to
--- demote the active bootstrap session can fail on a clean Postgres volume and
--- leave initialization incomplete.
+-- ══════════════════════════════════════════════════════════════════════════════
+-- TENANT ISOLATION: strip RLS-bypassing attributes from the app/admin role (#3665)
+-- ══════════════════════════════════════════════════════════════════════════════
+--
+-- The bundled quickstart connects as POSTGRES_USER (default: agent_bom), which
+-- the postgres image creates as a SUPERUSER. Superusers and BYPASSRLS roles
+-- IGNORE the FORCE ROW LEVEL SECURITY clause on every table, so the tenant
+-- isolation policies become silent no-ops and cross-tenant queries return other
+-- tenants' rows.
+--
+-- This runs as the very last init step, after all extensions and tables are
+-- created and owned by agent_bom. Dropping SUPERUSER/BYPASSRLS does NOT remove
+-- table ownership: agent_bom still performs the app's runtime idempotent DDL
+-- (table creation, ENABLE/FORCE RLS, policy and function definition) as the
+-- schema owner, but is now itself subject to the tenant RLS policies.
+-- The change only takes effect on the next connection (the current bootstrap
+-- session keeps its cached superuser status), so the rest of init is unaffected.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = current_user AND (rolsuper OR rolbypassrls)
+    ) THEN
+        EXECUTE format('ALTER ROLE %I NOSUPERUSER NOBYPASSRLS', current_user);
+        RAISE NOTICE 'Stripped SUPERUSER/BYPASSRLS from % so tenant RLS is enforced (#3665)', current_user;
+    END IF;
+END
+$$;
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SUMMARY

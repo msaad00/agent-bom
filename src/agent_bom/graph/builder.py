@@ -608,7 +608,9 @@ def build_unified_graph_from_report(
         ("snowflake_cis_benchmark", "snowflake_cis_benchmark_data", "snowflake"),
         ("azure_cis_benchmark", "azure_cis_benchmark_data", "azure"),
         ("gcp_cis_benchmark", "gcp_cis_benchmark_data", "gcp"),
-        ("databricks_cis_benchmark", "databricks_cis_benchmark_data", "databricks"),
+        # Databricks has no official CIS benchmark: read the canonical
+        # ``databricks_security`` key, falling back to the deprecated alias.
+        ("databricks_security", "databricks_cis_benchmark", "databricks"),
     ):
         cis_data = report_json.get(section_key) or report_json.get(legacy_key)
         if not cis_data:
@@ -641,7 +643,7 @@ def build_unified_graph_from_report(
                         "cloud_provider": cloud_provider,
                         "network_exposure": list(check.get("network_exposure", [])),
                     },
-                    compliance_tags=[f"CIS-{check_id}"],
+                    compliance_tags=[] if cloud_provider == "databricks" else [f"CIS-{check_id}"],
                     data_sources=[section_key],
                     dimensions=NodeDimensions(cloud_provider=cloud_provider),
                 )

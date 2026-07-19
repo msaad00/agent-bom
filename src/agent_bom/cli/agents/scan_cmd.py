@@ -2013,7 +2013,7 @@ def scan(
     if ctx.gcp_cis_benchmark_report is not None:
         report.gcp_cis_benchmark_data = ctx.gcp_cis_benchmark_report.to_dict()
     if ctx.databricks_security_report is not None:
-        report.databricks_cis_benchmark_data = ctx.databricks_security_report.to_dict()
+        report.databricks_security_data = ctx.databricks_security_report.to_dict()
     if ctx.aisvs_report is not None:
         report.aisvs_benchmark_data = ctx.aisvs_report.to_dict()
     if ctx.vector_db_results:

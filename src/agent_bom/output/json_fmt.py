@@ -1311,8 +1311,12 @@ def to_json(report: AIBOMReport) -> dict:
     if report.gcp_cis_benchmark_data:
         result["gcp_cis_benchmark"] = report.gcp_cis_benchmark_data
 
-    if report.databricks_cis_benchmark_data:
-        result["databricks_cis_benchmark"] = report.databricks_cis_benchmark_data
+    if report.databricks_security_data:
+        # Canonical vendor-best-practice key; Databricks has no official CIS
+        # benchmark. ``databricks_cis_benchmark`` is retained as a deprecated
+        # alias (identical payload) for existing CIS-named consumers.
+        result["databricks_security"] = report.databricks_security_data
+        result["databricks_cis_benchmark"] = report.databricks_security_data
 
     if report.aisvs_benchmark_data:
         result["aisvs_benchmark"] = report.aisvs_benchmark_data

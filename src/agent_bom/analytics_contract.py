@@ -246,7 +246,7 @@ def build_cis_benchmark_check_rows(data: dict[str, Any], scan_id: str, *, measur
         ("azure", data.get("azure_cis_benchmark")),
         ("gcp", data.get("gcp_cis_benchmark")),
         ("snowflake", data.get("snowflake_cis_benchmark")),
-        ("databricks", data.get("databricks_cis_benchmark")),
+        ("databricks", data.get("databricks_security") or data.get("databricks_cis_benchmark")),
     )
     for cloud, benchmark in benchmark_sources:
         if not isinstance(benchmark, dict):

@@ -75,6 +75,11 @@ MANAGED_VERSION_REFS: list[tuple[Path, re.Pattern[str], str]] = [
         "Snowpark Dockerfile ARG",
     ),
     (
+        ROOT / "deploy" / "docker" / "Dockerfile.collector",
+        re.compile(r"^ARG VERSION=([0-9]+\.[0-9]+\.[0-9]+)$", re.M),
+        "collector Dockerfile ARG",
+    ),
+    (
         ROOT / "deploy" / "k8s" / "sidecar-example.yaml",
         re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)"),
         "K8s sidecar image",

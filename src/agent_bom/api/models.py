@@ -179,6 +179,13 @@ class ScanRequest(BaseModel):
     dynamic_max_depth: int = 4
     """Max directory depth for dynamic discovery."""
 
+    discover_host: bool = False
+    """Also discover the server host's ambient MCP configuration (~/.claude,
+    ~/.cursor, …). Off by default: on the hosted/multi-tenant scan path the
+    server host is not the tenant's estate, so sweeping it would fold the
+    server's own AI clients into a tenant's results. Opt in only for
+    self-hosted single-tenant deployments where the host IS the scan target."""
+
     scope_agents: list[ScanGlobPattern] = Field(default_factory=list)
     """Filter discovered agents by name (glob patterns, e.g. ['claude-*', 'cursor'])."""
 

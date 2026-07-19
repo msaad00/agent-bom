@@ -837,11 +837,31 @@ def _run_scan_sync(job: ScanJob) -> None:
                 dynamic_max_depth=req.dynamic_max_depth,
             )
         else:
-            pipeline.start_step("discovery", "Discovering local MCP configurations...")
-            local_agents = discover_all(
-                dynamic=req.dynamic_discovery,
-                dynamic_max_depth=req.dynamic_max_depth,
-            )
+            # Scope discovery to the request's own project paths — the server
+            # host is not the tenant's estate, so ambient host-wide discovery
+            # (discover_all with no project_dir) would fold the server's own AI
+            # clients into a tenant's scan. Host discovery is opt-in via
+            # `discover_host` for self-hosted single-tenant deployments.
+            local_agents = []
+            for proj in effective_agent_projects:
+                pipeline.update_step("discovery", f"Discovering MCP configs in {proj}...")
+                local_agents.extend(
+                    discover_all(
+                        project_dir=str(proj),
+                        dynamic=req.dynamic_discovery,
+                        dynamic_max_depth=req.dynamic_max_depth,
+                    )
+                )
+            if req.discover_host:
+                pipeline.update_step("discovery", "Discovering host ambient MCP configurations...")
+                local_agents.extend(
+                    discover_all(
+                        dynamic=req.dynamic_discovery,
+                        dynamic_max_depth=req.dynamic_max_depth,
+                    )
+                )
+            if not effective_agent_projects and not req.discover_host:
+                pipeline.update_step("discovery", "No local project scope; skipping ambient host discovery")
         agents.extend(local_agents)
 
         if req.inventory:

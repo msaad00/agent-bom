@@ -95,7 +95,7 @@ def test_api_pipeline_ai_enrichment_inherits_env_and_serializes_typed_provenance
     job = ScanJob(
         job_id="ai-api-123",
         created_at="2026-07-17T12:00:00Z",
-        request=ScanRequest(ai_enrich=True, ai_model="ollama/fake", offline=True),
+        request=ScanRequest(ai_enrich=True, ai_model="ollama/fake", offline=True, discover_host=True),
     )
     agent = _agent_with_package()
     package = agent.mcp_servers[0].packages[0]
@@ -225,7 +225,7 @@ def test_api_pipeline_no_scan_skips_vulnerability_scan_and_result_side_effects(m
     job = ScanJob(
         job_id="no-scan-123",
         created_at="2026-03-25T12:00:00Z",
-        request=ScanRequest(no_scan=True, auto_update_db=True),
+        request=ScanRequest(no_scan=True, auto_update_db=True, discover_host=True),
     )
 
     def _unexpected(*_args, **_kwargs):
@@ -254,7 +254,7 @@ def test_api_pipeline_offline_scan_never_retries_online(monkeypatch):
     job = ScanJob(
         job_id="offline-123",
         created_at="2026-03-25T12:00:00Z",
-        request=ScanRequest(offline=True, enrich=True),
+        request=ScanRequest(offline=True, enrich=True, discover_host=True),
     )
     seen_offline: list[bool | None] = []
 

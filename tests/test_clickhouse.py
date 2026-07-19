@@ -577,6 +577,55 @@ class TestClickHouseAnalyticsStore:
             assert attempts["count"] == 2
             buffered.close()
 
+    def test_buffered_queue_drops_oldest_without_exceeding_capacity(self):
+        from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                return None
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            buffered = BufferedAnalyticsStore(store, max_batch=10, max_queue=2, flush_interval=60.0)
+            buffered.record_event({"event_id": "oldest"})
+            buffered.record_event({"event_id": "middle"})
+            buffered.record_event({"event_id": "newest"})
+
+            assert buffered.queue_capacity == 2
+            assert buffered.queue_depth == 2
+            assert buffered.dropped_count == 1
+            drained = buffered._drain()
+            assert [item[1][0]["event_id"] for item in drained] == ["middle", "newest"]
+            buffered.close()
+
+    def test_failed_flush_requeue_remains_bounded_and_preserves_new_arrivals(self):
+        from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                buffered.record_event({"event_id": "during-outage"})
+                raise RuntimeError("clickhouse unavailable")
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            buffered = BufferedAnalyticsStore(store, max_batch=2, max_queue=2, flush_interval=60.0)
+            buffered.record_event({"event_id": "retry-1"})
+            buffered.record_event({"event_id": "retry-2"})
+
+            buffered._flush_pending()
+
+            assert buffered.queue_depth == 2
+            assert buffered.queue_depth <= buffered.queue_capacity
+            assert buffered.dropped_count == 1
+            assert any(item[1][0]["event_id"] == "during-outage" for item in buffered._drain())
+            buffered.close()
+
 
 def test_clickhouse_escape_strips_control_chars_and_quotes():
     from agent_bom.api.clickhouse_store import _escape

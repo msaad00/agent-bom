@@ -168,13 +168,20 @@ def is_actionable_finding(finding: Finding) -> bool:
 
 
 def exploit_likelihood_value(finding: Finding) -> str:
-    """Graded exploit-likelihood signal derived from unified finding enrichment."""
+    """Graded exploit-likelihood signal derived from unified finding enrichment.
+
+    Returns ``"unassessed"`` (never ``"theoretical"``) when there is no basis —
+    no KEV, no EPSS score, no EPSS percentile — so an assessed-sounding label is
+    never fabricated from absent signal.
+    """
     from agent_bom.config import EPSS_ACTIVE_EXPLOITATION_THRESHOLD
 
     if finding.is_kev:
         return "actively_exploited"
     epss = finding.epss_score
     percentile = evidence(finding, "epss_percentile", None)
+    if epss is None and percentile is None:
+        return "unassessed"  # no signal → no fabricated assessment
     if epss is not None and epss >= EPSS_ACTIVE_EXPLOITATION_THRESHOLD:
         return "likely_exploited"
     if percentile is not None and percentile >= 95:

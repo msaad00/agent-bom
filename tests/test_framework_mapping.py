@@ -493,6 +493,94 @@ def test_nist_evidenced_controls_set_matches_specs():
     assert "SI-10" in derived
 
 
+# ─── Cloud CIS Foundations Benchmark title provenance (copyright guard) ──────
+
+
+def _cloud_cis_benchmark_title_literals() -> dict[str, list[str]]:
+    """Return every ``title="..."`` string literal passed to a ``CISCheckResult``
+    constructor across the four cloud CIS Foundations Benchmark modules.
+
+    The official CIS Foundations Benchmark titles are copyrighted (not public
+    domain). agent-bom must key its checks to the factual CIS check IDs while
+    carrying its OWN concise descriptor as the ``title`` — never the verbatim
+    official CIS title. This scans the module source (AST) so it stays robust
+    even though the control inventory digest is derived from IDs only.
+    """
+    import ast
+    from pathlib import Path
+
+    import agent_bom.cloud as cloud_pkg
+
+    cloud_dir = Path(cloud_pkg.__file__).parent
+    modules = (
+        "aws_cis_benchmark.py",
+        "gcp_cis_benchmark.py",
+        "azure_cis_benchmark.py",
+        "snowflake_cis_benchmark.py",
+    )
+    out: dict[str, list[str]] = {}
+    for name in modules:
+        source = (cloud_dir / name).read_text()
+        tree = ast.parse(source)
+        titles: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            call_name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            if call_name != "CISCheckResult":
+                continue
+            for kw in node.keywords:
+                if kw.arg == "title" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    titles.append(kw.value.value)
+        out[name] = titles
+    return out
+
+
+def test_cloud_cis_benchmark_titles_are_own_descriptors_not_copyrighted():
+    """No emitted cloud CIS Foundations Benchmark check title may reproduce the
+    verbatim official (copyrighted) CIS title. The CIS house style opens every
+    recommendation with "Ensure ..."; the highest-signal guard is that none of
+    agent-bom's own descriptors start with that word, plus a curated block-list
+    of known verbatim titles per provider.
+    """
+    literals = _cloud_cis_benchmark_title_literals()
+
+    # Every one of the four modules must actually contribute titles (guards the
+    # scan itself from silently matching nothing).
+    for name, titles in literals.items():
+        assert titles, f"{name}: no CISCheckResult title literals found — scan is broken"
+
+    all_titles = [t for titles in literals.values() for t in titles]
+
+    # (1) House-style guard: the strongest signal of a verbatim CIS title.
+    offenders = [t for t in all_titles if t.lower().startswith("ensure ")]
+    assert not offenders, f"CIS-house-style 'Ensure ...' titles must be reworded to own descriptors: {offenders}"
+
+    # (2) Curated block-list of known verbatim CIS Foundations Benchmark titles.
+    forbidden = {
+        # AWS
+        "Ensure MFA is enabled for the root user account",
+        "Ensure no root user account access key exists",
+        "Ensure IAM password policy requires minimum length of 14 or greater",
+        "Maintain current contact details",
+        # GCP
+        "Ensure that corporate login credentials are used",
+        "Ensure multi-factor authentication is enforced for all users",
+        "Ensure that the default VPC network does not exist in the project",
+        # Azure
+        "Ensure that multi-factor authentication is enabled for all users",
+        "Ensure that 'Auditing' is set to 'On' for SQL servers",
+        "Ensure Microsoft Defender for Servers is set to On",
+        # Snowflake
+        "Ensure MFA is enabled for all users with password authentication",
+        "Ensure minimum password length is set to 14 or greater",
+        "Ensure ACCOUNTADMIN role is granted to no more than 2 users",
+    }
+    present = forbidden & set(all_titles)
+    assert not present, f"Verbatim copyrighted CIS Foundations Benchmark titles emitted: {sorted(present)}"
+
+
 def test_vendored_catalog_integrity_and_counts_reconcile():
     """Digest + published counts must reconcile with the vendored payloads."""
     from agent_bom import framework_catalog as fc

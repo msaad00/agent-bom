@@ -212,13 +212,17 @@ def fs_cmd(
 
 
 @click.command("iac")
-@click.argument("paths", nargs=-1, required=True)
+@click.argument("paths", nargs=-1, required=False)
 @_scan_format_option()
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--fail-on-severity", type=click.Choice(["critical", "high", "medium", "low"]))
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
-@click.option("--k8s-live", is_flag=True, help="Inspect live Kubernetes cluster posture via kubectl")
+@click.option(
+    "--k8s-live",
+    is_flag=True,
+    help="Inspect live Kubernetes cluster posture (read-only; native in-cluster service-account transport)",
+)
 @click.option("--k8s-namespace", "k8s_live_namespace", default="default", show_default=True, help="Kubernetes namespace for --k8s-live")
 @click.option("--k8s-all-namespaces", "k8s_live_all_namespaces", is_flag=True, help="Inspect all namespaces for --k8s-live")
 @click.option("--k8s-context", "k8s_live_context", default=None, help="kubectl context for --k8s-live")
@@ -248,6 +252,12 @@ def iac_cmd(
     from pathlib import Path as _Path
 
     from agent_bom.cli.agents import scan
+
+    # Posture-only runs (the scheduled in-cluster KSPM job) invoke --k8s-live
+    # with no IaC path. A bare `iac` with neither a path nor --k8s-live has
+    # nothing to evaluate and must never look like a clean scan.
+    if not paths and not k8s_live:
+        raise click.ClickException("Provide one or more IaC paths, or --k8s-live to inspect live cluster posture.")
 
     # A missing/typo'd IaC target must never be reported as a clean scan.
     missing = [p for p in paths if not _Path(p).exists()]

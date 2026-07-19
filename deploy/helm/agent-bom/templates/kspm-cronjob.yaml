@@ -1,0 +1,98 @@
+{{- if and .Values.scanner.enabled .Values.scanner.kspm.enabled }}
+# Live Kubernetes posture (KSPM) CronJob. Distinct from the image-discovery
+# scan CronJob: this runs `agent-bom iac --k8s-live`, which executes the
+# read-only in-cluster posture collectors (workloads, NetworkPolicy, RBAC)
+# via the native service-account token transport — NOT container image
+# discovery. Bound to the scanner service account, which carries the
+# least-privilege read-only ClusterRole (see rbac.yaml).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "agent-bom.name" . }}-kspm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kspm
+spec:
+  schedule: {{ .Values.scanner.kspm.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.scanner.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.scanner.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "agent-bom.labels" . | nindent 12 }}
+            app.kubernetes.io/component: kspm
+          {{- with .Values.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          serviceAccountName: {{ include "agent-bom.scannerServiceAccountName" . }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: kspm
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["agent-bom"]
+              args:
+                - "iac"
+                - "--k8s-live"
+                {{- if .Values.scanner.kspm.allNamespaces }}
+                - "--k8s-all-namespaces"
+                {{- else }}
+                - "--k8s-namespace"
+                - {{ .Values.scanner.kspm.namespace | quote }}
+                {{- end }}
+                - "-f"
+                - "json"
+                - "-o"
+                - "/output/kspm.json"
+                {{- range .Values.scanner.kspm.extraArgs }}
+                - {{ . | quote }}
+                {{- end }}
+              env:
+                - name: HOME
+                  value: /tmp
+                {{- with .Values.scanner.kspm.env }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              volumeMounts:
+                - name: output
+                  mountPath: /output
+                {{- if .Values.scanner.writableTmp }}
+                - name: tmp
+                  mountPath: /tmp
+                {{- end }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+          volumes:
+            - name: output
+              emptyDir: {}
+            {{- if .Values.scanner.writableTmp }}
+            - name: tmp
+              emptyDir: {}
+            {{- end }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          restartPolicy: OnFailure
+{{- end }}

@@ -152,6 +152,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "kspm_cluster_posture",
+        "description": "Evaluate live Kubernetes cluster posture (KSPM) vs the CIS Kubernetes Benchmark, with honest per-collector state",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "fleet_scan",
         "description": "Batch registry lookup for multiple MCP servers — returns risk levels, tool counts, and trust signals for each",
         "annotations": {"readOnlyHint": True},
@@ -419,6 +424,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "graph_export": ["READ", "GRAPH", "EXPORT"],
     "analytics_query": ["READ", "ANALYTICS"],
     "cis_benchmark": ["READ", "NETWORK", "CLOUD"],
+    "kspm_cluster_posture": ["READ", "NETWORK", "CLOUD"],
     "fleet_scan": ["READ", "REGISTRY", "ANALYZE"],
     "runtime_correlate": ["READ", "LOCAL_FILE_READ", "RUNTIME"],
     "runtime_production_index": ["READ", "RUNTIME", "OBSERVABILITY"],

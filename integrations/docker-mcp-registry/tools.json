@@ -485,6 +485,32 @@
     ]
   },
   {
+    "name": "kspm_cluster_posture",
+    "description": "Evaluate live Kubernetes cluster security posture (KSPM) — read-only inspection of running workloads, RBAC, and NetworkPolicy coverage against the pinned CIS Kubernetes Benchmark, with explicit per-collector execution states so partial runs cannot be laundered into a clean pass. Returns security posture, not a container-image inventory.",
+    "arguments": [
+      {
+        "name": "namespace",
+        "type": "string",
+        "desc": "Kubernetes namespace to inspect (ignored when all_namespaces=True). Defaults to 'default'."
+      },
+      {
+        "name": "all_namespaces",
+        "type": "boolean",
+        "desc": "Inspect every namespace instead of a single one."
+      },
+      {
+        "name": "context",
+        "type": "string",
+        "desc": "kubectl context to use (workstation fallback path only). Omit to use the in-cluster SA token."
+      },
+      {
+        "name": "enable_nodes_configz",
+        "type": "boolean",
+        "desc": "Opt in to per-node kubelet /configz collection (CIS section 4.2). Off by default."
+      }
+    ]
+  },
+  {
     "name": "fleet_scan",
     "description": "Batch-scan a list of MCP server names against the security metadata registry.",
     "arguments": [

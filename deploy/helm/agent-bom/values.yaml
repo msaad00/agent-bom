@@ -79,6 +79,21 @@ scanner:
   outputFormat: json
   extraArgs: []
   env: []
+  # ─── Live Kubernetes posture (KSPM) ────────────────────────────────────────
+  # A DISTINCT CronJob from the image-discovery scan above. When enabled it runs
+  # `agent-bom iac --k8s-live`, which executes the read-only in-cluster posture
+  # collectors (workloads, NetworkPolicy, RBAC, optional node config) over the
+  # native service-account transport — no kubectl, no image discovery. It is
+  # bound to the scanner service account, which carries the least-privilege
+  # read-only ClusterRole (get/list on pods/namespaces/nodes/networkpolicies/
+  # RBAC; no secrets, no mutation, no nodes/proxy).
+  kspm:
+    enabled: false
+    schedule: "0 */6 * * *"
+    allNamespaces: true
+    namespace: default
+    extraArgs: []
+    env: []
   # Optional client TLS material for HTTPS fleet/scan push (collector -> control plane mTLS).
   # Mount the Secret with cert/key (and optional CA) via extraVolumes + extraVolumeMounts.
   extraVolumes: []
@@ -708,6 +723,12 @@ resources:
 
 podSecurityContext:
   runAsNonRoot: true
+  # Numeric UID/GID of the image's `abom` user (Dockerfile: adduser abom → 100).
+  # runAsNonRoot alone fails with CreateContainerConfigError because the kubelet
+  # cannot verify a non-numeric image USER is non-root; pinning the numeric UID
+  # makes the chart schedulable with the official image.
+  runAsUser: 100
+  runAsGroup: 101
   fsGroup: 1000
   seccompProfile:
     type: RuntimeDefault
@@ -716,6 +737,8 @@ securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
   runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 101
   capabilities:
     drop:
       - ALL

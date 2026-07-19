@@ -139,9 +139,13 @@ def test_gcp_sa_with_usage_evidence_produces_ciem_finding() -> None:
     ciem = [f for f in findings if f.evidence.get("ciem") == "over_privilege"]
     assert len(ciem) == 1, [f.title for f in findings]
     assert ciem[0].evidence["cloud_provider"] == "gcp"
-    assert "storage.googleapis.com" in ciem[0].evidence["unused_permissions"]
+    # unused_permissions is a list of GCP service identifiers; assert exact set
+    # membership (not a URL substring — CodeQL's url-sanitization heuristic
+    # misfires on the .googleapis.com shape otherwise).
+    unused = set(ciem[0].evidence["unused_permissions"])
+    assert "storage.googleapis.com" in unused
     # The used service must NOT be flagged.
-    assert "compute.googleapis.com" not in ciem[0].evidence["unused_permissions"]
+    assert "compute.googleapis.com" not in unused
 
 
 def test_gcp_sa_without_usage_evidence_stays_unevaluable() -> None:

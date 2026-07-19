@@ -480,11 +480,15 @@ role you already created:
 Net: turning on audit-trail behavioral edges costs **no new role** and, in
 standard setups, **no new permission**.
 
-> **The one exception is the disk side-scan.** Agentless EBS side-scan
-> (`AGENT_BOM_SIDESCAN=1`) is the single deliberately non-read-only
-> capability, and it is the *only* one that needs a **separate, scoped snapshot
-> role** (`deploy/terraform/connect-aws-sidescan`) distinct from the read-only
-> scanner role, plus an in-account collector instance. Audit-trail does not.
+> **The one exception family is the opt-in disk side-scan.** AWS EBS side-scan
+> is exposed through the CLI with `AGENT_BOM_SIDESCAN=1`. Azure Managed Disk
+> and GCP Persistent Disk lifecycle adapters are available to an embedding
+> scheduler through injected, already-authenticated SDK clients; they are not
+> yet CLI- or scheduler-wired. Each provider requires a **separate, narrowly
+> scoped lifecycle role** distinct from the read-only scanner role:
+> `deploy/terraform/connect-aws-sidescan`,
+> `deploy/terraform/connect-azure-sidescan`, or
+> `deploy/terraform/connect-gcp-sidescan`. Audit-trail does not.
 
 ---
 
@@ -516,12 +520,65 @@ snapshot implicitly.
 
 Azure Managed Disk and GCP Persistent Disk inventory also emits
 `side_scan_targets` records with provider, target id, location, size, encryption,
-and execution state. Those records are graph-visible workload-disk targets, and
-the provider-neutral side-scan runner can execute the same snapshot -> temp disk
--> collector mount -> metadata parse -> cleanup lifecycle through scoped Azure
-or GCP lifecycle adapters. The CLI command above remains AWS EBS-specific; Azure
-and GCP execution is wired for connection/scheduler integrations and must still
-use provider-scoped snapshot permissions plus an in-account collector.
+and execution state. Those records are graph-visible workload-disk targets.
+The repository defines a versioned provider-neutral lifecycle/evidence contract
+and concrete Azure Managed Disk and GCP Persistent Disk adapters that accept
+already-authenticated SDK clients. Separate least-privilege Terraform modules
+grant the snapshot/temp-disk/collector lifecycle. Azure/GCP credentials,
+scheduler wiring, and CLI commands are not shipped, and no live credentialed
+smoke is claimed. The command above remains AWS EBS-only.
+
+All provider lifecycle implementations must persist explicit
+`disabled`/`denied`/`partial`/`failed`/`scan_complete` state and separate cleanup
+state. A scan is complete only after owned temporary resources are deleted;
+zero findings are scoped to the scanned disk and never assert that a workload is
+clean. Snapshot operations remain opt-in because they are not read-only.
+`side_scan_lifecycle.py` supplies the versioned records, deterministic ownership
+tags, stale-worker protection, and a tenant-scoped SQLite state store. The
+injected-SDK adapters consume that state; no production scheduler or Azure/GCP
+CLI surface invokes them yet.
+
+## 7c. Runtime/EDR workload evidence (optional, read-only, additive)
+
+Disk side-scan is agentless and point-in-time. When an operator *already* runs an
+EDR or runtime sensor, agent-bom can ingest that source's signals to **enrich**
+the same canonical workloads — process executions, IOC detections, network
+connections, file-integrity events, behavioural alerts. There is **no mandatory
+host agent**: agent-bom neither installs nor requires a sensor, and runtime
+evidence never replaces disk evidence.
+
+Ingest is hardened and fails closed (`runtime_workload_evidence.py`):
+
+- **Authenticated source.** Each source registers with a hashed shared secret;
+  a batch is accepted only after a constant-time secret check. Tenant, provider,
+  and account are taken from the authenticated source — a payload that claims a
+  different provider/account is rejected (confused-deputy guard).
+- **Freshness + provenance.** Every signal records `observed_at`, `source_id`,
+  and `source_kind`; a signal older than the freshness window is rejected, as is
+  one with no workload reference or an unparseable timestamp.
+- **Deduplicated + isolated.** Signals dedup on
+  `(tenant, provider, account, workload, dedup_key)`; that key leads every store
+  query and is part of the dedup identity, so two tenants can carry the same
+  logical signal without one dropping or leaking. Durable persistence has
+  in-memory, SQLite (restart- and cross-process-safe), and Postgres backends
+  (`runtime_workload_evidence_store.py`).
+- **Metadata only.** Raw block bytes, file contents, and secret values are
+  redacted at construction; only bounded metadata references are retained.
+
+**Honesty — additive, never a cleanliness claim.** Every evidence summary carries
+`clean_workload_assertion: false`. A workload with no matching runtime signal is
+marked `no_runtime_signal`, never "clean". Enrichment annotates workloads,
+findings, and the nodes an attack-path campaign already traverses; it never adds a
+graph edge, so reachability stays edge-derived and is never fabricated.
+
+Wired today: findings surfaced by `GET /v1/findings` (and the overview /
+compliance / observability reads that share the enricher) gain a
+`workload_runtime_evidence` field on workload-scoped rows once a tenant has
+signals; the JSON API export carries it automatically. A graph-join helper
+annotates CWPP workload nodes for a matching tenant. Not yet locked in (stage 4):
+a dedicated ingest REST endpoint, CLI/MCP ingest surface, a scheduler that pulls
+from sources, typed SARIF/report export fields, the live graph/campaign route
+invocation, and any UI panel. No credentialed live source smoke is claimed.
 
 ---
 

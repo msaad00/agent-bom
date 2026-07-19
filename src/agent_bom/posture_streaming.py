@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
-from agent_bom.security import sanitize_error, sanitize_sensitive_payload
+from agent_bom.security import redact_secret_url, sanitize_error, sanitize_sensitive_payload
 
 POSTURE_EVENT_SCHEMA_VERSION = "1"
 WEBHOOK_SIGNATURE_FRESHNESS_SECONDS = 300
@@ -204,7 +204,7 @@ class OutboxRecord:
             "event_id": self.event_id,
             "tenant_id": self.tenant_id,
             "destination_id": self.destination_id,
-            "url": self.url,
+            "url": redact_secret_url(self.url),
             "status": self.status,
             "attempts": self.attempts,
             "next_attempt_at": self.next_attempt_at,

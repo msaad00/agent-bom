@@ -31,6 +31,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import random
 import sqlite3
@@ -492,6 +493,26 @@ class RetryPolicy:
     backoff_multiplier: float = 2.0
     jitter_ratio: float = 0.1
 
+    def __post_init__(self) -> None:
+        if isinstance(self.max_attempts, bool) or not isinstance(self.max_attempts, int) or not 1 <= self.max_attempts <= 10:
+            raise DeliveryError("max_attempts must be an integer between 1 and 10")
+        numeric = {
+            "initial_backoff": self.initial_backoff,
+            "max_backoff": self.max_backoff,
+            "backoff_multiplier": self.backoff_multiplier,
+            "jitter_ratio": self.jitter_ratio,
+        }
+        if any(isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value) for value in numeric.values()):
+            raise DeliveryError("retry timing values must be finite numbers")
+        if not 0 < self.initial_backoff <= 300:
+            raise DeliveryError("initial_backoff must be between 0 and 300 seconds")
+        if not self.initial_backoff <= self.max_backoff <= 300:
+            raise DeliveryError("max_backoff must be between initial_backoff and 300 seconds")
+        if not 1 <= self.backoff_multiplier <= 10:
+            raise DeliveryError("backoff_multiplier must be between 1 and 10")
+        if not 0 <= self.jitter_ratio <= 1:
+            raise DeliveryError("jitter_ratio must be between 0 and 1")
+
 
 @dataclass(frozen=True)
 class BreakerPolicy:
@@ -642,8 +663,10 @@ class DeliveryClient:
         preview = redacted_preview(delivery.payload)
         last_http: int | None = None
         last_error = ""
+        attempts_made = 0
 
         for attempt in range(1, self.retry.max_attempts + 1):
+            attempts_made = attempt
             headers = self._build_headers(destination, delivery, body, attempt)
             outcome = self.sender(destination.url, headers, body, destination.timeout)
             attempt_now = self._now()
@@ -708,14 +731,14 @@ class DeliveryClient:
             idempotency_key=key,
             status="dead_letter",
             http_status=last_http,
-            attempts=self.retry.max_attempts,
+            attempts=attempts_made,
             now=terminal_now,
         )
         self.store.log_attempt(
             idempotency_key=key,
             destination_id=destination.destination_id,
             kind=destination.kind,
-            attempt=self.retry.max_attempts,
+            attempt=attempts_made,
             status="dead_letter",
             http_status=last_http,
             payload_preview=preview,
@@ -729,7 +752,7 @@ class DeliveryClient:
             destination_id=destination.destination_id,
             status="dead_letter",
             http_status=last_http,
-            attempts=self.retry.max_attempts,
+            attempts=attempts_made,
             delivered=False,
             warning=warning,
         )

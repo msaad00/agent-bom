@@ -962,13 +962,16 @@ def test_send_webhook():
         )
 
 
-def test_send_webhook_failure_silent():
+def test_send_webhook_failure_silent(caplog):
     """_send_webhook silently handles failures."""
     import asyncio
+    import logging
     from unittest.mock import AsyncMock, patch
 
     from agent_bom.proxy import _send_webhook
 
+    secret_url = "https://hooks.example.com/services/T000/B111/SUPERSECRET?token=ALSOSECRET"
+    caplog.set_level(logging.DEBUG)
     with patch("agent_bom.security.validate_url"), patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.post.side_effect = Exception("connection failed")
@@ -976,7 +979,11 @@ def test_send_webhook_failure_silent():
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
         # Should not raise
-        asyncio.run(_send_webhook("https://hooks.example.com/test", {"test": True}))
+        asyncio.run(_send_webhook(secret_url, {"test": True}))
+
+    assert "hooks.example.com" in caplog.text
+    assert "SUPERSECRET" not in caplog.text
+    assert "ALSOSECRET" not in caplog.text
 
 
 # ── Proxy CLI --alert-webhook flag ────────────────────────────────────────

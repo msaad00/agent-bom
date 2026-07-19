@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from agent_bom.watch import (
     Alert,
@@ -280,6 +283,31 @@ def test_webhook_sink_exhausted_retries():
 
         # 1 initial + 1 retry = 2 calls
         assert mock_post.call_count == 2
+
+
+def test_webhook_sink_failure_logs_redacted_destination_and_error(caplog):
+    import httpx
+
+    secret_url = "https://hooks.example.com/services/T000/B111/SUPERSECRET?token=ALSOSECRET"
+    alert = Alert(alert_type="config_changed", severity="high", summary="Test")
+    caplog.set_level(logging.WARNING)
+
+    with (
+        patch("httpx.post", side_effect=httpx.ConnectError(f"failed for {secret_url}")),
+        patch("time.sleep"),
+        patch("agent_bom.security.validate_url", return_value=None),
+    ):
+        WebhookAlertSink(secret_url, retries=0).send(alert)
+
+    assert "hooks.example.com" in caplog.text
+    assert "SUPERSECRET" not in caplog.text
+    assert "ALSOSECRET" not in caplog.text
+
+
+def test_webhook_sink_rejects_unbounded_retry_configuration():
+    with patch("agent_bom.security.validate_url", return_value=None):
+        with pytest.raises(ValueError, match="retries"):
+            WebhookAlertSink("https://hooks.example.com/test", retries=11)
 
 
 # ── 12. WebhookAlertSink — payload format ────────────────────────────────

@@ -4,9 +4,10 @@ Operators register outbound webhook destinations (URL + signing secret + an
 event-type filter) for agent-identity governance events — budget enforcement,
 identity lifecycle, JIT grants, conditional-access denials, and behavioral
 drift. Matching events are enqueued into the durable, HMAC-signed, retry-aware
-``WebhookOutbox`` (``posture_streaming``); the existing delivery worker ships
-them. Signing secrets are stored as-is (needed to sign at delivery) but never
-returned after creation. Destination URLs are SSRF-validated at registration.
+``WebhookOutbox`` (``posture_streaming``). An operator-run worker must invoke
+``deliver_due_webhooks`` to ship them; the API does not create hidden egress.
+Signing secrets are stored as-is (needed to sign at delivery) but never returned
+after creation. Destination URLs are SSRF-validated at registration.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.security import redact_secret_url
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +76,10 @@ class WebhookSubscription:
         )
 
     def to_public_dict(self) -> dict[str, Any]:
-        """Serialize without the signing secret; expose only a fingerprint."""
+        """Serialize without signing or URL-embedded secret material."""
         d = asdict(self)
         secret = d.pop("signing_secret", "")
+        d["url"] = redact_secret_url(self.url)
         d["secret_fingerprint"] = hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12] if secret else ""
         return d
 

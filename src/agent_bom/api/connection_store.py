@@ -26,7 +26,7 @@ from agent_bom.storage.base import StorageSchema, TableSchema
 
 # Providers a connection can target. AWS is broker-enabled in Phase A; the
 # others are accepted/stored and reported as "planned" by the broker.
-SUPPORTED_PROVIDERS: tuple[str, ...] = ("aws", "azure", "gcp", "snowflake")
+SUPPORTED_PROVIDERS: tuple[str, ...] = ("aws", "azure", "gcp", "snowflake", "database")
 
 # Connection lifecycle status vocabulary.
 STATUS_PENDING = "pending"

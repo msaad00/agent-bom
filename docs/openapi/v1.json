@@ -28784,7 +28784,7 @@
     },
     "/v1/self-posture": {
       "get": {
-        "description": "Return this agent-bom deployment's own security + governance posture.\n\nHonest per-check results (pass/fail/warn/unknown) over API authentication,\ndatabase tenant isolation, audit-log integrity signing, secret sealing, and\nthe dependency attack surface. Distribution enumeration is offloaded to a\nworker thread so the event loop is never blocked (non-negotiable \u00a77).",
+        "description": "Return this agent-bom deployment's own security + governance posture.\n\nHonest per-check results (pass/fail/warn/unknown) over API authentication,\ndatabase tenant isolation, audit-log integrity signing, the tenant-scoped\ngovernance audit-chain integrity, secret sealing, and the dependency attack\nsurface. The audit-chain integrity is verified against THIS caller's tenant\nonly (``verify_chain(tenant_id=...)``), so one tenant never sees another's\nchain state; a chain that cannot be read degrades to an honest ``unknown``,\nnever an assumed pass. Distribution enumeration + the audit-chain walk are\noffloaded to a worker thread so the event loop is never blocked (\u00a77).",
         "operationId": "get_self_posture_v1_self_posture_get",
         "parameters": [
           {

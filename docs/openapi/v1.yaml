@@ -18739,9 +18739,13 @@ paths:
     get:
       description: "Return this agent-bom deployment's own security + governance posture.\n\
         \nHonest per-check results (pass/fail/warn/unknown) over API authentication,\n\
-        database tenant isolation, audit-log integrity signing, secret sealing, and\n\
-        the dependency attack surface. Distribution enumeration is offloaded to a\n\
-        worker thread so the event loop is never blocked (non-negotiable \xA77)."
+        database tenant isolation, audit-log integrity signing, the tenant-scoped\n\
+        governance audit-chain integrity, secret sealing, and the dependency attack\n\
+        surface. The audit-chain integrity is verified against THIS caller's tenant\n\
+        only (``verify_chain(tenant_id=...)``), so one tenant never sees another's\n\
+        chain state; a chain that cannot be read degrades to an honest ``unknown``,\n\
+        never an assumed pass. Distribution enumeration + the audit-chain walk are\n\
+        offloaded to a worker thread so the event loop is never blocked (\xA77)."
       operationId: get_self_posture_v1_self_posture_get
       parameters:
       - in: header

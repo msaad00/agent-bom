@@ -290,14 +290,23 @@ def test_webhook_sink_failure_logs_redacted_destination_and_error(caplog):
 
     secret_url = "https://hooks.example.com/services/T000/B111/SUPERSECRET?token=ALSOSECRET"
     alert = Alert(alert_type="config_changed", severity="high", summary="Test")
-    caplog.set_level(logging.WARNING)
+    # Pin capture to the emitting logger and restore its propagation: under
+    # worksteal, an earlier test can leave agent_bom.watch with propagate=False,
+    # which silently empties caplog and makes this redaction check a false pass.
+    watch_logger = logging.getLogger("agent_bom.watch")
+    prev_propagate = watch_logger.propagate
+    watch_logger.propagate = True
+    caplog.set_level(logging.WARNING, logger="agent_bom.watch")
 
-    with (
-        patch("httpx.post", side_effect=httpx.ConnectError(f"failed for {secret_url}")),
-        patch("time.sleep"),
-        patch("agent_bom.security.validate_url", return_value=None),
-    ):
-        WebhookAlertSink(secret_url, retries=0).send(alert)
+    try:
+        with (
+            patch("httpx.post", side_effect=httpx.ConnectError(f"failed for {secret_url}")),
+            patch("time.sleep"),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
+            WebhookAlertSink(secret_url, retries=0).send(alert)
+    finally:
+        watch_logger.propagate = prev_propagate
 
     from agent_bom.security import redact_secret_url
 

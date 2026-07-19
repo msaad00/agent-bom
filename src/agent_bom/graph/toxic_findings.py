@@ -581,16 +581,36 @@ TOXIC_RULES: tuple[ToxicRule, ...] = (
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
+# The four "public, internet-exposed + vulnerable" rules overlap: a single KEV
+# vuln is also "a known vulnerability" (VULNERABLE), a network-exploitable RCE
+# KEV satisfies all four. Left un-subsumed, one exposure is counted 2-4x in the
+# severity totals and the fail-on-severity gate. They are listed in TOXIC_RULES
+# highest-specificity/severity first (KEV > RCE > NETWORK_EXPLOITABLE >
+# VULNERABLE), so the first family rule to match an exposed entry node subsumes
+# the rest for that node: one exposure yields one finding at its highest
+# applicable severity.
+_EXPOSED_VULN_FAMILY: frozenset[str] = frozenset(
+    {
+        "PUBLIC_EXPOSED_KEV",
+        "PUBLIC_EXPOSED_RCE",
+        "PUBLIC_EXPOSED_NETWORK_EXPLOITABLE",
+        "PUBLIC_EXPOSED_VULNERABLE",
+    }
+)
+
 
 def build_toxic_combination_findings(graph: UnifiedGraph) -> list[Finding]:
     """Run every toxic-combination rule and return enforceable Findings.
 
     Pure, read-only, no network. Severity is escalated one tier above the worst
     participating component (capped at ``critical``). Deduped by
-    ``(rule_id, sorted node-id set)``. Never raises into the builder.
+    ``(rule_id, sorted node-id set)``. Overlapping exposed+vulnerable rules are
+    subsumed by specificity so one exposure yields one finding at its highest
+    applicable severity. Never raises into the builder.
     """
     findings: list[Finding] = []
     seen: set[tuple[str, tuple[str, ...]]] = set()
+    family_claimed: set[str] = set()  # entry nodes already flagged by the exposed+vuln family
     if not graph.nodes:
         return findings
 
@@ -599,7 +619,12 @@ def build_toxic_combination_findings(graph: UnifiedGraph) -> list[Finding]:
             rule_matches = rule.match(graph)
         except Exception:  # noqa: BLE001 — a single bad rule must not kill the rest
             continue
+        in_family = rule.id in _EXPOSED_VULN_FAMILY
         for m in rule_matches:
+            if in_family:
+                if m.entry.id in family_claimed:
+                    continue  # a higher-specificity family rule already claimed this exposure
+                family_claimed.add(m.entry.id)
             dedupe = (rule.id, m.dedupe_key)
             if dedupe in seen:
                 continue

@@ -129,6 +129,7 @@ def build_nist_800_53_catalog_line(
 
     if scan_count == 0 or evaluated == 0:
         status = "no_data"
+        score = 0.0  # never report a passing score off an unscanned/unevaluated estate
     elif failed > 0:
         status = "fail"
     elif warned > 0 or errored > 0:

@@ -187,6 +187,66 @@ def test_public_exposed_network_exploitable_rule_uses_cvss_attack_vector():
     assert set(f.evidence["node_ids"]) == {"res:web", "vuln:cve"}
 
 
+def test_exposed_kev_node_yields_single_combination_finding():
+    # One internet-exposed node with one KEV vuln must yield EXACTLY ONE toxic
+    # COMBINATION finding (the highest-specificity rule) — not both
+    # PUBLIC_EXPOSED_KEV and the generic PUBLIC_EXPOSED_VULNERABLE double-counting
+    # the same exposure in severity totals and the fail-on-severity gate.
+    findings = build_toxic_combination_findings(_graph_public_exposed_kev())
+    combos = [f for f in findings if f.finding_type == FindingType.COMBINATION]
+    assert len(combos) == 1
+    assert combos[0].evidence["rule_id"] == "PUBLIC_EXPOSED_KEV"
+    assert combos[0].severity == "critical"
+
+
+def test_worst_case_exposure_fires_once_at_highest_severity():
+    # A network-exploitable, CWE-RCE, CISA-KEV vuln on an exposed node satisfies
+    # all four overlapping exposed+vulnerable rules; subsumption collapses them to
+    # one finding at the highest applicable severity/specificity (KEV).
+    res = _node("res:web", EntityType.CLOUD_RESOURCE, severity="high", toxic_exposed_vulnerable=True, internet_exposed=True)
+    vuln = _node(
+        "vuln:cve",
+        EntityType.VULNERABILITY,
+        severity="critical",
+        is_kev=True,
+        impact_category="code-execution",
+        attack_vector="network",
+        network_exploitable=True,
+    )
+    g = _graph([res, vuln], [_edge("res:web", "vuln:cve", RelationshipType.VULNERABLE_TO)])
+    combos = [f for f in build_toxic_combination_findings(g) if f.finding_type == FindingType.COMBINATION]
+    assert len(combos) == 1
+    assert combos[0].evidence["rule_id"] == "PUBLIC_EXPOSED_KEV"
+    assert combos[0].severity == "critical"
+
+
+def test_exposed_vulnerable_family_does_not_suppress_unrelated_rules():
+    # The exposed+vulnerable family subsumes only within itself: an exposed node
+    # that is also a lateral-movement pivot still gets its independent
+    # PUBLIC_PERMISSION_LATERAL finding.
+    res = _node(
+        "role:public_fn",
+        EntityType.ROLE,
+        severity="high",
+        toxic_exposed_vulnerable=True,
+        internet_exposed=True,
+    )
+    vuln = _node("vuln:cve", EntityType.VULNERABILITY, severity="critical", is_kev=True)
+    other = _node("account:prod", EntityType.ACCOUNT, severity="high")
+    g = _graph(
+        [res, vuln, other],
+        [
+            _edge("role:public_fn", "vuln:cve", RelationshipType.VULNERABLE_TO),
+            _edge("role:public_fn", "account:prod", RelationshipType.ASSUMES),
+        ],
+    )
+    findings = build_toxic_combination_findings(g)
+    rule_ids = {f.evidence["rule_id"] for f in findings}
+    assert "PUBLIC_EXPOSED_KEV" in rule_ids
+    assert "PUBLIC_PERMISSION_LATERAL" in rule_ids
+    assert "PUBLIC_EXPOSED_VULNERABLE" not in rule_ids  # subsumed by KEV
+
+
 def test_public_to_sensitive_data_rule():
     findings = build_toxic_combination_findings(_graph_public_to_sensitive())
     hits = _by_rule(findings, "PUBLIC_TO_SENSITIVE_DATA")

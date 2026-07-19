@@ -430,6 +430,42 @@ def test_overview_hub_kev_finding_moves_exec_kev_count() -> None:
     get_compliance_hub_store().clear("default")
 
 
+def test_overview_vuln_tile_idle_on_empty_estate() -> None:
+    """A brand-new tenant with zero scans/findings must show the Vuln/SCA tile as
+    "idle" (no data), mirroring the sibling tiles — never a green "ok" while the
+    posture headline reads N/A (#4-audit 2026-07-18).
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    data = client_get_overview()
+    assert data["posture"]["grade"] == "N/A"
+    vuln = data["domains"]["vuln"]
+    assert vuln["metric"] == 0
+    assert vuln["status"] == "idle", vuln
+    # Sibling scan-scoped tiles agree — no tile claims "ok" on an empty estate.
+    assert data["domains"]["code"]["status"] == "idle"
+
+
+def test_overview_vuln_tile_ok_when_only_low_severity() -> None:
+    """With vuln data present but nothing critical/high, the tile stays "ok"
+    (there IS data) — the idle gate must not swallow a real low-severity estate.
+    """
+    _clear_jobs()
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().clear("default")
+    _ingest_hub_findings(
+        [{"finding_id": "L-1", "severity": "low", "title": "cve", "vulnerability_id": "CVE-2025-low"}]
+    )
+    data = client_get_overview()
+    vuln = data["domains"]["vuln"]
+    assert vuln["metric"] > 0
+    assert vuln["status"] == "ok", vuln
+    get_compliance_hub_store().clear("default")
+
+
 def test_overview_vuln_tile_reflects_pushed_findings_without_scan() -> None:
     """`findings push` (no scan job) must not leave the Vuln/SCA tile at
     "0 open CVEs · ok" while /findings?domain=vuln returns real highs (#3962).

@@ -216,6 +216,103 @@ def test_all_three_categories_present_once():
     assert [f for f in findings if f.evidence.get("mcp_tool_rule")]
 
 
+# ── Access-Advisor over-privilege: no double-count ───────────────────────────
+
+
+def _access_advisor_grant(src: str, tgt: str, service: str, last_used: str | None) -> UnifiedEdge:
+    return UnifiedEdge(
+        source=src,
+        target=tgt,
+        relationship=RelationshipType.HAS_PERMISSION,
+        evidence={
+            "source": "access-advisor",
+            "access_advisor": True,
+            "service_namespace": service,
+            "last_used_at": last_used,
+        },
+    )
+
+
+def _mixed_access_advisor_graph() -> UnifiedGraph:
+    """An AWS ROLE and a GCP SERVICE_ACCOUNT, each with Access-Advisor grants
+    that MIX used + never-used services.
+
+    This is the case the plain-HAS_PERMISSION ``_dormant_over_granted_graph``
+    fixture never exercised: because there is an observed-usage signal (the used
+    service's ``last_used_at``), the NHI over-grant path ALSO flags the never-used
+    services — so the same over-privilege risk was emitted twice (once by the NHI
+    right-sizing emitter, once by the Access-Advisor CIEM emitter) under two
+    different ids, double-counting in every total.
+    """
+    g = UnifiedGraph(scan_id="scan-1", tenant_id="tenant-a")
+
+    # AWS IAM role: s3 used, dynamodb + kms never used.
+    g.add_node(
+        UnifiedNode(
+            id="role:aws:app",
+            entity_type=EntityType.ROLE,
+            label="app-role",
+            attributes={"cloud_provider": "aws", "principal_id": "AROA-app", "is_admin": True},
+        )
+    )
+    for svc, last in (("s3", "2026-06-01T00:00:00Z"), ("dynamodb", None), ("kms", None)):
+        g.add_node(UnifiedNode(id=f"res:aws:{svc}", entity_type=EntityType.CLOUD_RESOURCE, label=svc))
+        g.add_edge(_access_advisor_grant("role:aws:app", f"res:aws:{svc}", svc, last))
+
+    # GCP service account: bigquery used, storage never used.
+    g.add_node(
+        UnifiedNode(
+            id="sa:gcp:etl",
+            entity_type=EntityType.SERVICE_ACCOUNT,
+            label="etl-sa",
+            attributes={"cloud_provider": "gcp", "principal_id": "etl@proj.iam"},
+        )
+    )
+    for svc, last in (("bigquery", "2026-06-02T00:00:00Z"), ("storage", None)):
+        g.add_node(UnifiedNode(id=f"res:gcp:{svc}", entity_type=EntityType.CLOUD_RESOURCE, label=svc))
+        g.add_edge(_access_advisor_grant("sa:gcp:etl", f"res:gcp:{svc}", svc, last))
+
+    return g
+
+
+def test_access_advisor_over_privilege_not_double_counted():
+    """Mixed used+never-used Access-Advisor grants yield exactly ONE
+    CIEM_OVER_PRIVILEGE finding per identity — not one from the NHI over-grant
+    emitter AND one from the CIEM emitter (the 2026-07-18 double-count regression).
+    """
+    from agent_bom.graph.nhi_governance import apply_nhi_governance_with_findings
+
+    graph = _mixed_access_advisor_graph()
+    _, nhi = apply_nhi_governance_with_findings(graph, now=NOW)
+    graph.nhi_governance_findings = nhi
+
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id="scan-1")
+    attach_graph_derived_findings(report, graph)
+    findings = report.to_findings()
+
+    over_priv = [f for f in findings if f.finding_type == FindingType.CIEM_OVER_PRIVILEGE]
+    # One per over-privileged identity — never two for the same identity.
+    by_identity: dict[str, int] = {}
+    for f in over_priv:
+        by_identity[f.asset.identifier] = by_identity.get(f.asset.identifier, 0) + 1
+    assert by_identity == {"AROA-app": 1, "etl@proj.iam": 1}, by_identity
+    assert len(over_priv) == 2, [f.title for f in over_priv]
+
+    # The surviving finding is the richer Access-Advisor CIEM one and still covers
+    # the full never-used set (merge, not silent drop).
+    aws = next(f for f in over_priv if f.asset.identifier == "AROA-app")
+    assert set(aws.evidence["unused_permissions"]) == {"dynamodb", "kms"}
+    assert aws.evidence.get("analysis") == "access_advisor_rightsizing"
+
+    # No id appears twice, and CSPM-domain routing counts each identity once.
+    ids = [f.id for f in findings]
+    assert len(ids) == len(set(ids)), "over-privilege risk must not double-count within one stream"
+    from agent_bom.finding_scope import security_domain_for
+
+    cspm = [f for f in over_priv if security_domain_for(f.source, f.finding_type) == "cspm"]
+    assert len(cspm) == 2
+
+
 # ── Exporter surface ─────────────────────────────────────────────────────────
 
 

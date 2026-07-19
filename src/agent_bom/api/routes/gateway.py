@@ -166,7 +166,7 @@ def _firewall_string_list(value: Any, field_name: str) -> set[str]:
 
 
 @router.get("/gateway/policies", tags=["gateway"], dependencies=[_dep("policy_read")])
-async def list_gateway_policies(request: Request, enabled: bool | None = None, mode: str | None = None):
+async def list_gateway_policies(request: Request, enabled: bool | None = None, mode: str | None = None) -> Response:
     """List all gateway policies."""
     tenant_id = require_request_tenant_id(request)
     policies = _get_policy_store().list_policies(tenant_id=tenant_id)
@@ -184,7 +184,7 @@ async def list_gateway_policies(request: Request, enabled: bool | None = None, m
 
 
 @router.post("/gateway/policies", tags=["gateway"], status_code=201, dependencies=[_dep("policy_write")])
-async def create_gateway_policy(body: PolicyCreate, request: Request):
+async def create_gateway_policy(body: PolicyCreate, request: Request) -> dict[str, Any]:
     """Create a new gateway policy."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.policy_store import GatewayPolicy, GatewayRule, PolicyMode
@@ -229,17 +229,17 @@ async def create_gateway_policy(body: PolicyCreate, request: Request):
 
 
 @router.get("/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_read")])
-async def get_gateway_policy(policy_id: str, request: Request):
+async def get_gateway_policy(policy_id: str, request: Request) -> dict[str, Any]:
     """Get a gateway policy by ID."""
     tenant_id = require_request_tenant_id(request)
     policy = _get_policy_store().get_policy(policy_id, tenant_id=tenant_id)
     if policy is None:
         raise HTTPException(status_code=404, detail="Policy not found")
-    return policy.model_dump()
+    return cast(dict[str, Any], policy.model_dump())
 
 
 @router.put("/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_write")])
-async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Request):
+async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Request) -> dict[str, Any]:
     """Update an existing gateway policy."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.policy_store import GatewayRule, PolicyMode
@@ -284,11 +284,11 @@ async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Req
         enabled=policy.enabled,
         rule_count=len(policy.rules),
     )
-    return policy.model_dump()
+    return cast(dict[str, Any], policy.model_dump())
 
 
 @router.delete("/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_write")])
-async def delete_gateway_policy(policy_id: str, request: Request):
+async def delete_gateway_policy(policy_id: str, request: Request) -> dict[str, Any]:
     """Delete a gateway policy."""
     tenant_id = require_request_tenant_id(request)
     store = _get_policy_store()
@@ -313,7 +313,7 @@ async def delete_gateway_policy(policy_id: str, request: Request):
 
 
 @router.post("/gateway/evaluate", tags=["gateway"], dependencies=[_dep("policy_read")])
-async def evaluate_gateway(body: EvaluateRequest, request: Request):
+async def evaluate_gateway(body: EvaluateRequest, request: Request) -> dict[str, Any]:
     """Evaluate gateway policies against a tool call and audit-log every decision.
 
     The audit row is written for both ``allow`` and ``deny`` outcomes so that
@@ -414,7 +414,7 @@ async def list_gateway_audit(
     policy_id: str | None = None,
     agent_name: str | None = None,
     limit: int = Query(100, ge=1, le=1000),
-):
+) -> dict[str, Any]:
     """Query the gateway policy audit log."""
     tenant_id = require_request_tenant_id(request)
     entries = _get_policy_store().list_audit_entries(
@@ -543,7 +543,7 @@ async def discovered_upstreams(request: Request) -> dict:
 
 
 @router.get("/gateway/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
-async def gateway_stats(request: Request):
+async def gateway_stats(request: Request) -> dict[str, Any]:
     """Gateway-wide statistics."""
     from agent_bom.gateway import summarize_gateway_policies
 
@@ -577,7 +577,7 @@ async def gateway_stats(request: Request):
 
 
 @router.post("/firewall/check", tags=["gateway"], dependencies=[_dep("scan")])
-async def firewall_check(request: Request):
+async def firewall_check(request: Request) -> dict[str, Any]:
     """Evaluate a source -> target agent decision through the control plane.
 
     This is the centralized policy endpoint used by `agent-bom proxy
@@ -645,7 +645,7 @@ async def firewall_check(request: Request):
 
 
 @router.get("/firewall/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
-async def firewall_stats(request: Request):
+async def firewall_stats(request: Request) -> dict[str, Any]:
     """Aggregated inter-agent firewall decisions for the runtime-tab overlay.
 
     Returns counters (total / allow / warn / deny), the top decision pairs by
@@ -657,4 +657,7 @@ async def firewall_stats(request: Request):
     from agent_bom.api.stores import _get_firewall_decision_store
 
     tenant_id = require_request_tenant_id(request)
-    return _get_firewall_decision_store().stats(tenant_id=tenant_id, recent_limit=200, top_pairs=25)
+    return cast(
+        dict[str, Any],
+        _get_firewall_decision_store().stats(tenant_id=tenant_id, recent_limit=200, top_pairs=25),
+    )

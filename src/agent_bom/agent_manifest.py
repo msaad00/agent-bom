@@ -13,6 +13,7 @@ from typing import Any
 
 from agent_bom.api.fleet_store import FleetAgent
 from agent_bom.api.mcp_observation_store import MCPObservation
+from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
 from agent_bom.models import Agent, MCPServer, MCPTool
 from agent_bom.platform_invariants import now_utc_iso
 from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
@@ -111,6 +112,7 @@ def _agent(agent: Agent) -> dict[str, object]:
     return {
         "id": agent.stable_id,
         "canonical_id": agent.canonical_id,
+        "previous_canonical_ids": agent.previous_canonical_ids,
         "name": sanitize_text(agent.name, max_len=160),
         "agent_type": _value(agent.agent_type),
         "status": _value(agent.status),
@@ -437,6 +439,7 @@ def _manifest(
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "schema_version": AGENT_BOM_MANIFEST_SCHEMA_VERSION,
+        "canonical_id_schema_version": CANONICAL_ID_SCHEMA_VERSION,
         "generated_at": now_utc_iso(),
         "source": source,
         "summary": _summary(agents, servers),

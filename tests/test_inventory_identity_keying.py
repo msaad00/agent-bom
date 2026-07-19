@@ -15,10 +15,12 @@ from unittest.mock import patch
 import pytest
 
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
+from agent_bom.api.models import PushPayload
 from agent_bom.api.pipeline import _sync_scan_agents_to_fleet
 from agent_bom.api.routes import discovery as discovery_routes
 from agent_bom.api.routes import fleet as fleet_routes
 from agent_bom.api.stores import set_fleet_store
+from agent_bom.canonical_ids import legacy_agent_id_v1
 from agent_bom.models import Agent, AgentType, MCPServer
 
 
@@ -27,7 +29,7 @@ def _request(tenant_id: str) -> SimpleNamespace:
 
 
 def _local_claude() -> Agent:
-    # Locally discovered agent: canonical_id == agent_type + name (no source_id).
+    # Local identity is agent_type + name + config location (no source_id).
     return Agent(
         name="claude",
         agent_type=AgentType.CLAUDE_DESKTOP,
@@ -68,6 +70,80 @@ def test_sync_scan_does_not_clobber_same_name_record_with_different_source() -> 
     assert local_record is not None
     assert local_record.agent_id != "mdm-id"
     assert len(store.list_by_tenant("default")) == 2
+
+
+def test_sync_scan_migrates_colliding_v1_rows_without_duplicate_replay() -> None:
+    """Identity-v2 sync preserves fleet row IDs and stays idempotent."""
+    store = InMemoryFleetStore()
+    agents = [
+        Agent(
+            name="orders-agent",
+            agent_type=AgentType.CUSTOM,
+            config_path="snowflake://orders",
+            source="snowflake",
+        ),
+        Agent(
+            name="support-agent",
+            agent_type=AgentType.CUSTOM,
+            config_path="snowflake://support",
+            source="snowflake",
+        ),
+    ]
+    legacy_id = legacy_agent_id_v1("custom", "ignored-by-v1", source="snowflake")
+    for index, agent in enumerate(agents):
+        store.put(
+            FleetAgent(
+                agent_id=f"persisted-{index}",
+                canonical_id=legacy_id,
+                name=agent.name,
+                agent_type="custom",
+                config_path=agent.config_path,
+                lifecycle_state=FleetLifecycleState.APPROVED,
+                tenant_id="default",
+            )
+        )
+
+    with patch("agent_bom.api.pipeline._get_fleet_store", return_value=store):
+        _sync_scan_agents_to_fleet(agents)
+        _sync_scan_agents_to_fleet(agents)
+
+    rows = store.list_by_tenant("default")
+    assert {row.agent_id for row in rows} == {"persisted-0", "persisted-1"}
+    assert {row.canonical_id for row in rows} == {agent.canonical_id for agent in agents}
+    assert all(row.lifecycle_state == FleetLifecycleState.APPROVED for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_fleet_payload_sync_preserves_distinct_scanner_canonical_ids() -> None:
+    """One endpoint source can send many agents without canonical-ID collapse."""
+    store = InMemoryFleetStore()
+    set_fleet_store(store)
+    agents = [
+        Agent(name="orders", agent_type=AgentType.CUSTOM, config_path="/cfg/orders", source="endpoint"),
+        Agent(name="support", agent_type=AgentType.CUSTOM, config_path="/cfg/support", source="endpoint"),
+    ]
+    body = PushPayload(
+        source_id="endpoint-123",
+        agents=[
+            {
+                "name": agent.name,
+                "agent_type": agent.agent_type.value,
+                "canonical_id": agent.canonical_id,
+                "source_id": "endpoint-123",
+                "mcp_servers": [],
+            }
+            for agent in agents
+        ],
+    )
+
+    first = await fleet_routes.sync_fleet(_request("default"), body)
+    second = await fleet_routes.sync_fleet(_request("default"), body)
+
+    rows = store.list_by_tenant("default")
+    assert first["new"] == 2
+    assert second["updated"] == 2
+    assert len(rows) == 2
+    assert {row.canonical_id for row in rows} == {agent.canonical_id for agent in agents}
 
 
 @pytest.mark.asyncio

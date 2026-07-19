@@ -20,6 +20,7 @@ from agent_bom.asset_provenance import (
     package_version_provenance,
     sanitize_discovery_provenance,
 )
+from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
 from agent_bom.checksums import cyclonedx_hashes
 from agent_bom.models import AIBOMReport, Vulnerability
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
@@ -504,9 +505,14 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
         agent_provenance = agent_discovery_provenance(agent)
         agent_properties = [
             {"name": "agent-bom:type", "value": "ai-agent"},
+            {"name": "agent-bom:canonical-id-schema-version", "value": CANONICAL_ID_SCHEMA_VERSION},
             {"name": "agent-bom:config-path", "value": sanitize_path_label(agent.config_path) if agent.config_path else ""},
             {"name": "agent-bom:status", "value": agent.status.value},
         ]
+        agent_properties.extend(
+            {"name": "agent-bom:previous-canonical-id", "value": legacy_id}
+            for legacy_id in agent.previous_canonical_ids
+        )
         _append_discovery_provenance_properties(agent_properties, agent_provenance)
 
         components.append(
@@ -706,6 +712,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             },
             "properties": [
                 {"name": "agent-bom:total-agents", "value": str(report.total_agents)},
+                {"name": "agent-bom:canonical-id-schema-version", "value": CANONICAL_ID_SCHEMA_VERSION},
                 {"name": "agent-bom:total-mcp-servers", "value": str(report.total_servers)},
                 {"name": "agent-bom:total-vulnerabilities", "value": str(report.total_vulnerabilities)},
                 {"name": "agent-bom:ml-models", "value": str(len(report.model_provenance) + len(report.model_files))},

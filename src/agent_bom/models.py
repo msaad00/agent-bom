@@ -20,6 +20,7 @@ from agent_bom.canonical_ids import (
     canonical_mcp_server_id,
     canonical_mcp_tool_id,
     canonical_package_id,
+    legacy_agent_id_v1,
 )
 from agent_bom.evidence.scan_run import ScanRun
 from agent_bom.package_utils import (
@@ -794,6 +795,10 @@ class Agent:
     # populate via `DiscoveryEnvelope.to_dict()` and consumers can re-hydrate
     # via `DiscoveryEnvelope.from_dict()`.
     discovery_envelope: Optional[dict[str, Any]] = None
+    # Strong external/device identities are distinct from ``source``, which is
+    # only collector/provider provenance (for example ``aws-bedrock``).
+    source_id: Optional[str] = None
+    device_fingerprint: Optional[str] = None
 
     def __post_init__(self) -> None:
         """Backfill lifecycle fields for legacy Agent construction paths."""
@@ -806,12 +811,30 @@ class Agent:
     def stable_id(self) -> str:
         """Deterministic ID for this agent.
 
-        Canonical identity: agent_type + install location. The same install
-        resolves to the same ID across scans, while two agents that share a
-        type+name but live in different config locations (e.g. global vs
-        per-project Claude config) stay distinct entities.
+        Device evidence wins over an explicit endpoint/source ID. Otherwise,
+        identity is agent_type + name + install location. Collector provenance
+        is deliberately excluded because one provider scan returns many agents.
         """
-        return canonical_agent_id(self.agent_type.value, self.name, source_id=self.source or self.config_path)
+        return canonical_agent_id(
+            self.agent_type.value,
+            self.name,
+            source_id=self.source_id or "",
+            device_fingerprint=self.device_fingerprint or "",
+            config_path=self.config_path,
+        )
+
+    @property
+    def previous_canonical_ids(self) -> list[str]:
+        """Pre-v2 aliases used to migrate persisted rows and historical joins."""
+        if self.source_id or self.device_fingerprint:
+            return []
+        legacy_id = legacy_agent_id_v1(
+            self.agent_type.value,
+            self.name,
+            source=self.source or "",
+            config_path=self.config_path,
+        )
+        return [] if legacy_id == self.stable_id else [legacy_id]
 
     @property
     def canonical_id(self) -> str:

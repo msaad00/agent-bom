@@ -239,6 +239,8 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
             mcp_servers=mcp_servers,
             version=agent_data.get("version"),
             source=agent_data.get("source", inventory_data.get("source")),
+            source_id=agent_data.get("source_id"),
+            device_fingerprint=agent_data.get("device_fingerprint"),
             metadata=sanitized_metadata,
             discovered_at=agent_data.get("discovered_at") or agent_data.get("first_seen") or "",
             last_seen=agent_data.get("last_seen") or agent_data.get("last_seen_at"),

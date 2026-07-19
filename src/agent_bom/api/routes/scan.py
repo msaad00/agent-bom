@@ -34,7 +34,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, NamedTuple, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -308,6 +308,33 @@ def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
 
 def _completed_jobs_for_tenant(tenant_id: str) -> list[ScanJob]:
     return [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
+
+
+def iter_tenant_scan_spine_findings(
+    tenant_id: str,
+    *,
+    since: str | None = None,
+    severity: str | None = None,
+) -> list[dict[str, Any]]:
+    """Current scan-spine findings for a tenant — the same source ``/v1/findings`` shows.
+
+    The scan pipeline never writes the compliance hub, so these live only in the
+    in-memory job store. The scheduled findings export unions this with the hub
+    stream so a scan-based estate is not silently exported as empty. Bounded by
+    the scan-job results already resident in memory (no per-tenant DB scan).
+    """
+    from agent_bom.api.findings_current import current_scan_findings
+
+    rows = current_scan_findings(
+        _completed_jobs_for_tenant(tenant_id),
+        since=since,
+        scan_id=None,
+        iter_findings=_iter_scan_findings,
+    )
+    if severity:
+        normalized = severity.lower()
+        rows = [item for item in rows if str(item.get("severity", "")).lower() == normalized]
+    return rows
 
 
 class BulkFindingsRequest(BaseModel):
@@ -1719,6 +1746,23 @@ def _finding_sort_key(row: dict[str, Any], sort: str) -> tuple[float, float, flo
 _BULK_MERGE_CHUNK = 256
 
 
+class MergedScanBulkPage(NamedTuple):
+    """A merged page plus the frontier needed to resume the keyset walk.
+
+    ``next_scan_index`` is how many pre-sorted scan findings have been consumed
+    (skipped + emitted); ``next_bulk_cursor`` is the hub keyset cursor of the
+    last consumed bulk row (``""`` when no bulk row was consumed). Together they
+    let ``/v1/findings`` emit ONE compound cursor so a keyset caller walks the
+    full merged set with 0 dups / 0 drops instead of losing the scan half after
+    page 1.
+    """
+
+    rows: list[dict[str, Any]]
+    next_scan_index: int
+    next_bulk_cursor: str
+    has_more: bool
+
+
 def _merged_scan_bulk_page(
     scan_findings: list[dict[str, Any]],
     *,
@@ -1729,74 +1773,67 @@ def _merged_scan_bulk_page(
     scan_id: str | None,
     offset: int,
     limit: int,
+    scan_start: int = 0,
+    bulk_cursor: str | None = None,
     since: str | None = None,
     scope: Mapping[str, str] | None = None,
     status: str | None = None,
-) -> list[dict[str, Any]]:
+) -> MergedScanBulkPage:
     """Merge pre-sorted scan findings with bulk hub pages without O(table) work.
 
     Streams two sorted sources with a two-pointer walk so deep ``offset`` does
     not require loading ``offset + limit`` bulk rows up front or re-sorting the
-    full combined window in memory. When ``scope`` is set the bulk source is
-    refilled by keyset cursor (the scope-filtered store path is cursor-only, not
-    offset-addressable) so the merge still streams a bounded window per chunk.
-    ``status`` filters the bulk source's lifecycle status to match the merged
-    scan findings' basis (default open) so both halves reconcile.
+    full combined window in memory. The bulk source is refilled by keyset cursor
+    (``list_current_page``) so the merge stays sargable and — critically — the
+    frontier it stops at is expressible as one resumable cursor. ``scan_start``
+    (index into ``scan_findings``) and ``bulk_cursor`` (hub keyset position)
+    resume a prior page; ``status`` filters the bulk source's lifecycle status
+    to match the merged scan findings' basis (default open) so both halves
+    reconcile.
+
+    Each source is consumed strictly in order (scan by ascending index, bulk in
+    the store's keyset order), so a page consumes a contiguous prefix of each
+    source after its resume point — that is what makes the walk drop-free and
+    dup-free regardless of the merge comparator's tiebreakers.
     """
-    scan_i = 0
-    bulk_remote_offset = 0
+    from agent_bom.api.finding_cursor import cursor_from_current_row
+
+    scan_i = scan_start
     bulk_buf: list[dict[str, Any]] = []
     bulk_i = 0
-    bulk_cursor: str | None = None
+    fetch_cursor: str | None = bulk_cursor or None
     bulk_exhausted = False
+    last_bulk_consumed: dict[str, Any] | None = None
 
-    # Only the current-state store path carries the ``since`` / ``status``
-    # predicates; when active pass them through, otherwise stay byte-compatible
-    # with the legacy ``list_page`` bulk path that has neither kwarg.
     extra_kwargs: dict[str, Any] = {}
     if since:
         extra_kwargs["since"] = since
     if status is not None:
         extra_kwargs["status"] = status
+    if scope:
+        extra_kwargs["scope"] = dict(scope)
 
     def _refill_bulk() -> bool:
-        nonlocal bulk_buf, bulk_i, bulk_remote_offset, bulk_cursor, bulk_exhausted
-        if scope:
-            if bulk_exhausted:
-                bulk_buf = []
-                bulk_i = 0
-                return False
-            bulk_result = bulk_list(
-                tenant_id,
-                limit=_BULK_MERGE_CHUNK,
-                sort=sort_key,
-                severity=severity,
-                scan_id=scan_id,
-                origin="bulk_ingest",
-                include_total=False,
-                cursor=bulk_cursor,
-                scope=dict(scope),
-                **extra_kwargs,
-            )
-            bulk_buf = bulk_result[0]
-            bulk_cursor = bulk_result[2] if len(bulk_result) > 2 else None
-            if not bulk_cursor:
-                bulk_exhausted = True
+        nonlocal bulk_buf, bulk_i, fetch_cursor, bulk_exhausted
+        if bulk_exhausted:
+            bulk_buf = []
             bulk_i = 0
-            return bool(bulk_buf)
+            return False
         bulk_result = bulk_list(
             tenant_id,
             limit=_BULK_MERGE_CHUNK,
-            offset=bulk_remote_offset,
             sort=sort_key,
             severity=severity,
             scan_id=scan_id,
             origin="bulk_ingest",
             include_total=False,
+            cursor=fetch_cursor,
             **extra_kwargs,
         )
         bulk_buf = bulk_result[0]
-        bulk_remote_offset += len(bulk_buf)
+        fetch_cursor = bulk_result[2] if len(bulk_result) > 2 else None
+        if not fetch_cursor:
+            bulk_exhausted = True
         bulk_i = 0
         return bool(bulk_buf)
 
@@ -1817,9 +1854,10 @@ def _merged_scan_bulk_page(
         return row
 
     def take_bulk() -> dict[str, Any]:
-        nonlocal bulk_i
+        nonlocal bulk_i, last_bulk_consumed
         row = bulk_buf[bulk_i]
         bulk_i += 1
+        last_bulk_consumed = row
         return row
 
     def pick_next() -> dict[str, Any] | None:
@@ -1838,7 +1876,7 @@ def _merged_scan_bulk_page(
     skipped = 0
     while skipped < offset:
         if pick_next() is None:
-            return []
+            break
         skipped += 1
 
     page: list[dict[str, Any]] = []
@@ -1847,7 +1885,13 @@ def _merged_scan_bulk_page(
         if row is None:
             break
         page.append(row)
-    return page
+
+    has_more = scan_head() is not None or bulk_head() is not None
+    if last_bulk_consumed is not None:
+        next_bulk_cursor = cursor_from_current_row(last_bulk_consumed, sort=sort_key)
+    else:
+        next_bulk_cursor = bulk_cursor or ""
+    return MergedScanBulkPage(page, scan_i, next_bulk_cursor, has_more)
 
 
 @router.get("/findings", tags=["scan"])
@@ -1953,7 +1997,7 @@ def _list_findings_impl(
     """
     from agent_bom.api import time_window
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store, status_matches
-    from agent_bom.api.finding_cursor import decode_finding_cursor
+    from agent_bom.api.finding_cursor import decode_finding_cursor, decode_merged_scan_cursor
 
     tenant_id = _tenant_id(request)
     # Default read-window (≈90d): bound counts to a recent, honestly-labelled
@@ -1993,11 +2037,21 @@ def _list_findings_impl(
             status_code=400,
             detail=f"offset exceeds ceiling {_HUB_LIST_OFFSET_CEILING}; use cursor pagination for deeper walks",
         )
+    # A ``/v1/findings`` cursor is either a compound merged token (scan + hub
+    # frontier) or a plain hub keyset cursor. Decode the compound form first so a
+    # keyset caller resuming the scan half is routed to the merged walk rather
+    # than 400-ing against the plain decoder.
+    merged_cursor: tuple[int, str] | None = None
     if cursor:
         try:
-            decode_finding_cursor(cursor, expected_sort=sort_key)
+            merged_cursor = decode_merged_scan_cursor(cursor, expected_sort=sort_key)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+        if merged_cursor is None:
+            try:
+                decode_finding_cursor(cursor, expected_sort=sort_key)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 
     from agent_bom.api.findings_count_cache import (
         cache_key,
@@ -2053,12 +2107,18 @@ def _list_findings_impl(
     next_cursor: str | None = None
     warnings: list[str] = []
 
-    if cursor:
-        # Cursor pages page bulk-ingested findings ONLY; the in-memory scan
-        # findings only ever appear on page 1, so their full current-state fold is
-        # discarded here. Skip that O(all-completed-jobs) fold entirely and derive
-        # the "page-1-only" warning from a cheap completed-jobs presence check
-        # instead of computing findings we throw away.
+    # Resume frontiers. A compound merged cursor carries both a scan-findings
+    # index and the hub keyset position; a plain cursor carries only the hub
+    # position (scan half was already fully delivered on earlier pages). The
+    # merged walk (with ``list_current_page``) is what keeps the scan half from
+    # being dropped after page 1.
+    scan_start = merged_cursor[0] if merged_cursor is not None else 0
+    bulk_cursor_in: str | None = (merged_cursor[1] or None) if merged_cursor is not None else cursor
+
+    if cursor and merged_cursor is None:
+        # Plain hub keyset cursor: the in-memory scan findings were delivered on
+        # earlier (merged) pages, so their full current-state fold is discarded
+        # here. Skip that O(all-completed-jobs) fold entirely.
         scan_findings: list[dict[str, Any]] = []
         if _completed_jobs_for_tenant(tenant_id):
             warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
@@ -2081,6 +2141,20 @@ def _list_findings_impl(
             scan_findings = [item for item in scan_findings if _row_matches_scope(item, scope_filters)]
         scan_findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
 
+    from agent_bom.api.finding_cursor import encode_merged_scan_cursor
+
+    # Take the merged (scan + hub) keyset walk whenever the scan half is in play:
+    # a page-1 request that has scan findings, or any resume of a compound merged
+    # cursor. Pure-bulk reads (no scan findings, plain cursor) keep the simpler
+    # hub-only keyset path and its plain cursors — unchanged. ``_merged_scan_bulk_page``
+    # requires the cursor-capable ``list_current_page``, hence ``has_current_page``.
+    use_merged = has_current_page and (merged_cursor is not None or (not cursor and bool(scan_findings)))
+
+    def _encode_merged_next(page: MergedScanBulkPage) -> str | None:
+        if not page.has_more:
+            return None
+        return encode_merged_scan_cursor(sort=sort_key, scan_index=page.next_scan_index, bulk_cursor=page.next_bulk_cursor)
+
     # Scope/domain filters run INSIDE the store on pre-enrichment current rows,
     # batched + keyset-paged (provider/account/environment live in the JSON
     # payload and ``domain`` is a computed overlapping-lens SET, so neither can be
@@ -2089,10 +2163,10 @@ def _list_findings_impl(
     # ``total`` is honestly approximate (no O(table) COUNT under a scope filter).
     if scope_filters and has_current_page and callable(bulk_list):
         scope_arg = dict(scope_filters)
-        if scan_findings and not cursor:
-            # scan findings (already scope-filtered) merge onto page 1 exactly
-            # like the unfiltered branch; the bulk source is scope-filtered too.
-            page_rows = _merged_scan_bulk_page(
+        if use_merged:
+            # scan findings (already scope-filtered) merge with the scope-filtered
+            # bulk source under one keyset frontier so later pages keep both halves.
+            merged = _merged_scan_bulk_page(
                 scan_findings,
                 bulk_list=bulk_list,
                 tenant_id=tenant_id,
@@ -2101,10 +2175,14 @@ def _list_findings_impl(
                 scan_id=scan_id,
                 offset=offset,
                 limit=limit,
+                scan_start=scan_start,
+                bulk_cursor=bulk_cursor_in,
                 since=window_since,
                 scope=scope_arg,
                 status=status_key,
             )
+            page_rows = merged.rows
+            next_cursor = _encode_merged_next(merged)
         else:
             bulk_result = bulk_list(
                 tenant_id,
@@ -2115,7 +2193,7 @@ def _list_findings_impl(
                 scan_id=scan_id,
                 origin="bulk_ingest",
                 include_total=False,
-                cursor=cursor,
+                cursor=bulk_cursor_in,
                 since=window_since,
                 scope=scope_arg,
                 status=status_key,
@@ -2125,21 +2203,26 @@ def _list_findings_impl(
         total = None
         total_approximate = True
     elif callable(bulk_list) and not scope_filters:
-        if scan_findings and not cursor:
-            bulk_result = bulk_list(
-                tenant_id,
-                limit=1,
-                offset=0,
-                sort=sort_key,
-                severity=severity,
-                scan_id=scan_id,
-                origin="bulk_ingest",
-                include_total=include_bulk_total,
-                since=window_since,
-                status=status_key,
-            )
-            bulk_total = bulk_result[1]
-            page_rows = _merged_scan_bulk_page(
+        if use_merged:
+            # A COUNT probe is only worth paying on page 1 (no incoming cursor);
+            # resume pages stay approximate to avoid an O(table) count per page.
+            if merged_cursor is None:
+                bulk_result = bulk_list(
+                    tenant_id,
+                    limit=1,
+                    offset=0,
+                    sort=sort_key,
+                    severity=severity,
+                    scan_id=scan_id,
+                    origin="bulk_ingest",
+                    include_total=include_bulk_total,
+                    since=window_since,
+                    status=status_key,
+                )
+                bulk_total = bulk_result[1]
+            else:
+                bulk_total = None
+            merged = _merged_scan_bulk_page(
                 scan_findings,
                 bulk_list=bulk_list,
                 tenant_id=tenant_id,
@@ -2148,22 +2231,30 @@ def _list_findings_impl(
                 scan_id=scan_id,
                 offset=offset,
                 limit=limit,
+                scan_start=scan_start,
+                bulk_cursor=bulk_cursor_in,
                 since=window_since,
                 status=status_key,
             )
-            resolved_bulk, total_approximate = _resolve_bulk_findings_total(
-                tenant_id=tenant_id,
-                severity=severity,
-                scan_id=scan_id,
-                approximate_total=approximate_total or effective_approximate_total,
-                offset=offset,
-                bulk_total=bulk_total,
-                page_len=len(page_rows),
-                limit=limit,
-                window_days=resolved_window,
-                status=status_key,
-            )
-            total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
+            page_rows = merged.rows
+            next_cursor = _encode_merged_next(merged)
+            if merged_cursor is None:
+                resolved_bulk, total_approximate = _resolve_bulk_findings_total(
+                    tenant_id=tenant_id,
+                    severity=severity,
+                    scan_id=scan_id,
+                    approximate_total=approximate_total or effective_approximate_total,
+                    offset=offset,
+                    bulk_total=bulk_total,
+                    page_len=len(page_rows),
+                    limit=limit,
+                    window_days=resolved_window,
+                    status=status_key,
+                )
+                total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
+            else:
+                total = None
+                total_approximate = True
         else:
             bulk_result = bulk_list(
                 tenant_id,
@@ -2174,7 +2265,7 @@ def _list_findings_impl(
                 scan_id=scan_id,
                 origin="bulk_ingest",
                 include_total=include_bulk_total,
-                cursor=cursor,
+                cursor=bulk_cursor_in,
                 since=window_since,
                 status=status_key,
             )
@@ -2206,7 +2297,15 @@ def _list_findings_impl(
         combined = scan_findings + bulk_findings
         combined.sort(key=lambda row: _finding_sort_key(row, sort_key))
         total = len(combined)
-        page_rows = combined[offset : offset + limit]
+        # No keyset store here (store exposes neither list_page nor
+        # list_current_page): ``combined`` is fully materialized in memory, so walk
+        # it by index. The merged cursor's ``scan_index`` slot doubles as that
+        # index so ``has_more`` stays honest and the rest is retrievable (0 drops).
+        start = scan_start if merged_cursor is not None else offset
+        page_rows = combined[start : start + limit]
+        end = start + len(page_rows)
+        if end < len(combined):
+            next_cursor = encode_merged_scan_cursor(sort=sort_key, scan_index=end, bulk_cursor="")
 
     page = _redact_finding_page(page_rows)
     envelope = finding_list_envelope(

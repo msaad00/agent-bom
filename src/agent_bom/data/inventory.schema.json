@@ -347,6 +347,16 @@
           "description": "Where this inventory entry came from (e.g. 'local', 'snowflake', 'aws-bedrock', 'gcp-vertex', 'openai'). Used for traceability in reports."
         },
 
+        "source_id": {
+          "type": "string",
+          "description": "Stable endpoint/provider scope for this agent. Unlike source provenance, this value participates in canonical identity together with the agent name and survives config-location changes."
+        },
+
+        "device_fingerprint": {
+          "type": "string",
+          "description": "Hardware-backed device identity when available. Takes precedence over source_id and config location."
+        },
+
         "metadata": {
           "type": "object",
           "description": "Sanitized provider-specific metadata such as cloud_origin, cloud_state, cloud_scope, cloud_principal, and permissions_used. Credential values must be redacted before submission.",

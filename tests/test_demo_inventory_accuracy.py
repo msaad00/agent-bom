@@ -48,6 +48,48 @@ def _all_demo_packages() -> list[tuple[str, str, str]]:
     return pkgs
 
 
+def test_demo_agents_keep_unique_identity_across_all_inventory_exports() -> None:
+    """The five-agent demo must not collapse in BOMs, manifests, or history."""
+    from agent_bom.agent_manifest import build_local_agent_manifest
+    from agent_bom.cli._common import _build_agents_from_inventory
+    from agent_bom.history import _get_inventory_snapshot
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.cyclonedx_fmt import to_cyclonedx
+    from agent_bom.output.json_fmt import to_json
+
+    agents = _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
+    ids = [agent.stable_id for agent in agents]
+    assert len(agents) == 5
+    assert len(set(ids)) == 5
+
+    report_json = to_json(AIBOMReport(agents=agents))
+    assert report_json["canonical_id_schema_version"] == "2"
+    entity_agents = report_json["ai_bom_entities"]["agents"]
+    assert len(entity_agents) == 5
+    assert len({agent["id"] for agent in entity_agents}) == 5
+
+    cyclonedx = to_cyclonedx(AIBOMReport(agents=agents))
+    assert {prop["name"]: prop["value"] for prop in cyclonedx["metadata"]["properties"]}[
+        "agent-bom:canonical-id-schema-version"
+    ] == "2"
+    agent_components = [
+        component
+        for component in cyclonedx["components"]
+        if any(prop == {"name": "agent-bom:type", "value": "ai-agent"} for prop in component.get("properties", []))
+    ]
+    assert len(agent_components) == 5
+    assert len({component["bom-ref"] for component in agent_components}) == 5
+
+    manifest = build_local_agent_manifest(agents)
+    assert manifest["canonical_id_schema_version"] == "2"
+    assert len(manifest["agents"]) == 5
+    assert len({agent["id"] for agent in manifest["agents"]}) == 5
+
+    history_snapshot = _get_inventory_snapshot(report_json)
+    assert len(history_snapshot["agents"]) == 5
+    assert len({agent["id"] for agent in history_snapshot["agents"]}) == 5
+
+
 @pytest.fixture(scope="module")
 def vuln_db(tmp_path_factory):
     """Seed only the demo contract rows so the guard is independent of ~/.agent-bom."""

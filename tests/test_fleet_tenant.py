@@ -62,6 +62,24 @@ def test_fleet_agent_canonical_id_prefers_source_id():
     assert agent.canonical_id == canonical_agent_id("cursor", "Renamed Agent", source_id="device-123")
 
 
+def test_fleet_agent_source_scope_keeps_distinct_names_distinct():
+    first = FleetAgent(
+        agent_id="a1",
+        name="orders",
+        agent_type="custom",
+        source_id="endpoint-123",
+        updated_at="2026-01-01T00:00:00Z",
+    )
+    second = FleetAgent(
+        agent_id="a2",
+        name="support",
+        agent_type="custom",
+        source_id="endpoint-123",
+        updated_at="2026-01-01T00:00:00Z",
+    )
+    assert first.canonical_id != second.canonical_id
+
+
 # ─── InMemoryFleetStore ──────────────────────────────────────────────────────
 
 

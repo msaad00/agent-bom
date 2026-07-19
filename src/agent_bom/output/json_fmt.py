@@ -13,6 +13,7 @@ from agent_bom.asset_provenance import (
     package_version_provenance,
     sanitize_discovery_provenance,
 )
+from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
 from agent_bom.compliance_utils import effective_blast_radius_tags, framework_qualified_blast_radius_tags
 from agent_bom.exploitability import fused_triage_priority
 from agent_bom.finding import FINDING_SCHEMA_VERSION, Finding, _forward_fixed_version
@@ -413,6 +414,7 @@ def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
             {
                 "id": agent.stable_id,
                 "canonical_id": agent.canonical_id,
+                "previous_canonical_ids": agent.previous_canonical_ids,
                 "name": agent.name,
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
@@ -938,6 +940,7 @@ def to_json(report: AIBOMReport) -> dict:
     scan_run = effective_scan_run(report)
     result = {
         "schema_version": SCAN_REPORT_SCHEMA_VERSION,
+        "canonical_id_schema_version": CANONICAL_ID_SCHEMA_VERSION,
         "document_type": "AI-BOM",
         "spec_version": SCAN_REPORT_SCHEMA_VERSION,
         "scan_id": report.scan_id,
@@ -982,6 +985,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "name": agent.name,
                 "stable_id": agent.stable_id,
                 "canonical_id": agent.canonical_id,
+                "previous_canonical_ids": agent.previous_canonical_ids,
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
                 "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",

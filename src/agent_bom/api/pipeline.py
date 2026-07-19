@@ -569,7 +569,7 @@ def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None
     always populated after every scan — closing the gap where scan_jobs had
     data but fleet_agents stayed empty.
     """
-    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
+    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, match_discovered_fleet_agent
     from agent_bom.fleet.trust_scoring import compute_trust_score
 
     store = _get_fleet_store()
@@ -578,13 +578,21 @@ def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None
     # Collect all agents for a single batch upsert (atomicity)
     to_upsert: list[FleetAgent] = []
 
-    # Key by canonical_id so two fleet agents that share a bare name (distinct
-    # source_ids) are not collapsed into a single index slot; fall back to name
-    # only for legacy records without a canonical_id.
-    existing_by_id = {(fleet_agent.canonical_id or fleet_agent.name): fleet_agent for fleet_agent in store.list_by_tenant(tenant_id)}
+    existing_agents = store.list_by_tenant(tenant_id)
+    claimed_agent_ids: set[str] = set()
 
     for agent in agents:
-        existing = existing_by_id.get(getattr(agent, "canonical_id", "") or agent.name)
+        agent_type = agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type)
+        canonical_id = _optional_str(getattr(agent, "canonical_id", ""))
+        existing = match_discovered_fleet_agent(
+            existing_agents,
+            canonical_id=canonical_id,
+            agent_type=agent_type,
+            name=agent.name,
+            config_path=agent.config_path or "",
+            previous_canonical_ids=list(getattr(agent, "previous_canonical_ids", []) or []),
+            claimed_agent_ids=claimed_agent_ids,
+        )
         server_count = len(agent.mcp_servers)
         pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
         cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
@@ -593,6 +601,15 @@ def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None
         score, factors = compute_trust_score(agent)
 
         if existing:
+            claimed_agent_ids.add(existing.agent_id)
+            existing.canonical_id = canonical_id
+            existing.name = agent.name
+            existing.agent_type = agent_type
+            existing.config_path = agent.config_path or ""
+            existing.source_id = _optional_str(getattr(agent, "source_id", "")) or existing.source_id
+            existing.device_fingerprint = (
+                _optional_str(getattr(agent, "device_fingerprint", "")) or existing.device_fingerprint
+            )
             existing.server_count = server_count
             existing.package_count = pkg_count
             existing.credential_count = cred_count
@@ -604,11 +621,12 @@ def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None
         else:
             fleet_agent = FleetAgent(
                 agent_id=str(uuid.uuid4()),
-                canonical_id=_optional_str(getattr(agent, "canonical_id", "")),
+                canonical_id=canonical_id,
                 device_fingerprint=_optional_str(getattr(agent, "device_fingerprint", "")),
                 name=agent.name,
-                agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
+                agent_type=agent_type,
                 config_path=agent.config_path or "",
+                source_id=_optional_str(getattr(agent, "source_id", "")),
                 lifecycle_state=FleetLifecycleState.DISCOVERED,
                 trust_score=score,
                 trust_factors=factors,

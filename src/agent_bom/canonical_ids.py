@@ -13,7 +13,7 @@ from urllib.parse import urlparse, urlunparse
 from agent_bom.package_utils import canonical_package_key
 
 AGENT_BOM_ID_NAMESPACE = uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-CANONICAL_ID_SCHEMA_VERSION = "1"
+CANONICAL_ID_SCHEMA_VERSION = "2"
 
 
 def _part_to_text(value: Any) -> str:
@@ -50,22 +50,45 @@ def canonical_package_id(name: str, version: str, ecosystem: str, purl: str | No
     return canonical_id("package", canonical_package_key(name, version, ecosystem, purl))
 
 
-def canonical_agent_id(agent_type: str, name: str, *, source_id: str = "", device_fingerprint: str = "") -> str:
+def canonical_agent_id(
+    agent_type: str,
+    name: str,
+    *,
+    source_id: str = "",
+    device_fingerprint: str = "",
+    config_path: str = "",
+) -> str:
     """Return a deterministic agent identity.
 
     A hardware-backed ``device_fingerprint`` (derived from attestation evidence)
     is preferred when present, so the identity is rooted in the physical device
-    rather than a mutable hostname/config path. Falls back to ``source_id`` and
-    finally the agent name when no fingerprint is available — preserving the
-    identity of agents that carry no hardware evidence.
+    rather than a mutable hostname/config path. A ``source_id`` is next and
+    survives config relocation while remaining scoped by agent name (one source
+    can report many agents). Without either, local and inventory agents use
+    type + name + config location. The name is retained in that fallback
+    because one inventory document can contain many agents at the same location.
     """
     fingerprint = (device_fingerprint or "").strip()
     if fingerprint:
         return canonical_id("agent", agent_type, f"device:{fingerprint}")
     source = (source_id or "").strip()
     if source:
-        return canonical_id("agent", agent_type, source)
+        return canonical_id("agent", agent_type, f"source:{source}", f"name:{name}")
+    location = (config_path or "").strip()
+    if location:
+        return canonical_id("agent", agent_type, f"config:{location}", f"name:{name}")
     return canonical_id("agent", agent_type, name)
+
+
+def legacy_agent_id_v1(agent_type: str, name: str, *, source: str = "", config_path: str = "") -> str:
+    """Return the pre-v2 Agent-model identity for migration/alias matching.
+
+    Version 1 incorrectly treated collector provenance (``source``) as a
+    globally unique source identifier. Keep the exact derivation available so
+    persisted fleet rows can be upgraded without discarding lifecycle state.
+    """
+    discriminator = source or config_path or name
+    return canonical_id("agent", agent_type, discriminator)
 
 
 def normalize_command_arg(arg: str) -> str:

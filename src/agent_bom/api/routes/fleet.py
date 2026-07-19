@@ -292,7 +292,8 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
     Trust scores are recomputed for all synced agents.
     """
     from agent_bom.api.audit_log import log_action
-    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
+    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, match_discovered_fleet_agent
+    from agent_bom.canonical_ids import canonical_agent_id
     from agent_bom.discovery import discover_all
     from agent_bom.fleet.trust_scoring import compute_trust_score
 
@@ -346,6 +347,12 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
             for payload_agent in payload_agents:
                 name = payload_agent.get("name", "unknown-agent")
                 payload_source_id = str(payload_agent.get("source_id") or source_id or "server-discovery")
+                payload_agent_type = str(payload_agent.get("agent_type", "unknown"))
+                payload_canonical_id = str(payload_agent.get("canonical_id") or "") or canonical_agent_id(
+                    payload_agent_type,
+                    str(name),
+                    source_id=payload_source_id,
+                )
                 identity_key = (payload_source_id, str(name))
                 existing = existing_by_identity.get(identity_key) or existing_by_legacy_name.get(str(name))
                 server_count, pkg_count, cred_count, vuln_count = _payload_counts(payload_agent)
@@ -357,6 +364,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                 payload_environment = payload_agent.get("environment")
                 payload_tags = _payload_tags(payload_agent)
                 if existing:
+                    existing.canonical_id = payload_canonical_id
                     existing.server_count = server_count
                     existing.package_count = pkg_count
                     existing.credential_count = cred_count
@@ -366,7 +374,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                     existing.last_discovery = now
                     existing.updated_at = now
                     existing.config_path = ""
-                    existing.agent_type = str(payload_agent.get("agent_type", existing.agent_type))
+                    existing.agent_type = payload_agent_type or existing.agent_type
                     existing.source_id = payload_source_id or existing.source_id
                     existing.enrollment_name = payload_enrollment_name or existing.enrollment_name
                     existing.mdm_provider = payload_mdm_provider or existing.mdm_provider
@@ -381,8 +389,9 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                 else:
                     fleet_agent = FleetAgent(
                         agent_id=str(uuid.uuid4()),
+                        canonical_id=payload_canonical_id,
                         name=name,
-                        agent_type=str(payload_agent.get("agent_type", "unknown")),
+                        agent_type=payload_agent_type,
                         config_path="",
                         source_id=payload_source_id,
                         enrollment_name=payload_enrollment_name,
@@ -407,23 +416,47 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                 _persist_payload_observations(tenant_id, payload_agent, last_discovery=now, last_synced=now)
     else:
         discovered = discover_all()
-        # Key by canonical_id so distinct agents that share a bare name
-        # (different source_ids) stay distinct; fall back to name only for
-        # legacy fleet records without a canonical_id.
-        existing_by_id = {(agent.canonical_id or agent.name): agent for agent in store.list_by_tenant(tenant_id)}
-        discovered_ids = {(getattr(agent, "canonical_id", "") or agent.name) for agent in discovered}
-        new_ids = discovered_ids - set(existing_by_id)
+        existing_agents = store.list_by_tenant(tenant_id)
+        claimed_agent_ids: set[str] = set()
+        matched_discovery: list[tuple[Any, FleetAgent | None]] = []
+        for discovered_agent in discovered:
+            discovered_type = (
+                discovered_agent.agent_type.value
+                if hasattr(discovered_agent.agent_type, "value")
+                else str(discovered_agent.agent_type)
+            )
+            match = match_discovered_fleet_agent(
+                existing_agents,
+                canonical_id=str(getattr(discovered_agent, "canonical_id", "") or ""),
+                agent_type=discovered_type,
+                name=discovered_agent.name,
+                config_path=discovered_agent.config_path or "",
+                previous_canonical_ids=list(getattr(discovered_agent, "previous_canonical_ids", []) or []),
+                claimed_agent_ids=claimed_agent_ids,
+            )
+            if match is not None:
+                claimed_agent_ids.add(match.agent_id)
+            matched_discovery.append((discovered_agent, match))
+        new_identity_count = sum(1 for _agent, match in matched_discovery if match is None)
         # Same per-tenant quota guard as the payload-agents branch.
         with tenant_quota_guard(
             tenant_id,
-            lambda: enforce_fleet_agents_quota(tenant_id, attempted=len(new_ids)),
+            lambda: enforce_fleet_agents_quota(tenant_id, attempted=new_identity_count),
         ):
-            for discovered_agent in discovered:
-                existing = existing_by_id.get(getattr(discovered_agent, "canonical_id", "") or discovered_agent.name)
+            for discovered_agent, existing in matched_discovery:
+                discovered_type = (
+                    discovered_agent.agent_type.value
+                    if hasattr(discovered_agent.agent_type, "value")
+                    else str(discovered_agent.agent_type)
+                )
+                discovered_canonical_id = str(getattr(discovered_agent, "canonical_id", "") or "")
                 server_count, pkg_count, cred_count, vuln_count = _server_counts(discovered_agent)
                 score, factors = compute_trust_score(discovered_agent)
 
                 if existing:
+                    existing.canonical_id = discovered_canonical_id
+                    existing.name = discovered_agent.name
+                    existing.agent_type = discovered_type
                     existing.server_count = server_count
                     existing.package_count = pkg_count
                     existing.credential_count = cred_count
@@ -433,19 +466,21 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                     existing.last_discovery = now
                     existing.updated_at = now
                     existing.config_path = discovered_agent.config_path or ""
+                    existing.source_id = str(getattr(discovered_agent, "source_id", "") or existing.source_id)
+                    existing.device_fingerprint = str(
+                        getattr(discovered_agent, "device_fingerprint", "") or existing.device_fingerprint
+                    )
                     store.put(existing)
                     updated_count += 1
                 else:
                     fleet_agent = FleetAgent(
                         agent_id=str(uuid.uuid4()),
-                        canonical_id=str(getattr(discovered_agent, "canonical_id", "") or ""),
+                        canonical_id=discovered_canonical_id,
                         name=discovered_agent.name,
-                        agent_type=(
-                            discovered_agent.agent_type.value
-                            if hasattr(discovered_agent.agent_type, "value")
-                            else str(discovered_agent.agent_type)
-                        ),
+                        agent_type=discovered_type,
                         config_path=discovered_agent.config_path or "",
+                        source_id=str(getattr(discovered_agent, "source_id", "") or ""),
+                        device_fingerprint=str(getattr(discovered_agent, "device_fingerprint", "") or ""),
                         lifecycle_state=FleetLifecycleState.DISCOVERED,
                         trust_score=score,
                         trust_factors=factors,

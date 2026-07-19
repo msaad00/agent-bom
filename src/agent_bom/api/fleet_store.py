@@ -86,6 +86,51 @@ class FleetAgent(BaseModel):
         return self
 
 
+def fleet_agent_natural_key(agent_type: str, name: str, config_path: str) -> tuple[str, str, str]:
+    """Compatibility key for upgrading scanner-owned fleet rows in place."""
+    return (
+        (agent_type or "").strip().lower(),
+        (name or "").strip().lower(),
+        (config_path or "").strip().lower(),
+    )
+
+
+def match_discovered_fleet_agent(
+    existing_agents: list[FleetAgent],
+    *,
+    canonical_id: str,
+    agent_type: str,
+    name: str,
+    config_path: str,
+    previous_canonical_ids: list[str] | None = None,
+    claimed_agent_ids: set[str] | None = None,
+) -> FleetAgent | None:
+    """Match a discovery row across canonical-ID schema upgrades.
+
+    Natural identity is checked before legacy aliases because v1 aliases may
+    intentionally collide. A legacy alias is accepted only when exactly one
+    unclaimed persisted row carries it.
+    """
+    claimed = claimed_agent_ids if claimed_agent_ids is not None else set()
+    available = [agent for agent in existing_agents if agent.agent_id not in claimed]
+    current = [agent for agent in available if agent.canonical_id == canonical_id]
+    if len(current) == 1:
+        return current[0]
+
+    natural_key = fleet_agent_natural_key(agent_type, name, config_path)
+    natural = [
+        agent
+        for agent in available
+        if fleet_agent_natural_key(agent.agent_type, agent.name, agent.config_path) == natural_key
+    ]
+    if len(natural) == 1:
+        return natural[0]
+
+    aliases = set(previous_canonical_ids or [])
+    legacy = [agent for agent in available if agent.canonical_id in aliases]
+    return legacy[0] if len(legacy) == 1 else None
+
+
 # ─── Protocol ────────────────────────────────────────────────────────────────
 
 

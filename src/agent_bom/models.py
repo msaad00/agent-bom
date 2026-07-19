@@ -1166,7 +1166,11 @@ class AIBOMReport:
     aisvs_benchmark_data: Optional[dict[str, Any]] = None  # Serialized AISVS compliance results
     vector_db_scan_data: Optional[list[Any]] = None  # Serialized vector DB security assessments
     gpu_infra_data: Optional[dict[str, Any]] = None  # Serialized GPU/AI compute infra scan results
-    iac_findings_data: Optional[dict[str, Any]] = None  # Serialized IaC misconfiguration findings (set by CLI)
+    # Serialized IaC misconfiguration findings. Set by the CLI scan path and by the
+    # API repo_url tree scan (api/repo_tree_scan.py). NOT yet populated for API
+    # local-estate/inventory scans or the MCP scan tool — those surfaces do not run
+    # the IaC scanner, so /v1/findings shows the IaC category only for repo scans.
+    iac_findings_data: Optional[dict[str, Any]] = None
     # Graph toxic-combination findings (serialized Finding dicts; set at the graph-build call site).
     # Rehydrated into the unified Finding stream by to_findings() so they reach --fail-on-severity.
     toxic_combination_findings_data: Optional[list[Any]] = None

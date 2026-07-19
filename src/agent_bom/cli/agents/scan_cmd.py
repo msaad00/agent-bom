@@ -2058,6 +2058,29 @@ def scan(
             ],
         }
 
+    # ── Graph-derived findings on EVERY scan (surface parity) ───────
+    # COMBINATION / CIEM_OVER_PRIVILEGE / NHI derive from the unified graph, not
+    # the raw inventory. Surface them on the default path too — not only under
+    # --context-graph — so the CLI emits the same finding categories as the API
+    # and MCP surfaces (all three call one shared build+attach helper). The
+    # unified stream (report.to_findings()) is the single source of truth for the
+    # toxic COMBINATION count, so the printed count can never contradict it.
+    if agents:
+        from agent_bom.cli._tenant import resolve_cli_tenant_id as _resolve_cli_tenant_id
+        from agent_bom.graph.scan_findings import surface_graph_derived_findings
+
+        surface_graph_derived_findings(report, scan_id=_scan_id, tenant_id=_resolve_cli_tenant_id())
+        if not quiet:
+            _n_toxic = len(report.toxic_combination_findings_data or [])
+            _n_nhi = len(report.nhi_governance_findings or [])
+            _n_ciem = len(report.ciem_over_privilege_findings_data or [])
+            if _n_toxic:
+                con.print(f"  [green]✓[/green] Toxic combinations: {_n_toxic} finding(s)")
+            if _n_nhi:
+                con.print(f"  [green]✓[/green] NHI governance: {_n_nhi} finding(s)")
+            if _n_ciem:
+                con.print(f"  [green]✓[/green] CIEM over-privilege: {_n_ciem} finding(s)")
+
     # ── Context graph: lateral movement analysis ────────────────────
     # Build whenever requested — credential pivots / SHARES_CREDENTIAL lateral
     # edges exist independent of any CVE, so gating on blast_radii hid the
@@ -2104,30 +2127,11 @@ def scan(
             from agent_bom.db.graph_store import default_graph_db_path, open_graph_db, save_graph
             from agent_bom.graph.builder import build_unified_graph_from_report
 
+            # Graph-derived findings (COMBINATION / NHI / CIEM) are surfaced
+            # un-gated above, so every scan surface stays at parity. Here the
+            # unified graph is (re)built only to persist the full snapshot to the
+            # local graph DB — a --context-graph-only side effect.
             _ug = build_unified_graph_from_report(_graph_json, scan_id=_scan_id, tenant_id=_resolve_cli_tenant_id())
-
-            # Graph-derived findings: now that every overlay has enriched the
-            # unified graph, surface NHI-governance + toxic-combination findings
-            # into the unified stream so they reach the --fail-on-severity gate and
-            # machine outputs (mirrors cloud CIS). Shared with the API scan
-            # pipeline so both paths emit the same finding categories.
-            try:
-                from agent_bom.graph.scan_findings import attach_graph_derived_findings
-
-                attach_graph_derived_findings(report, _ug)
-                if report.toxic_combination_findings_data:
-                    _n_toxic = len(report.toxic_combination_findings_data)
-                    con.print(f"  [green]✓[/green] Toxic combinations: {_n_toxic} finding(s)")
-                if report.nhi_governance_findings:
-                    _n_nhi = len(report.nhi_governance_findings)
-                    con.print(f"  [green]✓[/green] NHI governance: {_n_nhi} finding(s)")
-                if report.ciem_over_privilege_findings_data:
-                    _n_ciem = len(report.ciem_over_privilege_findings_data)
-                    con.print(f"  [green]✓[/green] CIEM over-privilege: {_n_ciem} finding(s)")
-            except Exception as _gderiv_err:  # noqa: BLE001
-                import logging as _tlog
-
-                _tlog.getLogger(__name__).debug("Graph-derived findings evaluation skipped: %s", _gderiv_err)
 
             _graph_db_path = default_graph_db_path()
             _graph_db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2198,13 +2202,15 @@ def scan(
         from agent_bom.toxic_combos import prioritize_findings as _prioritize
         from agent_bom.toxic_combos import to_serializable as _toxic_ser
 
+        # The legacy detector still feeds graph TRIGGERS edges (builder reads
+        # report.toxic_combinations) and prioritized_findings, but it is NOT a
+        # user-facing count: the single honest toxic number is the COMBINATION
+        # category in the unified stream, printed once above from the graph
+        # evaluator. Printing len(_toxic) here would resurrect the contradictory
+        # "11 vs 5 vs 0" console output the 2026-07-19 audit flagged.
         _toxic = _detect_toxic(report, context_graph_data=report.context_graph_data)
         report.toxic_combinations = _toxic_ser(_toxic)
         report.prioritized_findings = _prioritize(report.blast_radii, _toxic)
-        if not quiet and _toxic:
-            _n_crit = sum(1 for t in _toxic if t.severity == "critical")
-            _n_high = sum(1 for t in _toxic if t.severity == "high")
-            con.print(f"  [red]![/red] Toxic combinations: {len(_toxic)} detected ({_n_crit} critical, {_n_high} high)")
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     # Auto-detect: if no --model-dirs given, check project dir for model files

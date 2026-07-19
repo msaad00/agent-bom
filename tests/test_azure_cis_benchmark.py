@@ -779,15 +779,25 @@ def test_run_benchmark_no_subscription_id(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# _check_1_3 — Guest users reviewed (NOT_APPLICABLE)
+# _check_1_3 — Guest users reviewed (now Microsoft Graph access-review evidence)
 # ---------------------------------------------------------------------------
 
 
-def test_check_1_3_not_applicable():
-    result = _check_1_3()
-    assert result.status == CheckStatus.NOT_APPLICABLE
+def test_check_1_3_unevaluable_without_graph_evidence():
+    """1.3 is now Graph-backed: a client that cannot read is unevaluable, never a pass.
+
+    Detailed PASS/FAIL/unevaluable behavior lives in test_azure_identity_graph.py.
+    """
+    from agent_bom.cloud.azure_graph import GraphPermissionDeniedError
+
+    class _DeniedGraph:
+        def list(self, path):
+            raise GraphPermissionDeniedError("denied")
+
+    result = _check_1_3(_DeniedGraph())
+    assert result.status == CheckStatus.ERROR
+    assert result.status != CheckStatus.PASS
     assert result.check_id == "1.3"
-    assert "Graph API" in result.evidence
 
 
 # ---------------------------------------------------------------------------

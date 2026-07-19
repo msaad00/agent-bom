@@ -68,7 +68,9 @@ _CIS_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("azure", ("azure_cis_benchmark", "azure_cis_benchmark_data")),
     ("gcp", ("gcp_cis_benchmark", "gcp_cis_benchmark_data")),
     ("snowflake", ("snowflake_cis_benchmark", "snowflake_cis_benchmark_data")),
-    ("databricks", ("databricks_cis_benchmark", "databricks_cis_benchmark_data")),
+    # Databricks has no official CIS benchmark: prefer the canonical
+    # ``databricks_security`` key, then the deprecated CIS-named aliases.
+    ("databricks", ("databricks_security", "databricks_cis_benchmark", "databricks_cis_benchmark_data")),
 )
 
 _INVENTORY_PROVIDERS = ("aws", "azure", "gcp", "snowflake")

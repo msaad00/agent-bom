@@ -54,6 +54,16 @@ from agent_bom.security import sanitize_error
 
 from .aws_cis_benchmark import CheckStatus, CISCheckResult, finalize_read_coverage
 from .aws_inventory import is_access_denied_error
+from .azure_graph import (
+    ACCESS_REVIEW_DEFINITIONS_PATH,
+    AUTHORIZATION_POLICY_PATH,
+    AZURE_MANAGEMENT_APP_ID,
+    CONDITIONAL_ACCESS_POLICIES_PATH,
+    RESTRICTED_GUEST_ROLE_TEMPLATE_ID,
+    SECURITY_DEFAULTS_PATH,
+    GraphError,
+    GraphPermissionDeniedError,
+)
 from .base import CloudDiscoveryError
 
 logger = logging.getLogger(__name__)
@@ -160,8 +170,80 @@ _APPSERVICE_SECTION = "9 - App Service"
 
 
 # ---------------------------------------------------------------------------
-# Individual checks — CIS 1.x (Identity and Access Management)
+# Microsoft Graph identity evidence helpers (CIS 1.x)
+#
+# The 1.x identity controls that depend on Microsoft Entra directory state — the
+# authorization policy, security defaults, Conditional Access, and access
+# reviews — are evaluated from read-only Microsoft Graph v1.0 reads rather than
+# left as manual verification. Fail-closed contract: any denied, missing, or
+# unreadable Graph evidence yields ``unevaluable`` (ERROR), never an assumed PASS.
 # ---------------------------------------------------------------------------
+
+
+def _mark_unevaluable(result: CISCheckResult, exc: Exception) -> CISCheckResult:
+    """Fail closed: record why the Graph evidence could not be trusted."""
+    if isinstance(exc, GraphPermissionDeniedError):
+        detail = "the credential lacks the read-only Microsoft Graph permission (Policy.Read.All / AccessReview.Read.All)"
+    else:
+        detail = "Microsoft Graph directory evidence could not be read"
+    result.status = CheckStatus.ERROR
+    result.evidence = (
+        f"Unevaluable — {detail}; this control was not assessed and is NOT treated as passed. "
+        f"Grant read-only Graph access or verify in the Microsoft Entra admin center. ({sanitize_error(exc, generic=True)})"
+    )
+    return result
+
+
+def _ca_state(policy: dict[str, Any]) -> str:
+    return str(policy.get("state") or "").strip().lower()
+
+
+def _ca_enabled(policy: dict[str, Any]) -> bool:
+    """A Conditional Access policy is enforced only in the ``enabled`` state.
+
+    ``enabledForReportingButNotEnforced`` (report-only) and ``disabled`` do not
+    enforce the control, so they never satisfy a benchmark requirement.
+    """
+    return _ca_state(policy) == "enabled"
+
+
+def _ca_grant_controls(policy: dict[str, Any]) -> list[str]:
+    grant = policy.get("grantControls") or {}
+    controls = grant.get("builtInControls") if isinstance(grant, dict) else None
+    return [str(c).strip().lower() for c in controls] if isinstance(controls, list) else []
+
+
+def _ca_conditions(policy: dict[str, Any]) -> dict[str, Any]:
+    conditions = policy.get("conditions")
+    return conditions if isinstance(conditions, dict) else {}
+
+
+def _ca_included_users(policy: dict[str, Any]) -> list[str]:
+    users = _ca_conditions(policy).get("users") or {}
+    inc = users.get("includeUsers") if isinstance(users, dict) else None
+    return [str(u).strip().lower() for u in inc] if isinstance(inc, list) else []
+
+
+def _ca_included_roles(policy: dict[str, Any]) -> list[str]:
+    users = _ca_conditions(policy).get("users") or {}
+    inc = users.get("includeRoles") if isinstance(users, dict) else None
+    return [str(r) for r in inc] if isinstance(inc, list) else []
+
+
+def _ca_included_apps(policy: dict[str, Any]) -> list[str]:
+    apps = _ca_conditions(policy).get("applications") or {}
+    inc = apps.get("includeApplications") if isinstance(apps, dict) else None
+    return [str(a).strip().lower() for a in inc] if isinstance(inc, list) else []
+
+
+def _ca_client_app_types(policy: dict[str, Any]) -> list[str]:
+    types = _ca_conditions(policy).get("clientAppTypes")
+    return [str(t).strip().lower() for t in types] if isinstance(types, list) else []
+
+
+def _ca_sign_in_risk_levels(policy: dict[str, Any]) -> list[str]:
+    levels = _ca_conditions(policy).get("signInRiskLevels")
+    return [str(level).strip().lower() for level in levels] if isinstance(levels, list) else []
 
 
 def _check_1_1(auth_client: Any, subscription_id: str) -> CISCheckResult:
@@ -248,31 +330,79 @@ def _check_1_2(auth_client: Any, subscription_id: str) -> CISCheckResult:
     return result
 
 
-def _check_1_3() -> CISCheckResult:
-    """CIS 1.3 — Ensure guest users are reviewed on a regular basis."""
+def _guest_scoped_access_reviews(graph: Any) -> tuple[int, list[str]]:
+    """Return (total definitions, names of definitions scoped to guest users).
+
+    Reads ``/identityGovernance/accessReviews/definitions`` and flags any
+    definition whose scope references guest accounts (``userType eq 'Guest'``).
+    """
+    import json as _json
+
+    definitions = graph.list(ACCESS_REVIEW_DEFINITIONS_PATH)
+    guest_reviews: list[str] = []
+    for definition in definitions:
+        scope_blob = _json.dumps(definition.get("scope") or definition).lower()
+        if "guest" in scope_blob:
+            guest_reviews.append(str(definition.get("displayName") or definition.get("id") or "access-review"))
+    return len(definitions), guest_reviews
+
+
+def _check_1_3(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.3 — recurring review of guest accounts (Microsoft Graph access reviews)."""
     result = CISCheckResult(
         check_id="1.3",
         title="Ensure that guest users are reviewed on a regular basis",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Review guest users monthly and remove accounts that no longer require access.",
+        recommendation=(
+            "Configure a recurring Microsoft Entra access review scoped to guest users and remove access that is no longer needed."
+        ),
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Users > Filter by User type = Guest."
+    try:
+        total, guest_reviews = _guest_scoped_access_reviews(graph)
+        if guest_reviews:
+            result.status = CheckStatus.PASS
+            result.evidence = (
+                f"{len(guest_reviews)} access review(s) scoped to guest accounts are configured: {', '.join(guest_reviews[:5])}."
+            )
+            result.resource_ids = guest_reviews[:10]
+        elif total:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"{total} access review definition(s) exist but none is scoped to guest accounts."
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No Microsoft Entra access review definitions are configured — guest access is not being reviewed."
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
-def _check_1_4() -> CISCheckResult:
-    """CIS 1.4 — Ensure Access Review is configured for Guest users."""
+def _check_1_4(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.4 — an access review is configured for guest users (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.4",
         title="Ensure Access Review is configured for Guest users",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Configure Azure AD Access Reviews for guest users to periodically review and recertify guest access.",
+        recommendation="Create a Microsoft Entra access review that recertifies guest user access on a recurring schedule.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Identity Governance > Access Reviews."
+    try:
+        total, guest_reviews = _guest_scoped_access_reviews(graph)
+        if guest_reviews:
+            result.status = CheckStatus.PASS
+            result.evidence = f"A guest-scoped access review is configured ({len(guest_reviews)} definition(s))."
+            result.resource_ids = guest_reviews[:10]
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = (
+                f"No access review is scoped to guest users ({total} definition(s) found overall)."
+                if total
+                else "No access review definitions are configured for guest users."
+            )
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
@@ -309,17 +439,28 @@ def _check_1_5(auth_client: Any, subscription_id: str) -> CISCheckResult:
     return result
 
 
-def _check_1_6() -> CISCheckResult:
-    """CIS 1.6 — Ensure MFA is enforced for all users."""
+def _check_1_6(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.6 — MFA enforced for all users via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.6",
         title="Ensure that multi-factor authentication is enabled for all users",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="critical",
-        recommendation="Enable MFA for all users via Conditional Access policies or Security Defaults.",
+        recommendation="Enable an enabled Conditional Access policy that requires MFA for all users (or enable Security Defaults).",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > MFA."
+    try:
+        policies = graph.list(CONDITIONAL_ACCESS_POLICIES_PATH)
+        matching = [p for p in policies if _ca_enabled(p) and "all" in _ca_included_users(p) and "mfa" in _ca_grant_controls(p)]
+        if matching:
+            result.status = CheckStatus.PASS
+            result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) require MFA for all users."
+            result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"No enabled Conditional Access policy requires MFA for all users ({len(policies)} policy(ies) reviewed)."
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
@@ -360,31 +501,59 @@ def _check_1_7(auth_client: Any, subscription_id: str) -> CISCheckResult:
     return result
 
 
-def _check_1_8() -> CISCheckResult:
-    """CIS 1.8 — Ensure MFA is enforced for users accessing Azure Portal."""
+def _check_1_8(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.8 — MFA required for the Azure management app via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.8",
         title="Ensure that multi-factor authentication is enabled for Azure Portal access",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="critical",
-        recommendation="Create a Conditional Access policy requiring MFA for Azure Management cloud app.",
+        recommendation=(
+            "Create an enabled Conditional Access policy that requires MFA for the Microsoft Azure Management cloud app (or all apps)."
+        ),
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > Conditional Access."
+    try:
+        policies = graph.list(CONDITIONAL_ACCESS_POLICIES_PATH)
+        matching = [
+            p
+            for p in policies
+            if _ca_enabled(p) and "mfa" in _ca_grant_controls(p) and ({AZURE_MANAGEMENT_APP_ID, "all"} & set(_ca_included_apps(p)))
+        ]
+        if matching:
+            result.status = CheckStatus.PASS
+            result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) require MFA for the Azure management app."
+            result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No enabled Conditional Access policy requires MFA for the Microsoft Azure Management cloud app."
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
-def _check_1_9() -> CISCheckResult:
-    """CIS 1.9 — Ensure conditional access policies require MFA for administrative roles."""
+def _check_1_9(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.9 — Conditional Access requires MFA for administrative roles (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.9",
         title="Ensure Conditional Access policies require MFA for administrative roles",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="critical",
-        recommendation="Create a Conditional Access policy that requires MFA for all administrative directory roles.",
+        recommendation="Create an enabled Conditional Access policy that targets directory roles and requires MFA.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > Conditional Access."
+    try:
+        policies = graph.list(CONDITIONAL_ACCESS_POLICIES_PATH)
+        matching = [p for p in policies if _ca_enabled(p) and _ca_included_roles(p) and "mfa" in _ca_grant_controls(p)]
+        if matching:
+            result.status = CheckStatus.PASS
+            result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) require MFA for administrative directory roles."
+            result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No enabled Conditional Access policy requires MFA for administrative directory roles."
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
@@ -398,67 +567,123 @@ def _check_1_10() -> CISCheckResult:
         recommendation="Disable 'Remember MFA on trusted devices' to ensure MFA is prompted on every sign-in.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > MFA > Additional cloud-based MFA settings."  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
+    result.evidence = (
+        "Manual — the legacy per-tenant 'remember MFA on trusted devices' setting is not exposed by a stable Microsoft "
+        "Graph v1.0 read API. Verify in the Microsoft Entra admin center under Security > MFA > Additional cloud-based MFA settings."
+    )
     return result
 
 
-def _check_1_11() -> CISCheckResult:
-    """CIS 1.11 — Ensure Security Defaults is enabled (or Conditional Access policies)."""
+def _check_1_11(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.11 — Microsoft Entra security defaults enabled (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.11",
         title="Ensure Security Defaults is enabled on Azure Active Directory",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Enable Security Defaults or implement equivalent Conditional Access policies.",
+        recommendation="Enable Microsoft Entra security defaults, or enforce the equivalent controls through Conditional Access.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Properties > Manage Security defaults."
+    try:
+        policy = graph.get(SECURITY_DEFAULTS_PATH)
+        if bool(policy.get("isEnabled")):
+            result.status = CheckStatus.PASS
+            result.evidence = "Microsoft Entra security defaults are enabled for the tenant."
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = (
+                "Microsoft Entra security defaults are disabled. If baseline MFA/legacy-auth protection is instead enforced "
+                "via Conditional Access, confirm those policies satisfy this control."
+            )
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
-def _check_1_12() -> CISCheckResult:
-    """CIS 1.12 — Ensure 'User consent for applications' is not allowed."""
+def _check_1_12(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.12 — user consent to applications is disabled (Microsoft Graph authorization policy)."""
     result = CISCheckResult(
         check_id="1.12",
         title="Ensure that 'User consent for applications' is set to 'Do not allow user consent'",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Set User consent settings to 'Do not allow user consent' in Azure AD > Enterprise Applications > Consent and permissions.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
+        recommendation="Remove app consent grants from the default user role so only admins can consent to application permissions.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = (
-        "This check requires Microsoft Graph API access. Verify manually in Azure AD > Enterprise Applications > User settings."
-    )
+    try:
+        policy = graph.get(AUTHORIZATION_POLICY_PATH)
+        perms = policy.get("defaultUserRolePermissions") or {}
+        granted = perms.get("permissionGrantPoliciesAssigned") if isinstance(perms, dict) else None
+        assigned = [str(g) for g in granted] if isinstance(granted, list) else []
+        if not assigned:
+            result.status = CheckStatus.PASS
+            result.evidence = (
+                "User consent to applications is disabled (no app-consent grant policies are assigned to the default user role)."
+            )
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = (
+                f"User consent to applications is permitted — {len(assigned)} app-consent "
+                f"grant policy(ies) assigned: {', '.join(assigned[:5])}."
+            )
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
-def _check_1_13() -> CISCheckResult:
-    """CIS 1.13 — Ensure 'Users can register applications' is set to No."""
+def _check_1_13(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.13 — non-admin users cannot register applications (Microsoft Graph authorization policy)."""
     result = CISCheckResult(
         check_id="1.13",
         title="Ensure that 'Users can register applications' is set to 'No'",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Set 'Users can register applications' to No in Azure AD > User settings.",
+        recommendation=(
+            "Set the default user role so it cannot create (register) applications; delegate app registration to specific roles."
+        ),
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > User settings."
+    try:
+        policy = graph.get(AUTHORIZATION_POLICY_PATH)
+        perms = policy.get("defaultUserRolePermissions") or {}
+        allowed = bool(perms.get("allowedToCreateApps")) if isinstance(perms, dict) else True
+        if not allowed:
+            result.status = CheckStatus.PASS
+            result.evidence = "The default user role cannot register applications (allowedToCreateApps is false)."
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = (
+                "The default user role can register applications (allowedToCreateApps is true) — any user can create app registrations."
+            )
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
-def _check_1_14() -> CISCheckResult:
-    """CIS 1.14 — Ensure 'Guest users access restrictions' is set to restrict guest access."""
+def _check_1_14(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.14 — guest access is set to the most restrictive role (Microsoft Graph authorization policy)."""
     result = CISCheckResult(
         check_id="1.14",
         title="Ensure that 'Guest users access restrictions' is set to restrict guest access",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Configure guest user access restrictions to 'Guest user access is restricted to properties and memberships of their own directory objects'.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
+        recommendation="Set the guest user role to 'Restricted Guest User' so guests can only read their own directory objects.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = (
-        "This check requires Microsoft Graph API access. Verify manually in Azure AD > User settings > External collaboration settings."
-    )
+    try:
+        policy = graph.get(AUTHORIZATION_POLICY_PATH)
+        guest_role = str(policy.get("guestUserRoleId") or "").strip().lower()
+        if guest_role == RESTRICTED_GUEST_ROLE_TEMPLATE_ID.lower():
+            result.status = CheckStatus.PASS
+            result.evidence = "Guest access is set to the most restrictive role (Restricted Guest User)."
+        elif guest_role:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"Guest access is not restricted to the most limited role (guestUserRoleId={guest_role})."
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = "The tenant authorization policy does not restrict guest access to the Restricted Guest User role."
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
@@ -506,7 +731,8 @@ def _check_1_16() -> CISCheckResult:
         cis_section=_IAM_SECTION,
     )
     result.evidence = (
-        "This check requires Microsoft Graph API access. Verify manually in Azure AD > Privileged Identity Management > Access reviews."
+        "Manual — Privileged Identity Management access-review configuration for privileged roles is not reliably "
+        "derivable from a stable Microsoft Graph v1.0 read. Verify in the Microsoft Entra admin center under PIM > Access reviews."
     )
     return result
 
@@ -521,21 +747,38 @@ def _check_1_17() -> CISCheckResult:
         recommendation="Set 'Restrict access to Azure AD administration portal' to Yes in Azure AD > User settings.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > User settings."
+    result.evidence = (
+        "Manual — the 'restrict access to the Microsoft Entra administration portal' user setting is not exposed by a "
+        "stable Microsoft Graph v1.0 read API. Verify in the Microsoft Entra admin center under User settings."
+    )
     return result
 
 
-def _check_1_18() -> CISCheckResult:
-    """CIS 1.18 — Ensure legacy authentication is blocked via Conditional Access."""
+def _check_1_18(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.18 — legacy authentication blocked via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.18",
         title="Ensure that legacy authentication is blocked via Conditional Access Policy",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Create a Conditional Access policy to block legacy authentication protocols.",
+        recommendation="Create an enabled Conditional Access policy that targets legacy client app types and blocks access.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > Conditional Access."
+    _legacy_clients = {"exchangeactivesync", "other"}
+    try:
+        policies = graph.list(CONDITIONAL_ACCESS_POLICIES_PATH)
+        matching = [
+            p for p in policies if _ca_enabled(p) and (_legacy_clients & set(_ca_client_app_types(p))) and "block" in _ca_grant_controls(p)
+        ]
+        if matching:
+            result.status = CheckStatus.PASS
+            result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) block legacy authentication clients."
+            result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No enabled Conditional Access policy blocks legacy authentication clients (exchangeActiveSync / other)."
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
@@ -549,7 +792,10 @@ def _check_1_19() -> CISCheckResult:
         recommendation="Enable password hash synchronization in Azure AD Connect to support leaked credential detection.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Azure AD Connect."
+    result.evidence = (
+        "Manual — password hash synchronization status is only exposed by the beta Microsoft Graph "
+        "onPremisesSynchronization resource, not a stable v1.0 read. Verify in Azure AD Connect / Entra Connect Sync."
+    )
     return result
 
 
@@ -563,35 +809,60 @@ def _check_1_20() -> CISCheckResult:
         recommendation="Enable self-service password reset for all users in Azure AD > Password reset.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Password reset."
+    result.evidence = (
+        "Manual — the tenant self-service password reset enablement setting is not exposed by a stable Microsoft Graph "
+        "v1.0 read API. Verify in the Microsoft Entra admin center under Password reset."
+    )
     return result
 
 
-def _check_1_21() -> CISCheckResult:
-    """CIS 1.21 — Ensure MFA is required for risky sign-ins."""
+def _check_1_21(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.21 — MFA required for risky sign-ins via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.21",
         title="Ensure that multi-factor authentication is required for risky sign-ins",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Create a Conditional Access policy that requires MFA when sign-in risk is medium or high.",
+        recommendation="Create an enabled Conditional Access policy that requires MFA when the sign-in risk level is medium or high.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > Conditional Access."
+    try:
+        policies = graph.list(CONDITIONAL_ACCESS_POLICIES_PATH)
+        matching = [p for p in policies if _ca_enabled(p) and _ca_sign_in_risk_levels(p) and "mfa" in _ca_grant_controls(p)]
+        if matching:
+            result.status = CheckStatus.PASS
+            result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) require MFA for risky sign-ins."
+            result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No enabled Conditional Access policy requires MFA based on sign-in risk level."
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
-def _check_1_22() -> CISCheckResult:
-    """CIS 1.22 — Ensure MFA is enabled for all users in administrative roles."""
+def _check_1_22(graph: Any) -> CISCheckResult:
+    """CIS Azure 1.22 — MFA enforced for administrative role holders via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.22",
         title="Ensure that multi-factor authentication is enabled for all users in administrative roles",
-        status=CheckStatus.NOT_APPLICABLE,
+        status=CheckStatus.ERROR,
         severity="critical",
-        recommendation="Ensure all administrative role holders have MFA enabled via Conditional Access or per-user MFA.",
+        recommendation="Enforce MFA for administrative directory roles with an enabled Conditional Access policy that targets those roles.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > MFA."
+    try:
+        policies = graph.list(CONDITIONAL_ACCESS_POLICIES_PATH)
+        matching = [p for p in policies if _ca_enabled(p) and _ca_included_roles(p) and "mfa" in _ca_grant_controls(p)]
+        if matching:
+            result.status = CheckStatus.PASS
+            result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) enforce MFA for administrative role holders."
+            result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
+        else:
+            result.status = CheckStatus.FAIL
+            result.evidence = "No enabled Conditional Access policy enforces MFA for users holding administrative directory roles."
+    except GraphError as exc:
+        return _mark_unevaluable(result, exc)
     return result
 
 
@@ -3453,16 +3724,18 @@ def run_benchmark(
     Raises:
         CloudDiscoveryError: if azure-identity or azure-mgmt-* are not installed.
     """
-    try:
-        from azure.identity import DefaultAzureCredential
-    except ImportError:
-        raise CloudDiscoveryError("azure-identity is required for Azure CIS benchmark. Install with: pip install 'agent-bom[azure]'")
-
     resolved_sub = subscription_id or os.environ.get("AZURE_SUBSCRIPTION_ID", "")
     if not resolved_sub:
         raise CloudDiscoveryError("Azure subscription ID required. Set AZURE_SUBSCRIPTION_ID env var or pass subscription_id.")
 
+    # azure-identity is only needed to build the default credential; a
+    # caller-supplied credential (including the fail-closed dead-credential
+    # path) must not require the optional SDK to be installed.
     if credential is None:
+        try:
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            raise CloudDiscoveryError("azure-identity is required for Azure CIS benchmark. Install with: pip install 'agent-bom[azure]'")
         credential = DefaultAzureCredential()
     report = AzureCISReport(subscription_id=resolved_sub)
 
@@ -3522,30 +3795,45 @@ def run_benchmark(
 
         return WebSiteManagementClient(credential, resolved_sub)
 
+    # Microsoft Graph reads the Entra directory state (Conditional Access, the
+    # tenant authorization policy, security defaults, access reviews) that the ARM
+    # management APIs do not expose. Built once and reused across the 1.x identity
+    # controls; the credential caches its token internally.
+    _graph_holder: dict[str, Any] = {}
+
+    def _graph_client() -> Any:
+        client = _graph_holder.get("client")
+        if client is None:
+            from .azure_graph import AzureGraphClient
+
+            client = AzureGraphClient(credential)
+            _graph_holder["client"] = client
+        return client
+
     all_checks: list[tuple[str, Any]] = [
         # Section 1 — Identity and Access Management
         ("1.1", lambda: _check_1_1(_auth_client(), resolved_sub)),
         ("1.2", lambda: _check_1_2(_auth_client(), resolved_sub)),
-        ("1.3", lambda: _check_1_3()),
-        ("1.4", lambda: _check_1_4()),
+        ("1.3", lambda: _check_1_3(_graph_client())),
+        ("1.4", lambda: _check_1_4(_graph_client())),
         ("1.5", lambda: _check_1_5(_auth_client(), resolved_sub)),
-        ("1.6", lambda: _check_1_6()),
+        ("1.6", lambda: _check_1_6(_graph_client())),
         ("1.7", lambda: _check_1_7(_auth_client(), resolved_sub)),
-        ("1.8", lambda: _check_1_8()),
-        ("1.9", lambda: _check_1_9()),
+        ("1.8", lambda: _check_1_8(_graph_client())),
+        ("1.9", lambda: _check_1_9(_graph_client())),
         ("1.10", lambda: _check_1_10()),
-        ("1.11", lambda: _check_1_11()),
-        ("1.12", lambda: _check_1_12()),
-        ("1.13", lambda: _check_1_13()),
-        ("1.14", lambda: _check_1_14()),
+        ("1.11", lambda: _check_1_11(_graph_client())),
+        ("1.12", lambda: _check_1_12(_graph_client())),
+        ("1.13", lambda: _check_1_13(_graph_client())),
+        ("1.14", lambda: _check_1_14(_graph_client())),
         ("1.15", lambda: _check_1_15(_auth_client(), resolved_sub)),
         ("1.16", lambda: _check_1_16()),
         ("1.17", lambda: _check_1_17()),
-        ("1.18", lambda: _check_1_18()),
+        ("1.18", lambda: _check_1_18(_graph_client())),
         ("1.19", lambda: _check_1_19()),
         ("1.20", lambda: _check_1_20()),
-        ("1.21", lambda: _check_1_21()),
-        ("1.22", lambda: _check_1_22()),
+        ("1.21", lambda: _check_1_21(_graph_client())),
+        ("1.22", lambda: _check_1_22(_graph_client())),
         # Section 2 — Microsoft Defender for Cloud
         ("2.1", lambda: _check_2_1(_security_client(), resolved_sub)),
         ("2.2", lambda: _check_2_2(_security_client(), resolved_sub)),

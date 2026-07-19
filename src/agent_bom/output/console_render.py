@@ -1584,7 +1584,7 @@ _CIS_CLOUD_BUNDLES: tuple[tuple[str, str, str], ...] = (
     ("azure", "Azure", "azure_cis_benchmark_data"),
     ("gcp", "GCP", "gcp_cis_benchmark_data"),
     ("snowflake", "Snowflake", "snowflake_cis_benchmark_data"),
-    ("databricks", "Databricks", "databricks_cis_benchmark_data"),
+    ("databricks", "Databricks Security Best Practices", "databricks_security_data"),
 )
 
 _SEV_LABEL: dict[str, str] = {

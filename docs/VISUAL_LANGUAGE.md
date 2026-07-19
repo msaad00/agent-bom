@@ -105,21 +105,21 @@ Current SVG inventory:
 | `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
 | `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |
 | `compliance-{light,dark}.svg` | Finding → control → evidence packet | Compliance section |
-| `demo-latest.gif` | Terminal demo (453KB after compression) | "Try the demo" |
+| `demo-latest.gif` | Terminal demo (1100×1000; compressed, exact size may change per render) | "Try the demo" |
 
 Current PNG inventory:
 
 | File | What it shows | Where it lives in the README |
 |---|---|---|
-| `dashboard-live.png` | Packaged Next.js dashboard risk overview | Product views |
-| `dashboard-paths-live.png` | Packaged Next.js attack paths and exposure view | Product views |
-| `mesh-live.png` | Focused agent mesh graph across agents, MCP servers, packages, tools, credentials, and findings | Product views |
+| `dashboard-live.png` | Packaged Next.js posture, unique findings, coverage, and operations overview | Product views |
+| `dashboard-paths-live.png` | Packaged Next.js exposure paths, recent scans, and activity | Product views |
+| `mesh-live.png` | Focused agent → MCP server → package → finding path | Product views |
 | `security-graph-live.png` | Fix-first attack-path queue with export controls and remediation handoff | Product views |
-| `lineage-graph-live.png` | Expanded but bounded topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes | Product views |
+| `lineage-graph-live.png` | Focused filtered attack-path lineage across agent, MCP, package, and finding nodes | Product views |
 | `context-map-live.png` | Focused lateral context map with MCP reachability, shared infrastructure, credentials, tools, and findings | Product views |
 | `fleet-state-live.png` | Fleet lifecycle review state with owner, environment, trust factors, and quarantine context | Product views |
 | `gateway-policies-live.png` | Runtime gateway posture with enforcement, firewall decisions, policy rules, and bound agents | Product views |
-| `dependency-map-live.png` | Supply chain dependency map with scan pipeline counts and package risk distribution | Product views |
+| `dependency-map-live.png` | Findings queue with seeded package and fictional vulnerability evidence | Product views |
 | `remediation-live.png` | Fix-first remediation surface | Product views |
 
 Public README, Docker Hub, and marketplace screenshots should not duplicate the

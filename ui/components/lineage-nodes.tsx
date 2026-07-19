@@ -168,12 +168,12 @@ function NodeCard({
         position={Position.Right}
         className={`!w-2 !h-2 !bg-current ${source ? "" : "!opacity-0"}`}
       />
-      <div className="flex items-center gap-2 mb-1">
+      <div className="mb-1 flex min-w-0 items-center gap-2">
         <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
-        <span className="text-[15px] font-semibold leading-5 text-[var(--foreground)] truncate">
+        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-5 text-[var(--foreground)]">
           {data.label}
         </span>
-        <span className="ml-auto rounded border border-black/10 bg-white/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)] dark:border-white/15 dark:bg-black/25">
+        <span className="ml-auto shrink-0 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
           {NODE_TYPE_BADGES[data.nodeType]}
         </span>
         {data.runtimeEvidenceTier && data.runtimeEvidenceTier !== "static_scan" ? (
@@ -758,7 +758,7 @@ function SummaryNode({ data }: { data: LineageNodeData }) {
   return (
     <div
       data-testid="summary-node"
-      className={`rounded-lg border px-2 py-1 min-w-[96px] max-w-[160px] shadow transition-opacity ${accent} ${
+      className={`min-w-[112px] max-w-[180px] rounded-lg border px-2.5 py-1.5 shadow transition-opacity ${accent} ${
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? "ring-2 ring-sky-400" : ""}`}
     >
@@ -773,7 +773,7 @@ function SummaryNode({ data }: { data: LineageNodeData }) {
         className="!w-1.5 !h-1.5"
       />
       <div className="flex items-center gap-1">
-        <span className="text-[10px] font-medium truncate">{data.label}</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">{data.label}</span>
         {vulnCount > 0 && (
           <span className="ml-auto rounded bg-white/70 px-1 text-[9px] font-mono dark:bg-black/40">
             {vulnCount}

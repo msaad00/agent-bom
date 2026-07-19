@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Tailwind's dark variant follows the same explicit selector as the runtime
+ * theme toggle; it must not depend on the host operating-system preference. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
   color-scheme: dark;
   /*

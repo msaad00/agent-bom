@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { chromium } from "@playwright/test";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
@@ -18,6 +20,7 @@ const PREVIOUS_SCAN_ID = "scan-proof-ai-platform-prev";
 const baseUrlFromEnv = process.env.CAPTURE_BASE_URL;
 const PORT = Number(process.env.CAPTURE_PORT || "3137");
 const BASE_URL = baseUrlFromEnv || `http://127.0.0.1:${PORT}`;
+let captureOutputDir = IMAGE_DIR;
 
 function severityId(severity) {
   return { none: 0, low: 1, medium: 2, high: 3, critical: 4 }[severity] ?? 0;
@@ -428,9 +431,12 @@ function buildBlastRadius() {
       fixed_version: "1.66.5",
     },
   ];
+  const seenIds = new Set(entries.map((item) => item.vulnerability_id));
   for (const spec of DEMO_AGENT_SPECS) {
     if (!spec.cve) continue;
     const [id, severity, cvss, , fixedVersion] = spec.cve;
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
     entries.push({
       vulnerability_id: id,
       severity,
@@ -482,10 +488,10 @@ function scanSummary(agentCount) {
     total_agents: agentCount,
     total_servers: 22,
     total_packages: 148,
-    total_vulnerabilities: 26,
-    critical_findings: 9,
-    high_findings: 13,
-    medium_findings: 4,
+    total_vulnerabilities: 15,
+    critical_findings: 3,
+    high_findings: 9,
+    medium_findings: 3,
     low_findings: 0,
   };
 }
@@ -814,18 +820,18 @@ function overviewResponse() {
     status,
     detail,
   });
-  // Reachable-CVE histogram for the demo estate — sums to the 26 open findings
+  // Reachable-CVE histogram for the demo estate — sums to the 15 unique findings
   // so the metric never contradicts its severity strip (overview honesty rule).
-  const vulnSeverity = { critical: 9, high: 13, medium: 4, low: 0, unrated: 0 };
+  const vulnSeverity = { critical: 3, high: 9, medium: 3, low: 0, unrated: 0 };
   const zeroSeverity = { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 };
   // Coverage lanes are overlapping posture lenses, not a partition: the demo's
-  // 26 reachable CVEs are both Vuln-management findings and AI-posture findings.
+  // Fifteen unique reachable CVEs appear in both the vulnerability and AI-posture lenses.
   const coverage = [
     { domain: "cspm", label: "CSPM", href: "/findings?domain=cspm", count: 0, severity: { ...zeroSeverity } },
-    { domain: "vuln", label: "Vuln mgmt", href: "/findings?domain=vuln", count: 26, severity: { ...vulnSeverity } },
+    { domain: "vuln", label: "Vuln mgmt", href: "/findings?domain=vuln", count: 15, severity: { ...vulnSeverity } },
     { domain: "aspm", label: "AppSec / ASPM", href: "/findings?domain=aspm", count: 0, severity: { ...zeroSeverity } },
     { domain: "dspm", label: "DSPM", href: "/findings?domain=dspm", count: 0, severity: { ...zeroSeverity } },
-    { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 26, severity: { ...vulnSeverity } },
+    { domain: "aispm", label: "AISPM", href: "/findings?domain=aispm", count: 15, severity: { ...vulnSeverity } },
   ];
   return {
     schema_version: "overview.v1",
@@ -836,13 +842,13 @@ function overviewResponse() {
       summary: "Reachable agent, MCP, credential, and package evidence is normalized into one operator queue.",
     },
     headline: {
-      critical: 9,
-      high: 13,
-      critical_high: 22,
+      critical: 3,
+      high: 9,
+      critical_high: 12,
       credential_exposed: 3,
       scans: 3,
       latest_scan_at: CREATED_AT,
-      hub_findings: 26,
+      hub_findings: 15,
     },
     coverage,
     domains: {
@@ -850,10 +856,10 @@ function overviewResponse() {
       vuln: domain(
         "Vuln / SCA",
         "/findings?issue=vulnerability",
-        26,
+        15,
         "open CVEs",
         "critical",
-        { critical: 9, high: 13, packages: 148, severity: { ...vulnSeverity } },
+        { critical: 3, high: 9, packages: 148, severity: { ...vulnSeverity } },
       ),
       code: domain("Code / repo", "/scan", 3, "repo scans", "ok", { repo_scans: 3, packages: 148 }),
       runtime: domain("Runtime", "/gateway", 247, "active surfaces", "critical", { active_surfaces: 247 }),
@@ -1120,8 +1126,9 @@ function authPolicyResponse() {
 
 function auditEntries() {
   return [
-    ["scan.completed", "api", "scan/" + SCAN_ID, { findings: 26, graph_nodes: graph.nodes.length }],
+    ["scan.completed", "api", "scan/" + SCAN_ID, { findings: 15, graph_nodes: graph.nodes.length }],
     ["gateway.policy.denied", "gateway", "tool/execute_command", { agent: "developer-copilot", rule: "block-shell" }],
+    ["agent_identity.issued", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
     ["agent_identity.rotated", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
     ["agent_identity.revoked", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
     ["compliance.bundle.signed", "api", "compliance/soc2", { signer: "capture-key" }],
@@ -1296,11 +1303,11 @@ async function installRoutes(page) {
     span_id: "span-proof-capture",
   }));
   await page.route("**/v1/posture/counts", (route) => fulfill(route, {
-    critical: 9,
-    high: 13,
-    medium: 4,
+    critical: 3,
+    high: 9,
+    medium: 3,
     low: 0,
-    total: 26,
+    total: 15,
     compound_issues: 4,
     deployment_mode: "hybrid",
     has_mcp_context: true,
@@ -1316,7 +1323,7 @@ async function installRoutes(page) {
   await page.route("**/v1/posture", (route) => fulfill(route, {
     grade: "D",
     score: 43,
-    summary: "26 findings across MCP, identity, runtime policy, and package reachability.",
+    summary: "15 unique findings across MCP, identity, runtime policy, and package reachability.",
     dimensions: {
       exploitability: { score: 18, label: "Exploitability", details: "Critical CVE is reachable from repo-write MCP." },
       identity: { score: 34, label: "Identity", details: "JIT reviewer can assume prod AI role." },
@@ -1524,7 +1531,9 @@ async function installRoutes(page) {
   }));
   // Register the broad audit route before the specific integrity route.
   await page.route("**/v1/audit?**", (route) => {
-    const entries = auditEntries();
+    const url = new URL(route.request().url());
+    const resource = (url.searchParams.get("resource") ?? "").trim().toLowerCase();
+    const entries = auditEntries().filter((entry) => !resource || entry.resource.toLowerCase().includes(resource));
     return fulfill(route, { entries, total: entries.length });
   });
   await page.route("**/v1/audit/integrity?**", (route) => fulfill(route, {
@@ -1624,77 +1633,170 @@ async function waitForServer(url) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
-function startServerIfNeeded() {
+async function startServerIfNeeded() {
   if (baseUrlFromEnv) return null;
-  const child = spawn("npm", ["run", "dev", "--", "--hostname", "127.0.0.1", "--port", String(PORT)], {
-    cwd: UI_ROOT,
+  const standaloneRoot = path.join(UI_ROOT, ".next", "standalone");
+  const standaloneStatic = path.join(standaloneRoot, ".next", "static");
+  const standalonePublic = path.join(standaloneRoot, "public");
+  await fs.cp(path.join(UI_ROOT, ".next", "static"), standaloneStatic, { recursive: true });
+  await fs.cp(path.join(UI_ROOT, "public"), standalonePublic, { recursive: true });
+  const child = spawn(process.execPath, ["server.js"], {
+    cwd: standaloneRoot,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
+    env: {
+      ...process.env,
+      HOSTNAME: "127.0.0.1",
+      PORT: String(PORT),
+      NEXT_TELEMETRY_DISABLED: "1",
+    },
   });
   child.stdout.on("data", (chunk) => process.stdout.write(chunk));
   child.stderr.on("data", (chunk) => process.stderr.write(chunk));
   return child;
 }
 
+async function stopServer(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, "exit");
+  child.kill("SIGTERM");
+  const stopped = await Promise.race([
+    exited.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+  ]);
+  if (!stopped && child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGKILL");
+    await exited;
+  }
+}
+
+function isBenignAppRouterCancellation(request, failure) {
+  if (failure !== "net::ERR_ABORTED" || request.resourceType() !== "fetch") return false;
+  const requestUrl = new URL(request.url());
+  return requestUrl.searchParams.has("_rsc");
+}
+
 async function capture(page, urlPath, filename, beforeShot, options = {}) {
   const browserErrors = [];
+  const networkErrors = [];
+  const successfulApiPaths = new Set();
+  const monitoredResourceTypes = new Set(["document", "script", "stylesheet", "font", "image", "xhr", "fetch"]);
+  const fatalWarningPattern = /hydration|did not match|server-rendered html|chunkloaderror|loading chunk|next\.js.*error/i;
   const onConsole = (message) => {
-    if (message.type() === "error") {
+    if (message.type() === "error" || (message.type() === "warning" && fatalWarningPattern.test(message.text()))) {
       const source = message.location().url;
-      browserErrors.push(`console: ${message.text()}${source ? ` (${source})` : ""}`);
+      browserErrors.push(`console ${message.type()}: ${message.text()}${source ? ` (${source})` : ""}`);
     }
   };
   const onPageError = (error) => browserErrors.push(`pageerror: ${error.message}`);
+  const onRequestFailed = (request) => {
+    if (!monitoredResourceTypes.has(request.resourceType())) return;
+    const failure = request.failure()?.errorText ?? "unknown";
+    // App Router may cancel a superseded React Server Component prefetch.
+    // Every other failed document, asset, XHR, or fetch remains fatal.
+    if (isBenignAppRouterCancellation(request, failure)) return;
+    networkErrors.push(`requestfailed ${request.resourceType()}: ${request.url()} (${failure})`);
+  };
+  const onResponse = (response) => {
+    const request = response.request();
+    if (!monitoredResourceTypes.has(request.resourceType())) return;
+    const responseUrl = new URL(response.url());
+    if (
+      response.ok()
+      && (responseUrl.pathname.startsWith("/v1/") || responseUrl.pathname === "/health" || responseUrl.pathname === "/version")
+    ) {
+      successfulApiPaths.add(responseUrl.pathname);
+    }
+    if (response.status() >= 400) {
+      networkErrors.push(`HTTP ${response.status()} ${request.resourceType()}: ${response.url()}`);
+    }
+  };
   page.on("console", onConsole);
   page.on("pageerror", onPageError);
-  const responseWaits = (options.awaitResponses ?? []).map((predicate) =>
-    page.waitForResponse(predicate, { timeout: 30_000 }),
-  );
-  let navigationResponse;
-  if (responseWaits.length > 0) {
-    [navigationResponse] = await Promise.all([
-      page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" }),
-      ...responseWaits,
-    ]);
-  } else {
-    navigationResponse = await page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" });
+  page.on("requestfailed", onRequestFailed);
+  page.on("response", onResponse);
+  try {
+    const responseWaits = (options.awaitResponses ?? []).map((predicate) =>
+      page.waitForResponse(predicate, { timeout: 30_000 }),
+    );
+    let navigationResponse;
+    if (responseWaits.length > 0) {
+      [navigationResponse] = await Promise.all([
+        page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" }),
+        ...responseWaits,
+      ]);
+    } else {
+      navigationResponse = await page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" });
+    }
+    if (!navigationResponse || !navigationResponse.ok()) {
+      throw new Error(`Capture navigation failed for ${urlPath}: HTTP ${navigationResponse?.status() ?? "no response"}`);
+    }
+    await page.waitForLoadState("load");
+    await page.waitForTimeout(urlPath.includes("capture=1") ? 1200 : 400);
+    if (beforeShot) await beforeShot(page);
+    if (urlPath.includes("capture=1")) {
+      await page.locator("#demo-estate-watermark").waitFor({ state: "visible", timeout: 30_000 });
+    }
+    if (options.readySelector) {
+      await page.locator(options.readySelector).first().waitFor({ state: "visible", timeout: 30_000 });
+    }
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    const visibleText = await page.locator("body").innerText();
+    const visibleErrorPatterns = [/500 Internal Server Error/i, /Application error/i, /Unhandled Runtime Error/i];
+    const visibleError = visibleErrorPatterns.find((pattern) => pattern.test(visibleText));
+    if (visibleError) throw new Error(`Visible error on ${urlPath}: ${visibleError}`);
+    for (const expected of options.expectedText ?? []) {
+      const matched = expected instanceof RegExp ? expected.test(visibleText) : visibleText.includes(expected);
+      if (!matched) throw new Error(`Expected content ${String(expected)} is missing on ${urlPath}`);
+    }
+    for (const rejected of options.rejectedText ?? []) {
+      const matched = rejected instanceof RegExp ? rejected.test(visibleText) : visibleText.includes(rejected);
+      if (matched) throw new Error(`Rejected content ${String(rejected)} is visible on ${urlPath}`);
+    }
+    for (const expectedPath of options.expectedApiPaths ?? []) {
+      if (!successfulApiPaths.has(expectedPath)) {
+        throw new Error(`Expected API response ${expectedPath} was not observed on ${urlPath}`);
+      }
+    }
+    if (options.minGraphNodes) {
+      const graphNodeCount = await page.locator(".react-flow__node:visible").count();
+      const graphEdgeCount = await page.locator(".react-flow__edge").count();
+      if (graphNodeCount < options.minGraphNodes || graphEdgeCount < (options.minGraphEdges ?? 1)) {
+        throw new Error(`Incomplete graph on ${urlPath}: ${graphNodeCount} nodes / ${graphEdgeCount} edges`);
+      }
+    }
+    if (!visibleText.includes(RELEASE_VERSION)) {
+      throw new Error(`Release version ${RELEASE_VERSION} is not visible on ${urlPath}`);
+    }
+    if (browserErrors.length > 0) {
+      throw new Error(`Browser errors on ${urlPath}: ${browserErrors.join(" | ")}`);
+    }
+    if (networkErrors.length > 0) {
+      throw new Error(`Network errors on ${urlPath}: ${networkErrors.join(" | ")}`);
+    }
+    await page.screenshot({ path: path.join(captureOutputDir, filename), fullPage: false });
+    console.log(`captured ${filename}`);
+  } finally {
+    page.off("console", onConsole);
+    page.off("pageerror", onPageError);
+    page.off("requestfailed", onRequestFailed);
+    page.off("response", onResponse);
   }
-  if (!navigationResponse || !navigationResponse.ok()) {
-    throw new Error(`Capture navigation failed for ${urlPath}: HTTP ${navigationResponse?.status() ?? "no response"}`);
-  }
-  await page.waitForLoadState("load");
-  await page.waitForTimeout(urlPath.includes("capture=1") ? 1200 : 400);
-  if (beforeShot) await beforeShot(page);
-  if (urlPath.includes("capture=1")) {
-    await page.locator("#demo-estate-watermark").waitFor({ state: "visible", timeout: 30_000 });
-  }
-  const visibleText = await page.locator("body").innerText();
-  const visibleErrorPatterns = [/500 Internal Server Error/i, /Application error/i, /Unhandled Runtime Error/i];
-  const visibleError = visibleErrorPatterns.find((pattern) => pattern.test(visibleText));
-  if (visibleError) throw new Error(`Visible error on ${urlPath}: ${visibleError}`);
-  if (!visibleText.includes(RELEASE_VERSION)) {
-    throw new Error(`Release version ${RELEASE_VERSION} is not visible on ${urlPath}`);
-  }
-  if (browserErrors.length > 0) {
-    throw new Error(`Browser errors on ${urlPath}: ${browserErrors.join(" | ")}`);
-  }
-  await page.screenshot({ path: path.join(IMAGE_DIR, filename), fullPage: false });
-  page.off("console", onConsole);
-  page.off("pageerror", onPageError);
-  console.log(`captured ${filename}`);
 }
 
-async function writeScreenshotManifest() {
+async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
   const screenshots = [
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Overview command center — posture ring, findings breakdown, scan coverage, environment tabs",
+      scope: "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
     },
     {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
-      scope: "Overview lower frame with exposure path and feed/analytics tabs",
+      scope: "Overview lower frame with unique exposure paths, recent scans, and activity",
     },
     {
       path: "cloud-accounts-live.png",
@@ -1709,22 +1811,22 @@ async function writeScreenshotManifest() {
     {
       path: "mesh-live.png",
       page: "/mesh?capture=1",
-      scope: "Focused agent mesh graph across the active agent, MCP server, package, tool, and CVE path, cropped to the product graph surface",
+      scope: "Focused agent mesh graph across the active agent, MCP server, package, and CVE path",
     },
     {
       path: "gateway-policies-live.png",
       page: "/runtime?tab=gateway&capture=1",
-      scope: "Runtime gateway KPI rollup and live tool-call feed",
+      scope: "Runtime gateway KPI rollup, enforcement posture, and recent tool-call evidence",
     },
     {
       path: "security-graph-live.png",
       page: "/security-graph?capture=1",
-      scope: "Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff",
+      scope: "Prioritized attack path with graph evidence export and remediation handoff",
     },
     {
       path: "lineage-graph-live.png",
       page: `/graph?capture=1&scan=${SCAN_ID}`,
-      scope: "Expanded but bounded lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes",
+      scope: "Focused filtered attack-path lineage across agent, MCP, package, and finding nodes",
     },
     {
       path: "context-map-live.png",
@@ -1734,12 +1836,12 @@ async function writeScreenshotManifest() {
     {
       path: "fleet-state-live.png",
       page: "/fleet?capture=1",
-      scope: "Expanded fleet row showing lifecycle distribution, approved state, owner metadata, environment label, and discovery state",
+      scope: "Expanded quarantined fleet row showing lifecycle distribution, owner metadata, environment label, and enforcement state",
     },
     {
       path: "identity-audit-live.png",
       page: "/audit?capture=1",
-      scope: "Audit log filtered to identity resources with HMAC integrity counters and agent identity issue, rotate, revoke events",
+      scope: "Audit log filtered to identity resources with issue, rotate, and revoke events",
     },
     {
       path: "dependency-map-live.png",
@@ -1759,7 +1861,7 @@ async function writeScreenshotManifest() {
       "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
     screenshots,
   };
-  await fs.writeFile(SCREENSHOT_MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
+  await fs.writeFile(path.join(outputDir, path.basename(SCREENSHOT_MANIFEST)), `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`updated ${path.relative(REPO_ROOT, SCREENSHOT_MANIFEST)}`);
 }
 
@@ -1788,34 +1890,91 @@ async function fitReactFlow(page, { timeout = 30_000 } = {}) {
 
 async function main() {
   await fs.mkdir(IMAGE_DIR, { recursive: true });
-  const server = startServerIfNeeded();
+  const stageDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-bom-product-proof-"));
+  captureOutputDir = stageDir;
+  const server = await startServerIfNeeded();
+  let browser;
   try {
     await waitForServer(BASE_URL);
-    const browser = await chromium.launch();
+    browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1440, height: 980 }, deviceScaleFactor: 1 });
     await installRoutes(page);
     await page.addInitScript(() => {
       window.localStorage.setItem("agent-bom-theme", "dark");
     });
 
-    await capture(page, "/?capture=1", "dashboard-live.png");
+    await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
+      expectedText: [/Overview/i, /Risk posture/i, /15 open CVEs/i],
+      expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
+    });
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       await scrollTo(dashboardPage, 720);
+    }, {
+      expectedText: ["Top risks", "Recent scans", "Activity", "DEMO-VULN-21441"],
+      expectedApiPaths: ["/v1/overview", "/v1/jobs"],
     });
     await capture(page, "/connections?capture=1", "cloud-accounts-live.png", async (connectionsPage) => {
       await connectionsPage.getByRole("heading", { name: "Connections", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+      const galleryHeading = connectionsPage.getByText("Connect a source", { exact: true }).last();
+      await galleryHeading.scrollIntoViewIfNeeded();
+      await connectionsPage.evaluate(() => window.scrollBy({ top: -120, behavior: "instant" }));
+    }, {
+      expectedText: ["Connections", "Amazon Web Services", "Microsoft Azure", "Repositories"],
+      expectedApiPaths: ["/v1/cloud/connections", "/v1/sources", "/v1/connectors"],
     });
     await capture(page, "/scan?capture=1", "new-scan-live.png", async (scanPage) => {
       await scanPage.getByRole("heading", { name: /New Scan|Run scan/i }).first().waitFor({ state: "visible", timeout: 10_000 });
+    }, {
+      expectedText: ["New Scan", "Cloud account", "Ad-hoc", "Data source", "AI / ML"],
+      expectedApiPaths: ["/v1/cloud/connections", "/v1/sources"],
     });
-    await capture(page, "/mesh?capture=1", "mesh-live.png");
-    await capture(page, "/security-graph?capture=1", "security-graph-live.png");
+    await capture(page, "/mesh?capture=1", "mesh-live.png", async (meshPage) => {
+      await meshPage.getByText("developer-copilot", { exact: true }).waitFor({ state: "visible", timeout: 30_000 });
+      await fitReactFlow(meshPage);
+      await scrollTo(meshPage, 0);
+    }, {
+      expectedText: ["Agent Mesh", "developer-copilot", "github-enterprise MCP", "DEMO-VULN-21441"],
+      expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`],
+      minGraphNodes: 4,
+      minGraphEdges: 3,
+    });
+    await capture(page, "/security-graph?capture=1", "security-graph-live.png", async (securityGraphPage) => {
+      await securityGraphPage
+        .getByRole("img", { name: /Selected exposure path graph for/i })
+        .waitFor({ state: "visible", timeout: 30_000 });
+    }, {
+      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
+      readySelector: 'section[aria-label="Selected exposure path graph"]',
+    });
     await capture(page, `/graph?capture=1&scan=${SCAN_ID}`, "lineage-graph-live.png", async (lineagePage) => {
-      try {
-        await fitReactFlow(lineagePage);
-      } catch {
-        await lineagePage.waitForTimeout(800);
-      }
+      const advancedControls = lineagePage
+        .locator("details")
+        .filter({ has: lineagePage.getByText("Advanced controls", { exact: true }) })
+        .first();
+      await advancedControls.locator(":scope > summary").click();
+      const viewControls = advancedControls.locator("details").first();
+      await viewControls.locator(":scope > summary").click();
+      await lineagePage.getByRole("option", { name: "developer-copilot", exact: true }).click();
+      await lineagePage.waitForFunction(() => document.body.innerText.includes("Scopedeveloper-copilot"));
+      const attackPathQueue = lineagePage
+        .locator("details")
+        .filter({ has: lineagePage.getByText("Attack paths", { exact: true }) })
+        .last();
+      await attackPathQueue.locator(":scope > summary").click();
+      await attackPathQueue.getByRole("button").filter({ hasText: "DEMO-VULN-21441" }).first().click();
+      await lineagePage.getByText(/Focused attack path/i).waitFor({ state: "visible", timeout: 10_000 });
+      await attackPathQueue.locator(":scope > summary").click();
+      await advancedControls.locator(":scope > summary").click();
+      await fitReactFlow(lineagePage);
+      await lineagePage.locator(".react-flow__controls-zoomout").first().click({ force: true });
+      await scrollTo(lineagePage, 20);
+      await lineagePage.waitForTimeout(350);
+    }, {
+      expectedText: ["Relevant paths", "Developer Copilot", "github-enterprise MCP", "DEMO-VULN-21441"],
+      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph"],
+      minGraphNodes: 4,
+      minGraphEdges: 3,
     });
     await capture(
       page,
@@ -1825,32 +1984,53 @@ async function main() {
         await contextPage.getByText(/Lateral paths|Paths from|No lateral paths/i).first().waitFor({ state: "visible", timeout: 30_000 });
         const agentScope = contextPage.locator("select").first();
         if ((await agentScope.count()) > 0) {
-          await agentScope.selectOption("");
+          await agentScope.selectOption("developer-copilot");
           await contextPage.waitForTimeout(600);
         }
-        try {
-          await fitReactFlow(contextPage);
-        } catch {
-          await contextPage.waitForTimeout(500);
-        }
+        await fitReactFlow(contextPage);
+        await scrollTo(contextPage, 0);
       },
       {
         awaitResponses: [(response) => response.url().includes("/context-graph") && response.ok()],
+        expectedText: ["Context Map", "Paths from Developer Copilot", "DEMO-VULN-21441"],
+        expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],
+        minGraphNodes: 4,
+        minGraphEdges: 3,
       },
     );
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
       await fleetPage.getByText("developer-copilot").first().click({ force: true });
       await fleetPage.waitForTimeout(500);
       await scrollTo(fleetPage, 130);
+    }, {
+      expectedText: ["Lifecycle Distribution", "developer-copilot", "Quarantined", "Re-enforce gateway deny"],
+      expectedApiPaths: ["/v1/fleet", "/v1/fleet/stats"],
     });
     await capture(page, "/runtime?tab=gateway&capture=1", "gateway-policies-live.png", async (gatewayPage) => {
       await gatewayPage.getByText("Calls today").first().waitFor({ state: "visible", timeout: 8000 });
       await gatewayPage.getByText("Gateway live feed").first().waitFor({ state: "visible", timeout: 8000 });
-      await gatewayPage.waitForTimeout(400);
+      await scrollTo(gatewayPage, 430);
+    }, {
+      expectedText: ["Calls today", "4,485", "Gateway live feed", "developer-copilot", "Repo-write blocked"],
+      expectedApiPaths: ["/v1/gateway/policies", "/v1/gateway/feed", "/v1/gateway/feed/kpis"],
     });
     await capture(page, "/audit?capture=1", "identity-audit-live.png", async (auditPage) => {
-      await auditPage.getByPlaceholder("Filter by resource…").fill("identity");
+      const filteredResponse = auditPage.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === "/v1/audit" && url.searchParams.get("resource") === "identity" && response.ok();
+      });
+      const resourceFilter = auditPage.getByPlaceholder("Filter by resource…");
+      await resourceFilter.fill("identity");
+      await filteredResponse;
+      await auditPage.getByText("agent_identity.issued").waitFor({ state: "visible", timeout: 8_000 });
+      await resourceFilter.evaluate((element) => {
+        element.scrollIntoView({ block: "start", inline: "nearest", behavior: "instant" });
+      });
       await auditPage.waitForTimeout(350);
+    }, {
+      expectedText: ["agent_identity.issued", "agent_identity.rotated", "agent_identity.revoked", "identity/id_89c1a6f406bd7189"],
+      rejectedText: ["scan.completed", "gateway.policy.denied", "compliance.bundle.signed"],
+      expectedApiPaths: ["/v1/audit", "/v1/audit/integrity"],
     });
     await capture(page, "/findings?capture=1", "dependency-map-live.png", async (findingsPage) => {
       await findingsPage.getByRole("heading", { name: /Findings|Issues|Vulnerabilit/i }).first().waitFor({
@@ -1860,14 +2040,23 @@ async function main() {
         await findingsPage.getByText(/CVE|critical|high|package/i).first().waitFor({ state: "visible", timeout: 8_000 });
       });
       await scrollTo(findingsPage, 200);
+    }, {
+      expectedText: ["Findings queue", "15 filtered", "DEMO-VULN-21441", "DEMO-VULN-77881"],
+      expectedApiPaths: ["/v1/findings", "/v1/findings/triage"],
+      rejectedText: ["17 filtered"],
     });
-    await capture(page, "/remediation?capture=1", "remediation-live.png");
-    await writeScreenshotManifest();
-    await browser.close();
-  } finally {
-    if (server) {
-      server.kill("SIGTERM");
+    await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
+      expectedText: ["Risk campaigns", "Package remediation plan", "Upgrade openssl to 3.0.14", "DEMO-VULN-21441"],
+      expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
+    });
+    await writeScreenshotManifest(stageDir);
+    for (const artifact of await fs.readdir(stageDir)) {
+      await fs.copyFile(path.join(stageDir, artifact), path.join(IMAGE_DIR, artifact));
     }
+  } finally {
+    await browser?.close();
+    await stopServer(server);
+    await fs.rm(stageDir, { recursive: true, force: true });
   }
 }
 

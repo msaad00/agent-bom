@@ -21,16 +21,16 @@ PR clearly explains why an asset is unchanged.
 
 | Asset | Required proof |
 |---|---|
-| `dashboard-live.png` | Risk overview top frame, visible version, headline KPIs, posture grade, and start of attack paths. |
-| `dashboard-paths-live.png` | Risk overview mid-frame, attack paths, exposure KPIs, severity/source charts, and backlog context. |
-| `mesh-live.png` | Focused agent mesh graph with selected agents, MCP servers, tools, packages, credentials, findings, and no large empty canvas. |
-| `security-graph-live.png` | Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff. |
-| `lineage-graph-live.png` | Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export. |
+| `dashboard-live.png` | Overview top frame with visible version, posture grade, unique findings, scan coverage, and operational lanes. |
+| `dashboard-paths-live.png` | Overview lower frame with unique exposure paths, recent scans, and activity. |
+| `mesh-live.png` | Focused active agent → MCP server → package → finding path with title, legend, and no large empty canvas. |
+| `security-graph-live.png` | Prioritized attack path with graph evidence export and remediation handoff. |
+| `lineage-graph-live.png` | Focused filtered attack-path lineage across agent, MCP server, package, and finding nodes. |
 | `context-map-live.png` | Lateral context view with selected agent scope, reachable tools, shared infrastructure, and evidence metadata. |
 | `fleet-state-live.png` | Fleet lifecycle review state with owner, environment, trust factors, and quarantine context. |
 | `gateway-policies-live.png` | Runtime gateway posture with enforcement, firewall decisions, policy rules, and bound agents. |
 | `identity-audit-live.png` | Auth, key lifecycle, tenant boundaries, and audit log evidence without overflowing cards. |
-| `dependency-map-live.png` | Supply chain dependency map with scan pipeline counts and package risk distribution. |
+| `dependency-map-live.png` | Findings queue with seeded package and fictional vulnerability evidence. |
 | `remediation-live.png` | Fix-first remediation table with prioritized packages and framework context. |
 
 ## Manifest

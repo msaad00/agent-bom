@@ -6,9 +6,19 @@ metadata:
   labels:
     {{- include "agent-bom.labels" . | nindent 4 }}
 rules:
+  # Least-privilege, read-only (get/list) posture reader. Covers container
+  # image discovery (pods/namespaces) and the live KSPM posture collectors
+  # (workloads, NetworkPolicies, RBAC, nodes). No secrets, no mutation verbs,
+  # and no nodes/proxy — the native transport never proxies the kubelet.
   - apiGroups: [""]
-    resources: ["pods", "namespaces"]
-    verbs: ["get", "list", "watch"]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -17,8 +27,11 @@ metadata:
   labels:
     {{- include "agent-bom.labels" . | nindent 4 }}
 subjects:
+  # Bind to the service account the scan/KSPM CronJobs actually run as. The
+  # scanner SA is what the pods use (see cronjob / kspm-cronjob templates), so
+  # the read grant must target it — not the generic control-plane SA.
   - kind: ServiceAccount
-    name: {{ include "agent-bom.serviceAccountName" . }}
+    name: {{ include "agent-bom.scannerServiceAccountName" . }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole

@@ -185,6 +185,9 @@ def test_account_list_failure_is_failed_not_clean():
 
 
 def test_inventory_wiring_is_gated_and_best_effort(monkeypatch: pytest.MonkeyPatch):
+    # Patches azure.storage.blob.BlobServiceClient, so it needs the optional
+    # [azure] SDK — skip cleanly in the base test env where it is not installed.
+    pytest.importorskip("azure.storage.blob")
     from agent_bom.cloud import azure_inventory
 
     # Gate OFF → no classification attached, no client constructed.

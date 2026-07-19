@@ -47,7 +47,8 @@ class PostgresModelKeyBrokerStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "model_provider_keys")
+            if not ensure_postgres_schema_version(conn, "model_provider_keys"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS model_provider_keys (
                     provider_key_id TEXT PRIMARY KEY,

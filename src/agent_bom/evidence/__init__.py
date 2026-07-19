@@ -29,6 +29,7 @@ from agent_bom.evidence.policy import (
     replay_ttl_days,
     tier_badge,
 )
+from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun, effective_scan_run
 
 __all__ = [
     "DEFAULT_REPLAY_TTL_DAYS",
@@ -43,4 +44,8 @@ __all__ = [
     "replay_not_after",
     "replay_ttl_days",
     "tier_badge",
+    "ScanIssue",
+    "ScanOutcome",
+    "ScanRun",
+    "effective_scan_run",
 ]

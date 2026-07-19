@@ -291,8 +291,11 @@ def print_posture_summary(report: AIBOMReport) -> None:
     """Print a high-level security posture summary with ecosystem and credential aggregation."""
     from collections import Counter
 
+    from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
+
     coverage = report.scan_performance_data or {}
-    coverage_incomplete = coverage.get("coverage_state") == "incomplete"
+    scan_run = effective_scan_run(report)
+    coverage_incomplete = coverage.get("coverage_state") == "incomplete" or scan_run.outcome is not ScanOutcome.COMPLETE
 
     # Aggregate agent status counts
     configured = sum(1 for a in report.agents if a.status == AgentStatus.CONFIGURED)
@@ -343,7 +346,10 @@ def print_posture_summary(report: AIBOMReport) -> None:
         sev_counts[str(finding.severity).upper()] += 1
 
     # Posture headline
-    if coverage_incomplete:
+    if scan_run.outcome is ScanOutcome.FAILED:
+        posture = "[bold red]SCAN FAILED[/bold red]"
+        border_style = "red"
+    elif coverage_incomplete:
         posture = "[bold yellow]PARTIAL COVERAGE[/bold yellow]"
         border_style = "yellow"
     elif report.total_vulnerabilities == 0 and not policy_findings:
@@ -1562,10 +1568,7 @@ def print_remediation_plan(report: AIBOMReport) -> None:
                 reach = f"widens the attack surface{via}{through}"
             else:
                 reach = "widens the attack surface on this dependency"
-            _console().print(
-                f"     [dim red]⚠ if not fixed:[/dim red] "
-                f"[dim]attacker exploiting {item['vulns'][0]} {reach}[/dim]"
-            )
+            _console().print(f"     [dim red]⚠ if not fixed:[/dim red] [dim]attacker exploiting {item['vulns'][0]} {reach}[/dim]")
             _console().print()
 
     if unfixable:

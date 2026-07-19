@@ -144,6 +144,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./supabase/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
       - ./supabase/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./supabase/postgres/runtime-schema.sql:/docker-entrypoint-initdb.d/02-runtime-schema.sql:ro
     command: >
       postgres
         -c password_encryption=scram-sha-256

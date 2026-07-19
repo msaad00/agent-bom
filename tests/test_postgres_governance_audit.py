@@ -63,6 +63,8 @@ class _FakeConnection:
         s = " ".join(sql.lower().split())
         params = params or ()
 
+        if "select version from control_plane_schema_versions" in s:
+            return _FakeCursor([(1,)])
         if "set_config('app.tenant_id'" in s:
             self.tenant = params[0]
             return _FakeCursor()

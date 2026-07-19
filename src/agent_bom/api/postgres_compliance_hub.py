@@ -368,7 +368,8 @@ class PostgresComplianceHubStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "compliance_hub")
+            if not ensure_postgres_schema_version(conn, "compliance_hub"):
+                return
             _ensure_backfill_marker_table(conn)
             conn.execute(
                 """
@@ -648,9 +649,6 @@ class PostgresComplianceHubStore:
             return 0
         now = _now_utc_iso()
         rows_to_insert: list[tuple[str, str, dict[str, Any]]] = []
-        # Hoist the reference-table existence probe to once per batch (it is
-        # otherwise two CREATE-IF-NOT-EXISTS round-trips per row).
-        ensure_postgres_reference_tables(conn)
         for original in findings:
             if not isinstance(original, dict):
                 continue

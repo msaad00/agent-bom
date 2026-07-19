@@ -19,7 +19,8 @@ class PostgresTenantScoreConfigStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "tenant_score_config")
+            if not ensure_postgres_schema_version(conn, "tenant_score_config"):
+                return
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS tenant_score_config_overrides (

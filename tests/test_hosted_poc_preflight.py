@@ -166,6 +166,19 @@ def test_preflight_can_write_secret_files(tmp_path: Path) -> None:
         assert oct(path.stat().st_mode & 0o777) == "0o400"
 
 
+def test_secret_generation_does_not_require_hosted_url_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("NEXT_PUBLIC_API_URL", raising=False)
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+
+    errors = run_preflight(tmp_path, skip_compose=True, write_secret=True, force=False)
+
+    assert errors == []
+    assert (tmp_path / "deploy" / "secrets" / "postgres_password").is_file()
+
+
 def test_cli_returns_nonzero_without_printing_secret_values(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

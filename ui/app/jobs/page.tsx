@@ -85,6 +85,12 @@ function evidenceSummary(job: JobListItem): string {
   return `${vulns} CVEs · ${critical} critical · ${packages} packages`;
 }
 
+function scanOutcome(job: JobListItem): "complete" | "partial" | "failed" | undefined {
+  if (job.scan_outcome) return job.scan_outcome;
+  const legacy = job.scan_run?.outcome;
+  return legacy === "complete" || legacy === "partial" || legacy === "failed" ? legacy : undefined;
+}
+
 
 function JobsPageContent() {
   const searchParams = useSearchParams();
@@ -149,7 +155,10 @@ function JobsPageContent() {
     () => new Map(sources.filter((source) => source.last_job_id).map((source) => [source.last_job_id as string, source])),
     [sources],
   );
-  const evidenceReadyJobs = useMemo(() => jobs.filter((job) => job.status === "done"), [jobs]);
+  const evidenceReadyJobs = useMemo(
+    () => jobs.filter((job) => job.status === "done" && scanOutcome(job) !== "failed"),
+    [jobs],
+  );
   const featuredJob = useMemo(() => {
     const running = jobs.find((job) => job.status === "running");
     if (running) return running;
@@ -359,7 +368,8 @@ function JobsPageContent() {
                 {pagedJobs?.map((job) => {
                   const linkedSource = sourceForJob(job, sourceById, sourceByLastJobId);
                   const sourceId = sourceIdForJob(job);
-                  const evidenceReady = job.status === "done";
+                  const outcome = scanOutcome(job);
+                  const evidenceReady = job.status === "done" && outcome !== "failed";
                   const expanded = expandedJobId === job.job_id;
                   return (
                     <Fragment key={job.job_id}>
@@ -419,6 +429,11 @@ function JobsPageContent() {
                       <td className="px-4 py-3">
                         {evidenceReady ? (
                           <div className="space-y-2">
+                            {outcome === "partial" ? (
+                              <p className="text-[11px] font-medium text-amber-300">
+                                Partial evidence · {job.warning_count ?? 0} warning{job.warning_count === 1 ? "" : "s"}
+                              </p>
+                            ) : null}
                             <p className="text-[11px] text-[var(--text-tertiary)]">{evidenceSummary(job)}</p>
                             <div className="flex flex-wrap gap-1.5">
                               {[
@@ -438,7 +453,9 @@ function JobsPageContent() {
                             </div>
                           </div>
                         ) : (
-                          <span className="text-xs text-[var(--text-tertiary)]">Available when complete</span>
+                          <span className={outcome === "failed" ? "text-xs text-red-300" : "text-xs text-[var(--text-tertiary)]"}>
+                            {outcome === "failed" ? "Scan failed — evidence incomplete" : "Available when complete"}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">

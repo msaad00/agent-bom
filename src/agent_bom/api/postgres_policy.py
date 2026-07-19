@@ -33,7 +33,8 @@ class PostgresPolicyStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "gateway_policies")
+            if not ensure_postgres_schema_version(conn, "gateway_policies"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS gateway_policies (
                     policy_id TEXT PRIMARY KEY,
@@ -230,7 +231,8 @@ class PostgresScheduleStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "schedules")
+            if not ensure_postgres_schema_version(conn, "schedules"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_schedules (
                     schedule_id TEXT PRIMARY KEY,
@@ -332,7 +334,8 @@ class PostgresSourceStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "sources")
+            if not ensure_postgres_schema_version(conn, "sources"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS control_plane_sources (
                     source_id TEXT PRIMARY KEY,
@@ -422,7 +425,8 @@ class PostgresCredentialRefStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "credential_refs")
+            if not ensure_postgres_schema_version(conn, "credential_refs"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS credential_refs (
                     credential_ref_id TEXT PRIMARY KEY,

@@ -1740,6 +1740,9 @@ export interface JobListItem {
   scan_timestamp?: string | undefined;
   generated_at?: string | undefined;
   scan_run?: Record<string, unknown> | undefined;
+  scan_outcome?: "complete" | "partial" | "failed" | undefined;
+  warning_count?: number | undefined;
+  warnings_preview?: string[] | undefined;
   pushed?: boolean | undefined;
   error?: string | undefined;
 }

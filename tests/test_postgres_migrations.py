@@ -16,6 +16,7 @@ GRAPH_HOT_PATH_INDEXES = VERSIONS_DIR / "20260513_01_graph_hot_path_indexes.py"
 POSTGRES_STORE_PARITY = VERSIONS_DIR / "20260717_01_postgres_store_parity.py"
 GRAPH_ANALYSIS_STATUS = VERSIONS_DIR / "20260717_02_graph_analysis_status.py"
 GRAPH_SNAPSHOT_JSON_PARITY = VERSIONS_DIR / "20260717_03_graph_snapshot_json_parity.py"
+RUNTIME_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260718_01_runtime_schema_authority.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
 
@@ -41,6 +42,7 @@ def test_baseline_migration_points_at_bootstrap_sql():
     bootstrap = _load_module(BOOTSTRAP, "abom_alembic_bootstrap")
     sql = BASELINE.read_text()
     assert bootstrap.INIT_SQL.exists()
+    assert bootstrap.SUPPLEMENTAL_SQL.exists()
     assert re.search(r'revision\s*=\s*"20260416_01"', sql)
     assert re.search(r"down_revision\s*=\s*None", sql)
 
@@ -82,12 +84,14 @@ def test_baseline_migration_executes_bootstrap_without_dbapi_parameters(monkeypa
 
     monkeypatch.setattr(module.op, "get_bind", lambda: _Bind())
     monkeypatch.setattr(module, "load_bootstrap_sql", lambda database_name: bootstrap_sql)
+    monkeypatch.setattr(module, "load_runtime_schema_sql", lambda: "-- runtime schema")
 
     module.upgrade()
 
     assert calls == [
         ("SELECT current_database()", None),
         (bootstrap_sql, {"no_parameters": True}),
+        ("-- runtime schema", {"no_parameters": True}),
     ]
 
 
@@ -136,6 +140,14 @@ def test_graph_snapshot_json_parity_migration_is_idempotent_and_chained():
         assert f"ALTER COLUMN {column} DROP DEFAULT" in sql
         assert f"ALTER COLUMN {column} TYPE TEXT" in sql
         assert f"ALTER COLUMN {column} SET DEFAULT '{{}}'" in sql
+
+
+def test_runtime_schema_authority_is_the_alembic_head() -> None:
+    assert RUNTIME_SCHEMA_AUTHORITY.exists()
+    sql = RUNTIME_SCHEMA_AUTHORITY.read_text()
+    assert re.search(r'revision\s*=\s*"20260718_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260717_03"', sql)
+    assert "load_runtime_schema_sql" in sql
 
 
 def test_hub_partition_migration_uses_the_psycopg_driver_connection(monkeypatch):

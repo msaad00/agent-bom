@@ -21,7 +21,8 @@ class PostgresKeyStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "api_keys")
+            if not ensure_postgres_schema_version(conn, "api_keys"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS api_keys (
                     key_id TEXT PRIMARY KEY,
@@ -252,7 +253,8 @@ class PostgresExceptionStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "exceptions")
+            if not ensure_postgres_schema_version(conn, "exceptions"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS exceptions (
                     exception_id TEXT PRIMARY KEY,

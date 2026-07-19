@@ -301,9 +301,13 @@ def _discover_ai_foundry(
         warnings.append("azure-ai-projects not installed. Skipping AI Foundry agent discovery. Install with: pip install azure-ai-projects")
         return agents, warnings
 
-    # AI Foundry requires a project endpoint — discover via resource graph
+    # AI Foundry requires a project endpoint — discover via resource graph.
+    # Import from the ``.resources`` submodule: azure-mgmt-resource 26.x dropped
+    # the top-level ResourceManagementClient re-export, so the bare top-level
+    # import raises ImportError on a current install. The submodule path is
+    # stable across the whole pinned range (>=23.0).
     try:
-        from azure.mgmt.resource import ResourceManagementClient
+        from azure.mgmt.resource.resources import ResourceManagementClient
 
         rm_client = ResourceManagementClient(credential, subscription_id)
 

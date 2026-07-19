@@ -722,7 +722,7 @@ def render_cis_findings_from_context(ctx: ScanContext) -> None:
         ("azure_cis_benchmark_data", ctx.azure_cis_benchmark_report),
         ("gcp_cis_benchmark_data", ctx.gcp_cis_benchmark_report),
         ("snowflake_cis_benchmark_data", ctx.sf_cis_benchmark_report),
-        ("databricks_cis_benchmark_data", ctx.databricks_security_report),
+        ("databricks_security_data", ctx.databricks_security_report),
     )
     # print_cis_findings reads each provider's bundle off the report via
     # getattr(report, "<provider>_cis_benchmark_data"); a namespace carrying

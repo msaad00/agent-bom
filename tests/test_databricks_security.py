@@ -404,3 +404,80 @@ class TestRunBenchmark:
         check_ids = {c.check_id for c in report.checks}
         expected = {"1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "2.3", "2.4", "3.1", "4.1", "5.1", "5.2"}
         assert check_ids == expected
+
+
+# ---------------------------------------------------------------------------
+# Canonical field / key surface + deprecated CIS-named alias (issue #4120)
+# ---------------------------------------------------------------------------
+
+_SAMPLE_DB_DATA = {
+    "benchmark": "Databricks Security Best Practices",
+    "provider": "databricks",
+    "checks": [
+        {"check_id": "1.1", "title": "Limit admins", "status": "FAIL", "severity": "high"},
+    ],
+}
+
+
+class TestDatabricksCanonicalSurface:
+    def test_scanresult_alias_round_trips_both_directions(self):
+        """The canonical field and the deprecated CIS-named alias are one value."""
+        from agent_bom.models import AIBOMReport
+
+        # Write via the canonical field, read via the deprecated alias.
+        r = AIBOMReport()
+        r.databricks_security_data = _SAMPLE_DB_DATA
+        assert r.databricks_cis_benchmark_data is _SAMPLE_DB_DATA
+        assert r.databricks_security_data is _SAMPLE_DB_DATA
+
+        # Write via the deprecated alias, read via the canonical field.
+        r2 = AIBOMReport()
+        r2.databricks_cis_benchmark_data = _SAMPLE_DB_DATA
+        assert r2.databricks_security_data is _SAMPLE_DB_DATA
+        assert r2.databricks_cis_benchmark_data is _SAMPLE_DB_DATA
+
+    def test_alias_is_not_a_dataclass_constructor_kwarg(self):
+        """The alias is a property, not a field — never a second source of truth."""
+        import dataclasses
+
+        from agent_bom.models import AIBOMReport
+
+        field_names = {f.name for f in dataclasses.fields(AIBOMReport)}
+        assert "databricks_security_data" in field_names
+        assert "databricks_cis_benchmark_data" not in field_names
+
+    def test_json_emits_canonical_and_deprecated_keys(self):
+        """JSON carries both ``databricks_security`` and the deprecated alias."""
+        from agent_bom.models import AIBOMReport
+        from agent_bom.output.json_fmt import to_json
+
+        report = AIBOMReport()
+        report.databricks_security_data = _SAMPLE_DB_DATA
+        out = to_json(report)
+        assert out["databricks_security"] == _SAMPLE_DB_DATA
+        assert out["databricks_cis_benchmark"] == _SAMPLE_DB_DATA
+        assert out["databricks_security"] == out["databricks_cis_benchmark"]
+
+    def test_databricks_check_finding_has_no_cis_framework_tag(self):
+        """Databricks is a vendor baseline: no CIS-* tag, best-practice type."""
+        from agent_bom.finding import FindingType, cloud_cis_check_to_finding
+
+        check = {
+            "check_id": "1.1",
+            "title": "Limit workspace admins",
+            "status": "FAIL",
+            "severity": "high",
+            "compliance_tags": [],
+        }
+        finding = cloud_cis_check_to_finding(check, "databricks")
+        assert not any(t.startswith("CIS-") for t in finding.compliance_tags)
+        assert finding.compliance_tags == []
+        assert finding.finding_type == FindingType.CLOUD_BEST_PRACTICE_FAIL
+
+    def test_databricks_error_check_uses_best_practice_error_type(self):
+        from agent_bom.finding import FindingType, cloud_cis_check_to_finding
+
+        check = {"check_id": "1.1", "title": "Limit admins", "status": "ERROR", "severity": "high"}
+        finding = cloud_cis_check_to_finding(check, "databricks")
+        assert finding.finding_type == FindingType.CLOUD_BEST_PRACTICE_ERROR
+        assert not any(t.startswith("CIS-") for t in finding.compliance_tags)

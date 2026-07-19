@@ -15,9 +15,10 @@ import logging
 import os
 import re
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from agent_bom import __version__
 from agent_bom.api import stores as _stores
@@ -99,12 +100,15 @@ def _api_extra_import_error_message(exc: ImportError) -> str:
 try:
     from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse, RedirectResponse
+    from fastapi.responses import JSONResponse, RedirectResponse, Response
     from pydantic import BaseModel  # noqa: F401 — presence check for [api] extra
     from starlette.middleware import Middleware
     from starlette.middleware.gzip import GZipMiddleware
 except ImportError as exc:  # pragma: no cover
     raise ImportError(_api_extra_import_error_message(exc)) from exc
+
+if TYPE_CHECKING:
+    from fastapi.responses import HTMLResponse
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -238,7 +242,7 @@ def _log_control_plane_auth_posture() -> None:
 
 
 @asynccontextmanager
-async def _lifespan(app_instance: FastAPI):
+async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Start background cleanup task on startup, cancel on shutdown."""
     _log_control_plane_auth_posture()
     configure_otel_tracing()
@@ -1039,7 +1043,7 @@ _shutting_down: bool = False
 _STUCK_JOB_TIMEOUT = 1800  # 30 minutes — mark RUNNING jobs as FAILED
 
 
-async def _cleanup_loop():
+async def _cleanup_loop() -> None:
     """Background task that removes expired jobs and unsticks RUNNING jobs.
 
     Also drives the tier-B (replay-only) evidence TTL purge from issue
@@ -1202,7 +1206,7 @@ def _dashboard_index_file() -> _DashboardFile | None:
     return _validated_dashboard_file(_dashboard_dist_dir(), "index.html")
 
 
-def _dashboard_html_response(dashboard_file: _DashboardFile):
+def _dashboard_html_response(dashboard_file: _DashboardFile) -> HTMLResponse:
     from fastapi.responses import HTMLResponse
 
     try:
@@ -1276,7 +1280,7 @@ def _maybe_attach_dev_session_cookie(response: Any, request: Request) -> None:
 
 
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
-async def root(request: Request):
+async def root(request: Request) -> Response:
     if not _ui_disabled():
         dashboard_index = _dashboard_index_file()
         if dashboard_index:
@@ -1419,7 +1423,7 @@ def _mount_dashboard(application: FastAPI) -> None:
 
     # SPA catch-all for client-side routing
     @application.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
-    async def _spa_catch_all(path: str, request: Request):
+    async def _spa_catch_all(path: str, request: Request) -> Response:
         # Skip API and docs paths
         if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version", "readyz", "metrics")):
             raise _HTTPException(status_code=404)

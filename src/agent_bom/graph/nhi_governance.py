@@ -398,20 +398,30 @@ def build_nhi_governance_findings(
     for v in verdicts:
         asset = Asset(name=v.name, asset_type="agent", identifier=v.identity_id, location=v.provider)
 
-        # 1. Right-sizing — granted but never used.
-        if v.unused_targets:
-            labels = [_target_label(graph, tid) for tid in v.unused_targets[:20]]
+        # 1. Right-sizing — granted but never used. Never-used targets already
+        #    covered by the Access-Advisor CIEM emitter
+        #    (:func:`build_ciem_over_privilege_findings`) are excluded here so the
+        #    SAME over-privilege risk is not emitted twice under two different ids
+        #    (the 2026-07-18 double-count regression): a role/service-account with
+        #    a MIX of used + never-used Access-Advisor grants was flagged on BOTH
+        #    paths. The CIEM finding is richer (stable id, provider, actionable),
+        #    so it is the single source for Access-Advisor-observed over-grants;
+        #    the NHI path only right-sizes grants CIEM does not cover.
+        aa_unused = {tid for tid, last_used in _access_advisor_grants(graph, v.node_id).items() if not last_used}
+        over_grant_targets = [tid for tid in v.unused_targets if tid not in aa_unused]
+        if over_grant_targets:
+            labels = [_target_label(graph, tid) for tid in over_grant_targets[:20]]
             findings.append(
                 Finding(
                     finding_type=FindingType.CIEM_OVER_PRIVILEGE,
                     source=FindingSource.MCP_SCAN,
                     asset=asset,
                     severity="medium" if v.is_privileged else "low",
-                    title=f"Over-granted identity: {v.name} has {len(v.unused_targets)} unused permission(s)",
+                    title=f"Over-granted identity: {v.name} has {len(over_grant_targets)} unused permission(s)",
                     description=(
                         f"Identity '{v.name}' is granted {v.granted_count} permission(s) but is observed using "
                         f"{v.used_count}. Right-size by removing the unused grants: {', '.join(labels)}"
-                        + ("…" if len(v.unused_targets) > 20 else ".")
+                        + ("…" if len(over_grant_targets) > 20 else ".")
                     ),
                     remediation_guidance=("Remove the unused permissions / tool scopes from this identity to enforce least privilege."),
                     evidence={
@@ -419,7 +429,7 @@ def build_nhi_governance_findings(
                         "identity_id": v.identity_id,
                         "granted_count": v.granted_count,
                         "used_count": v.used_count,
-                        "unused_permission_count": len(v.unused_targets),
+                        "unused_permission_count": len(over_grant_targets),
                         "unused_targets": labels,
                         "risk_score": v.risk_score,
                     },

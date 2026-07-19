@@ -30,24 +30,30 @@ _HIGH_RISK = high_risk_severities()
 
 # ─── Catalog ──────────────────────────────────────────────────────────────────
 
+# NOTE — the descriptors below are agent-bom's OWN short wording for each PCI DSS
+# requirement area, not the official PCI DSS 4.0 requirement text. PCI DSS is
+# copyrighted by the PCI Security Standards Council, so its requirement wording is
+# NOT reproduced or redistributed here; only the requirement **identifier** (the
+# fact) is used. Consult the standard for the official text:
+# https://www.pcisecuritystandards.org/document_library/
 PCI_DSS_REQUIREMENTS: dict[str, str] = {
     # Requirement 6 — Develop and maintain secure systems and software
-    "6.2.4": "Software engineering practices prevent and mitigate common software attacks and vulnerabilities",
-    "6.3.1": "Security vulnerabilities identified and managed using reputable external sources",
-    "6.3.2": "Inventory of bespoke and custom software, and third-party software components maintained",
-    "6.3.3": "Security patches/updates installed to protect against known vulnerabilities",
+    "6.2.4": "Secure software-engineering practices",
+    "6.3.1": "Vulnerability identification from reputable sources",
+    "6.3.2": "Third-party / custom software component inventory",
+    "6.3.3": "Timely security patching",
     # Requirement 11 — Regularly test security systems and networks
-    "11.3.1": "Internal vulnerability scans performed at least quarterly",
-    "11.3.2": "External vulnerability scans performed at least quarterly by PCI SSC ASV",
+    "11.3.1": "Internal vulnerability scanning",
+    "11.3.2": "External / ASV vulnerability scanning",
     # Requirement 12 — Maintain policy that addresses information security
-    "12.3.1": "Risk assessment performed for each entity's critical assets, threats, and vulnerabilities",
-    "12.3.4": "Cryptographic cipher suites and protocols in use reviewed annually",
+    "12.3.1": "Critical-asset risk assessment",
+    "12.3.4": "Periodic cryptographic-suite review",
     # Requirement 2 — Apply secure configurations
-    "2.2.1": "System configuration standards address all known security vulnerabilities",
-    "2.2.7": "All non-console administrative access encrypted with strong cryptography",
+    "2.2.1": "Secure configuration standards",
+    "2.2.7": "Encrypted administrative access",
     # Requirement 8 — Identify users and authenticate access
-    "8.3.6": "Passwords/passphrases meet minimum complexity requirements",
-    "8.6.1": "System or application accounts managed based on least privilege",
+    "8.3.6": "Authentication-factor strength",
+    "8.6.1": "Least-privilege system accounts",
 }
 
 

@@ -1088,7 +1088,11 @@ def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_sev
             "graph_href": _cloud_graph_href(vuln_severity),
             "metric": vuln_metric,
             "metric_label": "open CVEs",
-            "status": _status_for(vuln_severity["critical"], vuln_severity["high"]),
+            # No vuln data at all → "idle" (mirrors the sibling scan-scoped tiles),
+            # never a green "ok" on a brand-new zero-finding estate while the
+            # posture headline reads N/A. Only rate the tile once real CVE evidence
+            # exists (metric > 0); the critical/high gate then decides ok/warn/critical.
+            "status": (_status_for(vuln_severity["critical"], vuln_severity["high"]) if vuln_metric > 0 else "idle"),
             "detail": {
                 "critical": vuln_severity["critical"],
                 "high": vuln_severity["high"],

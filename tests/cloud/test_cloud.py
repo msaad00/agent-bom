@@ -1682,9 +1682,14 @@ def _install_mock_azure():
     azure_mgmt_appcontainers.ContainerAppsAPIClient = MagicMock
     azure_mgmt.appcontainers = azure_mgmt_appcontainers
 
-    # azure.mgmt.resource
+    # azure.mgmt.resource — the SDK (>=26) dropped the top-level
+    # ResourceManagementClient re-export; the code imports it from the
+    # azure.mgmt.resource.resources submodule, so the mock must expose it there.
     azure_mgmt_resource = types.ModuleType("azure.mgmt.resource")
     azure_mgmt_resource.ResourceManagementClient = MagicMock
+    azure_mgmt_resource_resources = types.ModuleType("azure.mgmt.resource.resources")
+    azure_mgmt_resource_resources.ResourceManagementClient = MagicMock
+    azure_mgmt_resource.resources = azure_mgmt_resource_resources
     azure_mgmt.resource = azure_mgmt_resource
 
     # azure.mgmt.web
@@ -1703,6 +1708,7 @@ def _install_mock_azure():
     sys.modules.setdefault("azure.mgmt", azure_mgmt)
     sys.modules.setdefault("azure.mgmt.appcontainers", azure_mgmt_appcontainers)
     sys.modules.setdefault("azure.mgmt.resource", azure_mgmt_resource)
+    sys.modules.setdefault("azure.mgmt.resource.resources", azure_mgmt_resource_resources)
     sys.modules.setdefault("azure.mgmt.web", azure_mgmt_web)
     sys.modules.setdefault("azure.ai", azure_ai)
     sys.modules.setdefault("azure.ai.projects", azure_ai_projects)
@@ -1820,7 +1826,7 @@ def test_azure_ai_foundry_discovered():
     with (
         patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_ca_client),
-        patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client),
+        patch("azure.mgmt.resource.resources.ResourceManagementClient", return_value=mock_rm_client),
     ):
         agents, warnings = discover(subscription_id="sub-123")
 
@@ -1890,7 +1896,7 @@ def test_azure_container_app_fixture_normalizes_offsets_and_user_assigned_identi
     with (
         patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_client),
-        patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client),
+        patch("azure.mgmt.resource.resources.ResourceManagementClient", return_value=mock_rm_client),
         patch("azure.mgmt.web.WebSiteManagementClient", return_value=mock_web_client),
     ):
         agents, warnings = discover(subscription_id="sub-123")
@@ -1927,7 +1933,7 @@ def test_azure_ai_foundry_fixture_normalizes_offset_timestamps():
     with (
         patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_ca_client),
-        patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client),
+        patch("azure.mgmt.resource.resources.ResourceManagementClient", return_value=mock_rm_client),
         patch("azure.mgmt.web.WebSiteManagementClient", return_value=mock_web_client),
     ):
         agents, warnings = discover(subscription_id="sub-123")
@@ -2259,7 +2265,7 @@ def test_azure_functions_discovered_with_managed_identity():
     with (
         patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
         patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_ca_client),
-        patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client),
+        patch("azure.mgmt.resource.resources.ResourceManagementClient", return_value=mock_rm_client),
         patch("azure.mgmt.web.WebSiteManagementClient", return_value=mock_web_client),
     ):
         agents, warnings = discover(subscription_id="sub-123")

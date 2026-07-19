@@ -788,11 +788,11 @@ def test_check_1_3_unevaluable_without_graph_evidence():
 
     Detailed PASS/FAIL/unevaluable behavior lives in test_azure_identity_graph.py.
     """
-    from agent_bom.cloud.azure_graph import GraphPermissionDenied
+    from agent_bom.cloud.azure_graph import GraphPermissionDeniedError
 
     class _DeniedGraph:
         def list(self, path):
-            raise GraphPermissionDenied("denied")
+            raise GraphPermissionDeniedError("denied")
 
     result = _check_1_3(_DeniedGraph())
     assert result.status == CheckStatus.ERROR

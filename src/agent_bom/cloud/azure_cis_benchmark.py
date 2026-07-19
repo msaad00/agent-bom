@@ -3724,16 +3724,18 @@ def run_benchmark(
     Raises:
         CloudDiscoveryError: if azure-identity or azure-mgmt-* are not installed.
     """
-    try:
-        from azure.identity import DefaultAzureCredential
-    except ImportError:
-        raise CloudDiscoveryError("azure-identity is required for Azure CIS benchmark. Install with: pip install 'agent-bom[azure]'")
-
     resolved_sub = subscription_id or os.environ.get("AZURE_SUBSCRIPTION_ID", "")
     if not resolved_sub:
         raise CloudDiscoveryError("Azure subscription ID required. Set AZURE_SUBSCRIPTION_ID env var or pass subscription_id.")
 
+    # azure-identity is only needed to build the default credential; a
+    # caller-supplied credential (including the fail-closed dead-credential
+    # path) must not require the optional SDK to be installed.
     if credential is None:
+        try:
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            raise CloudDiscoveryError("azure-identity is required for Azure CIS benchmark. Install with: pip install 'agent-bom[azure]'")
         credential = DefaultAzureCredential()
     report = AzureCISReport(subscription_id=resolved_sub)
 

@@ -101,6 +101,8 @@ AGENT_BOM_DSPM_S3_SAMPLING
 AGENT_BOM_DSPM_GCS_SAMPLING
 # Opt-in (default OFF) bounded database/warehouse row sampling for DSPM content classification. Stores redacted classification counts, never raw row values.
 AGENT_BOM_DSPM_DB_SAMPLING
+# Opt-in (default OFF) bounded Azure Blob object byte-range sampling for DSPM content classification. Stores redacted classification counts, never raw object bytes.
+AGENT_BOM_DSPM_AZURE_BLOB_SAMPLING
 # Iceberg REST catalog OAuth2 credential; secret material stays env/KMS-only and out of generated config docs.
 AGENT_BOM_ICEBERG_CREDENTIAL
 # Iceberg REST catalog bearer token; secret material stays env/KMS-only and out of generated config docs.

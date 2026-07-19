@@ -84,17 +84,40 @@ sampling. Metadata-only discovery is never called content classification.
   **never** persisted, logged, or exported. The classification enriches the
   graph: a sampled database becomes a `DATA_STORE` crown jewel and an
   internet-exposed path to it becomes a toxic-combination finding.
+- **Canonical findings.** Each content-confirmed sensitive table becomes a
+  `SENSITIVE_DATA` finding (source `DSPM`, `security_domain` = `dspm`) on the
+  report's findings spine — deterministic id, de-duplicated per location,
+  idempotent across re-scans — so it flows through the same exports, filters, and
+  graph correlation as every other finding. Emitted by
+  `agent_bom.cloud.dspm_findings.build_inventory_dspm_findings`; only `sensitive`
+  / `review` tables emit — an `unevaluable`/clean table never produces a finding.
 - **Honest coverage states.** Every table is `executed`, `partial`, `skipped`,
   `unevaluable`, or `failed`. A denied / timed-out / unreadable table is
   `unevaluable` — never "clean". Absence of a finding from an unreadable source
   is not evidence of no sensitive data; the scan status downgrades to `partial`
   or `failed` accordingly.
-- **Next step / deferred.** The Postgres/RDS wire path is live and covered by
-  read-only PostgreSQL tests. The Azure Blob object-storage collector and the
-  Snowflake/BigQuery warehouse sampling adapters remain credential-gated
-  roadmap legs (tracked in #4157) — the row classifier and coverage envelope are
-  DB-API-generic and ready for those adapters, but they are not wired until live
-  warehouse/blob credentials are available.
+- **Azure Blob object sampling (opt-in).** The Azure Blob collector
+  (`agent_bom.cloud.azure_blob_data_classifier`) lists containers and byte-range
+  samples blobs through the real `azure-storage-blob` SDK — the Azure analog of
+  the S3/GCS object samplers. Enable with `AGENT_BOM_DSPM_AZURE_BLOB_SAMPLING=1`;
+  caps: `AGENT_BOM_DSPM_AZURE_BLOB_MAX_CONTAINERS` (25),
+  `AGENT_BOM_DSPM_AZURE_BLOB_MAX_OBJECTS_PER_CONTAINER` (10),
+  `AGENT_BOM_DSPM_AZURE_BLOB_MAX_BYTES_PER_OBJECT` (64 KiB). It runs through the
+  same brokered read-only Azure credential as the Azure inventory scan (the
+  connection's app must additionally hold the data-plane `Storage Blob Data
+  Reader` role on the scoped accounts; without it listing/reading fails and the
+  container is recorded `unevaluable`, never clean); each content-confirmed
+  sensitive container becomes a `SENSITIVE_DATA` finding and a `DATA_STORE`
+  crown jewel. Redacted evidence only
+  (`agent-bom.dspm.azure_blob_account.v1`); a container that could not be listed
+  or read is `unevaluable`, never clean. Covered by unit tests plus a live
+  Azurite-emulator integration test.
+- **Next step / deferred.** The Postgres/RDS wire path and the Azure Blob
+  collector are live and tested (real Docker Postgres + the Azurite emulator).
+  The Snowflake/BigQuery warehouse sampling adapters remain credential-gated
+  roadmap legs — the row classifier and coverage envelope are DB-API-generic and
+  ready for those adapters, but they are not wired until live warehouse
+  credentials are available.
 
 The code-level contract lives in `src/agent_bom/cloud/db_content_scan.py`
 (orchestration) and `src/agent_bom/cloud/db_data_classifier.py` (redacted

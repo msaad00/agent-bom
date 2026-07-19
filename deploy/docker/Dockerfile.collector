@@ -1,0 +1,107 @@
+# Cloud-SDK collector image (issue #4239, follow-up to #3835).
+#
+# Ships ONLY the cloud-provider SDK layer (boto3 / azure-* / google-cloud-* /
+# snowflake-connector) plus the agent-bom CLI, so the SDK layer can be rebuilt
+# and re-tagged on its own cadence — the daily `refresh-collector-latest` CI job
+# absorbs newer provider-SDK wheels within the pinned floors WITHOUT a
+# control-plane version bump. This is the "middle path" #3835 chose over both a
+# single fat image and an external cloud MCP: the collector keeps the BYOC trust
+# boundary intact (direct, read-only, least-privilege link to the customer's
+# cloud; no external MCP in the credential/data path) while decoupling the
+# fast-moving SDK layer from the control-plane release train.
+#
+# Single source of truth for the SDK versions: the cloud provider extras in
+# pyproject.toml — this image installs `.[${AGENT_BOM_EXTRAS}]`, it never
+# re-declares versions. The same floors are what the cloud-SDK drift gate
+# (scripts/check_cloud_sdk_drift.py) enforces.
+#
+# Build:  docker build -f deploy/docker/Dockerfile.collector -t agent-bom-collector .
+# Run:    docker run --rm agent-bom-collector scan --k8s -f json
+#
+# Deploy: the Helm chart's cloud-scan CronJob runs this image (collectorImage
+# in deploy/helm/agent-bom/values.yaml) instead of the control-plane image, so
+# operators can pin a newer SDK-only build via --set collectorImage.tag=<tag>.
+
+## ── Builder stage ────────────────────────────────────────────────────────────
+FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9 AS builder
+
+WORKDIR /app
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG SSL_CERT_FILE
+ARG REQUESTS_CA_BUNDLE
+ARG CURL_CA_BUNDLE
+ARG PIP_CERT
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    SSL_CERT_FILE=${SSL_CERT_FILE} \
+    REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE} \
+    CURL_CA_BUNDLE=${CURL_CA_BUNDLE} \
+    PIP_CERT=${PIP_CERT}
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md PYPI_README.md LICENSE ./
+COPY src/ ./src/
+
+# The cloud provider SDK layer — the collector's whole reason to exist. Pinned
+# via the pyproject extras (single source of truth), NOT re-declared here.
+# Override for a narrower collector, e.g. --build-arg AGENT_BOM_EXTRAS=aws,azure.
+ARG AGENT_BOM_EXTRAS=aws,azure,gcp,snowflake
+RUN pip install --no-cache-dir --prefix=/install ".[${AGENT_BOM_EXTRAS}]"
+
+## ── Runtime stage ────────────────────────────────────────────────────────────
+FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9
+
+# Baked app-code version (provenance label). The SDK layer moves on its own
+# cadence via the daily refresh job; this records which agent-bom build shipped.
+ARG VERSION=0.96.3
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG SSL_CERT_FILE
+ARG REQUESTS_CA_BUNDLE
+ARG CURL_CA_BUNDLE
+ARG PIP_CERT
+
+LABEL org.opencontainers.image.title="agent-bom cloud-SDK collector"
+LABEL org.opencontainers.image.description="Read-only cloud collector — ships boto3/azure/google/snowflake SDKs independently of the control-plane release. Runs agent-bom cloud discovery/scan; no external MCP in the scan path."
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.source="https://github.com/msaad00/agent-bom"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+# Copy only installed packages from builder (no pip toolchain, no build deps).
+COPY --from=builder /install /usr/local
+COPY --from=builder /app/LICENSE /app/LICENSE
+
+# Apply latest OS security patches (fixes base-image CVEs visible in Docker Scout).
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
+COPY deploy/docker/pip-requirements.txt /tmp/pip-req.txt
+RUN pip install --no-cache-dir --require-hashes -r /tmp/pip-req.txt && rm /tmp/pip-req.txt
+
+# Create non-root user for least-privilege execution (read-only collector).
+RUN addgroup --system abom && adduser --system --ingroup abom abom
+
+WORKDIR /workspace
+RUN chown abom:abom /workspace
+RUN mkdir -p /home/abom/.agent-bom && chown -R abom:abom /home/abom
+
+USER abom
+
+ENV PYTHONUNBUFFERED=1
+ENV HOME=/home/abom
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+ENV NO_PROXY=${NO_PROXY}
+ENV SSL_CERT_FILE=${SSL_CERT_FILE}
+ENV REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE}
+ENV CURL_CA_BUNDLE=${CURL_CA_BUNDLE}
+ENV PIP_CERT=${PIP_CERT}
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD agent-bom --version || exit 1
+
+ENTRYPOINT ["agent-bom"]
+CMD ["--help"]

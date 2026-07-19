@@ -46,8 +46,11 @@ spec:
             {{- toYaml .Values.podSecurityContext | nindent 12 }}
           containers:
             - name: scanner
-              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              # Cloud-SDK collector image (#4239): ships boto3/azure/google/snowflake
+              # independently of the control-plane release. Falls back to the
+              # control-plane image when collectorImage is unset.
+              image: "{{ include "agent-bom.collectorImage" . }}"
+              imagePullPolicy: {{ include "agent-bom.collectorImagePullPolicy" . }}
               command: ["agent-bom"]
               args:
                 - "scan"

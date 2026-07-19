@@ -126,6 +126,61 @@ describe("SelfPosturePage", () => {
     expect(chip).not.toHaveTextContent(/pass/i);
   });
 
+  it("renders the tenant-scoped audit-chain integrity check as a real signal", async () => {
+    apiMock.getSelfPosture.mockResolvedValue(
+      report({
+        overall_status: "action_advised",
+        hardened: false,
+        counts: { pass: 1, fail: 0, warn: 0, unknown: 1 },
+        checks: [
+          {
+            id: "governance.audit_chain_integrity",
+            category: "governance",
+            title: "Governance audit-chain integrity verified",
+            status: "pass",
+            detail: "All 5 governance audit records verify against the tamper-evident hash chain.",
+            remediation: "",
+          },
+        ],
+      })
+    );
+    render(<SelfPosturePage />);
+    await screen.findByTestId("self-posture-headline");
+    const chip = within(
+      screen.getByTestId("posture-check-governance.audit_chain_integrity")
+    ).getByTestId("posture-check-status");
+    expect(chip).toHaveAttribute("data-status", "pass");
+    expect(chip).toHaveTextContent(/pass/i);
+  });
+
+  it("shows an empty audit chain as 'not evaluated', never a fabricated pass", async () => {
+    apiMock.getSelfPosture.mockResolvedValue(
+      report({
+        overall_status: "needs_review",
+        hardened: false,
+        counts: { pass: 0, fail: 0, warn: 0, unknown: 1 },
+        checks: [
+          {
+            id: "governance.audit_chain_integrity",
+            category: "governance",
+            title: "Governance audit-chain integrity verified",
+            status: "unknown",
+            detail: "No governance lifecycle actions have been recorded for this tenant yet.",
+            remediation: "Integrity is reported once the NHI governance loop records its first audited action.",
+          },
+        ],
+      })
+    );
+    render(<SelfPosturePage />);
+    await screen.findByTestId("self-posture-headline");
+    const chip = within(
+      screen.getByTestId("posture-check-governance.audit_chain_integrity")
+    ).getByTestId("posture-check-status");
+    expect(chip).toHaveAttribute("data-status", "unknown");
+    expect(chip).toHaveTextContent(/not evaluated/i);
+    expect(chip).not.toHaveTextContent(/pass/i);
+  });
+
   it("shows an error state that points at the CLI/API equivalent", async () => {
     apiMock.getSelfPosture.mockRejectedValue(new Error("boom"));
     render(<SelfPosturePage />);

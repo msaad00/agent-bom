@@ -1345,8 +1345,31 @@ def test_scan_incomplete_offline_scan_honors_explicit_output(monkeypatch, tmp_pa
     assert "populated local vulnerability DB" in result.output
     assert output.exists()
     payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["scan_run"]["outcome"] == "partial"
+    assert payload["scan_run"]["issues"][0]["code"] == "required_scanner_unavailable"
+    assert payload["warnings"] == ["Offline mode requires a populated local vulnerability DB."]
     assert payload["scan_performance"]["coverage_state"] == "incomplete"
     assert payload["scan_performance"]["coverage_reason"] == "Offline mode requires a populated local vulnerability DB."
+
+
+def test_scan_warning_is_preserved_in_json_and_marks_partial(monkeypatch, tmp_path):
+    from agent_bom.scanners import record_scan_warning
+
+    output = tmp_path / "partial-warning.json"
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
+
+    def _scan_agents_sync(*args, **kwargs):
+        record_scan_warning("package lookup coverage degraded")
+        return []
+
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", _scan_agents_sync)
+
+    result = _run(["scan", "--demo", "--offline", "--no-auto-update-db", "--format", "json", "--output", str(output)])
+
+    assert result.exit_code == 1
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["scan_run"]["outcome"] == "partial"
+    assert payload["warnings"] == ["package lookup coverage degraded"]
 
 
 def test_scan_expands_local_docker_mcp_image():

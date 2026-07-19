@@ -39,7 +39,8 @@ class PostgresBlueprintStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "ai_system_blueprints")
+            if not ensure_postgres_schema_version(conn, "ai_system_blueprints"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS ai_system_blueprints (
                     tenant_id    TEXT NOT NULL,

@@ -17,6 +17,7 @@ from agent_bom.api.postgres_common import (
     _get_pool,
     _tenant_connection,
 )
+from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 if TYPE_CHECKING:
     # Imported lazily at runtime (inside methods) to avoid a circular import
@@ -33,6 +34,8 @@ class PostgresFleetStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            if not ensure_postgres_schema_version(conn, "fleet"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS fleet_agents (
                     agent_id TEXT PRIMARY KEY,

@@ -56,6 +56,22 @@ def _reset_runtime_state() -> None:
         pass
 
 
+def _reset_enrichment_posture_state() -> None:
+    # The enrichment circuit-breaker state (agent_bom.enrichment_posture._states)
+    # is process-global. A test that records >= threshold consecutive OSV
+    # failures opens the OSV circuit for minutes; once open,
+    # query_osv_batch_impl skips ALL remote queries, so a later test on the same
+    # xdist worker builds zero OSV queries and sees empty ecosystem/vuln results
+    # (e.g. "Maven not in queried ecosystems: set()"). Clear it between tests so
+    # circuit state from one test cannot leak into the next.
+    try:
+        from agent_bom.enrichment_posture import reset_enrichment_posture_for_tests
+
+        reset_enrichment_posture_for_tests()
+    except Exception:
+        pass
+
+
 def _reset_resolver_state() -> None:
     try:
         import agent_bom.resolver as resolver
@@ -494,6 +510,7 @@ def reset_global_test_state():
     _reset_durable_store_singletons()
     _reset_proxy_route_state()
     _reset_runtime_state()
+    _reset_enrichment_posture_state()
 
     # Snapshot auth env AFTER module-scoped setup has run (setup_module fires
     # before this function-scoped fixture), so module-level auth env is captured
@@ -560,3 +577,4 @@ def reset_global_test_state():
     _reset_durable_store_singletons()
     _reset_proxy_route_state()
     _reset_runtime_state()
+    _reset_enrichment_posture_state()

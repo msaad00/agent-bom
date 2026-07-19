@@ -149,6 +149,8 @@ AGENT_BOM_CRED_ROTATION_DAYS
 AGENT_BOM_NO_AUTO_DEV_KEY
 # Opt-out flag for the local/no-auth auto-seeded connection encryption key; when set, `agent-bom serve|api` does not write ~/.agent-bom/connections.key and connection creation stays 503 until a key is provided. Read in cli/_server.py.
 AGENT_BOM_NO_AUTO_CONNECTIONS_KEY
+# Opt-in flag for the storage-backed graph-build workspace (producer streaming); read in api/pipeline.py, path default in graph/build_workspace.py.
+AGENT_BOM_GRAPH_BUILD_WORKSPACE
 # Dormancy window (days, default 90) before a non-human identity with no recent usage is flagged dormant; read in graph/nhi_governance.py.
 AGENT_BOM_NHI_DORMANT_DAYS
 # Opt-in window (days, default 0 = disabled) after which a dormant agent-bom-issued identity is auto-revoked; read in api/agent_identity_store.py.

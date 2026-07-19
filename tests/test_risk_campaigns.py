@@ -473,7 +473,7 @@ def test_postgres_campaign_store_uses_tenant_key_rls_and_scoped_upsert(monkeypat
     def _tenant_connection(pool):
         yield _Conn()
 
-    monkeypatch.setattr(module, "ensure_postgres_schema_version", lambda *args: None)
+    monkeypatch.setattr(module, "ensure_postgres_schema_version", lambda *args: True)
     monkeypatch.setattr(module, "_ensure_tenant_rls", lambda conn, table, column: rls.append((table, column)))
     monkeypatch.setattr(module, "_tenant_connection", _tenant_connection)
     store = module.PostgresCampaignStore(pool=_Pool())
@@ -519,7 +519,7 @@ def test_postgres_campaign_reconcile_locks_tenant_before_read(monkeypatch) -> No
     def _tenant_connection(pool):
         yield _Conn()
 
-    monkeypatch.setattr(module, "ensure_postgres_schema_version", lambda *args: None)
+    monkeypatch.setattr(module, "ensure_postgres_schema_version", lambda *args: True)
     monkeypatch.setattr(module, "_ensure_tenant_rls", lambda *args: None)
     monkeypatch.setattr(module, "_tenant_connection", _tenant_connection)
     store = module.PostgresCampaignStore(pool=_Pool())

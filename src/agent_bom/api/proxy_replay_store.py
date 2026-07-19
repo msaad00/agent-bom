@@ -239,7 +239,8 @@ class PostgresProxyReplayStore:
         from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, _SCHEMA_KEY)
+            if not ensure_postgres_schema_version(conn, _SCHEMA_KEY):
+                return
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS proxy_replay_log (

@@ -55,6 +55,11 @@ Cloud scanning never moves customer data out of the account. The contract:
   snapshot and volume in a guaranteed `try/finally`. An orphan sweep recovers
   any leftover temp resources (tagged by the scanner) after a hard crash, so a
   failed run leaves nothing behind. No volume bytes leave the account.
+  Azure Managed Disk and GCP Persistent Disk adapters use the same durable
+  ownership and cleanup contract through injected, already-authenticated SDK
+  clients. Their provider resources and block bytes remain inside the target
+  subscription/project. These adapters have fake-client contract evidence but
+  no CLI/scheduler integration or credentialed live-cloud proof yet.
 
 ### Control-plane identity
 

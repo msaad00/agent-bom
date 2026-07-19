@@ -274,7 +274,8 @@ class PostgresIdempotencyStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "idempotency")
+            if not ensure_postgres_schema_version(conn, "idempotency"):
+                return
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS idempotency_keys (

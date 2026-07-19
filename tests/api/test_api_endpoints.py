@@ -559,6 +559,12 @@ def test_get_scan_status_omits_large_result_payload():
             },
             "agents": [{"name": "agent", "payload": "x" * 250_000}],
             "blast_radius": [{"package": "pkg", "payload": "y" * 250_000}],
+            "scan_run": {
+                "outcome": "partial",
+                "issues": [{"message": "one collector unavailable"}],
+                "warning_count": 1,
+            },
+            "warnings": ["one collector unavailable"],
         },
     )
     store.put(job)
@@ -573,6 +579,9 @@ def test_get_scan_status_omits_large_result_payload():
     assert body["status"] == "done"
     assert body["summary"]["total_packages"] == 165
     assert body["request"]["inventory"] == "<path:agents.json>"
+    assert body["scan_outcome"] == "partial"
+    assert body["warning_count"] == 1
+    assert body["warnings_preview"] == ["one collector unavailable"]
     assert "result" not in body
     assert "progress" not in body
     assert len(status.content) < len(full.content) / 100

@@ -27,7 +27,8 @@ class PostgresAccessReviewStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "access_review_campaigns")
+            if not ensure_postgres_schema_version(conn, "access_review_campaigns"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS access_review_campaigns (
                     campaign_id TEXT NOT NULL,

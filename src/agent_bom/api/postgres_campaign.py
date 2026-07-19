@@ -17,7 +17,8 @@ class PostgresCampaignStore:
 
     def _init_table(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "risk_campaign_workflows")
+            if not ensure_postgres_schema_version(conn, "risk_campaign_workflows"):
+                return
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS risk_campaign_workflows (

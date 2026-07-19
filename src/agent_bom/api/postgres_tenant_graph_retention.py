@@ -15,7 +15,8 @@ class PostgresTenantGraphRetentionStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "tenant_graph_retention")
+            if not ensure_postgres_schema_version(conn, "tenant_graph_retention"):
+                return
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS tenant_graph_retention_overrides (

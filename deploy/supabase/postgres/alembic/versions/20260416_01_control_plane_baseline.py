@@ -17,7 +17,7 @@ _ALEMBIC_ROOT = Path(__file__).resolve().parents[1]
 if str(_ALEMBIC_ROOT) not in sys.path:
     sys.path.append(str(_ALEMBIC_ROOT))
 
-from bootstrap import load_bootstrap_sql  # noqa: E402
+from bootstrap import load_bootstrap_sql, load_runtime_schema_sql  # noqa: E402
 
 
 def upgrade() -> None:
@@ -30,6 +30,7 @@ def upgrade() -> None:
     # PostgreSQL can evaluate them.  No runtime bind values or secrets are
     # passed through this DBAPI call.
     bind.exec_driver_sql(bootstrap_sql, execution_options={"no_parameters": True})
+    bind.exec_driver_sql(load_runtime_schema_sql(), execution_options={"no_parameters": True})
 
 
 def downgrade() -> None:  # pragma: no cover - baseline downgrade is intentionally manual

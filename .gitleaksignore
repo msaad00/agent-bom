@@ -41,3 +41,7 @@ e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:360
 0e43ed628801d7c2d4fbdd7e3a01b07fda2b113b:src/agent_bom/api/routes/compliance.py:generic-api-key:534
 # History-only: earlier revision of the note above quoted the flagged pair.
 523c32e9b3c52b355c33cc67bac34e670ff6167f:.gitleaksignore:generic-api-key:39
+
+# One-off prose false positive: a docstring sentence about credential wiring
+# in the side-scan runner matched generic-api-key.
+a9ab4c116af8bc5086aca63933d12a675573bb4b:src/agent_bom/cloud/side_scan_targets.py:generic-api-key:199

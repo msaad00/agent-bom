@@ -116,7 +116,11 @@ def _parse_and_validate_postgres_url() -> tuple[ParseResult, str]:
 
     url = os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip()
     if not url:
-        raise ValueError("AGENT_BOM_POSTGRES_URL env var is required for PostgreSQL storage.")
+        legacy_url = os.environ.get("AGENT_BOM_DB", "").strip()
+        if legacy_url.lower().startswith(("postgres://", "postgresql://")):
+            url = legacy_url
+    if not url:
+        raise ValueError("AGENT_BOM_POSTGRES_URL or a Postgres AGENT_BOM_DB value is required for PostgreSQL storage.")
 
     parsed = urlparse(url)
     username = (parsed.username or "").strip()

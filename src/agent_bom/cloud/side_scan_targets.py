@@ -1,16 +1,16 @@
-"""Provider-neutral agentless workload side-scan target metadata.
+"""Provider-neutral agentless workload side-scan targets and runner.
 
-This module does not execute snapshot lifecycle actions. It projects already
-discovered disk inventory into a shared contract that the side-scan executor can
-consume later. The output is metadata-only and safe to include in normal
-read-only inventory scans.
+Inventory projection is metadata-only and safe in normal read-only scans. The
+separate runner executes snapshot lifecycle actions only after the operator
+opts in and supplies provider adapters, collector configuration, and scoped
+mutation credentials.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Protocol, cast
 
 from agent_bom.filesystem import scan_disk_path_native
 from agent_bom.models import Package
@@ -26,8 +26,9 @@ from .side_scan import (
     is_sidescan_enabled,
     scan_workload_disk_findings,
 )
+from .side_scan_lifecycle import SideScanProvider
 
-CloudSideScanProvider = Literal["aws", "azure", "gcp"]
+CloudSideScanProvider = SideScanProvider
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,11 @@ class CloudSideScanTarget:
 
 @dataclass
 class CloudSideScanExecutionResult:
-    """Metadata-only side-scan result for Azure/GCP disk targets."""
+    """Metadata-only result returned by the fixture-tested adapter runner.
+
+    Azure/GCP injected-SDK adapters live in :mod:`side_scan_provider_adapters`;
+    durable execution/evidence state belongs to :mod:`side_scan_lifecycle`.
+    """
 
     provider: CloudSideScanProvider
     target_type: str
@@ -187,12 +192,12 @@ async def run_cloud_side_scan_targets(
     scan_secrets_enabled: bool = True,
     max_targets: int = 10,
 ) -> list[CloudSideScanExecutionResult]:
-    """Run Azure/GCP snapshot side-scans through provider lifecycle adapters.
+    """Run Azure/GCP snapshot side-scans through caller-supplied adapters.
 
     The runner is opt-in, bounded, and metadata-only. Provider SDK calls stay
-    behind ``CloudSideScanLifecycle`` so production integrations can wrap Azure
-    Managed Disk or GCP Persistent Disk APIs while unit tests prove lifecycle and
-    cleanup behavior without real cloud credentials.
+    behind ``CloudSideScanLifecycle``. Concrete Azure Managed Disk and GCP
+    Persistent Disk adapters accept injected SDK clients; credentials,
+    scheduler/CLI wiring, and live cloud proof are deliberately separate.
     """
 
     if not is_sidescan_enabled():
@@ -230,27 +235,52 @@ async def run_cloud_side_scan_targets(
             result.config_findings, result.ioc_findings = scan_workload_disk_findings(mount_point)
             if scan_secrets_enabled:
                 result.secrets = _redacted_secret_findings(mount_point)
+            mark_complete = getattr(lifecycle, "mark_scan_complete", None)
+            if callable(mark_complete):
+                mark_complete(
+                    package_count=len(result.packages),
+                    vulnerability_count=result.vulnerability_count,
+                    secret_count=len(result.secrets),
+                    config_finding_count=len(result.config_findings),
+                    ioc_finding_count=len(result.ioc_findings),
+                )
+        except Exception:
+            mark_failed = getattr(lifecycle, "mark_scan_failed", None)
+            if callable(mark_failed):
+                mark_failed(failure_code="scan_failed")
+            raise
         finally:
             if mount_point is not None:
                 try:
                     mount_controller.unmount(mount_point)
                 except Exception as exc:  # noqa: BLE001
                     result.warnings.append(f"unmount failed: {sanitize_text(exc)}")
-            if scan_disk_id:
+            persisted_cleanup = getattr(lifecycle, "cleanup", None)
+            if callable(persisted_cleanup):
                 try:
-                    lifecycle.detach_scan_disk(target, scan_disk_id, collector_id)
+                    execution = persisted_cleanup(target, collector_id)
+                    result.warnings.extend(str(code) for code in getattr(execution, "warning_codes", ()) if code)
+                    result.cleaned_up = getattr(getattr(execution, "cleanup_status", None), "value", "") == "complete"
                 except Exception as exc:  # noqa: BLE001
-                    result.warnings.append(f"detach disk failed: {sanitize_text(exc)}")
-                try:
-                    lifecycle.delete_scan_disk(target, scan_disk_id)
-                except Exception as exc:  # noqa: BLE001
-                    result.warnings.append(f"delete disk failed: {sanitize_text(exc)}")
-            if result.snapshot_id:
-                try:
-                    lifecycle.delete_snapshot(target, result.snapshot_id)
-                except Exception as exc:  # noqa: BLE001
-                    result.warnings.append(f"delete snapshot failed: {sanitize_text(exc)}")
-            result.cleaned_up = not result.warnings
+                    result.warnings.append(f"persisted cleanup failed: {sanitize_text(exc)}")
+            else:
+                if scan_disk_id:
+                    try:
+                        lifecycle.detach_scan_disk(target, scan_disk_id, collector_id)
+                    except Exception as exc:  # noqa: BLE001
+                        result.warnings.append(f"detach disk failed: {sanitize_text(exc)}")
+                    try:
+                        lifecycle.delete_scan_disk(target, scan_disk_id)
+                    except Exception as exc:  # noqa: BLE001
+                        result.warnings.append(f"delete disk failed: {sanitize_text(exc)}")
+                if result.snapshot_id:
+                    try:
+                        lifecycle.delete_snapshot(target, result.snapshot_id)
+                    except Exception as exc:  # noqa: BLE001
+                        result.warnings.append(f"delete snapshot failed: {sanitize_text(exc)}")
+                result.cleaned_up = not result.warnings
+            if result.warnings:
+                result.cleaned_up = False
         results.append(result)
     return results
 

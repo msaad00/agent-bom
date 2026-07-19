@@ -652,18 +652,6 @@ class PostgresGraphStore:
                     (tenant, previous_row[1]),
                 ).fetchone()
                 previous_scan = str(prior_row[0]) if prior_row else ""
-            previous_edges: dict[tuple[str, str, str], Any] = {}
-            if previous_scan:
-                for row in conn.execute(
-                    """
-                    SELECT source_id, target_id, relationship, first_seen, valid_from, valid_to
-                    FROM graph_edges
-                    WHERE tenant_id = %s AND scan_id = %s
-                    """,
-                    (tenant, previous_scan),
-                ).fetchall():
-                    previous_edges[(row[0], row[1], row[2])] = row
-
             # A scan id represents a complete immutable snapshot. A retry is a
             # replacement, not a merge; remove its old rows inside this same
             # transaction before consuming the new one-shot producers.
@@ -739,25 +727,13 @@ class PostgresGraphStore:
                     _flush_nodes()
             _flush_nodes()
 
-            # Retired-edge detection: start from the prior snapshot's edge keys
-            # and discard each one still present in the incoming stream. This
-            # bounds the tracking set to the PREVIOUS snapshot size instead of
-            # materialising a second O(edges) set of every incoming key (#4055).
-            removed_edge_keys: set[tuple[str, str, str]] = set(previous_edges)
-
             def edge_rows() -> Iterator[tuple[Any, ...]]:
                 nonlocal edge_count
                 for edge in edges:
                     edge_count += 1
                     rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
-                    removed_edge_keys.discard((edge.source, edge.target, rel))
-                    previous = previous_edges.get((edge.source, edge.target, rel))
                     valid_from = edge.valid_from or edge.first_seen or now
-                    first_seen = edge.first_seen
-                    if previous is not None:
-                        valid_from = previous[4] or previous[3] or valid_from
-                        first_seen = previous[3] or first_seen
-                    elif valid_from > now:
+                    if valid_from > now:
                         valid_from = now
                     yield (
                         edge.source,
@@ -766,7 +742,7 @@ class PostgresGraphStore:
                         edge.direction,
                         edge.weight,
                         1 if edge.traversable else 0,
-                        first_seen,
+                        edge.first_seen,
                         edge.last_seen,
                         valid_from,
                         edge.valid_to,
@@ -838,20 +814,48 @@ class PostgresGraphStore:
                 edge_rows(),
                 batch_size=batch_size,
             )
-            if removed_edge_keys:
-                _execute_many_batched(
-                    conn,
+            if previous_scan:
+                # Preserve temporal continuity and retire missing prior edges
+                # inside Postgres. Loading the prior snapshot into a Python dict
+                # + set made this streamed writer O(previous-edge-count) memory.
+                conn.execute(
                     """
-                    UPDATE graph_edges
-                    SET valid_to = COALESCE(valid_to, %s),
-                        activity_id = CASE WHEN activity_id = 1 THEN 3 ELSE activity_id END
-                    WHERE tenant_id = %s AND scan_id = %s AND source_id = %s AND target_id = %s AND relationship = %s
+                    UPDATE graph_edges AS current
+                    SET first_seen = COALESCE(NULLIF(previous.first_seen, ''), current.first_seen),
+                        valid_from = COALESCE(
+                            NULLIF(previous.valid_from, ''),
+                            NULLIF(previous.first_seen, ''),
+                            current.valid_from
+                        )
+                    FROM graph_edges AS previous
+                    WHERE current.source_id = previous.source_id
+                      AND current.target_id = previous.target_id
+                      AND current.relationship = previous.relationship
+                      AND current.scan_id = %s
+                      AND current.tenant_id = %s
+                      AND previous.scan_id = %s
+                      AND previous.tenant_id = %s
                     """,
-                    (
-                        (now, tenant, previous_scan, source, target, relationship)
-                        for source, target, relationship in sorted(removed_edge_keys)
-                    ),
-                    batch_size=batch_size,
+                    (scan, tenant, previous_scan, tenant),
+                )
+                conn.execute(
+                    """
+                    UPDATE graph_edges AS previous
+                    SET valid_to = COALESCE(previous.valid_to, %s),
+                        activity_id = CASE WHEN previous.activity_id = 1 THEN 3 ELSE previous.activity_id END
+                    WHERE previous.tenant_id = %s
+                      AND previous.scan_id = %s
+                      AND NOT EXISTS (
+                            SELECT 1
+                            FROM graph_edges AS current
+                            WHERE current.source_id = previous.source_id
+                              AND current.target_id = previous.target_id
+                              AND current.relationship = previous.relationship
+                              AND current.scan_id = %s
+                              AND current.tenant_id = %s
+                      )
+                    """,
+                    (now, tenant, previous_scan, scan, tenant),
                 )
             _execute_many_batched(
                 conn,

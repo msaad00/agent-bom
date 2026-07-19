@@ -27,6 +27,12 @@ sources are lazy iterators, and the batching helper materializes only one batch
 window at a time. That keeps graph write memory bounded by the batch size rather
 than total graph size.
 
+Temporal edge continuity is part of the same invariant. Both backends preserve
+`first_seen` / `valid_from` for retained edges and close missing prior edges
+with tenant-and-snapshot-scoped database updates. They do not load or sort the
+previous snapshot's edge keys in Python; otherwise a small new snapshot after a
+large prior snapshot would still consume O(previous edges) memory.
+
 Batching helpers are intentionally generic. They operate on row iterables and
 SQL statements, not on graph-specific types. This keeps the pattern reusable for
 future write-heavy paths without creating separate one-off batching code.
@@ -43,7 +49,7 @@ bounded-memory invariant.
 - **Positive:** Backend implementations can differ internally while preserving
   the shared `save_graph(graph)` contract.
 - **Positive:** Lazy row generation keeps write-path memory tied to the batch
-  window, not to graph size.
+  window, not to either the current or previous graph size.
 - **Positive:** The batching primitive is reusable outside graph persistence.
 - **Trade-off:** One shared knob may not be optimal for every backend in every
   deployment. If benchmarks prove a backend-specific need, add optional

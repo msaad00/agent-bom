@@ -190,6 +190,35 @@ def test_pci_dss_tags_unchanged():
     ]
 
 
+def test_pci_dss_descriptors_are_own_wording_not_copyrighted_text():
+    """PCI DSS 4.0 requirement text is copyrighted; the catalog must carry
+    agent-bom's OWN short descriptors and the same provenance/copyright note the
+    sibling framework modules (iso_27001, soc2, cis_controls) already carry —
+    only the factual requirement IDs are reused.
+    """
+    import inspect
+
+    # Near-verbatim PCI DSS 4.0 requirement phrasings must not be reproduced.
+    banned_phrases = [
+        "at least quarterly by pci ssc asv",
+        "performed at least quarterly",
+        "cryptographic cipher suites and protocols in use",
+        "minimum complexity requirements",
+    ]
+    for code, descriptor in pci_dss.PCI_DSS_REQUIREMENTS.items():
+        low = descriptor.lower()
+        for phrase in banned_phrases:
+            assert phrase not in low, f"{code} reproduces copyrighted PCI DSS wording: {descriptor!r}"
+
+    # The IDs (the facts) are preserved so tagging is unaffected.
+    assert {"6.3.1", "6.3.2", "11.3.1", "11.3.2", "12.3.1"} <= set(pci_dss.PCI_DSS_REQUIREMENTS)
+
+    # Provenance/copyright note present in the module source, like the siblings.
+    src = inspect.getsource(pci_dss)
+    assert "copyright" in src.lower()
+    assert "own" in src.lower()
+
+
 def test_vuln_compliance_tags_unchanged():
     br = _representative_br()
     assert vuln_compliance.tag_vulnerability(br.vulnerability, br.package) == {

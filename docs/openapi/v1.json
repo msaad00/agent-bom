@@ -6420,7 +6420,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Activity Timeline V1 Activity Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -11828,7 +11832,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cortex Agent Telemetry V1 Cortex Agents  Name  Telemetry Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -11858,7 +11866,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cortex Health V1 Cortex Health Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -11891,7 +11903,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cortex Telemetry V1 Cortex Telemetry Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15008,7 +15024,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Firewall Check V1 Firewall Check Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15088,7 +15108,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Firewall Stats V1 Firewall Stats Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15214,7 +15238,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Fleet V1 Fleet Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15244,7 +15272,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Fleet Stats V1 Fleet Stats Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15281,7 +15313,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sync Fleet V1 Fleet Sync Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15322,7 +15358,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Fleet Agent V1 Fleet  Agent Id  Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15371,7 +15411,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Fleet Agent V1 Fleet  Agent Id  Put",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15460,7 +15504,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Quarantine Fleet Agent V1 Fleet  Agent Id  Quarantine Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15511,7 +15559,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Fleet State V1 Fleet  Agent Id  State Put",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15659,7 +15711,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Gateway Audit V1 Gateway Audit Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -15749,7 +15805,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Gateway V1 Gateway Evaluate Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -16131,7 +16191,11 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Gateway Policy V1 Gateway Policies Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -16220,7 +16284,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Gateway Policy V1 Gateway Policies  Policy Id  Delete",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -16307,7 +16375,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Gateway Policy V1 Gateway Policies  Policy Id  Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -16404,7 +16476,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Gateway Policy V1 Gateway Policies  Policy Id  Put",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -16484,7 +16560,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Gateway Stats V1 Gateway Stats Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -16610,7 +16690,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Governance Report V1 Governance Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -17834,7 +17918,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Governance Findings V1 Governance Findings Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -29455,7 +29543,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Siem Formats V1 Siem Formats Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"

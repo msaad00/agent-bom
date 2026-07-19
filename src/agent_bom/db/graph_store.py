@@ -620,8 +620,9 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
     """Persist a UnifiedGraph as an immutable per-scan snapshot.
 
     Thin wrapper over :func:`save_graph_streaming` — the streamed path never
-    holds more than one write batch plus the prior snapshot's edge index in
-    memory, so peak RSS is decoupled from graph size (see #4055). Callers that
+    holds more than one write batch in memory; prior-edge lifecycle
+    reconciliation is database-side, so peak RSS is decoupled from both the
+    incoming and previous graph sizes (see #4055/#4075). Callers that
     already hold a fully built ``UnifiedGraph`` keep the same behaviour; callers
     that can produce nodes/edges lazily should call ``save_graph_streaming``
     directly with generators to avoid materialising the whole graph.
@@ -680,18 +681,6 @@ def save_graph_streaming(
     previous_scan = latest_snapshot_id(conn, tenant_id=tenant)
     if previous_scan == scan:
         previous_scan = previous_snapshot_id(conn, tenant_id=tenant, before_scan_id=scan)
-    previous_edges: dict[tuple[str, str, str], sqlite3.Row] = {}
-    if previous_scan:
-        for row in conn.execute(
-            """
-            SELECT source_id, target_id, relationship, first_seen, valid_from, valid_to
-            FROM graph_edges
-            WHERE tenant_id = ? AND scan_id = ?
-            """,
-            (tenant, previous_scan),
-        ):
-            previous_edges[(row["source_id"], row["target_id"], row["relationship"])] = row
-
     # A scan id is one complete snapshot. Retries/replays must replace that
     # snapshot atomically; upserts alone would retain rows absent from the
     # retried producer and make graph_snapshots counts contradict graph rows.
@@ -710,12 +699,6 @@ def save_graph_streaming(
     edge_count = 0
     severity_counts: dict[str, int] = defaultdict(int)
     type_counts: dict[str, int] = defaultdict(int)
-    # Retired-edge detection: start with the prior snapshot's edge keys and
-    # discard each one still present in the incoming stream. This bounds the
-    # extra set to the PREVIOUS snapshot size (empty on a first save) rather
-    # than tracking every incoming edge key — so peak RSS stays flat.
-    removed_edge_keys: set[tuple[str, str, str]] = set(previous_edges)
-
     # ── Nodes ──
     def node_rows() -> Iterator[tuple[Any, ...]]:
         nonlocal node_count
@@ -766,14 +749,8 @@ def save_graph_streaming(
         for edge in edges:
             edge_count += 1
             rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
-            removed_edge_keys.discard((edge.source, edge.target, rel))
-            previous = previous_edges.get((edge.source, edge.target, rel))
             valid_from = edge.valid_from or edge.first_seen or now
-            first_seen = edge.first_seen
-            if previous is not None:
-                valid_from = previous["valid_from"] or previous["first_seen"] or valid_from
-                first_seen = previous["first_seen"] or first_seen
-            elif valid_from > now:
+            if valid_from > now:
                 valid_from = now
             yield (
                 edge.source,
@@ -782,7 +759,7 @@ def save_graph_streaming(
                 edge.direction,
                 edge.weight,
                 1 if edge.traversable else 0,
-                first_seen,
+                edge.first_seen,
                 edge.last_seen,
                 valid_from,
                 edge.valid_to,
@@ -810,17 +787,90 @@ def save_graph_streaming(
         batch_size=batch_size,
     )
 
-    if removed_edge_keys:
-        _executemany_batched(
-            conn,
+    if previous_scan:
+        # Reconcile temporal continuity in SQL. The prior implementation loaded
+        # every previous edge into a Python dict + set, making the supposedly
+        # streamed path retain O(previous-edge-count) heap. Exact-key correlated
+        # lookups use graph_edges' primary key and keep Python memory batch-sized.
+        conn.execute(
             """
-            UPDATE graph_edges
-            SET valid_to = COALESCE(valid_to, ?),
-                activity_id = CASE WHEN activity_id = 1 THEN 3 ELSE activity_id END
-            WHERE tenant_id = ? AND scan_id = ? AND source_id = ? AND target_id = ? AND relationship = ?
+            UPDATE graph_edges AS current
+            SET first_seen = COALESCE(
+                    (
+                        SELECT NULLIF(previous.first_seen, '')
+                        FROM graph_edges AS previous
+                        WHERE previous.source_id = current.source_id
+                          AND previous.target_id = current.target_id
+                          AND previous.relationship = current.relationship
+                          AND previous.scan_id = ?
+                          AND previous.tenant_id = ?
+                    ),
+                    current.first_seen
+                ),
+                valid_from = COALESCE(
+                    (
+                        SELECT NULLIF(previous.valid_from, '')
+                        FROM graph_edges AS previous
+                        WHERE previous.source_id = current.source_id
+                          AND previous.target_id = current.target_id
+                          AND previous.relationship = current.relationship
+                          AND previous.scan_id = ?
+                          AND previous.tenant_id = ?
+                    ),
+                    (
+                        SELECT NULLIF(previous.first_seen, '')
+                        FROM graph_edges AS previous
+                        WHERE previous.source_id = current.source_id
+                          AND previous.target_id = current.target_id
+                          AND previous.relationship = current.relationship
+                          AND previous.scan_id = ?
+                          AND previous.tenant_id = ?
+                    ),
+                    current.valid_from
+                )
+            WHERE current.scan_id = ?
+              AND current.tenant_id = ?
+              AND EXISTS (
+                    SELECT 1
+                    FROM graph_edges AS previous
+                    WHERE previous.source_id = current.source_id
+                      AND previous.target_id = current.target_id
+                      AND previous.relationship = current.relationship
+                      AND previous.scan_id = ?
+                      AND previous.tenant_id = ?
+              )
             """,
-            ((now, tenant, previous_scan, source, target, relationship) for source, target, relationship in sorted(removed_edge_keys)),
-            batch_size=batch_size,
+            (
+                previous_scan,
+                tenant,
+                previous_scan,
+                tenant,
+                previous_scan,
+                tenant,
+                scan,
+                tenant,
+                previous_scan,
+                tenant,
+            ),
+        )
+        conn.execute(
+            """
+            UPDATE graph_edges AS previous
+            SET valid_to = COALESCE(previous.valid_to, ?),
+                activity_id = CASE WHEN previous.activity_id = 1 THEN 3 ELSE previous.activity_id END
+            WHERE previous.tenant_id = ?
+              AND previous.scan_id = ?
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM graph_edges AS current
+                    WHERE current.source_id = previous.source_id
+                      AND current.target_id = previous.target_id
+                      AND current.relationship = previous.relationship
+                      AND current.scan_id = ?
+                      AND current.tenant_id = ?
+              )
+            """,
+            (now, tenant, previous_scan, scan, tenant),
         )
 
     # ── Attack paths ──

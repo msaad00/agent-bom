@@ -44,7 +44,11 @@ def self_audit_cmd() -> None:
     """
     from agent_bom.self_posture import self_posture
 
-    report = self_posture()
+    # The CLI runs process-/config-level with no tenant or durable store in
+    # scope, so the tenant-scoped audit-chain integrity is surfaced as an honest
+    # `unknown` that points at GET /v1/self-posture — the dimension is shown, not
+    # silently dropped (§11 honesty + surface parity).
+    report = self_posture(audit_chain=None)
 
     from agent_bom.cli._agent_mode import agent_mode_requested
 

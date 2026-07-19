@@ -129,7 +129,7 @@ metadata or environment defaults.
 | `db freshness` | Show the structured vuln-data freshness indicator (sources, age, staleness) surfaced on every scan, API, and MCP tool |
 | `db framework-status` | Show bundled framework catalog freshness |
 | `doctor` | Check environment readiness for scanning |
-| `self-audit` | Audit this agent-bom deployment's own security and governance posture (auth, tenant isolation, audit-log integrity, secret sealing) with honest pass/fail/warn/unknown results |
+| `self-audit` | Audit this agent-bom deployment's own security and governance posture (auth, tenant isolation, audit-log integrity, secret sealing) with honest pass/fail/warn/unknown results. The tenant-scoped governance audit-chain integrity is verified per tenant against the durable audit store on the API/UI (`GET /v1/self-posture`) — the CLI shows it as an honest unknown |
 | `capabilities` | Show every gated capability, current state, and exact unlock path without printing secret values |
 | `gateway` | Multi-MCP gateway commands |
 | `interactive` | Start an interactive command shell for repeated CLI workflows |

@@ -36,6 +36,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
+from typing import cast
 
 SCHEMA_VERSION = 1
 
@@ -326,6 +327,80 @@ def _supply_chain_context(env: Mapping[str, str], distribution_count: int | None
     )
 
 
+def audit_chain_integrity_check(chain: Mapping[str, int] | None) -> PostureCheck:
+    """Honest posture for the tenant's governance audit hash-chain.
+
+    ``chain`` is the ``{"verified", "tampered", "checked"}`` result of
+    :meth:`agent_bom.api.governance_audit_log.GovernanceAuditLog.verify_chain`
+    for one tenant. The check reconciles to that single source of truth — the
+    numbers here are never re-derived independently:
+
+        * ``None``     — not evaluated in this (config-only) context; an honest
+          ``unknown`` that points at the tenant-scoped surface, never an implied
+          pass.
+        * ``checked == 0`` — no governance lifecycle actions recorded yet, so the
+          tamper-evident chain has nothing to verify. Absence of a signal is
+          reported as ``unknown``, NEVER as healthy/hardened (§7/§11).
+        * ``tampered > 0`` — the chain is broken or forked → ``fail`` with
+          remediation.
+        * otherwise — every record verifies → ``pass``.
+    """
+    check_id = "governance.audit_chain_integrity"
+    title = "Governance audit-chain integrity verified"
+    if chain is None:
+        return PostureCheck(
+            id=check_id,
+            category="governance",
+            title=title,
+            status=STATUS_UNKNOWN,
+            detail=(
+                "The tenant-scoped governance audit hash-chain is verified against the durable "
+                "audit store by the tenant-aware API/UI; it was not evaluated in this context."
+            ),
+            remediation="Query GET /v1/self-posture (tenant-scoped) or the Self-Audit page for the live audit-chain integrity result.",
+        )
+    checked = int(chain.get("checked", 0))
+    tampered = int(chain.get("tampered", 0))
+    verified = int(chain.get("verified", 0))
+    if checked == 0:
+        return PostureCheck(
+            id=check_id,
+            category="governance",
+            title=title,
+            status=STATUS_UNKNOWN,
+            detail=(
+                "No governance lifecycle actions have been recorded for this tenant yet, so the "
+                "tamper-evident audit chain has nothing to verify. This is not evidence the chain is healthy."
+            ),
+            remediation="Integrity is reported once the NHI governance loop records its first audited action for this tenant.",
+        )
+    if tampered > 0:
+        return PostureCheck(
+            id=check_id,
+            category="governance",
+            title=title,
+            status=STATUS_FAIL,
+            detail=(
+                f"{tampered} of {checked} governance audit records fail hash-chain verification — the "
+                "tamper-evident chain is broken or forked."
+            ),
+            remediation=(
+                "Investigate the governance audit store: a forked chain can indicate concurrent multi-writer "
+                "corruption or tampering. Use the Postgres backend for a single durable per-tenant chain across replicas."
+            ),
+        )
+    return PostureCheck(
+        id=check_id,
+        category="governance",
+        title=title,
+        status=STATUS_PASS,
+        detail=(
+            f"All {verified} governance audit records verify against the tamper-evident hash chain — "
+            "no tampering or forks detected for this tenant."
+        ),
+    )
+
+
 def _count_installed_distributions() -> int | None:
     try:
         import importlib.metadata as metadata
@@ -344,12 +419,14 @@ def _count_installed_distributions() -> int | None:
 
 
 _AUTO = object()
+_OMIT_AUDIT_CHAIN = object()
 
 
 def self_posture(
     env: Mapping[str, str] | None = None,
     *,
     distribution_count: int | None | object = _AUTO,
+    audit_chain: Mapping[str, int] | None | object = _OMIT_AUDIT_CHAIN,
 ) -> dict[str, object]:
     """Return an honest self-posture report for this agent-bom deployment.
 
@@ -357,6 +434,14 @@ def self_posture(
     deterministic tests. ``distribution_count`` defaults to enumerating the
     installed distributions; pass an int, or ``None`` to force an
     unknown supply-chain context row in tests.
+
+    ``audit_chain`` adds the tenant-scoped governance audit-chain integrity
+    check (see :func:`audit_chain_integrity_check`). Omit it — the default —
+    for the config-only report every surface has always returned. Tenant-aware
+    surfaces (the API/UI) pass the tenant's ``verify_chain`` result (a mapping),
+    or ``None`` when the chain could not be read; config-only surfaces (the CLI)
+    pass ``None`` so the dimension shows as an honest unknown rather than being
+    silently dropped.
     """
     resolved_env: Mapping[str, str] = os.environ if env is None else env
     if distribution_count is _AUTO:
@@ -364,11 +449,17 @@ def self_posture(
     else:
         dist_count = distribution_count  # type: ignore[assignment]
 
+    governance_checks: list[PostureCheck] = [_check_audit_hmac(resolved_env)]
+    if audit_chain is not _OMIT_AUDIT_CHAIN:
+        governance_checks.append(
+            audit_chain_integrity_check(cast("Mapping[str, int] | None", audit_chain))
+        )
+
     checks: list[PostureCheck] = [
         _check_deployment_env(resolved_env),
         _check_api_auth(resolved_env),
         _check_db_rls(resolved_env),
-        _check_audit_hmac(resolved_env),
+        *governance_checks,
         *_check_secret_sealing(resolved_env),
         _supply_chain_context(resolved_env, dist_count),
     ]

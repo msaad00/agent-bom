@@ -14,6 +14,8 @@ from typing import Any, cast
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.agent_identity_store import (
+    AgentIdentity,
+    ConditionalAccessPolicy,
     approve_jit_grant,
     create_conditional_policy,
     deny_jit_grant,
@@ -79,7 +81,7 @@ def _ttl_seconds(body: dict, *, default: int = 3600, max_seconds: int = 24 * 360
     return ttl_seconds
 
 
-def _identity_for_tenant(request: Request, identity_id: str):
+def _identity_for_tenant(request: Request, identity_id: str) -> AgentIdentity:
     identity = get_agent_identity_store().get(identity_id, tenant_id=_tenant(request))
     if identity is None or identity.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="Agent identity not found")
@@ -501,7 +503,7 @@ async def create_conditional_access_policy(request: Request, body: dict) -> dict
     return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
 
 
-def _conditional_policy_for_tenant(request: Request, policy_id: str):
+def _conditional_policy_for_tenant(request: Request, policy_id: str) -> ConditionalAccessPolicy:
     policy = get_agent_identity_store().get_conditional_policy(policy_id)
     if policy is None or policy.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="Conditional-access policy not found")

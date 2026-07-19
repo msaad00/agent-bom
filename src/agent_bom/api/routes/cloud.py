@@ -415,7 +415,7 @@ def _run_cis_benchmark(
             "status": "unavailable",
         }
 
-    result = report.to_dict()
+    result: dict[str, Any] = report.to_dict()
     result.setdefault("tenant_id", tenant_id)
     result["audit_metadata"] = {
         "read_only": True,

@@ -16,6 +16,7 @@ from agent_bom.api.audit_log import log_action
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.webhook_store import (
     GOVERNANCE_EVENT_TYPES,
+    WebhookSubscription,
     create_subscription,
     get_webhook_subscription_store,
     set_subscription_status,
@@ -38,7 +39,7 @@ def _actor(request: Request) -> str:
     return getattr(getattr(request, "state", None), "actor", None) or "api"
 
 
-def _subscription_for_tenant(request: Request, subscription_id: str):
+def _subscription_for_tenant(request: Request, subscription_id: str) -> WebhookSubscription:
     subscription = get_webhook_subscription_store().get(subscription_id)
     if subscription is None or subscription.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="Webhook subscription not found")

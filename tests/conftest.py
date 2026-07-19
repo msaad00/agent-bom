@@ -276,6 +276,11 @@ _STORAGE_ENV_VARS = (
 _SERVER_RUNTIME_ENV_VARS = (
     "AGENT_BOM_MCP_REMOTE_BIND",
     "AGENT_BOM_CORS_ALL",
+    # `serve --no-ui` sets this directly on os.environ (cli/_server.py), so it
+    # must be snapshot/restored like its siblings or it leaks the dashboard gate
+    # into later tests that read `_ui_disabled()` — the `/` root-route tests then
+    # see 307 instead of 200 under a work-stealing distribution.
+    "AGENT_BOM_NO_UI",
     "AGENT_BOM_ANALYTICS_BACKEND",
     "AGENT_BOM_CLICKHOUSE_URL",
     "AGENT_BOM_CLICKHOUSE_BUFFERED",

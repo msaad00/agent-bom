@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -48,9 +49,17 @@ def workdir() -> Any:
     lives outside ``$HOME``, so we materialize the fixture under home and clean
     it up afterwards. The contents give path-driven tools real targets.
     """
-    base = Path.home() / ".agent_bom_test_mcp_contract"
+    # Worker-unique path: this is a module-scoped fixture, but under an xdist
+    # work-stealing distribution the module's tests are split across workers, so
+    # each worker instantiates its own copy of the fixture. A fixed shared path
+    # under $HOME then races between workers (one worker's rmtree/mkdir runs while
+    # another is mid-setup) and raises FileNotFoundError. Suffixing the path with
+    # the xdist worker id isolates each worker. It must stay under $HOME because
+    # the scanned tools confine path args to the home directory via _safe_path.
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    base = Path.home() / f".agent_bom_test_mcp_contract_{worker_id}"
     if base.exists():
-        shutil.rmtree(base)
+        shutil.rmtree(base, ignore_errors=True)
     base.mkdir(parents=True)
     (base / "requirements.txt").write_text("requests==2.31.0\n")
     (base / "pyproject.toml").write_text("[project]\nname='x'\nversion='0'\n")

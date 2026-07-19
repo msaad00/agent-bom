@@ -186,6 +186,25 @@ def _reset_api_runtime_state() -> None:
         pass
 
 
+def _drain_scan_executor() -> None:
+    # The API scan pipeline runs jobs on a process-global ThreadPoolExecutor and
+    # resolves the full transitive dependency tree of the discovered estate. A
+    # test that submits a scan job (POST /v1/scan, submit_scan_job) and returns
+    # without awaiting completion leaves that worker thread running into later
+    # tests on the same xdist worker. Its allocations then inflate a peak-memory
+    # (tracemalloc) assertion in an unrelated graph test, and its stderr progress
+    # banners corrupt commands whose stdout is parsed as JSON — nondeterministic
+    # order-flakes that a work-stealing distribution surfaces. Drain the executor
+    # so no scan thread outlives the test that started it; get_executor() lazily
+    # recreates a fresh pool on next use.
+    try:
+        from agent_bom.api import pipeline
+
+        pipeline.shutdown_scan_executor(wait=True, cancel_futures=True)
+    except Exception:
+        pass
+
+
 def _reset_proxy_route_state() -> None:
     # The proxy status/alerts route keeps process-global in-memory buffers:
     # a bounded _proxy_alerts deque, its _proxy_alerts_total counter, the latest
@@ -276,6 +295,11 @@ _STORAGE_ENV_VARS = (
 _SERVER_RUNTIME_ENV_VARS = (
     "AGENT_BOM_MCP_REMOTE_BIND",
     "AGENT_BOM_CORS_ALL",
+    # `serve --no-ui` sets this directly on os.environ (cli/_server.py), so it
+    # must be snapshot/restored like its siblings or it leaks the dashboard gate
+    # into later tests that read `_ui_disabled()` — the `/` root-route tests then
+    # see 307 instead of 200 under a work-stealing distribution.
+    "AGENT_BOM_NO_UI",
     "AGENT_BOM_ANALYTICS_BACKEND",
     "AGENT_BOM_CLICKHOUSE_URL",
     "AGENT_BOM_CLICKHOUSE_BUFFERED",
@@ -427,6 +451,39 @@ def _restore_config_auth(snapshot: dict[str, Any]) -> None:
             pass
 
 
+# Scanner offline/unfixed module globals. Both the `agent_bom.scanners` package
+# namespace (the re-export the OSV query path reads) and the defining
+# `package_scan` module carry their own bindings; snapshot/restore both so a
+# leaked flip cannot cross the test boundary.
+_SCANNER_GLOBAL_TARGETS = (
+    ("agent_bom.scanners", "offline_mode"),
+    ("agent_bom.scanners.package_scan", "offline_mode"),
+    ("agent_bom.scanners.package_scan", "include_unfixed"),
+)
+
+
+def _snapshot_scanner_globals() -> list[tuple[Any, str, Any]]:
+    import importlib
+
+    snapshot: list[tuple[Any, str, Any]] = []
+    for module_name, attr in _SCANNER_GLOBAL_TARGETS:
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:
+            continue
+        if hasattr(module, attr):
+            snapshot.append((module, attr, getattr(module, attr)))
+    return snapshot
+
+
+def _restore_scanner_globals(snapshot: list[tuple[Any, str, Any]]) -> None:
+    for module, attr, value in snapshot:
+        try:
+            setattr(module, attr, value)
+        except Exception:
+            pass
+
+
 @pytest.fixture(autouse=True)
 def reset_global_test_state():
     """Reset process-global caches so test order does not affect outcomes."""
@@ -466,10 +523,22 @@ def reset_global_test_state():
     logging_handlers_snapshot = root_logger.handlers[:]
     logging_level_snapshot = root_logger.level
 
+    # Snapshot the scanner offline/unfixed module globals. `scan_packages`/
+    # `query_osv_batch` read `agent_bom.scanners.offline_mode` (the re-export
+    # binding) when building OSV queries; a test that flips it (directly or via a
+    # scan path) and skips restoring leaks "offline" into later tests, which then
+    # build zero OSV queries and see empty ecosystem/vuln results. The package_scan
+    # binding + include_unfixed share the same set_*() global-mutation pattern.
+    scanner_offline_snapshot = _snapshot_scanner_globals()
+
     yield
 
+    # Drain first: stop any scan worker thread the test left running before we
+    # restore globals it may still be mutating (scanner offline flags, stores).
+    _drain_scan_executor()
     root_logger.handlers[:] = logging_handlers_snapshot
     root_logger.setLevel(logging_level_snapshot)
+    _restore_scanner_globals(scanner_offline_snapshot)
     _restore_store_singletons(store_singleton_snapshot)
     _restore_config_auth(config_auth_snapshot)
     _restore_output_console(output_console_snapshot)

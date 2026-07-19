@@ -104,6 +104,10 @@ class UpstreamConfig:
         use and cached until ~60 s before expiry.
     headers:
         Additional static headers to inject on every upstream request.
+    private_network_approved:
+        Internal provenance bit. Operator-authored YAML sets it; control-plane
+        discovery cannot. It selects the private-capable pinned transport while
+        metadata/link-local/reserved destinations remain forbidden.
     tenant_id:
         Optional tenant owner for this upstream. When set, the gateway must
         only route requests from that tenant to this upstream. When unset, the
@@ -121,8 +125,17 @@ class UpstreamConfig:
     oauth_client_secret_env: str | None = None
     oauth_scopes: tuple[str, ...] = ()
     headers: dict[str, str] = field(default_factory=dict)
+    private_network_approved: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        for label, candidate in (("url", self.url), ("oauth_token_url", self.oauth_token_url)):
+            if not candidate:
+                continue
+            parsed = urlsplit(candidate)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                raise UpstreamConfigError(f"upstream {self.name!r}: {label} must be an absolute http(s) URL")
+            if parsed.username is not None or parsed.password is not None:
+                raise UpstreamConfigError(f"upstream {self.name!r}: {label} must not contain embedded credentials")
         transport = normalize_gateway_upstream_transport(
             self.transport,
             url=self.url,
@@ -190,6 +203,8 @@ class UpstreamConfig:
     ) -> str:
         import httpx
 
+        from agent_bom.runtime.egress_transport import build_pinned_async_client
+
         form: dict[str, str] = {
             "grant_type": "client_credentials",
             "client_id": client_id,
@@ -198,7 +213,10 @@ class UpstreamConfig:
         if self.oauth_scopes:
             form["scope"] = " ".join(self.oauth_scopes)
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with build_pinned_async_client(
+            allow_private_networks=self.private_network_approved,
+            timeout=httpx.Timeout(10.0),
+        ) as client:
             response = await client.post(
                 token_url,
                 data=form,
@@ -251,7 +269,7 @@ class UpstreamRegistry:
         if not isinstance(raw_upstreams, list):
             raise UpstreamConfigError(f"{path} must define an 'upstreams' list")
 
-        upstreams = [_parse_upstream(raw, source=str(path)) for raw in raw_upstreams]
+        upstreams = [_parse_upstream(raw, source=str(path), private_network_approved=True) for raw in raw_upstreams]
         logger.info("gateway: loaded %d upstreams from %s", len(upstreams), path)
         return cls(upstreams)
 
@@ -407,7 +425,13 @@ def is_gateway_compatible_upstream_transport(transport: Any, url: str) -> bool:
     return True
 
 
-def _parse_upstream(raw: Any, *, source: str, default_tenant_id: str | None = None) -> UpstreamConfig:
+def _parse_upstream(
+    raw: Any,
+    *,
+    source: str,
+    default_tenant_id: str | None = None,
+    private_network_approved: bool = False,
+) -> UpstreamConfig:
     if not isinstance(raw, dict):
         raise UpstreamConfigError(f"{source}: every upstream entry must be a mapping, got {type(raw).__name__}")
 
@@ -457,4 +481,5 @@ def _parse_upstream(raw: Any, *, source: str, default_tenant_id: str | None = No
         oauth_client_secret_env=raw.get("oauth_client_secret_env"),
         oauth_scopes=tuple(str(s) for s in scopes_raw),
         headers={str(k): str(v) for k, v in headers.items()},
+        private_network_approved=private_network_approved,
     )

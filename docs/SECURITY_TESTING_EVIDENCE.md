@@ -54,7 +54,7 @@ uv run pytest tests/test_proxy_sandbox.py tests/test_proxy_scanner.py tests/test
 | Audit integrity | HMAC chaining, restart hydration, signed audit export, tamper rejection | `tests/test_audit_chain.py`, `tests/test_api_enterprise_tenant.py`, `tests/test_compliance_report.py` |
 | Runtime proxy detection | prompt/tool-call detectors, Unicode-normalized payload handling, audit records | `tests/test_proxy_scanner.py`, `tests/test_runtime_detectors.py`, `tests/test_proxy_audit.py` |
 | MCP sandbox | isolated Docker/Podman runtime, sensitive mount rejection, caps, egress posture, digest-aware images | `tests/test_proxy_sandbox.py`, `src/agent_bom/proxy_sandbox.py` |
-| SSRF and private egress | URL validation, redirect checks, private IP denial, allowlist behavior | `tests/test_security.py`, `tests/test_gateway_upstreams.py` |
+| SSRF and private egress | Connect-time DNS pinning, all-answer validation, metadata denial, operator-private provenance, redirects/proxy environment disabled | `tests/test_security.py`, `tests/test_gateway_egress_transport.py`, `tests/test_gateway_upstreams.py` |
 | Container and external scanner ingest | External scanner normalization, decompression, and argv guards | `tests/test_external_scanners.py`, `tests/test_image_scanner.py`, `tests/test_container_limits.py` |
 | Compliance evidence | tenant-filtered bundles, nonces, signatures, audit export links | `tests/test_compliance_report.py`, `docs/COMPLIANCE_SIGNING.md` |
 | Supply-chain policy | dependency freshness, transitive pins, action SHA pins, self-scan | `docs/SUPPLY_CHAIN.md`, `.github/workflows/pr-security-gate.yml`, `.github/workflows/release.yml` |

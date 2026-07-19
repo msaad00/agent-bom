@@ -1208,7 +1208,7 @@ def test_managed_upstream_relay_opens_circuit_after_repeated_failures() -> None:
             )
         )
         fake_client = _FakeClient()
-        relay._client = fake_client
+        relay._clients[False] = fake_client
         upstream = UpstreamConfig(name="filesystem", url="http://fs.local:8100")
         message = _json_rpc("tools/call", name="read_file", arguments={"path": "/tmp/a"})
 

@@ -1224,14 +1224,24 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 -- schema owner, but is now itself subject to the tenant RLS policies.
 -- The change only takes effect on the next connection (the current bootstrap
 -- session keeps its cached superuser status), so the rest of init is unaffected.
+-- The protected cluster bootstrap role (oid 10, usually "postgres") cannot be
+-- demoted — Postgres rejects the ALTER — so the strip skips it with a loud
+-- warning instead of aborting init (this also lets the Alembic baseline replay
+-- init.sql when a deployment's migration owner IS the bootstrap role). Tenant
+-- RLS in that model depends on the runtime connecting as the dedicated
+-- non-superuser agent_bom_app role, never the bootstrap role.
 DO $$
 BEGIN
     IF EXISTS (
         SELECT 1 FROM pg_roles
         WHERE rolname = current_user AND (rolsuper OR rolbypassrls)
     ) THEN
-        EXECUTE format('ALTER ROLE %I NOSUPERUSER NOBYPASSRLS', current_user);
-        RAISE NOTICE 'Stripped SUPERUSER/BYPASSRLS from % so tenant RLS is enforced (#3665)', current_user;
+        IF (SELECT oid FROM pg_roles WHERE rolname = current_user) = 10 THEN
+            RAISE WARNING 'Connected as the protected bootstrap role %, which cannot be demoted; tenant RLS (#3665) requires the runtime to use a dedicated NOSUPERUSER role such as agent_bom_app', current_user;
+        ELSE
+            EXECUTE format('ALTER ROLE %I NOSUPERUSER NOBYPASSRLS', current_user);
+            RAISE NOTICE 'Stripped SUPERUSER/BYPASSRLS from % so tenant RLS is enforced (#3665)', current_user;
+        END IF;
     END IF;
 END
 $$;

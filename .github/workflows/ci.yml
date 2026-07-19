@@ -943,6 +943,14 @@ jobs:
           ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO agent_bom_app;
           SQL
 
+      - name: Migrate the integration test database
+        # Migrations are authoritative: the runtime no longer self-creates the
+        # control-plane schema, so the test database is migrated the same way
+        # any deployment is.
+        run: |
+          ALEMBIC_DATABASE_URL='postgresql+psycopg://postgres:testpass@127.0.0.1:5432/agentbom_test' \
+            uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+
       - name: Run real Postgres storage contract
         run: uv run pytest tests/test_postgres_integration.py -q --tb=short
 

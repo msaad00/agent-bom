@@ -124,7 +124,7 @@ async def nhi_discover_impl(
         return json.dumps({"error": sanitize_error(exc)})
 
 
-_INVENTORY_RESOURCE_KEYS = ("buckets", "instances", "security_groups")
+_INVENTORY_RESOURCE_KEYS = ("buckets", "instances", "security_groups", "dspm_databases")
 _INVENTORY_IDENTITY_KEYS = ("roles", "users")
 _PUBLIC_INVENTORY_STATUSES = {
     "ok",

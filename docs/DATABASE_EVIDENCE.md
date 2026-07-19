@@ -53,3 +53,49 @@ query source.
   customer DSN configuration.
 
 The code-level contract lives in `src/agent_bom/database_evidence.py`.
+
+## DSPM database content classification (opt-in)
+
+Beyond metadata evidence, agent-bom can sample a **bounded** number of rows from
+a database and classify the data types they hold (PII, secrets, financial) into
+redacted DSPM evidence — the database analog of the S3/GCS object-store content
+sampling. Metadata-only discovery is never called content classification.
+
+- **Opt-in.** Off by default. Enable with `AGENT_BOM_DSPM_DB_SAMPLING=1`. Caps:
+  `AGENT_BOM_DSPM_DB_MAX_TABLES` (200), `AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE`
+  (100), `AGENT_BOM_DSPM_DB_MAX_CELL_CHARS` (4096). See
+  [ENV_VARS.md](operations/ENV_VARS.md).
+- **Credential boundary — connect once, never per-action.** The scan resolves a
+  stored, scoped, revocable `database` connection through the credential broker
+  (`connection_broker.broker_session`), exactly like the cloud connections in
+  [CLOUD_CONNECT.md](CLOUD_CONNECT.md). The single encrypted secret is the libpq
+  connection string; the session is opened `default_transaction_read_only=on`,
+  so only bounded `SELECT`s run and no row can be mutated. No credential is ever
+  entered per-action, logged, or returned.
+- **First command / flow.** Create a read-only `database` connection (provider
+  `database`, `role_ref` a non-secret display DSN, `external_id` the connection
+  string, `auth_params` carrying optional `schemas`/`include_tables` scope), then
+  `POST /v1/cloud/connections/{id}/test` and
+  `POST /v1/cloud/connections/{id}/scan`. With sampling enabled the scan runs
+  `agent_bom.cloud.db_content_scan.scan_database_content` over the scoped tables.
+- **Artifact — redacted evidence only.** Output is the
+  `agent-bom.dspm.database_scan.v1` classification: data-type + count +
+  location (`schema.table`). Raw rows, cell values, and matched values are
+  **never** persisted, logged, or exported. The classification enriches the
+  graph: a sampled database becomes a `DATA_STORE` crown jewel and an
+  internet-exposed path to it becomes a toxic-combination finding.
+- **Honest coverage states.** Every table is `executed`, `partial`, `skipped`,
+  `unevaluable`, or `failed`. A denied / timed-out / unreadable table is
+  `unevaluable` — never "clean". Absence of a finding from an unreadable source
+  is not evidence of no sensitive data; the scan status downgrades to `partial`
+  or `failed` accordingly.
+- **Next step / deferred.** The Postgres/RDS wire path is live and covered by
+  read-only PostgreSQL tests. The Azure Blob object-storage collector and the
+  Snowflake/BigQuery warehouse sampling adapters remain credential-gated
+  roadmap legs (tracked in #4157) — the row classifier and coverage envelope are
+  DB-API-generic and ready for those adapters, but they are not wired until live
+  warehouse/blob credentials are available.
+
+The code-level contract lives in `src/agent_bom/cloud/db_content_scan.py`
+(orchestration) and `src/agent_bom/cloud/db_data_classifier.py` (redacted
+row classifier).

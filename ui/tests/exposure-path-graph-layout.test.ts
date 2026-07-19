@@ -9,6 +9,8 @@ import {
   buildPathGraphLayout,
   labelCharsForWidth,
   nodeSizeForCount,
+  subtitleYForLineCount,
+  wrapGraphText,
 } from "@/lib/exposure-path-graph-layout";
 
 function makePath(nodeCount: number): ExposurePath {
@@ -59,10 +61,33 @@ describe("nodeSizeForCount", () => {
   });
 });
 
+describe("subtitleYForLineCount", () => {
+  it("moves secondary text below a wrapped title", () => {
+    expect(subtitleYForLineCount(1)).toBe(58);
+    expect(subtitleYForLineCount(2)).toBe(72);
+    expect(MIN_NODE_HEIGHT).toBeGreaterThan(72);
+  });
+});
+
 describe("labelCharsForWidth", () => {
   it("keeps a readable minimum of characters even at the smallest node", () => {
     expect(labelCharsForWidth(MIN_NODE_WIDTH)).toBeGreaterThanOrEqual(12);
     expect(labelCharsForWidth(MAX_NODE_WIDTH)).toBeGreaterThan(labelCharsForWidth(MIN_NODE_WIDTH) - 1);
+  });
+});
+
+describe("wrapGraphText", () => {
+  it("does not split a readable entity name when a word boundary is available", () => {
+    expect(wrapGraphText("Github Enterprise MCP service", 16, 2)).toEqual([
+      "Github",
+      "Enterprise MCP…",
+    ]);
+  });
+
+  it("does not create a one-character line from an early identifier separator", () => {
+    const lines = wrapGraphText("a/very-long-identifier", 16, 2);
+    expect(lines[0]!.length).toBeGreaterThanOrEqual(5);
+    expect(lines.join("")).toContain("a/very-long");
   });
 });
 

@@ -33,7 +33,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypeVar, cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -44,9 +44,24 @@ from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationErr
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.graph import SEVERITY_RANK, AttackPath, EntityType, GraphFilterOptions, GraphSemanticLayer, RelationshipType, UnifiedGraph
+from agent_bom.graph import (
+    SEVERITY_RANK,
+    AttackPath,
+    EntityType,
+    GraphFilterOptions,
+    GraphSemanticLayer,
+    RelationshipType,
+    UnifiedEdge,
+    UnifiedGraph,
+    UnifiedNode,
+)
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
 from agent_bom.security import sanitize_error
+
+if TYPE_CHECKING:
+    from agent_bom.api.graph_store import GraphStoreProtocol
+
+_GraphCallResult = TypeVar("_GraphCallResult")
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -234,7 +249,7 @@ _ATTACK_PATHS_OPENAPI_RESPONSE: dict[str, Any] = {
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _get_graph_store_or_503():
+def _get_graph_store_or_503() -> GraphStoreProtocol:
     """Resolve the active graph store backend."""
     return _get_graph_store()
 
@@ -498,7 +513,7 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
     return signals
 
 
-def _risk_reasons_for_path(graph: UnifiedGraph, path) -> list[dict[str, str]]:
+def _risk_reasons_for_path(graph: UnifiedGraph, path: AttackPath) -> list[dict[str, str]]:
     reasons: list[dict[str, str]] = []
     for kind, label, detail, _boost in _fusion_signals_for_path(graph, path.hops):
         reasons.append({"kind": kind, "label": label, "detail": detail})
@@ -563,7 +578,7 @@ def _risk_reasons_for_path(graph: UnifiedGraph, path) -> list[dict[str, str]]:
     return reasons[:4]
 
 
-def _next_actions_for_path(graph: UnifiedGraph, path) -> list[dict[str, str]]:
+def _next_actions_for_path(graph: UnifiedGraph, path: AttackPath) -> list[dict[str, str]]:
     findings = _finding_ids_for_path(graph, path.hops, path.vuln_ids)
     agents = _node_labels_for_types(
         graph,
@@ -613,7 +628,7 @@ def _next_actions_for_path(graph: UnifiedGraph, path) -> list[dict[str, str]]:
     return actions[:4]
 
 
-def _fix_first_card_for_path(graph: UnifiedGraph, path, rank: int) -> dict:
+def _fix_first_card_for_path(graph: UnifiedGraph, path: AttackPath, rank: int) -> dict:
     findings = _finding_ids_for_path(graph, path.hops, path.vuln_ids)
     agents = _node_labels_for_types(
         graph,
@@ -650,7 +665,7 @@ def _fix_first_card_for_path(graph: UnifiedGraph, path, rank: int) -> dict:
     }
 
 
-def _path_matches_focus(graph: UnifiedGraph, path, *, cve: str, package: str, agent: str) -> bool:
+def _path_matches_focus(graph: UnifiedGraph, path: AttackPath, *, cve: str, package: str, agent: str) -> bool:
     def norm(value: str) -> str:
         return value.strip().lower()
 
@@ -681,16 +696,16 @@ def _path_matches_focus(graph: UnifiedGraph, path, *, cve: str, package: str, ag
     return True
 
 
-def _is_finding_like_node(node) -> bool:
+def _is_finding_like_node(node: UnifiedNode) -> bool:
     entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
     return entity_type in {EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value}
 
 
-def _rel_value(edge) -> str:
+def _rel_value(edge: UnifiedEdge) -> str:
     return edge.relationship.value if hasattr(edge.relationship, "value") else str(edge.relationship)
 
 
-def _edge_relationships_for_hops(hops: list[str], edges) -> list[str]:
+def _edge_relationships_for_hops(hops: list[str], edges: list[UnifiedEdge]) -> list[str]:
     """Return relationship names for consecutive hop pairs when topology is available."""
     if len(hops) < 2:
         return []
@@ -708,7 +723,7 @@ def _edge_relationships_for_hops(hops: list[str], edges) -> list[str]:
     return relationships
 
 
-def _exposure_role_for_node(node) -> str:
+def _exposure_role_for_node(node: UnifiedNode) -> str:
     entity_type = _node_type_value(node)
     if entity_type in {EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value}:
         return "finding"
@@ -745,8 +760,9 @@ def _exposure_ref_for_node(node_id: str, nodes_by_id: dict[str, Any]) -> dict[st
     return ref
 
 
-def _exposure_relationships_for_path(path: AttackPath, edges) -> list[dict[str, Any]]:
-    by_pair: dict[tuple[str, str], Any] = {}
+def _exposure_relationships_for_path(path: AttackPath, edges: list[UnifiedEdge] | None) -> list[dict[str, Any]]:
+    by_pair: dict[tuple[str, str], UnifiedEdge] = {}
+    edge: UnifiedEdge | None
     for edge in edges or []:
         by_pair.setdefault((edge.source, edge.target), edge)
         if edge.is_bidirectional:
@@ -803,7 +819,7 @@ def _exposure_path_for_attack_path(
     path: AttackPath,
     *,
     nodes_by_id: dict[str, Any],
-    edges=None,
+    edges: list[UnifiedEdge] | None = None,
     rank: int | None = None,
     scan_id: str = "",
 ) -> dict[str, Any]:
@@ -867,7 +883,7 @@ def _exposure_path_for_attack_path(
 
 def _serialize_attack_path(
     path: AttackPath,
-    edges=None,
+    edges: list[UnifiedEdge] | None = None,
     *,
     nodes_by_id: dict[str, Any] | None = None,
     rank: int | None = None,
@@ -881,11 +897,11 @@ def _serialize_attack_path(
     return data
 
 
-def _node_type_value(node) -> str:
+def _node_type_value(node: UnifiedNode) -> str:
     return node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
 
 
-def _node_risk_100(node) -> float:
+def _node_risk_100(node: UnifiedNode) -> float:
     risk = float(getattr(node, "risk_score", 0.0) or 0.0)
     if risk <= 10.0:
         risk *= 10.0
@@ -1349,7 +1365,7 @@ def _enforce_graph_query_budget(body: GraphQueryRequest) -> dict[str, int]:
     return budget
 
 
-async def _graph_store_call(fn, /, *args, **kwargs):
+async def _graph_store_call(fn: Callable[..., _GraphCallResult], /, *args: Any, **kwargs: Any) -> _GraphCallResult:
     """Run sync graph store methods off the event loop."""
     try:
         async with adaptive_backpressure("graph"):
@@ -1360,7 +1376,7 @@ async def _graph_store_call(fn, /, *args, **kwargs):
         raise HTTPException(status_code=501, detail=sanitize_error(exc)) from exc
 
 
-async def _graph_compute_call(fn, /, *args, **kwargs):
+async def _graph_compute_call(fn: Callable[..., _GraphCallResult], /, *args: Any, **kwargs: Any) -> _GraphCallResult:
     """Run CPU-heavy graph derivation and serialization off the event loop."""
     try:
         async with adaptive_backpressure("graph"):
@@ -1680,7 +1696,7 @@ def _raise_mcp_error_as_http(payload: dict[str, Any]) -> None:
 
 
 def _node_matches_query(
-    node,
+    node: UnifiedNode,
     *,
     entity_types: set[str],
     min_severity_rank: int,
@@ -1705,14 +1721,14 @@ def _node_matches_query(
 
 
 def _filtered_query_graph(
-    graph,
+    graph: UnifiedGraph,
     *,
     roots: list[str],
     entity_types: set[str],
     min_severity_rank: int,
     compliance_prefixes: set[str],
     data_sources: set[str],
-):
+) -> UnifiedGraph:
     filtered = UnifiedGraph(scan_id=graph.scan_id, tenant_id=graph.tenant_id, created_at=graph.created_at)
     keep_ids = {
         node.id
@@ -2144,7 +2160,7 @@ async def get_graph_exposure_paths(
     )
     payload = json.loads(raw)
     _raise_mcp_error_as_http(payload)
-    return payload
+    return cast("dict[str, Any]", payload)
 
 
 @router.post("/graph/should-i-deploy", tags=["graph"])
@@ -2188,7 +2204,7 @@ async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecision
     )
     payload = json.loads(raw)
     _raise_mcp_error_as_http(payload)
-    return payload
+    return cast("dict[str, Any]", payload)
 
 
 @router.get("/graph/paths", tags=["graph"])
@@ -2666,9 +2682,7 @@ async def get_graph_snapshots(
     from agent_bom.api import time_window
 
     since = time_window.window_since_iso(time_window.normalize_window_days(window_days))
-    snapshots = await _graph_store_call(
-        _get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit, since=since
-    )
+    snapshots = await _graph_store_call(_get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit, since=since)
     for snapshot in snapshots:
         if isinstance(snapshot, dict) and "risk_summary" in snapshot:
             snapshot["severity_basis"] = "graph_nodes"
@@ -2690,9 +2704,7 @@ async def get_graph_history(
 
     resolved = time_window.normalize_window_days(window_days)
     since = time_window.window_since_iso(resolved)
-    history = await _graph_store_call(
-        _get_graph_store_or_503().graph_history, tenant_id=_tenant(request), limit=limit, since=since
-    )
+    history = await _graph_store_call(_get_graph_store_or_503().graph_history, tenant_id=_tenant(request), limit=limit, since=since)
     if isinstance(history, dict):
         history["window"] = time_window.window_metadata(resolved)
     return history

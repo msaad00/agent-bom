@@ -8,9 +8,10 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence, cast
 
 if TYPE_CHECKING:
+    from agent_bom.graph import RelationshipType, UnifiedGraph, UnifiedNode
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 from agent_bom.api.graph_store import (
@@ -124,7 +125,7 @@ def _batched_rows(rows: Iterable[Sequence[Any]], batch_size: int) -> Iterator[li
         yield batch
 
 
-def _execute_many_batched(conn, sql: str, rows: Iterable[Sequence[Any]], *, batch_size: int) -> int:
+def _execute_many_batched(conn: Any, sql: str, rows: Iterable[Sequence[Any]], *, batch_size: int) -> int:
     """Execute DML rows in bounded batches.
 
     psycopg connections expose ``cursor().executemany``. Tests and light mocks
@@ -159,7 +160,7 @@ def _graph_search_timeout_ms() -> int:
     return max(1, min(POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS))
 
 
-def _apply_graph_search_timeout(conn) -> None:
+def _apply_graph_search_timeout(conn: Any) -> None:
     timeout_ms = _graph_search_timeout_ms()
     if timeout_ms > 0:
         conn.execute("SELECT set_config('statement_timeout', %s, true)", (str(timeout_ms),))
@@ -199,7 +200,7 @@ def _diff_summary_counts(diff: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def _backfill_empty_tenant_ids(conn) -> None:
+def _backfill_empty_tenant_ids(conn: Any) -> None:
     for table, key_columns in _GRAPH_TENANT_TABLE_KEYS.items():
         key_match = " AND ".join(f"existing.{column} = legacy.{column}" for column in key_columns)
         conn.execute(
@@ -224,7 +225,7 @@ def _backfill_empty_tenant_ids(conn) -> None:
 class PostgresGraphStore:
     """PostgreSQL-backed unified graph persistence and query store."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: Any = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -472,7 +473,7 @@ class PostgresGraphStore:
             return str(row[0]) if row else ""
 
     @staticmethod
-    def _node_from_row(row):
+    def _node_from_row(row: Sequence[Any]) -> UnifiedNode:
         from agent_bom.graph import EntityType, NodeDimensions, NodeStatus, UnifiedNode
 
         return UnifiedNode(
@@ -536,7 +537,7 @@ class PostgresGraphStore:
             conn.commit()
         return total
 
-    def save_graph(self, graph) -> None:
+    def save_graph(self, graph: UnifiedGraph) -> None:
         """Persist a fully built ``UnifiedGraph`` via the streamed write path."""
         self.save_graph_streaming(
             scan_id=graph.scan_id or "",
@@ -967,7 +968,7 @@ class PostgresGraphStore:
                 builder.add_interaction_risk(row[0], json.loads(agents) if isinstance(agents, str) else agents)
         return builder.build()
 
-    def _purge_expired_snapshots(self, conn, tenant: str) -> None:
+    def _purge_expired_snapshots(self, conn: Any, tenant: str) -> None:
         """Delete this tenant's graph snapshots older than the retention window.
 
         Age-based purge keyed on ``graph_snapshots.created_at`` and scoped to the
@@ -1009,7 +1010,7 @@ class PostgresGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
         relationship_types: frozenset[str] | None = None,
-    ):
+    ) -> UnifiedGraph:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
         from agent_bom.graph import (
@@ -1211,7 +1212,7 @@ class PostgresGraphStore:
         max_edges: int = 10_000,
         deadline_monotonic: float | None = None,
         traversable_only: bool = False,
-        relationship_types=None,
+        relationship_types: set[RelationshipType] | None = None,
         static_only: bool = False,
         dynamic_only: bool = False,
         include_roots: bool = True,
@@ -1414,7 +1415,7 @@ class PostgresGraphStore:
 
         tenant_id = normalize_graph_tenant_id(tenant_id)
 
-        def _load_nodes(conn, scan_id: str) -> dict[str, dict[str, Any]]:
+        def _load_nodes(conn: Any, scan_id: str) -> dict[str, dict[str, Any]]:
             loaded: dict[str, dict[str, Any]] = {}
             for row in conn.execute(
                 """
@@ -1476,7 +1477,7 @@ class PostgresGraphStore:
             }
 
     @staticmethod
-    def _edge_history_dict(row) -> dict[str, Any]:
+    def _edge_history_dict(row: Sequence[Any]) -> dict[str, Any]:
         return {
             "source_id": row[0],
             "target_id": row[1],
@@ -1537,7 +1538,7 @@ class PostgresGraphStore:
     def changed_edges_between_scans(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
 
-        def by_scan(conn, scan_id: str) -> dict[tuple[str, str, str], dict[str, Any]]:
+        def by_scan(conn: Any, scan_id: str) -> dict[tuple[str, str, str], dict[str, Any]]:
             rows = conn.execute(
                 """
                 SELECT source_id, target_id, relationship, direction, weight, traversable,
@@ -1615,7 +1616,7 @@ class PostgresGraphStore:
                 for row in rows
             ]
 
-    def _snapshot_digests(self, conn, *, tenant_id: str, scan_id: str) -> tuple[str, str, dict[str, int]]:
+    def _snapshot_digests(self, conn: Any, *, tenant_id: str, scan_id: str) -> tuple[str, str, dict[str, int]]:
         graph_rows: dict[str, list[dict[str, Any]]] = {"nodes": [], "edges": []}
         finding_rows: dict[str, list[dict[str, Any]]] = {"findings": [], "attack_paths": [], "compliance": []}
 
@@ -2064,7 +2065,7 @@ class PostgresGraphStore:
         cursor: str | None = None,
         offset: int = 0,
         limit: int = 50,
-    ):
+    ) -> tuple[list[UnifiedNode], int, str | None]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
@@ -2194,7 +2195,7 @@ class PostgresGraphStore:
 class PostgresScanCache:
     """PostgreSQL-backed OSV vulnerability scan cache."""
 
-    def __init__(self, pool=None, ttl_seconds: int = 86_400) -> None:
+    def __init__(self, pool: Any = None, ttl_seconds: int = 86_400) -> None:
         self._pool = pool or _get_pool()
         self._ttl = ttl_seconds
         self._init_tables()
@@ -2226,7 +2227,7 @@ class PostgresScanCache:
                 conn.execute("DELETE FROM osv_cache WHERE cache_key = %s", (key,))
                 conn.commit()
                 return None
-            return json.loads(row[0])
+            return cast("list[dict[Any, Any]]", json.loads(row[0]))
 
     def put(self, ecosystem: str, name: str, version: str, vulns: list[dict]) -> None:
         key = self._key(ecosystem, name, version)

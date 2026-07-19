@@ -7,6 +7,12 @@
 # where the gateway actually forwards the request. One URL template for the
 # whole org, no per-laptop proxy install.
 #
+# Operator-authored entries may target private/VPC/cluster addresses. The
+# gateway still resolves and validates every new socket at connect time and
+# always rejects cloud metadata, link-local, reserved, and multicast targets.
+# Auto-discovered entries are public-only until an operator overlays the same
+# name here, which is the approval boundary for private-network egress.
+#
 # ── How to use ───────────────────────────────────────────────────────────────
 # 1. Copy this file, replace the example upstreams with YOUR MCPs.
 # 2. Put any bearer tokens into Kubernetes Secrets (NOT in this file — bearer
@@ -26,7 +32,7 @@
 #   auth: none            — no credential injection (use for in-cluster MCPs)
 #   auth: bearer          — gateway reads `token_env` and sets Authorization
 #                           header on every upstream request
-#   auth: oauth2_client_credentials  (roadmap — see MULTI_MCP_GATEWAY.md)
+#   auth: oauth2_client_credentials — gateway fetches and caches the token
 #
 # ── Supported upstream transport ─────────────────────────────────────────────
 #   transport: streamable-http  — JSON-RPC over HTTP POST. This is the only

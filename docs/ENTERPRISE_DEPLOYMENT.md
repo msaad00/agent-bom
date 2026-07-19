@@ -543,10 +543,11 @@ For ClickHouse-backed analytics, make the backend explicit instead of relying on
 agent-bom api \
   --api-key "$AGENT_BOM_API_KEY" \
   --analytics-backend clickhouse \
-  --clickhouse-url "http://clickhouse.internal:8123"
+  --clickhouse-url "http://clickhouse.internal:8123" \
+  --analytics-max-queue 10000
 ```
 
-Server mode enables buffered ClickHouse writes by default so scan and runtime paths do not block on OLAP round-trips. Authenticated `GET /v1/system/health` reports the active analytics contract (`backend`, `enabled`, `buffered`, `flush_interval_seconds`, `max_batch`) alongside tracing so operators can confirm both observability and analytics posture from one probe. The ClickHouse analytics path stores scan metadata, vulnerability rows, runtime events, posture snapshots, fleet trust/lifecycle snapshots, compliance control measurements, and audit-event trends so the fleet backend matches the operator story more closely.
+Server mode enables buffered ClickHouse writes by default so scan and runtime paths do not block on OLAP round-trips. The queue is bounded (`--analytics-max-queue`, default 10,000 entries): when it fills, the oldest queued evidence is dropped so producers remain non-blocking and recent evidence is preserved. Drops are rate-limited in logs and counted in health output. Authenticated `GET /v1/system/health` reports the active analytics contract (`backend`, `enabled`, `buffered`, `flush_interval_seconds`, `max_batch`, `queue_capacity`, `queue_depth`, `dropped_count`) alongside tracing so operators can confirm both observability and analytics posture from one probe. The ClickHouse analytics path stores scan metadata, vulnerability rows, runtime events, posture snapshots, fleet trust/lifecycle snapshots, compliance control measurements, and audit-event trends so the fleet backend matches the operator story more closely.
 
 For a packaged self-hosted EKS pilot, use the shipped Helm profile installer instead of hand-assembling the values stack:
 

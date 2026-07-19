@@ -14,6 +14,11 @@ components:
           default: false
           title: Clickhouse Url Configured
           type: boolean
+        dropped_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Dropped Count
         enabled:
           default: false
           title: Enabled
@@ -28,6 +33,16 @@ components:
           - type: integer
           - type: 'null'
           title: Max Batch
+        queue_capacity:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Queue Capacity
+        queue_depth:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Queue Depth
       title: AnalyticsHealth
       type: object
     AuditExportVerifyRequest:

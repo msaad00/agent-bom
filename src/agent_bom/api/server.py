@@ -141,6 +141,9 @@ def _analytics_health() -> AnalyticsHealth:
         clickhouse_url_configured=bool(clickhouse_url),
         flush_interval_seconds=float(getattr(active_store, "flush_interval", 0.0)) if buffered else None,
         max_batch=int(getattr(active_store, "max_batch", 0)) if buffered else None,
+        queue_capacity=int(getattr(active_store, "queue_capacity", 0)) if buffered else None,
+        queue_depth=int(getattr(active_store, "queue_depth", 0)) if buffered else None,
+        dropped_count=int(getattr(active_store, "dropped_count", 0)) if buffered else None,
     )
 
 
@@ -401,10 +404,19 @@ async def _lifespan(app_instance: FastAPI):
             if os.environ.get("AGENT_BOM_CLICKHOUSE_BUFFERED", "1").strip().lower() not in {"0", "false", "no"}:
                 flush_interval = float(os.environ.get("AGENT_BOM_CLICKHOUSE_FLUSH_INTERVAL", "1.0"))
                 max_batch = int(os.environ.get("AGENT_BOM_CLICKHOUSE_MAX_BATCH", "200"))
-                set_analytics_store(BufferedAnalyticsStore(base_store, flush_interval=flush_interval, max_batch=max_batch))
+                max_queue = int(os.environ.get("AGENT_BOM_CLICKHOUSE_MAX_QUEUE", "10000"))
+                set_analytics_store(
+                    BufferedAnalyticsStore(
+                        base_store,
+                        flush_interval=flush_interval,
+                        max_batch=max_batch,
+                        max_queue=max_queue,
+                    )
+                )
                 _logger.info(
-                    "ClickHouse analytics store enabled with buffered writes (batch=%s, flush_interval=%.2fs)",
+                    "ClickHouse analytics store enabled with buffered writes (batch=%s, queue=%s, flush_interval=%.2fs)",
                     max_batch,
+                    max_queue,
                     flush_interval,
                 )
             else:

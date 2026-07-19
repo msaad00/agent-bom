@@ -366,6 +366,9 @@ class AnalyticsHealth(BaseModel):
     clickhouse_url_configured: bool = False
     flush_interval_seconds: float | None = None
     max_batch: int | None = None
+    queue_capacity: int | None = None
+    queue_depth: int | None = None
+    dropped_count: int | None = None
 
 
 class StorageHealth(BaseModel):

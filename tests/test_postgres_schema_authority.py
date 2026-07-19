@@ -84,10 +84,17 @@ def test_compliance_ingest_does_not_probe_schema_on_each_write() -> None:
     assert "ensure_postgres_reference_tables" not in write_path
 
 
-def test_postgres_baseline_keeps_bootstrap_owner_out_of_runtime_without_self_demotion() -> None:
+def test_postgres_baseline_strips_demotable_owner_and_skips_bootstrap_role() -> None:
+    """init.sql keeps the #3665 tenant-RLS safeguard: any demotable connecting
+    role is stripped of SUPERUSER/BYPASSRLS as the last init step, while the
+    protected cluster bootstrap role (oid 10, which Postgres refuses to demote)
+    is warn-skipped so an Alembic baseline replay does not abort."""
     baseline = (ROOT / "deploy" / "supabase" / "postgres" / "init.sql").read_text()
 
-    assert "ALTER ROLE %I NOSUPERUSER NOBYPASSRLS" not in baseline
+    assert "ALTER ROLE %I NOSUPERUSER NOBYPASSRLS" in baseline
+    # The bootstrap-role escape hatch must be present and loud, not silent.
+    assert "oid FROM pg_roles WHERE rolname = current_user) = 10" in baseline
+    assert "RAISE WARNING" in baseline
     assert "agent_bom_app" in baseline
     assert "REVOKE CREATE ON SCHEMA public FROM agent_bom_app" in baseline
 

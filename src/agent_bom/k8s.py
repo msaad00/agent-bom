@@ -21,8 +21,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from math import ceil
 from time import monotonic
-from typing import Optional
+from typing import Any, Optional
 
+from agent_bom.cloud.benchmark_provenance import BenchmarkProvenance, kubernetes_benchmark_provenance
 from agent_bom.iac.models import IaCFinding
 from agent_bom.k8s_transport import K8sReadTransport, K8sTransportError, select_k8s_transport, validate_kubelet_endpoint
 
@@ -69,6 +70,33 @@ class K8sPostureResult:
     collectors: list[K8sCollectorEvidence] = field(default_factory=list)
     status: K8sPostureStatus = K8sPostureStatus.FAILED
     transport: str = ""
+    benchmark: BenchmarkProvenance = field(default_factory=kubernetes_benchmark_provenance)
+
+    def to_evidence_dict(self) -> dict[str, Any]:
+        """Render the machine-readable posture evidence envelope.
+
+        Carries the pinned benchmark provenance alongside every collector's
+        explicit execution state so a denied/partial/timeout read is visible as
+        ``unevaluable``/``failed`` and can never be read as a clean ``PASS``.
+        """
+        return {
+            "status": self.status.value,
+            "transport": self.transport,
+            "finding_count": len(self.findings),
+            "benchmark": self.benchmark.to_dict(),
+            "collectors": [
+                {
+                    "collector_id": collector.collector_id,
+                    "state": collector.state.value,
+                    "object_count": collector.object_count,
+                    "pages": collector.pages,
+                    "truncated": collector.truncated,
+                    "message": collector.message,
+                    "transport": collector.transport,
+                }
+                for collector in self.collectors
+            ],
+        }
 
 
 def _kubectl_available() -> bool:

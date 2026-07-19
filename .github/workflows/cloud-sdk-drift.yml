@@ -1,0 +1,44 @@
+name: Cloud SDK Pin Drift
+
+# Backstop behind the Dependabot `cloud-and-ai-sdks` group (#3835): asserts the
+# cloud-provider anchor SDK floors pinned in pyproject.toml stay in lockstep with
+# the dated in-repo reference (src/agent_bom/data/cloud_sdk_reference.json). Fails
+# when a pin quietly falls below the reference floor so a rotted pin can never sit
+# unnoticed. Offline + deterministic — no network in the check path. The
+# informational "N months behind known-latest" drift is printed but never blocks
+# (hard version blocking is a documented non-goal of #3835).
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "src/agent_bom/data/cloud_sdk_reference.json"
+      - "src/agent_bom/cloud_sdk_freshness.py"
+      - "scripts/check_cloud_sdk_drift.py"
+  schedule:
+    - cron: "0 9 1 * *"  # monthly, 1st at 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Check cloud-SDK pin drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install check dependency
+        run: python3 -m pip install "packaging>=24.0"
+
+      - name: Cloud-SDK pin-drift gate
+        run: python3 scripts/check_cloud_sdk_drift.py

@@ -228,11 +228,12 @@ def run_iac_only_scan(
     """Execute the dedicated IaC-only scan path and exit from the main command."""
     from agent_bom.iac import scan_iac_with_context
     from agent_bom.iac.models import ScanContext as IaCContext
-    from agent_bom.k8s import K8sDiscoveryError, scan_live_cluster_posture
+    from agent_bom.k8s import CollectorState, K8sPostureStatus, scan_live_cluster_posture_with_evidence
 
     iac_ctx = ScanContext(con=con)
     all_iac_findings: list = []
     all_iac_verdicts: list = []
+    k8s_posture_evidence: dict | None = None
 
     if iac_paths:
         con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
@@ -257,27 +258,50 @@ def run_iac_only_scan(
 
     if k8s_live:
         con.print("\n[bold blue]Inspecting live Kubernetes cluster posture...[/bold blue]\n")
-        try:
-            k8s_live_findings = scan_live_cluster_posture(
-                namespace=k8s_live_namespace,
-                all_namespaces=k8s_live_all_namespaces,
-                context=k8s_live_context,
-            )
-        except K8sDiscoveryError as exc:
-            con.print(f"  [red]✗[/red] live cluster scan failed: {exc}")
-            raise SystemExit(1) from exc
-        all_iac_findings.extend(k8s_live_findings)
-        if k8s_live_findings:
+        posture = scan_live_cluster_posture_with_evidence(
+            namespace=k8s_live_namespace,
+            all_namespaces=k8s_live_all_namespaces,
+            context=k8s_live_context,
+        )
+        k8s_posture_evidence = posture.to_evidence_dict()
+        benchmark = k8s_posture_evidence["benchmark"]
+        con.print(
+            f"  benchmark: {benchmark['benchmark_name']} v{benchmark['benchmark_version']} "
+            "(vendor-asserted; recommendation identifiers only)"
+        )
+
+        # Surface every collector that could not be evaluated so a denied/partial/
+        # timeout read is explicit — it is never silently rendered as a clean pass.
+        for collector in posture.collectors:
+            if collector.state in {CollectorState.UNEVALUABLE, CollectorState.FAILED}:
+                label = "unevaluable" if collector.state is CollectorState.UNEVALUABLE else "failed"
+                con.print(f"  [yellow]○[/yellow] {collector.collector_id}: {label} — {collector.message or 'read not evaluable'}")
+
+        if posture.status is K8sPostureStatus.FAILED:
+            detail = next((collector.message for collector in posture.collectors if collector.message), "collection failed")
+            con.print(f"  [red]✗[/red] live cluster posture unavailable: {detail}")
+            raise SystemExit(1)
+
+        # A single denied read no longer aborts the run — evaluated collectors
+        # still contribute findings and the run is reported as partial.
+        all_iac_findings.extend(posture.findings)
+        if posture.findings:
             from collections import Counter
 
-            severity_counts = Counter(f.severity for f in k8s_live_findings)
+            severity_counts = Counter(f.severity for f in posture.findings)
             severity_parts = [
                 f"[red]{severity_counts.get('critical', 0)} critical[/red]",
                 f"[yellow]{severity_counts.get('high', 0)} high[/yellow]",
             ]
-            con.print(f"  [red]⚠[/red]  live cluster posture: {len(k8s_live_findings)} finding(s) ({', '.join(severity_parts)})")
+            con.print(f"  [red]⚠[/red]  live cluster posture: {len(posture.findings)} finding(s) ({', '.join(severity_parts)})")
         else:
-            con.print("  [green]✓[/green] live cluster posture: no runtime misconfigurations")
+            con.print("  [green]✓[/green] live cluster posture: no misconfigurations in evaluated collectors")
+
+        if posture.status is K8sPostureStatus.PARTIAL:
+            con.print(
+                "  [yellow]partial coverage[/yellow] — some reads were unevaluable; "
+                "absence of findings there is not a pass"
+            )
 
     iac_report = AIBOMReport(agents=[], blast_radii=[])
     iac_report.iac_findings_data = {
@@ -301,6 +325,11 @@ def run_iac_only_scan(
             for finding in all_iac_findings
         ],
     }
+    if k8s_posture_evidence is not None:
+        # Persist the honest posture evidence envelope (benchmark provenance +
+        # per-collector execution state) alongside the findings so downstream
+        # JSON consumers can distinguish evaluated from unevaluable collection.
+        iac_report.iac_findings_data["k8s_posture"] = k8s_posture_evidence
     iac_ctx.report = iac_report
     iac_ctx.iac_findings_data = iac_report.iac_findings_data
 

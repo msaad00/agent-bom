@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "description": "Dated known-latest reference for the cloud-provider anchor SDKs agent-bom pins. Drives an offline, provenance-honest staleness signal: how far each pinned version floor lags the ecosystem AS OF the retrieval date below. The signal never claims a pin is 'current' without this reference; a missing reference degrades to 'unknown / last checked never'. Refresh with `python3 scripts/check_cloud_sdk_drift.py --refresh` (queries the official PyPI JSON API), which restamps the retrieval date and versions.",
+  "retrieved": "2026-07-18",
+  "source": "https://pypi.org/pypi/{distribution}/json",
+  "sdks": [
+    {
+      "provider": "aws",
+      "distribution": "boto3",
+      "floor": "1.34",
+      "floor_released": "2023-12-13",
+      "known_latest": "1.43.51",
+      "latest_released": "2026-07-17"
+    },
+    {
+      "provider": "azure",
+      "distribution": "azure-identity",
+      "floor": "1.15",
+      "floor_released": "2023-09-12",
+      "known_latest": "1.25.3",
+      "latest_released": "2026-03-13"
+    },
+    {
+      "provider": "azure",
+      "distribution": "azure-mgmt-resource",
+      "floor": "23.0",
+      "floor_released": "2023-02-22",
+      "known_latest": "26.0.0",
+      "latest_released": "2026-06-24"
+    },
+    {
+      "provider": "gcp",
+      "distribution": "google-cloud-resource-manager",
+      "floor": "1.12",
+      "floor_released": "2024-02-01",
+      "known_latest": "1.18.0",
+      "latest_released": "2026-06-22"
+    },
+    {
+      "provider": "snowflake",
+      "distribution": "snowflake-connector-python",
+      "floor": "3.6",
+      "floor_released": "2023-12-07",
+      "known_latest": "4.7.1",
+      "latest_released": "2026-07-15"
+    }
+  ]
+}

@@ -185,6 +185,7 @@ def _configure_analytics_backend(
     analytics_buffered: bool,
     analytics_flush_interval: float,
     analytics_max_batch: int,
+    analytics_max_queue: int,
 ) -> tuple[str, str | None]:
     """Resolve and export the requested analytics backend contract."""
     resolved_backend = (analytics_backend or "").strip().lower()
@@ -204,6 +205,7 @@ def _configure_analytics_backend(
     os.environ["AGENT_BOM_CLICKHOUSE_BUFFERED"] = "1" if analytics_buffered else "0"
     os.environ["AGENT_BOM_CLICKHOUSE_FLUSH_INTERVAL"] = f"{analytics_flush_interval:.3f}"
     os.environ["AGENT_BOM_CLICKHOUSE_MAX_BATCH"] = str(max(1, analytics_max_batch))
+    os.environ["AGENT_BOM_CLICKHOUSE_MAX_QUEUE"] = str(max(1, analytics_max_queue))
     return resolved_backend, resolved_url
 
 
@@ -420,6 +422,7 @@ def _analytics_summary_rows(
     analytics_buffered: bool,
     analytics_flush_interval: float,
     analytics_max_batch: int,
+    analytics_max_queue: int,
 ) -> list[tuple[str, str]]:
     """Describe analytics mode in one or two aligned rows."""
     if resolved_backend != "clickhouse":
@@ -428,7 +431,8 @@ def _analytics_summary_rows(
     return [
         (
             "Analytics",
-            f"ClickHouse ({mode}, batch={max(1, analytics_max_batch)}, flush={analytics_flush_interval:.2f}s)",
+            f"ClickHouse ({mode}, batch={max(1, analytics_max_batch)}, queue={max(1, analytics_max_queue)}, "
+            f"flush={analytics_flush_interval:.2f}s)",
         ),
         ("Analytics URL", resolved_url or "(unset)"),
     ]
@@ -518,6 +522,14 @@ def _analytics_summary_rows(
     help="Maximum rows to flush per ClickHouse batch.",
 )
 @click.option(
+    "--analytics-max-queue",
+    default=10_000,
+    show_default=True,
+    type=int,
+    metavar="ENTRIES",
+    help="Maximum buffered ClickHouse entries before oldest evidence is dropped.",
+)
+@click.option(
     "--demo-estate",
     is_flag=True,
     default=False,
@@ -540,6 +552,7 @@ def serve_cmd(
     analytics_buffered: bool,
     analytics_flush_interval: float,
     analytics_max_batch: int,
+    analytics_max_queue: int,
     demo_estate: bool,
 ):
     """Start the API server and serve the dashboard when UI assets are built.
@@ -585,6 +598,7 @@ def serve_cmd(
         analytics_buffered=analytics_buffered,
         analytics_flush_interval=analytics_flush_interval,
         analytics_max_batch=analytics_max_batch,
+        analytics_max_queue=analytics_max_queue,
     )
 
     _enforce_auth_defaults("serve", host, api_key, allow_insecure_no_auth)
@@ -640,6 +654,7 @@ def serve_cmd(
             analytics_buffered=analytics_buffered,
             analytics_flush_interval=analytics_flush_interval,
             analytics_max_batch=analytics_max_batch,
+            analytics_max_queue=analytics_max_queue,
         ),
     ]
     _emit_runtime_summary("agent-bom serve", rows)
@@ -772,6 +787,14 @@ def serve_cmd(
     help="Maximum rows to flush per ClickHouse batch.",
 )
 @click.option(
+    "--analytics-max-queue",
+    default=10_000,
+    show_default=True,
+    type=int,
+    metavar="ENTRIES",
+    help="Maximum buffered ClickHouse entries before oldest evidence is dropped.",
+)
+@click.option(
     "--demo-estate",
     is_flag=True,
     default=False,
@@ -796,6 +819,7 @@ def api_cmd(
     analytics_buffered: bool,
     analytics_flush_interval: float,
     analytics_max_batch: int,
+    analytics_max_queue: int,
     demo_estate: bool,
 ):
     """Start the agent-bom REST API server.
@@ -850,6 +874,7 @@ def api_cmd(
         analytics_buffered=analytics_buffered,
         analytics_flush_interval=analytics_flush_interval,
         analytics_max_batch=analytics_max_batch,
+        analytics_max_queue=analytics_max_queue,
     )
 
     from agent_bom import __version__ as _ver
@@ -902,6 +927,7 @@ def api_cmd(
             analytics_buffered=analytics_buffered,
             analytics_flush_interval=analytics_flush_interval,
             analytics_max_batch=analytics_max_batch,
+            analytics_max_queue=analytics_max_queue,
         ),
     ]
     _emit_runtime_summary("agent-bom API", rows)

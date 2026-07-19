@@ -752,11 +752,21 @@ class BufferedAnalyticsStore:
     ``AGENT_BOM_ANALYTICS_MAX_EVENTS``.
     """
 
-    def __init__(self, store: ClickHouseAnalyticsStore, *, max_batch: int = 200, flush_interval: float = 1.0) -> None:
+    def __init__(
+        self,
+        store: ClickHouseAnalyticsStore,
+        *,
+        max_batch: int = 200,
+        max_queue: int = 10_000,
+        flush_interval: float = 1.0,
+    ) -> None:
         self._store = store
         self._max_batch = max(1, int(max_batch))
+        self._max_queue = max(1, int(max_queue))
         self._flush_interval = max(0.1, float(flush_interval))
-        self._queue: queue.Queue[tuple[str, tuple[Any, ...]]] = queue.Queue()
+        self._queue: queue.Queue[tuple[str, tuple[Any, ...]]] = queue.Queue(maxsize=self._max_queue)
+        self._queue_lock = threading.Lock()
+        self._dropped_count = 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="agent-bom-clickhouse-buffer", daemon=True)
         self._thread.start()
@@ -769,33 +779,58 @@ class BufferedAnalyticsStore:
         *,
         tenant_id: str = "default",
     ) -> None:
-        self._queue.put(("scan", (scan_id, agent_name, vulns, tenant_id)))
+        self._enqueue(("scan", (scan_id, agent_name, vulns, tenant_id)))
 
     def record_event(self, event: dict, *, tenant_id: str = "default") -> None:
-        self._queue.put(("event", (event, tenant_id)))
+        self._enqueue(("event", (event, tenant_id)))
 
     def record_events(self, events: list[dict], *, tenant_id: str = "default") -> None:
         if events:
-            self._queue.put(("event_batch", (events, tenant_id)))
+            self._enqueue(("event_batch", (events, tenant_id)))
 
     def record_posture(self, agent_name: str, snapshot: dict, *, tenant_id: str = "default") -> None:
-        self._queue.put(("posture", (agent_name, snapshot, tenant_id)))
+        self._enqueue(("posture", (agent_name, snapshot, tenant_id)))
 
     def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
-        self._queue.put(("metadata", (metadata, tenant_id)))
+        self._enqueue(("metadata", (metadata, tenant_id)))
 
     def record_fleet_snapshot(self, snapshot: dict) -> None:
-        self._queue.put(("fleet", (snapshot,)))
+        self._enqueue(("fleet", (snapshot,)))
 
     def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
-        self._queue.put(("compliance", (control, tenant_id)))
+        self._enqueue(("compliance", (control, tenant_id)))
 
     def record_cis_benchmark_checks(self, checks: list[dict], *, tenant_id: str = "default") -> None:
         if checks:
-            self._queue.put(("cis_checks", (checks, tenant_id)))
+            self._enqueue(("cis_checks", (checks, tenant_id)))
 
     def record_audit_event(self, event: dict) -> None:
-        self._queue.put(("audit", (event,)))
+        self._enqueue(("audit", (event,)))
+
+    def _enqueue(self, item: tuple[str, tuple[Any, ...]]) -> None:
+        """Keep the newest analytics evidence without blocking producer paths."""
+        with self._queue_lock:
+            if self._queue.full():
+                try:
+                    self._queue.get_nowait()
+                except queue.Empty:  # pragma: no cover - guarded by queue lock
+                    pass
+                else:
+                    self._record_drop(1)
+            self._queue.put_nowait(item)
+
+    def _record_drop(self, count: int) -> None:
+        previous = self._dropped_count
+        self._dropped_count += count
+        # Emit at 1 and powers of two so a sustained outage is visible without
+        # turning the backpressure control itself into a log-amplification path.
+        threshold = 1 << (self._dropped_count.bit_length() - 1)
+        if previous < threshold:
+            logger.warning(
+                "Buffered ClickHouse queue dropped analytics evidence (dropped_total=%d, capacity=%d)",
+                self._dropped_count,
+                self._max_queue,
+            )
 
     def query_vuln_trends(
         self,
@@ -889,12 +924,25 @@ class BufferedAnalyticsStore:
 
     def _drain(self) -> list[tuple[str, tuple[Any, ...]]]:
         drained: list[tuple[str, tuple[Any, ...]]] = []
-        while len(drained) < self._max_batch:
-            try:
-                drained.append(self._queue.get_nowait())
-            except queue.Empty:
-                break
+        with self._queue_lock:
+            while len(drained) < self._max_batch:
+                try:
+                    drained.append(self._queue.get_nowait())
+                except queue.Empty:
+                    break
         return drained
+
+    def _requeue_failed_batch(self, drained: list[tuple[str, tuple[Any, ...]]]) -> None:
+        """Retry what fits without evicting evidence produced during the outage."""
+        with self._queue_lock:
+            requeued = 0
+            for item in drained:
+                try:
+                    self._queue.put_nowait(item)
+                except queue.Full:
+                    self._record_drop(len(drained) - requeued)
+                    break
+                requeued += 1
 
     def _flush_pending(self) -> None:
         drained = self._drain()
@@ -957,9 +1005,8 @@ class BufferedAnalyticsStore:
             if audit_rows:
                 self._store._client.insert_json("audit_events", audit_rows)
         except Exception:
-            logger.warning("Buffered ClickHouse flush failed; re-queuing batch", exc_info=True)
-            for item in drained:
-                self._queue.put(item)
+            logger.warning("Buffered ClickHouse flush failed; retaining batch within bounded queue")
+            self._requeue_failed_batch(drained)
 
     @property
     def flush_interval(self) -> float:
@@ -968,6 +1015,18 @@ class BufferedAnalyticsStore:
     @property
     def max_batch(self) -> int:
         return self._max_batch
+
+    @property
+    def queue_capacity(self) -> int:
+        return self._max_queue
+
+    @property
+    def queue_depth(self) -> int:
+        return self._queue.qsize()
+
+    @property
+    def dropped_count(self) -> int:
+        return self._dropped_count
 
 
 def _escape(value: str) -> str:
@@ -1052,9 +1111,7 @@ def build_scan_ingest_rows(
         "package_count": int(summary.get("total_packages", 0) or 0),
         "vuln_count": int(summary.get("total_vulnerabilities", 0) or 0),
         "critical_count": int(summary.get("critical_findings", 0) or 0),
-        "high_count": sum(
-            1 for item in blast_radius if isinstance(item, dict) and str(item.get("severity", "")).lower() == "high"
-        ),
+        "high_count": sum(1 for item in blast_radius if isinstance(item, dict) and str(item.get("severity", "")).lower() == "high"),
         "posture_grade": str(posture.get("grade", "") or ""),
         "scan_duration_ms": int(report_json.get("scan_duration_ms", 0) or 0),
         "source": source,

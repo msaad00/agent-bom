@@ -15,6 +15,11 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_scim_subject ON api_keys(team_id,scim_su
 CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(team_id,owner);
 CREATE INDEX IF NOT EXISTS idx_audit_log_team_action_ts ON audit_log(team_id,action,timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_team_resource_ts ON audit_log(team_id,resource text_pattern_ops,timestamp DESC);
+-- Hash-chain fork guard (#3665-class): at most one row may link to any predecessor
+-- per tenant, so concurrent appends across uvicorn --workers N cannot fork the chain.
+-- Mirrors PostgresAuditLog._ensure_fork_guard_index; must live in the migration-owned
+-- schema because the runtime store's _init_tables() early-returns when Postgres is authoritative.
+CREATE UNIQUE INDEX IF NOT EXISTS audit_log_team_prevsig_uniq ON audit_log(team_id,prev_signature);
 ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_fleet_canonical_id ON fleet_agents(canonical_id);
 CREATE INDEX IF NOT EXISTS idx_fleet_tenant_state_trust_name ON fleet_agents(tenant_id,lifecycle_state,trust_score DESC,name);

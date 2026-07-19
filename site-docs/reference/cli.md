@@ -306,6 +306,7 @@ Contract](remediate-output.md).
 | `NVD_API_KEY` | Increase NVD rate limit | No |
 | `SNYK_TOKEN` | Optional commercial vuln-API enrichment | No |
 | `AGENT_BOM_CLICKHOUSE_URL` | Analytics storage | No |
+| `AGENT_BOM_CLICKHOUSE_MAX_QUEUE` | Maximum buffered ClickHouse entries before oldest-first shedding (default `10000`) | No |
 | `AWS_PROFILE` | AWS CIS benchmark | Only for `cloud aws --cis` / `cloud scan --provider aws` |
 | `SNOWFLAKE_ACCOUNT` | Snowflake CIS benchmark | Only for `agents --snowflake` CIS posture |
 | `AGENT_BOM_OKTA_DISCOVERY` / `AGENT_BOM_ENTRA_DISCOVERY` | Gate `identity discover` and discovered-NHI credential expiry | Only for NHI discovery |

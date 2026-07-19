@@ -88,6 +88,8 @@ AGENT_BOM_BUDGET_WINDOW_DAYS
 AGENT_BOM_CLICKHOUSE_BUFFERED
 AGENT_BOM_CLICKHOUSE_FLUSH_INTERVAL
 AGENT_BOM_CLICKHOUSE_MAX_BATCH
+# Server/CLI runtime bound for the optional buffered ClickHouse analytics queue.
+AGENT_BOM_CLICKHOUSE_MAX_QUEUE
 # ClickHouse auth secret — short-lived access token / API key, reference-only (no passwords).
 AGENT_BOM_CLICKHOUSE_ACCESS_TOKEN
 AGENT_BOM_CLICKHOUSE_USER

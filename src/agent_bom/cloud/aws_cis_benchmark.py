@@ -253,7 +253,7 @@ def _check_1_1(account_client: Any) -> CISCheckResult:
     """CIS 1.1 — Maintain current contact details."""
     result = CISCheckResult(
         check_id="1.1",
-        title="Maintain current contact details",
+        title="Account contact details kept current",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -278,7 +278,7 @@ def _check_1_2(account_client: Any) -> CISCheckResult:
     """CIS 1.2 — Ensure security contact information is registered."""
     result = CISCheckResult(
         check_id="1.2",
-        title="Ensure security contact information is registered",
+        title="Security contact information registered",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -307,7 +307,7 @@ def _check_1_3() -> CISCheckResult:
     """CIS 1.3 — Ensure security questions are not the only way to authenticate to root."""
     return CISCheckResult(
         check_id="1.3",
-        title="Ensure security questions are not the only way to authenticate to root",
+        title="Root not reliant on security questions alone",
         status=CheckStatus.NOT_APPLICABLE,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -320,7 +320,7 @@ def _check_1_4(iam_client: Any) -> CISCheckResult:
     """CIS 1.4 — Ensure no 'root' user account access key exists."""
     result = CISCheckResult(
         check_id="1.4",
-        title="Ensure no root user account access key exists",
+        title="No root account access keys",
         status=CheckStatus.PASS,
         severity="critical",
         cis_section=_IAM_SECTION,
@@ -341,7 +341,7 @@ def _check_1_5(iam_client: Any) -> CISCheckResult:
     """CIS 1.5 — Ensure MFA is enabled for the root user account."""
     result = CISCheckResult(
         check_id="1.5",
-        title="Ensure MFA is enabled for the root user account",
+        title="Root account MFA enabled",
         status=CheckStatus.PASS,
         severity="critical",
         cis_section=_IAM_SECTION,
@@ -362,7 +362,7 @@ def _check_1_6(iam_client: Any) -> CISCheckResult:
     """CIS 1.6 — Ensure hardware MFA is enabled for the root user account."""
     result = CISCheckResult(
         check_id="1.6",
-        title="Ensure hardware MFA is enabled for the root user account",
+        title="Hardware MFA for root account",
         status=CheckStatus.PASS,
         severity="critical",
         cis_section=_IAM_SECTION,
@@ -390,7 +390,7 @@ def _check_1_7(iam_client: Any) -> CISCheckResult:
     """CIS 1.7 — Eliminate use of the root user for administrative and daily tasks."""
     result = CISCheckResult(
         check_id="1.7",
-        title="Eliminate use of the root user for administrative and daily tasks",
+        title="Root user not used for daily tasks",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_IAM_SECTION,
@@ -445,7 +445,7 @@ def _check_1_8(iam_client: Any) -> CISCheckResult:
     """CIS 1.8 — Ensure IAM password policy requires minimum length >= 14."""
     result = CISCheckResult(
         check_id="1.8",
-        title="Ensure IAM password policy requires minimum length >= 14",
+        title="IAM password policy minimum length >= 14",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -473,7 +473,7 @@ def _check_1_10(iam_client: Any) -> CISCheckResult:
     """CIS 1.10 — Ensure MFA is enabled for all IAM users with console access."""
     result = CISCheckResult(
         check_id="1.10",
-        title="Ensure MFA is enabled for all IAM users with console access",
+        title="MFA on all console-access IAM users",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_IAM_SECTION,
@@ -510,7 +510,7 @@ def _check_1_11(iam_client: Any) -> CISCheckResult:
     """CIS 1.11 — Do not setup access keys during initial user setup."""
     result = CISCheckResult(
         check_id="1.11",
-        title="Do not setup access keys during initial user setup",
+        title="No access keys created at user setup",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -580,7 +580,7 @@ def _check_1_12(iam_client: Any) -> CISCheckResult:
     """CIS 1.12 — Ensure credentials unused for 45 days or greater are disabled."""
     result = CISCheckResult(
         check_id="1.12",
-        title="Ensure credentials unused for 45 days or greater are disabled",
+        title="Credentials unused 45+ days disabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -652,7 +652,7 @@ def _check_1_13(iam_client: Any) -> CISCheckResult:
     """CIS 1.13 — Ensure there is only one active access key available for any single IAM user."""
     result = CISCheckResult(
         check_id="1.13",
-        title="Ensure there is only one active access key available for any single IAM user",
+        title="At most one active access key per IAM user",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -684,7 +684,7 @@ def _check_1_15(iam_client: Any) -> CISCheckResult:
     """CIS 1.15 — Ensure IAM users receive permissions only through groups or roles."""
     result = CISCheckResult(
         check_id="1.15",
-        title="Ensure IAM users receive permissions only through groups or roles",
+        title="IAM permissions granted via groups or roles only",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -716,7 +716,7 @@ def _check_1_9(iam_client: Any) -> CISCheckResult:
     """CIS 1.9 — Ensure IAM password policy prevents password reuse."""
     result = CISCheckResult(
         check_id="1.9",
-        title="Ensure IAM password policy prevents password reuse",
+        title="IAM password policy blocks password reuse",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -744,7 +744,7 @@ def _check_1_14(iam_client: Any) -> CISCheckResult:
     """CIS 1.14 — Ensure access keys are rotated every 90 days or less."""
     result = CISCheckResult(
         check_id="1.14",
-        title="Ensure access keys are rotated every 90 days or less",
+        title="Access keys rotated within 90 days",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -780,7 +780,7 @@ def _check_1_16(iam_client: Any) -> CISCheckResult:
     """CIS 1.16 — Ensure IAM policies with full '*:*' admin privileges are not attached."""
     result = CISCheckResult(
         check_id="1.16",
-        title="Ensure IAM policies with full admin privileges are not attached",
+        title="No full-admin IAM policies attached",
         status=CheckStatus.PASS,
         severity="critical",
         cis_section=_IAM_SECTION,
@@ -850,7 +850,7 @@ def _check_1_17(iam_client: Any) -> CISCheckResult:
     """CIS 1.17 — Ensure a support role has been created to manage incidents with AWS Support."""
     result = CISCheckResult(
         check_id="1.17",
-        title="Ensure a support role has been created to manage incidents with AWS Support",
+        title="Support role exists for AWS Support incidents",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -880,7 +880,7 @@ def _check_1_19(ec2_client: Any) -> CISCheckResult:
     """CIS 1.19 — Ensure that IAM instance roles are used for AWS resource access from instances."""
     result = CISCheckResult(
         check_id="1.19",
-        title="Ensure that IAM instance roles are used for AWS resource access from instances",
+        title="Instance roles used for resource access",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -917,7 +917,7 @@ def _check_1_20(accessanalyzer_client: Any) -> CISCheckResult:
     """CIS 1.20 — Ensure that IAM Access Analyzer is enabled for all regions."""
     result = CISCheckResult(
         check_id="1.20",
-        title="Ensure that IAM Access Analyzer is enabled for all regions",
+        title="IAM Access Analyzer enabled in all regions",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -943,7 +943,7 @@ def _check_1_22(iam_client: Any) -> CISCheckResult:
     """CIS 1.22 — Ensure access to AWSCloudShellFullAccess is restricted."""
     result = CISCheckResult(
         check_id="1.22",
-        title="Ensure access to AWSCloudShellFullAccess is restricted",
+        title="AWSCloudShellFullAccess access restricted",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_IAM_SECTION,
@@ -983,7 +983,7 @@ def _check_2_1_1(s3control_client: Any, account_id: str) -> CISCheckResult:
     """CIS 2.1.1 — Ensure S3 account-level public access block is configured."""
     result = CISCheckResult(
         check_id="2.1.1",
-        title="Ensure S3 account-level public access block is configured",
+        title="S3 account-level public access block configured",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_STORAGE_SECTION,
@@ -1012,7 +1012,7 @@ def _check_2_1_2(s3_client: Any) -> CISCheckResult:
     """CIS 2.1.2 — Ensure S3 buckets have server-side encryption enabled."""
     result = CISCheckResult(
         check_id="2.1.2",
-        title="Ensure S3 buckets have server-side encryption enabled",
+        title="S3 bucket server-side encryption enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_STORAGE_SECTION,
@@ -1061,7 +1061,7 @@ def _check_2_1_3(s3_client: Any) -> CISCheckResult:
     """CIS 2.1.3 — Ensure MFA Delete is enabled on S3 buckets."""
     result = CISCheckResult(
         check_id="2.1.3",
-        title="Ensure MFA Delete is enabled on S3 buckets",
+        title="S3 bucket MFA Delete enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_STORAGE_SECTION,
@@ -1105,7 +1105,7 @@ def _check_2_1_4(s3_client: Any) -> CISCheckResult:
     """CIS 2.1.4 — Ensure S3 bucket versioning is enabled."""
     result = CISCheckResult(
         check_id="2.1.4",
-        title="Ensure S3 bucket versioning is enabled",
+        title="S3 bucket versioning enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_STORAGE_SECTION,
@@ -1150,7 +1150,7 @@ def _check_2_2_1(ec2_client: Any) -> CISCheckResult:
     """CIS 2.2.1 — Ensure EBS volume encryption is enabled by default."""
     result = CISCheckResult(
         check_id="2.2.1",
-        title="Ensure EBS volume encryption is enabled by default",
+        title="EBS default volume encryption enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_STORAGE_SECTION,
@@ -1175,7 +1175,7 @@ def _check_2_3_1(rds_client: Any) -> CISCheckResult:
     """CIS 2.3.1 — Ensure RDS instances have encryption at rest enabled."""
     result = CISCheckResult(
         check_id="2.3.1",
-        title="Ensure RDS instances have encryption at rest enabled",
+        title="RDS encryption at rest enabled",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_STORAGE_SECTION,
@@ -1204,7 +1204,7 @@ def _check_2_3_2(rds_client: Any) -> CISCheckResult:
     """CIS 2.3.2 — Ensure auto minor version upgrade is enabled for RDS instances."""
     result = CISCheckResult(
         check_id="2.3.2",
-        title="Ensure auto minor version upgrade is enabled for RDS instances",
+        title="RDS auto minor version upgrade enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_STORAGE_SECTION,
@@ -1233,7 +1233,7 @@ def _check_2_4_1(kms_client: Any) -> CISCheckResult:
     """CIS 2.4.1 — Ensure rotation is enabled for customer-managed KMS keys."""
     result = CISCheckResult(
         check_id="2.4.1",
-        title="Ensure rotation is enabled for customer-managed KMS keys",
+        title="Customer-managed KMS key rotation enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_STORAGE_SECTION,
@@ -1297,7 +1297,7 @@ def _check_3_1(cloudtrail_client: Any) -> CISCheckResult:
     """CIS 3.1 — Ensure CloudTrail is enabled in all regions."""
     result = CISCheckResult(
         check_id="3.1",
-        title="Ensure CloudTrail is enabled in all regions",
+        title="CloudTrail enabled in all regions",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_LOGGING_SECTION,
@@ -1334,7 +1334,7 @@ def _check_3_2(cloudtrail_client: Any) -> CISCheckResult:
     """CIS 3.2 — Ensure CloudTrail log file validation is enabled."""
     result = CISCheckResult(
         check_id="3.2",
-        title="Ensure CloudTrail log file validation is enabled",
+        title="CloudTrail log file validation enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_LOGGING_SECTION,
@@ -1360,7 +1360,7 @@ def _check_3_4(cloudtrail_client: Any) -> CISCheckResult:
     """CIS 3.4 — Ensure CloudTrail trails are integrated with CloudWatch Logs."""
     result = CISCheckResult(
         check_id="3.4",
-        title="Ensure CloudTrail trails are integrated with CloudWatch Logs",
+        title="CloudTrail integrated with CloudWatch Logs",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_LOGGING_SECTION,
@@ -1388,7 +1388,7 @@ def _check_3_5(cloudtrail_client: Any) -> CISCheckResult:
     # Full Config check requires config:DescribeConfigurationRecorders.
     result = CISCheckResult(
         check_id="3.5",
-        title="Ensure CloudTrail records management events in all regions",
+        title="CloudTrail records management events in all regions",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_LOGGING_SECTION,
@@ -1433,7 +1433,7 @@ def _check_3_6(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
     """CIS 3.6 — Ensure S3 bucket access logging is enabled on the CloudTrail S3 bucket."""
     result = CISCheckResult(
         check_id="3.6",
-        title="Ensure S3 bucket access logging is enabled on the CloudTrail S3 bucket",
+        title="Access logging enabled on CloudTrail S3 bucket",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_LOGGING_SECTION,
@@ -1481,7 +1481,7 @@ def _check_3_3(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
     """CIS 3.3 — Ensure CloudTrail S3 bucket is not publicly accessible."""
     result = CISCheckResult(
         check_id="3.3",
-        title="Ensure CloudTrail S3 bucket is not publicly accessible",
+        title="CloudTrail S3 bucket not publicly accessible",
         status=CheckStatus.PASS,
         severity="critical",
         cis_section=_LOGGING_SECTION,
@@ -1544,7 +1544,7 @@ def _check_3_7(cloudtrail_client: Any) -> CISCheckResult:
     """CIS 3.7 — Ensure CloudTrail logs are encrypted with KMS CMK."""
     result = CISCheckResult(
         check_id="3.7",
-        title="Ensure CloudTrail logs are encrypted with KMS CMK",
+        title="CloudTrail logs encrypted with KMS CMK",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_LOGGING_SECTION,
@@ -1572,7 +1572,7 @@ def _check_3_9(ec2_client: Any) -> CISCheckResult:
     """CIS 3.9 — Ensure VPC flow logging is enabled in all VPCs."""
     result = CISCheckResult(
         check_id="3.9",
-        title="Ensure VPC flow logging is enabled in all VPCs",
+        title="VPC flow logging enabled in all VPCs",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_LOGGING_SECTION,
@@ -1607,7 +1607,7 @@ def _check_3_10(cloudtrail_client: Any) -> CISCheckResult:
     """CIS 3.10 — Ensure Object-level logging for write events is enabled for S3 buckets."""
     result = CISCheckResult(
         check_id="3.10",
-        title="Ensure Object-level logging for write events is enabled for S3 buckets",
+        title="S3 object-level write-event logging enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_LOGGING_SECTION,
@@ -1667,7 +1667,7 @@ def _check_3_11(cloudtrail_client: Any) -> CISCheckResult:
     """CIS 3.11 — Ensure Object-level logging for read events is enabled for S3 buckets."""
     result = CISCheckResult(
         check_id="3.11",
-        title="Ensure Object-level logging for read events is enabled for S3 buckets",
+        title="S3 object-level read-event logging enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_LOGGING_SECTION,
@@ -1732,7 +1732,7 @@ def _check_4_3(logs_client: Any) -> CISCheckResult:
     """CIS 4.3 — Ensure a metric filter and alarm exist for root account usage."""
     result = CISCheckResult(
         check_id="4.3",
-        title="Ensure a metric filter and alarm exist for root account usage",
+        title="Metric filter and alarm for root account usage",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_MONITORING_SECTION,
@@ -1774,7 +1774,7 @@ def _check_4_4(logs_client: Any) -> CISCheckResult:
     """CIS 4.4 — Ensure a metric filter and alarm exist for IAM policy changes."""
     result = CISCheckResult(
         check_id="4.4",
-        title="Ensure a metric filter and alarm exist for IAM policy changes",
+        title="Metric filter and alarm for IAM policy changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -1828,7 +1828,7 @@ def _check_4_5(logs_client: Any, cloudtrail_client: Any) -> CISCheckResult:
     """CIS 4.5 — Ensure a metric filter and alarm exist for CloudTrail config changes."""
     result = CISCheckResult(
         check_id="4.5",
-        title="Ensure a metric filter and alarm exist for CloudTrail config changes",
+        title="Metric filter and alarm for CloudTrail config changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -1881,7 +1881,7 @@ def _check_4_1(logs_client: Any) -> CISCheckResult:
     """CIS 4.1 — Ensure a metric filter and alarm exist for unauthorized API calls."""
     result = CISCheckResult(
         check_id="4.1",
-        title="Ensure a metric filter and alarm exist for unauthorized API calls",
+        title="Metric filter and alarm for unauthorized API calls",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -1915,7 +1915,7 @@ def _check_4_2(logs_client: Any) -> CISCheckResult:
     """CIS 4.2 — Ensure a metric filter and alarm exist for console sign-in without MFA."""
     result = CISCheckResult(
         check_id="4.2",
-        title="Ensure a metric filter and alarm exist for console sign-in without MFA",
+        title="Metric filter and alarm for console sign-in without MFA",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -1949,7 +1949,7 @@ def _check_4_6(logs_client: Any) -> CISCheckResult:
     """CIS 4.6 — Ensure a metric filter and alarm exist for console authentication failures."""
     result = CISCheckResult(
         check_id="4.6",
-        title="Ensure a metric filter and alarm exist for console authentication failures",
+        title="Metric filter and alarm for console auth failures",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -1983,7 +1983,7 @@ def _check_4_7(logs_client: Any) -> CISCheckResult:
     """CIS 4.7 — Ensure a metric filter and alarm exist for disabling or scheduled deletion of CMKs."""
     result = CISCheckResult(
         check_id="4.7",
-        title="Ensure a metric filter and alarm exist for disabling or scheduled deletion of CMKs",
+        title="Metric filter and alarm for CMK disable or deletion",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2018,7 +2018,7 @@ def _check_4_8(logs_client: Any) -> CISCheckResult:
     """CIS 4.8 — Ensure a metric filter and alarm exist for S3 bucket policy changes."""
     result = CISCheckResult(
         check_id="4.8",
-        title="Ensure a metric filter and alarm exist for S3 bucket policy changes",
+        title="Metric filter and alarm for S3 bucket policy changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2063,7 +2063,7 @@ def _check_4_9(logs_client: Any) -> CISCheckResult:
     """CIS 4.9 — Ensure a metric filter and alarm exist for AWS Config configuration changes."""
     result = CISCheckResult(
         check_id="4.9",
-        title="Ensure a metric filter and alarm exist for AWS Config configuration changes",
+        title="Metric filter and alarm for AWS Config changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2103,7 +2103,7 @@ def _check_4_10(logs_client: Any) -> CISCheckResult:
     """CIS 4.10 — Ensure a metric filter and alarm exist for security group changes."""
     result = CISCheckResult(
         check_id="4.10",
-        title="Ensure a metric filter and alarm exist for security group changes",
+        title="Metric filter and alarm for security group changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2145,7 +2145,7 @@ def _check_4_11(logs_client: Any) -> CISCheckResult:
     """CIS 4.11 — Ensure a metric filter and alarm exist for changes to Network Access Control Lists."""
     result = CISCheckResult(
         check_id="4.11",
-        title="Ensure a metric filter and alarm exist for changes to NACLs",
+        title="Metric filter and alarm for NACL changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2187,7 +2187,7 @@ def _check_4_12(logs_client: Any) -> CISCheckResult:
     """CIS 4.12 — Ensure a metric filter and alarm exist for changes to network gateways."""
     result = CISCheckResult(
         check_id="4.12",
-        title="Ensure a metric filter and alarm exist for changes to network gateways",
+        title="Metric filter and alarm for network gateway changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2229,7 +2229,7 @@ def _check_4_13(logs_client: Any) -> CISCheckResult:
     """CIS 4.13 — Ensure a metric filter and alarm exist for route table changes."""
     result = CISCheckResult(
         check_id="4.13",
-        title="Ensure a metric filter and alarm exist for route table changes",
+        title="Metric filter and alarm for route table changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2272,7 +2272,7 @@ def _check_4_14(logs_client: Any) -> CISCheckResult:
     """CIS 4.14 — Ensure a metric filter and alarm exist for VPC changes."""
     result = CISCheckResult(
         check_id="4.14",
-        title="Ensure a metric filter and alarm exist for VPC changes",
+        title="Metric filter and alarm for VPC changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2319,7 +2319,7 @@ def _check_4_15(logs_client: Any) -> CISCheckResult:
     """CIS 4.15 — Ensure a metric filter and alarm exist for AWS Organizations changes."""
     result = CISCheckResult(
         check_id="4.15",
-        title="Ensure a metric filter and alarm exist for AWS Organizations changes",
+        title="Metric filter and alarm for AWS Organizations changes",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2362,7 +2362,7 @@ def _check_4_16(securityhub_client: Any) -> CISCheckResult:
     """CIS 4.16 — Ensure AWS Security Hub is enabled."""
     result = CISCheckResult(
         check_id="4.16",
-        title="Ensure AWS Security Hub is enabled",
+        title="AWS Security Hub enabled",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -2400,7 +2400,7 @@ def _check_5_2(ec2_client: Any) -> CISCheckResult:
     """CIS 5.2 — Ensure no security groups allow ingress from 0.0.0.0/0 to remote admin ports."""
     result = CISCheckResult(
         check_id="5.2",
-        title="Ensure no security groups allow unrestricted ingress to admin ports (22, 3389)",
+        title="No unrestricted ingress to admin ports (22, 3389)",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_NETWORKING_SECTION,
@@ -2467,7 +2467,7 @@ def _check_5_3(ec2_client: Any) -> CISCheckResult:
     """CIS 5.3 — Ensure the default security group of every VPC restricts all traffic."""
     result = CISCheckResult(
         check_id="5.3",
-        title="Ensure the default security group of every VPC restricts all traffic",
+        title="Default security group restricts all traffic",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_NETWORKING_SECTION,
@@ -2499,7 +2499,7 @@ def _check_5_5(ec2_client: Any) -> CISCheckResult:
     """CIS 5.5 — Ensure no security groups allow ingress from 0.0.0.0/0 or ::/0 to all ports."""
     result = CISCheckResult(
         check_id="5.5",
-        title="Ensure no security groups allow ingress from 0.0.0.0/0 or ::/0 to all ports",
+        title="No security group allows all-ports ingress from any IP",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_NETWORKING_SECTION,
@@ -2546,7 +2546,7 @@ def _check_5_6(ec2_client: Any) -> CISCheckResult:
     """CIS 5.6 — Ensure VPC flow logging is enabled in all VPCs."""
     result = CISCheckResult(
         check_id="5.6",
-        title="Ensure VPC flow logging is enabled in all VPCs",
+        title="VPC flow logging enabled in all VPCs",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_NETWORKING_SECTION,
@@ -2581,7 +2581,7 @@ def _check_5_1(ec2_client: Any) -> CISCheckResult:
     """CIS 5.1 — Ensure no Network ACLs allow ingress from 0.0.0.0/0 to remote admin ports."""
     result = CISCheckResult(
         check_id="5.1",
-        title="Ensure no Network ACLs allow unrestricted ingress to admin ports",
+        title="No NACL allows unrestricted ingress to admin ports",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_NETWORKING_SECTION,
@@ -2636,7 +2636,7 @@ def _check_5_4(ec2_client: Any) -> CISCheckResult:
     """CIS 5.4 — Ensure routing tables for VPC peering are least-privilege."""
     result = CISCheckResult(
         check_id="5.4",
-        title="Ensure routing tables for VPC peering are least-privilege",
+        title="VPC peering route tables least-privilege",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_NETWORKING_SECTION,

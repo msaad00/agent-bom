@@ -34,8 +34,15 @@ evidencing_checks, ...)}``. It is populated from the vendored data in
 * ``iso-27001`` / ``soc2`` / ``cis`` are **reference-only** stubs
   (``reference_only=True``): the control **ID** is the fact, but the ``title``
   is ``None`` or agent-bom's own short descriptor — never the copyrighted
-  official ISO / AICPA / CIS title, none of which are vendored anywhere in this
-  tree.
+  official ISO / AICPA / CIS title. This own-descriptor rule holds for the
+  control titles in **both** directions of CIS: the compliance-catalog ``cis``
+  (CIS Controls v8) entries here, and the cloud CIS Foundations Benchmark checks
+  in ``agent_bom.cloud.{aws,gcp,azure,snowflake}_cis_benchmark`` — the ``title``
+  agent-bom assigns to each of those checks is its own concise descriptor keyed
+  to the factual CIS check ID, not the verbatim official (copyrighted) CIS
+  Foundations Benchmark title. The control inventory digest
+  (``benchmark_provenance``) is likewise derived from control IDs only, never
+  from title text.
 
 ``control_spec()`` is the read seam. PR3 curates ``evidencing_checks`` for
 ``nist-800-53`` from two VENDOR-ASSERTED, in-repo sources: the CWE -> NIST

@@ -49,6 +49,27 @@ def test_control_inventory_derives_counts_from_registries():
         assert inv.inventory_digest
 
 
+def test_kubernetes_benchmark_provenance_pins_version_and_withholds_coverage():
+    # KSPM reuses the shared provenance model. The CIS Kubernetes Benchmark is
+    # pinned by name/version/source with the same honesty contract as the cloud
+    # entries: referenced by identifier only, no vendored catalog, coverage withheld.
+    prov = bp.kubernetes_benchmark_provenance()
+    assert prov.provider == "kubernetes"
+    assert prov.benchmark_name == "CIS Kubernetes Benchmark"
+    assert prov.benchmark_type == "cis"
+    assert prov.benchmark_version  # pinned, not a placeholder
+    dt.date.fromisoformat(prov.retrieved_at)
+    assert prov.source_url.startswith("https://")
+    assert prov.license_note
+    assert prov.access_mode == "reference_url_only"
+    assert prov.catalog_repository_provenance is False
+    assert prov.source_digest is None
+    assert prov.official_control_count is None
+    # KSPM stays out of the cloud check-registry drift gate.
+    assert "kubernetes" not in bp.REGISTRY_SPECS
+    assert "kubernetes" not in bp.BENCHMARK_PROVENANCE
+
+
 def test_coverage_percentage_withheld_when_denominator_not_verifiable():
     # Every currently-supported benchmark lacks a repository-provenanced official
     # denominator (CIS content is license-restricted), so no percentage is emitted.

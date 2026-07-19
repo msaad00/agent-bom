@@ -9,6 +9,7 @@ Requires ``pip install 'agent-bom[postgres]'``.
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING, cast
 
 from agent_bom.api.postgres_common import (
     _ensure_tenant_rls,
@@ -20,6 +21,14 @@ from agent_bom.api.postgres_common import (
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.api.store import _require_tenant_scope
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from psycopg import Connection
+    from psycopg_pool import ConnectionPool
+
+    from .server import ScanJob
+
 _JOB_TTL_SECONDS = 3600
 
 
@@ -28,7 +37,7 @@ class PostgresJobStore:
 
     retains_job_objects_in_memory = False
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -169,7 +178,7 @@ class PostgresJobStore:
             _ensure_tenant_rls(conn, "cis_benchmark_checks", "team_id")
             conn.commit()
 
-    def put(self, job) -> None:
+    def put(self, job: ScanJob) -> None:
         data = job.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             # scan_jobs.team_id references the teams registry (FK root) in the
@@ -218,7 +227,7 @@ class PostgresJobStore:
             self._replace_cis_checks(conn, job)
             conn.commit()
 
-    def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False):
+    def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         from .server import ScanJob
 
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.get()")
@@ -246,7 +255,7 @@ class PostgresJobStore:
                     (job_id, tenant_id),
                 )
             conn.commit()
-            return cursor.rowcount > 0
+            return cast(int, cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list:
         from .server import ScanJob
@@ -465,7 +474,7 @@ class PostgresJobStore:
                 (ttl_seconds,),
             )
             conn.commit()
-            return cursor.rowcount
+            return cast(int, cursor.rowcount)
 
     # ── Distributed dispatch queue ────────────────────────────────────────
     # All lease timing uses the database clock (now()) rather than per-node
@@ -475,7 +484,7 @@ class PostgresJobStore:
     _NOW_ISO = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
     _LEASE_ISO = "to_char(now() AT TIME ZONE 'UTC' + (%s * INTERVAL '1 second'), 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 
-    def enqueue_for_dispatch(self, job) -> None:
+    def enqueue_for_dispatch(self, job: ScanJob) -> None:
         """Register a persisted job in the shared queue for work-stealing."""
         with self._pool.connection() as conn:
             conn.execute(
@@ -486,7 +495,7 @@ class PostgresJobStore:
             )
             conn.commit()
 
-    def claim_next(self, worker_id: str, lease_seconds: int):
+    def claim_next(self, worker_id: str, lease_seconds: int) -> ScanJob | None:
         """Atomically claim the oldest claimable job and return its full ScanJob.
 
         Claims a ``pending`` row, or a ``running`` row whose lease has expired
@@ -524,7 +533,7 @@ class PostgresJobStore:
         finally:
             reset_current_tenant(token)
 
-    def renew_leases(self, job_ids, lease_seconds: int) -> None:
+    def renew_leases(self, job_ids: Iterable[str], lease_seconds: int) -> None:
         """Extend the lease on the given in-flight jobs (heartbeat)."""
         ids = [j for j in job_ids]
         if not ids:
@@ -555,7 +564,7 @@ class PostgresJobStore:
                       AND lease_expires_at < {self._NOW_ISO}""",  # nosec B608 - fixed fragment
             )
             conn.commit()
-            return cursor.rowcount
+            return cast(int, cursor.rowcount)
 
     def pending_dispatch_count(self) -> int:
         """Number of jobs waiting to be claimed (operator/metrics visibility)."""
@@ -563,7 +572,7 @@ class PostgresJobStore:
             row = conn.execute("SELECT COUNT(*) FROM scan_dispatch_queue WHERE status = 'pending'").fetchone()
             return int(row[0]) if row else 0
 
-    def _replace_cis_checks(self, conn, job) -> None:
+    def _replace_cis_checks(self, conn: Connection, job: ScanJob) -> None:
         result = getattr(job, "result", None)
         if not isinstance(result, dict):
             return

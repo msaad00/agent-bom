@@ -122,7 +122,7 @@ def verify_browser_session_token(token: str) -> dict[str, Any]:
     if not hmac.compare_digest(supplied, expected):
         raise BrowserSessionError("browser session signature is invalid")
     try:
-        payload = json.loads(_b64decode(encoded_payload).decode("utf-8"))
+        payload: dict[str, Any] = json.loads(_b64decode(encoded_payload).decode("utf-8"))
     except Exception as exc:  # noqa: BLE001
         raise BrowserSessionError("browser session payload is invalid") from exc
     exp = int(payload.get("exp") or 0)

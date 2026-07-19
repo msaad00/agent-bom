@@ -14,13 +14,16 @@ offload, mirroring the read path) around a single shared body,
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
-from typing import Any
+from typing import Any, TypeVar
 
 import anyio.to_thread
 
+_T = TypeVar("_T")
 
-async def hub_store_call(fn, /, *args, **kwargs):
+
+async def hub_store_call(fn: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
     """Run blocking Compliance-Hub store writes off the event loop.
 
     The ingest paths call synchronous psycopg (``hub_store.add`` /

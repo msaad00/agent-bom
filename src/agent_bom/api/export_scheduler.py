@@ -27,6 +27,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from agent_bom.api.export_destination_store import (
+    ExportDestinationRecord,
     ExportDestinationStore,
     get_export_destination_store,
 )
@@ -118,7 +119,7 @@ def _decrypt_secret(secret_encrypted: str) -> str | None:
     return decrypt_secret(secret_encrypted)
 
 
-def _mark_destination(store: ExportDestinationStore, record, status: str, detail: str) -> None:
+def _mark_destination(store: ExportDestinationStore, record: ExportDestinationRecord, status: str, detail: str) -> None:
     record.status = status
     record.status_detail = detail
     record.last_run_at = _now().isoformat()

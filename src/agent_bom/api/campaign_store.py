@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
-from typing import Any, List, Protocol
+from typing import Any, List, Protocol, cast
 
 from agent_bom.api.durable_store import select_backend, sqlite_path
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
@@ -190,7 +190,7 @@ class SQLiteCampaignStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        return cast(sqlite3.Connection, self._local.conn)
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "risk_campaign_workflows")

@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, cast
 
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+
+if TYPE_CHECKING:
+    from psycopg_pool import ConnectionPool
+
+    from .models import CredentialRefRecord, SourceRecord
+    from .policy_store import GatewayPolicy, PolicyAuditEntry
+    from .schedule_store import ScanSchedule
 
 
 class PostgresPolicyStore:
@@ -22,7 +30,7 @@ class PostgresPolicyStore:
     the two backends persist and read back the same logical record.
     """
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -84,7 +92,7 @@ class PostgresPolicyStore:
             _ensure_tenant_rls(conn, "policy_audit_log", "team_id")
             conn.commit()
 
-    def put_policy(self, policy) -> None:
+    def put_policy(self, policy: GatewayPolicy) -> None:
         data = policy.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
@@ -94,7 +102,7 @@ class PostgresPolicyStore:
             )
             conn.commit()
 
-    def get_policy(self, policy_id: str, tenant_id: str | None = None):
+    def get_policy(self, policy_id: str, tenant_id: str | None = None) -> GatewayPolicy | None:
         from .policy_store import GatewayPolicy
 
         sql = "SELECT data FROM gateway_policies WHERE policy_id = %s"
@@ -118,7 +126,7 @@ class PostgresPolicyStore:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(sql, params)
             conn.commit()
-            return cursor.rowcount > 0
+            return cast(int, cursor.rowcount) > 0
 
     def list_policies(self, tenant_id: str | None = None, enabled: bool | None = None, mode: str | None = None) -> list:
         from .policy_store import GatewayPolicy
@@ -156,7 +164,7 @@ class PostgresPolicyStore:
             results.append(p)
         return results
 
-    def put_audit_entry(self, entry) -> None:
+    def put_audit_entry(self, entry: PolicyAuditEntry) -> None:
         data = entry.model_dump_json() if hasattr(entry, "model_dump_json") else json.dumps(entry)
         team_id = getattr(entry, "tenant_id", "default")
         # Persist the caller-supplied timestamp (the moment the policy decision
@@ -225,7 +233,7 @@ class PostgresPolicyStore:
 class PostgresScheduleStore:
     """PostgreSQL-backed recurring scan schedule persistence."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -258,7 +266,7 @@ class PostgresScheduleStore:
             _ensure_tenant_rls(conn, "scan_schedules", "tenant_id")
             conn.commit()
 
-    def put(self, schedule) -> None:
+    def put(self, schedule: ScanSchedule) -> None:
         data = schedule.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
@@ -273,7 +281,7 @@ class PostgresScheduleStore:
             )
             conn.commit()
 
-    def get(self, schedule_id: str, tenant_id: str | None = None):
+    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None:
         from .schedule_store import ScanSchedule
 
         with _tenant_connection(self._pool) as conn:
@@ -299,7 +307,7 @@ class PostgresScheduleStore:
                     (schedule_id, tenant_id),
                 )
             conn.commit()
-            return cursor.rowcount > 0
+            return cast(int, cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list:
         from .schedule_store import ScanSchedule
@@ -328,7 +336,7 @@ class PostgresScheduleStore:
 class PostgresSourceStore:
     """PostgreSQL-backed hosted product source registry."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -369,7 +377,7 @@ class PostgresSourceStore:
             _ensure_tenant_rls(conn, "control_plane_sources", "tenant_id")
             conn.commit()
 
-    def put(self, source) -> None:
+    def put(self, source: SourceRecord) -> None:
         data = source.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
@@ -384,7 +392,7 @@ class PostgresSourceStore:
             )
             conn.commit()
 
-    def get(self, source_id: str):
+    def get(self, source_id: str) -> SourceRecord | None:
         from .models import SourceRecord
 
         with _tenant_connection(self._pool) as conn:
@@ -398,7 +406,7 @@ class PostgresSourceStore:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute("DELETE FROM control_plane_sources WHERE source_id = %s", (source_id,))
             conn.commit()
-            return cursor.rowcount > 0
+            return cast(int, cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list:
         from .models import SourceRecord
@@ -419,7 +427,7 @@ class PostgresSourceStore:
 class PostgresCredentialRefStore:
     """PostgreSQL-backed credential reference registry."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -458,7 +466,7 @@ class PostgresCredentialRefStore:
             _ensure_tenant_rls(conn, "credential_refs", "tenant_id")
             conn.commit()
 
-    def put(self, credential) -> None:
+    def put(self, credential: CredentialRefRecord) -> None:
         data = credential.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
@@ -479,7 +487,7 @@ class PostgresCredentialRefStore:
             )
             conn.commit()
 
-    def get(self, credential_ref_id: str, *, tenant_id: str):
+    def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None:
         from .models import CredentialRefRecord
 
         with _tenant_connection(self._pool) as conn:
@@ -499,7 +507,7 @@ class PostgresCredentialRefStore:
                 (credential_ref_id, tenant_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return cast(int, cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list:
         from .models import CredentialRefRecord

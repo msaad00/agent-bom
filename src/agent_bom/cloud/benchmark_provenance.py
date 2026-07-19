@@ -96,24 +96,19 @@ REGISTRY_SPECS: Final[dict[str, tuple[str, tuple[str, ...], str]]] = {
 MANUAL_CONTROL_IDS: Final[dict[str, tuple[str, ...]]] = {
     "aws": ("1.3",),
     "gcp": ("1.2", "1.3"),
+    # Azure 1.x identity controls now evaluated from read-only Microsoft Graph
+    # v1.0 reads (Conditional Access, authorization policy, security defaults,
+    # access reviews) are classified automated. The residual manual set is
+    # limited to controls whose signal is genuinely not exposed by a stable
+    # Graph v1.0 read API (legacy MFA remember-device 1.10, PIM privileged-role
+    # review 1.16, admin-portal restriction 1.17, password-hash-sync 1.19,
+    # self-service password reset 1.20) — kept honestly manual rather than faked.
     "azure": (
-        "1.3",
-        "1.4",
-        "1.6",
-        "1.8",
-        "1.9",
         "1.10",
-        "1.11",
-        "1.12",
-        "1.13",
-        "1.14",
         "1.16",
         "1.17",
-        "1.18",
         "1.19",
         "1.20",
-        "1.21",
-        "1.22",
     ),
     "snowflake": (),
     "databricks": (),

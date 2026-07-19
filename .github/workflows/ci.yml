@@ -830,6 +830,37 @@ jobs:
           print("OK")
           PYEOF
 
+  sdk-import-smoke:
+    name: Extra-gated SDK import smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    needs: changes
+    # Cloud/AI SDKs live behind optional extras and are imported lazily inside
+    # try/except, so a newer major that MOVES or RENAMES a symbol never trips
+    # the normal Test job (which installs none of the cloud extras) — CI stays
+    # green while a fresh install loses that discovery path at runtime. Install
+    # the cloud extras here and actually execute every extra-gated import line.
+    if: always() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true')
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.13'
+
+      - name: Install cloud extras
+        run: uv sync --frozen --extra dev --extra aws --extra azure --extra gcp
+
+      - name: Run extra-gated SDK import smoke
+        # Extras this job does not install (databricks/snowflake/mcp/…) are
+        # skipped precisely (find_spec on the gated sub-namespace, not the shared
+        # top-level namespace package); installed ones execute so a moved/renamed
+        # symbol fails here instead of on a fresh customer install.
+        run: |
+          uv run pytest tests/test_extra_gated_sdk_imports.py tests/test_gcp_sdk_coverage.py -q
+
   postgres-integration:
     name: Postgres Integration Contract
     runs-on: ubuntu-latest

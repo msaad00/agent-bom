@@ -101,6 +101,8 @@ all = [
     { name = "fastapi" },
     { name = "google-api-python-client" },
     { name = "google-cloud-aiplatform" },
+    { name = "google-cloud-api-gateway" },
+    { name = "google-cloud-artifact-registry" },
     { name = "google-cloud-asset" },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-compute" },
@@ -108,6 +110,7 @@ all = [
     { name = "google-cloud-functions" },
     { name = "google-cloud-iam" },
     { name = "google-cloud-logging" },
+    { name = "google-cloud-org-policy" },
     { name = "google-cloud-pubsub" },
     { name = "google-cloud-resource-manager" },
     { name = "google-cloud-run" },
@@ -230,6 +233,8 @@ cloud = [
     { name = "databricks-sql-connector" },
     { name = "google-api-python-client" },
     { name = "google-cloud-aiplatform" },
+    { name = "google-cloud-api-gateway" },
+    { name = "google-cloud-artifact-registry" },
     { name = "google-cloud-asset" },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-compute" },
@@ -237,6 +242,7 @@ cloud = [
     { name = "google-cloud-functions" },
     { name = "google-cloud-iam" },
     { name = "google-cloud-logging" },
+    { name = "google-cloud-org-policy" },
     { name = "google-cloud-pubsub" },
     { name = "google-cloud-resource-manager" },
     { name = "google-cloud-run" },
@@ -310,6 +316,8 @@ docs = [
 gcp = [
     { name = "google-api-python-client" },
     { name = "google-cloud-aiplatform" },
+    { name = "google-cloud-api-gateway" },
+    { name = "google-cloud-artifact-registry" },
     { name = "google-cloud-asset" },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-compute" },
@@ -317,6 +325,7 @@ gcp = [
     { name = "google-cloud-functions" },
     { name = "google-cloud-iam" },
     { name = "google-cloud-logging" },
+    { name = "google-cloud-org-policy" },
     { name = "google-cloud-pubsub" },
     { name = "google-cloud-resource-manager" },
     { name = "google-cloud-run" },
@@ -470,6 +479,8 @@ requires-dist = [
     { name = "flask", specifier = ">=3.1.3" },
     { name = "google-api-python-client", marker = "extra == 'gcp'", specifier = ">=2.100" },
     { name = "google-cloud-aiplatform", marker = "extra == 'gcp'", specifier = ">=1.38" },
+    { name = "google-cloud-api-gateway", marker = "extra == 'gcp'", specifier = ">=1.9" },
+    { name = "google-cloud-artifact-registry", marker = "extra == 'gcp'", specifier = ">=1.11" },
     { name = "google-cloud-asset", marker = "extra == 'gcp'", specifier = ">=3.30" },
     { name = "google-cloud-bigquery", marker = "extra == 'gcp'", specifier = ">=3.14" },
     { name = "google-cloud-compute", marker = "extra == 'gcp'", specifier = ">=1.14" },
@@ -477,6 +488,7 @@ requires-dist = [
     { name = "google-cloud-functions", marker = "extra == 'gcp'", specifier = ">=1.16" },
     { name = "google-cloud-iam", marker = "extra == 'gcp'", specifier = ">=2.19" },
     { name = "google-cloud-logging", marker = "extra == 'gcp'", specifier = ">=3.5" },
+    { name = "google-cloud-org-policy", marker = "extra == 'gcp'", specifier = ">=1.11" },
     { name = "google-cloud-pubsub", marker = "extra == 'gcp'", specifier = ">=2.18" },
     { name = "google-cloud-resource-manager", marker = "extra == 'gcp'", specifier = ">=1.12" },
     { name = "google-cloud-run", marker = "extra == 'gcp'", specifier = ">=0.10" },
@@ -2202,6 +2214,22 @@ wheels = [
 ]
 
 [[package]]
+name = "google-cloud-api-gateway"
+version = "1.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e7/35/5c883d0c67ad962ff5a239c1e98c53b302b6b6f46e0c34e800d1e3a2621c/google_cloud_api_gateway-1.16.0.tar.gz", hash = "sha256:a69a59a81c2f666f777d3aa0fef330283c98a6f210d96e452ab576ac0d79574c", size = 94964, upload-time = "2026-06-03T14:52:31.826Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/32/ea33669acc4960efc2775fa46338e3e300ea5bbb8d72c14c59dc53c4c07b/google_cloud_api_gateway-1.16.0-py3-none-any.whl", hash = "sha256:8abe913eba344cd29fa984bb965a6a6345ec56741462512934e09933025a68f1", size = 73693, upload-time = "2026-06-03T14:51:44.645Z" },
+]
+
+[[package]]
 name = "google-cloud-appengine-logging"
 version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2215,6 +2243,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/7f/b9/fcafc8d2dc68975a65cdff74807547cff9b2a7b00e738d3f5ff0bd112867/google_cloud_appengine_logging-1.10.0.tar.gz", hash = "sha256:b5563e76010a36e6adf1cc489620c29ee4fb3b986b006d237e9a061eb0f0abb7", size = 17744, upload-time = "2026-06-03T14:52:40.298Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a5/b3/4eeb9f59c4e7e07e1f08704b6508249eea5760878810014e636026300416/google_cloud_appengine_logging-1.10.0-py3-none-any.whl", hash = "sha256:193675caaf062c41688a3e2c744b73614db82408bc7fb060353b6878d7134492", size = 18143, upload-time = "2026-06-03T14:51:55.174Z" },
+]
+
+[[package]]
+name = "google-cloud-artifact-registry"
+version = "1.22.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "grpc-google-iam-v1" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/af/9c/a78d175a0484c500063696b1b923920392de6e5e4c1bd509210721554242/google_cloud_artifact_registry-1.22.0.tar.gz", hash = "sha256:0e8173a97ae695dfcf02c83277a0fd574e1a39be409da6345b945bebe577ad94", size = 312446, upload-time = "2026-06-03T14:52:43.625Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/3d/a777dee068746bf2c44475221be3d2209a0810f1b811c0cf21b66f488583/google_cloud_artifact_registry-1.22.0-py3-none-any.whl", hash = "sha256:2a595448af4366c016aa61805b7e8f685ab089022a1ebb65bea1eaaae461b37d", size = 250051, upload-time = "2026-06-03T14:51:59.298Z" },
 ]
 
 [[package]]

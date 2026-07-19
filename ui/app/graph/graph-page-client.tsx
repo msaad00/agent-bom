@@ -1240,7 +1240,7 @@ function GraphPageInner() {
     if (currentSearch.get("webgl") === "1") {
       nextParams.set("webgl", "1");
     }
-    if (currentSearch.get("capture") === "1") {
+    if (captureMode) {
       nextParams.set("capture", "1");
     }
     const shareableInvestigation =
@@ -1291,7 +1291,7 @@ function GraphPageInner() {
     // URL shareable without starting an App Router navigation that can cancel
     // in-flight chunks while Playwright is validating the page.
     if (captureMode) {
-      window.history.replaceState(window.history.state, "", url);
+      history.replaceState(history.state, "", url);
       return;
     }
     router.replace(url, { scroll: false });

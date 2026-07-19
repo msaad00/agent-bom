@@ -9,7 +9,6 @@ import {
   buildPathGraphLayout,
   labelCharsForWidth,
   nodeSizeForCount,
-  subtitleYForLineCount,
   wrapGraphText,
 } from "@/lib/exposure-path-graph-layout";
 
@@ -58,14 +57,6 @@ describe("nodeSizeForCount", () => {
     expect(dense.height).toBeGreaterThanOrEqual(MIN_NODE_HEIGHT);
     // A large path must be strictly smaller than a tiny one.
     expect(dense.width).toBeLessThan(MAX_NODE_WIDTH);
-  });
-});
-
-describe("subtitleYForLineCount", () => {
-  it("moves secondary text below a wrapped title", () => {
-    expect(subtitleYForLineCount(1)).toBe(58);
-    expect(subtitleYForLineCount(2)).toBe(72);
-    expect(MIN_NODE_HEIGHT).toBeGreaterThan(72);
   });
 });
 

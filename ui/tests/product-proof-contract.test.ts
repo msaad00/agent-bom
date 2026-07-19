@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const source = fs.readFileSync(path.join(process.cwd(), "scripts", "capture-product-proof.mjs"), "utf8");
 const findingsQueue = fs.readFileSync(path.join(process.cwd(), "components", "findings-queue.tsx"), "utf8");
 const graphPage = fs.readFileSync(path.join(process.cwd(), "app", "graph", "graph-page-client.tsx"), "utf8");
+const exposurePath = fs.readFileSync(path.join(process.cwd(), "components", "exposure-path-command-center.tsx"), "utf8");
 
 describe("product proof capture contract", () => {
   it("uses unmistakably fictional vulnerability identifiers", () => {
@@ -41,9 +42,9 @@ describe("product proof capture contract", () => {
     expect(source).toContain('path.join(UI_ROOT, ".next", "standalone")');
     expect(source).toContain('path.join(UI_ROOT, ".next", "static")');
     expect(source).not.toContain('["run", "dev"');
-    expect(graphPage).toContain('currentSearch.get("capture") === "1"');
+    expect(graphPage).toContain("if (captureMode)");
     expect(graphPage).toContain('nextParams.set("capture", "1")');
-    expect(graphPage).toContain('window.history.replaceState(window.history.state, "", url)');
+    expect(graphPage).toContain('history.replaceState(history.state, "", url)');
   });
 
   it("filters audit proof server-side and waits for identity lifecycle rows", () => {
@@ -52,6 +53,10 @@ describe("product proof capture contract", () => {
     expect(source).toContain('"agent_identity.rotated"');
     expect(source).toContain('"agent_identity.revoked"');
     expect(source).toContain('url.searchParams.get("resource") === "identity"');
+  });
+
+  it("keeps path subtitles below wrapped two-line graph labels", () => {
+    expect(exposurePath).toContain("titleLines.length > 1 ? 72 : 58");
   });
 
   it("mocks the authenticated ticket list used by remediation", () => {

@@ -38,11 +38,6 @@ export function labelCharsForWidth(nodeWidth: number): number {
   return Math.max(12, Math.floor((nodeWidth - 28) / 8));
 }
 
-/** Keep secondary text below a wrapped two-line title instead of overprinting it. */
-export function subtitleYForLineCount(lineCount: number): number {
-  return lineCount > 1 ? 72 : 58;
-}
-
 export type PathGraphNode = ExposurePath["hops"][number] & {
   x: number;
   y: number;
@@ -187,10 +182,9 @@ export function wrapGraphText(value: string, maxLineLength: number, maxLines: nu
     // Prefer a short whole-word line to splitting an entity name. Graph nodes
     // are labels, not prose; preserving identifiers is more important than
     // making both rows the same visual width.
-    // Reject separators near the start of a label (for example `a/very-long`)
-    // because a one-character first line is harder to scan than a clean split.
-    const minimumReadableCut = Math.max(3, Math.floor(maxLineLength * 0.3));
-    const cut = breakpoint + 1 >= minimumReadableCut ? breakpoint + 1 : maxLineLength;
+    // Reject separators near the start (`a/very-long`): a one-character first
+    // line is harder to scan than a clean split.
+    const cut = breakpoint > 3 ? breakpoint + 1 : maxLineLength;
     lines.push(remaining.slice(0, cut).trim());
     remaining = remaining.slice(cut).trim();
   }

@@ -22,7 +22,6 @@ import { pathDisplayTitle, pathFixLabel, type ExposureEntityRole, type ExposureP
 import { GRAPH_ROLE_STYLE } from "@/lib/exposure-path-graph-style";
 import {
   buildPathGraphLayout,
-  subtitleYForLineCount,
   wrapGraphText,
   truncateGraphText,
 } from "@/lib/exposure-path-graph-layout";
@@ -383,7 +382,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
               {node.subtitle ? (
                 <text
                   x="14"
-                  y={subtitleYForLineCount(titleLines.length)}
+                  y={titleLines.length > 1 ? 72 : 58}
                   fill="#94a3b8"
                   fontSize="10"
                   fontFamily="var(--font-sans), system-ui"

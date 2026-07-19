@@ -202,6 +202,16 @@
       "schema": "RotateKeyRequest.json"
     },
     {
+      "doc": "Authenticated, tenant-scoped CWPP runtime workload-evidence ingest batch.",
+      "name": "RuntimeEvidenceIngestRequest",
+      "schema": "RuntimeEvidenceIngestRequest.json"
+    },
+    {
+      "doc": "One raw CWPP runtime/EDR signal in an ingest batch.",
+      "name": "RuntimeEvidenceSignalIn",
+      "schema": "RuntimeEvidenceSignalIn.json"
+    },
+    {
       "doc": "",
       "name": "SAMLLoginRequest",
       "schema": "SAMLLoginRequest.json"

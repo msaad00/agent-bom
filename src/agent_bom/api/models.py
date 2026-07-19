@@ -833,6 +833,36 @@ class SourceUpdate(BaseModel):
     config: dict[str, Any] | None = None
 
 
+class RuntimeEvidenceSignalIn(BaseModel):
+    """One raw CWPP runtime/EDR signal in an ingest batch.
+
+    Tenant/provider/account are NOT taken from the client here — they come from
+    the authenticated source (confused-deputy guard in ``build_runtime_signal``).
+    ``provider``/``account_id`` may be echoed for the source's own bookkeeping but
+    a mismatch against the authenticated source is rejected.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    workload_ref: str
+    signal_type: str
+    dedup_key: str
+    severity: str = "unknown"
+    observed_at: str | None = None
+    title: str = ""
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    provider: str | None = None
+    account_id: str | None = None
+
+
+class RuntimeEvidenceIngestRequest(BaseModel):
+    """Authenticated, tenant-scoped CWPP runtime workload-evidence ingest batch."""
+
+    model_config = ConfigDict(extra="forbid")
+    source_id: str
+    secret: str
+    signals: list[RuntimeEvidenceSignalIn] = Field(default_factory=list, max_length=1000)
+
+
 class CreateKeyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str

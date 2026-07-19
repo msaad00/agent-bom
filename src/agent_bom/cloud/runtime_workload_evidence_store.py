@@ -151,10 +151,17 @@ class SQLiteRuntimeWorkloadEvidenceStore:
                 )
                 """
             )
+            # Match the ``list_for_tenant`` query: WHERE tenant_id = ?
+            # ORDER BY observed_at DESC, dedup_key DESC. The leading tenant
+            # predicate plus the two ORDER BY columns (same direction) lets the
+            # planner satisfy the sort from the index instead of a temp b-tree.
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rwe_tenant_workload_time "
-                "ON runtime_workload_evidence (tenant_id, workload_id, observed_at DESC)"
+                "CREATE INDEX IF NOT EXISTS idx_rwe_tenant_observed_dedup "
+                "ON runtime_workload_evidence (tenant_id, observed_at DESC, dedup_key DESC)"
             )
+            # Drop the stale index that ordered by (tenant_id, workload_id,
+            # observed_at) — unusable for the tenant read's ORDER BY.
+            connection.execute("DROP INDEX IF EXISTS idx_rwe_tenant_workload_time")
 
     def put_batch(self, signals: list[RuntimeWorkloadSignal]) -> int:
         if not signals:
@@ -217,9 +224,16 @@ class PostgresRuntimeWorkloadEvidenceStore:
                 )
                 """  # noqa: S608
             )
+            # Match the ``list_for_tenant`` ORDER BY (observed_at DESC, dedup_key
+            # DESC) under the leading tenant predicate so the read is sargable at
+            # scale instead of a seq-scan + sort.
             conn.execute(
-                f"CREATE INDEX IF NOT EXISTS idx_{self.table}_tenant_time ON {self.table} (tenant_id, workload_id, observed_at DESC)"  # noqa: S608
+                f"CREATE INDEX IF NOT EXISTS idx_{self.table}_tenant_observed_dedup "  # noqa: S608
+                f"ON {self.table} (tenant_id, observed_at DESC, dedup_key DESC)"
             )
+            # Drop the stale (tenant_id, workload_id, observed_at) index that could
+            # not serve that ORDER BY.
+            conn.execute(f"DROP INDEX IF EXISTS idx_{self.table}_tenant_time")  # noqa: S608
             conn.commit()
 
     def put_batch(self, signals: list[RuntimeWorkloadSignal]) -> int:

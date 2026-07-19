@@ -38,12 +38,18 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
+import logging
+import os
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Iterable, Mapping
 
 from agent_bom.canonical_ids import canonical_id
+
+logger = logging.getLogger(__name__)
 
 RUNTIME_EVIDENCE_SCHEMA_VERSION = "agent-bom.cwpp.runtime_workload.evidence.v1"
 
@@ -655,8 +661,97 @@ def enrich_graph_workload_runtime_evidence(graph: Any, index: RuntimeWorkloadEvi
     return sum(1 for node in node_iter if attach_workload_runtime_evidence_to_node(node, index))
 
 
+# ── process-global source registry (for the authenticated ingest door) ───────
+#
+# The ingest route authenticates a source against this registry. Sources are
+# provisioned out-of-band (never per-action): an operator declares them in
+# ``AGENT_BOM_RUNTIME_EVIDENCE_SOURCES`` (a JSON array). The default registry is
+# EMPTY, so with no configured source every ingest attempt fails closed (401) —
+# a door that opens to nobody until an operator explicitly registers a source.
+
+RUNTIME_SOURCES_ENV = "AGENT_BOM_RUNTIME_EVIDENCE_SOURCES"
+
+_default_registry: RuntimeSourceRegistry | None = None
+_registry_lock = threading.Lock()
+
+
+def _source_from_entry(entry: Mapping[str, Any]) -> RuntimeEvidenceSource | None:
+    """Build one source from a config entry, preferring a pre-hashed secret.
+
+    ``secret_hash`` (a 64-char sha256 hex digest) is preferred so the plaintext
+    secret never has to sit in the environment; ``secret`` is accepted as a
+    convenience and hashed on load. A malformed entry is skipped (fail closed),
+    never raised — one bad entry must not sink the whole registry.
+    """
+    secret_hash = str(entry.get("secret_hash") or "").strip().lower()
+    try:
+        if secret_hash:
+            return RuntimeEvidenceSource(
+                source_id=str(entry.get("source_id") or "").strip(),
+                tenant_id=str(entry.get("tenant_id") or "").strip(),
+                provider=str(entry.get("provider") or "").strip().lower(),
+                account_id=str(entry.get("account_id") or "").strip(),
+                kind=str(entry.get("kind") or "").strip().lower(),
+                secret_hash=secret_hash,
+            )
+        return RuntimeEvidenceSource.register(
+            source_id=str(entry.get("source_id") or ""),
+            tenant_id=str(entry.get("tenant_id") or ""),
+            provider=str(entry.get("provider") or ""),
+            account_id=str(entry.get("account_id") or ""),
+            kind=str(entry.get("kind") or ""),
+            secret=str(entry.get("secret") or ""),
+        )
+    except ValueError:
+        logger.warning("skipping malformed runtime evidence source entry")
+        return None
+
+
+def _load_registry_from_env() -> RuntimeSourceRegistry:
+    registry = RuntimeSourceRegistry()
+    raw = os.environ.get(RUNTIME_SOURCES_ENV, "").strip()
+    if not raw:
+        return registry
+    try:
+        entries = json.loads(raw)
+    except ValueError:
+        # Malformed config registers NO source (fail closed), never a crash.
+        logger.warning("%s is not valid JSON; no runtime evidence sources registered", RUNTIME_SOURCES_ENV)
+        return registry
+    if not isinstance(entries, list):
+        return registry
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        source = _source_from_entry(entry)
+        if source is not None:
+            registry.add(source)
+    return registry
+
+
+def get_runtime_source_registry() -> RuntimeSourceRegistry:
+    """Return the process default runtime-evidence source registry.
+
+    Loaded once from ``AGENT_BOM_RUNTIME_EVIDENCE_SOURCES``. Defaults to an empty
+    registry so the ingest door fails closed until an operator provisions a
+    source. Tests can inject one with :func:`set_runtime_source_registry`.
+    """
+    global _default_registry
+    with _registry_lock:
+        if _default_registry is None:
+            _default_registry = _load_registry_from_env()
+        return _default_registry
+
+
+def set_runtime_source_registry(registry: RuntimeSourceRegistry | None) -> None:
+    global _default_registry
+    with _registry_lock:
+        _default_registry = registry
+
+
 __all__ = [
     "DEFAULT_MAX_SIGNAL_AGE_SECONDS",
+    "RUNTIME_SOURCES_ENV",
     "RUNTIME_EVIDENCE_SCHEMA_VERSION",
     "STATE_HAS_ALERT",
     "STATE_HAS_IOC",
@@ -676,7 +771,9 @@ __all__ = [
     "build_runtime_signal",
     "canonical_workload_id",
     "enrich_graph_workload_runtime_evidence",
+    "get_runtime_source_registry",
     "ingest_runtime_signals",
     "no_runtime_signal_summary",
+    "set_runtime_source_registry",
     "workload_runtime_summary",
 ]

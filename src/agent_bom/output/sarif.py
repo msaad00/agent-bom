@@ -638,6 +638,9 @@ def to_sarif(
             (fixed_version is None/empty). Reduces noise in GitHub Security tab
             from CVEs that can't be acted on.
     """
+    from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
+
+    scan_run = effective_scan_run(report)
     rules: list[dict[str, Any]] = []
     results: list[dict[str, Any]] = []
     seen_rule_ids: set[str] = set()
@@ -1014,13 +1017,30 @@ def to_sarif(
             }
         },
         "results": results,
+        "properties": {"scan_outcome": scan_run.outcome.value},
+        "invocations": [
+            {
+                "executionSuccessful": scan_run.outcome is not ScanOutcome.FAILED,
+                "toolExecutionNotifications": [
+                    {
+                        "descriptor": {"id": issue.code},
+                        "level": issue.severity,
+                        "message": {"text": _sanitize_sarif_text("scan issue", issue.message, fallback="Scan execution issue")},
+                        "properties": {
+                            "stage": issue.stage,
+                            "source": issue.source,
+                            "affectsCoverage": issue.affects_coverage,
+                        },
+                    }
+                    for issue in scan_run.issues
+                ],
+            }
+        ],
         **({"automationDetails": {"id": f"agent-bom/{report.scan_id}"}} if report.scan_id else {}),
     }
     trust_assessment = getattr(report, "trust_assessment_data", None)
     if isinstance(trust_assessment, dict) and trust_assessment:
-        run["properties"] = {
-            "trust_assessment": _trust_assessment_sarif_property(trust_assessment),
-        }
+        run["properties"]["trust_assessment"] = _trust_assessment_sarif_property(trust_assessment)
     if taxonomies:
         run["taxonomies"] = taxonomies
         run["tool"]["extensions"] = _taxonomies_as_tool_extensions(taxonomies)

@@ -662,6 +662,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         req = job.request
         agents: list[Any] = []
         warnings_all: list[str] = []
+        coverage_warning_messages: set[str] = set()
         side_effects_enabled = not (req.dry_run or req.no_scan)
         effective_agent_projects = list(req.agent_projects)
         effective_tf_dirs = list(req.tf_dirs)
@@ -743,6 +744,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                         "dynamic_discovery": req.dynamic_discovery,
                     },
                     "warnings": [],
+                    "scan_run": {"outcome": "complete", "issues": [], "warning_count": 0},
                 }
                 job.status = JobStatus.DONE
                 job.completed_at = _now()
@@ -814,7 +816,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                     )
                 )
             except Exception as img_exc:  # noqa: BLE001
-                warnings_all.append(f"Image scan error for {image_ref}: {sanitize_error(img_exc)}")
+                message = f"Image scan error for {image_ref}: {sanitize_error(img_exc)}"
+                warnings_all.append(message)
+                coverage_warning_messages.add(message)
 
         if req.k8s:
             pipeline.update_step("discovery", "Scanning Kubernetes pods...")
@@ -846,7 +850,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                         )
                     )
                 except Exception as img_exc:  # noqa: BLE001
-                    warnings_all.append(f"Kubernetes image scan error for {img}: {sanitize_error(img_exc)}")
+                    message = f"Kubernetes image scan error for {img}: {sanitize_error(img_exc)}"
+                    warnings_all.append(message)
+                    coverage_warning_messages.add(message)
 
         for tf_dir in effective_tf_dirs:
             pipeline.update_step("discovery", f"Scanning Terraform: {tf_dir}")
@@ -928,7 +934,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                 )
                 agents.append(_ext_agent)
             except (OSError, ValueError, _json.JSONDecodeError) as ext_exc:
-                warnings_all.append(f"External scan error: {sanitize_error(ext_exc)}")
+                message = f"External scan error: {sanitize_error(ext_exc)}"
+                warnings_all.append(message)
+                coverage_warning_messages.add(message)
 
         for connector_name in req.connectors:
             pipeline.update_step("discovery", f"Discovering from connector: {connector_name}")
@@ -938,8 +946,11 @@ def _run_scan_sync(job: ScanJob) -> None:
                 con_agents, con_warnings = discover_from_connector(connector_name)
                 agents.extend(con_agents)
                 warnings_all.extend(con_warnings)
+                coverage_warning_messages.update(str(warning) for warning in con_warnings)
             except Exception as con_exc:  # noqa: BLE001
-                warnings_all.append(f"{connector_name} connector error: {con_exc}")
+                message = f"{connector_name} connector error: {sanitize_error(con_exc, generic=True)}"
+                warnings_all.append(message)
+                coverage_warning_messages.add(message)
 
         for fs_path in req.filesystem_paths:
             pipeline.update_step("discovery", f"Scanning filesystem: {fs_path}")
@@ -962,7 +973,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                     )
                     agents.append(fs_agent)
             except Exception as fs_exc:  # noqa: BLE001
-                warnings_all.append(f"Filesystem scan error for {fs_path}: {fs_exc}")
+                message = f"Filesystem scan error: {sanitize_error(fs_exc, generic=True)}"
+                warnings_all.append(message)
+                coverage_warning_messages.add(message)
 
         pipeline.complete_step("discovery", f"Found {len(agents)} agent(s)", {"agents": len(agents)})
 
@@ -987,6 +1000,23 @@ def _run_scan_sync(job: ScanJob) -> None:
             if filtered_count:
                 pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
 
+        from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
+
+        def _build_scan_run(*, has_usable_evidence: bool) -> ScanRun:
+            issues = [
+                ScanIssue(
+                    code="collector_failed" if warning in coverage_warning_messages else "scan_warning",
+                    stage="scanning" if "CVE scanning" in warning else "discovery",
+                    source="api",
+                    message=warning,
+                    severity="error" if warning in coverage_warning_messages else "warning",
+                    affects_coverage=warning in coverage_warning_messages,
+                )
+                for warning in warnings_all
+            ]
+            outcome = ScanOutcome.FAILED if coverage_warning_messages and not has_usable_evidence else ScanOutcome.COMPLETE
+            return ScanRun(outcome=outcome, issues=issues)
+
         if not agents:
             if (
                 skill_audit_data is not None
@@ -1002,7 +1032,13 @@ def _run_scan_sync(job: ScanJob) -> None:
                 from agent_bom.models import AIBOMReport
                 from agent_bom.output import to_json
 
-                report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=job.job_id)
+                report = AIBOMReport(
+                    agents=[],
+                    blast_radii=[],
+                    findings=[],
+                    scan_id=job.job_id,
+                    scan_run=_build_scan_run(has_usable_evidence=True),
+                )
                 if skill_audit_data is not None:
                     report.skill_audit_data = skill_audit_data
                 if iac_findings_data is not None:
@@ -1013,7 +1049,6 @@ def _run_scan_sync(job: ScanJob) -> None:
                 if repo_sast_data is not None:
                     report.sast_data = repo_sast_data
                 report_json = to_json(report)
-                report_json["warnings"] = warnings_all
                 report_json["status"] = "findings_only"
                 with lock:
                     job.result = report_json
@@ -1035,13 +1070,15 @@ def _run_scan_sync(job: ScanJob) -> None:
             pipeline.skip_step("enrichment", "Skipped")
             pipeline.skip_step("analysis", "Skipped")
             pipeline.skip_step("output", "No results")
+            scan_run = _build_scan_run(has_usable_evidence=False)
             job.result = {
                 "status": "no_agents_found",
                 "agents": [],
                 "vulnerabilities": [],
                 "blast_radius": [],
                 "blast_radii": [],
-                "warnings": warnings_all,
+                "warnings": scan_run.warnings,
+                "scan_run": scan_run.to_dict(),
             }
             job.status = JobStatus.DONE
             job.completed_at = _now()
@@ -1092,7 +1129,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                 if req.offline:
                     _logger.warning("Offline scan phase error: %s", safe_scan_error)
                     pipeline.update_step("scanning", f"Offline scan error: {safe_scan_error}")
-                    warnings_all.append(f"Offline CVE scanning failed: {safe_scan_error}")
+                    message = f"Offline CVE scanning failed: {safe_scan_error}"
+                    warnings_all.append(message)
+                    coverage_warning_messages.add(message)
                     blast_radii = []
                 else:
                     # Log but don't crash — return what we have with warning
@@ -1103,7 +1142,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                     except Exception as retry_exc:  # noqa: BLE001
                         _logger.error("Scan retry also failed: %s", sanitize_error(retry_exc))
                         blast_radii = []
-                        warnings_all.append(f"CVE scanning failed: {sanitize_error(retry_exc)}")
+                        message = f"CVE scanning failed: {sanitize_error(retry_exc)}"
+                        warnings_all.append(message)
+                        coverage_warning_messages.add(message)
             total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
             if total_pkgs > 0 and total_vulns == 0 and not blast_radii and not req.offline:
                 warnings_all.append(
@@ -1195,7 +1236,13 @@ def _run_scan_sync(job: ScanJob) -> None:
             report_findings.extend(evaluate_mcp_auth_posture(agents))
         except Exception as mcp_auth_exc:  # noqa: BLE001
             _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_error(mcp_auth_exc))
-        report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=report_findings, scan_id=job.job_id)
+        report = AIBOMReport(
+            agents=agents,
+            blast_radii=blast_radii,
+            findings=report_findings,
+            scan_id=job.job_id,
+            scan_run=_build_scan_run(has_usable_evidence=True),
+        )
         if skill_audit_data is not None:
             report.skill_audit_data = skill_audit_data
         if iac_findings_data is not None:
@@ -1272,7 +1319,6 @@ def _run_scan_sync(job: ScanJob) -> None:
             _logger.warning("Graph-derived findings surfacing skipped: %s", sanitize_error(gderiv_exc))
 
         report_json = to_json(report)
-        report_json["warnings"] = warnings_all
         with lock:
             job.result = report_json
             job.status = JobStatus.DONE
@@ -1360,9 +1406,27 @@ def _run_scan_sync(job: ScanJob) -> None:
                     job.progress.append(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
 
     except Exception as exc:  # noqa: BLE001
+        safe_error = sanitize_error(exc)
         with lock:
             job.status = JobStatus.FAILED
-            job.error = sanitize_error(exc)
+            job.error = safe_error
+            job.result = {
+                "scan_run": {
+                    "outcome": "failed",
+                    "issues": [
+                        {
+                            "code": "scan_failed",
+                            "stage": "pipeline",
+                            "source": "api",
+                            "message": safe_error,
+                            "severity": "error",
+                            "affects_coverage": True,
+                        }
+                    ],
+                    "warning_count": 1,
+                },
+                "warnings": [safe_error],
+            }
         # Mark whichever step was running as failed
         for step_id in PIPELINE_STEPS:
             if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:

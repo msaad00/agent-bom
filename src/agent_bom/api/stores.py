@@ -87,6 +87,9 @@ def _compact_terminal_job(job: ScanJob) -> ScanJob:
         scan_sources = job.result.get("scan_sources")
         if isinstance(scan_sources, list):
             compact_result["scan_sources"] = scan_sources
+        warnings = job.result.get("warnings")
+        if isinstance(warnings, list):
+            compact_result["warnings"] = [str(item) for item in warnings[:3]]
     return job.model_copy(update={"result": compact_result})
 
 

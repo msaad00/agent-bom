@@ -111,6 +111,45 @@ def _normalize_pushed_report(body: PushPayload, *, fallback_scan_id: str) -> dic
             agent["servers"] = sanitized_servers
         normalized_agents.append(agent)
     report["agents"] = normalized_agents
+    from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
+
+    raw_scan_run_value = report.get("scan_run")
+    raw_scan_run: dict[str, Any] = raw_scan_run_value if isinstance(raw_scan_run_value, dict) else {}
+    issues: list[ScanIssue] = []
+    for raw_issue in raw_scan_run.get("issues", []) or []:
+        if not isinstance(raw_issue, dict):
+            continue
+        issues.append(
+            ScanIssue(
+                code=str(raw_issue.get("code") or "scan_issue"),
+                stage=str(raw_issue.get("stage") or "scan"),
+                source=str(raw_issue.get("source") or "push"),
+                message=str(raw_issue.get("message") or "Scan execution issue"),
+                severity="error" if raw_issue.get("severity") == "error" else "warning",
+                affects_coverage=bool(raw_issue.get("affects_coverage", True)),
+            )
+        )
+    existing_messages = {issue.message for issue in issues}
+    for warning in report.get("warnings", []) or []:
+        if isinstance(warning, dict):
+            message = str(warning.get("message") or warning.get("detail") or "Scan warning")
+        else:
+            message = str(warning)
+        issue = ScanIssue(
+            code="legacy_scan_warning",
+            stage="scan",
+            source="push",
+            message=message,
+            affects_coverage=True,
+        )
+        if issue.message not in existing_messages:
+            issues.append(issue)
+            existing_messages.add(issue.message)
+    raw_outcome = str(raw_scan_run.get("outcome") or "complete")
+    outcome = ScanOutcome(raw_outcome)
+    scan_run = ScanRun(outcome=outcome, issues=issues)
+    report["scan_run"] = {**raw_scan_run, **scan_run.to_dict()}
+    report["warnings"] = scan_run.warnings
     return report
 
 
@@ -875,7 +914,12 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
     with tenant_quota_guard(tenant_id, lambda: enforce_retained_jobs_quota(tenant_id)):
         _get_store().put(job)
-    return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
+    return {
+        "job_id": job.job_id,
+        "source_id": body.source_id,
+        "status": "stored",
+        "scan_outcome": job_result["scan_run"]["outcome"],
+    }
 
 
 @router.post("/ocsf/ingest", tags=["observability"], status_code=202)

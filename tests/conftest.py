@@ -186,6 +186,25 @@ def _reset_api_runtime_state() -> None:
         pass
 
 
+def _drain_scan_executor() -> None:
+    # The API scan pipeline runs jobs on a process-global ThreadPoolExecutor and
+    # resolves the full transitive dependency tree of the discovered estate. A
+    # test that submits a scan job (POST /v1/scan, submit_scan_job) and returns
+    # without awaiting completion leaves that worker thread running into later
+    # tests on the same xdist worker. Its allocations then inflate a peak-memory
+    # (tracemalloc) assertion in an unrelated graph test, and its stderr progress
+    # banners corrupt commands whose stdout is parsed as JSON — nondeterministic
+    # order-flakes that a work-stealing distribution surfaces. Drain the executor
+    # so no scan thread outlives the test that started it; get_executor() lazily
+    # recreates a fresh pool on next use.
+    try:
+        from agent_bom.api import pipeline
+
+        pipeline.shutdown_scan_executor(wait=True, cancel_futures=True)
+    except Exception:
+        pass
+
+
 def _reset_proxy_route_state() -> None:
     # The proxy status/alerts route keeps process-global in-memory buffers:
     # a bounded _proxy_alerts deque, its _proxy_alerts_total counter, the latest
@@ -514,6 +533,9 @@ def reset_global_test_state():
 
     yield
 
+    # Drain first: stop any scan worker thread the test left running before we
+    # restore globals it may still be mutating (scanner offline flags, stores).
+    _drain_scan_executor()
     root_logger.handlers[:] = logging_handlers_snapshot
     root_logger.setLevel(logging_level_snapshot)
     _restore_scanner_globals(scanner_offline_snapshot)

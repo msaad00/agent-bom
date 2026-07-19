@@ -31,14 +31,14 @@ import math
 import os
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
@@ -95,12 +95,12 @@ def _api_local_scans_enabled() -> bool:
     return configured.strip().lower() not in _LOCAL_SCAN_DISABLE_VALUES
 
 
-async def _scan_graph_compute_call(fn, /, *args, **kwargs):
+async def _scan_graph_compute_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
     """Run graph rendering/derivation for scan subresources off the event loop."""
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
-async def _ai_scan_call(fn, /, *args, **kwargs):
+async def _ai_scan_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
     """Run blocking dedicated AI-scan work off-loop under shared backpressure."""
     try:
         async with adaptive_backpressure("ai_scan"):
@@ -841,7 +841,7 @@ def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit
 
     graph = build_graph_from_scan_data(result)
 
-    def _render_mermaid(g):
+    def _render_mermaid(g: Any) -> PlainTextResponse:
         if mermaid_limit == 0:
             return PlainTextResponse(
                 to_mermaid(g, max_nodes=None, max_edges=None),
@@ -1050,7 +1050,7 @@ def _job_for_request(request: Request, job_id: str) -> ScanJob:
                 if persisted.child_job_ids:
                     refreshed = refresh_batch_parent(persisted.job_id, tenant_id=tenant_id)
                     return refreshed or persisted
-                return persisted
+                return cast(ScanJob, persisted)
         if in_mem.child_job_ids:
             refreshed = refresh_batch_parent(in_mem.job_id, tenant_id=tenant_id)
             return refreshed or in_mem
@@ -1061,7 +1061,7 @@ def _job_for_request(request: Request, job_id: str) -> ScanJob:
     if job.child_job_ids:
         refreshed = refresh_batch_parent(job.job_id, tenant_id=tenant_id)
         return refreshed or job
-    return job
+    return cast(ScanJob, job)
 
 
 def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -1335,7 +1335,10 @@ async def get_context_graph(request: Request, job_id: str, agent: str | None = N
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
     tenant_id = str(getattr(request.state, "tenant_id", "") or "")
-    return await _scan_graph_compute_call(_context_graph_payload, job.result, agent=agent, scan_id=job.job_id, tenant_id=tenant_id)
+    return cast(
+        dict,
+        await _scan_graph_compute_call(_context_graph_payload, job.result, agent=agent, scan_id=job.job_id, tenant_id=tenant_id),
+    )
 
 
 @router.get("/scan/{job_id}/graph-export", tags=["scan"], response_model=None)
@@ -1367,7 +1370,10 @@ async def get_graph_export(
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
     result = job.result if isinstance(job.result, dict) else {}
-    return await _scan_graph_compute_call(_graph_export_response, result, format=format, mermaid_limit=mermaid_limit)
+    return cast(
+        "dict | str | PlainTextResponse",
+        await _scan_graph_compute_call(_graph_export_response, result, format=format, mermaid_limit=mermaid_limit),
+    )
 
 
 @router.get("/scan/{job_id}/licenses", tags=["scan"])
@@ -1383,7 +1389,7 @@ async def get_licenses(request: Request, job_id: str) -> dict:
 
     # If the scan already computed license_report, return it
     if isinstance(job.result, dict) and job.result.get("license_report"):
-        return job.result["license_report"]
+        return cast(dict, job.result["license_report"])
 
     # Otherwise compute on-the-fly from scan result agents
     from agent_bom.license_policy import evaluate_license_policy as _eval_lic
@@ -1430,7 +1436,7 @@ async def get_vex(request: Request, job_id: str) -> dict:
 
     # Return pre-computed VEX data if available
     if isinstance(job.result, dict) and job.result.get("vex"):
-        return job.result["vex"]
+        return cast(dict, job.result["vex"])
 
     # Otherwise generate on-the-fly from blast_radii
     return {"statements": [], "stats": {"total_statements": 0, "affected": 0, "not_affected": 0, "fixed": 0, "under_investigation": 0}}
@@ -1449,15 +1455,18 @@ async def get_skill_audit(request: Request, job_id: str) -> dict:
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
-    return job.result.get(
-        "skill_audit",
-        {
-            "findings": [],
-            "packages_checked": 0,
-            "servers_checked": 0,
-            "credentials_checked": 0,
-            "passed": True,
-        },
+    return cast(
+        dict,
+        job.result.get(
+            "skill_audit",
+            {
+                "findings": [],
+                "packages_checked": 0,
+                "servers_checked": 0,
+                "credentials_checked": 0,
+                "passed": True,
+            },
+        ),
     )
 
 
@@ -1472,7 +1481,7 @@ async def delete_scan(request: Request, job_id: str) -> None:
 
 
 @router.get("/scan/{job_id}/stream", tags=["scan"])
-async def stream_scan(request: Request, job_id: str):
+async def stream_scan(request: Request, job_id: str) -> Response:
     """Server-Sent Events stream for real-time scan progress.
 
     Connect with EventSource:
@@ -1492,7 +1501,7 @@ async def stream_scan(request: Request, job_id: str):
 
     import json as _json
 
-    async def event_generator():
+    async def event_generator() -> AsyncIterator[dict[str, Any]]:
         sent = 0
         lock = _job_lock(job_id)
         start = time.monotonic()
@@ -1524,7 +1533,7 @@ async def stream_scan(request: Request, job_id: str):
                 break
             await asyncio.sleep(0.25)
 
-    return EventSourceResponse(event_generator())
+    return cast(Response, EventSourceResponse(event_generator()))
 
 
 @router.get("/jobs", tags=["scan"])
@@ -2253,7 +2262,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
             raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
         if cached is not None:
             cached["idempotent_replay"] = True
-            return cached
+            return cast(dict, cached)
 
     # Deterministic batch id so a resend of the same body (even without an
     # Idempotency-Key header) collapses onto one logical batch. Random per-request

@@ -271,7 +271,7 @@ def test_api_pipeline_applies_vex_and_rebuilds_findings(monkeypatch, tmp_path):
     job = ScanJob(
         job_id="vex-parity",
         created_at="2026-07-06T00:00:00Z",
-        request=ScanRequest(vex=str(vex_path), enrich=False),
+        request=ScanRequest(vex=str(vex_path), enrich=False, discover_host=True),
     )
 
     monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)

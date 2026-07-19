@@ -4399,6 +4399,11 @@
             ],
             "title": "Db Sources"
           },
+          "discover_host": {
+            "default": false,
+            "title": "Discover Host",
+            "type": "boolean"
+          },
           "dry_run": {
             "default": false,
             "title": "Dry Run",

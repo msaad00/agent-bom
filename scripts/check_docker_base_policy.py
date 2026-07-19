@@ -98,6 +98,11 @@ POLICY: dict[str, BasePolicy] = {
         expected_tags=("3.11.12-slim",),
         rationale="Snowpark requires Python 3.11; held back from 3.12 for snowflake-snowpark-python compatibility.",
     ),
+    "deploy/docker/Dockerfile.collector": BasePolicy(
+        image="python",
+        expected_tags=("3.12.13-slim",),
+        rationale="Cloud-SDK collector; Debian slim for boto3/azure/google wheel compatibility (grpcio, cryptography).",
+    ),
     ".clusterfuzzlite/Dockerfile": BasePolicy(
         image="gcr.io/oss-fuzz-base/base-builder-python",
         expected_tags=(),

@@ -14,8 +14,9 @@ from __future__ import annotations
 import pytest
 
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
+from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
-from agent_bom.graph.types import EntityType, NodeStatus
+from agent_bom.graph.types import EntityType, NodeStatus, RelationshipType
 
 
 class _FakeCursor:
@@ -45,6 +46,7 @@ class _RecordingConn:
         self.deleted_tables: list[str] = []
         self.advisory_locks: list[tuple] = []
         self.sql_calls: list[str] = []
+        self.sql_params: list[tuple | None] = []
         self.rolled_back = 0
 
     def __enter__(self):
@@ -58,6 +60,7 @@ class _RecordingConn:
     def execute(self, sql, params=None):
         low = " ".join(sql.strip().lower().split())
         self.sql_calls.append(low)
+        self.sql_params.append(tuple(params) if params is not None else None)
         if low.startswith("select pg_advisory_xact_lock"):
             self.advisory_locks.append(tuple(params))
         elif low.startswith("delete from"):
@@ -269,6 +272,39 @@ def test_postgres_writer_lock_precedes_snapshot_reads_and_deletes(monkeypatch):
     assert lock_at < prior_read_at < delete_at
 
 
+def test_prior_edges_reconcile_in_postgres_without_python_materialization(monkeypatch):
+    class _PreviousSnapshotConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("select scan_id, created_at") and "from graph_snapshots" in low:
+                self.sql_calls.append(low)
+                self.sql_params.append(tuple(params) if params is not None else None)
+                return _FakeCursor([("prior-scan", "2026-07-18T00:00:00Z")])
+            if low.startswith("select source_id, target_id, relationship"):
+                raise AssertionError("prior graph edges must not be fetched into Python")
+            return super().execute(sql, params)
+
+    conn = _PreviousSnapshotConn()
+    store = _make_store(conn, monkeypatch)
+    edge = UnifiedEdge(source="agent:1", target="pkg:1", relationship=RelationshipType.DEPENDS_ON)
+
+    store.save_graph_streaming(
+        scan_id="current-scan",
+        tenant_id="tenant-a",
+        nodes=_nodes(1),
+        edges=iter([edge]),
+    )
+
+    continuity_at = next(
+        i for i, sql in enumerate(conn.sql_calls) if sql.startswith("update graph_edges as current")
+    )
+    retirement_at = next(
+        i for i, sql in enumerate(conn.sql_calls) if sql.startswith("update graph_edges as previous")
+    )
+    assert conn.sql_params[continuity_at] == ("current-scan", "tenant-a", "prior-scan", "tenant-a")
+    assert conn.sql_params[retirement_at][1:] == ("tenant-a", "prior-scan", "current-scan", "tenant-a")
+
+
 @pytest.mark.parametrize(
     ("risk_summary", "analysis_status"),
     [
@@ -346,17 +382,9 @@ def test_retired_edge_update_records_ocsf_close_activity(monkeypatch):
             low = " ".join(sql.strip().lower().split())
             if low.startswith("select scan_id, created_at from graph_snapshots"):
                 return _FakeCursor([("scan-old", "2026-07-16T00:00:00Z")])
-            if low.startswith("select source_id, target_id, relationship, first_seen, valid_from, valid_to"):
-                return _FakeCursor([("agent:a", "server:b", "uses", "2026-07-16T00:00:00Z", "2026-07-16T00:00:00Z", None)])
-            return super().execute(sql, params)
-
-        def executemany(self, sql, seq):
-            low = " ".join(sql.strip().lower().split())
-            if low.startswith("update graph_edges"):
+            if low.startswith("update graph_edges as previous"):
                 self.retirement_sql = low
-                list(seq)
-                return _FakeCursor()
-            return super().executemany(sql, seq)
+            return super().execute(sql, params)
 
     conn = _RetirementConn()
     store = _make_store(conn, monkeypatch)
@@ -369,5 +397,5 @@ def test_retired_edge_update_records_ocsf_close_activity(monkeypatch):
         created_at="2026-07-17T00:00:00Z",
     )
 
-    assert "set valid_to = coalesce(valid_to, %s)" in conn.retirement_sql
-    assert "activity_id = case when activity_id = 1 then 3 else activity_id end" in conn.retirement_sql
+    assert "set valid_to = coalesce(previous.valid_to, %s)" in conn.retirement_sql
+    assert "activity_id = case when previous.activity_id = 1 then 3 else previous.activity_id end" in conn.retirement_sql

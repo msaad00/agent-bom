@@ -64,6 +64,57 @@ def decode_finding_cursor(cursor: str, *, expected_sort: str) -> tuple[float, st
         raise ValueError("Invalid findings cursor") from exc
 
 
+_MERGED_SCAN_CURSOR_MARKER = "merge1"
+
+
+def encode_merged_scan_cursor(*, sort: str, scan_index: int, bulk_cursor: str) -> str:
+    """Encode a compound cursor over the merged in-memory-scan + hub stream.
+
+    ``/v1/findings`` interleaves two sources: the fully-materialized in-memory
+    scan findings (walked by integer index) and the keyset-paged hub findings
+    (walked by ``bulk_cursor``). One opaque token carries both frontiers so a
+    keyset caller resumes the merge with 0 dups / 0 drops instead of losing the
+    scan half after page 1.
+    """
+    payload = {
+        "t": _MERGED_SCAN_CURSOR_MARKER,
+        "sort": sort if sort in _ALLOWED_SORTS else "effective_reach",
+        "si": int(scan_index),
+        "bc": bulk_cursor or "",
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def decode_merged_scan_cursor(cursor: str, *, expected_sort: str) -> tuple[int, str] | None:
+    """Decode a compound merged cursor.
+
+    Returns ``(scan_index, bulk_cursor)`` when ``cursor`` is a merged token,
+    ``None`` when it is a plain hub keyset cursor (so the caller can fall back).
+    Raises ``ValueError`` when it IS a merged token but is corrupt or its sort
+    disagrees with ``expected_sort`` (mirrors :func:`decode_finding_cursor`).
+    """
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode()).decode()
+        payload = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(payload, dict) or payload.get("t") != _MERGED_SCAN_CURSOR_MARKER:
+        return None
+    sort = str(payload.get("sort") or "")
+    if sort != expected_sort:
+        raise ValueError("Cursor sort mismatch")
+    try:
+        scan_index = int(payload.get("si") or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid merged findings cursor") from exc
+    if scan_index < 0:
+        raise ValueError("Invalid merged findings cursor")
+    bulk_cursor = str(payload.get("bc") or "")
+    return scan_index, bulk_cursor
+
+
 def cursor_from_current_row(row: dict[str, Any], *, sort: str) -> str:
     normalized = sort if sort in _ALLOWED_SORTS else "effective_reach"
     primary: float | int

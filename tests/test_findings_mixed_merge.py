@@ -72,11 +72,14 @@ def test_merged_scan_bulk_page_matches_full_sort_reference() -> None:
     _seed_bulk(store, tenant, 30)
     scan_sorted = sorted(scan_rows, key=lambda row: _finding_sort_key(row, "effective_reach"))
 
+    # The bulk source is the cursor-capable current-state page (the same source
+    # the route merges), so the reference merges scan with those rows too.
+    bulk_rows = store.list_current_page(tenant, limit=1000)[0]
     for offset in (0, 2, 5, 10):
         for limit in (1, 3, 7):
             merged = _merged_scan_bulk_page(
                 scan_sorted,
-                bulk_list=store.list_page,
+                bulk_list=store.list_current_page,
                 tenant_id=tenant,
                 sort_key="effective_reach",
                 severity=None,
@@ -84,9 +87,8 @@ def test_merged_scan_bulk_page_matches_full_sort_reference() -> None:
                 offset=offset,
                 limit=limit,
             )
-            bulk_rows = store.list(tenant)
             reference = sorted(scan_sorted + bulk_rows, key=lambda row: _finding_sort_key(row, "effective_reach"))
-            assert [row["id"] for row in merged] == [row["id"] for row in reference[offset : offset + limit]]
+            assert [row["id"] for row in merged.rows] == [row["id"] for row in reference[offset : offset + limit]]
 
 
 def test_findings_api_merges_scan_and_bulk_at_deep_offset() -> None:
@@ -132,7 +134,7 @@ def test_findings_api_merges_scan_and_bulk_at_deep_offset() -> None:
             "origin": "native_scan",
         }
     ]
-    bulk_rows, _ = store.list_page(tenant, limit=1000, offset=0)
+    bulk_rows = store.list_current_page(tenant, limit=1000)[0]
     reference = sorted(
         scan_rows + bulk_rows,
         key=lambda row: _finding_sort_key(row, "effective_reach"),

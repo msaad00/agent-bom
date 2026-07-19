@@ -1,9 +1,17 @@
 """Streaming findings export runner (#4040).
 
-Streams a tenant's current findings from the compliance hub via the same keyset
-cursor the async report export uses (``list_current_page``) — bounded, never
-materializing the whole result set — and hands the row stream to a destination
-adapter. Read-only on the source; audit-logged; tenant-scoped.
+Streams a tenant's current findings and hands the row stream to a destination
+adapter. Two sources are unioned so the export matches what ``/v1/findings``
+shows the user:
+
+* the in-memory **scan spine** (completed scan jobs) — the scan pipeline never
+  writes the compliance hub, so exporting only the hub silently shipped ZERO
+  rows on a scan-based estate;
+* the **compliance hub** current-state findings, streamed via the same keyset
+  cursor the async report export uses (``list_current_page``) — bounded, never
+  materializing the whole result set.
+
+Read-only on both sources; audit-logged; tenant-scoped.
 """
 
 from __future__ import annotations
@@ -22,6 +30,26 @@ logger = logging.getLogger(__name__)
 _PAGE_SIZE = 500
 
 
+def iter_scan_spine_findings(
+    tenant_id: str,
+    *,
+    severity: str | None = None,
+    since: str | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Yield the in-memory scan-spine findings ``/v1/findings`` shows.
+
+    Bounded by the scan-job results already resident in memory. Best-effort: if
+    the scan route/store is unavailable the export continues with the hub only
+    rather than failing the run.
+    """
+    try:
+        from agent_bom.api.routes.scan import iter_tenant_scan_spine_findings
+    except Exception:  # noqa: BLE001 - scan spine is additive; hub export must still run
+        logger.debug("scan-spine finding source unavailable; exporting hub only", exc_info=True)
+        return
+    yield from iter_tenant_scan_spine_findings(tenant_id, since=since, severity=severity)
+
+
 def iter_current_findings(
     tenant_id: str,
     *,
@@ -30,20 +58,30 @@ def iter_current_findings(
     since: str | None = None,
     page_size: int = _PAGE_SIZE,
     hub: Any | None = None,
+    include_scan_spine: bool = True,
 ) -> Iterator[dict[str, Any]]:
     """Yield current findings for ``tenant_id`` one row at a time (bounded).
 
-    Pages ``hub.list_current_page`` with a keyset cursor so memory stays flat
-    regardless of finding count. Tenant scope is enforced by passing
-    ``tenant_id`` into the store query (never a client-supplied filter).
+    Unions the in-memory scan spine (the read path's scan-derived findings) with
+    the compliance hub current-state stream so a scan-based estate is never
+    exported as empty. The hub half pages ``list_current_page`` with a keyset
+    cursor so memory stays flat regardless of finding count; the scan half is
+    bounded by the resident scan-job results. Tenant scope is enforced by passing
+    ``tenant_id`` into every query (never a client-supplied filter).
     """
+    if include_scan_spine:
+        yield from iter_scan_spine_findings(tenant_id, severity=severity, since=since)
+
     if hub is None:
         from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
         hub = get_compliance_hub_store()
     list_page = getattr(hub, "list_current_page", None)
     if not callable(list_page):
-        raise RuntimeError("Compliance hub store does not support current-state finding exports")
+        # Scan-spine rows (if any) were already yielded above; only the hub half
+        # is unsupported here, so degrade to hub-empty rather than losing them.
+        logger.debug("compliance hub store lacks current-state paging; exporting scan spine only")
+        return
 
     cursor: str | None = None
     first = True

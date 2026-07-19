@@ -33,6 +33,7 @@ dependencies = [
     "click>=8.0",
     "rich>=13.0",
     "httpx>=0.28.1",  # core async HTTP client (CLI, TestClient, registry/OSV fetchers)
+    "httpcore>=1.0.9,<2",  # public network-backend API for connect-time gateway DNS pinning
     "pydantic>=2.0",
     "cyclonedx-python-lib>=11.6",  # Updated for better CycloneDX 1.6 support
     "packageurl-python>=0.17",

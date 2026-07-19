@@ -747,7 +747,7 @@ class GatewayUpstreamRelay:
         self._timeout_seconds = max(1.0, settings.upstream_http_timeout_seconds)
         self._max_connections = max(1, settings.upstream_http_max_connections)
         self._max_keepalive_connections = max(1, settings.upstream_http_max_keepalive_connections)
-        self._client: Any | None = None
+        self._clients: dict[bool, Any] = {}
         self._client_lock = asyncio.Lock()
         self._breaker = GatewayCircuitBreaker(
             failure_threshold=settings.upstream_failure_threshold,
@@ -756,25 +756,32 @@ class GatewayUpstreamRelay:
 
     async def aclose(self) -> None:
         async with self._client_lock:
-            if self._client is not None:
-                await self._client.aclose()
-                self._client = None
+            clients = list(self._clients.values())
+            self._clients.clear()
+            for client in clients:
+                await client.aclose()
 
-    async def _client_for_call(self) -> Any:
-        if self._client is not None:
-            return self._client
+    async def _client_for_call(self, *, allow_private_networks: bool) -> Any:
+        client = self._clients.get(allow_private_networks)
+        if client is not None:
+            return client
         async with self._client_lock:
-            if self._client is None:
+            client = self._clients.get(allow_private_networks)
+            if client is None:
                 import httpx
 
-                self._client = httpx.AsyncClient(
+                from agent_bom.runtime.egress_transport import build_pinned_async_client
+
+                client = build_pinned_async_client(
+                    allow_private_networks=allow_private_networks,
                     timeout=httpx.Timeout(self._timeout_seconds),
                     limits=httpx.Limits(
                         max_connections=self._max_connections,
                         max_keepalive_connections=self._max_keepalive_connections,
                     ),
                 )
-            return self._client
+                self._clients[allow_private_networks] = client
+            return client
 
     async def __call__(
         self,
@@ -785,7 +792,12 @@ class GatewayUpstreamRelay:
         circuit_key = _upstream_circuit_key(upstream)
         await self._breaker.before_call(circuit_key, upstream.name)
         try:
-            response = await _post_upstream_jsonrpc(upstream, message, extra_headers, client=await self._client_for_call())
+            response = await _post_upstream_jsonrpc(
+                upstream,
+                message,
+                extra_headers,
+                client=await self._client_for_call(allow_private_networks=upstream.private_network_approved),
+            )
         except Exception:
             await self._breaker.record_failure(circuit_key)
             raise
@@ -1055,7 +1067,12 @@ async def _default_upstream_caller(
     """
     import httpx
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    from agent_bom.runtime.egress_transport import build_pinned_async_client
+
+    async with build_pinned_async_client(
+        allow_private_networks=upstream.private_network_approved,
+        timeout=httpx.Timeout(30.0),
+    ) as client:
         return await _post_upstream_jsonrpc(upstream, message, extra_headers, client=client)
 
 

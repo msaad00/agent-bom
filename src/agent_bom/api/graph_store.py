@@ -433,7 +433,17 @@ class SQLiteGraphStore:
     def _refresh_snapshot_search_index(self, conn: sqlite3.Connection, *, tenant_id: str, scan_id: str) -> None:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn.execute("DELETE FROM graph_node_search WHERE tenant_id = ? AND scan_id = ?", (tenant_id, scan_id))
-        rows = conn.execute(
+        # Stream the snapshot's node rows in bounded batches rather than
+        # ``.fetchall()`` of every row + a full ``UnifiedNode`` per row: this
+        # refresh runs at the persist peak while the builder's in-memory graph is
+        # still resident, so a fetchall added a second O(N) materialisation of the
+        # whole node set on top of it. A separate read cursor iterates a different
+        # table (graph_nodes) than the one being written (graph_node_search), so
+        # interleaving the reads and the batched inserts is safe on one
+        # connection; peak stays proportional to the batch size, not the snapshot
+        # size (#4075). Rows written are byte-identical to the fetchall path.
+        batch_size = sqlite_graph_store._graph_write_batch_size()
+        select_cur = conn.execute(
             """
             SELECT
                 id, entity_type, label, category_uid, class_uid, type_uid,
@@ -443,26 +453,34 @@ class SQLiteGraphStore:
             WHERE tenant_id = ? AND scan_id = ?
             """,
             (tenant_id, scan_id),
-        ).fetchall()
-        for row in rows:
+        )
+        insert_sql = """
+            INSERT INTO graph_node_search (
+                tenant_id, scan_id, node_id, entity_type, severity, compliance_tags, data_sources, search_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        def _search_row(row: sqlite3.Row) -> tuple[Any, ...]:
             node = self._node_from_row(row)
-            conn.execute(
-                """
-                INSERT INTO graph_node_search (
-                    tenant_id, scan_id, node_id, entity_type, severity, compliance_tags, data_sources, search_text
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    tenant_id,
-                    scan_id,
-                    node.id,
-                    node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type),
-                    node.severity.lower(),
-                    " ".join(node.compliance_tags).lower(),
-                    " ".join(node.data_sources).lower(),
-                    _node_search_text(node),
-                ),
+            return (
+                tenant_id,
+                scan_id,
+                node.id,
+                node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type),
+                node.severity.lower(),
+                " ".join(node.compliance_tags).lower(),
+                " ".join(node.data_sources).lower(),
+                _node_search_text(node),
             )
+
+        try:
+            while True:
+                batch = select_cur.fetchmany(batch_size)
+                if not batch:
+                    break
+                conn.executemany(insert_sql, [_search_row(row) for row in batch])
+        finally:
+            select_cur.close()
 
     def delete_tenant(self, *, tenant_id: str = "") -> int:
         """Delete graph rows for one tenant and return the number of rows removed."""

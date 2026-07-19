@@ -4,10 +4,10 @@ A repo-map for `agent-bom`: where things live, which trees are canonical, and
 how the `src/agent_bom/` package is organized into subsystems. Start here when
 you ask **"where does X live?"**
 
-`agent-bom` is a single pure-Python package (~289K LoC) that exposes one shared
-evidence model through many surfaces: CLI/CI, REST API, MCP server, dashboard,
-and runtime proxy/gateway. The package is intentionally broad — this map groups
-its modules so the breadth reads as a system, not a flat sprawl.
+`agent-bom` combines a Python scanner/control-plane engine with a TypeScript/
+React cockpit. Its surfaces share finding, inventory, graph, and audit contracts:
+CLI/CI, REST API, MCP server, dashboard, and runtime proxy/gateway. The package
+is intentionally broad—this map groups the breadth into owned subsystems.
 
 For the layered architecture and data-flow diagrams, see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For role-based entry paths, see
@@ -24,11 +24,11 @@ For the layered architecture and data-flow diagrams, see
 | `docs/` | Operator- and contributor-facing reference docs (this tree). | **Yes** — canonical for engineering/reference docs. |
 | `site-docs/` | MkDocs source for the published docs site. | **Yes** — canonical for the *narrative/getting-started* site; see [Documentation map](#documentation-map). |
 | `ui/` | Next.js 16 + React 19 + Tailwind 4 dashboard (the human cockpit). | Yes — the active UI. |
-| `dashboard/` | Static/build assets and supporting dashboard files. | Build support for the UI. |
+| `dashboard/` | Legacy standalone Streamlit compatibility surface. | Retained for compatibility; `ui/` is the active cockpit. |
 | `sdks/` | Client SDKs: `python`, `go`, `typescript`, `typescript-client`, `shared`. | Yes — typed control-plane clients (not scanner SDKs). |
 | `deploy/` | Helm chart, docker-compose pilot, EKS reference, deployment manifests. | Yes. |
 | `contracts/` | Cross-surface contract fixtures. | Yes. |
-| `docs/openapi/v1.json` | Committed OpenAPI spec — the canonical REST contract (251 paths / 295 operations). | **Yes** — SDK + client contract checks read this. |
+| `docs/openapi/v1.json` | Committed OpenAPI spec — the canonical REST contract. | **Yes** — SDK + client contract checks read this. |
 | `scripts/` | Release, deploy, and consistency tooling (e.g. `check_release_consistency.py`). | Yes. |
 | `integrations/` | External tool integrations and examples. | Yes. |
 | `examples/`, `config/`, `security/`, `fuzz/` | Samples, config, security policy, fuzz harnesses. | Support material. |
@@ -39,8 +39,9 @@ For the layered architecture and data-flow diagrams, see
 
 ## `src/agent_bom/` subsystems
 
-The package has ~223 top-level modules plus 25 subpackages. Grouped by the role
-each plays in the **collect → normalize → serve → enforce** pipeline:
+The top-level Python namespace is frozen; new implementation belongs in the
+owned subpackages below. They are grouped by the role each plays in the
+**collect → normalize → serve → enforce** pipeline:
 
 ### 1. Scan layer — collect evidence
 
@@ -67,10 +68,11 @@ and findings.
 | Cost (FinOps) | `cost_model.py`, `api/cost_*.py` | LLM spend forecasting, budget runway, chargeback, anomaly detection. |
 | Cross-env / correlation | `cross_env_correlation.py`, `correlate.py`, `runtime_correlation.py` | Fuse evidence across environments and runtime logs. |
 
-### 3. Unified Finding + ContextGraph — the convergence point
+### 3. Findings + graph contracts — the convergence point
 
-Every scan path lands on **one** `Finding` model and **one** graph, so blast
-radius, attack-path fusion, and exposure scoring all read the same evidence.
+Scan paths normalize into canonical findings and graph projections so blast
+radius, attack-path fusion, and exposure scoring can correlate evidence. The
+graph layer remains mid-consolidation, as documented below.
 
 | Subsystem | Path | Responsibility |
 |---|---|---|
@@ -84,8 +86,8 @@ The self-hosted operator surface. Same evidence, multi-tenant, audited.
 
 | Subsystem | Path | Responsibility |
 |---|---|---|
-| API | `api/` | FastAPI app. `routes/` (34 route modules; 295 REST operations + 2 WebSocket), `middleware.py` (4 layers), and `*_store.py`/`postgres_*.py` persistence (SQLite default, Postgres for clusters, optional Snowflake/ClickHouse). |
-| MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 70 tools, 6 resources, 8 prompts (mostly read-only; 3 Shield write actions fail closed). |
+| API | `api/` | FastAPI app and route modules; middleware handles HTTP auth/tenant/limits/audit. SQLite and Postgres are the primary stores, Neptune is optional graph persistence, ClickHouse is optional analytics, and Snowflake implements selected store/warehouse paths. |
+| MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 75 tools, 6 resources, and 8 workflow prompts (mostly read-only; Shield write actions fail closed). |
 | Runtime enforcement | `proxy*.py`, `gateway*.py`, `firewall*.py`, `shield.py`, `runtime/`, `enforcement.py` | MCP traffic proxy, secure-by-default gateway, inline firewall, Shield enforcement. **Spread by design** — see [Runtime enforcement spread](#runtime-enforcement-spread). |
 | Auth / tenancy | `rbac.py`, `permissions.py`, `entitlements.py`, `mcp_tenant.py`, `api/auth.py`, `api/oidc.py` | RBAC roles, tenant scoping, API keys, OIDC/SAML/SCIM. |
 | Fleet | `fleet/`, `fleet_scan.py` | Endpoint/collector inventory pushed into one control plane. |
@@ -104,7 +106,7 @@ The self-hosted operator surface. Same evidence, multi-tenant, audited.
 
 | Subsystem | Path | Responsibility |
 |---|---|---|
-| CLI | `cli/` | Click entry point. 60 top-level commands across 7 help categories. See [`docs/CLI_MAP.md`](docs/CLI_MAP.md). |
+| CLI | `cli/` | Click entry point organized into seven help categories. See [`docs/CLI_MAP.md`](docs/CLI_MAP.md). |
 
 ---
 

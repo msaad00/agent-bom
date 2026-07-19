@@ -284,7 +284,7 @@ def _sample_one_table(
     max_cell_chars: int,
 ) -> TableCoverage:
     """Sample one table read-only and map the classifier result to a coverage state."""
-    query = f"SELECT * FROM {_quote_ident(schema)}.{_quote_ident(table)} LIMIT {max_rows}"
+    query = f"SELECT * FROM {_quote_ident(schema)}.{_quote_ident(table)} LIMIT {max_rows}"  # nosec B608 — identifiers ANSI-quoted inert, max_rows int-coerced
     try:
         cursor = conn.cursor()
     except Exception as exc:  # noqa: BLE001 — cannot even open a cursor for this table.

@@ -221,6 +221,8 @@ def test_api_pipeline_persistence_failure_is_surfaced_not_silent_success(monkeyp
 
 
 def test_api_pipeline_no_scan_skips_vulnerability_scan_and_result_side_effects(monkeypatch):
+    from agent_bom.scanners import record_coverage_warning
+
     store = _DummyStore()
     job = ScanJob(
         job_id="no-scan-123",
@@ -238,6 +240,18 @@ def test_api_pipeline_no_scan_skips_vulnerability_scan_and_result_side_effects(m
     monkeypatch.setattr("agent_bom.api.pipeline._persist_graph_snapshot", _unexpected)
     monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", _unexpected)
     monkeypatch.setattr("agent_bom.api.pipeline._get_analytics_store", _unexpected)
+
+    # API scan workers are reused. A coverage warning left by an earlier job on
+    # the same thread must not downgrade this intentionally unscanned request.
+    record_coverage_warning(
+        {
+            "kind": "offline_release_gap",
+            "release": "debian:10",
+            "ecosystems": ["deb"],
+            "package_count": 1,
+            "detail": "stale warning from an earlier API job",
+        }
+    )
 
     _run_scan_sync(job)
 

@@ -299,9 +299,12 @@ def test_webhook_sink_failure_logs_redacted_destination_and_error(caplog):
     ):
         WebhookAlertSink(secret_url, retries=0).send(alert)
 
-    assert "hooks.example.com" in caplog.text
+    from agent_bom.security import redact_secret_url
+
+    assert redact_secret_url(secret_url) in caplog.text
     assert "SUPERSECRET" not in caplog.text
     assert "ALSOSECRET" not in caplog.text
+    assert "/services/" not in caplog.text
 
 
 def test_webhook_sink_rejects_unbounded_retry_configuration():

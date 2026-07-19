@@ -981,9 +981,12 @@ def test_send_webhook_failure_silent(caplog):
         # Should not raise
         asyncio.run(_send_webhook(secret_url, {"test": True}))
 
-    assert "hooks.example.com" in caplog.text
+    from agent_bom.security import redact_secret_url
+
+    assert redact_secret_url(secret_url) in caplog.text
     assert "SUPERSECRET" not in caplog.text
     assert "ALSOSECRET" not in caplog.text
+    assert "/services/" not in caplog.text
 
 
 # ── Proxy CLI --alert-webhook flag ────────────────────────────────────────

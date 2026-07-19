@@ -1,10 +1,10 @@
 """Agentless AWS EBS disk side-scan (CWPP) with guaranteed cleanup.
 
-This is the **one deliberate, opt-in, non-read-only** capability in agent-bom.
-Everything else in the product calls only ``List*/Describe*/Get*``. The side-scan
-needs a separately-scoped *snapshot role* (distinct from the read-only scanner
-role) so it can take an EBS snapshot, attach a temp volume to an in-account
-collector, read the filesystem, and tear everything back down.
+This is the AWS executor for agent-bom's **one deliberate, opt-in mutation
+family**: disk side-scan. Normal cloud inventory remains read-only. The AWS
+executor needs a separately scoped *snapshot role* (distinct from the read-only
+scanner role) so it can take an EBS snapshot, attach a temp volume to an
+in-account collector, read the filesystem, and tear everything back down.
 
 Trust model (non-negotiable):
 
@@ -62,8 +62,8 @@ SIDESCAN_ENV_VAR = "AGENT_BOM_SIDESCAN"
 def is_sidescan_enabled() -> bool:
     """Return True only when the operator has explicitly opted in.
 
-    The side-scan is the single non-read-only capability in agent-bom, so it is
-    gated behind ``AGENT_BOM_SIDESCAN`` and is OFF by default.
+    The side-scan mutation family is gated behind ``AGENT_BOM_SIDESCAN`` and is
+    OFF by default.
     """
     raw = os.environ.get(SIDESCAN_ENV_VAR)
     if raw is None:
@@ -272,8 +272,8 @@ class AwsEbsSideScanner:
     ) -> None:
         if not is_sidescan_enabled():
             raise SideScanDisabledError(
-                "Disk side-scan is opt-in and currently OFF. It is the only non-read-only "
-                f"capability in agent-bom. To enable it, set {SIDESCAN_ENV_VAR}=1, apply the "
+                "Disk side-scan is an opt-in mutation and currently OFF. "
+                f"To enable the AWS executor, set {SIDESCAN_ENV_VAR}=1, apply the "
                 "scoped snapshot role (deploy/terraform/connect-aws-sidescan), and provide an "
                 "in-account collector instance."
             )

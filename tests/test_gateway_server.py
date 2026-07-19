@@ -22,8 +22,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from starlette.testclient import TestClient
 
+import agent_bom.gateway_server as gateway_server
 from agent_bom.api.auth import Role
 from agent_bom.api.tracing import parse_traceparent
 from agent_bom.gateway_server import GatewaySettings, GatewayUpstreamRelay, create_gateway_app
@@ -1181,9 +1183,17 @@ def test_managed_upstream_relay_opens_circuit_after_repeated_failures() -> None:
         def __init__(self) -> None:
             self.posts = 0
 
-        async def post(self, *_args, **_kwargs):
+        def stream(self, *_args, **_kwargs):
             self.posts += 1
-            return _FailingResponse()
+
+            class _Context:
+                async def __aenter__(self):
+                    return _FailingResponse()
+
+                async def __aexit__(self, *_args) -> None:
+                    pass
+
+            return _Context()
 
         async def aclose(self) -> None:
             pass
@@ -1214,6 +1224,90 @@ def test_managed_upstream_relay_opens_circuit_after_repeated_failures() -> None:
         return fake_client.posts
 
     assert asyncio.run(_exercise()) == 2
+
+
+class _StreamingResponse:
+    def __init__(self, chunks: list[bytes], *, content_length: int | None = None) -> None:
+        self.headers = {"content-type": "application/json"}
+        if content_length is not None:
+            self.headers["content-length"] = str(content_length)
+        self._chunks = chunks
+        self.chunks_read = 0
+
+    def raise_for_status(self) -> None:
+        pass
+
+    async def aiter_bytes(self):
+        for chunk in self._chunks:
+            self.chunks_read += 1
+            yield chunk
+
+
+class _StreamingContext:
+    def __init__(self, response: _StreamingResponse) -> None:
+        self.response = response
+
+    async def __aenter__(self) -> _StreamingResponse:
+        return self.response
+
+    async def __aexit__(self, *_args) -> None:
+        pass
+
+
+class _StreamingClient:
+    def __init__(self, response: _StreamingResponse) -> None:
+        self.response = response
+        self.stream_calls = 0
+
+    def stream(self, *_args, **_kwargs) -> _StreamingContext:
+        self.stream_calls += 1
+        return _StreamingContext(self.response)
+
+    async def post(self, *_args, **_kwargs):
+        raise AssertionError("gateway must not fully buffer upstream responses")
+
+
+def test_upstream_relay_rejects_declared_oversize_before_reading_body() -> None:
+    response = _StreamingResponse([], content_length=gateway_server._MAX_GATEWAY_MESSAGE_BYTES + 1)
+    client = _StreamingClient(response)
+    upstream = UpstreamConfig(name="remote", url="https://mcp.example.test/mcp")
+
+    with pytest.raises(ValueError, match="upstream response exceeded"):
+        asyncio.run(gateway_server._post_upstream_jsonrpc(upstream, _json_rpc("tools/list"), {}, client=client))
+
+    assert client.stream_calls == 1
+    assert response.chunks_read == 0
+
+
+def test_upstream_relay_stops_streaming_undeclared_oversize_body() -> None:
+    limit = gateway_server._MAX_GATEWAY_MESSAGE_BYTES
+    response = _StreamingResponse([b"x" * limit, b"!"])
+    client = _StreamingClient(response)
+    upstream = UpstreamConfig(name="remote", url="https://mcp.example.test/mcp")
+
+    with pytest.raises(ValueError, match="upstream response exceeded"):
+        asyncio.run(gateway_server._post_upstream_jsonrpc(upstream, _json_rpc("tools/list"), {}, client=client))
+
+    assert client.stream_calls == 1
+    assert response.chunks_read == 2
+
+
+def test_gateway_stops_reading_chunked_request_at_size_limit() -> None:
+    class _ChunkedRequest:
+        def __init__(self) -> None:
+            self.chunks_read = 0
+
+        async def stream(self):
+            for chunk in [b"x" * gateway_server._MAX_GATEWAY_MESSAGE_BYTES, b"!", b"unread"]:
+                self.chunks_read += 1
+                yield chunk
+
+    request = _ChunkedRequest()
+    with pytest.raises(Exception) as exc_info:
+        asyncio.run(gateway_server._read_bounded_gateway_body(request))
+
+    assert getattr(exc_info.value, "status_code", None) == 413
+    assert request.chunks_read == 2
 
 
 def test_relay_returns_503_when_managed_circuit_is_open() -> None:

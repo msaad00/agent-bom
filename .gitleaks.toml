@@ -12,8 +12,16 @@ title = "agent-bom"
 useDefault = true
 
 [allowlist]
-description = "Compliance framework registry-identifier fields: framework_key holds a registry slug (e.g. the NIST catalog id), not a credential. The generic-api-key rule fires on the _key suffix."
+description = "(1) framework_key fields hold registry slugs, not credentials. (2) The named secret-DETECTION test files intentionally contain non-functional fixture secrets to exercise agent-bom's own scanner (mirrors .github/secret_scanning.yml paths-ignore — file-scoped, never a blanket tests/ exclusion)."
 regexTarget = "line"
 regexes = [
   '''["']?framework_key["']?\s*[:=]''',
+]
+paths = [
+  '''tests/test_ai_enrich_providers\.py$''',
+  '''tests/test_dspm_luhn_secrets\.py$''',
+  '''tests/test_security\.py$''',
+  '''tests/test_trace_attack_path_routes\.py$''',
+  '''tests/test_side_scan\.py$''',
+  '''tests/test_db_content_scan\.py$''',
 ]

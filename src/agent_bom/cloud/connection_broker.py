@@ -286,6 +286,55 @@ def connect_snowflake_keypair(
         der = b""
 
 
+# Bounded connect timeout (seconds) for a brokered database session so a wedged
+# host fails closed rather than hanging the scan.
+_DB_CONNECT_TIMEOUT = 10
+
+# Providers brokered as a read-only PostgreSQL-wire connection (RDS/Aurora/plain
+# Postgres). Snowflake keeps its dedicated key-pair broker above.
+_DATABASE_PROVIDERS = frozenset({"database", "postgres", "postgresql", "rds"})
+
+
+def _broker_database(record: CloudConnectionRecord) -> Any:
+    """Open a read-only PostgreSQL-wire connection for a stored DB connection.
+
+    The single encrypted secret is the libpq connection string / URL (it carries
+    the password); ``role_ref`` is a non-secret display DSN. The session is opened
+    ``default_transaction_read_only=on`` so any write the scan path could issue
+    fails closed at the server — the DSPM content scan only ever runs bounded
+    ``SELECT``s. The decrypted DSN is never logged and its local reference is
+    cleared as soon as the connect returns.
+    """
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise CloudDiscoveryError(
+            "psycopg is required to broker database connections. Install with: pip install 'agent-bom[postgres]'"
+        ) from exc
+
+    dsn = _decrypt_or_fail(record)
+    try:
+        return psycopg.connect(
+            dsn,
+            autocommit=True,
+            connect_timeout=_DB_CONNECT_TIMEOUT,
+            options="-c default_transaction_read_only=on",
+        )
+    except Exception as exc:  # noqa: BLE001 - libpq connect error (may carry host detail)
+        logger.warning("Database connection failed for connection %s", record.id)
+        raise ConnectionBrokerError(
+            f"Database connection failed for connection {record.id}.",
+            remediation=(
+                "The read-only database connection could not be opened. Verify the stored "
+                "connection string (host, port, database, user), that the user is granted "
+                "read-only SELECT on the scoped schemas, and that the host is reachable."
+            ),
+        ) from exc
+    finally:
+        # Drop the plaintext DSN reference as soon as the connect returns.
+        dsn = ""  # noqa: F841
+
+
 def _broker_snowflake(record: CloudConnectionRecord) -> Any:
     """Open a read-only Snowflake connection via key-pair auth for the connection.
 
@@ -341,6 +390,8 @@ def broker_session(
     - ``azure``     → ``azure.identity.ClientSecretCredential``
     - ``gcp``       → ``google.oauth2.service_account.Credentials`` (read-only)
     - ``snowflake`` → a live ``snowflake.connector`` connection (caller closes it)
+    - ``database`` / ``postgres`` / ``rds`` → a live read-only ``psycopg``
+      connection (``default_transaction_read_only=on``; caller closes it)
 
     Raises:
         ConnectionBrokerError: brokering failed (secret access or provider auth).
@@ -356,4 +407,6 @@ def broker_session(
         return _broker_gcp(record)
     if provider == "snowflake":
         return _broker_snowflake(record)
+    if provider in _DATABASE_PROVIDERS:
+        return _broker_database(record)
     raise ValueError(f"Unknown connection provider '{record.provider}'.")

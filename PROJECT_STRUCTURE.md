@@ -87,7 +87,7 @@ The self-hosted operator surface. Same evidence, multi-tenant, audited.
 | Subsystem | Path | Responsibility |
 |---|---|---|
 | API | `api/` | FastAPI app and route modules; middleware handles HTTP auth/tenant/limits/audit. SQLite and Postgres are the primary stores, Neptune is optional graph persistence, ClickHouse is optional analytics, and Snowflake implements selected store/warehouse paths. |
-| MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 75 tools, 6 resources, and 8 workflow prompts (mostly read-only; Shield write actions fail closed). |
+| MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 76 tools, 6 resources, and 8 workflow prompts (mostly read-only; Shield write actions fail closed). |
 | Runtime enforcement | `proxy*.py`, `gateway*.py`, `firewall*.py`, `shield.py`, `runtime/`, `enforcement.py` | MCP traffic proxy, secure-by-default gateway, inline firewall, Shield enforcement. **Spread by design** — see [Runtime enforcement spread](#runtime-enforcement-spread). |
 | Auth / tenancy | `rbac.py`, `permissions.py`, `entitlements.py`, `mcp_tenant.py`, `api/auth.py`, `api/oidc.py` | RBAC roles, tenant scoping, API keys, OIDC/SAML/SCIM. |
 | Fleet | `fleet/`, `fleet_scan.py` | Endpoint/collector inventory pushed into one control plane. |

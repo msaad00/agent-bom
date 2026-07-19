@@ -721,8 +721,13 @@ def _run_scan_sync(job: ScanJob) -> None:
         from agent_bom.discovery import discover_all
         from agent_bom.output import to_json
         from agent_bom.parsers import extract_packages
-        from agent_bom.scanners import scan_agents_sync
+        from agent_bom.scanners import reset_scan_warnings, scan_agents_sync
         from agent_bom.security import validate_path
+
+        # Scan jobs reuse executor threads, and scanner warnings are thread-local.
+        # Establish a clean request boundary even when this job intentionally
+        # skips scan_agents_sync(), whose normal scan path performs its own reset.
+        reset_scan_warnings()
 
         req = job.request
         agents: list[Any] = []

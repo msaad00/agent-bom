@@ -9,7 +9,7 @@ Requires ``pip install 'agent-bom[postgres]'``.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from agent_bom.api.postgres_common import (
     _ensure_tenant_rls,
@@ -255,7 +255,7 @@ class PostgresJobStore:
                     (job_id, tenant_id),
                 )
             conn.commit()
-            return cast(int, cursor.rowcount) > 0
+            return cursor.rowcount > 0
 
     def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list:
         from .server import ScanJob
@@ -474,7 +474,7 @@ class PostgresJobStore:
                 (ttl_seconds,),
             )
             conn.commit()
-            return cast(int, cursor.rowcount)
+            return cursor.rowcount
 
     # ── Distributed dispatch queue ────────────────────────────────────────
     # All lease timing uses the database clock (now()) rather than per-node
@@ -564,7 +564,7 @@ class PostgresJobStore:
                       AND lease_expires_at < {self._NOW_ISO}""",  # nosec B608 - fixed fragment
             )
             conn.commit()
-            return cast(int, cursor.rowcount)
+            return cursor.rowcount
 
     def pending_dispatch_count(self) -> int:
         """Number of jobs waiting to be claimed (operator/metrics visibility)."""

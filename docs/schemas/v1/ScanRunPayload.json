@@ -1,0 +1,87 @@
+{
+  "$defs": {
+    "ScanIssuePayload": {
+      "additionalProperties": false,
+      "description": "Bounded execution issue accepted from a trusted scan producer.",
+      "properties": {
+        "affects_coverage": {
+          "default": true,
+          "title": "Affects Coverage",
+          "type": "boolean"
+        },
+        "code": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "default": "warning",
+          "enum": [
+            "warning",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "stage": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "stage",
+        "source",
+        "message"
+      ],
+      "title": "ScanIssuePayload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "Canonical evidence-quality contract, separate from job lifecycle.",
+  "properties": {
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/ScanIssuePayload"
+      },
+      "maxItems": 100,
+      "title": "Issues",
+      "type": "array"
+    },
+    "outcome": {
+      "default": "complete",
+      "enum": [
+        "complete",
+        "partial",
+        "failed"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "warning_count": {
+      "default": 0,
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Warning Count",
+      "type": "integer"
+    }
+  },
+  "title": "ScanRunPayload",
+  "type": "object"
+}

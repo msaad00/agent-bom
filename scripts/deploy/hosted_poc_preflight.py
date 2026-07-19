@@ -267,6 +267,17 @@ def _validate_compose_config(errors: list[str], rendered: str) -> None:
 def run_preflight(root: Path, *, skip_compose: bool, write_secret: bool, force: bool) -> list[str]:
     errors: list[str] = []
     _validate_no_secret_env(errors)
+
+    # ``make secrets`` is a generation-only first-run command. It must work
+    # before the operator has chosen the hosted URL/CORS values that the full
+    # deployment preflight validates. Keep the mode narrow: compose validation
+    # is explicitly skipped and only file-secret safety is checked.
+    if write_secret and skip_compose:
+        if not errors:
+            _write_secret_files(root, force=force)
+        _validate_secret_files(root, errors)
+        return errors
+
     _validate_required_env(errors)
     public_url = _validate_public_url(errors)
     _validate_cors(errors, public_url)

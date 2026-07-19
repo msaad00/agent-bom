@@ -19,7 +19,8 @@ class PostgresSCIMStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "identity_scim")
+            if not ensure_postgres_schema_version(conn, "identity_scim"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scim_users (
                     tenant_id TEXT NOT NULL,

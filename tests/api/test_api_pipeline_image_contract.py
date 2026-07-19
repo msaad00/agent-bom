@@ -66,6 +66,27 @@ def test_api_pipeline_image_scan_uses_container_surface(monkeypatch):
     assert job.result["agents"][0]["mcp_servers"][0]["surface"] == "container-image"
 
 
+def test_api_pipeline_requested_image_failure_has_failed_scan_outcome(monkeypatch):
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="img-failed-123",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(images=["missing.invalid/image:latest"], enrich=False),
+    )
+
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr("agent_bom.image.scan_image", lambda _image: (_ for _ in ()).throw(RuntimeError("registry token=secret")))
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    assert job.result is not None
+    assert job.result["scan_run"]["outcome"] == "failed"
+    assert job.result["scan_run"]["issues"][0]["code"] == "collector_failed"
+    assert "secret" not in json.dumps(job.result)
+
+
 def test_api_pipeline_ai_enrichment_inherits_env_and_serializes_typed_provenance(monkeypatch):
     from agent_bom import config
     from agent_bom.ai_enrich import AI_PROVIDER_DESCRIPTORS, AIProviderResolution
@@ -225,6 +246,7 @@ def test_api_pipeline_no_scan_skips_vulnerability_scan_and_result_side_effects(m
     assert job.result["summary"]["total_agents"] == 1
     assert job.result["summary"]["total_vulnerabilities"] == 0
     assert "Vulnerability scanning skipped by request" in job.result["warnings"]
+    assert job.result["scan_run"]["outcome"] == "complete"
 
 
 def test_api_pipeline_offline_scan_never_retries_online(monkeypatch):
@@ -256,6 +278,7 @@ def test_api_pipeline_offline_scan_never_retries_online(monkeypatch):
     assert job.result is not None
     assert "Offline CVE scanning failed: local DB missing" in job.result["warnings"]
     assert "Enrichment skipped because offline mode was requested" in job.result["warnings"]
+    assert job.result["scan_run"]["outcome"] == "partial"
 
 
 def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):

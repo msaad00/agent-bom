@@ -207,6 +207,11 @@
       "schema": "SAMLLoginRequest.json"
     },
     {
+      "doc": "Bounded execution issue accepted from a trusted scan producer.",
+      "name": "ScanIssuePayload",
+      "schema": "ScanIssuePayload.json"
+    },
+    {
       "doc": "Represents a running or completed scan job.",
       "name": "ScanJob",
       "schema": "ScanJob.json"
@@ -215,6 +220,11 @@
       "doc": "Options accepted by POST /v1/scan \u2014 mirrors agent-bom scan CLI flags.",
       "name": "ScanRequest",
       "schema": "ScanRequest.json"
+    },
+    {
+      "doc": "Canonical evidence-quality contract, separate from job lifecycle.",
+      "name": "ScanRunPayload",
+      "schema": "ScanRunPayload.json"
     },
     {
       "doc": "",

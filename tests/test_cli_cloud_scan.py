@@ -15,6 +15,8 @@ same path to a single provider. These tests pin:
 
 from __future__ import annotations
 
+import json
+
 from click.testing import CliRunner
 
 import agent_bom.cli._cloud_group as cg
@@ -476,6 +478,48 @@ class TestRequestedProviderHardFailExits:
         assert r.exit_code == 0
         assert "cloud provider discovery failed" not in r.output
 
+    def test_single_requested_provider_failure_is_failed_in_json(self, monkeypatch, tmp_path):
+        from agent_bom.cli import main
+        from agent_bom.cloud import CloudDiscoveryError
+
+        monkeypatch.setattr(
+            "agent_bom.cloud.discover_from_provider",
+            lambda provider, **kwargs: (_ for _ in ()).throw(CloudDiscoveryError(f"{provider} credentials unavailable")),
+        )
+        output = tmp_path / "failed.json"
+
+        result = CliRunner().invoke(
+            main,
+            ["scan", "--aws", "--no-discover", "--offline", "--format", "json", "-o", str(output)],
+        )
+
+        assert result.exit_code == 1
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["scan_run"]["outcome"] == "failed"
+        assert payload["scan_run"]["issues"][0]["source"] == "aws"
+
+    def test_mixed_cloud_success_and_failure_is_partial_in_json(self, monkeypatch, tmp_path):
+        from agent_bom.cli import main
+        from agent_bom.cloud import CloudDiscoveryError
+
+        def _discover(provider, **kwargs):
+            if provider == "azure":
+                raise CloudDiscoveryError("azure credentials unavailable")
+            return [], []
+
+        monkeypatch.setattr("agent_bom.cloud.discover_from_provider", _discover)
+        output = tmp_path / "partial.json"
+
+        result = CliRunner().invoke(
+            main,
+            ["scan", "--aws", "--azure", "--no-discover", "--offline", "--format", "json", "-o", str(output)],
+        )
+
+        assert result.exit_code == 1
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["scan_run"]["outcome"] == "partial"
+        assert "cloud:aws" in payload["scan_sources"]
+
     def test_one_provider_failing_does_not_skip_the_others(self, monkeypatch):
         """Both requested providers are attempted even when the first hard-fails;
         the failure is recorded once per provider and the exit code is non-zero."""
@@ -484,13 +528,12 @@ class TestRequestedProviderHardFailExits:
         from agent_bom.cli.agents._cloud import run_cloud_discovery
         from agent_bom.cli.agents._context import ScanContext
         from agent_bom.cli.agents._post import compute_exit_code
-        from agent_bom.cloud import CloudDiscoveryError
 
         attempted: list[str] = []
 
         def _raise(provider, **kwargs):
             attempted.append(provider)
-            raise CloudDiscoveryError(f"{provider} SDK missing")
+            raise RuntimeError(f"{provider} unexpected collector failure")
 
         monkeypatch.setattr("agent_bom.cloud.discover_from_provider", _raise)
 

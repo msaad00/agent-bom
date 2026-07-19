@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 INIT_SQL = Path(__file__).resolve().parents[1] / "init.sql"
+SUPPLEMENTAL_SQL = Path(__file__).resolve().parents[1] / "runtime-schema.sql"
 
 
 def rewrite_bootstrap_sql(sql: str, database_name: str) -> str:
@@ -19,3 +20,8 @@ def rewrite_bootstrap_sql(sql: str, database_name: str) -> str:
 
 def load_bootstrap_sql(database_name: str) -> str:
     return rewrite_bootstrap_sql(INIT_SQL.read_text(), database_name)
+
+
+def load_runtime_schema_sql() -> str:
+    """Return the idempotent migration-owned runtime store schema."""
+    return SUPPLEMENTAL_SQL.read_text()

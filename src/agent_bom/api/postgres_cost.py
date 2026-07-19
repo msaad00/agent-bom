@@ -66,7 +66,8 @@ class PostgresCostStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "llm_costs")
+            if not ensure_postgres_schema_version(conn, "llm_costs"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS llm_costs (
                     tenant_id     TEXT NOT NULL,

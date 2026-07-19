@@ -44,7 +44,8 @@ class PostgresRuntimeEventStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "runtime_events")
+            if not ensure_postgres_schema_version(conn, "runtime_events"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS runtime_observations (
                     tenant_id      TEXT NOT NULL,

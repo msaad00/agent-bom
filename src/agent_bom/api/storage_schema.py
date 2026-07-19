@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 CONTROL_PLANE_SCHEMA_VERSION = 1
 CONTROL_PLANE_SCHEMA_TABLE = "control_plane_schema_versions"
+
+
+def postgres_deployment_configured() -> bool:
+    """Return whether either supported environment variable selects Postgres."""
+
+    if os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip():
+        return True
+    return os.environ.get("AGENT_BOM_DB", "").strip().lower().startswith(("postgres://", "postgresql://"))
 
 
 @dataclass(frozen=True)
@@ -38,6 +47,8 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     StorageSchemaComponent("gateway_policies", "sqlite/postgres", ("gateway_policies", "policy_audit_log")),
     StorageSchemaComponent("llm_costs", "sqlite/postgres", ("llm_costs", "llm_cost_budgets")),
     StorageSchemaComponent("cloud_connections", "sqlite/postgres", ("cloud_connections",)),
+    StorageSchemaComponent("compliance_hub", "sqlite/postgres", ("compliance_hub_findings", "hub_findings_current")),
+    StorageSchemaComponent("access_review_campaigns", "sqlite/postgres", ("access_review_campaigns", "access_review_items")),
     StorageSchemaComponent("risk_campaign_workflows", "sqlite/postgres", ("risk_campaign_workflows",)),
     StorageSchemaComponent("fleet", "sqlite/postgres/clickhouse", ("fleet_agents",)),
     StorageSchemaComponent("graph", "sqlite/postgres", ("graph_nodes", "graph_edges", "graph_node_search")),
@@ -51,7 +62,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
         ("agent_identities", "agent_identity_jit_grants", "agent_conditional_access_policies"),
     ),
     # Runtime session/observation timeline is durable by default (same tiering).
-    StorageSchemaComponent("runtime_sessions", "sqlite/postgres", ("runtime_observations", "runtime_sessions")),
+    StorageSchemaComponent("runtime_events", "sqlite/postgres", ("runtime_observations", "runtime_sessions")),
     StorageSchemaComponent("tenant_quotas", "sqlite/postgres", ("tenant_quota_overrides",)),
     StorageSchemaComponent("tenant_graph_retention", "sqlite/postgres", ("tenant_graph_retention_overrides",)),
     StorageSchemaComponent("sources", "sqlite/postgres", ("sources", "control_plane_sources")),
@@ -60,6 +71,15 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     StorageSchemaComponent("idempotency", "sqlite/postgres", ("idempotency_keys",)),
     StorageSchemaComponent("mcp_observations", "sqlite", ("mcp_observations",)),
     StorageSchemaComponent("proxy_replay_log", "sqlite/postgres", ("proxy_replay_log",)),
+    StorageSchemaComponent("scan_cache", "sqlite/postgres", ("osv_cache",), tenant_scoped=False),
+    StorageSchemaComponent("rate_limits", "postgres", ("api_rate_limit_hits",), tenant_scoped=False),
+    StorageSchemaComponent("shared_auth_state", "postgres", ("auth_session_attempts", "revoked_session_nonces"), tenant_scoped=False),
+    StorageSchemaComponent("governance_audit_log", "sqlite/postgres", ("governance_audit_log",)),
+    StorageSchemaComponent("credential_refs", "sqlite/postgres", ("credential_refs",)),
+    StorageSchemaComponent("ai_system_blueprints", "sqlite/postgres", ("ai_system_blueprints", "ai_system_blueprint_versions")),
+    StorageSchemaComponent("mcp_client_configs", "sqlite/postgres", ("mcp_client_configs",)),
+    StorageSchemaComponent("model_provider_keys", "sqlite/postgres", ("model_provider_keys", "model_virtual_keys")),
+    StorageSchemaComponent("tenant_score_config", "sqlite/postgres", ("tenant_score_config_overrides",)),
     StorageSchemaComponent(
         "analytics",
         "clickhouse",
@@ -97,8 +117,32 @@ def ensure_sqlite_schema_version(conn: Any, component: str, version: int = CONTR
     )
 
 
-def ensure_postgres_schema_version(conn: Any, component: str, version: int = CONTROL_PLANE_SCHEMA_VERSION) -> None:
-    """Record the current schema version for a Postgres control-plane component."""
+def ensure_postgres_schema_version(conn: Any, component: str, version: int = CONTROL_PLANE_SCHEMA_VERSION) -> bool:
+    """Bootstrap an isolated store or validate a migrated Postgres deployment.
+
+    A configured deployment URL means Alembic owns every schema mutation and
+    runtime stores are limited to a read-only version check.  Unit tests and
+    explicitly constructed development pools without a deployment URL retain
+    the historical idempotent bootstrap path.
+
+    Returns ``True`` only when the caller should continue its bootstrap DDL.
+    """
+
+    if postgres_deployment_configured():
+        row = conn.execute(
+            "SELECT version FROM control_plane_schema_versions WHERE component = %s",
+            (component,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError(
+                f"Postgres schema component {component!r} is not migrated; run Alembic before starting agent-bom."
+            )
+        current = int(row[0])
+        if current < int(version):
+            raise RuntimeError(
+                f"Postgres schema component {component!r} is version {current}; version {int(version)} is required."
+            )
+        return False
 
     conn.execute(
         """
@@ -119,6 +163,7 @@ def ensure_postgres_schema_version(conn: Any, component: str, version: int = CON
         """,
         (component, int(version)),
     )
+    return True
 
 
 def describe_control_plane_storage_schema() -> dict[str, Any]:
@@ -130,7 +175,7 @@ def describe_control_plane_storage_schema() -> dict[str, Any]:
         "schema_table": CONTROL_PLANE_SCHEMA_TABLE,
         "components": components,
         "component_count": len(components),
-        "upgrade_policy": "idempotent_bootstrap_migrations_with_explicit_component_versions",
+        "upgrade_policy": "alembic_authoritative_with_read_only_runtime_validation",
         "operator_message": (
             "Each persistent control-plane backend should expose this schema table or an equivalent native "
             "version marker before rolling upgrades. Graph keeps its legacy graph_schema_version table and is "

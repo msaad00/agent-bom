@@ -136,16 +136,13 @@ def persist_finding_references_sqlite(conn: sqlite3.Connection, tenant_id: str, 
 
 
 def persist_finding_references_postgres(
-    conn: Any, tenant_id: str, payload: Mapping[str, Any], *, ensure_tables: bool = True
+    conn: Any, tenant_id: str, payload: Mapping[str, Any], *, ensure_tables: bool = False
 ) -> dict[str, Any]:
     if not HUB_REFERENCE_NORMALIZE:
         return dict(payload)
     if ensure_tables:
-        # Callers ingesting a whole batch hoist the two ``CREATE TABLE IF NOT
-        # EXISTS`` probes to once per batch and pass ``ensure_tables=False`` — the
-        # probes are otherwise two round-trips PER ROW, a dominant amplifier on a
-        # connector initial-sync (wave-2 residual #2). The tables are also created
-        # in ``_init_tables`` so batch callers can safely skip the per-row ensure.
+        # Explicit isolated-development bootstrap only. Migrated deployments
+        # create these tables before the API starts and never request runtime DDL.
         ensure_postgres_reference_tables(conn)
     slim, intel_blob, framework_blob = extract_reference_blobs(payload)
     now = _now_iso()

@@ -39,6 +39,7 @@ def register_operator_tools(
         identity_revoke_jit_impl,
         identity_rotate_impl,
     )
+    from agent_bom.mcp_tools.kspm import kspm_cluster_posture_impl
     from agent_bom.mcp_tools.posture import (
         access_review_impl,
         cloud_inventory_impl,
@@ -359,6 +360,53 @@ def register_operator_tools(
             profile=profile,
             subscription_id=subscription_id,
             project_id=project_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="KSPM Cluster Posture")
+    async def kspm_cluster_posture(
+        namespace: Annotated[
+            str,
+            Field(description="Kubernetes namespace to inspect (ignored when all_namespaces=True). Defaults to 'default'."),
+        ] = "default",
+        all_namespaces: Annotated[
+            bool,
+            Field(description="Inspect every namespace instead of a single one."),
+        ] = False,
+        context: Annotated[
+            str | None,
+            Field(description="kubectl context to use (workstation fallback path only). Omit to use the in-cluster SA token."),
+        ] = None,
+        enable_nodes_configz: Annotated[
+            bool,
+            Field(description="Opt in to per-node kubelet /configz collection (CIS section 4.2). Off by default."),
+        ] = False,
+    ) -> str:
+        """Evaluate live Kubernetes cluster security posture (KSPM).
+
+        Read-only inspection of running workloads, RBAC, NetworkPolicy coverage,
+        and (opt-in) kubelet config against the pinned CIS Kubernetes Benchmark.
+        Distinct from image discovery: this returns SECURITY POSTURE, not a
+        container-image inventory.
+
+        Every collector carries an explicit execution state — executed / skipped
+        / unevaluable (a denied or absent read) / failed — so a partial run is
+        reported 'partial' with a coverage-affecting ScanRun issue and can never
+        be laundered into a clean pass. The benchmark provenance, collector
+        states, ScanRun outcome, and finding summary reconcile 1:1 with the REST
+        /v1/kspm/clusters/posture route and the CLI evidence dict.
+
+        Returns:
+            JSON with benchmark provenance, per-collector states, the canonical
+            ScanRun outcome, a finding count, and a per-severity summary.
+        """
+        return await execute_tool_async(
+            "kspm_cluster_posture",
+            kspm_cluster_posture_impl,
+            namespace=namespace,
+            all_namespaces=all_namespaces,
+            context=context,
+            enable_nodes_configz=enable_nodes_configz,
             _truncate_response=truncate_response,
         )
 

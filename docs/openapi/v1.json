@@ -1287,6 +1287,42 @@
         "title": "CloudConnectionUpdate",
         "type": "object"
       },
+      "ClusterPostureRequest": {
+        "additionalProperties": false,
+        "description": "Scope for a live cluster-posture run (all fields optional).",
+        "properties": {
+          "all_namespaces": {
+            "default": false,
+            "title": "All Namespaces",
+            "type": "boolean"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "maxLength": 253,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "enable_nodes_configz": {
+            "default": false,
+            "title": "Enable Nodes Configz",
+            "type": "boolean"
+          },
+          "namespace": {
+            "default": "default",
+            "maxLength": 253,
+            "title": "Namespace",
+            "type": "string"
+          }
+        },
+        "title": "ClusterPostureRequest",
+        "type": "object"
+      },
       "ComplianceAuditIntegrity": {
         "properties": {
           "checked": {
@@ -23047,6 +23083,189 @@
         "summary": "List Jobs",
         "tags": [
           "scan"
+        ]
+      }
+    },
+    "/v1/kspm/clusters/posture": {
+      "get": {
+        "description": "Return this tenant's most recent persisted cluster-posture run.\n\nHonest empty (``status: no_data``) when no run exists \u2014 never an implied\npass. The stored envelope preserves every collector's execution state and the\nScanRun outcome exactly as recorded.",
+        "operationId": "latest_cluster_posture_v1_kspm_clusters_posture_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Latest Cluster Posture V1 Kspm Clusters Posture Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Latest Cluster Posture",
+        "tags": [
+          "kspm"
+        ]
+      },
+      "post": {
+        "description": "Run a live Kubernetes cluster-posture scan, persist it, and return the envelope.\n\nThe heavy read-only collection is offloaded to a worker thread under\nbackpressure. The returned (and persisted) body carries the benchmark\nprovenance, honest per-collector states, and the canonical ScanRun outcome,\nso a partial/denied run reads ``partial`` \u2014 never a clean pass.",
+        "operationId": "run_cluster_posture_v1_kspm_clusters_posture_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ClusterPostureRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Cluster Posture V1 Kspm Clusters Posture Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Cluster Posture",
+        "tags": [
+          "kspm"
         ]
       }
     },

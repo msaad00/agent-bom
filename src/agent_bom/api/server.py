@@ -920,6 +920,7 @@ from agent_bom.api.routes.graph import router as _graph_router  # noqa: E402
 from agent_bom.api.routes.identities import router as _identities_router  # noqa: E402
 from agent_bom.api.routes.intel import router as _intel_router  # noqa: E402
 from agent_bom.api.routes.inventory_assets import router as _inventory_assets_router  # noqa: E402
+from agent_bom.api.routes.kspm import router as _kspm_router  # noqa: E402
 from agent_bom.api.routes.mcp_config import router as _mcp_config_router  # noqa: E402
 from agent_bom.api.routes.mitre import router as _mitre_router  # noqa: E402
 from agent_bom.api.routes.model_keys import router as _model_keys_router  # noqa: E402
@@ -970,6 +971,7 @@ for _router in (
     _identities_router,
     _intel_router,
     _inventory_assets_router,
+    _kspm_router,
     _mcp_config_router,
     _mitre_router,
     _model_keys_router,

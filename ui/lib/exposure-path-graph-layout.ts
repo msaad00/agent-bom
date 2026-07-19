@@ -7,8 +7,8 @@ import { GRAPH_ROLE_STYLE } from "@/lib/exposure-path-graph-style";
 // compact and no single node dominates the viewport.
 export const MAX_NODE_WIDTH = 188;
 export const MIN_NODE_WIDTH = 148;
-export const MAX_NODE_HEIGHT = 76;
-export const MIN_NODE_HEIGHT = 62;
+export const MAX_NODE_HEIGHT = 92;
+export const MIN_NODE_HEIGHT = 82;
 
 const MARGIN_X = 28;
 const MARGIN_Y = 30;
@@ -156,7 +156,7 @@ export function humanizeRelationship(value: string): string {
 }
 
 export function truncateGraphText(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, Math.max(1, maxLength - 1))}…` : value;
+  return value.length > maxLength ? `${value.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…` : value;
 }
 
 export function wrapGraphText(value: string, maxLineLength: number, maxLines: number): string[] {
@@ -179,7 +179,12 @@ export function wrapGraphText(value: string, maxLineLength: number, maxLines: nu
     const window = remaining.slice(0, maxLineLength + 1);
     const breakpoints = [" ", "-", "_", "/", ":", "@", "."].map((character) => window.lastIndexOf(character));
     const breakpoint = Math.max(...breakpoints);
-    const cut = breakpoint >= Math.floor(maxLineLength * 0.45) ? breakpoint + 1 : maxLineLength;
+    // Prefer a short whole-word line to splitting an entity name. Graph nodes
+    // are labels, not prose; preserving identifiers is more important than
+    // making both rows the same visual width.
+    // Reject separators near the start (`a/very-long`): a one-character first
+    // line is harder to scan than a clean split.
+    const cut = breakpoint > 3 ? breakpoint + 1 : maxLineLength;
     lines.push(remaining.slice(0, cut).trim());
     remaining = remaining.slice(cut).trim();
   }

@@ -37,4 +37,8 @@ describe("theme readability tokens", () => {
     expect(css).toMatch(/:root\[data-theme="light"\][\s\S]*--severity-critical:\s*#dc2626;/);
     expect(css).toMatch(/:root\[data-theme="light"\][\s\S]*--text-secondary:\s*#374151;/);
   });
+
+  it("binds Tailwind dark utilities to the explicit application theme", () => {
+    expect(css).toContain('@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));');
+  });
 });

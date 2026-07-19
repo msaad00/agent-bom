@@ -1,18 +1,18 @@
 {
   "release_version": "0.96.3",
-  "captured_at": "2026-07-18T06:31:09.179Z",
+  "captured_at": "2026-07-19T06:21:43.594Z",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
       "page": "/?capture=1",
-      "scope": "Overview command center — posture ring, findings breakdown, scan coverage, environment tabs",
+      "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.96.3"
     },
     {
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
-      "scope": "Overview lower frame with exposure path and feed/analytics tabs",
+      "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.96.3"
     },
     {
@@ -30,25 +30,25 @@
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
-      "scope": "Focused agent mesh graph across the active agent, MCP server, package, tool, and CVE path, cropped to the product graph surface",
+      "scope": "Focused agent mesh graph across the active agent, MCP server, package, and CVE path",
       "visible_version": "0.96.3"
     },
     {
       "path": "gateway-policies-live.png",
       "page": "/runtime?tab=gateway&capture=1",
-      "scope": "Runtime gateway KPI rollup and live tool-call feed",
+      "scope": "Runtime gateway KPI rollup, enforcement posture, and recent tool-call evidence",
       "visible_version": "0.96.3"
     },
     {
       "path": "security-graph-live.png",
       "page": "/security-graph?capture=1",
-      "scope": "Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff",
+      "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.96.3"
     },
     {
       "path": "lineage-graph-live.png",
       "page": "/graph?capture=1&scan=scan-proof-ai-platform",
-      "scope": "Expanded but bounded lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes",
+      "scope": "Focused filtered attack-path lineage across agent, MCP, package, and finding nodes",
       "visible_version": "0.96.3"
     },
     {
@@ -60,13 +60,13 @@
     {
       "path": "fleet-state-live.png",
       "page": "/fleet?capture=1",
-      "scope": "Expanded fleet row showing lifecycle distribution, approved state, owner metadata, environment label, and discovery state",
+      "scope": "Expanded quarantined fleet row showing lifecycle distribution, owner metadata, environment label, and enforcement state",
       "visible_version": "0.96.3"
     },
     {
       "path": "identity-audit-live.png",
       "page": "/audit?capture=1",
-      "scope": "Audit log filtered to identity resources with HMAC integrity counters and agent identity issue, rotate, revoke events",
+      "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
       "visible_version": "0.96.3"
     },
     {

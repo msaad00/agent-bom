@@ -20,7 +20,11 @@ import {
 } from "lucide-react";
 import { pathDisplayTitle, pathFixLabel, type ExposureEntityRole, type ExposurePath } from "@/lib/exposure-path";
 import { GRAPH_ROLE_STYLE } from "@/lib/exposure-path-graph-style";
-import { buildPathGraphLayout, wrapGraphText, truncateGraphText } from "@/lib/exposure-path-graph-layout";
+import {
+  buildPathGraphLayout,
+  wrapGraphText,
+  truncateGraphText,
+} from "@/lib/exposure-path-graph-layout";
 import { ExposurePathNeighborExplorer } from "@/components/exposure-path-neighbor-explorer";
 
 export interface ExposurePathCommandAction {
@@ -376,7 +380,13 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
                 ))}
               </text>
               {node.subtitle ? (
-                <text x="14" y="58" fill="#94a3b8" fontSize="10" fontFamily="var(--font-sans), system-ui">
+                <text
+                  x="14"
+                  y={titleLines.length > 1 ? 72 : 58}
+                  fill="#94a3b8"
+                  fontSize="10"
+                  fontFamily="var(--font-sans), system-ui"
+                >
                   {truncateGraphText(node.subtitle, 24)}
                 </text>
               ) : null}

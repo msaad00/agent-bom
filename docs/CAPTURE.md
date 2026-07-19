@@ -1,14 +1,16 @@
 # Screenshot capture protocol
 
-Published screenshots in `docs/images/` must come from the live product
-running against the bundled demo data, with the agent and scope chosen so
-the resulting graph is actually informative. PR #1445 regressed
-`mesh-live.png` to a near-empty graph because the captured agent
+Published screenshots in `docs/images/` must come from packaged Next.js
+product routes using the deterministic, explicitly synthetic capture fixture,
+with the agent and scope chosen so the resulting graph is informative. The
+fixture validates UI contracts; it is not evidence from a buyer estate.
+PR #1445 regressed `mesh-live.png` to a near-empty graph because the captured agent
 had no servers in the local data — this protocol exists so that does not
 happen again.
 
-The canonical published web UI is the packaged Next.js dashboard served by
-`agent-bom serve`. Do not publish README or docs screenshots from archived
+The canonical web artifact is the packaged Next.js dashboard bundled with
+`agent-bom serve`. The deterministic harness runs that same standalone build
+directly. Do not publish README or docs screenshots from archived
 pre-Next.js views or from the Snowflake Streamlit compatibility surface.
 For release PRs, use the operational checklist in
 [`docs/release/SCREENSHOT_REFRESH_CHECKLIST.md`](release/SCREENSHOT_REFRESH_CHECKLIST.md)
@@ -16,47 +18,57 @@ before replacing any published product image.
 
 ## Canonical capture environment
 
-1. Clean checkout on the release tag.
-2. Fresh local DB with the bundled offline vuln catalog.
-3. Build the bundled dashboard, then start the API against an empty SQLite
-   path so only demo data is present:
+1. Use a clean checkout on the release tag.
+2. Install the pinned UI toolchain, build the production dashboard, and run
+   the deterministic capture harness:
 
    ```bash
-   pip install -e ".[ui,api]"
-   make build-ui
-   agent-bom serve --persist /tmp/agent-bom-capture.db --allow-insecure-no-auth
+   cd ui
+   npm ci
+   npm run build
+   npm run capture:product-proof
    ```
 
-   Use the packaged UI path for captures. Do not shoot screenshots from the
-   Next.js dev server, or you risk the transient `Compiling...` badge showing
-   up in published assets.
+   The harness starts `.next/standalone/server.js` unless `CAPTURE_BASE_URL`
+   points to an already-running packaged build. It never uses the Next.js
+   development server, so transient compilation state cannot enter published
+   assets.
 
-4. Generate the bundled demo report offline, then push that exact payload to
-   the API so the stored job matches the terminal demo and does not pull in
-   local workstation discovery:
+3. Inspect all 13 PNGs and the manifest at the final README display size. The
+   harness stages files and publishes them only after every page passes.
 
-   ```bash
-   agent-bom scan --demo --offline -f json -o /tmp/agent-bom-demo-report.json
-   curl -X POST -H 'content-type: application/json' \
-     --data-binary @/tmp/agent-bom-demo-report.json \
-     http://127.0.0.1:8422/v1/results/push
-   ```
+Backend-connected release evidence is a separate end-to-end smoke. For that
+check, start `agent-bom serve` with a fresh SQLite database, generate the
+bundled demo report offline, and push that exact payload so no workstation
+discovery enters the test:
+
+```bash
+pip install -e ".[ui,api]"
+agent-bom serve --persist /tmp/agent-bom-capture.db --allow-insecure-no-auth
+agent-bom scan --demo --offline -f json -o /tmp/agent-bom-demo-report.json
+curl -X POST -H 'content-type: application/json' \
+  --data-binary @/tmp/agent-bom-demo-report.json \
+  http://127.0.0.1:8422/v1/results/push
+```
+
+This backend smoke proves the API/storage path; it does not generate the
+deterministic public screenshot set.
 
 ## Per-screenshot scope
 
 | Asset | Page | Required scope | Rationale |
 |---|---|---|---|
-| `dashboard-live.png` | `/?capture=1` (Overview) | Posture ring, findings breakdown, scan coverage, environment tabs | Wiz-style cockpit top frame |
-| `dashboard-paths-live.png` | `/?capture=1` (Overview) | Exposure path, feed/analytics tabs | Lower overview frame |
-| `cloud-accounts-live.png` | `/connections?capture=1` | Cloud accounts header, provider catalog, account stats | Onboarding surface |
+| `dashboard-live.png` | `/?capture=1` (Overview) | Posture grade, unique findings breakdown, scan coverage, operational lanes | Command-center top frame |
+| `dashboard-paths-live.png` | `/?capture=1` (Overview) | Unique exposure paths, recent scans, activity | Lower overview frame |
+| `cloud-accounts-live.png` | `/connections?capture=1` | Connections header and provider gallery across cloud, code, AI, and data | Onboarding surface |
 | `new-scan-live.png` | `/scan?capture=1` | New Scan modes — connected account, ad-hoc, public repo URL | Scan scope clarity |
-| `mesh-live.png` | `/mesh?capture=1` | Focused agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Public README, Docker Hub, and marketplace surfaces should show one readable graph proof, not duplicate dark/light theme captures |
-| `gateway-policies-live.png` | `/runtime?tab=gateway&capture=1` | KPI rollup + live tool-call feed (calls, blocks, shadow AI, data filters) | Proves runtime gateway observability without a live proxy session during capture |
-| `security-graph-live.png` | `/security-graph?capture=1` | Capture the fix-first attack-path queue with snapshot pressure, graph evidence export, and remediation handoff | Shows the operator workflow before raw topology so the public image is readable and action oriented |
-| `lineage-graph-live.png` | `/graph?capture=1` | Capture an expanded but bounded topology view across environment, identity, MCP, package, credential, model, dataset, and finding nodes | Shows broader graph evidence without turning the README frame into whole-tenant edge spaghetti |
+| `mesh-live.png` | `/mesh?capture=1` | Focused active agent → MCP server → package → finding path | Public README, Docker Hub, and marketplace surfaces should show one readable graph proof, not duplicate dark/light theme captures |
+| `gateway-policies-live.png` | `/runtime?tab=gateway&capture=1` | KPI rollup, enforcement posture, and recent tool-call evidence | Proves runtime gateway observability without a live proxy session during capture |
+| `security-graph-live.png` | `/security-graph?capture=1` | Capture a prioritized attack path with graph evidence export and remediation handoff | Shows the operator workflow before raw topology so the public image is readable and action oriented |
+| `lineage-graph-live.png` | `/graph?capture=1` | Focused filtered attack path across agent, MCP server, package, and finding nodes | Shows the investigation drilldown without whole-tenant edge spaghetti |
 | `context-map-live.png` | `/context?capture=1` | Capture one agent-scoped context map with reachable MCP servers and the lateral movement side panel | Shows a non-CVE topology view so README proof is not only package-to-finding blast radius |
-| `fleet-state-live.png` | `/fleet?capture=1` | Seed fleet sync, set one agent owner/environment, approve it, then expand that row before capture | Shows environment and lifecycle state as control-plane evidence instead of implying the local scan alone owns review state |
-| `identity-audit-live.png` | `/audit?capture=1` | Use a stable `AGENT_BOM_AUDIT_HMAC_KEY`, issue/rotate/revoke one agent identity, filter resource to `identity`, and capture HMAC counters plus lifecycle rows | Shows IAM lifecycle evidence and tamper-evident audit posture from the real identity API |
+| `fleet-state-live.png` | `/fleet?capture=1` | Expanded quarantined agent row with owner, environment, and enforcement state | Shows environment and lifecycle state as control-plane evidence instead of implying the local scan alone owns review state |
+| `identity-audit-live.png` | `/audit?capture=1` | Identity-resource filter with issue, rotate, and revoke lifecycle rows | Shows IAM lifecycle evidence and audit-chain posture from the deterministic capture fixture |
 | `dependency-map-live.png` | `/findings?capture=1` | Capture findings queue with seeded package and CVE evidence | Proves package/CVE posture from the same seeded demo estate |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
@@ -67,9 +79,9 @@ the older single-column attack-path layout. The published media now ships
 as two dashboard frames rather than one stitched full-page export:
 
 1. `dashboard-live.png`
-   Overview command center — posture ring, findings breakdown, scan coverage, environment tabs
+   Overview command center — posture grade, unique findings, scan coverage, and operational lanes
 2. `dashboard-paths-live.png`
-   Exposure path, recent scans feed, and analytics tab entry
+   Unique exposure paths, recent scans, and activity
 3. `cloud-accounts-live.png`
    Cloud accounts onboarding with provider catalog
 4. `new-scan-live.png`
@@ -79,22 +91,19 @@ A capture set that misses either frame is incomplete. Re-shoot from the
 packaged UI and crop deliberately; do not publish another full-page stitched
 dashboard asset unless the layout materially changes again.
 
-Use the agent with filesystem and database servers as the graph proof shot in
-the current demo inventory. It brings multiple tools, reachable packages, and
-the densest CVE cluster
-(`pillow@9.0.0`, `cryptography@39.0.0`, `werkzeug@2.2.2`). Capturing under
-an unscoped or lower-signal agent risks a flatter graph. Use
-`/mesh?capture=1` for the product graph, then crop deliberately so the visible
-frame contains the graph controls, legend, nodes, and dependency/finding edges
-without the left navigation or a large empty canvas. Do not publish duplicate
+Use `developer-copilot` as the public graph proof scope. The seeded path links
+that agent to GitHub MCP, a package, and `DEMO-VULN-21441` without implying
+whole-estate density. Use `/mesh?capture=1` for the product graph, then frame it
+so the title, graph controls, legend, nodes, and dependency/finding edges remain
+visible without the left navigation or a large empty canvas. Do not publish duplicate
 dark/light theme copies in the public README or Docker Hub description unless
 the section is specifically proving a theme bug fix. Do not publish a docs-only
 slide or card view in place of the graph screenshot.
 
 The README graph proof should show more than the mesh path. Keep
 `security-graph-live.png`, `lineage-graph-live.png`, and `context-map-live.png`
-in the open graph gallery so readers can see fix-first paths, expanded but
-bounded topology, and focused lateral context without expanding every details
+in the open graph gallery so readers can see fix-first paths, a filtered
+lineage drilldown, and focused lateral context without expanding every details
 block.
 
 For repeatable docs refreshes, use the deterministic Playwright harness from
@@ -102,13 +111,16 @@ the UI package after the graph schema and UI build are current:
 
 ```bash
 cd ui
+npm run build
 npm run capture:product-proof
 ```
 
-The harness routes seeded scan, fleet, gateway, IAM, environment, runtime, and
-package evidence into the real Next.js pages. It is suitable for README proof
-captures, not for claiming those exact entities were discovered from a buyer
-environment.
+Without `CAPTURE_BASE_URL`, the harness starts the current standalone
+production build. It routes deterministic scan, fleet, gateway, IAM,
+environment, runtime, and package responses into the shipped Next.js pages,
+fails on browser/network/API contract errors, and publishes the full set only
+after every capture succeeds. It is suitable for README UI proof, not for
+claiming those exact entities came from the backend or a buyer environment.
 
 The capture harness must refresh every asset listed in
 `docs/images/product-screenshots.json`; adding a new manifest entry without a
@@ -117,10 +129,9 @@ at README scale before publishing: text must stay inside cards and controls,
 long identifiers must wrap or truncate, graph labels must remain legible, and no
 browser chrome, dev overlay, local path, or stale version stamp may be visible.
 
-For environment and IAM proof, keep the claim precise. The demo graph scan
-stores agents, MCP servers, tools, credentials, packages, findings, provider,
-and graph edges. Environment review state and identity lifecycle are seeded
-control-plane records. Use the real APIs for capture:
+For separate end-to-end environment and IAM validation, use the real APIs.
+That operational smoke is backend evidence and does not replace the
+deterministic public screenshot workflow:
 
 ```bash
 AGENT_BOM_AUDIT_HMAC_KEY=readme-capture-audit-hmac-key-32-plus-bytes \
@@ -133,7 +144,7 @@ curl -H 'X-Agent-Bom-Role: admin' \
   -H 'X-Agent-Bom-Proxy-Secret: test-proxy-secret-with-32-plus-bytes' \
   -X POST http://127.0.0.1:8422/v1/fleet/sync
 
-# Then update owner/environment with PUT /v1/fleet/{agent_id}, approve with
+# Then update owner/environment with PUT /v1/fleet/{agent_id}, quarantine with
 # PUT /v1/fleet/{agent_id}/state, and issue/rotate/revoke an identity through
 # /v1/identities. Capture `/audit?capture=1` with resource filter `identity`.
 ```

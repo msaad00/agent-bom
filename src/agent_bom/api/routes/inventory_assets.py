@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -44,7 +45,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _store_call(fn, /, *args, **kwargs):
+async def _store_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
     """Run a sync graph-store method off the event loop under graph backpressure."""
     try:
         async with adaptive_backpressure("graph"):

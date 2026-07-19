@@ -21,6 +21,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
+from starlette.responses import Response
 
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
@@ -1260,7 +1261,7 @@ async def ingest_ui_error(request: Request, body: dict) -> dict:
     return {"ok": True}
 
 
-async def _render_prometheus_metrics(request: Request | None = None):
+async def _render_prometheus_metrics(request: Request | None = None) -> Response:
     """Prometheus scrape endpoint — exposes control-plane and pilot metrics.
 
     Catalog lives in docs/OBSERVABILITY_METRICS.md — keep that doc in sync
@@ -1295,7 +1296,7 @@ async def _render_prometheus_metrics(request: Request | None = None):
 
 
 @infra_router.get("/metrics", tags=["observability"], dependencies=[_dep("read")])
-async def prometheus_metrics(request: Request):
+async def prometheus_metrics(request: Request) -> Response:
     return await _render_prometheus_metrics(request)
 
 

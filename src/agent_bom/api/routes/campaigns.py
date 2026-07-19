@@ -7,7 +7,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -285,7 +285,7 @@ def _load_findings(request: Request) -> dict[str, Any]:
 def _source_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, list):
         return {"findings": value, "total": len(value), "total_approximate": False, "has_more": False}
-    return value
+    return cast("dict[str, Any]", value)
 
 
 def _source_incomplete(source: dict[str, Any]) -> bool:

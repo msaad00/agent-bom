@@ -250,7 +250,7 @@ _IAM_SECTION = "1 - Identity and Access Management"
 
 
 def _check_1_1(account_client: Any) -> CISCheckResult:
-    """CIS 1.1 — Maintain current contact details."""
+    """CIS 1.1 — Account contact details kept current."""
     result = CISCheckResult(
         check_id="1.1",
         title="Account contact details kept current",
@@ -275,7 +275,7 @@ def _check_1_1(account_client: Any) -> CISCheckResult:
 
 
 def _check_1_2(account_client: Any) -> CISCheckResult:
-    """CIS 1.2 — Ensure security contact information is registered."""
+    """CIS 1.2 — Security contact information registered."""
     result = CISCheckResult(
         check_id="1.2",
         title="Security contact information registered",
@@ -304,7 +304,7 @@ def _check_1_2(account_client: Any) -> CISCheckResult:
 
 
 def _check_1_3() -> CISCheckResult:
-    """CIS 1.3 — Ensure security questions are not the only way to authenticate to root."""
+    """CIS 1.3 — Root not reliant on security questions alone."""
     return CISCheckResult(
         check_id="1.3",
         title="Root not reliant on security questions alone",
@@ -317,7 +317,7 @@ def _check_1_3() -> CISCheckResult:
 
 
 def _check_1_4(iam_client: Any) -> CISCheckResult:
-    """CIS 1.4 — Ensure no 'root' user account access key exists."""
+    """CIS 1.4 — No root account access keys."""
     result = CISCheckResult(
         check_id="1.4",
         title="No root account access keys",
@@ -338,7 +338,7 @@ def _check_1_4(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_5(iam_client: Any) -> CISCheckResult:
-    """CIS 1.5 — Ensure MFA is enabled for the root user account."""
+    """CIS 1.5 — Root account MFA enabled."""
     result = CISCheckResult(
         check_id="1.5",
         title="Root account MFA enabled",
@@ -359,7 +359,7 @@ def _check_1_5(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_6(iam_client: Any) -> CISCheckResult:
-    """CIS 1.6 — Ensure hardware MFA is enabled for the root user account."""
+    """CIS 1.6 — Hardware MFA for root account."""
     result = CISCheckResult(
         check_id="1.6",
         title="Hardware MFA for root account",
@@ -387,7 +387,7 @@ def _check_1_6(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_7(iam_client: Any) -> CISCheckResult:
-    """CIS 1.7 — Eliminate use of the root user for administrative and daily tasks."""
+    """CIS 1.7 — Root user not used for daily tasks."""
     result = CISCheckResult(
         check_id="1.7",
         title="Root user not used for daily tasks",
@@ -442,7 +442,7 @@ def _check_1_7(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_8(iam_client: Any) -> CISCheckResult:
-    """CIS 1.8 — Ensure IAM password policy requires minimum length >= 14."""
+    """CIS 1.8 — IAM password policy minimum length >= 14."""
     result = CISCheckResult(
         check_id="1.8",
         title="IAM password policy minimum length >= 14",
@@ -470,7 +470,7 @@ def _check_1_8(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_10(iam_client: Any) -> CISCheckResult:
-    """CIS 1.10 — Ensure MFA is enabled for all IAM users with console access."""
+    """CIS 1.10 — MFA on all console-access IAM users."""
     result = CISCheckResult(
         check_id="1.10",
         title="MFA on all console-access IAM users",
@@ -507,7 +507,7 @@ def _check_1_10(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_11(iam_client: Any) -> CISCheckResult:
-    """CIS 1.11 — Do not setup access keys during initial user setup."""
+    """CIS 1.11 — No access keys created at user setup."""
     result = CISCheckResult(
         check_id="1.11",
         title="No access keys created at user setup",
@@ -577,7 +577,7 @@ def _check_1_11(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_12(iam_client: Any) -> CISCheckResult:
-    """CIS 1.12 — Ensure credentials unused for 45 days or greater are disabled."""
+    """CIS 1.12 — Credentials unused 45+ days disabled."""
     result = CISCheckResult(
         check_id="1.12",
         title="Credentials unused 45+ days disabled",
@@ -649,7 +649,7 @@ def _check_1_12(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_13(iam_client: Any) -> CISCheckResult:
-    """CIS 1.13 — Ensure there is only one active access key available for any single IAM user."""
+    """CIS 1.13 — At most one active access key per IAM user."""
     result = CISCheckResult(
         check_id="1.13",
         title="At most one active access key per IAM user",
@@ -681,7 +681,7 @@ def _check_1_13(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_15(iam_client: Any) -> CISCheckResult:
-    """CIS 1.15 — Ensure IAM users receive permissions only through groups or roles."""
+    """CIS 1.15 — IAM permissions granted via groups or roles only."""
     result = CISCheckResult(
         check_id="1.15",
         title="IAM permissions granted via groups or roles only",
@@ -713,7 +713,7 @@ def _check_1_15(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_9(iam_client: Any) -> CISCheckResult:
-    """CIS 1.9 — Ensure IAM password policy prevents password reuse."""
+    """CIS 1.9 — IAM password policy blocks password reuse."""
     result = CISCheckResult(
         check_id="1.9",
         title="IAM password policy blocks password reuse",
@@ -741,7 +741,7 @@ def _check_1_9(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_14(iam_client: Any) -> CISCheckResult:
-    """CIS 1.14 — Ensure access keys are rotated every 90 days or less."""
+    """CIS 1.14 — Access keys rotated within 90 days."""
     result = CISCheckResult(
         check_id="1.14",
         title="Access keys rotated within 90 days",
@@ -777,7 +777,7 @@ def _check_1_14(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_16(iam_client: Any) -> CISCheckResult:
-    """CIS 1.16 — Ensure IAM policies with full '*:*' admin privileges are not attached."""
+    """CIS 1.16 — No full-admin IAM policies attached."""
     result = CISCheckResult(
         check_id="1.16",
         title="No full-admin IAM policies attached",
@@ -847,7 +847,7 @@ def _check_1_16(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_17(iam_client: Any) -> CISCheckResult:
-    """CIS 1.17 — Ensure a support role has been created to manage incidents with AWS Support."""
+    """CIS 1.17 — Support role exists for AWS Support incidents."""
     result = CISCheckResult(
         check_id="1.17",
         title="Support role exists for AWS Support incidents",
@@ -877,7 +877,7 @@ def _check_1_17(iam_client: Any) -> CISCheckResult:
 
 
 def _check_1_19(ec2_client: Any) -> CISCheckResult:
-    """CIS 1.19 — Ensure that IAM instance roles are used for AWS resource access from instances."""
+    """CIS 1.19 — Instance roles used for resource access."""
     result = CISCheckResult(
         check_id="1.19",
         title="Instance roles used for resource access",
@@ -914,7 +914,7 @@ def _check_1_19(ec2_client: Any) -> CISCheckResult:
 
 
 def _check_1_20(accessanalyzer_client: Any) -> CISCheckResult:
-    """CIS 1.20 — Ensure that IAM Access Analyzer is enabled for all regions."""
+    """CIS 1.20 — IAM Access Analyzer enabled in all regions."""
     result = CISCheckResult(
         check_id="1.20",
         title="IAM Access Analyzer enabled in all regions",
@@ -940,7 +940,7 @@ def _check_1_20(accessanalyzer_client: Any) -> CISCheckResult:
 
 
 def _check_1_22(iam_client: Any) -> CISCheckResult:
-    """CIS 1.22 — Ensure access to AWSCloudShellFullAccess is restricted."""
+    """CIS 1.22 — AWSCloudShellFullAccess access restricted."""
     result = CISCheckResult(
         check_id="1.22",
         title="AWSCloudShellFullAccess access restricted",
@@ -980,7 +980,7 @@ _STORAGE_SECTION = "2 - Storage"
 
 
 def _check_2_1_1(s3control_client: Any, account_id: str) -> CISCheckResult:
-    """CIS 2.1.1 — Ensure S3 account-level public access block is configured."""
+    """CIS 2.1.1 — S3 account-level public access block configured."""
     result = CISCheckResult(
         check_id="2.1.1",
         title="S3 account-level public access block configured",
@@ -1009,7 +1009,7 @@ def _check_2_1_1(s3control_client: Any, account_id: str) -> CISCheckResult:
 
 
 def _check_2_1_2(s3_client: Any) -> CISCheckResult:
-    """CIS 2.1.2 — Ensure S3 buckets have server-side encryption enabled."""
+    """CIS 2.1.2 — S3 bucket server-side encryption enabled."""
     result = CISCheckResult(
         check_id="2.1.2",
         title="S3 bucket server-side encryption enabled",
@@ -1058,7 +1058,7 @@ def _check_2_1_2(s3_client: Any) -> CISCheckResult:
 
 
 def _check_2_1_3(s3_client: Any) -> CISCheckResult:
-    """CIS 2.1.3 — Ensure MFA Delete is enabled on S3 buckets."""
+    """CIS 2.1.3 — S3 bucket MFA Delete enabled."""
     result = CISCheckResult(
         check_id="2.1.3",
         title="S3 bucket MFA Delete enabled",
@@ -1102,7 +1102,7 @@ def _check_2_1_3(s3_client: Any) -> CISCheckResult:
 
 
 def _check_2_1_4(s3_client: Any) -> CISCheckResult:
-    """CIS 2.1.4 — Ensure S3 bucket versioning is enabled."""
+    """CIS 2.1.4 — S3 bucket versioning enabled."""
     result = CISCheckResult(
         check_id="2.1.4",
         title="S3 bucket versioning enabled",
@@ -1147,7 +1147,7 @@ def _check_2_1_4(s3_client: Any) -> CISCheckResult:
 
 
 def _check_2_2_1(ec2_client: Any) -> CISCheckResult:
-    """CIS 2.2.1 — Ensure EBS volume encryption is enabled by default."""
+    """CIS 2.2.1 — EBS default volume encryption enabled."""
     result = CISCheckResult(
         check_id="2.2.1",
         title="EBS default volume encryption enabled",
@@ -1172,7 +1172,7 @@ def _check_2_2_1(ec2_client: Any) -> CISCheckResult:
 
 
 def _check_2_3_1(rds_client: Any) -> CISCheckResult:
-    """CIS 2.3.1 — Ensure RDS instances have encryption at rest enabled."""
+    """CIS 2.3.1 — RDS encryption at rest enabled."""
     result = CISCheckResult(
         check_id="2.3.1",
         title="RDS encryption at rest enabled",
@@ -1201,7 +1201,7 @@ def _check_2_3_1(rds_client: Any) -> CISCheckResult:
 
 
 def _check_2_3_2(rds_client: Any) -> CISCheckResult:
-    """CIS 2.3.2 — Ensure auto minor version upgrade is enabled for RDS instances."""
+    """CIS 2.3.2 — RDS auto minor version upgrade enabled."""
     result = CISCheckResult(
         check_id="2.3.2",
         title="RDS auto minor version upgrade enabled",
@@ -1230,7 +1230,7 @@ def _check_2_3_2(rds_client: Any) -> CISCheckResult:
 
 
 def _check_2_4_1(kms_client: Any) -> CISCheckResult:
-    """CIS 2.4.1 — Ensure rotation is enabled for customer-managed KMS keys."""
+    """CIS 2.4.1 — Customer-managed KMS key rotation enabled."""
     result = CISCheckResult(
         check_id="2.4.1",
         title="Customer-managed KMS key rotation enabled",
@@ -1294,7 +1294,7 @@ _LOGGING_SECTION = "3 - Logging"
 
 
 def _check_3_1(cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.1 — Ensure CloudTrail is enabled in all regions."""
+    """CIS 3.1 — CloudTrail enabled in all regions."""
     result = CISCheckResult(
         check_id="3.1",
         title="CloudTrail enabled in all regions",
@@ -1331,7 +1331,7 @@ def _check_3_1(cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_3_2(cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.2 — Ensure CloudTrail log file validation is enabled."""
+    """CIS 3.2 — CloudTrail log file validation enabled."""
     result = CISCheckResult(
         check_id="3.2",
         title="CloudTrail log file validation enabled",
@@ -1357,7 +1357,7 @@ def _check_3_2(cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_3_4(cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.4 — Ensure CloudTrail trails are integrated with CloudWatch Logs."""
+    """CIS 3.4 — CloudTrail integrated with CloudWatch Logs."""
     result = CISCheckResult(
         check_id="3.4",
         title="CloudTrail integrated with CloudWatch Logs",
@@ -1383,7 +1383,7 @@ def _check_3_4(cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_3_5(cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.5 — Ensure AWS Config is enabled in all regions."""
+    """CIS 3.5 — CloudTrail records management events in all regions."""
     # Note: We check via CloudTrail for management event recording as a proxy.
     # Full Config check requires config:DescribeConfigurationRecorders.
     result = CISCheckResult(
@@ -1430,7 +1430,7 @@ def _check_3_5(cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_3_6(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.6 — Ensure S3 bucket access logging is enabled on the CloudTrail S3 bucket."""
+    """CIS 3.6 — Access logging enabled on CloudTrail S3 bucket."""
     result = CISCheckResult(
         check_id="3.6",
         title="Access logging enabled on CloudTrail S3 bucket",
@@ -1478,7 +1478,7 @@ def _check_3_6(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_3_3(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.3 — Ensure CloudTrail S3 bucket is not publicly accessible."""
+    """CIS 3.3 — CloudTrail S3 bucket not publicly accessible."""
     result = CISCheckResult(
         check_id="3.3",
         title="CloudTrail S3 bucket not publicly accessible",
@@ -1541,7 +1541,7 @@ def _check_3_3(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_3_7(cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.7 — Ensure CloudTrail logs are encrypted with KMS CMK."""
+    """CIS 3.7 — CloudTrail logs encrypted with KMS CMK."""
     result = CISCheckResult(
         check_id="3.7",
         title="CloudTrail logs encrypted with KMS CMK",
@@ -1569,7 +1569,7 @@ def _check_3_7(cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_3_9(ec2_client: Any) -> CISCheckResult:
-    """CIS 3.9 — Ensure VPC flow logging is enabled in all VPCs."""
+    """CIS 3.9 — VPC flow logging enabled in all VPCs."""
     result = CISCheckResult(
         check_id="3.9",
         title="VPC flow logging enabled in all VPCs",
@@ -1604,7 +1604,7 @@ def _check_3_9(ec2_client: Any) -> CISCheckResult:
 
 
 def _check_3_10(cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.10 — Ensure Object-level logging for write events is enabled for S3 buckets."""
+    """CIS 3.10 — S3 object-level write-event logging enabled."""
     result = CISCheckResult(
         check_id="3.10",
         title="S3 object-level write-event logging enabled",
@@ -1664,7 +1664,7 @@ def _check_3_10(cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_3_11(cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 3.11 — Ensure Object-level logging for read events is enabled for S3 buckets."""
+    """CIS 3.11 — S3 object-level read-event logging enabled."""
     result = CISCheckResult(
         check_id="3.11",
         title="S3 object-level read-event logging enabled",
@@ -1729,7 +1729,7 @@ _MONITORING_SECTION = "4 - Monitoring"
 
 
 def _check_4_3(logs_client: Any) -> CISCheckResult:
-    """CIS 4.3 — Ensure a metric filter and alarm exist for root account usage."""
+    """CIS 4.3 — Metric filter and alarm for root account usage."""
     result = CISCheckResult(
         check_id="4.3",
         title="Metric filter and alarm for root account usage",
@@ -1771,7 +1771,7 @@ def _check_4_3(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_4(logs_client: Any) -> CISCheckResult:
-    """CIS 4.4 — Ensure a metric filter and alarm exist for IAM policy changes."""
+    """CIS 4.4 — Metric filter and alarm for IAM policy changes."""
     result = CISCheckResult(
         check_id="4.4",
         title="Metric filter and alarm for IAM policy changes",
@@ -1825,7 +1825,7 @@ def _check_4_4(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_5(logs_client: Any, cloudtrail_client: Any) -> CISCheckResult:
-    """CIS 4.5 — Ensure a metric filter and alarm exist for CloudTrail config changes."""
+    """CIS 4.5 — Metric filter and alarm for CloudTrail config changes."""
     result = CISCheckResult(
         check_id="4.5",
         title="Metric filter and alarm for CloudTrail config changes",
@@ -1878,7 +1878,7 @@ def _check_4_5(logs_client: Any, cloudtrail_client: Any) -> CISCheckResult:
 
 
 def _check_4_1(logs_client: Any) -> CISCheckResult:
-    """CIS 4.1 — Ensure a metric filter and alarm exist for unauthorized API calls."""
+    """CIS 4.1 — Metric filter and alarm for unauthorized API calls."""
     result = CISCheckResult(
         check_id="4.1",
         title="Metric filter and alarm for unauthorized API calls",
@@ -1912,7 +1912,7 @@ def _check_4_1(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_2(logs_client: Any) -> CISCheckResult:
-    """CIS 4.2 — Ensure a metric filter and alarm exist for console sign-in without MFA."""
+    """CIS 4.2 — Metric filter and alarm for console sign-in without MFA."""
     result = CISCheckResult(
         check_id="4.2",
         title="Metric filter and alarm for console sign-in without MFA",
@@ -1946,7 +1946,7 @@ def _check_4_2(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_6(logs_client: Any) -> CISCheckResult:
-    """CIS 4.6 — Ensure a metric filter and alarm exist for console authentication failures."""
+    """CIS 4.6 — Metric filter and alarm for console auth failures."""
     result = CISCheckResult(
         check_id="4.6",
         title="Metric filter and alarm for console auth failures",
@@ -1980,7 +1980,7 @@ def _check_4_6(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_7(logs_client: Any) -> CISCheckResult:
-    """CIS 4.7 — Ensure a metric filter and alarm exist for disabling or scheduled deletion of CMKs."""
+    """CIS 4.7 — Metric filter and alarm for CMK disable or deletion."""
     result = CISCheckResult(
         check_id="4.7",
         title="Metric filter and alarm for CMK disable or deletion",
@@ -2015,7 +2015,7 @@ def _check_4_7(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_8(logs_client: Any) -> CISCheckResult:
-    """CIS 4.8 — Ensure a metric filter and alarm exist for S3 bucket policy changes."""
+    """CIS 4.8 — Metric filter and alarm for S3 bucket policy changes."""
     result = CISCheckResult(
         check_id="4.8",
         title="Metric filter and alarm for S3 bucket policy changes",
@@ -2060,7 +2060,7 @@ def _check_4_8(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_9(logs_client: Any) -> CISCheckResult:
-    """CIS 4.9 — Ensure a metric filter and alarm exist for AWS Config configuration changes."""
+    """CIS 4.9 — Metric filter and alarm for AWS Config changes."""
     result = CISCheckResult(
         check_id="4.9",
         title="Metric filter and alarm for AWS Config changes",
@@ -2100,7 +2100,7 @@ def _check_4_9(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_10(logs_client: Any) -> CISCheckResult:
-    """CIS 4.10 — Ensure a metric filter and alarm exist for security group changes."""
+    """CIS 4.10 — Metric filter and alarm for security group changes."""
     result = CISCheckResult(
         check_id="4.10",
         title="Metric filter and alarm for security group changes",
@@ -2142,7 +2142,7 @@ def _check_4_10(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_11(logs_client: Any) -> CISCheckResult:
-    """CIS 4.11 — Ensure a metric filter and alarm exist for changes to Network Access Control Lists."""
+    """CIS 4.11 — Metric filter and alarm for NACL changes."""
     result = CISCheckResult(
         check_id="4.11",
         title="Metric filter and alarm for NACL changes",
@@ -2184,7 +2184,7 @@ def _check_4_11(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_12(logs_client: Any) -> CISCheckResult:
-    """CIS 4.12 — Ensure a metric filter and alarm exist for changes to network gateways."""
+    """CIS 4.12 — Metric filter and alarm for network gateway changes."""
     result = CISCheckResult(
         check_id="4.12",
         title="Metric filter and alarm for network gateway changes",
@@ -2226,7 +2226,7 @@ def _check_4_12(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_13(logs_client: Any) -> CISCheckResult:
-    """CIS 4.13 — Ensure a metric filter and alarm exist for route table changes."""
+    """CIS 4.13 — Metric filter and alarm for route table changes."""
     result = CISCheckResult(
         check_id="4.13",
         title="Metric filter and alarm for route table changes",
@@ -2269,7 +2269,7 @@ def _check_4_13(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_14(logs_client: Any) -> CISCheckResult:
-    """CIS 4.14 — Ensure a metric filter and alarm exist for VPC changes."""
+    """CIS 4.14 — Metric filter and alarm for VPC changes."""
     result = CISCheckResult(
         check_id="4.14",
         title="Metric filter and alarm for VPC changes",
@@ -2316,7 +2316,7 @@ def _check_4_14(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_15(logs_client: Any) -> CISCheckResult:
-    """CIS 4.15 — Ensure a metric filter and alarm exist for AWS Organizations changes."""
+    """CIS 4.15 — Metric filter and alarm for AWS Organizations changes."""
     result = CISCheckResult(
         check_id="4.15",
         title="Metric filter and alarm for AWS Organizations changes",
@@ -2359,7 +2359,7 @@ def _check_4_15(logs_client: Any) -> CISCheckResult:
 
 
 def _check_4_16(securityhub_client: Any) -> CISCheckResult:
-    """CIS 4.16 — Ensure AWS Security Hub is enabled."""
+    """CIS 4.16 — AWS Security Hub enabled."""
     result = CISCheckResult(
         check_id="4.16",
         title="AWS Security Hub enabled",
@@ -2397,7 +2397,7 @@ _NETWORKING_SECTION = "5 - Networking"
 
 
 def _check_5_2(ec2_client: Any) -> CISCheckResult:
-    """CIS 5.2 — Ensure no security groups allow ingress from 0.0.0.0/0 to remote admin ports."""
+    """CIS 5.2 — No unrestricted ingress to admin ports (22, 3389)."""
     result = CISCheckResult(
         check_id="5.2",
         title="No unrestricted ingress to admin ports (22, 3389)",
@@ -2464,7 +2464,7 @@ def _check_5_2(ec2_client: Any) -> CISCheckResult:
 
 
 def _check_5_3(ec2_client: Any) -> CISCheckResult:
-    """CIS 5.3 — Ensure the default security group of every VPC restricts all traffic."""
+    """CIS 5.3 — Default security group restricts all traffic."""
     result = CISCheckResult(
         check_id="5.3",
         title="Default security group restricts all traffic",
@@ -2496,7 +2496,7 @@ def _check_5_3(ec2_client: Any) -> CISCheckResult:
 
 
 def _check_5_5(ec2_client: Any) -> CISCheckResult:
-    """CIS 5.5 — Ensure no security groups allow ingress from 0.0.0.0/0 or ::/0 to all ports."""
+    """CIS 5.5 — No security group allows all-ports ingress from any IP."""
     result = CISCheckResult(
         check_id="5.5",
         title="No security group allows all-ports ingress from any IP",
@@ -2543,7 +2543,7 @@ def _check_5_5(ec2_client: Any) -> CISCheckResult:
 
 
 def _check_5_6(ec2_client: Any) -> CISCheckResult:
-    """CIS 5.6 — Ensure VPC flow logging is enabled in all VPCs."""
+    """CIS 5.6 — VPC flow logging enabled in all VPCs."""
     result = CISCheckResult(
         check_id="5.6",
         title="VPC flow logging enabled in all VPCs",
@@ -2578,7 +2578,7 @@ def _check_5_6(ec2_client: Any) -> CISCheckResult:
 
 
 def _check_5_1(ec2_client: Any) -> CISCheckResult:
-    """CIS 5.1 — Ensure no Network ACLs allow ingress from 0.0.0.0/0 to remote admin ports."""
+    """CIS 5.1 — No NACL allows unrestricted ingress to admin ports."""
     result = CISCheckResult(
         check_id="5.1",
         title="No NACL allows unrestricted ingress to admin ports",
@@ -2633,7 +2633,7 @@ def _check_5_1(ec2_client: Any) -> CISCheckResult:
 
 
 def _check_5_4(ec2_client: Any) -> CISCheckResult:
-    """CIS 5.4 — Ensure routing tables for VPC peering are least-privilege."""
+    """CIS 5.4 — VPC peering route tables least-privilege."""
     result = CISCheckResult(
         check_id="5.4",
         title="VPC peering route tables least-privilege",

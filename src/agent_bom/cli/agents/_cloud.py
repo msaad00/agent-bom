@@ -148,7 +148,7 @@ def run_cloud_discovery(
     quiet = ctx_quiet(ctx)
     verbose = ctx_verbose(ctx)
     for provider_name, provider_kwargs in cloud_providers:
-        from agent_bom.cloud import CloudDiscoveryError, discover_from_provider
+        from agent_bom.cloud import discover_from_provider
 
         if verbose and not quiet:
             print_lane_header(con, "discover", f"{provider_name.upper()} agents")
@@ -167,14 +167,17 @@ def run_cloud_discovery(
                 )
             if cloud_agents:
                 ctx.agents.extend(cloud_agents)
-        except CloudDiscoveryError as exc:
+            ctx.cloud_provider_successes.append({"provider": provider_name, "stage": "discovery"})
+            for warning in cloud_warnings:
+                ctx.cloud_provider_warnings.append({"provider": provider_name, "stage": "discovery", "warning": str(warning)})
+        except Exception as exc:  # noqa: BLE001 - isolate requested collectors so later providers still run
             if not quiet:
                 con.print(f"\n  [red]{provider_name.upper()} discovery error: {_safe_error(exc)}[/red]")
             # A requested provider whose SDK or credentials are missing/invalid is a
             # hard failure, not a clean empty result. Record it so the final exit code
             # is non-zero (silent CI passes are the bug). The loop continues, so the
             # other requested providers are still scanned.
-            ctx.cloud_provider_failures.append({"provider": provider_name, "stage": "discovery", "error": str(exc)})
+            ctx.cloud_provider_failures.append({"provider": provider_name, "stage": "discovery", "error": _safe_error(exc)})
 
     # Step 1h2: Auto-scan container images discovered from cloud providers (Azure, GCP, etc.)
     # Cloud providers discover container refs but cannot scan them — bridge that gap here.

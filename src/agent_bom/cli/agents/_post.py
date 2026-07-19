@@ -439,6 +439,18 @@ def compute_exit_code(
             con.print(f"\n  [red]Exiting with code 1: cloud provider discovery failed for {providers} (missing SDK or credentials)[/red]")
         exit_code = 1
 
+    # Evidence quality is an automation boundary, independent of finding gates.
+    # A requested collector that degraded or failed must never produce a clean
+    # process exit even when the partial artifact contains zero findings.
+    if report is not None:
+        from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
+
+        scan_outcome = effective_scan_run(report).outcome
+        if scan_outcome is not ScanOutcome.COMPLETE:
+            if not quiet and not ctx.cloud_provider_failures:
+                con.print(f"\n  [red]Exiting with code 1: scan execution was {scan_outcome.value}; inspect scan_run.issues[/red]")
+            exit_code = 1
+
     # Push results to central dashboard
     if push_url and report:
         try:

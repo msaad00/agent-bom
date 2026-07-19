@@ -21,6 +21,7 @@ from agent_bom.canonical_ids import (
     canonical_mcp_tool_id,
     canonical_package_id,
 )
+from agent_bom.evidence.scan_run import ScanRun
 from agent_bom.package_utils import (
     host_matches_domain as _host_matches_domain,
 )
@@ -1183,6 +1184,10 @@ class AIBOMReport:
     # Populated by the CLI/API after scan completes. Consumers use this to
     # determine which UI panels, compliance frameworks, and graphs apply.
     scan_sources: list[str] = field(default_factory=list)  # e.g. ["agent_discovery", "image", "sbom"]
+
+    # Execution quality is separate from security/policy verdicts. Consumers
+    # must not interpret a complete scan with findings as an incomplete scan.
+    scan_run: ScanRun = field(default_factory=ScanRun)
 
     # Per-release vulnerability-coverage gaps detected during the scan. Each item
     # is a serialized agent_bom.coverage.CoverageWarning (ecosystem, release,

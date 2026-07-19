@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.util
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -76,6 +78,38 @@ def _top_of(stmt: str) -> str:
     if stmt.startswith("from "):
         return stmt.split()[1].split(".")[0]
     return stmt.split()[1].split(".")[0]
+
+
+def _find(module: str) -> Any:
+    """``importlib.util.find_spec`` tolerating a missing parent namespace."""
+    try:
+        return importlib.util.find_spec(module)
+    except (ImportError, ValueError):
+        return None
+
+
+def _sdk_present(stmt: str) -> bool:
+    """Whether the gated SDK backing this import line is installed.
+
+    The bare top-level (``google``) — and even ``google.cloud`` — are namespace
+    packages importable via unrelated deps, so a shallow probe never skips when
+    the SDK itself is absent. Probe precisely:
+    - ``import a.b.c`` → the module ``a.b.c`` must be locatable.
+    - ``from a.b import c`` → the from-module ``a.b`` must be locatable, and when
+      it is only a namespace package (no real code), ``a.b.c`` must exist as a
+      submodule (otherwise ``c`` is a symbol of an installed module — run it, so
+      a moved/renamed symbol is caught rather than silently skipped).
+    """
+    parts = stmt.split()
+    if stmt.startswith("from "):
+        frm, name = parts[1], parts[3]
+        spec = _find(frm)
+        if spec is None:
+            return False
+        if spec.origin in (None, "namespace") and _find(f"{frm}.{name}") is None:
+            return False
+        return True
+    return _find(parts[1]) is not None
 
 
 def _handler_is_import_guard(handler: ast.ExceptHandler) -> bool:
@@ -187,7 +221,11 @@ def test_extra_gated_sdk_import_executes(group: Group) -> None:
     A single (standalone) import must resolve. A fallback group passes when at
     least one alternative resolves.
     """
-    pytest.importorskip(group.top, reason=f"{_EXTRA_BY_TOP[group.top]} extra not installed")
+    # Skip only when the gated SDK sub-namespace is genuinely absent (a base
+    # test env without this extra); a present namespace means we should execute
+    # and catch a moved/renamed symbol.
+    if not any(_sdk_present(stmt) for stmt in group.stmts):
+        pytest.skip(f"{_EXTRA_BY_TOP[group.top]} extra not installed")
     errors: list[str] = []
     for stmt in group.stmts:
         try:

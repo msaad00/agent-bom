@@ -121,7 +121,7 @@ flowchart TB
   vulnerabilities, cloud/config posture, identity context, and runtime records.
   `ContextGraph` and `UnifiedGraph` are still being consolidated, so not every
   record is physically stored as one object.
-- **Agent interface:** server mode exposes 75 MCP tools, 6 resources, and 8 workflow prompts
+- **Agent interface:** server mode exposes 76 MCP tools, 6 resources, and 8 workflow prompts
   over strict MCP arguments. Registry metadata includes a committed Smithery manifest;
   integration docs distinguish committed metadata from current catalog liveness.
 

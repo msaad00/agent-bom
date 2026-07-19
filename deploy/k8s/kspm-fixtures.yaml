@@ -1,0 +1,89 @@
+# KSPM live-cluster test fixtures: one deliberately RISKY namespace/workload and
+# one HARDENED namespace/workload, so an in-cluster posture scan produces real,
+# non-fabricated findings on the risky side and stays clean on the hardened side.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kspm-risky
+  labels: {agent-bom.io/kspm-fixture: risky}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kspm-hardened
+  labels: {agent-bom.io/kspm-fixture: hardened}
+---
+# RISKY: privileged, runs as root, hostPath mount, host namespaces, default SA
+# token automount. No NetworkPolicy exists in this namespace.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: risky-workload
+  namespace: kspm-risky
+spec:
+  hostNetwork: true
+  hostPID: true
+  containers:
+    - name: app
+      image: registry.k8s.io/pause:3.10
+      securityContext:
+        privileged: true
+        runAsUser: 0
+        allowPrivilegeEscalation: true
+        capabilities:
+          add: ["NET_ADMIN", "SYS_ADMIN"]
+      volumeMounts:
+        - name: host
+          mountPath: /host
+  volumes:
+    - name: host
+      hostPath:
+        path: /
+---
+# RISKY: live cluster-admin binding to a non-system subject.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kspm-risky-admin
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: kspm-risky
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+# HARDENED: NetworkPolicy default-deny + a non-root, locked-down pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: kspm-hardened
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hardened-workload
+  namespace: kspm-hardened
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: app
+      image: registry.k8s.io/pause:3.10
+      securityContext:
+        privileged: false
+        runAsNonRoot: true
+        runAsUser: 65532
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

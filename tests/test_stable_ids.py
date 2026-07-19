@@ -266,11 +266,54 @@ def test_agent_stable_id_distinct_by_install_location():
     assert a1.stable_id != a2.stable_id
 
 
-def test_agent_stable_id_prefers_explicit_source():
-    """An explicit inventory source wins over config_path as the discriminator."""
-    a1 = Agent(name="Bot", agent_type=AgentType.CUSTOM, config_path="/path/a", source="snowflake")
-    a2 = Agent(name="Bot", agent_type=AgentType.CUSTOM, config_path="/path/b", source="snowflake")
-    assert a1.stable_id == a2.stable_id
+def test_agent_stable_id_does_not_treat_provider_source_as_identity():
+    """Collector provenance must not collapse distinct agents into one identity."""
+    a1 = Agent(name="Bot A", agent_type=AgentType.CUSTOM, config_path="/path/a", source="snowflake")
+    a2 = Agent(name="Bot B", agent_type=AgentType.CUSTOM, config_path="/path/b", source="snowflake")
+    assert a1.stable_id != a2.stable_id
+
+
+def test_agent_stable_id_preserves_explicit_source_and_device_identity():
+    """Source identity survives relocation; device identity also survives rename."""
+    source_a = Agent(
+        name="Bot A",
+        agent_type=AgentType.CUSTOM,
+        config_path="/path/a",
+        source="snowflake",
+        source_id="endpoint-123",
+    )
+    source_b = Agent(
+        name="Bot A",
+        agent_type=AgentType.CUSTOM,
+        config_path="/path/b",
+        source="snowflake",
+        source_id="endpoint-123",
+    )
+    device_a = Agent(
+        name="Laptop A",
+        agent_type=AgentType.CURSOR,
+        config_path="/path/a",
+        source_id="endpoint-a",
+        device_fingerprint="tpm:abc",
+    )
+    device_b = Agent(
+        name="Laptop B",
+        agent_type=AgentType.CURSOR,
+        config_path="/path/b",
+        source_id="endpoint-b",
+        device_fingerprint="tpm:abc",
+    )
+
+    assert source_a.stable_id == source_b.stable_id
+    assert device_a.stable_id == device_b.stable_id
+
+    renamed_source = Agent(
+        name="Renamed Bot",
+        agent_type=AgentType.CUSTOM,
+        config_path="/path/b",
+        source_id="endpoint-123",
+    )
+    assert source_a.stable_id != renamed_source.stable_id
 
 
 # ---------------------------------------------------------------------------

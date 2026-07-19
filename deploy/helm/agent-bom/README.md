@@ -69,6 +69,33 @@ python scripts/install_helm_profile.py focused-pilot
 
 Full profile matrix: [`examples/README.md`](examples/README.md).
 
+## Cloud-SDK collector image
+
+The scheduled cloud scan runs a dedicated **collector image**
+(`agentbom/agent-bom-collector`, built from
+[`deploy/docker/Dockerfile.collector`](../../docker/Dockerfile.collector)) that
+ships the provider SDK layer — boto3, the Azure management SDKs, the Google
+Cloud SDKs, and the Snowflake connector — separately from the control-plane
+image. This lets the fast-moving SDK layer be rebuilt and re-tagged on its own
+cadence: a daily CI job (`refresh-collector-latest`) rebuilds
+`agent-bom-collector:latest` to absorb newer provider-SDK wheels within the
+pinned floors **without** a control-plane version bump. The collector keeps the
+BYOC trust boundary intact — a direct, read-only, least-privilege link to the
+customer's cloud, with no external MCP in the credential/data path.
+
+The SDK versions come from the cloud provider extras in `pyproject.toml` (the
+single source of truth the [cloud-SDK drift gate](../../../scripts/check_cloud_sdk_drift.py)
+enforces); the image never re-declares them. To pin a newer SDK-only build
+between control-plane releases:
+
+```bash
+helm upgrade agent-bom agent-bom/agent-bom \
+  --reuse-values --set collectorImage.tag=<sdk-only-build>
+```
+
+`collectorImage` mirrors the `image`/`uiImage`/`runtimeImage` block convention; a
+blank `collectorImage.tag` falls back to `image.tag`.
+
 ## Key values
 
 | Value | Default | Description |
@@ -76,6 +103,8 @@ Full profile matrix: [`examples/README.md`](examples/README.md).
 | `scanner.enabled` | `true` | Deploy CronJob scanner |
 | `scanner.schedule` | `0 */6 * * *` | Cron schedule |
 | `scanner.allNamespaces` | `true` | Scan all namespaces |
+| `collectorImage.repository` | `agentbom/agent-bom-collector` | Cloud-SDK collector image the scan CronJob runs |
+| `collectorImage.tag` | release version | Collector tag — override to bump the SDK layer independently of the control plane; blank falls back to `image.tag` |
 | `controlPlane.enabled` | `false` | Package API + dashboard Deployments |
 | `controlPlane.ingress.enabled` | `false` | Same-origin ingress for UI + API |
 | `monitor.enabled` | `false` | Optional node-wide runtime monitor |

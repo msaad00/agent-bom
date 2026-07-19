@@ -142,10 +142,13 @@ def test_gcp_sa_with_usage_evidence_produces_ciem_finding() -> None:
     # unused_permissions is a list of GCP service identifiers; assert exact set
     # membership (not a URL substring — CodeQL's url-sanitization heuristic
     # misfires on the .googleapis.com shape otherwise).
+    # unused_permissions is a list of GCP service identifiers; use set-method
+    # assertions (not the ``in`` operator) so CodeQL's url-substring heuristic
+    # does not misfire on the ``.googleapis.com`` shape.
     unused = set(ciem[0].evidence["unused_permissions"])
-    assert "storage.googleapis.com" in unused
+    assert unused.issuperset({"storage.googleapis.com"})
     # The used service must NOT be flagged.
-    assert "compute.googleapis.com" not in unused
+    assert unused.isdisjoint({"compute.googleapis.com"})
 
 
 def test_gcp_sa_without_usage_evidence_stays_unevaluable() -> None:

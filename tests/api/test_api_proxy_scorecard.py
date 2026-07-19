@@ -971,15 +971,24 @@ def test_send_webhook_failure_silent(caplog):
     from agent_bom.proxy import _send_webhook
 
     secret_url = "https://hooks.example.com/services/T000/B111/SUPERSECRET?token=ALSOSECRET"
-    caplog.set_level(logging.DEBUG)
-    with patch("agent_bom.security.validate_url"), patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client.post.side_effect = Exception("connection failed")
-        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    # Pin capture to the emitting logger and restore its propagation: an earlier
+    # test in the full suite can leave agent_bom.proxy with propagate=False,
+    # which silently empties caplog and makes this redaction check a false pass.
+    proxy_logger = logging.getLogger("agent_bom.proxy")
+    prev_propagate = proxy_logger.propagate
+    proxy_logger.propagate = True
+    caplog.set_level(logging.DEBUG, logger="agent_bom.proxy")
+    try:
+        with patch("agent_bom.security.validate_url"), patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post.side_effect = Exception("connection failed")
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        # Should not raise
-        asyncio.run(_send_webhook(secret_url, {"test": True}))
+            # Should not raise
+            asyncio.run(_send_webhook(secret_url, {"test": True}))
+    finally:
+        proxy_logger.propagate = prev_propagate
 
     from agent_bom.security import redact_secret_url
 

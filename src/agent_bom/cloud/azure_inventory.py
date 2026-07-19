@@ -615,20 +615,25 @@ def _discover_storage_accounts(
             # Publicly accessible when blob public access is allowed AND the
             # network firewall default action is not "deny".
             publicly_accessible = allow_public and default_action != "deny"
-            accounts.append(
-                {
-                    "name": name,
-                    "id": account_id,
-                    "location": str(getattr(account, "location", "") or ""),
-                    "resource_group": _resource_group_from_id(account_id),
-                    "kind": str(getattr(account, "kind", "") or ""),
-                    "publicly_accessible": publicly_accessible,
-                    "allow_blob_public_access": allow_public,
-                    "network_default_action": default_action,
-                    "tags": _clean_tags(getattr(account, "tags", None)),
-                    "subscription_id": subscription_id,
-                }
-            )
+            account_record: dict[str, Any] = {
+                "name": name,
+                "id": account_id,
+                "location": str(getattr(account, "location", "") or ""),
+                "resource_group": _resource_group_from_id(account_id),
+                "kind": str(getattr(account, "kind", "") or ""),
+                "publicly_accessible": publicly_accessible,
+                "allow_blob_public_access": allow_public,
+                "network_default_action": default_action,
+                "tags": _clean_tags(getattr(account, "tags", None)),
+                "subscription_id": subscription_id,
+            }
+            # Opt-in DSPM blob content sampling (parity with S3/GCS). Reads bounded
+            # blob byte ranges through the Storage Blob data plane and attaches
+            # redacted content_classification evidence so the crown-jewel overlay
+            # promotes a content-confirmed sensitive account. Best-effort — a
+            # sampling failure never sinks storage inventory.
+            _classify_storage_account_blobs(credential, account_record, warnings=warnings)
+            accounts.append(account_record)
     except Exception as exc:  # noqa: BLE001 — one failed Azure Storage Accounts list must not sink the scan
         record_discovery_failure(
             exc=exc,
@@ -639,6 +644,37 @@ def _discover_storage_accounts(
             missing=missing,
         )
     return accounts
+
+
+def _classify_storage_account_blobs(credential: Any, account_record: dict[str, Any], *, warnings: list[str]) -> None:
+    """Attach redacted DSPM blob content_classification when sampling is enabled.
+
+    Opt-in via ``AGENT_BOM_DSPM_AZURE_BLOB_SAMPLING``. Opens the Storage Blob data
+    plane with the same read-only brokered credential and samples bounded byte
+    ranges; only redacted type/count/location evidence is attached. Never raises.
+    """
+    try:
+        from agent_bom.cloud.azure_blob_data_classifier import azure_blob_sampling_enabled, classify_azure_blob_account
+
+        if not azure_blob_sampling_enabled():
+            return
+        from azure.storage.blob import BlobServiceClient
+
+        name = str(account_record.get("name") or "")
+        account_url = f"https://{name}.blob.core.windows.net"
+        service = BlobServiceClient(account_url=account_url, credential=credential)
+        try:
+            account_record["content_classification"] = classify_azure_blob_account(service, account=name).to_dict()
+        finally:
+            try:
+                service.close()
+            except Exception:  # noqa: BLE001 — client close is best-effort
+                pass
+    except Exception as exc:  # noqa: BLE001 — sampling is optional and must not sink inventory
+        warnings.append(
+            f"Could not classify Azure Blob content for storage account "
+            f"{account_record.get('name')}: {sanitize_discovery_warning(exc)}"
+        )
 
 
 # ---------------------------------------------------------------------------

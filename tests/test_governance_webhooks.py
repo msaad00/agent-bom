@@ -52,11 +52,16 @@ def test_wants_filters_by_event_type_and_status():
 
 
 def test_create_subscription_validates_url_and_masks_secret(sub_store):
-    sub = create_subscription(sub_store, tenant_id="t1", url="https://hooks.example.com/in", event_types=["drift.detected"])
+    secret_url = "https://hooks.example.com/services/T000/B111/SUPERSECRET?token=ALSOSECRET"
+    sub = create_subscription(sub_store, tenant_id="t1", url=secret_url, event_types=["drift.detected"])
     assert sub.signing_secret.startswith("whsec_")
     public = sub.to_public_dict()
     assert "signing_secret" not in public
     assert public["secret_fingerprint"]
+    assert public["url"].startswith("https://hooks.example.com/")
+    assert "SUPERSECRET" not in public["url"]
+    assert "ALSOSECRET" not in public["url"]
+    assert public["url"] != secret_url
     # SSRF: localhost is rejected unless allow_private_networks.
     with pytest.raises(ValueError):
         create_subscription(sub_store, tenant_id="t1", url="http://localhost:9999/in")

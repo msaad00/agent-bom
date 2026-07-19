@@ -180,9 +180,28 @@ def test_auth_failure_is_permanent_no_retry_and_warned(tmp_path: Path) -> None:
     client = _client(tmp_path, sender, clock=clock)
     result = client.deliver(_dest(), _delivery())
     assert result.status == "dead_letter"
+    assert result.attempts == 1
     assert len(sender.calls) == 1  # 401 not retried
     assert "auth" in result.warning.lower()
     assert clock.slept == []  # no backoff for permanent error
+    dead_letters = client.dead_letters(destination_id="dst1")
+    assert dead_letters[0]["attempt"] == 1
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"max_attempts": 0},
+        {"max_attempts": 11},
+        {"initial_backoff": 0},
+        {"max_backoff": float("inf")},
+        {"backoff_multiplier": 0.5},
+        {"jitter_ratio": 1.1},
+    ],
+)
+def test_retry_policy_rejects_unbounded_or_non_finite_values(kwargs: dict[str, object]) -> None:
+    with pytest.raises(DeliveryError):
+        RetryPolicy(**kwargs)  # type: ignore[arg-type]
 
 
 def test_429_is_retried_and_warned(tmp_path: Path) -> None:

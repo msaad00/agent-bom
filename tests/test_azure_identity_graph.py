@@ -39,8 +39,8 @@ from agent_bom.cloud.azure_graph import (
     RESTRICTED_GUEST_ROLE_TEMPLATE_ID,
     SECURITY_DEFAULTS_PATH,
     AzureGraphClient,
-    GraphPermissionDenied,
-    GraphUnavailable,
+    GraphPermissionDeniedError,
+    GraphUnavailableError,
 )
 
 _MISSING = object()
@@ -58,7 +58,7 @@ class FakeGraph:
         if isinstance(value, Exception):
             raise value
         if value is _MISSING:
-            raise GraphUnavailable(f"no fixture for GET {path}")
+            raise GraphUnavailableError(f"no fixture for GET {path}")
         return value
 
     def list(self, path: str):
@@ -66,7 +66,7 @@ class FakeGraph:
         if isinstance(value, Exception):
             raise value
         if value is _MISSING:
-            raise GraphUnavailable(f"no fixture for LIST {path}")
+            raise GraphUnavailableError(f"no fixture for LIST {path}")
         return value
 
 
@@ -160,7 +160,7 @@ def test_ca_control_does_not_pass_on_report_only_or_disabled(check, report_only_
     [_check_1_6, _check_1_8, _check_1_9, _check_1_18, _check_1_21, _check_1_22],
 )
 def test_ca_control_unevaluable_on_permission_denied(check):
-    graph = FakeGraph(lists={CONDITIONAL_ACCESS_POLICIES_PATH: GraphPermissionDenied("denied")})
+    graph = FakeGraph(lists={CONDITIONAL_ACCESS_POLICIES_PATH: GraphPermissionDeniedError("denied")})
     result = check(graph)
     assert result.status == CheckStatus.ERROR
     assert "unevaluable" in result.evidence.lower()
@@ -197,7 +197,7 @@ def test_authorization_policy_control(check, good_policy, bad_policy):
     assert check(good).status == CheckStatus.PASS
     bad = FakeGraph(gets={AUTHORIZATION_POLICY_PATH: bad_policy})
     assert check(bad).status == CheckStatus.FAIL
-    denied = FakeGraph(gets={AUTHORIZATION_POLICY_PATH: GraphPermissionDenied("denied")})
+    denied = FakeGraph(gets={AUTHORIZATION_POLICY_PATH: GraphPermissionDeniedError("denied")})
     denied_result = check(denied)
     assert denied_result.status == CheckStatus.ERROR
     assert denied_result.status != CheckStatus.PASS
@@ -211,7 +211,7 @@ def test_authorization_policy_control(check, good_policy, bad_policy):
 def test_security_defaults_pass_fail_unevaluable():
     assert _check_1_11(FakeGraph(gets={SECURITY_DEFAULTS_PATH: {"isEnabled": True}})).status == CheckStatus.PASS
     assert _check_1_11(FakeGraph(gets={SECURITY_DEFAULTS_PATH: {"isEnabled": False}})).status == CheckStatus.FAIL
-    uneval = _check_1_11(FakeGraph(gets={SECURITY_DEFAULTS_PATH: GraphUnavailable("boom")}))
+    uneval = _check_1_11(FakeGraph(gets={SECURITY_DEFAULTS_PATH: GraphUnavailableError("boom")}))
     assert uneval.status == CheckStatus.ERROR
     assert uneval.status != CheckStatus.PASS
 
@@ -233,7 +233,7 @@ def test_access_review_control(check):
     assert check(partial).status == CheckStatus.FAIL
     empty = FakeGraph(lists={ACCESS_REVIEW_DEFINITIONS_PATH: []})
     assert check(empty).status == CheckStatus.FAIL
-    denied = FakeGraph(lists={ACCESS_REVIEW_DEFINITIONS_PATH: GraphPermissionDenied("denied")})
+    denied = FakeGraph(lists={ACCESS_REVIEW_DEFINITIONS_PATH: GraphPermissionDeniedError("denied")})
     denied_result = check(denied)
     assert denied_result.status == CheckStatus.ERROR
     assert denied_result.status != CheckStatus.PASS
@@ -297,7 +297,7 @@ def test_graph_client_maps_403_to_permission_denied():
     base = "https://graph.microsoft.com/v1.0"
     routes = {f"{base}/policies/authorizationPolicy": _Resp(403, {})}
     client = AzureGraphClient(_FakeCredential(), http_client=_FakeHTTP(routes))
-    with pytest.raises(GraphPermissionDenied):
+    with pytest.raises(GraphPermissionDeniedError):
         client.get(AUTHORIZATION_POLICY_PATH)
 
 
@@ -305,7 +305,7 @@ def test_graph_client_maps_500_to_unavailable():
     base = "https://graph.microsoft.com/v1.0"
     routes = {f"{base}/policies/authorizationPolicy": _Resp(500, {})}
     client = AzureGraphClient(_FakeCredential(), http_client=_FakeHTTP(routes))
-    with pytest.raises(GraphUnavailable):
+    with pytest.raises(GraphUnavailableError):
         client.get(AUTHORIZATION_POLICY_PATH)
 
 

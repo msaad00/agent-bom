@@ -46,11 +46,11 @@ class GraphError(Exception):
     """Base class for a Microsoft Graph read that could not be trusted."""
 
 
-class GraphPermissionDenied(GraphError):
+class GraphPermissionDeniedError(GraphError):
     """The credential lacks permission to read the requested directory evidence."""
 
 
-class GraphUnavailable(GraphError):
+class GraphUnavailableError(GraphError):
     """The Graph endpoint could not be reached or returned an unusable response."""
 
 
@@ -87,10 +87,10 @@ class AzureGraphClient:
         try:
             token = self._credential.get_token(GRAPH_TOKEN_SCOPE)
         except Exception as exc:  # noqa: BLE001 — any auth failure is fail-closed unevaluable
-            raise GraphUnavailable(f"Could not acquire a Microsoft Graph token: {exc}") from exc
+            raise GraphUnavailableError(f"Could not acquire a Microsoft Graph token: {exc}") from exc
         value = getattr(token, "token", None)
         if not value:
-            raise GraphUnavailable("Microsoft Graph token acquisition returned no token.")
+            raise GraphUnavailableError("Microsoft Graph token acquisition returned no token.")
         return str(value)
 
     def _request(self, url: str, token: str) -> dict[str, Any]:
@@ -99,18 +99,18 @@ class AzureGraphClient:
         try:
             response = self._client().get(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
         except httpx.HTTPError as exc:
-            raise GraphUnavailable(f"Microsoft Graph request failed: {exc}") from exc
+            raise GraphUnavailableError(f"Microsoft Graph request failed: {exc}") from exc
         status = response.status_code
         if status in (401, 403):
-            raise GraphPermissionDenied(f"Microsoft Graph denied access ({status}).")
+            raise GraphPermissionDeniedError(f"Microsoft Graph denied access ({status}).")
         if status >= 400:
-            raise GraphUnavailable(f"Microsoft Graph returned HTTP {status}.")
+            raise GraphUnavailableError(f"Microsoft Graph returned HTTP {status}.")
         try:
             payload = response.json()
         except Exception as exc:  # noqa: BLE001 — a non-JSON body is unusable evidence
-            raise GraphUnavailable(f"Microsoft Graph returned a non-JSON body: {exc}") from exc
+            raise GraphUnavailableError(f"Microsoft Graph returned a non-JSON body: {exc}") from exc
         if not isinstance(payload, dict):
-            raise GraphUnavailable("Microsoft Graph returned an unexpected (non-object) body.")
+            raise GraphUnavailableError("Microsoft Graph returned an unexpected (non-object) body.")
         return payload
 
     def get(self, path: str) -> dict[str, Any]:
@@ -134,7 +134,7 @@ class AzureGraphClient:
             url = str(next_link) if next_link else None
             seen += 1
             if seen > 1000:  # defensive bound against a pathological pagination loop
-                raise GraphUnavailable("Microsoft Graph pagination exceeded the safety bound.")
+                raise GraphUnavailableError("Microsoft Graph pagination exceeded the safety bound.")
         return items
 
     def close(self) -> None:

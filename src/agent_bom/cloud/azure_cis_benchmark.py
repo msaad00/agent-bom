@@ -62,7 +62,7 @@ from .azure_graph import (
     RESTRICTED_GUEST_ROLE_TEMPLATE_ID,
     SECURITY_DEFAULTS_PATH,
     GraphError,
-    GraphPermissionDenied,
+    GraphPermissionDeniedError,
 )
 from .base import CloudDiscoveryError
 
@@ -182,11 +182,8 @@ _APPSERVICE_SECTION = "9 - App Service"
 
 def _mark_unevaluable(result: CISCheckResult, exc: Exception) -> CISCheckResult:
     """Fail closed: record why the Graph evidence could not be trusted."""
-    if isinstance(exc, GraphPermissionDenied):
-        detail = (
-            "the credential lacks the read-only Microsoft Graph permission "
-            "(Policy.Read.All / AccessReview.Read.All)"
-        )
+    if isinstance(exc, GraphPermissionDeniedError):
+        detail = "the credential lacks the read-only Microsoft Graph permission (Policy.Read.All / AccessReview.Read.All)"
     else:
         detail = "Microsoft Graph directory evidence could not be read"
     result.status = CheckStatus.ERROR
@@ -357,14 +354,18 @@ def _check_1_3(graph: Any) -> CISCheckResult:
         title="Ensure that guest users are reviewed on a regular basis",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Configure a recurring Microsoft Entra access review scoped to guest users and remove access that is no longer needed.",
+        recommendation=(
+            "Configure a recurring Microsoft Entra access review scoped to guest users and remove access that is no longer needed."
+        ),
         cis_section=_IAM_SECTION,
     )
     try:
         total, guest_reviews = _guest_scoped_access_reviews(graph)
         if guest_reviews:
             result.status = CheckStatus.PASS
-            result.evidence = f"{len(guest_reviews)} access review(s) scoped to guest accounts are configured: {', '.join(guest_reviews[:5])}."
+            result.evidence = (
+                f"{len(guest_reviews)} access review(s) scoped to guest accounts are configured: {', '.join(guest_reviews[:5])}."
+            )
             result.resource_ids = guest_reviews[:10]
         elif total:
             result.status = CheckStatus.FAIL
@@ -450,11 +451,7 @@ def _check_1_6(graph: Any) -> CISCheckResult:
     )
     try:
         policies = graph.list(CONDITIONAL_ACCESS_POLICIES_PATH)
-        matching = [
-            p
-            for p in policies
-            if _ca_enabled(p) and "all" in _ca_included_users(p) and "mfa" in _ca_grant_controls(p)
-        ]
+        matching = [p for p in policies if _ca_enabled(p) and "all" in _ca_included_users(p) and "mfa" in _ca_grant_controls(p)]
         if matching:
             result.status = CheckStatus.PASS
             result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) require MFA for all users."
@@ -511,7 +508,9 @@ def _check_1_8(graph: Any) -> CISCheckResult:
         title="Ensure that multi-factor authentication is enabled for Azure Portal access",
         status=CheckStatus.ERROR,
         severity="critical",
-        recommendation="Create an enabled Conditional Access policy that requires MFA for the Microsoft Azure Management cloud app (or all apps).",
+        recommendation=(
+            "Create an enabled Conditional Access policy that requires MFA for the Microsoft Azure Management cloud app (or all apps)."
+        ),
         cis_section=_IAM_SECTION,
     )
     try:
@@ -519,9 +518,7 @@ def _check_1_8(graph: Any) -> CISCheckResult:
         matching = [
             p
             for p in policies
-            if _ca_enabled(p)
-            and "mfa" in _ca_grant_controls(p)
-            and ({AZURE_MANAGEMENT_APP_ID, "all"} & set(_ca_included_apps(p)))
+            if _ca_enabled(p) and "mfa" in _ca_grant_controls(p) and ({AZURE_MANAGEMENT_APP_ID, "all"} & set(_ca_included_apps(p)))
         ]
         if matching:
             result.status = CheckStatus.PASS
@@ -620,10 +617,15 @@ def _check_1_12(graph: Any) -> CISCheckResult:
         assigned = [str(g) for g in granted] if isinstance(granted, list) else []
         if not assigned:
             result.status = CheckStatus.PASS
-            result.evidence = "User consent to applications is disabled (no app-consent grant policies are assigned to the default user role)."
+            result.evidence = (
+                "User consent to applications is disabled (no app-consent grant policies are assigned to the default user role)."
+            )
         else:
             result.status = CheckStatus.FAIL
-            result.evidence = f"User consent to applications is permitted — {len(assigned)} app-consent grant policy(ies) assigned: {', '.join(assigned[:5])}."
+            result.evidence = (
+                f"User consent to applications is permitted — {len(assigned)} app-consent "
+                f"grant policy(ies) assigned: {', '.join(assigned[:5])}."
+            )
     except GraphError as exc:
         return _mark_unevaluable(result, exc)
     return result
@@ -636,7 +638,9 @@ def _check_1_13(graph: Any) -> CISCheckResult:
         title="Ensure that 'Users can register applications' is set to 'No'",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Set the default user role so it cannot create (register) applications; delegate app registration to specific roles.",
+        recommendation=(
+            "Set the default user role so it cannot create (register) applications; delegate app registration to specific roles."
+        ),
         cis_section=_IAM_SECTION,
     )
     try:
@@ -648,7 +652,9 @@ def _check_1_13(graph: Any) -> CISCheckResult:
             result.evidence = "The default user role cannot register applications (allowedToCreateApps is false)."
         else:
             result.status = CheckStatus.FAIL
-            result.evidence = "The default user role can register applications (allowedToCreateApps is true) — any user can create app registrations."
+            result.evidence = (
+                "The default user role can register applications (allowedToCreateApps is true) — any user can create app registrations."
+            )
     except GraphError as exc:
         return _mark_unevaluable(result, exc)
     return result
@@ -762,9 +768,7 @@ def _check_1_18(graph: Any) -> CISCheckResult:
     try:
         policies = graph.list(CONDITIONAL_ACCESS_POLICIES_PATH)
         matching = [
-            p
-            for p in policies
-            if _ca_enabled(p) and (_legacy_clients & set(_ca_client_app_types(p))) and "block" in _ca_grant_controls(p)
+            p for p in policies if _ca_enabled(p) and (_legacy_clients & set(_ca_client_app_types(p))) and "block" in _ca_grant_controls(p)
         ]
         if matching:
             result.status = CheckStatus.PASS

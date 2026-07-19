@@ -982,6 +982,10 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
     aggregation = result.get("aggregation") if isinstance(result.get("aggregation"), dict) else None
     scan_run = result.get("scan_run") if isinstance(result.get("scan_run"), dict) else None
+    warnings_value = result.get("warnings")
+    warnings: list[Any] = warnings_value if isinstance(warnings_value, list) else []
+    raw_warning_count = (scan_run or {}).get("warning_count")
+    warning_count = max(0, min(100, raw_warning_count)) if isinstance(raw_warning_count, int) else len(warnings)
     generated_at = result.get("generated_at") or (scan_run or {}).get("generated_at")
     scan_timestamp = result.get("scan_timestamp") or generated_at
     request_payload = sanitize_sensitive_payload(job.request.model_dump(exclude_defaults=True, exclude_none=True))
@@ -1005,6 +1009,9 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "scan_timestamp": scan_timestamp,
         "generated_at": generated_at,
         "scan_run": scan_run,
+        "scan_outcome": (scan_run or {}).get("outcome"),
+        "warning_count": warning_count,
+        "warnings_preview": [str(item) for item in warnings[:3]],
         "pushed": bool(result.get("pushed")),
         "error": job.error,
     }

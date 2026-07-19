@@ -448,6 +448,27 @@ def test_posture_evidence_isolates_forbidden_collector_without_false_network_pol
     assert "K8S-LIVE-005" not in {finding.rule_id for finding in result.findings}
 
 
+def test_evidence_dict_carries_benchmark_provenance_and_denied_read_state() -> None:
+    # A denied read must appear as an explicit unevaluable collector in the
+    # machine-readable envelope, never dropped or shown as a clean pass, and the
+    # envelope must carry the pinned CIS Kubernetes Benchmark provenance.
+    transport = _FixtureTransport(
+        _foundation_payloads(),
+        errors={"networkpolicies": K8sTransportError("forbidden", status_code=403)},
+    )
+
+    result = scan_live_cluster_posture_with_evidence(namespace="prod", transport=transport)
+    envelope = result.to_evidence_dict()
+
+    assert envelope["status"] == "partial"
+    assert envelope["benchmark"]["benchmark_name"] == "CIS Kubernetes Benchmark"
+    assert envelope["benchmark"]["benchmark_version"]
+    assert envelope["benchmark"]["catalog_repository_provenance"] is False
+    states = {item["collector_id"]: item["state"] for item in envelope["collectors"]}
+    assert states["pods"] == "executed"
+    assert states["networkpolicies"] == "unevaluable"
+
+
 def test_kubelet_configz_is_opt_in_and_skipped_without_proxy_access() -> None:
     transport = _FixtureTransport(_foundation_payloads())
 

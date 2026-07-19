@@ -190,6 +190,44 @@ BENCHMARK_PROVENANCE: Final[dict[str, BenchmarkProvenance]] = {
 }
 
 
+# ── Kubernetes (KSPM) benchmark provenance ──────────────────────────────────
+#
+# Live Kubernetes posture (``agent_bom.k8s``) reuses this shared provenance model
+# instead of carrying its own unversioned "CIS-K8s-x.y.z" mapping. The section
+# identifiers the KSPM rules assert are agent-bom's own VENDOR-ASSERTED judgement
+# of which CIS Kubernetes Benchmark recommendation a live check evidences — not an
+# authority-published crosswalk. No benchmark text is vendored; the recommendation
+# is referenced by identifier only, so, exactly like the cloud entries above, the
+# official denominator stays ``None`` and any coverage percentage is withheld.
+#
+# KSPM is not a cloud check-function registry, so it is intentionally kept out of
+# ``REGISTRY_SPECS`` / ``BENCHMARK_PROVENANCE`` (and their cloud drift gate) and
+# exposed as a first-class record via :func:`kubernetes_benchmark_provenance`.
+KUBERNETES_BENCHMARK_PROVENANCE: Final = BenchmarkProvenance(
+    provider="kubernetes",
+    benchmark_name="CIS Kubernetes Benchmark",
+    benchmark_version="1.10.0",
+    benchmark_type="cis",
+    source_url="https://www.cisecurity.org/benchmark/kubernetes",
+    retrieved_at=_RETRIEVED_AT,
+    source_digest=None,
+    license_note=_CIS_LICENSE_NOTE,
+    access_mode="reference_url_only",
+    catalog_repository_provenance=False,
+    official_control_count=None,
+)
+
+
+def kubernetes_benchmark_provenance() -> BenchmarkProvenance:
+    """Return the pinned CIS Kubernetes Benchmark provenance for live KSPM.
+
+    The version is pinned and vendor-asserted at the recommendation-identifier
+    level; provider-specific (EKS/AKS/GKE) profiles and a machine-verifiable
+    control denominator remain future work, so coverage stays withheld.
+    """
+    return KUBERNETES_BENCHMARK_PROVENANCE
+
+
 @dataclass(frozen=True)
 class ControlInventory:
     """A generated, machine-verifiable inventory of implemented controls."""

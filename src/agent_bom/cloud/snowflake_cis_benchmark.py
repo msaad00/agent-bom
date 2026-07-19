@@ -260,19 +260,19 @@ _CHECK_SOURCES = {
 
 _CHECK_ERROR_METADATA = {
     "1.1": (
-        "Ensure MFA is enabled for all users with password authentication",
+        "MFA enabled for password-auth users",
         "critical",
         "1 - Account and Authentication",
     ),
-    "1.4": ("Ensure ACCOUNTADMIN role is granted to no more than 2 users", "critical", "1 - Account and Authentication"),
-    "3.2": ("Ensure data sharing is restricted to authorized accounts only", "medium", "3 - Data Protection"),
-    "4.2": ("Ensure login history shows no excessive failed authentication attempts", "medium", "4 - Monitoring and Logging"),
-    "5.1": ("Ensure the PUBLIC role has no direct privilege grants on objects", "high", "5 - Access Control"),
-    "5.2": ("Ensure no users have ACCOUNTADMIN as their default role", "high", "5 - Access Control"),
-    "1.2": ("Ensure minimum password length is set to 14 or greater", "medium", "1 - Account and Authentication"),
-    "1.5": ("Ensure password reuse is limited by password history of 24 or greater", "medium", "1 - Account and Authentication"),
-    "1.6": ("Ensure password maximum age is set to 90 days or less", "medium", "1 - Account and Authentication"),
-    "4.1": ("Ensure access history is enabled and being collected", "high", "4 - Monitoring and Logging"),
+    "1.4": ("ACCOUNTADMIN granted to at most 2 users", "critical", "1 - Account and Authentication"),
+    "3.2": ("Data sharing restricted to authorized accounts", "medium", "3 - Data Protection"),
+    "4.2": ("Login history free of excessive failed auth attempts", "medium", "4 - Monitoring and Logging"),
+    "5.1": ("PUBLIC role has no direct privilege grants", "high", "5 - Access Control"),
+    "5.2": ("No users default to ACCOUNTADMIN role", "high", "5 - Access Control"),
+    "1.2": ("Minimum password length 14 or greater", "medium", "1 - Account and Authentication"),
+    "1.5": ("Password history of 24 or greater", "medium", "1 - Account and Authentication"),
+    "1.6": ("Password maximum age 90 days or less", "medium", "1 - Account and Authentication"),
+    "4.1": ("Access history enabled and collected", "high", "4 - Monitoring and Logging"),
 }
 
 
@@ -357,7 +357,7 @@ def _check_1_1(cursor: Any) -> CISCheckResult:
     """CIS 1.1 — Ensure MFA is enabled for all users with password authentication."""
     result = CISCheckResult(
         check_id="1.1",
-        title="Ensure MFA is enabled for all users with password authentication",
+        title="MFA enabled for password-auth users",
         status=CheckStatus.PASS,
         severity="critical",
         cis_section=_AUTH_SECTION,
@@ -385,7 +385,7 @@ def _check_1_2(cursor: Any) -> CISCheckResult:
     """CIS 1.2 — Ensure minimum password length is set to 14 or greater."""
     result = CISCheckResult(
         check_id="1.2",
-        title="Ensure minimum password length is set to 14 or greater",
+        title="Minimum password length 14 or greater",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_AUTH_SECTION,
@@ -414,7 +414,7 @@ def _check_1_3(cursor: Any) -> CISCheckResult:
     """CIS 1.3 — Ensure session idle timeout is set to 4 hours or less."""
     result = CISCheckResult(
         check_id="1.3",
-        title="Ensure session idle timeout is set to 4 hours (240 min) or less",
+        title="Session idle timeout 4 hours or less",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_AUTH_SECTION,
@@ -437,7 +437,7 @@ def _check_1_4(cursor: Any) -> CISCheckResult:
     """CIS 1.4 — Ensure ACCOUNTADMIN role is granted to no more than 2 users."""
     result = CISCheckResult(
         check_id="1.4",
-        title="Ensure ACCOUNTADMIN role is granted to no more than 2 users",
+        title="ACCOUNTADMIN granted to at most 2 users",
         status=CheckStatus.PASS,
         severity="critical",
         cis_section=_AUTH_SECTION,
@@ -465,7 +465,7 @@ def _check_1_5(cursor: Any) -> CISCheckResult:
     """CIS 1.5 — Ensure password reuse is limited by password history of 24 or greater."""
     result = CISCheckResult(
         check_id="1.5",
-        title="Ensure password reuse is limited by password history of 24 or greater",
+        title="Password history of 24 or greater",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_AUTH_SECTION,
@@ -494,7 +494,7 @@ def _check_1_6(cursor: Any) -> CISCheckResult:
     """CIS 1.6 — Ensure password maximum age is set to 90 days or less."""
     result = CISCheckResult(
         check_id="1.6",
-        title="Ensure password maximum age is set to 90 days or less",
+        title="Password maximum age 90 days or less",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_AUTH_SECTION,
@@ -530,7 +530,7 @@ def _check_2_1(cursor: Any) -> CISCheckResult:
     """CIS 2.1 — Ensure network policies are configured at the account level."""
     result = CISCheckResult(
         check_id="2.1",
-        title="Ensure network policies are configured at the account level",
+        title="Account-level network policies configured",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_NETWORK_SECTION,
@@ -554,7 +554,7 @@ def _check_2_2(cursor: Any) -> CISCheckResult:
     """CIS 2.2 — Ensure network policies do not allow unrestricted access (0.0.0.0/0)."""
     result = CISCheckResult(
         check_id="2.2",
-        title="Ensure network policies do not allow unrestricted access (0.0.0.0/0)",
+        title="Network policies disallow unrestricted access",
         status=CheckStatus.PASS,
         severity="critical",
         cis_section=_NETWORK_SECTION,
@@ -592,7 +592,7 @@ def _check_3_1(cursor: Any) -> CISCheckResult:
     """CIS 3.1 — Ensure Tri-Secret Secure (customer-managed key) is enabled."""
     result = CISCheckResult(
         check_id="3.1",
-        title="Ensure Tri-Secret Secure (customer-managed key) is enabled",
+        title="Tri-Secret Secure (customer-managed key) enabled",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_DATA_SECTION,
@@ -616,7 +616,7 @@ def _check_3_2(cursor: Any) -> CISCheckResult:
     """CIS 3.2 — Ensure data sharing is restricted to authorized accounts."""
     result = CISCheckResult(
         check_id="3.2",
-        title="Ensure data sharing is restricted to authorized accounts only",
+        title="Data sharing restricted to authorized accounts",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_DATA_SECTION,
@@ -654,7 +654,7 @@ def _check_4_1(cursor: Any) -> CISCheckResult:
     """CIS 4.1 — Ensure access history is enabled and being collected."""
     result = CISCheckResult(
         check_id="4.1",
-        title="Ensure access history is enabled and being collected",
+        title="Access history enabled and collected",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_MONITORING_SECTION,
@@ -688,7 +688,7 @@ def _check_4_2(cursor: Any) -> CISCheckResult:
     """CIS 4.2 — Ensure login history shows no failed authentication patterns."""
     result = CISCheckResult(
         check_id="4.2",
-        title="Ensure login history shows no excessive failed authentication attempts",
+        title="Login history free of excessive failed auth attempts",
         status=CheckStatus.PASS,
         severity="medium",
         cis_section=_MONITORING_SECTION,
@@ -730,7 +730,7 @@ def _check_5_1(cursor: Any) -> CISCheckResult:
     """CIS 5.1 — Ensure the PUBLIC role has no direct privilege grants on objects."""
     result = CISCheckResult(
         check_id="5.1",
-        title="Ensure the PUBLIC role has no direct privilege grants on objects",
+        title="PUBLIC role has no direct privilege grants",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_ACCESS_SECTION,
@@ -757,7 +757,7 @@ def _check_5_2(cursor: Any) -> CISCheckResult:
     """CIS 5.2 — Ensure no users have ACCOUNTADMIN as their default role."""
     result = CISCheckResult(
         check_id="5.2",
-        title="Ensure no users have ACCOUNTADMIN as their default role",
+        title="No users default to ACCOUNTADMIN role",
         status=CheckStatus.PASS,
         severity="high",
         cis_section=_ACCESS_SECTION,

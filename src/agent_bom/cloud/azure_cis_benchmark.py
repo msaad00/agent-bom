@@ -250,7 +250,7 @@ def _check_1_1(auth_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 1.1 — Ensure no subscription Owner assignments to guest/external users."""
     result = CISCheckResult(
         check_id="1.1",
-        title="Ensure no subscription Owner role assigned to guest or external users",
+        title="No subscription Owner role for guest/external users",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation=(
@@ -296,7 +296,7 @@ def _check_1_2(auth_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 1.2 — Ensure no subscription-level Contributor assignments to guest users."""
     result = CISCheckResult(
         check_id="1.2",
-        title="Ensure no subscription-level Contributor role assigned to guest users",
+        title="No subscription Contributor role for guest users",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Review all Contributor role assignments and remove guest/external users. Use resource group scope instead.",
@@ -351,7 +351,7 @@ def _check_1_3(graph: Any) -> CISCheckResult:
     """CIS Azure 1.3 — recurring review of guest accounts (Microsoft Graph access reviews)."""
     result = CISCheckResult(
         check_id="1.3",
-        title="Ensure that guest users are reviewed on a regular basis",
+        title="Guest users reviewed regularly",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation=(
@@ -382,7 +382,7 @@ def _check_1_4(graph: Any) -> CISCheckResult:
     """CIS Azure 1.4 — an access review is configured for guest users (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.4",
-        title="Ensure Access Review is configured for Guest users",
+        title="Access Review configured for guest users",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Create a Microsoft Entra access review that recertifies guest user access on a recurring schedule.",
@@ -410,7 +410,7 @@ def _check_1_5(auth_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 1.5 — Ensure no custom subscription Administrator roles exist."""
     result = CISCheckResult(
         check_id="1.5",
-        title="Ensure that no custom subscription Administrator roles are created",
+        title="No custom subscription Administrator roles",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove custom roles that replicate subscription-level Owner/Contributor permissions. Use built-in roles.",
@@ -443,7 +443,7 @@ def _check_1_6(graph: Any) -> CISCheckResult:
     """CIS Azure 1.6 — MFA enforced for all users via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.6",
-        title="Ensure that multi-factor authentication is enabled for all users",
+        title="MFA enabled for all users",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation="Enable an enabled Conditional Access policy that requires MFA for all users (or enable Security Defaults).",
@@ -468,7 +468,7 @@ def _check_1_7(auth_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 1.7 — Ensure no subscription-level Custom Roles with Owner permissions."""
     result = CISCheckResult(
         check_id="1.7",
-        title="Ensure that no custom subscription-level Owner roles exist",
+        title="No custom subscription-level Owner roles",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove custom roles that replicate Owner permissions at subscription scope.",
@@ -505,7 +505,7 @@ def _check_1_8(graph: Any) -> CISCheckResult:
     """CIS Azure 1.8 — MFA required for the Azure management app via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.8",
-        title="Ensure that multi-factor authentication is enabled for Azure Portal access",
+        title="MFA enabled for Azure Portal access",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation=(
@@ -536,7 +536,7 @@ def _check_1_9(graph: Any) -> CISCheckResult:
     """CIS Azure 1.9 — Conditional Access requires MFA for administrative roles (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.9",
-        title="Ensure Conditional Access policies require MFA for administrative roles",
+        title="Conditional Access requires MFA for admin roles",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation="Create an enabled Conditional Access policy that targets directory roles and requires MFA.",
@@ -561,7 +561,7 @@ def _check_1_10() -> CISCheckResult:
     """CIS 1.10 — Ensure 'Allow users to remember MFA on trusted devices' is disabled."""
     result = CISCheckResult(
         check_id="1.10",
-        title="Ensure 'Allow users to remember multi-factor authentication on trusted devices' is Disabled",
+        title="Remember-MFA on trusted devices disabled",
         status=CheckStatus.NOT_APPLICABLE,
         severity="medium",
         recommendation="Disable 'Remember MFA on trusted devices' to ensure MFA is prompted on every sign-in.",
@@ -578,7 +578,7 @@ def _check_1_11(graph: Any) -> CISCheckResult:
     """CIS Azure 1.11 — Microsoft Entra security defaults enabled (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.11",
-        title="Ensure Security Defaults is enabled on Azure Active Directory",
+        title="Security Defaults enabled on Azure AD",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Entra security defaults, or enforce the equivalent controls through Conditional Access.",
@@ -604,7 +604,7 @@ def _check_1_12(graph: Any) -> CISCheckResult:
     """CIS Azure 1.12 — user consent to applications is disabled (Microsoft Graph authorization policy)."""
     result = CISCheckResult(
         check_id="1.12",
-        title="Ensure that 'User consent for applications' is set to 'Do not allow user consent'",
+        title="User consent for applications disallowed",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove app consent grants from the default user role so only admins can consent to application permissions.",
@@ -635,7 +635,7 @@ def _check_1_13(graph: Any) -> CISCheckResult:
     """CIS Azure 1.13 — non-admin users cannot register applications (Microsoft Graph authorization policy)."""
     result = CISCheckResult(
         check_id="1.13",
-        title="Ensure that 'Users can register applications' is set to 'No'",
+        title="User app registration disabled",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation=(
@@ -664,7 +664,7 @@ def _check_1_14(graph: Any) -> CISCheckResult:
     """CIS Azure 1.14 — guest access is set to the most restrictive role (Microsoft Graph authorization policy)."""
     result = CISCheckResult(
         check_id="1.14",
-        title="Ensure that 'Guest users access restrictions' is set to restrict guest access",
+        title="Guest user access restricted",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the guest user role to 'Restricted Guest User' so guests can only read their own directory objects.",
@@ -691,7 +691,7 @@ def _check_1_15(auth_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 1.15 — Ensure custom subscription Administrator roles are not created."""
     result = CISCheckResult(
         check_id="1.15",
-        title="Ensure that custom subscription Administrator roles are not created",
+        title="Custom subscription Administrator roles absent",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Avoid creating custom roles with subscription-level administrative permissions. Use built-in roles instead.",
@@ -724,7 +724,7 @@ def _check_1_16() -> CISCheckResult:
     """CIS 1.16 — Ensure privileged roles are reviewed on a regular basis."""
     result = CISCheckResult(
         check_id="1.16",
-        title="Ensure that privileged roles are reviewed on a regular basis",
+        title="Privileged roles reviewed regularly",
         status=CheckStatus.NOT_APPLICABLE,
         severity="high",
         recommendation="Use Azure AD Privileged Identity Management (PIM) to configure regular access reviews for privileged roles.",
@@ -741,7 +741,7 @@ def _check_1_17() -> CISCheckResult:
     """CIS 1.17 — Ensure that 'Restrict access to Azure AD admin center' is enabled."""
     result = CISCheckResult(
         check_id="1.17",
-        title="Ensure that 'Restrict access to Azure AD administration portal' is set to Yes",
+        title="Access to Azure AD admin portal restricted",
         status=CheckStatus.NOT_APPLICABLE,
         severity="medium",
         recommendation="Set 'Restrict access to Azure AD administration portal' to Yes in Azure AD > User settings.",
@@ -758,7 +758,7 @@ def _check_1_18(graph: Any) -> CISCheckResult:
     """CIS Azure 1.18 — legacy authentication blocked via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.18",
-        title="Ensure that legacy authentication is blocked via Conditional Access Policy",
+        title="Legacy authentication blocked via Conditional Access",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Create an enabled Conditional Access policy that targets legacy client app types and blocks access.",
@@ -786,7 +786,7 @@ def _check_1_19() -> CISCheckResult:
     """CIS 1.19 — Ensure password hash sync is enabled for resiliency."""
     result = CISCheckResult(
         check_id="1.19",
-        title="Ensure that password hash sync is enabled for resiliency and leaked credential detection",
+        title="Password hash sync enabled",
         status=CheckStatus.NOT_APPLICABLE,
         severity="medium",
         recommendation="Enable password hash synchronization in Azure AD Connect to support leaked credential detection.",
@@ -803,7 +803,7 @@ def _check_1_20() -> CISCheckResult:
     """CIS 1.20 — Ensure self-service password reset is enabled."""
     result = CISCheckResult(
         check_id="1.20",
-        title="Ensure that self-service password reset is enabled",
+        title="Self-service password reset enabled",
         status=CheckStatus.NOT_APPLICABLE,
         severity="medium",
         recommendation="Enable self-service password reset for all users in Azure AD > Password reset.",
@@ -820,7 +820,7 @@ def _check_1_21(graph: Any) -> CISCheckResult:
     """CIS Azure 1.21 — MFA required for risky sign-ins via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.21",
-        title="Ensure that multi-factor authentication is required for risky sign-ins",
+        title="MFA required for risky sign-ins",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Create an enabled Conditional Access policy that requires MFA when the sign-in risk level is medium or high.",
@@ -845,7 +845,7 @@ def _check_1_22(graph: Any) -> CISCheckResult:
     """CIS Azure 1.22 — MFA enforced for administrative role holders via Conditional Access (Microsoft Graph)."""
     result = CISCheckResult(
         check_id="1.22",
-        title="Ensure that multi-factor authentication is enabled for all users in administrative roles",
+        title="MFA enabled for all admin-role users",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation="Enforce MFA for administrative directory roles with an enabled Conditional Access policy that targets those roles.",
@@ -875,7 +875,7 @@ def _check_2_1(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.1 — Ensure Microsoft Defender for Servers is enabled."""
     result = CISCheckResult(
         check_id="2.1",
-        title="Ensure Microsoft Defender for Servers is set to On",
+        title="Microsoft Defender for Servers enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for Servers (Standard tier) in Defender for Cloud > Environment settings.",
@@ -900,7 +900,7 @@ def _check_2_2(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.2 — Ensure Microsoft Defender for App Services is enabled."""
     result = CISCheckResult(
         check_id="2.2",
-        title="Ensure Microsoft Defender for App Services is set to On",
+        title="Microsoft Defender for App Services enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for App Services (Standard tier) in Defender for Cloud > Environment settings.",
@@ -925,7 +925,7 @@ def _check_2_3(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.3 — Ensure Microsoft Defender for SQL Servers is enabled."""
     result = CISCheckResult(
         check_id="2.3",
-        title="Ensure Microsoft Defender for Azure SQL Databases is set to On",
+        title="Microsoft Defender for Azure SQL Databases enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for SQL Servers (Standard tier) in Defender for Cloud > Environment settings.",
@@ -950,7 +950,7 @@ def _check_2_4(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.4 — Ensure Microsoft Defender for Storage is enabled."""
     result = CISCheckResult(
         check_id="2.4",
-        title="Ensure Microsoft Defender for Storage is set to On",
+        title="Microsoft Defender for Storage enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for Storage (Standard tier) in Defender for Cloud > Environment settings.",
@@ -975,7 +975,7 @@ def _check_2_5(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.5 — Ensure Microsoft Defender for Key Vault is enabled."""
     result = CISCheckResult(
         check_id="2.5",
-        title="Ensure Microsoft Defender for Key Vault is set to On",
+        title="Microsoft Defender for Key Vault enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for Key Vault (Standard tier) in Defender for Cloud > Environment settings.",
@@ -1000,7 +1000,7 @@ def _check_2_6(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.6 — Ensure Microsoft Defender for DNS is enabled."""
     result = CISCheckResult(
         check_id="2.6",
-        title="Ensure Microsoft Defender for DNS is set to On",
+        title="Microsoft Defender for DNS enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for DNS (Standard tier) in Defender for Cloud > Environment settings.",
@@ -1026,7 +1026,7 @@ def _check_2_7(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.7 — Ensure Microsoft Defender for Resource Manager is enabled."""
     result = CISCheckResult(
         check_id="2.7",
-        title="Ensure Microsoft Defender for Resource Manager is set to On",
+        title="Microsoft Defender for Resource Manager enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for Resource Manager (Standard tier) in Defender for Cloud > Environment settings.",
@@ -1051,7 +1051,7 @@ def _check_2_8(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.8 — Ensure Microsoft Defender for Open-Source Databases is enabled."""
     result = CISCheckResult(
         check_id="2.8",
-        title="Ensure Microsoft Defender for Open-Source Relational Databases is set to On",
+        title="Microsoft Defender for open-source relational DBs enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for Open-Source Relational Databases (Standard tier) in Defender for Cloud > Environment settings.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1076,7 +1076,7 @@ def _check_2_9(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.9 — Ensure Microsoft Defender for Cosmos DB is enabled."""
     result = CISCheckResult(
         check_id="2.9",
-        title="Ensure Microsoft Defender for Cosmos DB is set to On",
+        title="Microsoft Defender for Cosmos DB enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for Cosmos DB (Standard tier) in Defender for Cloud > Environment settings.",
@@ -1101,7 +1101,7 @@ def _check_2_10(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.10 — Ensure Microsoft Defender for Containers is enabled."""
     result = CISCheckResult(
         check_id="2.10",
-        title="Ensure Microsoft Defender for Containers is set to On",
+        title="Microsoft Defender for Containers enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Microsoft Defender for Containers (Standard tier) in Defender for Cloud > Environment settings.",
@@ -1126,7 +1126,7 @@ def _check_2_11(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.11 — Ensure auto-provisioning of Log Analytics agent is set to On."""
     result = CISCheckResult(
         check_id="2.11",
-        title="Ensure that auto-provisioning of the Log Analytics agent is set to On",
+        title="Log Analytics agent auto-provisioning enabled",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable auto-provisioning of the Log Analytics agent in Defender for Cloud > Environment settings > Auto provisioning.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1156,7 +1156,7 @@ def _check_2_12(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.12 — Ensure additional email addresses are configured for security alerts."""
     result = CISCheckResult(
         check_id="2.12",
-        title="Ensure that additional email addresses are configured with a security contact",
+        title="Security contact email addresses configured",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Configure additional email addresses in Defender for Cloud > Environment settings > Email notifications.",
@@ -1186,7 +1186,7 @@ def _check_2_13(security_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 2.13 — Ensure email notification for high severity alerts is enabled."""
     result = CISCheckResult(
         check_id="2.13",
-        title="Ensure that email notification for high severity alerts is enabled",
+        title="Email notification for high-severity alerts enabled",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable email notifications for high severity alerts in Defender for Cloud > Environment settings > Email notifications.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1227,7 +1227,7 @@ def _check_3_1(storage_client: Any) -> CISCheckResult:
     """CIS 3.1 — Ensure 'Secure Transfer Required' is enabled on all Storage Accounts."""
     result = CISCheckResult(
         check_id="3.1",
-        title="Ensure 'Secure Transfer Required' is enabled for all Storage Accounts",
+        title="Secure transfer required on storage accounts",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable 'Secure transfer required' on all storage accounts to enforce HTTPS-only access.",
@@ -1258,7 +1258,7 @@ def _check_3_7(storage_client: Any) -> CISCheckResult:
     """CIS 3.7 — Ensure public access is disabled on all Storage Account blob containers."""
     result = CISCheckResult(
         check_id="3.7",
-        title="Ensure that 'Public access level' is set to Private for all blob containers",
+        title="Blob containers set to private access",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Disable public blob access at the storage account level and audit all containers.",
@@ -1289,7 +1289,7 @@ def _check_3_2(storage_client: Any) -> CISCheckResult:
     """CIS 3.2 — Ensure default network access rule for Storage Accounts is Deny."""
     result = CISCheckResult(
         check_id="3.2",
-        title="Ensure that default network access rule for Storage Accounts is set to Deny",
+        title="Storage account default network rule set to Deny",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation=(
@@ -1324,7 +1324,7 @@ def _check_3_10(storage_client: Any) -> CISCheckResult:
     """CIS 3.10 — Ensure soft delete is enabled for Azure Storage."""
     result = CISCheckResult(
         check_id="3.10",
-        title="Ensure soft delete is enabled for Azure Storage",
+        title="Soft delete enabled for Azure Storage",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable blob soft delete on all storage accounts to protect against accidental deletion.",
@@ -1382,7 +1382,7 @@ def _check_3_3(storage_client: Any) -> CISCheckResult:
     """CIS 3.3 — Ensure storage for critical data is encrypted with Customer Managed Key."""
     result = CISCheckResult(
         check_id="3.3",
-        title="Ensure Storage for critical data are encrypted with Customer Managed Key",
+        title="Critical-data storage encrypted with customer-managed key",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Configure Customer Managed Keys (CMK) for storage accounts containing critical data.",
@@ -1414,7 +1414,7 @@ def _check_3_4(storage_client: Any) -> CISCheckResult:
     """CIS 3.4 — Ensure storage logging is enabled for Queue service."""
     result = CISCheckResult(
         check_id="3.4",
-        title="Ensure that Storage Logging is enabled for Queue Service for read, write, and delete requests",
+        title="Storage logging enabled for Queue service",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable Storage Analytics logging for Queue service read, write, and delete operations.",
@@ -1440,7 +1440,7 @@ def _check_3_5(storage_client: Any) -> CISCheckResult:
     """CIS 3.5 — Ensure storage logging is enabled for Table service."""
     result = CISCheckResult(
         check_id="3.5",
-        title="Ensure that Storage Logging is enabled for Table Service for read, write, and delete requests",
+        title="Storage logging enabled for Table service",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable Storage Analytics logging for Table service read, write, and delete operations.",
@@ -1466,7 +1466,7 @@ def _check_3_6(storage_client: Any) -> CISCheckResult:
     """CIS 3.6 — Ensure storage logging is enabled for Blob service."""
     result = CISCheckResult(
         check_id="3.6",
-        title="Ensure that Storage Logging is enabled for Blob Service for read, write, and delete requests",
+        title="Storage logging enabled for Blob service",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable Storage Analytics logging for Blob service read, write, and delete operations.",
@@ -1492,7 +1492,7 @@ def _check_3_8(storage_client: Any) -> CISCheckResult:
     """CIS 3.8 — Ensure default network access rule for Storage Accounts is set to Deny."""
     result = CISCheckResult(
         check_id="3.8",
-        title="Ensure default network access rule for Storage Accounts is set to Deny",
+        title="Default storage network access rule set to Deny",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Set the default network access rule to 'Deny' on all storage accounts.",
@@ -1524,7 +1524,7 @@ def _check_3_9(storage_client: Any) -> CISCheckResult:
     """CIS 3.9 — Ensure 'Allow Azure services on the trusted services list' is enabled."""
     result = CISCheckResult(
         check_id="3.9",
-        title="Ensure 'Allow Azure services on the trusted services list to access this storage account' is Enabled",
+        title="Trusted Azure services allowed to access storage account",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable 'Allow trusted Microsoft services to access this storage account' in the storage account firewall settings.",
@@ -1557,7 +1557,7 @@ def _check_3_11(storage_client: Any) -> CISCheckResult:
     """CIS 3.11 — Ensure private endpoints are used to access Storage Accounts."""
     result = CISCheckResult(
         check_id="3.11",
-        title="Ensure private endpoints are used to access Storage Accounts",
+        title="Private endpoints used for storage accounts",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Configure private endpoints for all storage accounts to restrict network access to approved virtual networks.",
@@ -1587,7 +1587,7 @@ def _check_3_12(storage_client: Any) -> CISCheckResult:
     """CIS 3.12 — Ensure infrastructure encryption for Storage Accounts is enabled."""
     result = CISCheckResult(
         check_id="3.12",
-        title="Ensure that infrastructure encryption for Azure Storage Accounts is enabled",
+        title="Infrastructure encryption enabled on storage accounts",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable infrastructure encryption (double encryption) for storage accounts containing sensitive data.",
@@ -1623,7 +1623,7 @@ def _check_4_1_1(sql_client: Any) -> CISCheckResult:
     """CIS 4.1.1 — Ensure auditing is set to On for SQL servers."""
     result = CISCheckResult(
         check_id="4.1.1",
-        title="Ensure that 'Auditing' is set to 'On' for SQL servers",
+        title="Auditing enabled on SQL servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable auditing on all Azure SQL servers to track database events and write them to an audit log.",
@@ -1679,7 +1679,7 @@ def _check_4_2_1(sql_client: Any) -> CISCheckResult:
     """CIS 4.2.1 — Ensure TLS version is set to TLSV1.2 for MySQL/PostgreSQL flexible servers."""
     result = CISCheckResult(
         check_id="4.2.1",
-        title="Ensure 'TLS Version' is set to 'TLSV1.2' (or higher) for database servers",
+        title="TLS 1.2 or higher on database servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Set the minimum TLS version to TLS 1.2 on all Azure SQL, MySQL, and PostgreSQL servers.",
@@ -1715,7 +1715,7 @@ def _check_4_1_2(sql_client: Any) -> CISCheckResult:
     """CIS 4.1.2 — Ensure SQL Server Transparent Data Encryption is enabled."""
     result = CISCheckResult(
         check_id="4.1.2",
-        title="Ensure that Transparent Data Encryption (TDE) is enabled for SQL servers",
+        title="Transparent Data Encryption enabled on SQL servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Transparent Data Encryption on all SQL databases.",
@@ -1769,7 +1769,7 @@ def _check_4_1_3(sql_client: Any) -> CISCheckResult:
     """CIS 4.1.3 — Ensure SQL Server Active Directory Admin is configured."""
     result = CISCheckResult(
         check_id="4.1.3",
-        title="Ensure that Azure Active Directory Admin is configured for SQL servers",
+        title="Azure AD admin configured for SQL servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Configure an Azure AD administrator for each SQL server to enable centralized authentication.",
@@ -1821,7 +1821,7 @@ def _check_4_1_4(sql_client: Any) -> CISCheckResult:
     """CIS 4.1.4 — Ensure Advanced Threat Protection is enabled for SQL servers."""
     result = CISCheckResult(
         check_id="4.1.4",
-        title="Ensure that Advanced Threat Protection (ATP) is enabled on SQL servers",
+        title="Advanced Threat Protection enabled on SQL servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Advanced Threat Protection on all SQL servers.",
@@ -1874,7 +1874,7 @@ def _check_4_1_5(sql_client: Any) -> CISCheckResult:
     """CIS 4.1.5 — Ensure SQL Server Vulnerability Assessment is configured."""
     result = CISCheckResult(
         check_id="4.1.5",
-        title="Ensure that Vulnerability Assessment is configured on SQL servers",
+        title="Vulnerability Assessment configured on SQL servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Configure Vulnerability Assessment on all SQL servers with a storage account for scan results.",
@@ -1916,7 +1916,7 @@ def _check_4_1_6(sql_client: Any) -> CISCheckResult:
     """CIS 4.1.6 — Ensure SQL server public network access is disabled."""
     result = CISCheckResult(
         check_id="4.1.6",
-        title="Ensure that public network access is disabled for SQL servers",
+        title="Public network access disabled on SQL servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Disable public network access on SQL servers and use private endpoints for connectivity.",
@@ -1947,7 +1947,7 @@ def _check_4_2_2(mysql_client: Any) -> CISCheckResult:
     """CIS 4.2.2 — Ensure MySQL SSL enforcement is enabled."""
     result = CISCheckResult(
         check_id="4.2.2",
-        title="Ensure 'ssl_enforcement' is set to 'ENABLED' for MySQL Database servers",
+        title="SSL enforcement enabled on MySQL servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable SSL enforcement on all MySQL servers to ensure encrypted connections.",
@@ -1978,7 +1978,7 @@ def _check_4_2_3(mysql_client: Any) -> CISCheckResult:
     """CIS 4.2.3 — Ensure MySQL server parameter 'log_checkpoints' is enabled."""
     result = CISCheckResult(
         check_id="4.2.3",
-        title="Ensure server parameter 'log_checkpoints' is set to 'ON' for MySQL Database servers",
+        title="MySQL log_checkpoints parameter set to ON",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable the 'log_checkpoints' server parameter on all MySQL servers.",
@@ -2031,7 +2031,7 @@ def _check_4_3_1(postgresql_client: Any) -> CISCheckResult:
     """CIS 4.3.1 — Ensure PostgreSQL SSL enforcement is enabled."""
     result = CISCheckResult(
         check_id="4.3.1",
-        title="Ensure 'ssl_enforcement' is set to 'ENABLED' for PostgreSQL Database servers",
+        title="SSL enforcement enabled on PostgreSQL servers",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable SSL enforcement on all PostgreSQL servers to ensure encrypted connections.",
@@ -2062,7 +2062,7 @@ def _check_4_3_2(postgresql_client: Any) -> CISCheckResult:
     """CIS 4.3.2 — Ensure PostgreSQL server parameter 'log_checkpoints' is enabled."""
     result = CISCheckResult(
         check_id="4.3.2",
-        title="Ensure server parameter 'log_checkpoints' is set to 'ON' for PostgreSQL Database servers",
+        title="PostgreSQL log_checkpoints parameter set to ON",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable the 'log_checkpoints' server parameter on all PostgreSQL servers.",
@@ -2115,7 +2115,7 @@ def _check_4_3_3(postgresql_client: Any) -> CISCheckResult:
     """CIS 4.3.3 — Ensure PostgreSQL server parameter 'log_connections' is enabled."""
     result = CISCheckResult(
         check_id="4.3.3",
-        title="Ensure server parameter 'log_connections' is set to 'ON' for PostgreSQL Database servers",
+        title="PostgreSQL log_connections parameter set to ON",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable the 'log_connections' server parameter on all PostgreSQL servers.",
@@ -2168,7 +2168,7 @@ def _check_4_3_4(postgresql_client: Any) -> CISCheckResult:
     """CIS 4.3.4 — Ensure PostgreSQL server parameter 'log_disconnections' is enabled."""
     result = CISCheckResult(
         check_id="4.3.4",
-        title="Ensure server parameter 'log_disconnections' is set to 'ON' for PostgreSQL Database servers",
+        title="PostgreSQL log_disconnections parameter set to ON",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable the 'log_disconnections' server parameter on all PostgreSQL servers.",
@@ -2221,7 +2221,7 @@ def _check_4_3_5(postgresql_client: Any) -> CISCheckResult:
     """CIS 4.3.5 — Ensure PostgreSQL server parameter 'connection_throttling' is enabled."""
     result = CISCheckResult(
         check_id="4.3.5",
-        title="Ensure server parameter 'connection_throttling' is set to 'ON' for PostgreSQL Database servers",
+        title="PostgreSQL connection_throttling parameter set to ON",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable the 'connection_throttling' server parameter on all PostgreSQL servers.",
@@ -2279,7 +2279,7 @@ def _check_5_1_1(monitor_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 5.1.1 — Ensure a Diagnostic Setting exists for the Activity Log."""
     result = CISCheckResult(
         check_id="5.1.1",
-        title="Ensure Diagnostic Setting exists capturing Activity Log",
+        title="Diagnostic setting captures Activity Log",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation=(
@@ -2308,7 +2308,7 @@ def _check_5_1_2(monitor_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 5.1.2 — Ensure Activity Log retention is set to at least 365 days."""
     result = CISCheckResult(
         check_id="5.1.2",
-        title="Ensure Activity Log retention is set to 365 days or greater",
+        title="Activity Log retention 365 days or greater",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation=(
@@ -2390,7 +2390,7 @@ def _check_5_1_3(monitor_client: Any, subscription_id: str) -> CISCheckResult:
     return _check_activity_log_alert(
         monitor_client,
         "5.1.3",
-        "Ensure that Activity Log alert exists for Create or Update Key Vault",
+        "Activity Log alert for Key Vault create/update",
         "Microsoft.KeyVault/vaults/write",
     )
 
@@ -2400,7 +2400,7 @@ def _check_5_1_4(monitor_client: Any, subscription_id: str) -> CISCheckResult:
     return _check_activity_log_alert(
         monitor_client,
         "5.1.4",
-        "Ensure that Activity Log alert exists for Delete Key Vault",
+        "Activity Log alert for Key Vault delete",
         "Microsoft.KeyVault/vaults/delete",
     )
 
@@ -2410,7 +2410,7 @@ def _check_5_1_5(monitor_client: Any, subscription_id: str) -> CISCheckResult:
     return _check_activity_log_alert(
         monitor_client,
         "5.1.5",
-        "Ensure that Activity Log alert exists for Create or Update Network Security Group",
+        "Activity Log alert for NSG create/update",
         "Microsoft.Network/networkSecurityGroups/write",
     )
 
@@ -2420,7 +2420,7 @@ def _check_5_1_6(monitor_client: Any, subscription_id: str) -> CISCheckResult:
     return _check_activity_log_alert(
         monitor_client,
         "5.1.6",
-        "Ensure that Activity Log alert exists for Delete Network Security Group",
+        "Activity Log alert for NSG delete",
         "Microsoft.Network/networkSecurityGroups/delete",
     )
 
@@ -2429,7 +2429,7 @@ def _check_5_2_1(postgresql_client: Any) -> CISCheckResult:
     """CIS 5.2.1 — Ensure server parameter 'log_connections' is set to ON for PostgreSQL."""
     result = CISCheckResult(
         check_id="5.2.1",
-        title="Ensure server parameter 'log_connections' is set to 'ON' for PostgreSQL Database Server",
+        title="PostgreSQL Server log_connections parameter set to ON",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the 'log_connections' server parameter to 'ON' on all PostgreSQL servers.",
@@ -2482,7 +2482,7 @@ def _check_5_2_2(postgresql_client: Any) -> CISCheckResult:
     """CIS 5.2.2 — Ensure server parameter 'log_disconnections' is set to ON."""
     result = CISCheckResult(
         check_id="5.2.2",
-        title="Ensure server parameter 'log_disconnections' is set to 'ON' for PostgreSQL Database Server",
+        title="PostgreSQL Server log_disconnections parameter set to ON",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the 'log_disconnections' server parameter to 'ON' on all PostgreSQL servers.",
@@ -2535,7 +2535,7 @@ def _check_5_2_3(postgresql_client: Any) -> CISCheckResult:
     """CIS 5.2.3 — Ensure server parameter 'connection_throttling' is set to ON."""
     result = CISCheckResult(
         check_id="5.2.3",
-        title="Ensure server parameter 'connection_throttling' is set to 'ON' for PostgreSQL Database Server",
+        title="PostgreSQL Server connection_throttling parameter set to ON",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the 'connection_throttling' server parameter to 'ON' on all PostgreSQL servers.",
@@ -2593,7 +2593,7 @@ def _check_6_1(network_client: Any) -> CISCheckResult:
     """CIS 6.1 — Ensure RDP access from the internet is restricted."""
     result = CISCheckResult(
         check_id="6.1",
-        title="Ensure that RDP access from the internet is evaluated and restricted",
+        title="RDP access from internet restricted",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation=(
@@ -2627,7 +2627,7 @@ def _check_6_2(network_client: Any) -> CISCheckResult:
     """CIS 6.2 — Ensure SSH access from the internet is restricted."""
     result = CISCheckResult(
         check_id="6.2",
-        title="Ensure that SSH access from the internet is evaluated and restricted",
+        title="SSH access from internet restricted",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation=(
@@ -2661,7 +2661,7 @@ def _check_6_3(network_client: Any) -> CISCheckResult:
     """CIS 6.3 — Ensure no SQL Databases allow ingress from 0.0.0.0/0 (Any IP)."""
     result = CISCheckResult(
         check_id="6.3",
-        title="Ensure no SQL Databases allow ingress from 0.0.0.0/0 (ANY IP)",
+        title="No SQL database allows ingress from any IP",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation=(
@@ -2696,7 +2696,7 @@ def _check_6_5(network_client: Any) -> CISCheckResult:
     """CIS 6.5 — Ensure Network Watcher is enabled."""
     result = CISCheckResult(
         check_id="6.5",
-        title="Ensure that Network Watcher is enabled",
+        title="Network Watcher enabled",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable Network Watcher in all regions where you have Azure resources deployed.",
@@ -2721,7 +2721,7 @@ def _check_6_4(network_client: Any) -> CISCheckResult:
     """CIS 6.4 — Ensure that UDP access from the internet is restricted."""
     result = CISCheckResult(
         check_id="6.4",
-        title="Ensure that UDP access from the internet is evaluated and restricted",
+        title="UDP access from internet restricted",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove or restrict NSG inbound rules allowing UDP from 0.0.0.0/0 or ::/0.",
@@ -2755,7 +2755,7 @@ def _check_6_6(network_client: Any) -> CISCheckResult:
     """CIS 6.6 — Ensure Web Application Firewall (WAF) is enabled."""
     result = CISCheckResult(
         check_id="6.6",
-        title="Ensure that Web Application Firewall (WAF) is enabled",
+        title="Web Application Firewall enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable WAF on Application Gateway or Front Door for all public-facing web applications.",
@@ -2813,7 +2813,7 @@ def _check_7_1(compute_client: Any) -> CISCheckResult:
     """CIS 7.1 — Ensure Virtual Machines utilize Managed Disks."""
     result = CISCheckResult(
         check_id="7.1",
-        title="Ensure Virtual Machines utilize Managed Disks",
+        title="Virtual machines use Managed Disks",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Migrate all VM disks to Managed Disks for improved reliability, security, and simplified management.",
@@ -2847,7 +2847,7 @@ def _check_7_2(compute_client: Any) -> CISCheckResult:
     """CIS 7.2 — Ensure VMs use managed disks for OS disks."""
     result = CISCheckResult(
         check_id="7.2",
-        title="Ensure that Virtual Machines use Managed Disks for OS disks",
+        title="VM OS disks use Managed Disks",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Migrate all VM OS disks to Managed Disks.",
@@ -2880,7 +2880,7 @@ def _check_7_3(compute_client: Any) -> CISCheckResult:
     """CIS 7.3 — Ensure OS and data disks are encrypted with CMK."""
     result = CISCheckResult(
         check_id="7.3",
-        title="Ensure that OS and data disks are encrypted with Customer Managed Key (CMK)",
+        title="OS and data disks encrypted with customer-managed key",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable Customer Managed Key encryption for all VM OS and data disks.",
@@ -2915,7 +2915,7 @@ def _check_7_4(compute_client: Any) -> CISCheckResult:
     """CIS 7.4 — Ensure only approved extensions are installed on VMs."""
     result = CISCheckResult(
         check_id="7.4",
-        title="Ensure that only approved extensions are installed on Virtual Machines",
+        title="Only approved VM extensions installed",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Review all VM extensions and remove any unapproved or unnecessary extensions.",
@@ -2950,7 +2950,7 @@ def _check_7_5(compute_client: Any) -> CISCheckResult:
     """CIS 7.5 — Ensure latest OS patches are applied to VMs."""
     result = CISCheckResult(
         check_id="7.5",
-        title="Ensure that the latest OS patches for all Virtual Machines are applied",
+        title="Latest OS patches applied to VMs",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable automatic OS updates or apply latest patches to all VMs. Use Azure Update Management for compliance tracking.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -2974,7 +2974,7 @@ def _check_7_6(compute_client: Any) -> CISCheckResult:
     """CIS 7.6 — Ensure endpoint protection is installed on VMs."""
     result = CISCheckResult(
         check_id="7.6",
-        title="Ensure that endpoint protection is installed on Virtual Machines",
+        title="Endpoint protection installed on VMs",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Install an endpoint protection solution (e.g., Microsoft Defender for Endpoint) on all VMs.",
@@ -3018,7 +3018,7 @@ def _check_8_1(kv_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 8.1 — Ensure expiration date is set on all Key Vault keys."""
     result = CISCheckResult(
         check_id="8.1",
-        title="Ensure that expiration date is set on all keys in Key Vault",
+        title="Expiration date set on Key Vault keys",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set an expiration date on all Key Vault keys to enforce key rotation.",
@@ -3075,7 +3075,7 @@ def _check_8_2(kv_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 8.2 — Ensure expiration date is set on all Key Vault secrets."""
     result = CISCheckResult(
         check_id="8.2",
-        title="Ensure that expiration date is set on all secrets in Key Vault",
+        title="Expiration date set on Key Vault secrets",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set an expiration date on all Key Vault secrets to enforce secret rotation.",
@@ -3129,7 +3129,7 @@ def _check_8_3(kv_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 8.3 — Ensure Key Vault is recoverable (soft delete + purge protection)."""
     result = CISCheckResult(
         check_id="8.3",
-        title="Ensure that the Key Vault is recoverable (soft-delete and purge protection enabled)",
+        title="Key Vault recoverable (soft-delete and purge protection)",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable both soft-delete and purge protection on all Key Vaults.",
@@ -3189,7 +3189,7 @@ def _check_8_4(kv_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 8.4 — Ensure key expiration date is set for all keys in RBAC Key Vaults."""
     result = CISCheckResult(
         check_id="8.4",
-        title="Ensure that the expiration date is set on all keys in RBAC Key Vaults",
+        title="Expiration date set on RBAC Key Vault keys",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set an expiration date on all keys in Key Vaults using RBAC access model.",
@@ -3258,7 +3258,7 @@ def _check_8_5(kv_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 8.5 — Ensure secret expiration date is set for all secrets in RBAC Key Vaults."""
     result = CISCheckResult(
         check_id="8.5",
-        title="Ensure that the expiration date is set on all secrets in RBAC Key Vaults",
+        title="Expiration date set on RBAC Key Vault secrets",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set an expiration date on all secrets in Key Vaults using RBAC access model.",
@@ -3327,7 +3327,7 @@ def _check_8_6(kv_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 8.6 — Ensure Key Vault secrets have content type set."""
     result = CISCheckResult(
         check_id="8.6",
-        title="Ensure that the Key Vault secrets have a content type set",
+        title="Key Vault secrets have a content type set",
         status=CheckStatus.ERROR,
         severity="low",
         recommendation="Set a content type on all Key Vault secrets to describe the secret's usage.",
@@ -3381,7 +3381,7 @@ def _check_8_7(kv_client: Any, subscription_id: str) -> CISCheckResult:
     """CIS 8.7 — Ensure private endpoints are used for Key Vault."""
     result = CISCheckResult(
         check_id="8.7",
-        title="Ensure that private endpoints are used for Azure Key Vault",
+        title="Private endpoints used for Key Vault",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Configure private endpoints for all Key Vaults to restrict network access.",
@@ -3440,7 +3440,7 @@ def _check_9_1(webapp_client: Any) -> CISCheckResult:
     """CIS 9.1 — Ensure App Service Authentication is set on."""
     result = CISCheckResult(
         check_id="9.1",
-        title="Ensure App Service Authentication is set up for apps in Azure App Service",
+        title="App Service Authentication configured",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable App Service Authentication (EasyAuth) on all web apps.",
@@ -3493,7 +3493,7 @@ def _check_9_2(webapp_client: Any) -> CISCheckResult:
     """CIS 9.2 — Ensure web app redirects all HTTP traffic to HTTPS."""
     result = CISCheckResult(
         check_id="9.2",
-        title="Ensure web app redirects all HTTP traffic to HTTPS",
+        title="Web app redirects HTTP to HTTPS",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable 'HTTPS Only' on all web apps to redirect HTTP to HTTPS.",
@@ -3524,7 +3524,7 @@ def _check_9_3(webapp_client: Any) -> CISCheckResult:
     """CIS 9.3 — Ensure web app is using the latest TLS version."""
     result = CISCheckResult(
         check_id="9.3",
-        title="Ensure web app is using the latest version of TLS encryption",
+        title="Web app uses latest TLS version",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Set the minimum TLS version to 1.2 on all web apps.",
@@ -3581,7 +3581,7 @@ def _check_9_4(webapp_client: Any) -> CISCheckResult:
     """CIS 9.4 — Ensure the web app has a Managed Identity."""
     result = CISCheckResult(
         check_id="9.4",
-        title="Ensure the web app has a Managed Service Identity",
+        title="Web app has a Managed Service Identity",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable a System-Assigned or User-Assigned Managed Identity on all web apps.",
@@ -3616,7 +3616,7 @@ def _check_9_5(webapp_client: Any) -> CISCheckResult:
     """CIS 9.5 — Ensure web app has client certificates (Incoming client certificates) enabled."""
     result = CISCheckResult(
         check_id="9.5",
-        title="Ensure the web app has 'Client Certificates (Incoming client certificates)' set to On",
+        title="Web app requires incoming client certificates",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable client certificates on all web apps that require mutual TLS authentication.",
@@ -3647,7 +3647,7 @@ def _check_9_6(webapp_client: Any) -> CISCheckResult:
     """CIS 9.6 — Ensure FTP access is disabled for App Service."""
     result = CISCheckResult(
         check_id="9.6",
-        title="Ensure that FTP access is disabled for Azure App Service",
+        title="FTP access disabled for App Service",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Disable FTP/FTPS access on all web apps. Use FTPS-only or disable FTP state entirely.",

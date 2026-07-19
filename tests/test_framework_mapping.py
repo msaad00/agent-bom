@@ -496,6 +496,22 @@ def test_nist_evidenced_controls_set_matches_specs():
 # ─── Cloud CIS Foundations Benchmark title provenance (copyright guard) ──────
 
 
+_CLOUD_CIS_BENCHMARK_MODULES = (
+    "aws_cis_benchmark.py",
+    "gcp_cis_benchmark.py",
+    "azure_cis_benchmark.py",
+    "snowflake_cis_benchmark.py",
+)
+
+
+def _cloud_cis_benchmark_dir():
+    from pathlib import Path
+
+    import agent_bom.cloud as cloud_pkg
+
+    return Path(cloud_pkg.__file__).parent
+
+
 def _cloud_cis_benchmark_title_literals() -> dict[str, list[str]]:
     """Return every ``title="..."`` string literal passed to a ``CISCheckResult``
     constructor across the four cloud CIS Foundations Benchmark modules.
@@ -507,19 +523,10 @@ def _cloud_cis_benchmark_title_literals() -> dict[str, list[str]]:
     even though the control inventory digest is derived from IDs only.
     """
     import ast
-    from pathlib import Path
 
-    import agent_bom.cloud as cloud_pkg
-
-    cloud_dir = Path(cloud_pkg.__file__).parent
-    modules = (
-        "aws_cis_benchmark.py",
-        "gcp_cis_benchmark.py",
-        "azure_cis_benchmark.py",
-        "snowflake_cis_benchmark.py",
-    )
+    cloud_dir = _cloud_cis_benchmark_dir()
     out: dict[str, list[str]] = {}
-    for name in modules:
+    for name in _CLOUD_CIS_BENCHMARK_MODULES:
         source = (cloud_dir / name).read_text()
         tree = ast.parse(source)
         titles: list[str] = []
@@ -558,27 +565,37 @@ def test_cloud_cis_benchmark_titles_are_own_descriptors_not_copyrighted():
     assert not offenders, f"CIS-house-style 'Ensure ...' titles must be reworded to own descriptors: {offenders}"
 
     # (2) Curated block-list of known verbatim CIS Foundations Benchmark titles.
+    #     Scanned against the RAW module source so it also catches titles that
+    #     reach ``CISCheckResult`` indirectly (Azure ``_check_activity_log_alert``
+    #     positional args, Snowflake ``_CHECK_ERROR_METADATA`` tuples), not only
+    #     inline ``title=`` keywords.
     forbidden = {
         # AWS
         "Ensure MFA is enabled for the root user account",
         "Ensure no root user account access key exists",
-        "Ensure IAM password policy requires minimum length of 14 or greater",
+        "Ensure IAM password policy requires minimum length >= 14",
         "Maintain current contact details",
         # GCP
         "Ensure that corporate login credentials are used",
         "Ensure multi-factor authentication is enforced for all users",
         "Ensure that the default VPC network does not exist in the project",
-        # Azure
+        # Azure — inline title= and the indirect Activity-Log-alert positional path
         "Ensure that multi-factor authentication is enabled for all users",
         "Ensure that 'Auditing' is set to 'On' for SQL servers",
         "Ensure Microsoft Defender for Servers is set to On",
-        # Snowflake
+        "Ensure that Activity Log alert exists for Delete Key Vault",
+        # Snowflake — inline title= and the indirect _CHECK_ERROR_METADATA path
         "Ensure MFA is enabled for all users with password authentication",
         "Ensure minimum password length is set to 14 or greater",
         "Ensure ACCOUNTADMIN role is granted to no more than 2 users",
     }
     present = forbidden & set(all_titles)
     assert not present, f"Verbatim copyrighted CIS Foundations Benchmark titles emitted: {sorted(present)}"
+
+    cloud_dir = _cloud_cis_benchmark_dir()
+    joined_source = "\n".join((cloud_dir / name).read_text() for name in _CLOUD_CIS_BENCHMARK_MODULES)
+    in_source = sorted(t for t in forbidden if f'"{t}"' in joined_source)
+    assert not in_source, f"Verbatim copyrighted CIS titles still vendored as string literals: {in_source}"
 
 
 def test_vendored_catalog_integrity_and_counts_reconcile():

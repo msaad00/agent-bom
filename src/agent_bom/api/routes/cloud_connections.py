@@ -553,7 +553,14 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
     cis_report = run_azure_cis(subscription_id=subscription_id, credential=credential)
     cis_dict = cis_report.to_dict()
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    # Content-confirmed sensitive Azure Blob containers (when blob sampling is
+    # enabled) become canonical DSPM findings on the report's findings spine.
+    from agent_bom.cloud.dspm_findings import build_inventory_dspm_findings
+
+    account_ref = f"azure:{subscription_id}" if subscription_id else None
+    dspm_findings = build_inventory_dspm_findings(inventory_payload, provider="azure", account_ref=account_ref)
+
+    report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=str(_uuid.uuid4()))
     _mark_connection_report_sources(report, "azure")
     report.cloud_inventory_data = inventory_payload
     report.azure_cis_benchmark_data = cis_dict
@@ -812,7 +819,16 @@ def _run_database_connection_scan(record: CloudConnectionRecord, tenant_id: str)
         "dspm_databases": [db_record],
     }
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    # Content-confirmed sensitive tables become canonical DSPM findings so they
+    # flow through the findings spine, exports, and graph correlation the same way
+    # every other finding does. Redacted evidence only; unevaluable/clean tables
+    # emit nothing (never a false "clean").
+    from agent_bom.cloud.dspm_findings import build_inventory_dspm_findings
+
+    account_ref = f"database:{account}" if account else None
+    dspm_findings = build_inventory_dspm_findings(inventory, provider="database", account_ref=account_ref)
+
+    report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=str(_uuid.uuid4()))
     _mark_connection_report_sources(report, "database")
     report.cloud_inventory_data = inventory
     scan_id = _persist_connection_report(record, tenant_id, report)
@@ -824,6 +840,7 @@ def _run_database_connection_scan(record: CloudConnectionRecord, tenant_id: str)
         "tables_sampled": (classification or {}).get("tables_sampled", 0),
         "tables_by_state": (classification or {}).get("tables_by_state", {}),
         "findings_by_type": (classification or {}).get("findings_by_type", {}),
+        "findings_emitted": len(dspm_findings),
         "scan_status": (classification or {}).get("status", "skipped"),
     }
     if coverage_note:

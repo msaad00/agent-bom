@@ -131,6 +131,11 @@ def security_domain_for(
 
     ev = evidence or {}
 
+    # Content-confirmed data sensitivity is the data-security-posture lane,
+    # decisive by type/source regardless of which provider surfaced it.
+    if source is FindingSource.DSPM or finding_type is FindingType.SENSITIVE_DATA:
+        return "dspm"
+
     if source in {FindingSource.CLOUD_CIS, FindingSource.CLOUD_SECURITY}:
         provider = str(ev.get("provider") or "").strip().lower()
         # Snowflake governance findings carry a category + no CIS benchmark tag;

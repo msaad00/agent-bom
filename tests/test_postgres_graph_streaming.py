@@ -370,6 +370,181 @@ def test_load_graph_accepts_native_jsonb_analysis_status(monkeypatch):
     assert graph.analysis_status["attack_path_fusion"].status is GraphAnalysisState.COMPLETE
 
 
+@pytest.mark.parametrize(
+    "json_values",
+    [
+        (
+            {"owner": "security"},
+            ["cis:1.1"],
+            ["inventory"],
+            {"environment": "production"},
+        ),
+        (
+            '{"owner":"security"}',
+            '["cis:1.1"]',
+            '["inventory"]',
+            '{"environment":"production"}',
+        ),
+    ],
+    ids=("native-jsonb", "legacy-text"),
+)
+def test_page_nodes_accepts_native_jsonb_and_legacy_text(monkeypatch, json_values):
+    """The paginated API read path supports psycopg JSONB and legacy TEXT."""
+
+    native_node_row = (
+        "agent:native",
+        "agent",
+        "Native Agent",
+        1,
+        1,
+        1,
+        "active",
+        7.5,
+        "high",
+        4,
+        "2026-07-19T00:00:00Z",
+        "2026-07-19T00:00:00Z",
+        *json_values,
+    )
+
+    class _NativeJsonbNodeConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("select created_at from graph_snapshots"):
+                return _FakeCursor([("2026-07-19T00:00:00Z",)])
+            if low.startswith("select count(*) from graph_nodes"):
+                return _FakeCursor([(1,)])
+            if "from graph_nodes" in low and low.startswith("select id, entity_type"):
+                return _FakeCursor([native_node_row])
+            return super().execute(sql, params)
+
+    store = _make_store(_NativeJsonbNodeConn(), monkeypatch)
+
+    effective_scan_id, _created_at, nodes, total, next_cursor = store.page_nodes(
+        tenant_id="tenant-alpha",
+        scan_id="scan-jsonb",
+        limit=10,
+    )
+
+    assert effective_scan_id == "scan-jsonb"
+    assert total == 1
+    assert next_cursor is None
+    assert nodes[0].id == "agent:native"
+    assert nodes[0].attributes == {"owner": "security"}
+    assert nodes[0].compliance_tags == ["cis:1.1"]
+    assert nodes[0].data_sources == ["inventory"]
+    assert nodes[0].dimensions.environment == "production"
+
+
+def test_edge_and_attack_path_reads_accept_native_jsonb_and_preserve_tenant(monkeypatch):
+    """Adjacent graph API reads decode JSONB and keep every query tenant-scoped."""
+    edge_row = (
+        "agent:native",
+        "tool:native",
+        "uses",
+        "forward",
+        1.0,
+        True,
+        "2026-07-19T00:00:00Z",
+        "2026-07-19T00:00:00Z",
+        "2026-07-19T00:00:00Z",
+        None,
+        0.9,
+        {"collector": "inventory"},
+        "scan-jsonb",
+        "run-jsonb",
+        {"source": "operator_inventory"},
+        1,
+        "scan-jsonb",
+    )
+    attack_path_row = (
+        "agent:native",
+        "tool:native",
+        ["agent:native", "tool:native"],
+        ["uses"],
+        8.5,
+        "native JSONB path",
+        ["API_KEY"],
+        ["run_shell"],
+        ["CVE-2026-0001"],
+        [],
+    )
+
+    class _NativeJsonbRelatedConn(_RecordingConn):
+        def __init__(self):
+            super().__init__()
+            self.read_params = []
+
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if "from graph_edges" in low and low.startswith("select source_id"):
+                self.read_params.append(("edges", tuple(params)))
+                return _FakeCursor([edge_row])
+            if "from attack_paths" in low and "source_node in" in low:
+                self.read_params.append(("paths", tuple(params)))
+                return _FakeCursor([attack_path_row])
+            return super().execute(sql, params)
+
+    conn = _NativeJsonbRelatedConn()
+    store = _make_store(conn, monkeypatch)
+
+    edges = store.edges_for_node_ids(
+        tenant_id="tenant-alpha",
+        scan_id="scan-jsonb",
+        node_ids={"agent:native", "tool:native"},
+    )
+    paths = store.attack_paths_for_sources(
+        tenant_id="tenant-alpha",
+        scan_id="scan-jsonb",
+        source_ids={"agent:native"},
+    )
+
+    assert edges[0].provenance == {"collector": "inventory"}
+    assert edges[0].evidence == {"source": "operator_inventory"}
+    assert paths[0].hops == ["agent:native", "tool:native"]
+    assert paths[0].credential_exposure == ["API_KEY"]
+    assert paths[0].tool_exposure == ["run_shell"]
+    assert ("paths", ("tenant-alpha", "scan-jsonb", "agent:native")) in conn.read_params
+    edge_params = next(params for kind, params in conn.read_params if kind == "edges")
+    assert edge_params[:2] == ("tenant-alpha", "scan-jsonb")
+
+
+@pytest.mark.parametrize(
+    ("row_index", "malformed", "message"),
+    [
+        (12, [], "node attributes JSON must be an object"),
+        (13, {}, "node compliance tags JSON must be an array"),
+        (14, "{not-json", "Expecting property name enclosed in double quotes"),
+    ],
+)
+def test_node_read_rejects_malformed_persisted_json(row_index, malformed, message):
+    """Corrupt persisted JSON fails closed with a stable validation error."""
+    from agent_bom.api.postgres_graph import PostgresGraphStore
+
+    row = [
+        "agent:malformed",
+        "agent",
+        "Malformed Agent",
+        1,
+        1,
+        1,
+        "active",
+        0.0,
+        "",
+        0,
+        "2026-07-19T00:00:00Z",
+        "2026-07-19T00:00:00Z",
+        {},
+        [],
+        [],
+        {},
+    ]
+    row[row_index] = malformed
+
+    with pytest.raises(ValueError, match=message):
+        PostgresGraphStore._node_from_row(row)
+
+
 def test_retired_edge_update_records_ocsf_close_activity(monkeypatch):
     """Postgres retirement matches SQLite's canonical OCSF Close activity."""
 

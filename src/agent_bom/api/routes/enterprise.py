@@ -38,7 +38,7 @@ import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
@@ -1639,7 +1639,7 @@ async def export_audit_entries(
     limit: Annotated[int, Query(ge=1, le=10_000)] = 1000,
     offset: Annotated[int, Query(ge=0)] = 0,
     format: str = "json",
-):
+) -> Response:
     """Export audit entries as a signed evidence packet."""
     from agent_bom.api.audit_log import get_audit_log, log_action, sign_export_payload
 
@@ -1789,7 +1789,7 @@ async def get_exception(request: Request, exception_id: str) -> dict:
     exc = _get_exception_store().get(exception_id, tenant_id=tenant_id)
     if exc is None:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
-    return exc.to_dict()
+    return cast("dict[str, Any]", exc.to_dict())
 
 
 @router.put("/exceptions/{exception_id}/approve", tags=["enterprise"])
@@ -1811,7 +1811,7 @@ async def approve_exception(request: Request, exception_id: str) -> dict:
     exc.approved_at = datetime.now(timezone.utc).isoformat()
     store.put(exc)
     log_action("exception_approve", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
-    return exc.to_dict()
+    return cast("dict[str, Any]", exc.to_dict())
 
 
 @router.put("/exceptions/{exception_id}/revoke", tags=["enterprise"])
@@ -1830,7 +1830,7 @@ async def revoke_exception(request: Request, exception_id: str) -> dict:
     exc.revoked_at = datetime.now(timezone.utc).isoformat()
     store.put(exc)
     log_action("exception_revoke", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
-    return exc.to_dict()
+    return cast("dict[str, Any]", exc.to_dict())
 
 
 @router.delete("/exceptions/{exception_id}", tags=["enterprise"], status_code=204)

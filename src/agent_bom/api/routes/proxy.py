@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path as _Path
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 
@@ -170,7 +170,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
             raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
         if cached is not None:
             cached["idempotent_replay"] = True
-            return cached
+            return cast("dict[Any, Any]", cached)
 
     from agent_bom.api.stores import _get_firewall_decision_store
 
@@ -954,7 +954,7 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     try:
         from fastapi.websockets import WebSocketDisconnect
     except ImportError:
-        from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
+        from starlette.websockets import WebSocketDisconnect
 
     auth_context = await _ws_accept_and_check_auth(websocket)
     if auth_context is None:
@@ -1011,7 +1011,7 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
     try:
         from fastapi.websockets import WebSocketDisconnect
     except ImportError:
-        from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
+        from starlette.websockets import WebSocketDisconnect
 
     auth_context = await _ws_accept_and_check_auth(websocket)
     if auth_context is None:

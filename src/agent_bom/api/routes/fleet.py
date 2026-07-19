@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -32,12 +33,14 @@ from agent_bom.security import sanitize_command_args, sanitize_error, sanitize_s
 
 router = APIRouter()
 
+_T = TypeVar("_T")
+
 
 def _dep(permission: str) -> Any:
     return cast(Any, require_authenticated_permission(permission))
 
 
-async def _store_call(fn, /, *args, **kwargs):
+async def _store_call(fn: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
     """Run a sync fleet-store method off the event loop under graph backpressure."""
     try:
         async with adaptive_backpressure("graph"):
@@ -55,12 +58,12 @@ def _quarantine_policy_name(agent_name: str) -> str:
     return f"Quarantine deny — {agent_name}"
 
 
-def _state_value(agent) -> str:
+def _state_value(agent: Any) -> str:
     state = getattr(agent, "lifecycle_state", "")
     return str(getattr(state, "value", state) or "")
 
 
-def _agent_text(value) -> str:
+def _agent_text(value: Any) -> str:
     return str(value or "").lower()
 
 
@@ -117,7 +120,7 @@ async def list_fleet(
     include_quarantined: bool = False,
     limit: int = 50,
     offset: int = 0,
-):
+) -> dict[str, Any]:
     """List all agents in the fleet registry.
 
     Supports pagination via ``limit`` (default 50, max 200) and ``offset``.
@@ -168,7 +171,7 @@ async def list_fleet(
 
 
 @router.get("/fleet/stats", tags=["fleet"])
-async def fleet_stats(request: Request):
+async def fleet_stats(request: Request) -> dict[str, Any]:
     """Fleet-wide statistics."""
     tenant_id = require_request_tenant_id(request)
     agents = await _store_call(_get_fleet_store().list_by_tenant, tenant_id)
@@ -191,16 +194,16 @@ async def fleet_stats(request: Request):
 
 
 @router.get("/fleet/{agent_id}", tags=["fleet"])
-async def get_fleet_agent(request: Request, agent_id: str):
+async def get_fleet_agent(request: Request, agent_id: str) -> dict[str, Any]:
     """Get a single fleet agent with trust score breakdown."""
     tenant_id = require_request_tenant_id(request)
     agent = await _store_call(_get_fleet_store().get, agent_id, tenant_id=tenant_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
-    return agent.model_dump()
+    return cast(dict[str, Any], agent.model_dump())
 
 
-def _server_counts(agent) -> tuple[int, int, int, int]:
+def _server_counts(agent: Any) -> tuple[int, int, int, int]:
     server_count = len(agent.mcp_servers)
     pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
     cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
@@ -282,7 +285,7 @@ def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery
 
 
 @router.post("/fleet/sync", tags=["fleet"])
-async def sync_fleet(request: Request, body: PushPayload | None = None):
+async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[str, Any]:
     """Run discovery and sync results into the fleet registry.
 
     New agents -> state=DISCOVERED. Existing agents -> counts updated.
@@ -314,7 +317,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
             raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
         if cached is not None:
             cached["idempotent_replay"] = True
-            return cached
+            return cast(dict[str, Any], cached)
     new_count = 0
     updated_count = 0
 
@@ -522,7 +525,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
 
 
 @router.put("/fleet/{agent_id}/state", tags=["fleet"])
-async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate):
+async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate) -> dict[str, Any]:
     """Update agent lifecycle state."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.fleet_store import FleetLifecycleState
@@ -552,7 +555,7 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
 
 
 @router.post("/fleet/{agent_id}/quarantine", tags=["fleet"], dependencies=[_dep("policy_write")])
-async def quarantine_fleet_agent(request: Request, agent_id: str):
+async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, Any]:
     """Quarantine an agent and fail closed with a gateway DENY policy for its identity.
 
     One click performs two containment actions:
@@ -659,7 +662,7 @@ async def quarantine_fleet_agent(request: Request, agent_id: str):
 
 
 @router.put("/fleet/{agent_id}", tags=["fleet"])
-async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUpdate):
+async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUpdate) -> dict[str, Any]:
     """Update agent metadata (owner, environment, tags, notes)."""
     from agent_bom.api.audit_log import log_action
 
@@ -688,4 +691,4 @@ async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUp
         environment=agent.environment,
         tags=agent.tags,
     )
-    return agent.model_dump()
+    return cast(dict[str, Any], agent.model_dump())

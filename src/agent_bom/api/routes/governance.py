@@ -19,7 +19,7 @@ any unrelated request; a burst sheds with a 429 + ``Retry-After`` instead.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, TypeVar, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException
@@ -52,7 +52,7 @@ async def _offload(build: Callable[[], _T]) -> _T:
 
 
 @router.get("/governance", tags=["governance"])
-async def governance_report(days: int = 30):
+async def governance_report(days: int = 30) -> dict[str, Any]:
     """Run Snowflake governance discovery and return findings.
 
     Mines ACCESS_HISTORY, GRANTS_TO_ROLES, TAG_REFERENCES, and
@@ -72,7 +72,7 @@ async def governance_report(days: int = 30):
         from agent_bom.cloud import discover_governance
 
         report = discover_governance(provider="snowflake", days=days)
-        return report.to_dict()
+        return cast(dict[str, Any], report.to_dict())
 
     try:
         return await _offload(_run)
@@ -90,7 +90,7 @@ async def governance_findings(
     category: str | None = None,
     limit: int = 500,
     offset: int = 0,
-):
+) -> dict[str, Any]:
     """Return only governance findings, optionally filtered.
 
     Returns the canonical finding-list envelope (#3666) shared with
@@ -144,7 +144,7 @@ async def governance_findings(
 
 
 @router.get("/activity", tags=["governance"])
-async def activity_timeline(days: int = 30):
+async def activity_timeline(days: int = 30) -> dict[str, Any]:
     """Agent activity timeline from Snowflake QUERY_HISTORY + AI_OBSERVABILITY_EVENTS.
 
     Reconstructs agent execution history from 365-day query history
@@ -164,7 +164,7 @@ async def activity_timeline(days: int = 30):
         from agent_bom.cloud import discover_activity
 
         timeline = discover_activity(provider="snowflake", days=days)
-        return timeline.to_dict()
+        return cast(dict[str, Any], timeline.to_dict())
 
     try:
         return await _offload(_run)
@@ -176,7 +176,7 @@ async def activity_timeline(days: int = 30):
 
 
 @router.get("/cortex/telemetry", tags=["governance"], deprecated=True)
-async def cortex_telemetry(hours: int = 24):
+async def cortex_telemetry(hours: int = 24) -> dict[str, Any]:
     """Aggregated Cortex agent telemetry with health assessments.
 
     Combines CORTEX_AGENT_USAGE_HISTORY and AI_OBSERVABILITY_EVENTS
@@ -195,8 +195,8 @@ async def cortex_telemetry(hours: int = 24):
             detail="SNOWFLAKE_ACCOUNT env var not set.",
         )
 
-    def _run() -> Any:
-        from agent_bom.cloud.snowflake import _get_connection  # type: ignore[attr-defined]
+    def _run() -> dict[str, Any]:
+        from agent_bom.cloud.snowflake import _get_connection
         from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
 
         conn = _get_connection()
@@ -215,7 +215,7 @@ async def cortex_telemetry(hours: int = 24):
 
 
 @router.get("/cortex/agents/{name}/telemetry", tags=["governance"])
-async def cortex_agent_telemetry(name: str, hours: int = 24):
+async def cortex_agent_telemetry(name: str, hours: int = 24) -> dict[str, Any]:
     """Telemetry for a specific Cortex agent."""
     import os
 
@@ -225,8 +225,8 @@ async def cortex_agent_telemetry(name: str, hours: int = 24):
             detail="SNOWFLAKE_ACCOUNT env var not set.",
         )
 
-    def _run() -> Any:
-        from agent_bom.cloud.snowflake import _get_connection  # type: ignore[attr-defined]
+    def _run() -> dict[str, Any]:
+        from agent_bom.cloud.snowflake import _get_connection
         from agent_bom.cloud.snowflake_observability import get_cortex_telemetry
 
         conn = _get_connection()
@@ -245,7 +245,7 @@ async def cortex_agent_telemetry(name: str, hours: int = 24):
 
 
 @router.get("/cortex/health", tags=["governance"])
-async def cortex_health():
+async def cortex_health() -> dict[str, Any]:
     """Health status for all Cortex agents."""
     import os
 
@@ -293,7 +293,7 @@ async def cortex_health():
 
 
 @router.get("/siem/formats", tags=["siem"])
-async def siem_formats():
+async def siem_formats() -> dict[str, Any]:
     """List supported SIEM event formats."""
     from agent_bom.siem import list_formats
 

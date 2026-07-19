@@ -21,6 +21,7 @@ import json
 import os
 import warnings
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity, native_app_mode
 
@@ -29,10 +30,13 @@ from .fleet_store import FleetAgent, FleetLifecycleState
 from .policy_store import GatewayPolicy, PolicyAuditEntry
 from .server import ScanJob
 
+if TYPE_CHECKING:
+    from .schedule_store import ScanSchedule
 
-def _sf_connect(**kwargs):  # type: ignore[no-untyped-def]
+
+def _sf_connect(**kwargs: Any) -> Any:
     """Lazy import of snowflake.connector.connect."""
-    import snowflake.connector  # type: ignore[import-untyped]
+    import snowflake.connector
 
     return snowflake.connector.connect(**kwargs)
 
@@ -536,7 +540,7 @@ class SnowflakeScheduleStore:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sched_tenant_due ON scan_schedules(tenant_id, enabled, next_run)")
             _ensure_tenant_row_access_policy(cur, ("scan_schedules",))
 
-    def put(self, schedule) -> None:
+    def put(self, schedule: ScanSchedule) -> None:
         with self._connect() as conn:
             conn.cursor().execute(
                 """MERGE INTO scan_schedules t USING (SELECT %s AS schedule_id) s
@@ -560,7 +564,7 @@ class SnowflakeScheduleStore:
                 ),
             )
 
-    def get(self, schedule_id: str, tenant_id: str | None = None):
+    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None:
         from .schedule_store import ScanSchedule
 
         with self._connect() as conn:

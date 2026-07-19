@@ -291,7 +291,7 @@ def _maybe_revoke_scim_credentials(user: SCIMUser, *, previously_active: bool) -
 
 
 def _save_scim_user(store: Any, user: SCIMUser, *, previously_active: bool) -> SCIMUser:
-    saved = store.put_user(user)
+    saved: SCIMUser = store.put_user(user)
     _maybe_revoke_scim_credentials(saved, previously_active=previously_active)
     return saved
 

@@ -83,7 +83,7 @@ async def get_schedule(request: Request, schedule_id: str) -> dict:
 
 
 @router.delete("/schedules/{schedule_id}", tags=["schedules"], status_code=204)
-async def delete_schedule(request: Request, schedule_id: str):
+async def delete_schedule(request: Request, schedule_id: str) -> None:
     """Delete a schedule."""
     from agent_bom.api.audit_log import log_action
 

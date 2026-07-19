@@ -854,15 +854,12 @@ jobs:
         run: uv sync --frozen --extra dev --extra aws --extra azure --extra gcp
 
       - name: Run extra-gated SDK import smoke
-        # `-k "not ResourceManagementClient"` excludes ONE known-in-flight case:
-        # azure-mgmt-resource >=26 removed the top-level ResourceManagementClient
-        # re-export (the import moved under azure.mgmt.resource.resources). That
-        # corrected import is tracked separately — remove this filter once it
-        # lands so the case is actively guarded here too. Extras not installed in
-        # this job (databricks/snowflake/mcp/…) are skipped via importorskip.
+        # Extras this job does not install (databricks/snowflake/mcp/…) are
+        # skipped precisely (find_spec on the gated sub-namespace, not the shared
+        # top-level namespace package); installed ones execute so a moved/renamed
+        # symbol fails here instead of on a fresh customer install.
         run: |
-          uv run pytest tests/test_extra_gated_sdk_imports.py tests/test_gcp_sdk_coverage.py \
-            -q -k "not ResourceManagementClient"
+          uv run pytest tests/test_extra_gated_sdk_imports.py tests/test_gcp_sdk_coverage.py -q
 
   postgres-integration:
     name: Postgres Integration Contract

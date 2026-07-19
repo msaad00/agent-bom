@@ -237,6 +237,18 @@ def _build_run_taxonomies(results: list[dict]) -> list[dict]:
                 "name": name,
                 "fullName": full_name,
                 "informationUri": uri,
+                # Honesty: agent-bom's finding→control mappings are its own
+                # asserted judgment of which control a finding evidences, not an
+                # authority-published crosswalk. Label the provenance so SARIF
+                # consumers never read these as official. taxa carry control IDs
+                # only (name == id) — no copyrighted control-title text.
+                "properties": {
+                    "agent-bom:mappingProvenance": "vendor-asserted",
+                    "agent-bom:mappingProvenanceNote": (
+                        "Finding-to-control mappings are agent-bom's own asserted judgment of which "
+                        "control a finding evidences, not an authority-published crosswalk."
+                    ),
+                },
                 "taxa": [{"id": tag, "name": tag} for tag in sorted(tags)],
             }
         )

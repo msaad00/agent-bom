@@ -475,6 +475,57 @@ def test_compliance_narrative_command_json(tmp_path):
     assert payload["framework_narratives"]
 
 
+def _nist_report(tmp_path):
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "summary": {"total_agents": 1, "total_packages": 1, "total_vulnerabilities": 1},
+                "blast_radius": [
+                    {
+                        "vulnerability_id": "CVE-2025-9000",
+                        "severity": "high",
+                        "package": "flask@1.0.0",
+                        "ecosystem": "pypi",
+                        "affected_agents": ["claude"],
+                        "affected_servers": ["filesystem"],
+                        "owasp_tags": [],
+                        "nist_800_53_tags": ["SI-10"],
+                    }
+                ],
+            }
+        )
+    )
+    return report
+
+
+def test_compliance_narrative_json_carries_nist_catalog(tmp_path):
+    runner = CliRunner()
+    report = _nist_report(tmp_path)
+    result = runner.invoke(compliance_narrative_cmd, [str(report), "--format", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    catalog = payload["nist_800_53_catalog"]
+    assert catalog["framework_key"] == "nist_800_53_catalog"
+    assert catalog["vendor_asserted"] is True
+    assert catalog["status"] == "fail"
+    assert any(c["control_id"] == "SI-10" and c["status"] == "fail" for c in catalog["controls"])
+
+
+def test_compliance_narrative_markdown_renders_nist_catalog_drill(tmp_path):
+    runner = CliRunner()
+    report = _nist_report(tmp_path)
+    result = runner.invoke(compliance_narrative_cmd, [str(report), "--format", "markdown"])
+    assert result.exit_code == 0, result.output
+    out = result.output
+    # Exec line: label + vendor-asserted provenance + honest buckets.
+    assert "NIST SP 800-53 Rev 5" in out
+    assert "vendor-asserted" in out.lower()
+    assert "Evaluated" in out and "Not evaluated" in out
+    # Engineer drill: the failing control id surfaces.
+    assert "SI-10" in out
+
+
 def test_compliance_narrative_uses_saved_summary_totals(tmp_path):
     runner = CliRunner()
     report = tmp_path / "report.json"

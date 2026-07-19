@@ -1020,7 +1020,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             JSON with overall_score (0-100), overall_status (pass/warning/fail),
             and per-control details for OWASP LLM Top 10 (10 controls),
             OWASP MCP Top 10 (10 controls), MITRE ATLAS (13 techniques),
-            and NIST AI RMF (14 subcategories).
+            and NIST AI RMF (14 subcategories). Plus a nist_800_53_catalog line:
+            the vendor-asserted, catalog-backed NIST SP 800-53 Rev 5 score over
+            evaluated controls only (with ISO-27001-by-id attribution), scored
+            independently and NOT folded into overall_score.
         """
         return await _execute_tool_async(
             "compliance",

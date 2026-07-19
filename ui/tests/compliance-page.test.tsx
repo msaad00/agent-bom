@@ -13,6 +13,12 @@ vi.mock("@/components/cis-benchmark-detail", () => ({
   CISBenchmarkDetail: () => <div>cis benchmark</div>,
 }));
 
+// The catalog panel fetches its own /v1/compliance/nist-800-53 drill on mount —
+// stub it so this test stays focused on the tag-mapped framework surface.
+vi.mock("@/components/compliance-nist-catalog", () => ({
+  ComplianceNistCatalog: () => <div>nist catalog</div>,
+}));
+
 const { compliance } = vi.hoisted(() => {
   const control = (
     code: string,

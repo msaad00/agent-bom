@@ -513,6 +513,72 @@ async def test_compliance_impl_no_agents():
     assert "overall_status" in data or "error" in data
 
 
+def _nist_blast_radius():
+    from agent_bom.models import (
+        Agent,
+        AgentType,
+        BlastRadius,
+        Package,
+        Severity,
+        Vulnerability,
+    )
+
+    vuln = Vulnerability(id="CVE-2025-9000", summary="x", severity=Severity.HIGH, fixed_version=None)
+    pkg = Package(name="flask", version="1.0.0", ecosystem="pypi", vulnerabilities=[vuln])
+    agent = Agent(name="claude", agent_type=AgentType.CUSTOM, config_path="/tmp")
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[],
+        affected_agents=[agent],
+        exposed_credentials=[],
+        exposed_tools=[],
+        risk_score=7.0,
+    )
+    br.nist_800_53_tags = ["SI-10"]
+    return agent, br
+
+
+@pytest.mark.asyncio
+async def test_compliance_impl_surfaces_nist_catalog_line():
+    """The MCP compliance tool surfaces the catalog-backed NIST 800-53 line
+    (vendor-asserted), consistent with the /v1/compliance API, and scored
+    INDEPENDENTLY — it must not move overall_score."""
+    from agent_bom.mcp_tools.compliance import compliance_impl
+
+    agent, br = _nist_blast_radius()
+
+    async def _pipeline(_config=None, _image=None):
+        return [agent], [br], [], []
+
+    result = await compliance_impl(
+        config_path=None, image=None, _run_scan_pipeline=_pipeline, _truncate_response=_trunc
+    )
+    data = json.loads(result)
+    catalog = data["nist_800_53_catalog"]
+    assert catalog["framework_key"] == "nist_800_53_catalog"
+    assert catalog["vendor_asserted"] is True
+    assert catalog["status"] == "fail"
+    assert any(c["control_id"] == "SI-10" and c["status"] == "fail" for c in catalog["controls"])
+    # Independent: the AI-framework overall_score is not dragged by the catalog line.
+    assert "nist_800_53_catalog" not in data.get("owasp_llm_top10", [])
+
+
+@pytest.mark.asyncio
+async def test_compliance_impl_nist_catalog_no_data_without_agents():
+    from agent_bom.mcp_tools.compliance import compliance_impl
+
+    async def _pipeline(_config=None, _image=None):
+        return [], [], [], []
+
+    result = await compliance_impl(
+        config_path=None, image=None, _run_scan_pipeline=_pipeline, _truncate_response=_trunc
+    )
+    catalog = json.loads(result)["nist_800_53_catalog"]
+    assert catalog["status"] == "no_data"
+    assert catalog["summary"]["evaluated"] == 0
+
+
 @pytest.mark.asyncio
 async def test_compliance_impl_exception():
     from agent_bom.mcp_tools.compliance import compliance_impl

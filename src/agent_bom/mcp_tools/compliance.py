@@ -64,6 +64,7 @@ async def compliance_impl(
                     "atlas_tags": list(br.atlas_tags),
                     "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
                     "owasp_mcp_tags": list(br.owasp_mcp_tags),
+                    "nist_800_53_tags": list(getattr(br, "nist_800_53_tags", [])),
                 }
             )
 
@@ -108,6 +109,18 @@ async def compliance_impl(
         has_fail = any(c["status"] == "fail" for c in all_controls)
         has_warn = any(c["status"] == "warning" for c in all_controls)
 
+        # Catalog-backed NIST SP 800-53 Rev 5 line (vendor-asserted), scored
+        # INDEPENDENTLY over evaluated controls only via the shared scorer — the
+        # SAME representation the /v1/compliance API and CLI narrative report.
+        # Deliberately NOT folded into overall_score (the AI-framework score
+        # above): the curated CVE evidence would otherwise be double-counted. No
+        # CIS Foundations checks exist on the local-scan path, so CIS statuses
+        # are empty; scan_count is 1 when agents were discovered so an unmapped
+        # estate reads no_data, never a false pass.
+        from agent_bom.compliance_nist_catalog import build_nist_800_53_catalog_line
+
+        nist_800_53_catalog = build_nist_800_53_catalog_line(br_dicts, {}, 1 if agents else 0)
+
         return _truncate_response(
             json.dumps(
                 {
@@ -118,6 +131,7 @@ async def compliance_impl(
                     "mitre_atlas": atlas,
                     "nist_ai_rmf": nist,
                     "owasp_mcp_top10": owasp_mcp,
+                    "nist_800_53_catalog": nist_800_53_catalog,
                 },
                 indent=2,
                 default=str,

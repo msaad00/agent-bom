@@ -6,6 +6,7 @@ Endpoints:
     GET  /v1/compliance/aisvs                OWASP AISVS benchmark posture
     GET  /v1/compliance/narrative            full compliance narrative (all frameworks)
     GET  /v1/compliance/narrative/{framework} single-framework narrative
+    GET  /v1/compliance/nist-800-53          NIST 800-53 catalog drill (per-control + ISO-by-id)
     GET  /v1/compliance/{framework}          single framework (must be after /narrative)
     GET  /v1/compliance/{framework}/report   signed evidence bundle for auditors
     GET  /v1/posture                         enterprise posture scorecard
@@ -41,6 +42,13 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.compliance_nist_catalog import (
+    build_nist_800_53_catalog_line,
+    build_nist_800_53_drill,
+)
+from agent_bom.compliance_nist_catalog import (
+    evaluated_control_status as _evaluated_control_status,
+)
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
@@ -312,23 +320,6 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
     }
 
 
-def _evaluated_control_status(sev_breakdown: dict[str, int]) -> str:
-    """Status of a control that HAS mapped findings, by worst severity.
-
-    Mirror of ``compliance_narrative._control_status`` so ``/v1/compliance``, the
-    narrative, and the CLI export agree: critical/high → fail, medium/low →
-    warning. The caller only reaches this with findings > 0, so an all-zero
-    breakdown means the mapped findings are all unrated-severity — evidence
-    exists but severity is ungraded, which is ``not_evaluated``, never a silent
-    pass (a false pass inflated overall_score). Keep in sync with that function.
-    """
-    if sev_breakdown.get("critical", 0) > 0 or sev_breakdown.get("high", 0) > 0:
-        return "fail"
-    if sev_breakdown.get("medium", 0) > 0 or sev_breakdown.get("low", 0) > 0:
-        return "warning"
-    return "not_evaluated"
-
-
 def _aggregate_cis_foundations_checks(jobs: list[Any]) -> dict[str, Any]:
     """Deduped CIS Foundations Benchmark status rollup across a tenant's scans.
 
@@ -426,138 +417,6 @@ def _build_cis_foundations_line(agg: dict[str, Any]) -> dict[str, Any]:
             "score": score,
         },
         "providers": agg["providers"],
-    }
-
-
-# Order used to collapse multiple evidence signals on one NIST control into a
-# single status. Higher wins: a real weakness (fail/warning) beats an
-# unevaluable check (error) which beats a clean pass; a control with no run
-# check stays not_evaluated (never a silent pass).
-_NIST_STATUS_RANK = {"not_evaluated": 0, "pass": 1, "error": 2, "warning": 3, "fail": 4}
-
-
-def _build_nist_800_53_catalog_line(
-    all_blast: list[dict],
-    cis_statuses: dict[tuple[str, str], str],
-    scan_count: int,
-) -> dict[str, Any]:
-    """Score the full vendored NIST SP 800-53 Rev 5 catalog over EVALUATED
-    controls only, using PR3's curated (vendor-asserted) check -> control map.
-
-    A control is *evaluated* when at least one mapped check ran: a CVE/CWE
-    finding whose ``nist_800_53_tags`` include a curated (evidencing_checks)
-    control, or a CIS Foundations check the vendor-asserted table maps to it.
-    Findings can only fail/warn (absence of a CVE is never a pass); a CIS check
-    contributes pass/fail/error. ERROR is an explicit bucket — counted toward the
-    evaluated denominator but never the numerator. Controls with no run check are
-    ``not_evaluated`` against the full catalog. Scored INDEPENDENTLY: this line is
-    never folded into ``overall_score`` (the same evidence already drives the
-    existing per-framework lines — folding it would double-count).
-    """
-    from agent_bom import framework_mapping as fm
-
-    catalog = fm.FRAMEWORK_CONTROL_CATALOG.get(fm.FRAMEWORK_NIST_800_53, {})
-    evidenced = fm.NIST_800_53_EVIDENCED_CONTROLS
-
-    # Finding-driven severity per curated control (worst-severity -> status via
-    # the shared _evaluated_control_status helper the rest of the scorecard uses).
-    finding_sev: dict[str, dict[str, int]] = {}
-    finding_count: dict[str, int] = {}
-    for br in all_blast:
-        for control_id in br.get("nist_800_53_tags", []) or []:
-            if control_id not in evidenced:
-                continue  # vuln-intrinsic tag with no curated check -> reconcile out
-            sev = str(br.get("severity") or "").lower()
-            bucket = finding_sev.setdefault(control_id, {"critical": 0, "high": 0, "medium": 0, "low": 0})
-            if sev in bucket:
-                bucket[sev] += 1
-            finding_count[control_id] = finding_count.get(control_id, 0) + 1
-
-    # CIS-driven statuses per control via the vendor-asserted CIS -> NIST table.
-    cis_by_control: dict[str, set[str]] = {}
-    for (cloud, check_id), status in cis_statuses.items():
-        if status not in ("pass", "fail", "error"):
-            continue  # not_applicable / unknown never evaluate a control
-        for control_id in fm.nist_controls_for_cis_check(cloud, check_id):
-            cis_by_control.setdefault(control_id, set()).add(status)
-
-    controls: list[dict[str, Any]] = []
-    tally = {"pass": 0, "fail": 0, "warning": 0, "error": 0}
-    for control_id in sorted(evidenced):
-        signals: set[str] = set()
-        if control_id in finding_sev:
-            fstatus = _evaluated_control_status(finding_sev[control_id])
-            if fstatus != "not_evaluated":  # all-unrated findings are not evidence
-                signals.add(fstatus)
-        for cis_status in cis_by_control.get(control_id, set()):
-            signals.add("warning" if cis_status == "warn" else cis_status)
-        if not signals:
-            continue  # curated control, but nothing ran -> not_evaluated
-        status = max(signals, key=lambda s: _NIST_STATUS_RANK[s])
-        tally[status] += 1
-        spec = catalog.get(control_id)
-        iso_ids = fm.nist_to_iso(control_id) if status == "fail" else []
-        controls.append(
-            {
-                "control_id": control_id,
-                "title": spec.title if spec else None,
-                "status": status,
-                "findings": finding_count.get(control_id, 0),
-                "evidencing_checks": list(spec.evidencing_checks) if spec else [],
-                "iso_27001_derived": iso_ids,
-            }
-        )
-
-    passed, failed, warned, errored = tally["pass"], tally["fail"], tally["warning"], tally["error"]
-    evaluated = passed + failed + warned + errored
-    catalog_size = len(catalog)
-    not_evaluated = catalog_size - evaluated
-    score = round((passed / evaluated) * 100, 1) if evaluated > 0 else 0.0
-    coverage_pct = round((evaluated / catalog_size) * 100, 2) if catalog_size > 0 else 0.0
-
-    if scan_count == 0 or evaluated == 0:
-        status = "no_data"
-    elif failed > 0:
-        status = "fail"
-    elif warned > 0 or errored > 0:
-        status = "warning"
-    else:
-        status = "pass"
-
-    # Emergent cross-framework: failing NIST controls implicate ISO Annex A
-    # controls via NIST's own official SP 800-53 -> ISO 27001 crosswalk. Surface
-    # BY ID ONLY (ISO titles are copyrighted), clearly labeled as derived.
-    iso_derived_ids = sorted({iso for c in controls if c["status"] == "fail" for iso in c["iso_27001_derived"]})
-
-    return {
-        "framework": "nist-800-53",
-        "framework_key": "nist_800_53_catalog",
-        "framework_label": "NIST SP 800-53 Rev 5",
-        "representation": "catalog",
-        "source": "framework_control_catalog",
-        "vendor_asserted": True,
-        "status": status,
-        "score": score,
-        "summary": {
-            "pass": passed,
-            "fail": failed,
-            "warning": warned,
-            "error": errored,
-            "evaluated": evaluated,
-            "not_evaluated": not_evaluated,
-            "catalog_size": catalog_size,
-            "coverage_pct": coverage_pct,
-            "score": score,
-        },
-        "controls": controls,
-        "iso_27001_derived": {
-            "source": "nist_800_53_to_iso_27001_crosswalk",
-            "note": (
-                "ISO/IEC 27001:2022 Annex A control IDs implicated by the failing NIST controls, "
-                "derived from NIST's official SP 800-53 Rev 5 -> ISO 27001 crosswalk (identifiers only)."
-            ),
-            "controls": iso_derived_ids,
-        },
     }
 
 
@@ -733,7 +592,7 @@ async def get_compliance(request: Request) -> dict:
     # controls only (curated check -> control map). Deliberately NOT folded into
     # overall_score/overall_status — the same CVE/CIS evidence already drives the
     # existing per-framework lines, so folding would double-count.
-    nist_800_53_catalog_line = _build_nist_800_53_catalog_line(
+    nist_800_53_catalog_line = build_nist_800_53_catalog_line(
         all_blast,
         cis_foundations_agg.get("statuses", {}),
         scan_count,
@@ -1341,6 +1200,37 @@ async def get_compliance_summary(request: Request) -> dict:
     # needed here.
 
     return response
+
+
+@router.get("/compliance/nist-800-53", tags=["compliance"])
+async def get_compliance_nist_800_53(
+    request: Request,
+    status: str | None = None,
+    include_not_evaluated: bool = False,
+) -> dict:
+    """Drill the catalog-backed NIST SP 800-53 Rev 5 line.
+
+    Returns per-control status (pass / fail / error / not_evaluated), the
+    vendor-asserted evidencing checks behind each evaluated control, a family
+    rollup for scale-aware navigation, and the ISO/IEC 27001 attribution derived
+    BY ID from NIST's official SP 800-53 → ISO crosswalk (identifiers only; no
+    copyrighted ISO title text).
+
+    The headline ``summary``/``score``/``status`` are the SAME values the
+    ``/v1/compliance`` ``nist_800_53_catalog`` line reports (one source of
+    truth). By default only EVALUATED controls are listed — the ~1000-control
+    ``not_evaluated`` remainder is a count, not a mile-long tower. Pass
+    ``include_not_evaluated=true`` to enumerate the full catalog; ``status=``
+    (comma-separated) filters the displayed control list WITHOUT changing the
+    counts. Declared before ``/compliance/{framework}`` so FastAPI does not treat
+    ``nist-800-53`` as a tag-mapped framework slug.
+    """
+    full = await get_compliance(request)
+    return build_nist_800_53_drill(
+        full["nist_800_53_catalog"],
+        status=status,
+        include_not_evaluated=include_not_evaluated,
+    )
 
 
 @router.get("/compliance/{framework}", tags=["compliance"])

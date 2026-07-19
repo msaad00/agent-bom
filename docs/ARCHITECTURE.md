@@ -2,8 +2,8 @@
 
 One `agent-bom` product, multiple operational surfaces. The package exposes
 CLI entry points, API/UI, MCP server mode, runtime proxy/gateway, cloud posture,
-IaC scanning, fleet, graph, reporting, and compliance workflows over the same
-core evidence model.
+IaC scanning, fleet, graph, reporting, and compliance workflows over shared
+finding, inventory, graph, and audit contracts.
 
 > **Product overview lives in [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md)** — the
 > canonical five-stage flow (intake → scan → evidence → control → artifacts) and
@@ -19,9 +19,9 @@ core evidence model.
 pip install agent-bom    → shared core engine plus focused CLI entry points
 ```
 
-Read the architecture in one direction: collect evidence, normalize it into one
-AI-BOM/security model, then use that same model for local scans, the
-self-hosted control plane, runtime enforcement, and audit/compliance outputs.
+Read the architecture as three cooperating paths: local scanning, a self-hosted
+control plane, and runtime enforcement. They reuse lower-level services and
+evidence contracts, but they do not all traverse the same process or HTTP seam.
 This diagram is intentionally a product map, not a full module graph.
 
 <picture>
@@ -51,61 +51,73 @@ see [`START_HERE.md`](START_HERE.md).
 
 ---
 
-## 1a. Layered Stack
+## 1a. Execution Paths and Persistence
 
-The product reads top to bottom: inputs are normalized into one `Finding` and
-one `ContextGraph`, the control plane serves and enforces over that evidence,
-and outputs flow to both humans and headless agents. Each layer carries a single
-**value** line — what it buys you, not just what it is.
+The CLI invokes scanner libraries directly. Browser and SDK traffic crosses the
+HTTP middleware and FastAPI boundary. MCP server mode exposes shared services
+through MCP transports. Runtime proxy/gateway traffic crosses a separate policy
+and audit boundary. This distinction matters for auth, failure modes, and
+deployment sizing.
 
 ```mermaid
 flowchart TB
-    subgraph L1["Inputs - meet teams where their evidence already lives"]
-        IN["Repos · lockfiles · SBOMs\nContainer images · IaC\nMCP configs · repo URLs\nCloud accounts · runtime events"]
+    subgraph entry["Entry points"]
+        CLI["CLI · CI · Docker"]
+        UI["Next.js UI · SDK clients"]
+        MCP["MCP clients"]
+        TRAFFIC["Runtime MCP/tool traffic"]
     end
-    subgraph L2["Scanners - breadth without standing up agents"]
-        SC["Discovery · parsers (15 ecosystems)\nOSV/advisory scanners · cloud · IaC · SAST · secrets"]
+    subgraph execution["Execution boundaries"]
+        CORE["Python scanner, enrichment,\ncorrelation + graph services"]
+        MW["HTTP middleware\nauth · RBAC · tenant · limits · audit"]
+        API["FastAPI routes + control-plane services"]
+        MCPS["MCP server + shared services"]
+        GATE["Gateway / proxy\npolicy · detectors · audit"]
     end
-    subgraph L3["Unified Finding - one model, so triage never forks per source"]
-        FD["Finding + enrichment\nNVD CVSS · EPSS · KEV · GHSA · compliance tags"]
+    subgraph operational["Primary operational persistence"]
+        SQLITE["SQLite\nlocal / single-node"]
+        POSTGRES["Postgres + RLS\nshared / multi-replica"]
     end
-    subgraph L4["ContextGraph - turn a CVE row into a reachable blast radius"]
-        GR["UnifiedGraph\nattack-path fusion · blast reach · exposure scoring"]
-    end
-    subgraph L5["Control plane - same evidence, multi-tenant + audited"]
-        direction TB
-        MW["Middleware: auth · RBAC · tenant scope · rate-limit · audit"]
-        API["REST API (300 ops)"]
-        GW["Gateway / MCP server / proxy"]
-        MW --> API
-        MW --> GW
-    end
-    subgraph L6["Outputs - decisions in the format each consumer already trusts"]
-        OUT["SARIF · CycloneDX · SPDX · OCSF\nHTML · PDF · JSON · CSV · webhooks"]
-    end
-    subgraph L7["Consumers - one model, two audiences"]
-        HUM["Humans: CLI · UI cockpit"]
-        AG["Headless: MCP tools · REST API"]
+    subgraph optional["Optional specialized persistence"]
+        NEPTUNE["Neptune\ngraph backend"]
+        CLICKHOUSE["ClickHouse\nanalytics"]
+        SNOWFLAKE["Snowflake\nselected warehouse/store paths"]
     end
 
-    L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7
+    CLI --> CORE
+    UI --> MW --> API --> CORE
+    MCP --> MCPS --> CORE
+    TRAFFIC --> GATE
+    CORE --> SQLITE
+    CORE --> POSTGRES
+    GATE --> SQLITE
+    GATE --> POSTGRES
+    CORE -. optional graph .-> NEPTUNE
+    CORE -. optional analytics .-> CLICKHOUSE
+    API -. selected protocols .-> SNOWFLAKE
 ```
+
+SQLite and Postgres implement the primary transactional and graph paths.
+Neptune and ClickHouse are specialized options, not interchangeable control-
+plane databases. Snowflake supports selected job/fleet/schedule/exception/policy
+and warehouse-native paths; consult the backend parity matrix before deployment.
 
 ---
 
-## 1b. Implementation stack — hermetic and single-language
+## 1b. Implementation Stack
 
-With the product mental model in place, the implementation detail: agent-bom is
-pure Python (3.11+) end to end — CLI, FastAPI surface, MCP server, parsers,
-OSV/NVD/EPSS/KEV/GHSA enrichment, blast-radius scoring, IaC engine, and CIS
-benchmarks all live in the same interpreter. There is no Rust/Go/CGo extension
-on the scan path. Disk-image scans use native `dpkg` / RPM parsers
+The scanner, CLI, API, MCP server, gateway/proxy, parsers, enrichment, graph,
+IaC, and CIS engines are Python 3.11+. The human cockpit is a separate
+Next.js/React TypeScript application in `ui/`; therefore the full product is not
+single-language. There is no mandatory Rust/Go/CGo extension on the scan path.
+Disk-image scans use native `dpkg` / RPM parsers
 (`src/agent_bom/filesystem.py`); the `syft` Go binary is opt-in only as a
 tar-archive fallback for VM-style images.
 
 Operational consequences:
 
-- One language, one dep tree, one pip-audit/SBOM surface to audit and reproduce.
+- The Python engine has one primary dependency/SBOM surface; the UI has its own
+  pinned Node.js toolchain and lockfile.
 - Wheels build cleanly on `linux/amd64` and `linux/arm64` — no per-arch native toolchain.
 - Slower than Rust/Go scanners on huge fanouts; per-package memory is higher. For VM disk-image scanning at scale, install `syft` alongside agent-bom and let the fallback path take over.
 
@@ -137,50 +149,25 @@ answerable · outputs land in the gate, ticket, or SIEM you already run.
 
 ---
 
-## 1d. Frontend · Backend · Middleware
+## 1d. Surface Boundaries
 
-The dashboard is one door into the product, not the only one. The Next.js UI and
-every headless caller hit the same FastAPI surface, behind the same middleware,
-over the same stores.
+| Surface | Calls | Auth / tenant boundary | Persistence behavior |
+|---|---|---|---|
+| CLI / CI / Docker | Python scan and output libraries directly | local process and provider credentials supplied by the operator | local artifacts; SQLite when persistence is enabled |
+| Next.js UI / SDK | FastAPI over HTTPS | API middleware: auth, RBAC, tenant scope, body/rate limits, audit | configured control-plane stores |
+| MCP server | shared Python services through MCP transports | MCP transport authentication and strict tool arguments | local or configured control-plane stores, depending on mode |
+| Gateway / proxy | upstream runtime traffic | listener auth, policy evaluation, detectors, rate limits, audit | runtime/audit stores and optional control-plane sink |
 
-```mermaid
-flowchart TB
-    subgraph FE["Frontend - human cockpit"]
-        UI["Next.js 16 · React 19 · Tailwind 4\ninventory · findings · graph · compliance · runtime"]
-    end
-    subgraph MW["Middleware - one enforcement seam for every caller"]
-        M1["TrustHeaders"]
-        M2["API key · auth · RBAC · tenant scope"]
-        M3["Rate limit"]
-        M4["Max body size"]
-    end
-    subgraph BE["Backend - FastAPI"]
-        R["366 REST operations across 43 route modules
-plus 2 WebSocket routes"]
-    end
-    subgraph ST["Stores - start on SQLite, scale to a cluster without rewrites"]
-        S1["SQLite (default / single node)"]
-        S2["Postgres (multi-replica)"]
-        S3["Graph store · optional Snowflake / ClickHouse"]
-    end
-
-    EXTAGENT["Headless: MCP server · REST API · SDK clients"]
-
-    UI -->|HTTPS| MW
-    EXTAGENT -->|HTTPS| MW
-    MW --> BE --> ST
-```
-
-**Value:** the middleware seam means auth, tenant isolation, and audit are
-enforced once for the UI, agents, and SDKs alike — there is no privileged
-"UI-only" backdoor.
+The UI has no privileged data path, but that does not make HTTP middleware a
+universal seam for the CLI, MCP server, or runtime gateway.
 
 ---
 
 ## 1e. Auth & Connections
 
-The identity and connection model is **connect once, act through the stored
-connection** — no surface ever prompts for a per-action credential.
+Brokered control-plane sources use **connect once, act through the stored
+connection reference**. Standalone CLI scans remain independent and use local
+files or explicitly configured provider credentials.
 
 - **Humans** sign in via OAuth / OIDC / SAML SSO (standard providers plus a
   Snowflake OAuth authorization-code + PKCE flow), with SCIM provisioning —
@@ -189,12 +176,13 @@ connection** — no surface ever prompts for a per-action credential.
 - **Sources** (AWS, Azure, GCP, Snowflake) are onboarded once via read-only,
   agentless, brokered connectors — one least-privilege managed role per source,
   short-lived brokered credentials (e.g. AWS `sts:AssumeRole`), and write-only
-  secrets (encrypted at rest, never read back). Every scan then runs through that
-  stored connection.
+  secrets (encrypted at rest, never read back). Scheduled or operator-triggered
+  control-plane collection can then reuse that connection.
 
-Auth mode, tenant scope, RBAC, and audit are enforced in the shared middleware
-(`src/agent_bom/api/middleware.py`) for every caller. Provider grants and setup
-are in [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md); the enterprise auth surface and
+API auth mode, tenant scope, RBAC, and audit are enforced in
+`src/agent_bom/api/middleware.py`. MCP and runtime modes have separate transport
+and policy controls. Provider grants and setup are in
+[`CLOUD_CONNECT.md`](CLOUD_CONNECT.md); the enterprise auth surface and
 environment knobs are in [`ENTERPRISE.md`](ENTERPRISE.md).
 
 ---
@@ -215,7 +203,7 @@ flowchart LR
         I6["Cloud account"]
         I7["IaC files"]
     end
-    CORE["Unified Finding\nplus ContextGraph"]
+    CORE["Normalized findings\nplus graph/evidence contracts"]
     subgraph OUTPUTS["Outputs - drop into the tool you already run"]
         O1["SARIF - code scanning"]
         O2["CycloneDX - SBOM"]

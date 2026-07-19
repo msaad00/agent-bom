@@ -601,3 +601,57 @@ def test_streaming_persist_peak_python_heap_is_bounded() -> None:
     # the full path retains every node/edge, so its heap is orders of magnitude larger.
     full_large = _peak_pymem_mb(_MEM_N_LARGE, "full")
     assert stream_large < full_large * 0.5, f"streaming ({stream_large:.1f}MB) not < half of full ({full_large:.1f}MB)"
+
+
+_PRIOR_EDGE_MEM_SCRIPT = textwrap.dedent(
+    """
+    import os, sys, tempfile, tracemalloc
+    from agent_bom.db import graph_store as gs
+    from agent_bom.graph.edge import UnifiedEdge
+    from agent_bom.graph.node import UnifiedNode
+    from agent_bom.graph.types import EntityType, RelationshipType
+
+    n = int(sys.argv[1])
+    db = os.path.join(tempfile.mkdtemp(), "prior.db")
+
+    def node(i):
+        return UnifiedNode(id=f"n:{i}", entity_type=EntityType.PACKAGE, label=f"pkg-{i}")
+
+    def edge(i):
+        return UnifiedEdge(source=f"n:{i}", target=f"n:{i + 1}", relationship=RelationshipType.DEPENDS_ON)
+
+    with gs.open_graph_db(db) as conn:
+        gs.save_graph_streaming(
+            conn,
+            scan_id="prior",
+            tenant_id="t",
+            nodes=(node(i) for i in range(n + 1)),
+            edges=(edge(i) for i in range(n)),
+        )
+        tracemalloc.start()
+        gs.save_graph_streaming(
+            conn,
+            scan_id="current",
+            tenant_id="t",
+            nodes=(node(i) for i in range(2)),
+            edges=(edge(i) for i in range(1)),
+        )
+        _, peak = tracemalloc.get_traced_memory()
+    print(peak / 1024 / 1024)
+    """
+)
+
+
+def _prior_edge_peak_mb(n: int) -> float:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p) + os.pathsep + env.get("PYTHONPATH", "")
+    out = subprocess.check_output([sys.executable, "-c", _PRIOR_EDGE_MEM_SCRIPT, str(n)], text=True, env=env)
+    return float(out.strip().splitlines()[-1])
+
+
+def test_streaming_persist_does_not_materialize_prior_edge_index() -> None:
+    """A large prior snapshot must not make the next streamed save grow O(prior edges)."""
+    small = _prior_edge_peak_mb(2_000)
+    large = _prior_edge_peak_mb(12_000)
+
+    assert large < small * 2.0, f"prior-edge heap grew with snapshot size: {small:.1f} -> {large:.1f} MB"

@@ -43,6 +43,7 @@ from agent_bom.scanners import (
     consume_coverage_warnings,
     consume_scan_performance,
     consume_scan_warnings,
+    reset_scan_warnings,
 )
 
 
@@ -127,11 +128,25 @@ def _exit_incomplete_scan_with_partial_summary(
     from agent_bom.mcp_blocklist import blocklist_findings_for_agents
 
     ctx.blast_radii = []
+    from agent_bom.evidence.scan_run import ScanIssue, ScanRun
+
     ctx.report = AIBOMReport(
         agents=agents,
         blast_radii=[],
         findings=blocklist_findings_for_agents(agents),
         scan_sources=["agent_discovery"],
+        scan_run=ScanRun(
+            issues=[
+                ScanIssue(
+                    code="required_scanner_unavailable",
+                    stage="scanning",
+                    source="vulnerability-data",
+                    message=str(exc),
+                    severity="error",
+                    affects_coverage=True,
+                )
+            ]
+        ),
         scan_performance_data={
             "coverage_state": "incomplete",
             "coverage_reason": str(exc),
@@ -491,6 +506,12 @@ def scan(
     # block that early-return paths (dry-run, format validation) never enter, but
     # the report-build site at the outer scope always references it.
     _coverage_warnings: list[dict] = []
+    _scan_warnings: list[str] = []
+    # The scanner keeps warnings in thread-local state so nested/parallel scans
+    # do not collide. Reset at the command boundary as well as inside the
+    # package scanner so mocked or collector-only paths cannot inherit a prior
+    # invocation's degraded outcome.
+    reset_scan_warnings()
 
     _scan_start = _time.monotonic()
 
@@ -1575,10 +1596,10 @@ def scan(
                         fixable_only=fixable_only,
                         posture=posture,
                     )
-            scan_warnings = consume_scan_warnings()
+            _scan_warnings = consume_scan_warnings()
             _coverage_warnings = consume_coverage_warnings()
-            if scan_warnings:
-                con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
+            if _scan_warnings:
+                con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(_scan_warnings)} warning(s); results may be incomplete.")
             if blast_radii:
                 # Don't repeat the bare finding count — the scanner already
                 # printed "Found N vulnerabilities across N finding(s)" above.
@@ -1824,6 +1845,11 @@ def scan(
         _scan_sources.append("jupyter")
     if gpu_scan_flag:
         _scan_sources.append("gpu_infra")
+    for _cloud_success in ctx.cloud_provider_successes:
+        _provider = str(_cloud_success.get("provider") or "cloud")
+        _source = f"cloud:{_provider}"
+        if _source not in _scan_sources:
+            _scan_sources.append(_source)
     if not _scan_sources:
         _scan_sources.append("agent_discovery")
 
@@ -1857,11 +1883,48 @@ def scan(
         for _agent in agents:
             _agent.discovered_at = _pinned_ts
             _agent.last_seen = _pinned_ts
+    from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
+
+    _scan_issues = [
+        ScanIssue(
+            code="scanner_warning",
+            stage="scanning",
+            source="vulnerability-data",
+            message=_warning,
+            affects_coverage=True,
+        )
+        for _warning in _scan_warnings
+    ]
+    _scan_issues.extend(
+        ScanIssue(
+            code="collector_warning",
+            stage=str(_warning.get("stage") or "discovery"),
+            source=str(_warning.get("provider") or "cloud"),
+            message=str(_warning.get("warning") or "Cloud collector warning"),
+            affects_coverage=False,
+        )
+        for _warning in ctx.cloud_provider_warnings
+    )
+    _scan_issues.extend(
+        ScanIssue(
+            code="collector_failed",
+            stage=str(_failure.get("stage") or "discovery"),
+            source=str(_failure.get("provider") or "cloud"),
+            message=str(_failure.get("error") or "Requested cloud collector failed"),
+            severity="error",
+            affects_coverage=True,
+        )
+        for _failure in ctx.cloud_provider_failures
+    )
+    _scan_outcome = (
+        ScanOutcome.FAILED if ctx.cloud_provider_failures and not ctx.cloud_provider_successes and not agents else ScanOutcome.COMPLETE
+    )
     report = AIBOMReport(
         agents=agents,
         blast_radii=blast_radii,
         findings=_findings,
         scan_sources=_scan_sources,
+        scan_run=ScanRun(outcome=_scan_outcome, issues=_scan_issues),
         scan_id=_scan_id,
         **_report_kwargs,
     )
@@ -2771,8 +2834,21 @@ def scan(
     if output_format == "console" and not output and not quiet:
         from rich.rule import Rule
 
+        from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
+
+        _execution_outcome = effective_scan_run(report).outcome
+        _completion_label = {
+            ScanOutcome.COMPLETE: "Scan Complete",
+            ScanOutcome.PARTIAL: "Scan Partial",
+            ScanOutcome.FAILED: "Scan Failed",
+        }[_execution_outcome]
+        _completion_style = {
+            ScanOutcome.COMPLETE: "green" if not blast_radii else "yellow",
+            ScanOutcome.PARTIAL: "yellow",
+            ScanOutcome.FAILED: "red",
+        }[_execution_outcome]
         con.print()
-        con.print(Rule(f"Scan Complete — {_elapsed:.1f}s", style="green" if not blast_radii else "yellow"))
+        con.print(Rule(f"{_completion_label} — {_elapsed:.1f}s", style=_completion_style))
 
         # Per-step timing breakdown
         _timings = ctx.step_timings
@@ -2792,7 +2868,12 @@ def scan(
                 con.print(
                     f"\n  [green]→[/green] {_fixable} fixable — [bold]-f html[/bold] for full report · [bold]--verbose[/bold] for details"
                 )
-        elif not no_scan and total_packages > 0 and not [f for f in report.to_findings() if f.finding_type.value != "CVE"]:
+        elif (
+            _execution_outcome is ScanOutcome.COMPLETE
+            and not no_scan
+            and total_packages > 0
+            and not [f for f in report.to_findings() if f.finding_type.value != "CVE"]
+        ):
             con.print("\n  [green]→[/green] no vulnerabilities found — supply chain looks clean")
 
     # Step 8: Enterprise integrations + SIEM + policy (post-scan)

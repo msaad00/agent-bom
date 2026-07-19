@@ -183,7 +183,8 @@ def _run_init(spy: _InitConnSpy, monkeypatch) -> None:
         "_migrate_current_ledger_ordinal_postgres",
     ):
         if hasattr(hub_mod, name):
-            monkeypatch.setattr(hub_mod, name, lambda *a, **k: None)
+            result = True if name == "ensure_postgres_schema_version" else None
+            monkeypatch.setattr(hub_mod, name, lambda *a, _result=result, **k: _result)
 
     store = PostgresComplianceHubStore.__new__(PostgresComplianceHubStore)
     store._pool = pool

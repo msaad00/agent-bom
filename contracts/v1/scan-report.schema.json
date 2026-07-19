@@ -3,7 +3,7 @@
   "$id": "https://agent-bom.dev/contracts/v1/scan-report.schema.json",
   "title": "agent-bom scan report v1",
   "type": "object",
-  "required": ["schema_version", "document_type", "spec_version", "scan_id", "generated_at", "summary", "agents"],
+  "required": ["schema_version", "document_type", "spec_version", "scan_id", "generated_at", "scan_run", "summary", "agents"],
   "properties": {
     "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" },
     "document_type": { "const": "AI-BOM" },
@@ -12,6 +12,11 @@
     "ai_bom_version": { "type": "string" },
     "generated_at": { "type": "string", "format": "date-time" },
     "scan_sources": { "type": "array", "items": { "type": "string" } },
+    "warnings": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "type": "string", "maxLength": 1000 }
+    },
     "coverage_warnings": {
       "type": "array",
       "description": "OS releases whose vulnerability data the source does not carry (typically end-of-life); a low/zero count for these must not be read as clean.",
@@ -74,11 +79,30 @@
     },
     "scan_run": {
       "type": "object",
-      "required": ["schema_version", "scan_id", "generated_at"],
+      "required": ["schema_version", "scan_id", "generated_at", "outcome", "issues", "warning_count"],
       "properties": {
         "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" },
         "scan_id": { "type": "string" },
-        "generated_at": { "type": "string", "format": "date-time" }
+        "generated_at": { "type": "string", "format": "date-time" },
+        "outcome": { "enum": ["complete", "partial", "failed"] },
+        "warning_count": { "type": "integer", "minimum": 0 },
+        "issues": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": ["code", "stage", "source", "message", "severity", "affects_coverage"],
+            "properties": {
+              "code": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "stage": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "source": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+              "severity": { "enum": ["warning", "error"] },
+              "affects_coverage": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": true
     },

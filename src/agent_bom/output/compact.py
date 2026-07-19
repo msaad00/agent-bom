@@ -166,11 +166,17 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
         sev_counts[str(finding.severity).upper()] += 1
 
     scorecard = compute_posture_scorecard(report)
+    from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
+
     coverage = report.scan_performance_data or {}
-    coverage_incomplete = coverage.get("coverage_state") == "incomplete"
+    scan_run = effective_scan_run(report)
+    coverage_incomplete = coverage.get("coverage_state") == "incomplete" or scan_run.outcome is not ScanOutcome.COMPLETE
     high_risk_policy_count = sev_counts.get("CRITICAL", 0) + sev_counts.get("HIGH", 0)
     scorecard_summary = scorecard.summary
-    if coverage_incomplete:
+    if scan_run.outcome is ScanOutcome.FAILED:
+        posture = "[bold white on red] SCAN FAILED [/bold white on red]"
+        border_style = "red"
+    elif coverage_incomplete:
         scorecard_summary = "scan coverage incomplete"
     if high_risk_policy_count and not active_findings:
         scorecard_summary = f"{high_risk_policy_count} high-risk policy/security finding(s) present"

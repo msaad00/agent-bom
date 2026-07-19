@@ -635,6 +635,27 @@ class ModelFilesRequest(BaseModel):
 # ─── Push / Schedule / Auth / Exception Models ────────────────────────────
 
 
+class ScanIssuePayload(BaseModel):
+    """Bounded execution issue accepted from a trusted scan producer."""
+
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=1, max_length=100)
+    stage: str = Field(min_length=1, max_length=100)
+    source: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=1000)
+    severity: Literal["warning", "error"] = "warning"
+    affects_coverage: bool = True
+
+
+class ScanRunPayload(BaseModel):
+    """Canonical evidence-quality contract, separate from job lifecycle."""
+
+    model_config = ConfigDict(extra="allow")
+    outcome: Literal["complete", "partial", "failed"] = "complete"
+    issues: list[ScanIssuePayload] = Field(default_factory=list, max_length=100)
+    warning_count: int = Field(default=0, ge=0, le=100)
+
+
 class PushPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -642,7 +663,8 @@ class PushPayload(BaseModel):
     idempotency_key: str = ""
     agents: list[dict[str, Any]] = Field(default_factory=list)
     blast_radii: list[dict[str, Any]] = Field(default_factory=list)
-    warnings: list[dict[str, Any] | str] = Field(default_factory=list)
+    warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
+    scan_run: ScanRunPayload | None = None
 
 
 class ScheduleCreate(BaseModel):

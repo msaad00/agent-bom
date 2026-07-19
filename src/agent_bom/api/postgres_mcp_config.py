@@ -32,7 +32,8 @@ class PostgresMcpConfigStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "mcp_client_configs")
+            if not ensure_postgres_schema_version(conn, "mcp_client_configs"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS mcp_client_configs (
                     config_id  TEXT PRIMARY KEY,

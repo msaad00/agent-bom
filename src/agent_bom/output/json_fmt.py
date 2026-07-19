@@ -933,6 +933,9 @@ def to_json(report: AIBOMReport) -> dict:
     exposure_paths = [exposure_path_for_report_finding(finding, br=br, rank=rank) for rank, (finding, br) in enumerate(cve_pairs, start=1)]
     unified_findings = [finding.to_dict() for finding in report.to_findings()]
     finding_summary = _build_finding_summary(unified_findings)
+    from agent_bom.evidence.scan_run import effective_scan_run
+
+    scan_run = effective_scan_run(report)
     result = {
         "schema_version": SCAN_REPORT_SCHEMA_VERSION,
         "document_type": "AI-BOM",
@@ -945,7 +948,9 @@ def to_json(report: AIBOMReport) -> dict:
             "scan_id": report.scan_id,
             "generated_at": report.generated_at.isoformat(),
             "source_count": len(report.scan_sources),
+            **scan_run.to_dict(),
         },
+        "warnings": scan_run.warnings,
         "scan_sources": report.scan_sources,
         "has_mcp_context": report.has_mcp_context,
         "has_agent_context": report.has_agent_context,

@@ -104,6 +104,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./supabase/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
       - ./supabase/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./supabase/postgres/runtime-schema.sql:/docker-entrypoint-initdb.d/02-runtime-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent_bom} -d ${POSTGRES_DB:-agent_bom}"]
       interval: 5s

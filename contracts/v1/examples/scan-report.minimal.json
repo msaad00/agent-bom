@@ -8,8 +8,12 @@
   "scan_run": {
     "schema_version": "1",
     "scan_id": "scan-demo-001",
-    "generated_at": "2026-04-25T00:00:00Z"
+    "generated_at": "2026-04-25T00:00:00Z",
+    "outcome": "complete",
+    "issues": [],
+    "warning_count": 0
   },
+  "warnings": [],
   "scan_sources": ["demo"],
   "summary": {
     "total_agents": 1,

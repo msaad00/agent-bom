@@ -44,6 +44,8 @@ class _FakeConnection:
         costs = self._state["costs"]  # (tenant, call_id) -> tuple
         budgets = self._state["budgets"]  # canonical full-scope key -> tuple
 
+        if "select version from control_plane_schema_versions" in s:
+            return _FakeCursor([(1,)])
         if s.startswith("insert into llm_costs"):
             key = (params[0], params[1])
             costs.setdefault(key, tuple(params))  # ON CONFLICT DO NOTHING

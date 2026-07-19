@@ -53,7 +53,8 @@ class PostgresAuditLog:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "audit_log")
+            if not ensure_postgres_schema_version(conn, "audit_log"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS audit_log (
                     entry_id TEXT PRIMARY KEY,
@@ -376,7 +377,8 @@ class PostgresTrendStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "trend_history")
+            if not ensure_postgres_schema_version(conn, "trend_history"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS trend_history (
                     id BIGSERIAL PRIMARY KEY,

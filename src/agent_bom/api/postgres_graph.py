@@ -230,7 +230,8 @@ class PostgresGraphStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "graph")
+            if not ensure_postgres_schema_version(conn, "graph"):
+                return
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS graph_nodes (
@@ -2196,6 +2197,8 @@ class PostgresScanCache:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            if not ensure_postgres_schema_version(conn, "scan_cache"):
+                return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS osv_cache (
                     cache_key  TEXT PRIMARY KEY,

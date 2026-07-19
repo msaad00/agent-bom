@@ -45,6 +45,8 @@ class ScanContext:
     # requested cloud silently passing in CI is impossible. One provider failing
     # never aborts the others — every requested provider is still attempted.
     cloud_provider_failures: list = field(default_factory=list)
+    cloud_provider_successes: list = field(default_factory=list)
+    cloud_provider_warnings: list = field(default_factory=list)
     # per-step timing breakdown (step_name → seconds)
     step_timings: dict = field(default_factory=dict)
     # internal references used for AI enrichment

@@ -865,7 +865,10 @@ def test_cyclonedx_vulnerability_carries_vendor_asserted_compliance_tags():
     vuln.compliance_tags = {"nist_800_53": ["SI-10"], "iso_27001": ["A.8.8"]}
     pkg = _make_pkg("web-lib", "1.0.0")
     pkg.vulnerabilities = [vuln]
-    report = _make_report(agents=[_make_agent(servers=[_make_server(packages=[pkg])])], blast_radii=[_make_blast_radius(pkg=pkg, vuln=vuln)])
+    report = _make_report(
+        agents=[_make_agent(servers=[_make_server(packages=[pkg])])],
+        blast_radii=[_make_blast_radius(pkg=pkg, vuln=vuln)],
+    )
 
     cdx = to_cyclonedx(report)
     vuln_entry = next(v for v in cdx.get("vulnerabilities", []) if v["id"] == vuln.id)

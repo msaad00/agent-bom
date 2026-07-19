@@ -17,6 +17,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from agent_bom.cloud_sdk_freshness import (
     RECOMMENDED_FLOORS,
@@ -42,7 +43,7 @@ def test_shipped_reference_has_provenance_and_covers_every_anchor():
     assert ref, "shipped reference must load"
     # Provenance is mandatory: a dated retrieval + an official source.
     assert ref["retrieved"] and len(ref["retrieved"]) == 10  # ISO YYYY-MM-DD
-    assert "pypi.org" in ref["source"]
+    assert urlparse(ref["source"]).scheme == "https" and urlparse(ref["source"]).netloc == "pypi.org"
     dists = {s["distribution"] for s in ref["sdks"]}
     for floor in RECOMMENDED_FLOORS:
         assert floor.distribution in dists, f"reference missing anchor {floor.distribution}"
@@ -81,7 +82,7 @@ def test_pin_drift_carries_reference_provenance():
     ref = load_sdk_reference()
     assert drift["retrieved"] == ref["retrieved"]
     assert drift["last_checked"] == ref["retrieved"]
-    assert "pypi.org" in drift["source"]
+    assert urlparse(drift["source"]).scheme == "https" and urlparse(drift["source"]).netloc == "pypi.org"
     # Provenance is echoed per-SDK too so a single row is self-describing.
     for sdk in drift["sdks"]:
         assert sdk["retrieved"] == ref["retrieved"]

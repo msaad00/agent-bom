@@ -127,6 +127,15 @@ gcp = [
     "google-api-python-client>=2.100",
     # Scheduled findings export to a BigQuery table sink (#4040).
     "google-cloud-bigquery>=3.14",
+    # These google.cloud modules are imported (guarded) by the GCP code but were
+    # never declared here, so API Gateway / Artifact Registry / Org Policy
+    # discovery silently no-op unless the package happens to arrive transitively:
+    #   apigateway_v1     -> gcp_inventory._discover_api_gateways
+    #   artifactregistry_v1 -> registry_sweep (GAR sweep)
+    #   orgpolicy_v2      -> gcp_organizations (org-policy constraints)
+    "google-cloud-api-gateway>=1.9",
+    "google-cloud-artifact-registry>=1.11",
+    "google-cloud-org-policy>=1.11",
 ]
 coreweave = []  # kubectl only — no pip packages
 # databricks-sdk: CIS/control-plane discovery. databricks-sql-connector: the

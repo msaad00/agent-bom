@@ -830,6 +830,40 @@ jobs:
           print("OK")
           PYEOF
 
+  sdk-import-smoke:
+    name: Extra-gated SDK import smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    needs: changes
+    # Cloud/AI SDKs live behind optional extras and are imported lazily inside
+    # try/except, so a newer major that MOVES or RENAMES a symbol never trips
+    # the normal Test job (which installs none of the cloud extras) — CI stays
+    # green while a fresh install loses that discovery path at runtime. Install
+    # the cloud extras here and actually execute every extra-gated import line.
+    if: always() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true')
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.13'
+
+      - name: Install cloud extras
+        run: uv sync --frozen --extra dev --extra aws --extra azure --extra gcp
+
+      - name: Run extra-gated SDK import smoke
+        # `-k "not ResourceManagementClient"` excludes ONE known-in-flight case:
+        # azure-mgmt-resource >=26 removed the top-level ResourceManagementClient
+        # re-export (the import moved under azure.mgmt.resource.resources). That
+        # corrected import is tracked separately — remove this filter once it
+        # lands so the case is actively guarded here too. Extras not installed in
+        # this job (databricks/snowflake/mcp/…) are skipped via importorskip.
+        run: |
+          uv run pytest tests/test_extra_gated_sdk_imports.py tests/test_gcp_sdk_coverage.py \
+            -q -k "not ResourceManagementClient"
+
   postgres-integration:
     name: Postgres Integration Contract
     runs-on: ubuntu-latest

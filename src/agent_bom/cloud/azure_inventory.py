@@ -2307,14 +2307,24 @@ def _discover_management_groups(credential: Any) -> tuple[list[dict[str, Any]], 
     absent that, this degrades to an empty list plus a warning.
     """
     try:
-        from azure.mgmt.managementgroups import ManagementGroupsAPI
+        # azure-mgmt-managementgroups 2.0.0 renamed the top-level client
+        # ManagementGroupsAPI -> ManagementGroupsMgmtClient. Prefer the new
+        # name and fall back to the old one so both ends of the >=1.0 pin work.
+        try:
+            from azure.mgmt.managementgroups import (
+                ManagementGroupsMgmtClient as _MgmtGroupsClient,
+            )
+        except ImportError:
+            from azure.mgmt.managementgroups import (  # type: ignore[attr-defined,no-redef]
+                ManagementGroupsAPI as _MgmtGroupsClient,
+            )
     except ImportError:
         return [], ["azure-mgmt-managementgroups not installed. Skipping management-group hierarchy."]
 
     groups: list[dict[str, Any]] = []
     warnings: list[str] = []
     try:
-        client = ManagementGroupsAPI(credential)
+        client = _MgmtGroupsClient(credential)
         for mg in client.management_groups.list():
             name = str(getattr(mg, "name", "") or "").strip()
             if not name:

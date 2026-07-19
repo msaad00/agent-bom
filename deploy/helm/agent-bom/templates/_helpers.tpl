@@ -67,6 +67,28 @@ Scanner service account name.
 {{- end }}
 
 {{/*
+Cloud-SDK collector image reference (issue #4239).
+
+The cloud-scan CronJob runs the collector image, which ships the provider SDK
+layer independently of the control-plane release. `collectorImage.repository` /
+`collectorImage.tag` default to the collector repo pinned at the release
+version; a blank tag falls back to `image.tag` so an operator can never render a
+`repo:` reference with an empty tag. Override `collectorImage.tag` to pin a
+newer SDK-only build between control-plane releases.
+*/}}
+{{- define "agent-bom.collectorImage" -}}
+{{- $c := .Values.collectorImage | default dict -}}
+{{- $repo := $c.repository | default .Values.image.repository -}}
+{{- $tag := $c.tag | default .Values.image.tag -}}
+{{- printf "%s:%s" $repo $tag -}}
+{{- end }}
+
+{{- define "agent-bom.collectorImagePullPolicy" -}}
+{{- $c := .Values.collectorImage | default dict -}}
+{{- $c.pullPolicy | default .Values.image.pullPolicy -}}
+{{- end }}
+
+{{/*
 Backup service account name.
 */}}
 {{- define "agent-bom.controlPlaneBackupServiceAccountName" -}}

@@ -37,6 +37,20 @@ runtimeImage:
   tag: "0.96.3"
   pullPolicy: IfNotPresent
 
+# Cloud-SDK collector image (issue #4239). Ships the boto3/azure/google/snowflake
+# SDK layer independently of the control-plane release so it can be rebuilt and
+# re-tagged on its own cadence (a daily CI refresh absorbs newer provider-SDK
+# wheels within the pinned floors) WITHOUT a control-plane version bump. The
+# cloud-scan CronJob runs this image instead of the control-plane image. Leave
+# `tag` at the release version to ride the release train, or override
+# `collectorImage.tag` (e.g. --set collectorImage.tag=<sdk-only-build>) to pin a
+# newer SDK-only build between control-plane releases. A blank tag falls back to
+# `image.tag`.
+collectorImage:
+  repository: agentbom/agent-bom-collector
+  tag: "0.96.3"
+  pullPolicy: IfNotPresent
+
 imagePullSecrets: []
 podAnnotations: {}
 nodeSelector: {}

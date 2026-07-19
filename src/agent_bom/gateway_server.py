@@ -1072,15 +1072,43 @@ async def _post_upstream_jsonrpc(
 ) -> dict[str, Any]:
     auth_headers = await upstream.resolve_auth_headers()
     headers = {"Content-Type": "application/json", **auth_headers, **extra_headers}
-    response = await client.post(upstream.url, json=message, headers=headers)
-    response.raise_for_status()
-    if len(response.content) > _MAX_GATEWAY_MESSAGE_BYTES:
-        raise ValueError(f"upstream response exceeded {_MAX_GATEWAY_MESSAGE_BYTES} bytes")
-    if response.headers.get("content-type", "").startswith("application/json"):
-        return response.json()
-    # Some upstreams return text/event-stream; MVP treats non-JSON as an opaque
-    # body wrapped in a success envelope so policy + audit still fire.
-    return {"jsonrpc": "2.0", "id": message.get("id"), "result": {"raw": response.text}}
+    async with client.stream("POST", upstream.url, json=message, headers=headers) as response:
+        response.raise_for_status()
+        content_length = response.headers.get("content-length")
+        if content_length:
+            try:
+                declared_size = int(content_length)
+            except ValueError:
+                declared_size = 0
+            if declared_size > _MAX_GATEWAY_MESSAGE_BYTES:
+                raise ValueError(f"upstream response exceeded {_MAX_GATEWAY_MESSAGE_BYTES} bytes")
+
+        body = bytearray()
+        async for chunk in response.aiter_bytes():
+            if len(body) + len(chunk) > _MAX_GATEWAY_MESSAGE_BYTES:
+                raise ValueError(f"upstream response exceeded {_MAX_GATEWAY_MESSAGE_BYTES} bytes")
+            body.extend(chunk)
+
+        raw_body = bytes(body)
+        if response.headers.get("content-type", "").startswith("application/json"):
+            return json.loads(raw_body)
+        # Some upstreams return text/event-stream; MVP treats non-JSON as an
+        # opaque body wrapped in a success envelope so policy + audit still fire.
+        return {
+            "jsonrpc": "2.0",
+            "id": message.get("id"),
+            "result": {"raw": raw_body.decode("utf-8", errors="replace")},
+        }
+
+
+async def _read_bounded_gateway_body(request: Any) -> bytes:
+    """Read a gateway request without buffering past the JSON-RPC limit."""
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > _MAX_GATEWAY_MESSAGE_BYTES:
+            raise HTTPException(status_code=413, detail="gateway request exceeds maximum JSON-RPC message size")
+        body.extend(chunk)
+    return bytes(body)
 
 
 def build_control_plane_audit_sink(
@@ -1527,9 +1555,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail="invalid Content-Length header") from exc
 
-        raw_body = await request.body()
-        if len(raw_body) > _MAX_GATEWAY_MESSAGE_BYTES:
-            raise HTTPException(status_code=413, detail="gateway request exceeds maximum JSON-RPC message size")
+        raw_body = await _read_bounded_gateway_body(request)
 
         try:
             body = json.loads(raw_body)

@@ -151,6 +151,26 @@ def _gcp_cloud_sql_instances(project_id: str) -> list[dict]:
     return _gcp_paginate_list(sqladmin.instances(), "items", project=project_id)
 
 
+def _gcp_managed_zones(project_id: str) -> list[dict]:
+    """Return every Cloud DNS managed zone in the project (all pages).
+
+    A single ``managedZones.list`` page caps at 100 zones; reading only the
+    first page silently drops later zones, so a non-DNSSEC / unlogged zone
+    beyond page one would be a false PASS. Paginate to stay complete.
+    """
+    dns = _discovery_client("dns", "v1")
+    return _gcp_paginate_list(dns.managedZones(), "managedZones", project=project_id)
+
+
+def _gcp_bigquery_datasets(bq: Any, project_id: str) -> list[dict]:
+    """Return every BigQuery dataset in the project (all pages).
+
+    ``datasets.list`` is paginated; reading only the first page would let a
+    publicly-accessible / unencrypted dataset on a later page pass unseen.
+    """
+    return _gcp_paginate_list(bq.datasets(), "datasets", projectId=project_id)
+
+
 def _gcp_kms_crypto_keys(project_id: str) -> list[dict]:
     """Return every Cloud KMS crypto key in the project (all locations/key rings)."""
     kms = _discovery_client("cloudkms", "v1")
@@ -1275,9 +1295,7 @@ def _check_2_12(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        dns = _discovery_client("dns", "v1")
-        zones_resp = dns.managedZones().list(project=project_id).execute()
-        zones = zones_resp.get("managedZones", [])
+        zones = _gcp_managed_zones(project_id)
 
         failing: list[str] = []
         for zone in zones:
@@ -1392,9 +1410,7 @@ def _check_3_3(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        dns = _discovery_client("dns", "v1")
-        zones_resp = dns.managedZones().list(project=project_id).execute()
-        zones = zones_resp.get("managedZones", [])
+        zones = _gcp_managed_zones(project_id)
 
         failing: list[str] = []
         public_zones = [z for z in zones if z.get("visibility", "public") == "public"]
@@ -1433,9 +1449,7 @@ def _check_3_4(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        dns = _discovery_client("dns", "v1")
-        zones_resp = dns.managedZones().list(project=project_id).execute()
-        zones = zones_resp.get("managedZones", [])
+        zones = _gcp_managed_zones(project_id)
 
         failing: list[str] = []
         for zone in zones:
@@ -1473,9 +1487,7 @@ def _check_3_5(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        dns = _discovery_client("dns", "v1")
-        zones_resp = dns.managedZones().list(project=project_id).execute()
-        zones = zones_resp.get("managedZones", [])
+        zones = _gcp_managed_zones(project_id)
 
         failing: list[str] = []
         for zone in zones:
@@ -2589,8 +2601,7 @@ def _check_7_1(project_id: str) -> CISCheckResult:
     )
     try:
         bq = _discovery_client("bigquery", "v2")
-        datasets_resp = bq.datasets().list(projectId=project_id).execute()
-        datasets = datasets_resp.get("datasets", [])
+        datasets = _gcp_bigquery_datasets(bq, project_id)
 
         public_datasets: list[str] = []
         for ds in datasets:
@@ -2633,8 +2644,7 @@ def _check_7_2(project_id: str) -> CISCheckResult:
     )
     try:
         bq = _discovery_client("bigquery", "v2")
-        datasets_resp = bq.datasets().list(projectId=project_id).execute()
-        datasets = datasets_resp.get("datasets", [])
+        datasets = _gcp_bigquery_datasets(bq, project_id)
 
         failing: list[str] = []
         for ds in datasets:
@@ -2675,8 +2685,7 @@ def _check_7_3(project_id: str) -> CISCheckResult:
     )
     try:
         bq = _discovery_client("bigquery", "v2")
-        datasets_resp = bq.datasets().list(projectId=project_id).execute()
-        datasets = datasets_resp.get("datasets", [])
+        datasets = _gcp_bigquery_datasets(bq, project_id)
 
         failing: list[str] = []
         for ds in datasets:

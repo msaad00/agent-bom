@@ -1042,6 +1042,72 @@ def test_check_7_1_pass_empty_datasets():
 
 
 # ---------------------------------------------------------------------------
+# Partial-read / pagination regressions — a misconfigured resource on a
+# second page must not be silently dropped (false PASS). See issue #4120:
+# "expand GCP BigQuery/DNS/KMS ... with pagination ... and partial-read
+# regressions".
+# ---------------------------------------------------------------------------
+
+
+def _paged_resource_api(pages):
+    """Return a MagicMock ``*.list``/``list_next`` resource honoring pages.
+
+    ``pages`` is a list of response dicts; each but the last must carry a
+    ``nextPageToken`` string so :func:`_gcp_paginate_list` advances. ``list``
+    returns the first request; ``list_next`` walks to the next.
+    """
+    requests = [MagicMock(name=f"request_{i}") for i in range(len(pages))]
+    for request, page in zip(requests, pages):
+        request.execute.return_value = page
+    resource_api = MagicMock()
+    resource_api.list.return_value = requests[0]
+
+    def _list_next(previous_request, previous_response):
+        idx = requests.index(previous_request)
+        return requests[idx + 1] if idx + 1 < len(requests) else None
+
+    resource_api.list_next.side_effect = _list_next
+    return resource_api
+
+
+def test_check_3_3_paginates_and_catches_insecure_zone_on_second_page():
+    _ensure_googleapiclient_namespace()
+    mock_dns = MagicMock()
+    mock_dns.managedZones.return_value = _paged_resource_api(
+        [
+            {
+                "managedZones": [{"name": "secure-zone", "visibility": "public", "dnssecConfig": {"state": "on"}}],
+                "nextPageToken": "page-2",
+            },
+            {"managedZones": [{"name": "insecure-zone", "visibility": "public", "dnssecConfig": {"state": "off"}}]},
+        ]
+    )
+    with patch("googleapiclient.discovery.build", return_value=mock_dns):
+        result = _check_3_3("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "insecure-zone" in result.evidence
+
+
+def test_check_7_1_paginates_and_catches_public_dataset_on_second_page():
+    _ensure_googleapiclient_namespace()
+    mock_bq = MagicMock()
+    mock_bq.datasets.return_value = _paged_resource_api(
+        [
+            {"datasets": [{"datasetReference": {"datasetId": "private_ds"}}], "nextPageToken": "page-2"},
+            {"datasets": [{"datasetReference": {"datasetId": "public_ds"}}]},
+        ]
+    )
+    mock_bq.datasets.return_value.get.return_value.execute.side_effect = [
+        {"access": [{"role": "READER", "userByEmail": "analyst@corp.com"}]},
+        {"access": [{"role": "READER", "specialGroup": "allUsers"}]},
+    ]
+    with patch("googleapiclient.discovery.build", return_value=mock_bq):
+        result = _check_7_1("my-project")
+    assert result.status == CheckStatus.FAIL
+    assert "public_ds" in result.evidence
+
+
+# ---------------------------------------------------------------------------
 # run_benchmark — no SDK / no project
 # ---------------------------------------------------------------------------
 

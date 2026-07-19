@@ -178,14 +178,24 @@ def _digest_payload(payload: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def _decode_json_object(value: Any) -> dict[str, Any]:
+def _decode_json_object(value: Any, *, field: str = "snapshot") -> dict[str, Any]:
     """Decode a JSON object from either TEXT or psycopg's native JSONB value."""
     if value is None or value == "" or value == b"":
         return {}
-    decoded = value if isinstance(value, Mapping) else json.loads(value)
+    decoded = json.loads(value) if isinstance(value, (str, bytes, bytearray)) else value
     if not isinstance(decoded, Mapping):
-        raise ValueError("Persisted graph snapshot JSON must be an object")
+        raise ValueError(f"Persisted graph {field} JSON must be an object")
     return dict(decoded)
+
+
+def _decode_json_array(value: Any, *, field: str) -> list[Any]:
+    """Decode a JSON array from either TEXT or psycopg's native JSONB value."""
+    if value is None or value == "" or value == b"":
+        return []
+    decoded = json.loads(value) if isinstance(value, (str, bytes, bytearray)) else value
+    if not isinstance(decoded, list):
+        raise ValueError(f"Persisted graph {field} JSON must be an array")
+    return list(decoded)
 
 
 def _diff_summary_counts(diff: dict[str, Any]) -> dict[str, int]:
@@ -488,10 +498,10 @@ class PostgresGraphStore:
             severity_id=row[9],
             first_seen=row[10],
             last_seen=row[11],
-            attributes=json.loads(row[12]),
-            compliance_tags=json.loads(row[13]),
-            data_sources=json.loads(row[14]),
-            dimensions=NodeDimensions.from_dict(json.loads(row[15])),
+            attributes=_decode_json_object(row[12], field="node attributes"),
+            compliance_tags=_decode_json_array(row[13], field="node compliance tags"),
+            data_sources=_decode_json_array(row[14], field="node data sources"),
+            dimensions=NodeDimensions.from_dict(_decode_json_object(row[15], field="node dimensions")),
         )
 
     def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
@@ -963,8 +973,7 @@ class PostgresGraphStore:
                 "SELECT pattern, agents FROM interaction_risks WHERE tenant_id = %s AND scan_id = %s",
                 (tenant, scan_id),
             ):
-                agents = row[1]
-                builder.add_interaction_risk(row[0], json.loads(agents) if isinstance(agents, str) else agents)
+                builder.add_interaction_risk(row[0], _decode_json_array(row[1], field="interaction risk agents"))
         return builder.build()
 
     def _purge_expired_snapshots(self, conn, tenant: str) -> None:
@@ -1082,10 +1091,10 @@ class PostgresGraphStore:
                         valid_from=row[8] or row[6],
                         valid_to=row[9],
                         confidence=row[10],
-                        provenance=json.loads(row[11] or "{}"),
+                        provenance=_decode_json_object(row[11], field="edge provenance"),
                         source_scan_id=row[12] or row[16],
                         source_run_id=row[13] or "",
-                        evidence=json.loads(row[14]),
+                        evidence=_decode_json_object(row[14], field="edge evidence"),
                         activity_id=row[15],
                     )
                 )
@@ -1104,13 +1113,13 @@ class PostgresGraphStore:
                         AttackPath(
                             source=row[0],
                             target=row[1],
-                            hops=json.loads(row[2]),
-                            edges=json.loads(row[3]),
+                            hops=_decode_json_array(row[2], field="attack path nodes"),
+                            edges=_decode_json_array(row[3], field="attack path edges"),
                             composite_risk=row[4],
                             summary=row[5] or "",
-                            credential_exposure=json.loads(row[6]),
-                            tool_exposure=json.loads(row[7]),
-                            vuln_ids=json.loads(row[8]),
+                            credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
+                            tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
+                            vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
                             technique_mappings=technique_mappings_from_json(row[9]),
                         )
                     )
@@ -1126,7 +1135,7 @@ class PostgresGraphStore:
                     graph.interaction_risks.append(
                         InteractionRisk(
                             pattern=row[0],
-                            agents=json.loads(row[1]),
+                            agents=_decode_json_array(row[1], field="interaction risk agents"),
                             risk_score=row[2],
                             description=row[3],
                             owasp_agentic_tag=row[4],
@@ -1264,13 +1273,13 @@ class PostgresGraphStore:
             AttackPath(
                 source=row[0],
                 target=row[1],
-                hops=json.loads(row[2]),
-                edges=json.loads(row[3]),
+                hops=_decode_json_array(row[2], field="attack path nodes"),
+                edges=_decode_json_array(row[3], field="attack path edges"),
                 composite_risk=row[4],
                 summary=row[5] or "",
-                credential_exposure=json.loads(row[6]),
-                tool_exposure=json.loads(row[7]),
-                vuln_ids=json.loads(row[8]),
+                credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
+                tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
+                vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
                 technique_mappings=technique_mappings_from_json(row[9]),
             )
             for row in rows
@@ -1319,13 +1328,13 @@ class PostgresGraphStore:
                 AttackPath(
                     source=row[0],
                     target=row[1],
-                    hops=json.loads(row[2]),
-                    edges=json.loads(row[3]),
+                    hops=_decode_json_array(row[2], field="attack path nodes"),
+                    edges=_decode_json_array(row[3], field="attack path edges"),
                     composite_risk=row[4],
                     summary=row[5] or "",
-                    credential_exposure=json.loads(row[6]),
-                    tool_exposure=json.loads(row[7]),
-                    vuln_ids=json.loads(row[8]),
+                    credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
+                    tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
+                    vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
                     technique_mappings=technique_mappings_from_json(row[9]),
                 )
                 for row in rows
@@ -1433,8 +1442,8 @@ class PostgresGraphStore:
                     severity=row[4],
                     severity_id=int(row[5] or 0),
                     risk_score=float(row[6] or 0.0),
-                    attributes=row[7],
-                    compliance_tags=row[8],
+                    attributes=_decode_json_object(row[7], field="node attributes"),
+                    compliance_tags=_decode_json_array(row[8], field="node compliance tags"),
                 )
             return loaded
 
@@ -1489,10 +1498,10 @@ class PostgresGraphStore:
             "valid_from": row[8] or row[6],
             "valid_to": row[9],
             "confidence": float(row[10] if row[10] is not None else 1.0),
-            "provenance": json.loads(row[11] or "{}"),
+            "provenance": _decode_json_object(row[11], field="edge provenance"),
             "source_scan_id": row[12] or row[16],
             "source_run_id": row[13] or "",
-            "evidence": json.loads(row[14] or "{}"),
+            "evidence": _decode_json_object(row[14], field="edge evidence"),
             "activity_id": int(row[15] or 1),
             "scan_id": row[16],
             "tenant_id": row[17],
@@ -1637,8 +1646,8 @@ class PostgresGraphStore:
                 "severity": row[4] or "",
                 "severity_id": int(row[5] or 0),
                 "risk_score": float(row[6] or 0.0),
-                "compliance_tags": json.loads(row[7] or "[]"),
-                "data_sources": json.loads(row[8] or "[]"),
+                "compliance_tags": _decode_json_array(row[7], field="node compliance tags"),
+                "data_sources": _decode_json_array(row[8], field="node data sources"),
             }
             graph_rows["nodes"].append(node)
             if row[1] in _FINDING_ENTITY_TYPES:
@@ -1688,10 +1697,10 @@ class PostgresGraphStore:
                     "hop_count": int(row[2] or 0),
                     "composite_risk": float(row[3] or 0.0),
                     "summary": row[4] or "",
-                    "path_nodes": json.loads(row[5] or "[]"),
-                    "path_edges": json.loads(row[6] or "[]"),
-                    "tool_exposure": json.loads(row[7] or "[]"),
-                    "vuln_ids": json.loads(row[8] or "[]"),
+                    "path_nodes": _decode_json_array(row[5], field="attack path nodes"),
+                    "path_edges": _decode_json_array(row[6], field="attack path edges"),
+                    "tool_exposure": _decode_json_array(row[7], field="attack path tool exposure"),
+                    "vuln_ids": _decode_json_array(row[8], field="attack path vulnerability IDs"),
                 }
             )
 
@@ -2042,10 +2051,10 @@ class PostgresGraphStore:
                     valid_from=row[8] or row[6],
                     valid_to=row[9],
                     confidence=row[10],
-                    provenance=json.loads(row[11] or "{}"),
+                    provenance=_decode_json_object(row[11], field="edge provenance"),
                     source_scan_id=row[12] or row[16],
                     source_run_id=row[13] or "",
-                    evidence=json.loads(row[14]),
+                    evidence=_decode_json_object(row[14], field="edge evidence"),
                     activity_id=row[15],
                 )
                 for row in rows
@@ -2174,7 +2183,7 @@ class PostgresGraphStore:
                 {
                     "name": row[0],
                     "description": row[1],
-                    "filters": json.loads(row[2]),
+                    "filters": _decode_json_object(row[2], field="graph preset filters"),
                     "created_at": row[3],
                 }
                 for row in rows

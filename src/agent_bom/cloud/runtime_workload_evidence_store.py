@@ -227,7 +227,7 @@ class PostgresRuntimeWorkloadEvidenceStore:
             return 0
         placeholders = ",".join("%s" for _ in _COLUMNS)
         sql = (
-            f"INSERT INTO {self.table} ({','.join(_COLUMNS)}) VALUES ({placeholders}) "  # noqa: S608
+            f"INSERT INTO {self.table} ({','.join(_COLUMNS)}) VALUES ({placeholders}) "  # noqa: S608  # nosec B608 — table validated in __init__, values parameterized
             "ON CONFLICT (tenant_id, provider, account_id, workload_ref, dedup_key) DO NOTHING"
         )
         inserted = 0
@@ -243,7 +243,7 @@ class PostgresRuntimeWorkloadEvidenceStore:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT payload_json FROM {self.table} WHERE tenant_id = %s "  # noqa: S608
+                    f"SELECT payload_json FROM {self.table} WHERE tenant_id = %s "  # noqa: S608  # nosec B608 — table validated in __init__, values parameterized
                     "ORDER BY observed_at DESC, dedup_key DESC LIMIT %s",
                     (tenant_id, limit),
                 )

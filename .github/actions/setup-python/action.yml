@@ -14,3 +14,8 @@ runs:
         version: "0.11.10"
         python-version: ${{ inputs.python-version }}
         enable-cache: true
+        # The path-conditional test job skips dependency install on
+        # docs/UI-only PRs, so the uv cache dir may never be created; without
+        # this the post-run cache-save fails the whole job on a "cache path
+        # does not exist" error.
+        ignore-nothing-to-cache: true

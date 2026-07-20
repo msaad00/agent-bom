@@ -136,8 +136,8 @@ class RelationshipType(str, Enum):
     TRIGGERS = "triggers"  # vulnerability → misconfiguration/risk condition
 
     # ── Lateral movement (computed) ──
-    SHARES_SERVER = "shares_server"  # agent ↔ agent
-    SHARES_CRED = "shares_cred"  # agent ↔ agent
+    SHARES_SERVER = "shares_server"  # agent ↔ agent/shared-server hub
+    SHARES_CRED = "shares_cred"  # agent ↔ agent/shared-credential node
     LATERAL_PATH = "lateral_path"  # agent → agent (precomputed)
 
     # ── Ownership & governance ──

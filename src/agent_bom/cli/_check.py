@@ -722,9 +722,17 @@ def check(
             ScanOptions,
             consume_coverage_warnings,
             consume_scan_warnings,
+            reset_scan_warnings,
             scan_packages,
         )
 
+        # A CLI invocation owns a fresh warning boundary. Long-lived callers
+        # and tests can invoke Click commands repeatedly in one process, while
+        # scanner warnings are thread-local and otherwise survive until they
+        # are consumed. Clear prior state before calling the replaceable scan
+        # implementation so an earlier partial scan cannot turn this clean
+        # offline verdict into an unrelated incomplete result.
+        reset_scan_warnings()
         try:
             asyncio.run(scan_packages(pkgs, options=ScanOptions(offline=offline)))
         except IncompleteScanError as exc:

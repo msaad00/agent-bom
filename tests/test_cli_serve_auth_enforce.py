@@ -31,6 +31,33 @@ def test_enforce_auth_defaults_api_key_satisfies_check() -> None:
     _enforce_auth_defaults("serve", "0.0.0.0", api_key="secret", allow_insecure_no_auth=False)
 
 
+def test_enforce_auth_defaults_trusted_proxy_file_secret_satisfies_check(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A strong mounted proxy secret is a valid non-loopback auth path."""
+    _clear_auth_env(monkeypatch)
+    secret_file = tmp_path / "trusted-proxy-secret"
+    secret_file.write_text("trusted-proxy-secret-material-32-bytes\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET_FILE", str(secret_file))
+
+    _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=False)
+
+
+@pytest.mark.parametrize("secret", [None, "too-short"])
+def test_enforce_auth_defaults_rejects_unusable_trusted_proxy_secret(
+    secret: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flag without a strong attestation secret must remain fail-closed."""
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    if secret is not None:
+        monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", secret)
+
+    with pytest.raises(click.ClickException, match="Refusing to expose"):
+        _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=False)
+
+
 def test_enforce_auth_defaults_scim_token_satisfies_check(monkeypatch: pytest.MonkeyPatch) -> None:
     """SCIM bearer token alone is recognised as a valid auth path on non-loopback.
 
@@ -143,6 +170,8 @@ def _clear_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AGENT_BOM_OIDC_ISSUER",
         "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
         "AGENT_BOM_TRUST_PROXY_AUTH",
+        "AGENT_BOM_TRUST_PROXY_AUTH_SECRET",
+        "AGENT_BOM_TRUST_PROXY_AUTH_SECRET_FILE",
         "AGENT_BOM_SCIM_BEARER_TOKEN",
         "AGENT_BOM_SAML_IDP_ENTITY_ID",
         "AGENT_BOM_SAML_IDP_SSO_URL",

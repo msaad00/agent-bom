@@ -69,11 +69,16 @@ class OIDCBrowserConfig:
 
     @classmethod
     def from_env(cls) -> OIDCBrowserConfig:
+        from agent_bom.api.secret_source import resolve_secret
+
         oidc = OIDCConfig.from_env()
         client_id = os.environ.get("AGENT_BOM_OIDC_CLIENT_ID", "").strip()
         redirect_uri = os.environ.get("AGENT_BOM_OIDC_REDIRECT_URI", "").strip()
         scopes = os.environ.get("AGENT_BOM_OIDC_SCOPES", "openid profile email").strip() or "openid profile email"
-        secret = os.environ.get("AGENT_BOM_OIDC_CLIENT_SECRET", "").strip() or None
+        try:
+            secret = resolve_secret("AGENT_BOM_OIDC_CLIENT_SECRET") or None
+        except (OSError, ValueError) as exc:
+            raise OIDCError("OIDC client secret file could not be read") from exc
         if redirect_uri:
             from urllib.parse import urlparse
 

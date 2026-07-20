@@ -71,17 +71,16 @@ def verify_build_manifest(git_ref: str | None = None) -> list[str]:
         location = f" at {git_ref}" if git_ref else ""
         failures.append(f"missing Glama Dockerfile at {GLAMA_DOCKERFILE}{location}")
     else:
-        run_lines = [
-            line
-            for line in dockerfile_text.splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        ]
-        if any("uv sync" in line for line in run_lines):
-            failures.append(f"{GLAMA_DOCKERFILE} must not use uv sync (mcp-proxy PATH issue)")
+        if "RUN uv sync --locked --no-dev --no-editable --extra mcp-server" not in dockerfile_text:
+            failures.append(f"{GLAMA_DOCKERFILE} must install the mcp-server extra from the reviewed uv.lock")
+        if "COPY --from=builder /app/.venv /app/.venv" not in dockerfile_text:
+            failures.append(f"{GLAMA_DOCKERFILE} must copy the locked virtual environment into the runtime image")
+        if "ENV VIRTUAL_ENV=/app/.venv" not in dockerfile_text:
+            failures.append(f"{GLAMA_DOCKERFILE} must expose the locked virtual environment")
+        if 'ENV PATH="/app/.venv/bin:${PATH}"' not in dockerfile_text:
+            failures.append(f"{GLAMA_DOCKERFILE} must put the locked virtual environment on mcp-proxy PATH")
         if 'ENTRYPOINT ["agent-bom", "mcp", "server"]' not in dockerfile_text:
             failures.append(f"{GLAMA_DOCKERFILE} must ENTRYPOINT agent-bom mcp server")
-        if 'pip install --no-cache-dir --prefix=/install ".[mcp-server]"' not in dockerfile_text:
-            failures.append(f"{GLAMA_DOCKERFILE} must pip install agent-bom onto system PATH")
 
     for manifest in GLAMA_MANIFESTS:
         manifest_path = str(manifest.relative_to(ROOT))

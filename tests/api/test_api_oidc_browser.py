@@ -145,6 +145,29 @@ def test_oidc_browser_config_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.enabled is True
 
 
+def test_oidc_browser_config_resolves_client_secret_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    secret_file = tmp_path / "oidc-client-secret"
+    secret_file.write_text("confidential-client-secret\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_BOM_OIDC_CLIENT_SECRET_FILE", str(secret_file))
+    monkeypatch.delenv("AGENT_BOM_OIDC_CLIENT_SECRET", raising=False)
+
+    cfg = OIDCBrowserConfig.from_env()
+
+    assert cfg.client_secret == "confidential-client-secret"
+
+
+def test_oidc_browser_config_sanitizes_missing_client_secret_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.oidc import OIDCError
+
+    missing = tmp_path / "private-client-secret-path"
+    monkeypatch.setenv("AGENT_BOM_OIDC_CLIENT_SECRET_FILE", str(missing))
+    monkeypatch.delenv("AGENT_BOM_OIDC_CLIENT_SECRET", raising=False)
+
+    with pytest.raises(OIDCError) as exc_info:
+        OIDCBrowserConfig.from_env()
+    assert str(missing) not in str(exc_info.value)
+
+
 def test_auth_runtime_exposes_oidc_browser_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_bom.api.middleware import configure_auth_runtime, get_auth_runtime_status
 

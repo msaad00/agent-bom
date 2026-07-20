@@ -802,8 +802,11 @@ def configure_api(
     _api_key = api_key
     _rate_limit_rpm = validated_rate_limit_rpm
 
+    from agent_bom.api.secret_source import secret_is_configured
+
     env_key_store_configured = _seed_api_key_store_from_env()
     runtime_key_store_configured = _seed_runtime_api_key(api_key)
+    static_api_key_configured = secret_is_configured("AGENT_BOM_API_KEY")
 
     from agent_bom.api.oidc import oidc_enabled_from_env
     from agent_bom.api.oidc_browser import oidc_browser_enabled_from_env
@@ -816,9 +819,12 @@ def configure_api(
     snowflake_oauth_enabled = snowflake_oauth_enabled_from_env()
     scim_enabled = scim_enabled_from_env()
     saml_enabled = saml_enabled_from_env()
-    trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
+    from agent_bom.api.middleware import trusted_proxy_auth_usable
+
+    trusted_proxy_enabled = trusted_proxy_auth_usable()
     auth_configured = bool(
         api_key
+        or static_api_key_configured
         or env_key_store_configured
         or runtime_key_store_configured
         or oidc_enabled
@@ -838,7 +844,9 @@ def configure_api(
     allow_unauthenticated = bool(allow_unauthenticated) or _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API")
     auth_required = auth_configured or not allow_unauthenticated
     configure_auth_runtime(
-        api_key_configured=bool(api_key or env_key_store_configured or runtime_key_store_configured),
+        api_key_configured=bool(
+            api_key or static_api_key_configured or env_key_store_configured or runtime_key_store_configured
+        ),
         oidc_enabled=oidc_enabled,
         oidc_browser_enabled=oidc_browser_enabled,
         snowflake_oauth_enabled=snowflake_oauth_enabled,

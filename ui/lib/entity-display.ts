@@ -64,10 +64,13 @@ export function formatExposureEntityDisplay(
     case "server": {
       const key = normalizeKey(trimmed);
       const vendor = SERVER_VENDOR_LABELS[key];
+      const alreadyNamesServerKind = /\b(?:mcp|server|service|connector)\b/i.test(trimmed);
       const transport =
         typeof attributes.transport === "string" ? attributes.transport : undefined;
       return {
-        title: vendor ? `${vendor} connector` : `${titleCaseWords(trimmed)} service`,
+        title: vendor
+          ? `${vendor} connector`
+          : `${titleCaseWords(trimmed)}${alreadyNamesServerKind ? "" : " service"}`,
         subtitle: transport ? `${transport} MCP server` : "MCP server",
       };
     }

@@ -16,6 +16,7 @@ const RELEASE_VERSION = UI_PACKAGE.version;
 const CREATED_AT = "2026-06-03T20:30:00Z";
 const SCAN_ID = "scan-proof-ai-platform";
 const PREVIOUS_SCAN_ID = "scan-proof-ai-platform-prev";
+const CAPTURE_THEME = process.env.CAPTURE_THEME === "light" ? "light" : "dark";
 
 const baseUrlFromEnv = process.env.CAPTURE_BASE_URL;
 const PORT = Number(process.env.CAPTURE_PORT || "3137");
@@ -187,6 +188,14 @@ function buildGraph() {
     interaction_risk_count: 4,
     max_attack_path_risk: 9.8,
     highest_interaction_risk: 8.8,
+    analysis_status: {
+      attack_path_fusion: {
+        status: "complete",
+        reason_codes: [],
+        limits: { max_nodes: 5000, max_paths: 1000 },
+        observed: { nodes: nodes.length, paths: attackPaths.length },
+      },
+    },
   };
 
   return {
@@ -508,7 +517,7 @@ function scanAgents() {
         {
           name: "github-enterprise MCP",
           transport: "sse",
-          config_path: "/workspace/prod/.cursor/mcp.json",
+          config_path: "/demo/workstation/.cursor/mcp.json",
           has_credentials: true,
           credential_env_vars: ["GITHUB_FINE_GRAINED_TOKEN"],
           tools: [{ name: "create_pull_request" }, { name: "read_repository" }],
@@ -525,7 +534,7 @@ function scanAgents() {
         {
           name: "filesystem MCP",
           transport: "stdio",
-          config_path: "/workspace/prod/.cursor/mcp.json",
+          config_path: "/demo/workstation/.cursor/mcp.json",
           has_credentials: true,
           credential_env_vars: ["AWS_ROLE_SESSION"],
           tools: [{ name: "execute_command" }, { name: "read_file" }],
@@ -1195,14 +1204,52 @@ async function installRoutes(page) {
   await page.route("**/v1/cloud/connections", (route) => fulfill(route, {
     schema_version: "cloud.connections.v1",
     tenant_id: "default",
-    connections: [],
-    count: 0,
+    connections: [{
+      id: "conn-proof-aws-prod",
+      tenant_id: "default",
+      provider: "aws",
+      display_name: "Demo AWS production",
+      role_ref: "arn:aws:iam::111122223333:role/AgentBomDemoReadOnly",
+      has_external_id: true,
+      regions: ["us-east-1", "us-west-2"],
+      status: "active",
+      status_detail: "",
+      created_at: CREATED_AT,
+      updated_at: CREATED_AT,
+      last_scan_at: CREATED_AT,
+      last_event_at: null,
+      last_scan_id: SCAN_ID,
+      scan_interval_minutes: 360,
+      auth_params: {},
+    }],
+    count: 1,
   }));
   await page.route("**/v1/sources", (route) => fulfill(route, {
     schema_version: "sources.v1",
     tenant_id: "default",
-    sources: [],
-    count: 0,
+    sources: [{
+      source_id: "source-proof-repo",
+      tenant_id: "default",
+      display_name: "Demo platform repositories",
+      kind: "scan.repo",
+      description: "Synthetic repository source for product proof.",
+      owner: "platform-security",
+      connector_name: null,
+      credential_mode: "none",
+      credential_ref: null,
+      enabled: true,
+      status: "healthy",
+      config: {},
+      last_tested_at: CREATED_AT,
+      last_test_status: "healthy",
+      last_test_message: "Synthetic demo source",
+      last_run_at: CREATED_AT,
+      last_run_status: "completed",
+      last_job_id: SCAN_ID,
+      created_at: CREATED_AT,
+      updated_at: CREATED_AT,
+    }],
+    count: 1,
   }));
   await page.route("**/v1/connectors", (route) => fulfill(route, { connectors: [] }));
   await page.route("**/v1/schedules", (route) => fulfill(route, []));
@@ -1319,6 +1366,10 @@ async function installRoutes(page) {
     has_traces: true,
     scan_count: 3,
     scan_sources: ["demo-scan", "local", "fleet-sync", "gateway-runtime"],
+    services: {
+      cloud_accounts: { state: "live", count: 1 },
+      data_sources: { state: "live", count: 1 },
+    },
   }));
   await page.route("**/v1/posture", (route) => fulfill(route, {
     grade: "D",
@@ -1806,7 +1857,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "new-scan-live.png",
       page: "/scan?capture=1",
-      scope: "New Scan form with connected account, ad-hoc, and public repo modes",
+      scope: "New Scan workspace with collector plan, read-only boundary, expected evidence, connected sources, and recent job context",
     },
     {
       path: "mesh-live.png",
@@ -1899,9 +1950,9 @@ async function main() {
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1440, height: 980 }, deviceScaleFactor: 1 });
     await installRoutes(page);
-    await page.addInitScript(() => {
-      window.localStorage.setItem("agent-bom-theme", "dark");
-    });
+    await page.addInitScript((theme) => {
+      window.localStorage.setItem("agent-bom-theme", theme);
+    }, CAPTURE_THEME);
 
     await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
       expectedText: [/Overview/i, /Risk posture/i, /15 open CVEs/i],
@@ -1925,11 +1976,19 @@ async function main() {
     await capture(page, "/scan?capture=1", "new-scan-live.png", async (scanPage) => {
       await scanPage.getByRole("heading", { name: /New Scan|Run scan/i }).first().waitFor({ state: "visible", timeout: 10_000 });
     }, {
-      expectedText: ["New Scan", "Cloud account", "Ad-hoc", "Data source", "AI / ML"],
-      expectedApiPaths: ["/v1/cloud/connections", "/v1/sources"],
+      expectedText: ["New Scan", "What this scan produces", "Read-only boundary", /Collector plan/i, /Recent scans/i],
+      expectedApiPaths: ["/v1/cloud/connections", "/v1/sources", "/v1/jobs"],
     });
     await capture(page, "/mesh?capture=1", "mesh-live.png", async (meshPage) => {
-      await meshPage.getByText("developer-copilot", { exact: true }).waitFor({ state: "visible", timeout: 30_000 });
+      // ReactFlow can preserve a hidden, pre-measurement node tree across an
+      // App Router transition. A hard reload gives the capture a fresh canvas
+      // and makes the readiness assertion deterministic in both themes.
+      await meshPage.reload({ waitUntil: "load" });
+      await meshPage
+        .locator(".react-flow__node:visible")
+        .filter({ hasText: "developer-copilot" })
+        .first()
+        .waitFor({ state: "visible", timeout: 30_000 });
       await fitReactFlow(meshPage);
       await scrollTo(meshPage, 0);
     }, {
@@ -2001,7 +2060,7 @@ async function main() {
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
       await fleetPage.getByText("developer-copilot").first().click({ force: true });
       await fleetPage.waitForTimeout(500);
-      await scrollTo(fleetPage, 130);
+      await scrollTo(fleetPage, 0);
     }, {
       expectedText: ["Lifecycle Distribution", "developer-copilot", "Quarantined", "Re-enforce gateway deny"],
       expectedApiPaths: ["/v1/fleet", "/v1/fleet/stats"],
@@ -2009,7 +2068,7 @@ async function main() {
     await capture(page, "/runtime?tab=gateway&capture=1", "gateway-policies-live.png", async (gatewayPage) => {
       await gatewayPage.getByText("Calls today").first().waitFor({ state: "visible", timeout: 8000 });
       await gatewayPage.getByText("Gateway live feed").first().waitFor({ state: "visible", timeout: 8000 });
-      await scrollTo(gatewayPage, 430);
+      await scrollTo(gatewayPage, 0);
     }, {
       expectedText: ["Calls today", "4,485", "Gateway live feed", "developer-copilot", "Repo-write blocked"],
       expectedApiPaths: ["/v1/gateway/policies", "/v1/gateway/feed", "/v1/gateway/feed/kpis"],
@@ -2023,9 +2082,7 @@ async function main() {
       await resourceFilter.fill("identity");
       await filteredResponse;
       await auditPage.getByText("agent_identity.issued").waitFor({ state: "visible", timeout: 8_000 });
-      await resourceFilter.evaluate((element) => {
-        element.scrollIntoView({ block: "start", inline: "nearest", behavior: "instant" });
-      });
+      await scrollTo(auditPage, 0);
       await auditPage.waitForTimeout(350);
     }, {
       expectedText: ["agent_identity.issued", "agent_identity.rotated", "agent_identity.revoked", "identity/id_89c1a6f406bd7189"],
@@ -2039,7 +2096,7 @@ async function main() {
       }).catch(async () => {
         await findingsPage.getByText(/CVE|critical|high|package/i).first().waitFor({ state: "visible", timeout: 8_000 });
       });
-      await scrollTo(findingsPage, 200);
+      await scrollTo(findingsPage, 0);
     }, {
       expectedText: ["Findings queue", "15 filtered", "DEMO-VULN-21441", "DEMO-VULN-77881"],
       expectedApiPaths: ["/v1/findings", "/v1/findings/triage"],

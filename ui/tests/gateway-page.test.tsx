@@ -91,5 +91,8 @@ describe("GatewayPage", () => {
     expect(screen.getByText("Secret path guard")).toBeInTheDocument();
     expect(screen.getByText("Unknown egress guard")).toBeInTheDocument();
     expect(screen.getByText("Denied tool classes: network")).toBeInTheDocument();
+    const postureCard = screen.getByText("Runtime posture").closest("div.rounded-2xl");
+    expect(postureCard).toHaveClass("bg-[var(--surface)]");
+    expect(postureCard?.className).not.toContain("rgba(24,24,27");
   });
 });

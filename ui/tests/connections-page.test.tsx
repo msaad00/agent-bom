@@ -183,6 +183,43 @@ describe("ConnectionsPage — Connect segment", () => {
     return setupId;
   }
 
+  it("reconciles direct connection evidence with an older locked service registry", async () => {
+    apiMock.getPostureCounts.mockResolvedValue({
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 0,
+      kev: 0,
+      compound_issues: 0,
+      scan_count: 3,
+      services: {
+        cloud_accounts: { state: "locked", count: 0 },
+        data_sources: { state: "locked", count: 0 },
+      },
+    });
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [
+        {
+          ...CREATED_RECORD,
+          status: "active",
+          last_scan_at: "2026-06-27T01:00:00Z",
+          last_scan_id: "scan-3",
+        },
+      ],
+      count: 1,
+    });
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    expect(screen.queryByText(/Cloud accounts is not configured yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No completed scans yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Latest evidence/i)).toBeInTheDocument();
+  });
+
   it("carries one AWS ExternalId from setup through details into create + verify", async () => {
     apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
     apiMock.testCloudConnection.mockResolvedValue(TEST_OK);

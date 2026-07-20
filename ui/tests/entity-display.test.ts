@@ -15,6 +15,10 @@ describe("entity-display", () => {
       title: "GitHub connector",
       subtitle: "stdio MCP server",
     });
+    expect(formatExposureEntityDisplay("github-enterprise MCP", "server", { transport: "sse" })).toEqual({
+      title: "Github Enterprise MCP",
+      subtitle: "sse MCP server",
+    });
   });
 
   it("splits package coordinates into name and version subtitle", () => {

@@ -1,6 +1,6 @@
 {
   "release_version": "0.96.3",
-  "captured_at": "2026-07-19T06:21:43.594Z",
+  "captured_at": "2026-07-20T01:19:05.488Z",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
     {
@@ -24,7 +24,7 @@
     {
       "path": "new-scan-live.png",
       "page": "/scan?capture=1",
-      "scope": "New Scan form with connected account, ad-hoc, and public repo modes",
+      "scope": "New Scan workspace with collector plan, read-only boundary, expected evidence, connected sources, and recent job context",
       "visible_version": "0.96.3"
     },
     {

@@ -110,6 +110,7 @@ async def diff_impl(
     baseline: dict | None = None,
     _run_scan_pipeline,
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Implementation of the diff tool."""
     try:

@@ -108,8 +108,8 @@ function finding(index: number) {
 }
 
 async function routeProductFixture(page: Page) {
-  await page.route("**/health", (route) => route.fulfill({ json: { status: "ok", version: "0.96.3" } }));
-  await page.route("**/version", (route) => route.fulfill({ json: { version: "0.96.3" } }));
+  await page.route("**/health", (route) => route.fulfill({ json: { status: "ok", version: "9.8.7" } }));
+  await page.route("**/version", (route) => route.fulfill({ json: { version: "9.8.7" } }));
   await page.route("**/v1/auth/me", (route) => route.fulfill({
     json: {
       authenticated: true,

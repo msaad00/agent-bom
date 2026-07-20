@@ -83,7 +83,7 @@
 <rect x="488" y="332" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
 <rect x="496" y="336" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(500,340) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
 <text x="526" y="347" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">REST API</text>
-<text x="526" y="358" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">283 ops</text>
+<text x="526" y="358" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">369 ops</text>
 <rect x="707" y="332" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
 <rect x="715" y="336" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(719,340) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z"/><path d="M9 12l2 2 4-4"/></g>
 <text x="745" y="347" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Gateway</text>
@@ -91,7 +91,7 @@
 <rect x="488" y="370" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
 <rect x="496" y="374" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(500,378) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
 <text x="526" y="385" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">MCP server</text>
-<text x="526" y="396" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">73 tools</text>
+<text x="526" y="396" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">76 tools</text>
 <rect x="707" y="370" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
 <rect x="715" y="374" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(719,378) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
 <text x="745" y="385" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Fleet jobs</text>

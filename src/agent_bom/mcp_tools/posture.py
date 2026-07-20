@@ -241,6 +241,7 @@ async def access_review_impl(
     tenant_id: str = "default",
     limit: int = 200,
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Implementation of the access_review tool: list / get recertification campaigns.
 

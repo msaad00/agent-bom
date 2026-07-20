@@ -7,12 +7,24 @@ All coordinates are checked to stay inside lane panels (no text or card overflow
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parents[1] / "docs" / "images"
-VENDOR_LOGO_DIR = Path(__file__).resolve().parents[1] / "ui" / "public" / "logos"
+from agent_bom.mcp_server_metadata import _SERVER_CARD_TOOLS
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "docs" / "images"
+VENDOR_LOGO_DIR = ROOT / "ui" / "public" / "logos"
 VENDOR_WORDMARK_DIR = VENDOR_LOGO_DIR / "wordmarks"
+MCP_TOOL_COUNT = len(_SERVER_CARD_TOOLS)
+_OPENAPI = json.loads((ROOT / "docs" / "openapi" / "v1.json").read_text(encoding="utf-8"))
+REST_OPERATION_COUNT = sum(
+    1
+    for operations in _OPENAPI["paths"].values()
+    for method in operations
+    if method.lower() in {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
+)
 
 CLOUD_VENDOR_LOGOS = (
     ("aws", "AWS", "#232F3E"),
@@ -904,9 +916,9 @@ def architecture(theme_name: str) -> str:
         ("audit", "Audit chain", "signed"),
     ]
     platform_items = [
-        ("api", "REST API", "283 ops"),
+        ("api", "REST API", f"{REST_OPERATION_COUNT} ops"),
         ("gate", "Gateway", "runtime"),
-        ("mcp", "MCP server", "73 tools"),
+        ("mcp", "MCP server", f"{MCP_TOOL_COUNT} tools"),
         ("fleet", "Fleet jobs", "Helm·EKS"),
     ]
     people = [("cli", "CLI"), ("ui", "Web UI")]
@@ -1360,7 +1372,13 @@ def persona_value(theme: str) -> str:
         ("AppSec / GRC", "SARIF · compliance · audit chain", "Accurate SCA", "15 ecosystems · EPSS/KEV · distro-aware", "appsec"),
         ("Platform / SRE", "fleet sync · Helm · CI · SBOM", "Container coverage", "OCI native · Grype · CIS posture", "platform"),
         ("Agent builders", "MCP inventory · Shield · runtime", "Self-hosted control plane", "your VPC · signed audit · Helm", "builders"),
-        ("Security engineers", "findings queue · paths · graph", "Agent-native surface", "283 API ops · 70 MCP tools · SARIF", "seceng"),
+        (
+            "Security engineers",
+            "findings queue · paths · graph",
+            "Agent-native surface",
+            f"{REST_OPERATION_COUNT} API ops · {MCP_TOOL_COUNT} MCP tools · SARIF",
+            "seceng",
+        ),
     ]
 
     margin_x, margin_y = 23, 18

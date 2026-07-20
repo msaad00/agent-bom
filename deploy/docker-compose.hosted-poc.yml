@@ -1,7 +1,8 @@
-version: "3.8"
-
 # ── Profile: HOSTED POC OVERLAY ──────────────────────────────────────────────
 # Hosted POC hardening overlay.
+#
+# OVERLAY ONLY — this file must be layered on docker-compose.platform.yml; it
+# fails standalone `docker compose config` by design (no image/build keys).
 #
 # Use with docker-compose.platform.yml when a public Caddy/ALB front door is
 # the only internet-facing listener:

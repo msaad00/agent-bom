@@ -36,7 +36,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - File-mounted API keys, trusted-proxy secrets, and confidential OIDC client secrets now share the same startup, middleware, and health posture; weak or unresolved secrets remain unavailable (#4271).
 
 ### Removed
-- Retired the legacy `POST /v1/findings/jira` static-token path in favor of the connect-once ticketing plane (#4090).
+- **BREAKING:** Retired the legacy `POST /v1/findings/jira` route and its per-action static-token path. Migration: configure a Jira connection once under `/v1/ticketing/connections` (Connections hub in the UI), then file tickets through `POST /v1/ticketing/tickets` — no per-request credentials (#4090).
 
 ## [0.96.3] - 2026-07-16
 

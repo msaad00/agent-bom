@@ -40,10 +40,20 @@ def demo_json_report(tmp_path_factory) -> dict:
 
 
 def test_headline_counts_match_unified_stream(demo_console_output, demo_json_report):
-    """The summary-box severity headline equals the unified findings stream."""
+    """Whichever severity headline the console shows equals the unified stream.
+
+    With a local advisory DB the summary box prints CRIT/HIGH/MED counts;
+    without one (CI) it honestly shows PARTIAL COVERAGE and the labeled
+    all-categories Findings line is the reconciliation surface instead.
+    """
     by_sev = demo_json_report["finding_summary"]["by_severity"]
     match = re.search(r"CRIT\s+(\d+)\s+HIGH\s+(\d+)\s+MED\s+(\d+)", demo_console_output)
-    assert match, "summary box severity headline missing"
+    if match is None:
+        assert "PARTIAL COVERAGE" in demo_console_output, "summary box severity headline missing"
+        match = re.search(
+            r"Findings — (\d+) critical · (\d+) high · (\d+) medium", demo_console_output
+        )
+        assert match, "all-categories findings line missing"
     assert int(match.group(1)) == by_sev["critical"]
     assert int(match.group(2)) == by_sev["high"]
     assert int(match.group(3)) == by_sev["medium"]

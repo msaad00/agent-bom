@@ -7,6 +7,7 @@ import json
 import logging
 from typing import Any
 
+from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.severity import severity_rank
 from agent_bom.mcp_errors import CODE_INTERNAL_UNEXPECTED, CODE_VALIDATION_INVALID_ARGUMENT, mcp_error_json
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
@@ -202,6 +203,12 @@ async def exposure_paths_impl(
             "nodes": [node.to_dict() for node in nodes],
             "edges": [edge.to_dict() for edge in edges],
             "stats": stats,
+            "completeness": graph_completeness(
+                returned=len(ranked_paths),
+                total=total,
+                truncated=len(ranked_paths) < total,
+                reason="path_limit_or_filter" if len(ranked_paths) < total else "",
+            ),
         }
         if not ranked_paths:
             payload["message"] = _empty_exposure_paths_message(total=total, min_risk=min_risk)

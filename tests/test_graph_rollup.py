@@ -327,10 +327,12 @@ def test_rollup_endpoint_returns_top_level(tmp_path) -> None:
         assert body["mode"] == "rollup"
         assert body["summary"]["top_level_count"] == 1
         assert body["top_level"][0]["id"] == "org:acme"
+        assert body["completeness"]["status"] == "complete"
 
         drill = client.get("/v1/graph/rollup?scan_id=estate-scan&node=app:web")
         assert drill.status_code == 200
         assert {c["id"] for c in drill.json()["children"]} == {"server:s1", "server:s2"}
+        assert drill.json()["completeness"]["status"] == "complete"
     finally:
         set_graph_store(original)
 

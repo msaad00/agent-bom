@@ -32,7 +32,6 @@ from agent_bom.api.middleware import (
     MaxBodySizeMiddleware,
     RateLimitMiddleware,
     TrustHeadersMiddleware,
-    configure_auth_runtime,
     global_ip_rate_limit_rpm,
     install_error_envelope,
 )
@@ -223,11 +222,16 @@ def _log_control_plane_auth_posture() -> None:
     ``--api-key`` flag (which is not in the environment yet). Logging here — the
     lifespan startup, after the CLI has reconfigured — avoids that.
     """
-    from agent_bom.api.middleware import get_auth_runtime_status
+    from agent_bom.api.middleware import get_auth_posture
 
-    status = get_auth_runtime_status()
-    auth_configured = bool(status.get("auth_configured"))
-    unauthenticated_allowed = bool(status.get("unauthenticated_allowed"))
+    posture = get_auth_posture()
+    # One structured line summarizing the single derived posture (effective
+    # sources in precedence order, anonymous state, listener scope, trusted-proxy
+    # and OIDC status). This is the same object /health and the middleware read.
+    _logger.info(posture.summary_line())
+
+    auth_configured = posture.auth_configured
+    unauthenticated_allowed = posture.anonymous_allowed
     if not auth_configured and not unauthenticated_allowed:
         _logger.critical(
             "SECURITY: No control-plane authentication configured; protected API endpoints will fail closed. "
@@ -808,32 +812,7 @@ def configure_api(
     runtime_key_store_configured = _seed_runtime_api_key(api_key)
     static_api_key_configured = secret_is_configured("AGENT_BOM_API_KEY")
 
-    from agent_bom.api.oidc import oidc_enabled_from_env
-    from agent_bom.api.oidc_browser import oidc_browser_enabled_from_env
-    from agent_bom.api.saml import saml_enabled_from_env
-    from agent_bom.api.scim import scim_enabled_from_env
-    from agent_bom.api.snowflake_oauth import snowflake_oauth_enabled_from_env
-
-    oidc_enabled = oidc_enabled_from_env()
-    oidc_browser_enabled = oidc_browser_enabled_from_env()
-    snowflake_oauth_enabled = snowflake_oauth_enabled_from_env()
-    scim_enabled = scim_enabled_from_env()
-    saml_enabled = saml_enabled_from_env()
-    from agent_bom.api.middleware import trusted_proxy_auth_usable
-
-    trusted_proxy_enabled = trusted_proxy_auth_usable()
-    auth_configured = bool(
-        api_key
-        or static_api_key_configured
-        or env_key_store_configured
-        or runtime_key_store_configured
-        or oidc_enabled
-        or oidc_browser_enabled
-        or snowflake_oauth_enabled
-        or trusted_proxy_enabled
-        or scim_enabled
-        or saml_enabled
-    )
+    api_key_configured = bool(api_key or static_api_key_configured or env_key_store_configured or runtime_key_store_configured)
     # Honor AGENT_BOM_ALLOW_UNAUTHENTICATED_API on every (re)configure, not just
     # when the caller omits the argument. CLI wrappers (`serve` / `api`) pass the
     # ``--allow-insecure-no-auth`` flag as an explicit bool, so a ``None`` check
@@ -842,19 +821,17 @@ def configure_api(
     # Non-loopback binds stay fail-closed because the CLI auth gate refuses them
     # before configure_api runs unless real auth or the explicit flag is present.
     allow_unauthenticated = bool(allow_unauthenticated) or _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API")
-    auth_required = auth_configured or not allow_unauthenticated
-    configure_auth_runtime(
-        api_key_configured=bool(
-            api_key or static_api_key_configured or env_key_store_configured or runtime_key_store_configured
-        ),
-        oidc_enabled=oidc_enabled,
-        oidc_browser_enabled=oidc_browser_enabled,
-        snowflake_oauth_enabled=snowflake_oauth_enabled,
-        trusted_proxy_enabled=trusted_proxy_enabled,
-        scim_enabled=scim_enabled,
-        saml_enabled=saml_enabled,
-        unauthenticated_allowed=allow_unauthenticated,
+    # Single derivation: the env-based credential-source facts are computed once
+    # here (and identically by the CLI serve gate) instead of re-derived per
+    # surface. The runtime status, /health, and the startup log all read this.
+    from agent_bom.api.middleware import apply_auth_posture, derive_auth_posture
+
+    posture = derive_auth_posture(
+        api_key_configured=api_key_configured,
+        allow_unauthenticated=allow_unauthenticated,
     )
+    apply_auth_posture(posture)
+    auth_required = posture.auth_configured or not allow_unauthenticated
 
     # The control-plane auth-posture warning is emitted once at serving start
     # (see ``_log_control_plane_auth_posture`` in ``_lifespan``) rather than

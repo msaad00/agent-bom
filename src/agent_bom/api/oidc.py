@@ -394,6 +394,32 @@ def _decode_unverified_claims(token: str) -> dict[str, Any]:
     return claims
 
 
+def token_is_jwt_shaped(token: str) -> bool:
+    """Return True when ``token`` is structurally a JWT (JWS compact form).
+
+    Used to decide whether a bearer that failed OIDC verification was *presented
+    as* an OIDC token. A JWT is three base64url segments (``header.payload.sig``)
+    whose header decodes to a JSON object carrying an ``alg`` field. Opaque
+    agent-bom API keys never satisfy this shape, so a non-JWT bearer stays
+    eligible to be tried as an API key, while a JWT-shaped-but-invalid bearer is
+    a hard authentication failure that must not be silently retried as a key.
+
+    This inspects structure only — it performs no signature or claim
+    verification and must never be treated as trust.
+    """
+    parts = token.split(".")
+    if len(parts) != 3 or not all(parts[:2]):
+        return False
+    header_segment = parts[0]
+    header_segment += "=" * (-len(header_segment) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(header_segment.encode())
+        header = json.loads(decoded)
+    except (ValueError, json.JSONDecodeError):
+        return False
+    return isinstance(header, dict) and isinstance(header.get("alg"), str) and bool(header.get("alg"))
+
+
 def _coerce_optional_bool(value: object, *, field_name: str) -> bool | None:
     if value is None:
         return None

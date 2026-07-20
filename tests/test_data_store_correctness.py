@@ -91,11 +91,20 @@ class _FakeAuditConn:
             cp = self.pool.checkpoints.get(p[0])
             return _FakeResult([(cp[0], cp[1])] if cp else [])
         if "INSERT INTO audit_chain_checkpoint" in s:
-            if len(p) == 2:  # _upsert_checkpoint: (tenant, head), count += 1
-                tenant, head = p
+            if "SELECT COUNT(*) FROM audit_log" in s:
+                # _upsert_checkpoint: entry_count is a `(SELECT COUNT(*) FROM
+                # audit_log WHERE team_id = %s)` subquery, not a bind param, so
+                # params are (tenant, count_tenant, head) — model the count from
+                # the stored rows (#4294). The audit_log INSERT already ran in
+                # this txn, so the just-appended row is counted.
+                tenant, head = p[0], p[-1]
                 prev = self.pool.checkpoints.get(tenant)
-                self.pool.checkpoints[tenant] = ((prev[0] + 1) if prev else 1, head)
-            else:  # hydrate: (tenant, count, head)
+                if prev:  # ON CONFLICT DO UPDATE: steady-state O(1) increment
+                    entry_count = prev[0] + 1
+                else:  # first seed = tenant's TRUE audit_log row count
+                    entry_count = len([r for r in self.pool.audit_rows if r["team_id"] == tenant]) or 1
+                self.pool.checkpoints[tenant] = (entry_count, head)
+            else:  # hydrate/backfill: (tenant, count, head)
                 self.pool.checkpoints[p[0]] = (int(p[1]), p[2])
             return _FakeResult([])
 

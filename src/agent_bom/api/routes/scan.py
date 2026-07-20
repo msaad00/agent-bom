@@ -830,8 +830,8 @@ def _context_graph_payload(result: dict[str, Any], *, agent: str | None, scan_id
     from agent_bom.context_graph import (
         NodeKind,
         build_context_graph,
+        collect_lateral_paths,
         compute_interaction_risks,
-        find_lateral_paths,
         to_serializable,
     )
 
@@ -840,17 +840,18 @@ def _context_graph_payload(result: dict[str, Any], *, agent: str | None, scan_id
         result.get("blast_radius", []),
     )
     paths: list = []
+    paths_truncated = False
     if agent:
         node_id = f"agent:{agent}"
         if node_id in graph.nodes:
-            paths = find_lateral_paths(graph, node_id)
+            paths, paths_truncated = collect_lateral_paths(graph, [node_id])
     else:
-        for nid, node in graph.nodes.items():
-            if node.kind == NodeKind.AGENT:
-                paths.extend(find_lateral_paths(graph, nid))
+        source_ids = (nid for nid, node in sorted(graph.nodes.items()) if node.kind == NodeKind.AGENT)
+        paths, paths_truncated = collect_lateral_paths(graph, source_ids)
     risks = compute_interaction_risks(graph)
 
     payload = to_serializable(graph, paths, risks)
+    payload["stats"]["lateral_paths_truncated"] = paths_truncated
     return _attach_unified_graph_view(payload, result, scan_id=scan_id, tenant_id=tenant_id)
 
 

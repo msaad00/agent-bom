@@ -18,7 +18,7 @@ import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Iterable, Optional
 
 from agent_bom.constants import is_credential_key as _is_credential_key
 from agent_bom.graph import (
@@ -382,7 +382,6 @@ def build_context_graph(
                                 "server": _srv_name,
                                 "shared_group": True,
                                 "shared_agent_count": len(unique),
-                                "shared_agents": unique,
                             },
                         )
                     )
@@ -423,7 +422,6 @@ def build_context_graph(
                     **metadata,
                     "shared_group": True,
                     "shared_agent_count": len(unique),
-                    "shared_agents": unique,
                 }
                 for agent_name in unique:
                     graph.add_edge(
@@ -469,6 +467,34 @@ def build_context_graph(
 _MAX_PATHS = 100
 _MAX_QUEUE_SIZE = 10_000  # Prevent OOM on large graphs (100+ agents)
 _MAX_PAIRWISE_SHARED_AGENTS = 64
+_MAX_LATERAL_PATH_SOURCES = 100
+_MAX_LATERAL_PATHS = 1_000
+
+
+def collect_lateral_paths(
+    graph: ContextGraph,
+    source_node_ids: Iterable[str],
+    *,
+    max_depth: int = 4,
+    max_sources: int = _MAX_LATERAL_PATH_SOURCES,
+    max_paths: int = _MAX_LATERAL_PATHS,
+) -> tuple[list[LateralPath], bool]:
+    """Collect paths from a bounded set of sources.
+
+    Large estates can contain thousands of agents. Running a full BFS for
+    every source repeats work and creates an unbounded response. This helper
+    keeps source order deterministic, caps total paths, and reports whether
+    the result is intentionally sampled.
+    """
+    paths: list[LateralPath] = []
+    sources_seen = 0
+    for source_id in source_node_ids:
+        if sources_seen >= max_sources or len(paths) >= max_paths:
+            return paths[:max_paths], True
+        sources_seen += 1
+        remaining = max_paths - len(paths)
+        paths.extend(find_lateral_paths(graph, source_id, max_depth=max_depth)[:remaining])
+    return paths[:max_paths], False
 
 
 def find_lateral_paths(
@@ -685,12 +711,25 @@ def compute_interaction_risks(graph: ContextGraph) -> list[InteractionRisk]:
     shared_servers: dict[str, list[str]] = defaultdict(list)
     shared_creds: dict[str, list[str]] = defaultdict(list)
 
+    # Large shared groups keep membership once on the shared resource node,
+    # rather than duplicating a full agent list on every linear edge.
+    for node in graph.nodes.values():
+        members = node.metadata.get("shared_agents")
+        if not isinstance(members, list):
+            continue
+        if node.kind == NodeKind.SERVER:
+            shared_servers[node.label].extend(str(name) for name in members)
+        elif node.kind == NodeKind.CREDENTIAL:
+            shared_creds[node.label].extend(str(name) for name in members)
+
     for edge in graph.edges:
         if edge.kind == EdgeKind.SHARES_SERVER:
             srv_name = edge.metadata.get("server", "")
             members = edge.metadata.get("shared_agents")
             if isinstance(members, list):
                 shared_servers[srv_name].extend(str(name) for name in members)
+            elif edge.metadata.get("shared_group"):
+                continue
             elif edge.source.startswith("agent:") and edge.target.startswith("agent:"):
                 a1 = edge.source.removeprefix("agent:")
                 a2 = edge.target.removeprefix("agent:")
@@ -700,6 +739,8 @@ def compute_interaction_risks(graph: ContextGraph) -> list[InteractionRisk]:
             members = edge.metadata.get("shared_agents")
             if isinstance(members, list):
                 shared_creds[cred_name].extend(str(name) for name in members)
+            elif edge.metadata.get("shared_group"):
+                continue
             elif edge.source.startswith("agent:") and edge.target.startswith("agent:"):
                 a1 = edge.source.removeprefix("agent:")
                 a2 = edge.target.removeprefix("agent:")

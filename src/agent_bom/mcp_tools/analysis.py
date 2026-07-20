@@ -80,8 +80,8 @@ async def context_graph_impl(
         from agent_bom.context_graph import (
             NodeKind,
             build_context_graph,
+            collect_lateral_paths,
             compute_interaction_risks,
-            find_lateral_paths,
             to_serializable,
         )
         from agent_bom.models import AIBOMReport
@@ -99,18 +99,19 @@ async def context_graph_impl(
         )
 
         paths: list = []
+        paths_truncated = False
         depth = max(1, min(max_depth, 6))
         if source_agent:
             node_id = f"agent:{source_agent}"
             if node_id in graph.nodes:
-                paths = find_lateral_paths(graph, node_id, max_depth=depth)
+                paths, paths_truncated = collect_lateral_paths(graph, [node_id], max_depth=depth)
         else:
-            for nid in sorted(graph.nodes.keys()):
-                if graph.nodes[nid].kind == NodeKind.AGENT:
-                    paths.extend(find_lateral_paths(graph, nid, max_depth=depth))
+            source_ids = (nid for nid in sorted(graph.nodes.keys()) if graph.nodes[nid].kind == NodeKind.AGENT)
+            paths, paths_truncated = collect_lateral_paths(graph, source_ids, max_depth=depth)
 
         risks = compute_interaction_risks(graph)
         result = to_serializable(graph, paths, risks)
+        result["stats"]["lateral_paths_truncated"] = paths_truncated
         return _truncate_response(json.dumps(result, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP tool error")

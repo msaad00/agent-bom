@@ -88,11 +88,24 @@ class PostgresKeyStore:
                     ) THEN
                         ALTER TABLE api_keys ADD COLUMN owner TEXT;
                     END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'api_keys' AND column_name = 'principal_id'
+                    ) THEN
+                        ALTER TABLE api_keys ADD COLUMN principal_id TEXT;
+                    END IF;
                 END
                 $$;
             """)
+            # Backfill the stable binding for pre-existing rows: COALESCE mirrors
+            # create_api_key_record's precedence (scim_subject_id → owner).
+            # Idempotent — only touches rows not yet backfilled.
+            conn.execute(
+                "UPDATE api_keys SET principal_id = COALESCE(NULLIF(scim_subject_id, ''), NULLIF(owner, '')) WHERE principal_id IS NULL"
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_scim_subject ON api_keys(team_id, scim_subject_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(team_id, owner)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_principal ON api_keys(team_id, principal_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_team ON api_keys(team_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(team_id, revoked)")
@@ -118,6 +131,7 @@ class PostgresKeyStore:
             replacement_key_id=row[12],
             scim_subject_id=row[13] if len(row) > 13 else None,
             owner=row[14] if len(row) > 14 else None,
+            principal_id=row[15] if len(row) > 15 else None,
         )
 
     def add(self, key: ApiKey) -> None:
@@ -127,9 +141,9 @@ class PostgresKeyStore:
                    (
                      key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
                      created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                     scim_subject_id, owner, revoked
+                     scim_subject_id, owner, principal_id, revoked
                    )
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
                    ON CONFLICT (key_id) DO UPDATE SET
                      key_hash = EXCLUDED.key_hash,
                      key_salt = EXCLUDED.key_salt,
@@ -145,6 +159,7 @@ class PostgresKeyStore:
                      replacement_key_id = EXCLUDED.replacement_key_id,
                      scim_subject_id = EXCLUDED.scim_subject_id,
                      owner = EXCLUDED.owner,
+                     principal_id = EXCLUDED.principal_id,
                      revoked = FALSE""",
                 (
                     key.key_id,
@@ -162,6 +177,7 @@ class PostgresKeyStore:
                     key.replacement_key_id,
                     key.scim_subject_id,
                     key.owner,
+                    key.principal_id,
                 ),
             )
             conn.commit()
@@ -178,6 +194,30 @@ class PostgresKeyStore:
             )
             conn.commit()
             return bool(cursor.rowcount > 0)
+
+    def revoke_by_principal_id(self, principal_id: str, tenant_id: str | None = None) -> list[str]:
+        """Revoke every active key bound to ``principal_id`` (indexed UPDATE).
+
+        Uses the ``idx_api_keys_principal`` index. RLS already scopes the write to
+        the connection's tenant; ``tenant_id`` narrows it further when the caller
+        holds a wider context. Returns the ids revoked so the caller can audit
+        exactly which credentials a deprovision retired.
+        """
+        if not principal_id:
+            return []
+        query = (
+            "UPDATE api_keys SET revoked = TRUE, revoked_at = NOW()::text, rotation_overlap_until = NULL "
+            "WHERE principal_id = %s AND revoked = FALSE"
+        )
+        params: tuple[object, ...] = (principal_id,)
+        if tenant_id is not None:
+            query += " AND team_id = %s"
+            params = (principal_id, tenant_id)
+        query += " RETURNING key_id"
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(query, params).fetchall()
+            conn.commit()
+            return [row[0] for row in rows]
 
     def mark_rotating(self, key_id: str, *, replacement_key_id: str, overlap_until: str) -> bool:
         with _tenant_connection(self._pool) as conn:
@@ -197,7 +237,7 @@ class PostgresKeyStore:
                 """SELECT
                        key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
                        created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                       scim_subject_id, owner
+                       scim_subject_id, owner, principal_id
                    FROM api_keys
                    WHERE key_id = %s""",
                 (key_id,),
@@ -209,7 +249,7 @@ class PostgresKeyStore:
             SELECT
                 key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
                 created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                scim_subject_id, owner
+                scim_subject_id, owner, principal_id
             FROM api_keys
             WHERE TRUE
         """
@@ -230,7 +270,7 @@ class PostgresKeyStore:
                     """SELECT
                            key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
                            created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                           scim_subject_id, owner
+                           scim_subject_id, owner, principal_id
                        FROM api_keys
                        WHERE key_prefix = %s""",
                     (prefix,),

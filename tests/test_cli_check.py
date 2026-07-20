@@ -571,6 +571,56 @@ def test_check_without_version_json_reports_nonzero(monkeypatch):
     assert payload["exit_code"] == 2
 
 
+def test_check_maven_bare_artifact_fails_closed(monkeypatch):
+    """A Maven artifact without group context must not appear clean."""
+
+    async def _unexpected_scan(*_args, **_kwargs):
+        raise AssertionError("ambiguous Maven input must be rejected before scanning")
+
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _unexpected_scan)
+
+    result = CliRunner().invoke(main, ["check", "log4j-core@2.14.1", "--ecosystem", "maven"])
+
+    assert result.exit_code == 2
+    assert "group:artifact" in result.output
+    assert "No known vulnerabilities" not in result.output
+
+
+def test_check_maven_bare_artifact_json_is_incomplete(monkeypatch):
+    """Machine-readable Maven ambiguity must carry the incomplete contract."""
+
+    async def _unexpected_scan(*_args, **_kwargs):
+        raise AssertionError("ambiguous Maven input must be rejected before scanning")
+
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _unexpected_scan)
+
+    result = CliRunner().invoke(
+        main,
+        ["check", "log4j-core@2.14.1", "--ecosystem", "maven", "--format", "json"],
+    )
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output)
+    assert payload["verdict"] == "incomplete"
+    assert payload["exit_code"] == 2
+    assert "group:artifact" in payload["message"]
+
+
+def test_check_malformed_requirement_fails_closed(monkeypatch):
+    """Malformed requirement syntax must not be coerced into a clean scan."""
+
+    async def _unexpected_scan(*_args, **_kwargs):
+        raise AssertionError("malformed package input must be rejected before scanning")
+
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _unexpected_scan)
+
+    result = CliRunner().invoke(main, ["check", "flask==@@@bad", "--ecosystem", "pypi"])
+
+    assert result.exit_code == 2
+    assert "Invalid pypi package name" in result.output
+    assert "No known vulnerabilities" not in result.output
+
+
 def _patch_check_scan_malicious(monkeypatch, reason="Possible typosquat of 'requests'"):
     async def _scan_packages(pkgs, **_kwargs):
         for pkg in pkgs:

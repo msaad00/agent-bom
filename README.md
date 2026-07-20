@@ -17,7 +17,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
-<p align="center">Headless agent primitives and a human cockpit over shared evidence contracts.</p>
+<p align="center">Discover assets, scan and enrich findings, map blast radius and compliance, and enforce runtime policy—from a local CLI or your self-hosted control plane.</p>
 
 <p align="center">
   <a href="https://demo.agent-bom.com"><b>Live demo</b></a> (read-only sandbox) ·
@@ -29,23 +29,25 @@
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
-## Start in two commands
+## Scan your project in two commands
 
 ```bash
 pip install agent-bom
-agent-bom scan -p .
+agent-bom scan .
 ```
 
-The local CLI reads the project directly and prints inventory, findings, blast
-radius, and fix-first actions. No control plane is required. Export an artifact
-when another tool needs it: `agent-bom scan -p . -f sarif -o findings.sarif`.
+`.` means the current project. The local CLI reads it directly and prints
+inventory, findings, reachable context, and fix-first actions; no control plane
+is required. Export evidence when another tool needs it:
+`agent-bom scan . -f sarif -o findings.sarif`. For scripts,
+`--project .` (short form: `-p .`) is equivalent.
 
 ## Three ways to use it
 
 | Product lane | First command | Evidence you get | Natural next step |
 |---|---|---|---|
-| **Scan locally** — repos, images, SBOMs, agent/MCP config, IaC | `agent-bom scan -p .` | console, JSON, SARIF, CycloneDX/SPDX, HTML, graph export | gate CI or open the local report |
-| **Centralize evidence** — fleet, cloud, identity, findings, compliance | `pip install 'agent-bom[ui]' && agent-bom serve` | tenant-scoped API/UI inventory, jobs, graph, audit, posture | self-host with Docker or Helm + Postgres |
+| **Scan and understand risk** — repos, images, SBOMs, agent/MCP config, IaC | `agent-bom scan .` | inventory, findings, fix priority, graph and standard report formats | gate CI or open the local report |
+| **Centralize and visualize evidence** — fleet, cloud, identity, findings, compliance | `pip install 'agent-bom[ui]' && agent-bom serve` | tenant-scoped inventory, attack paths, compliance, jobs and audit | self-host with Docker or Helm + Postgres |
 | **Enforce runtime behavior** — MCP and tool calls | `agent-bom gateway serve --upstreams upstreams.yaml --bind 127.0.0.1:8090` | allow/warn/block decisions and audit events | bind policies to agents and upstream MCPs |
 
 Discovery and static/cloud scanning are read-only. The self-hosted control plane
@@ -65,65 +67,37 @@ credential references, and agents that can reach it. Coverage and boundaries:
 [product boundaries](docs/PRODUCT_BOUNDARIES.md) ·
 [first-run guide](docs/FIRST_RUN.md).
 
-## How the full stack fits together
+## How it works
 
-The surfaces share evidence contracts and lower-level services, but they do not
-all self-call through FastAPI. Local CLI/CI invokes the scanner engine directly;
-the UI and SDK use the authenticated API; MCP server mode exposes shared
-services; gateway/proxy modes enforce runtime traffic at their own boundary.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom product flow from read-only sources through scanning and graph correlation to reports, the self-hosted control plane, and optional runtime enforcement" width="1100" />
+  </picture>
+</p>
+
+Local CLI and CI call the scanner directly and do not require a server. The
+self-hosted control plane adds an authenticated API and UI, tenant-scoped
+persistence, fleet jobs, attack paths, compliance, and audit. Gateway and proxy
+modes enforce live tool traffic at a separate runtime boundary.
 
 <details>
-<summary><b>Full architecture</b> — execution paths, backend, databases, and optional stores</summary>
+<summary><b>Execution paths and persistence</b></summary>
 
-```mermaid
-flowchart TB
-    subgraph callers ["Entry points"]
-        CLI["CLI · CI · Docker"]
-        UI["Next.js UI · SDK"]
-        MCP["MCP clients"]
-        RT["Runtime MCP/tool traffic"]
-    end
-    subgraph services ["Execution paths"]
-        CORE["Python scanner + correlation engine"]
-        MW["HTTP middleware<br/>auth · tenant · rate limit · audit"]
-        API["FastAPI routes + services"]
-        MCPS["MCP server + shared services"]
-        GW["Gateway / proxy<br/>policy · detectors · audit"]
-    end
-    subgraph stores ["Persistence"]
-        SQL["SQLite<br/>local / single node"]
-        PG["Postgres + RLS<br/>shared / multi-replica"]
-        NEP["Neptune<br/>optional graph backend"]
-        CH["ClickHouse<br/>optional analytics"]
-    end
+| Boundary | Entry point | Service path | Persistence or artifact |
+|---|---|---|---|
+| Local scan | CLI, CI, Docker | Python scanner and correlation engine | console/files; optional SQLite history |
+| Control plane | Next.js UI, REST SDK | auth/tenant/rate-limit/audit middleware → FastAPI services | Postgres + RLS for shared deployments; SQLite for a local pilot |
+| Agent interface | MCP clients | MCP server → shared scanning, finding and graph services | the same normalized evidence contracts |
+| Runtime enforcement | MCP/tool traffic | gateway or proxy → policy, detectors and audit | SQLite or Postgres audit records |
 
-    CLI --> CORE
-    UI --> MW --> API --> CORE
-    MCP --> MCPS --> CORE
-    RT --> GW
-    CORE --> SQL
-    CORE --> PG
-    CORE -. graph option .-> NEP
-    CORE -. analytics .-> CH
-    GW --> SQL
-    GW --> PG
-```
-
-- **Frontend:** Next.js 16 / React 19 in `ui/`; authenticated browser data comes
-  from FastAPI—there is no UI-only privileged store path.
-- **Backend:** Python 3.11+ scanner/services plus FastAPI/uvicorn for the control
-  plane. The product is not single-language: the cockpit is TypeScript/React.
-- **Persistence:** SQLite and Postgres are the primary operational stores.
-  Neptune is optional graph persistence; ClickHouse is optional analytics.
-  Snowflake implements selected warehouse/store paths with documented parity
-  limits—it is not a drop-in implementation of every store.
-- **Evidence:** normalized findings and graph contracts correlate inventory,
-  vulnerabilities, cloud/config posture, identity context, and runtime records.
-  `ContextGraph` and `UnifiedGraph` are still being consolidated, so not every
-  record is physically stored as one object.
-- **Agent interface:** server mode exposes 76 MCP tools, 6 resources, and 8 workflow prompts
-  over strict MCP arguments. Registry metadata includes a committed Smithery manifest;
-  integration docs distinguish committed metadata from current catalog liveness.
+Neptune is an optional graph backend and ClickHouse is optional analytics.
+Snowflake supports selected warehouse/store paths with documented parity
+limits. MCP server mode exposes 76 MCP tools, 6 resources, and 8 workflow prompts
+over strict arguments. Agent distribution includes a committed
+[Smithery manifest](integrations/smithery.yaml); external catalog liveness is
+verified separately. The implementation-level diagram and component
+boundaries live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 </details>
 
@@ -152,17 +126,42 @@ Matching mechanics and release evidence:
 
 </details>
 
-## See it
+## See the product
 
 Try the [live demo](https://demo.agent-bom.com) (read-only sandbox). These
 captures come from the shipped Next.js routes using explicitly labeled,
 synthetic demo evidence.
 
-| Risk overview | Connect evidence sources |
+### Prioritize an attack path, not just a CVE
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Prioritized attack path connecting identity, agent, MCP server, package, and critical finding with evidence export and remediation handoff" width="900" />
+</p>
+
+The investigation lens connects identity and agent reachability to the MCP
+server, package, and finding that create the exposure. Operators can export the
+graph evidence or hand the path directly to remediation.
+
+### See every finding and its reach
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, reachable agents, available fixes, and false-positive review actions" width="900" />
+</p>
+
+### Move from risk to owner-ready work
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Prioritized remediation campaign with modeled risk reduction, reach, framework mappings, ownership, and verification state" width="900" />
+</p>
+
+<details>
+<summary><b>More control-plane views</b> — posture and runtime decisions</summary>
+
+| Risk overview | Review runtime decisions |
 |:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview command center with posture grade, unique findings, scan coverage, and operations" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Connections hub across cloud, code, AI, and data sources" width="430" /> |
-| **Start a scan** | **Review runtime decisions** |
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan form with connected account, ad-hoc, and public repo modes" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway KPI rollup and tool-call feed" width="430" /> |
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview command center with posture grade, unique findings, scan coverage, and operations" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway KPI rollup and tool-call feed" width="430" /> |
+
+</details>
 
 <details>
 <summary><b>Full CLI walkthrough</b> — current 0.96.3 console demo</summary>
@@ -187,12 +186,12 @@ matches your role:
 
 | Need | Surface | First action | Main artifact |
 |---|---|---|---|
-| Scan a repo, image, or local agent config | CLI / CI | `agent-bom scan -p .` (or the [GitHub Action](https://github.com/marketplace/actions/agent-bom)) | JSON, SARIF, SBOM, HTML |
+| Scan a repo, image, or local agent config | CLI / CI | `agent-bom scan .` (or the [GitHub Action](https://github.com/marketplace/actions/agent-bom)) | JSON, SARIF, SBOM, HTML |
 | Connect cloud and data-estate evidence | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
 | Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
 | Give agents security tools | MCP server | `agent-bom mcp server` | strict MCP tool responses |
 | Govern runtime tool calls | Proxy / gateway | `agent-bom gateway serve --upstreams upstreams.yaml --bind 127.0.0.1:8090` | allow/warn/block audit trail |
-| Package evidence for audit | Reports / exports | `agent-bom scan -p . -f sarif -o findings.sarif` | SARIF, CycloneDX, SPDX, HTML/PDF, compliance bundle |
+| Package evidence for audit | Reports / exports | `agent-bom scan . -f sarif -o findings.sarif` | SARIF, CycloneDX, SPDX, HTML/PDF, compliance bundle |
 
 Beyond the basics — `agent-bom graph` (multi-hop exposure paths),
 `agent-bom remediate -p .` (advisory fix plan),
@@ -243,9 +242,12 @@ configured provider credentials and do not require a control-plane connection.
   short-lived, brokered credentials (e.g. AWS `sts:AssumeRole`); connection
   secrets are write-only (encrypted at rest, never read back).
 
-HTTP auth, tenant isolation, and audit are enforced in middleware for the UI and
-API/SDK callers. MCP server and gateway/proxy modes enforce their own documented
-transport-auth and policy boundaries; none receives a privileged UI-only path.
+Application-layer authentication, tenant isolation, rate limits, and audit are
+enforced in middleware for UI and API/SDK requests. Non-loopback deployments
+terminate HTTPS/TLS at Caddy, an ingress, an ALB, or an equivalent trusted edge;
+the API and UI remain on loopback or a private network. MCP server and
+gateway/proxy modes enforce their own documented transport authentication and
+policy boundaries; none receives a privileged UI-only path.
 
 Cloud connectors are opt-in, default-off, and read no secret values.
 `agent-bom connect <provider>` prints the grant template and enable flag

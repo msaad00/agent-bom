@@ -28,7 +28,7 @@ overrides = [
 
 [[package]]
 name = "agent-bom"
-version = "0.96.3"
+version = "0.96.4"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -39,6 +39,7 @@ dependencies = [
     { name = "httpx" },
     { name = "jinja2" },
     { name = "jsonschema" },
+    { name = "mcp" },
     { name = "packageurl-python" },
     { name = "packaging" },
     { name = "pydantic" },
@@ -117,7 +118,6 @@ all = [
     { name = "google-cloud-storage" },
     { name = "huggingface-hub" },
     { name = "litellm" },
-    { name = "mcp" },
     { name = "networkx" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -283,7 +283,6 @@ dev-all = [
     { name = "alembic" },
     { name = "bandit" },
     { name = "fastapi" },
-    { name = "mcp" },
     { name = "mypy" },
     { name = "networkx" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -348,7 +347,6 @@ lake = [
     { name = "pyarrow" },
 ]
 mcp-server = [
-    { name = "mcp" },
     { name = "smithery" },
 ]
 nebius = [
@@ -499,7 +497,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "litellm", marker = "extra == 'ai-enrich'", specifier = ">=1.83.14" },
-    { name = "mcp", marker = "extra == 'mcp-server'", specifier = ">=1.26" },
+    { name = "mcp", specifier = ">=1.26" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0" },

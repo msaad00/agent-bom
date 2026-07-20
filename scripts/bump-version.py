@@ -69,6 +69,7 @@ OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [
 DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # README.md + docs — GitHub Action version references
     ("README.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
+    ("README.md", re.compile(r"(current )\d+\.\d+\.\d+( console demo)"), r"\g<1>{v}\g<2>"),
     ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/archive/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),

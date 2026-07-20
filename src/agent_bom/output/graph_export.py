@@ -12,9 +12,9 @@ agent → server → package → CVE graph for export as:
 Usage::
 
     agent-bom scan --format json --output report.json
-    agent-bom graph --from-scan report.json --format dot --output deps.dot
-    agent-bom graph --from-scan report.json --format graphml --output deps.graphml
-    agent-bom graph --from-scan report.json --format cypher --output import.cypher
+    agent-bom graph report.json --format dot --output deps.dot
+    agent-bom graph report.json --format graphml --output deps.graphml
+    agent-bom graph report.json --format cypher --output import.cypher
 
 Closes #292.
 """

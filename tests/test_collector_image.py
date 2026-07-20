@@ -136,15 +136,21 @@ def _scanner_container(cronjob: dict) -> dict:
     return containers[0]
 
 
+def _project_version() -> str:
+    match = re.search(r'^version\s*=\s*"([^"]+)"', PYPROJECT.read_text(), re.M)
+    assert match, "pyproject.toml version not found"
+    return match.group(1)
+
+
 def test_scan_cronjob_uses_collector_image_by_default() -> None:
     docs = _helm_render()
     container = _scanner_container(_scan_cronjob(docs))
-    assert container["image"] == "agentbom/agent-bom-collector:0.96.3", container["image"]
+    assert container["image"] == f"agentbom/agent-bom-collector:{_project_version()}", container["image"]
 
 
 def test_collector_tag_overrides_independently_of_control_plane() -> None:
     """The SDK layer bumps without touching the control-plane image.tag (#4239)."""
-    docs = _helm_render("collectorImage.tag=1.2.3-sdk", "image.tag=0.96.3")
+    docs = _helm_render("collectorImage.tag=1.2.3-sdk", "image.tag=9.8.7")
     container = _scanner_container(_scan_cronjob(docs))
     assert container["image"] == "agentbom/agent-bom-collector:1.2.3-sdk", container["image"]
     # The control-plane API deployment stays on image.tag — unchanged.
@@ -156,13 +162,13 @@ def test_collector_tag_overrides_independently_of_control_plane() -> None:
 
 def test_blank_collector_tag_falls_back_to_control_plane_tag() -> None:
     """A blank collector tag must never render a `repo:` reference with no tag."""
-    docs = _helm_render("collectorImage.tag=", "image.tag=0.96.3")
+    docs = _helm_render("collectorImage.tag=", "image.tag=9.8.7")
     container = _scanner_container(_scan_cronjob(docs))
-    assert container["image"].endswith(":0.96.3"), container["image"]
+    assert container["image"].endswith(":9.8.7"), container["image"]
     assert not container["image"].rstrip().endswith(":"), "empty tag rendered"
 
 
 def test_unset_collector_block_falls_back_to_control_plane_image() -> None:
-    docs = _helm_render("collectorImage=null", "image.repository=agentbom/agent-bom", "image.tag=0.96.3")
+    docs = _helm_render("collectorImage=null", "image.repository=agentbom/agent-bom", "image.tag=9.8.7")
     container = _scanner_container(_scan_cronjob(docs))
-    assert container["image"] == "agentbom/agent-bom:0.96.3", container["image"]
+    assert container["image"] == "agentbom/agent-bom:9.8.7", container["image"]

@@ -50,9 +50,7 @@ def test_headline_counts_match_unified_stream(demo_console_output, demo_json_rep
     match = re.search(r"CRIT\s+(\d+)\s+HIGH\s+(\d+)\s+MED\s+(\d+)", demo_console_output)
     if match is None:
         assert "PARTIAL COVERAGE" in demo_console_output, "summary box severity headline missing"
-        match = re.search(
-            r"Findings — (\d+) critical · (\d+) high · (\d+) medium", demo_console_output
-        )
+        match = re.search(r"Findings — (\d+) critical · (\d+) high · (\d+) medium", demo_console_output)
         assert match, "all-categories findings line missing"
     assert int(match.group(1)) == by_sev["critical"]
     assert int(match.group(2)) == by_sev["high"]

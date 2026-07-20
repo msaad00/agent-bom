@@ -177,6 +177,48 @@ def test_graph_edges_versioning_migration_exists():
     assert 'down_revision = "20260513_01"' in body
 
 
+def _attack_paths_store_columns() -> set[str]:
+    """Columns postgres_graph.py reads/writes on attack_paths (parsed from source)."""
+    source = (Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_graph.py").read_text()
+    columns: set[str] = set()
+    insert_match = re.search(r"INSERT INTO attack_paths\s*\(([^)]*)\)", source)
+    assert insert_match, "attack_paths INSERT not found in postgres_graph.py"
+    columns.update(col.strip() for col in insert_match.group(1).split(",") if col.strip())
+    for select_match in re.finditer(r"SELECT\s+((?:(?!\bFROM\b)[\s\S])*?)\s+FROM attack_paths", source):
+        for token in select_match.group(1).split(","):
+            token = token.strip()
+            if re.fullmatch(r"[a-z_]+", token):
+                columns.add(token)
+    return columns
+
+
+def test_attack_paths_baseline_covers_every_store_column():
+    """Every attack_paths column the graph store reads/writes must ship in init.sql.
+
+    Regression: ``summary``, ``tool_exposure`` and ``technique_mappings`` were
+    only created by the app bootstrap in api/postgres_graph.py, so
+    migration-owned Postgres deployments (AGENT_BOM_POSTGRES_URL set → bootstrap
+    DDL skipped) 500'd on the first /v1/graph read with
+    'column "summary" does not exist'."""
+    cols = _columns_for("attack_paths")
+    store_cols = _attack_paths_store_columns()
+    assert store_cols, "no attack_paths columns parsed from postgres_graph.py"
+    missing = store_cols - cols
+    assert not missing, f"init.sql attack_paths missing store columns: {sorted(missing)}"
+
+
+def test_attack_paths_summary_columns_migration_exists():
+    """An Alembic migration must add the summary/exposure/technique columns for
+    databases migrated before they were added to the init.sql baseline."""
+    versions = Path(__file__).parent.parent / "deploy" / "supabase" / "postgres" / "alembic" / "versions"
+    migration = versions / "20260719_03_attack_paths_column_parity.py"
+    assert migration.exists(), "missing attack_paths column-parity Alembic migration"
+    body = migration.read_text()
+    for column, default in (("summary", "''"), ("tool_exposure", "'[]'"), ("technique_mappings", "'[]'")):
+        assert f"ADD COLUMN IF NOT EXISTS {column} TEXT DEFAULT {default}" in body, f"migration does not add {column}"
+    assert 'down_revision = "20260719_02"' in body
+
+
 def test_schema_summary_comment_is_current():
     assert "--  Schema (21+ tables):" in SQL
     assert "--   api_rate_limits      — legacy fixed-window buckets (deprecated)" in SQL

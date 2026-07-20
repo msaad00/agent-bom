@@ -58,3 +58,32 @@ bounded-memory invariant.
 - **Boundary:** This decision covers write-path batching only. Read-path
   windowing, streaming reads, materialized drilldowns, and UI virtualization are
   separate graph-scale concerns.
+
+## Realized bound and residual producer wall
+
+The write path is bounded end to end and regression-guarded:
+
+- The streamed save + the prior-snapshot delta both stay bounded by the batch
+  window / an id-only prior digest rather than the graph size. `save_graph`'s
+  SQLite search-index refresh streams in bounded batches too, not a `fetchall`
+  re-materialization of the node set.
+- Guards: `test_graph_store_streamed_persistence.py` (streamed-save peak flat as
+  N grows), `test_graph_persist_memory_bound.py` (prior digest is a small,
+  non-eroding fraction of a full prior load), `test_search_index_refresh_streaming.py`
+  (bounded search-index refresh), and — at the shipped pipeline entrypoint —
+  `test_graph_persist_pipeline_scale_bound.py`, which pins that persisting a
+  *large new* snapshot through `_persist_graph_snapshot` peaks at a small,
+  non-eroding fraction of materializing that snapshot (≈0.12–0.2 measured, 4x-N
+  span). That last guard exists because a re-materialization of the *incoming*
+  snapshot is invisible to the prior-side guards.
+
+The remaining, un-bounded stage is the graph **producer**:
+`build_unified_graph_from_report` still materializes the whole correlated
+`UnifiedGraph` — nodes, edges, and its adjacency / reverse-adjacency / dedup
+indexes, with correlation overlays that query the whole graph — in memory before
+persist. So peak RSS for a single build+persist is set by the producer, not the
+write path. Removing that wall (streaming/two-pass overlays that emit into the
+storage-backed `GraphBuildWorkspace` instead of a resident graph) is the builder
+re-plumb tracked by #4075; a generator wrapper around the existing builder does
+not move peak RSS because the correlation phase already holds the whole graph.
+Until then, steer multi-million-node graphs to a server-side backend.

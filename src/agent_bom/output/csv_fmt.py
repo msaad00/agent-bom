@@ -70,9 +70,8 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
     writer.writeheader()
 
     for finding in findings:
-        writer.writerow(
-            {
-                "cve_id": finding.cve_id or finding.id,
+        row = {
+                "cve_id": finding.cve_id or "",
                 "package": package_name(finding),
                 "version": package_version(finding),
                 "ecosystem": package_ecosystem(finding),
@@ -104,7 +103,7 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
                 "finding_id": finding.id,
                 "title": finding.title or "",
             }
-        )
+        writer.writerow({key: _excel_safe_cell(value) for key, value in row.items()})
 
     return buf.getvalue()
 
@@ -118,6 +117,22 @@ def _format_optional_float(value: object) -> str:
         return f"{float(value):.4f}"
     except (TypeError, ValueError):
         return str(value)
+
+
+def _excel_safe_cell(value: object) -> object:
+    """Keep untrusted text from being interpreted as a spreadsheet formula.
+
+    CSV is also consumed by SIEMs and scripts, so preserve numeric values and
+    only prefix textual cells whose first non-whitespace character is a
+    spreadsheet formula sigil.  The apostrophe is the conventional Excel
+    text marker and remains visible to non-spreadsheet consumers.
+    """
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip(" \t\r\n")
+    if stripped.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
 
 
 def _compliance_tags_cell(finding: object) -> str:

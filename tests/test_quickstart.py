@@ -32,9 +32,9 @@ def test_quickstart_dry_run_offline_prints_local_next_steps():
 
     assert result.exit_code == 0
     assert "agent-bom quickstart" in result.output
-    assert "agent-bom agents --demo --offline" in result.output
+    assert "agent-bom scan --demo --offline" in result.output
     assert "agent-bom quickstart --write-sample --sample-dir agent-bom-first-run" in result.output
-    assert "agent-bom agents --inventory agent-bom-first-run/inventory.json -p agent-bom-first-run --offline" in result.output
+    assert "agent-bom scan --inventory agent-bom-first-run/inventory.json -p agent-bom-first-run --offline" in result.output
     assert "agent-bom serve --host 127.0.0.1 --port 8422" in result.output
     assert "http://127.0.0.1:8422/docs" in result.output
     assert "agent-bom[all]" in result.output
@@ -49,7 +49,7 @@ def test_quickstart_write_sample_creates_first_run_stack(tmp_path):
     assert result.exit_code == 0
     assert (sample_dir / "inventory.json").exists()
     assert "Wrote " in result.output
-    assert f"agent-bom agents --inventory {sample_dir / 'inventory.json'} -p {sample_dir} --offline" in result.output
+    assert f"agent-bom scan --inventory {sample_dir / 'inventory.json'} -p {sample_dir} --offline" in result.output
 
 
 def test_quickstart_rejects_write_sample_dry_run():

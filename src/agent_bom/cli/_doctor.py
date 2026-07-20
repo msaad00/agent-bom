@@ -264,7 +264,7 @@ def doctor_cmd() -> None:
         console.print(f"  [yellow]{warns} warning(s) — scanning may be limited.[/yellow]")
     console.print()
     console.print("  [bold]Next commands[/bold]")
-    console.print("    • agent-bom agents --demo --offline")
+    console.print("    • agent-bom scan --demo --offline")
     console.print("    • agent-bom where")
     console.print("    • agent-bom proxy --help")
     console.print()

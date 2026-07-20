@@ -6,6 +6,8 @@ import base64
 import json
 from typing import Any
 
+from agent_bom.graph.severity import severity_policy_rank
+
 _ALLOWED_SORTS = frozenset({"effective_reach", "cvss", "severity", "ordinal"})
 
 # ``cvss_score`` is NOT NULL DEFAULT 0 at the storage layer (legacy NULLs are
@@ -22,6 +24,24 @@ def cvss_sort_value(raw: Any) -> float:
         return float(raw)
     except (TypeError, ValueError):
         return _CVSS_NULL_SORT_VALUE
+
+
+def severity_rank_sort_value(row: dict[str, Any]) -> float:
+    """Severity keyset rank for a row, whether store-shaped or API-payload-shaped.
+
+    Enriched API payloads carry ``severity`` but not always the denormalised
+    ``severity_rank`` column; defaulting the missing rank to 0 minted cursors
+    whose resume keyset matched nothing, silently truncating severity-sorted
+    walks. Derive the rank from the severity string with the SAME mapping the
+    store materialises at ingest (``severity_policy_rank``).
+    """
+    raw = row.get("severity_rank")
+    if raw is not None:
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            pass
+    return float(severity_policy_rank(str(row.get("severity") or "")))
 
 
 def encode_finding_cursor(
@@ -126,7 +146,7 @@ def cursor_from_current_row(row: dict[str, Any], *, sort: str) -> str:
         primary = cvss_sort_value(row.get("cvss_score"))
         tie = str(row.get("last_seen") or "")
     elif normalized == "severity":
-        primary = float(row.get("severity_rank") or 0.0)
+        primary = severity_rank_sort_value(row)
         tie = str(row.get("last_seen") or "")
     else:
         primary = float(row.get("effective_reach_score") or 0.0)
@@ -199,7 +219,7 @@ def row_is_after_cursor(
     if normalized == "cvss":
         row_primary = cvss_sort_value(row.get("cvss_score"))
     elif normalized == "severity":
-        row_primary = float(row.get("severity_rank") or 0.0)
+        row_primary = severity_rank_sort_value(row)
     else:
         row_primary = float(row.get("effective_reach_score") or 0.0)
     if row_primary < primary:

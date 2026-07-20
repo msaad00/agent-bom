@@ -385,6 +385,49 @@ class TestCSV:
         assert "CVE-2024-0001" in csv_str
         assert "CVE-2024-0002" in csv_str
 
+    def test_all_unified_finding_types_exported(self):
+        """CSV must emit every finding type, not silently drop non-CVE rows."""
+        report = _make_report()
+        report.findings = [
+            _make_unified_cve_finding(),
+            Finding(
+                finding_type=FindingType.COMBINATION,
+                source=FindingSource.GRAPH_ANALYSIS,
+                asset=Asset(name="prod-agent", asset_type="agent", identifier="agent:prod-agent"),
+                severity="critical",
+                title="Toxic combination: KEV CVE + exposed credential",
+                description="KEV-listed CVE chained with an exposed credential on one path",
+            ),
+            Finding(
+                finding_type=FindingType.PROMPT_SECURITY,
+                source=FindingSource.PROMPT_SCAN,
+                asset=Asset(name="system-prompt", asset_type="prompt", identifier="prompt:system-prompt"),
+                severity="high",
+                title="Prompt injection sink in template",
+                description="Untrusted input interpolated into system prompt",
+            ),
+        ]
+
+        csv_str = to_csv(report)
+        rows = list(csv.DictReader(io.StringIO(csv_str.lstrip("\ufeff"))))
+
+        assert len(rows) == len(report.to_findings())
+        types = {row["finding_type"] for row in rows}
+        assert {"CVE", "COMBINATION", "PROMPT_SECURITY"} <= types
+        by_type = {row["finding_type"]: row for row in rows}
+        combo = by_type["COMBINATION"]
+        assert combo["severity"] == "critical"
+        assert combo["title"] == "Toxic combination: KEV CVE + exposed credential"
+        assert combo["summary"]
+        assert combo["package"] == "prod-agent"
+        prompt = by_type["PROMPT_SECURITY"]
+        assert prompt["severity"] == "high"
+        assert prompt["summary"]
+        # Existing CVE cells stay stable.
+        cve = by_type["CVE"]
+        assert cve["cve_id"] == "CVE-2026-4242"
+        assert cve["severity"] == "high"
+
     def test_published_dates_present(self):
         report, brs = _report_with_vulns()
         brs[0].vulnerability.published_at = "2026-03-21T12:00:00Z"

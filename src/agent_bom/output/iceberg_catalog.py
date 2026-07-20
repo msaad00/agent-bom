@@ -108,9 +108,10 @@ def register_findings(
     *,
     catalog: Any | None = None,
 ) -> dict[str, Any]:
-    """Append the report's CVE findings to the Iceberg table as a new snapshot.
+    """Append the report's unified findings to the Iceberg table as a new snapshot.
 
-    Creates the namespace and table (matching the shared 28-col Parquet schema)
+    Creates the namespace and table (matching the shared unified Parquet schema —
+    the 28 v1 CVE columns plus the appended finding_type/finding_id/title, #4280)
     if they do not yet exist, then appends a data file and commits a snapshot.
     Returns a small summary dict for logging.
 

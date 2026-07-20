@@ -427,6 +427,51 @@ def _resolve_check_ecosystems(name: str, version: str, ecosystem: Optional[str],
     raise click.UsageError(f"Ambiguous package name '{name}'. Specify --ecosystem pypi or --ecosystem npm for a trustworthy verdict.")
 
 
+def _maven_coordinate_error(name: str, ecosystem: str) -> str | None:
+    """Return a fail-closed message when a Maven package lacks its namespace.
+
+    OSV identifies Maven artifacts by ``group:artifact``. Querying a bare
+    artifact name can return no rows and must never be presented as a clean
+    result, because another group may own the vulnerable artifact.
+    """
+    if ecosystem.lower() != "maven":
+        return None
+    parts = name.split(":")
+    if len(parts) == 2 and all(part.strip() for part in parts):
+        return None
+    return (
+        f"Maven package '{name}' is missing its group:artifact coordinate. "
+        "Use --ecosystem maven with a fully qualified coordinate, for example "
+        "org.apache.logging.log4j:log4j-core@2.14.1; a bare artifact name "
+        "cannot produce a trustworthy clean verdict."
+    )
+
+
+def _package_spec_error(name: str, ecosystem: str) -> str | None:
+    """Return a fail-closed message for syntactically invalid package names."""
+    maven_error = _maven_coordinate_error(name, ecosystem)
+    if maven_error:
+        return maven_error
+
+    try:
+        from agent_bom.security import SecurityError, validate_package_name
+
+        if ecosystem.lower() in {"npm", "pypi", "go", "cargo"}:
+            validate_package_name(name, ecosystem.lower())
+            return None
+    except SecurityError:
+        pass
+
+    # Other ecosystems do not share one package-name grammar, but shell and
+    # requirement operators are never part of a package name after parsing.
+    if not name.strip() or any(char in name for char in "\r\n=<>!"):
+        return (
+            f"Invalid {ecosystem} package name '{name}'. "
+            "Provide a package name followed by an explicit version."
+        )
+    return None
+
+
 def _exit_model_verification(
     model_dir: Path,
     repo_id: str | None,
@@ -614,6 +659,27 @@ def check(
     _sync_runtime_consoles(runtime_console)
 
     name, version, detected_eco = _parse_package_spec(package_spec, ecosystem)
+
+    package_error = _package_spec_error(name, detected_eco)
+    if package_error:
+        if structured_output:
+            _write_check_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=[detected_eco],
+                    verdict="incomplete",
+                    message=package_error,
+                    exit_code=2,
+                ),
+                output_path,
+                agent_mode=agent_mode,
+                exit_code=2,
+                output_format=output_format,
+            )
+        else:
+            raise click.UsageError(package_error)
+        sys.exit(2)
 
     from agent_bom.models import Package
     from agent_bom.parsers.os_parsers import enrich_os_package_context

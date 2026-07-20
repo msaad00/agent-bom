@@ -122,7 +122,7 @@ def print_scan_next_steps(con: Console, report: AIBOMReport, *, quiet: bool = Fa
 
     steps: list[str] = []
     if getattr(report, "total_agents", 0):
-        steps.append("agent-bom graph")
+        steps.append("agent-bom scan . -f graph-html -o agent-bom-graph.html")
     if getattr(report, "total_vulnerabilities", 0) or getattr(report, "critical_vulns", None):
         steps.append("agent-bom scan . -f html -o agent-bom-report.html")
     else:

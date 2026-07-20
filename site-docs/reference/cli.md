@@ -236,8 +236,9 @@ agent-bom agents --agent-mode
 agent-bom agents --agent-mode --agent-mode-full      # inline the complete report
 agent-bom agents --agent-mode --agent-token-budget 4000
 
-# Compliance
-agent-bom agents --compliance owasp-llm,eu-ai-act,all
+# Compliance tags and one framework-specific evidence bundle
+agent-bom scan . --compliance
+agent-bom scan . --compliance --compliance-export owasp-llm
 
 # SBOM
 agent-bom agents -f cyclonedx -o bom.json

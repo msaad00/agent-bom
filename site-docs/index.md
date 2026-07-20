@@ -63,7 +63,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 | **Local AI BOM** | `agent-bom agents --demo --offline` | terminal findings and graph-ready inventory |
 | **Repository scan** | `agent-bom agents -p . -f html -o agent-bom-report.html` | local HTML review plus exportable evidence |
 | **Cloud posture gate** | `agent-bom iac infra/ && agent-bom cloud aws --cis` | pre-cloud IaC findings plus point-in-time or scheduled posture evidence |
-| **CI evidence** | `uses: msaad00/agent-bom@v0.96.3` | SARIF, pull-request summary, optional code scanning |
+| **CI evidence** | `uses: msaad00/agent-bom@v0.96.4` | SARIF, pull-request summary, optional code scanning |
 | **Assistant tools** | `agent-bom mcp server` | read-mostly security tools for MCP clients |
 | **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your infrastructure |
 
@@ -73,7 +73,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 |---|---|---|
 | **CLI / CI** | developers and pipelines | local scans, SARIF/SBOM/HTML/JSON, graph exports, deterministic gates |
 | **REST API** | security platforms, SIEM jobs, custom services | self-hosted control-plane routes for scans, normalized bulk findings, dataset versions, evaluation runs, graph evidence, audit, and governance |
-| **MCP tools** | AI agents and coding assistants | 70 tools, strict args, `exposure_paths`, `should_i_deploy`, runtime posture, audited Shield actions |
+| **MCP tools** | AI agents and coding assistants | 76 tools, strict args, `exposure_paths`, `should_i_deploy`, runtime posture, audited write actions |
 | **TypeScript client** | services and agent runtimes calling the control plane | typed helper for stable REST endpoints; not a scanner SDK |
 | **TypeScript runtime detectors** | MCP/runtime enforcement integrations | local detector package for runtime policy checks; separate from the control-plane client |
 | **UI cockpit** | security teams and auditors | graph cockpit, compliance, audit, and evidence review over the same backend data |
@@ -88,8 +88,10 @@ the same security evidence and `ExposurePath` graphs.
 
 Cloud posture follows the same model: use `agent-bom iac` to block unsafe
 Terraform, CloudFormation, Kubernetes, or Docker changes before deployment,
-then use `agent-bom cis-benchmark` to verify the runtime account or service
-state after drift and inherited provider settings exist.
+then use `agent-bom cloud aws --cis`, `agent-bom cloud azure --cis`, or
+`agent-bom cloud gcp --cis` to verify runtime state after drift and inherited
+provider settings exist. Snowflake uses
+`agent-bom scan --snowflake --snowflake-cis-benchmark`.
 
 ## Current graph and agent surfaces
 

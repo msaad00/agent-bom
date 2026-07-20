@@ -3,9 +3,36 @@
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
-resources, or runtime targets. Shield write actions are the exception: they
-fail closed unless the caller supplies an admin role, `shield:write` scope, and
-audit reason.
+resources, or runtime targets. Thirteen write-annotated tools cover scan-history
+diff, Shield, identity, external ingest, access review, and ticket workflows.
+They fail closed unless a remote caller uses the operator token and supplies an
+admin role, the tool-specific write scope, and an audit reason; stdio cannot
+invoke them.
+
+<details>
+<summary>Complete current catalog (76 tools)</summary>
+
+`scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
+`intel_daily_brief`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
+`policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`,
+`skill_scan`, `skill_verify`, `skill_trust`, `verify`, `inventory_summary`,
+`inventory_list`, `inventory_asset`, `where`, `tool_risk_assessment`,
+`inventory`, `diff`, `marketplace_check`, `code_scan`, `context_graph`,
+`graph_export`, `analytics_query`, `cis_benchmark`, `kspm_cluster_posture`,
+`fleet_scan`, `runtime_correlate`, `runtime_production_index`,
+`runtime_blueprints`, `runtime_blueprint_drift`, `cost_report`, `anomaly_scan`,
+`drift_incidents`, `proxy_status`, `proxy_alerts`, `gateway_status`,
+`shield_status`, `shield_start`, `shield_unblock`, `shield_break_glass`,
+`identity_issue`, `identity_rotate`, `identity_revoke`, `identity_grant_jit`,
+`identity_revoke_jit`, `firewall_check`, `audit_query`, `audit_integrity`,
+`vector_db_scan`, `aisvs_benchmark`, `gpu_infra_scan`, `registry_sweep_scan`,
+`dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`,
+`model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ai_inventory_scan`,
+`license_compliance_scan`, `ingest_external_scan`, `cost_forecast`,
+`cost_allocation`, `credential_expiry`, `nhi_discover`, `cloud_inventory`,
+`access_review`, `create_ticket`, `sync_ticket_status`.
+
+</details>
 
 ## Tools
 
@@ -80,7 +107,7 @@ matched paths, and a verdict; it does not deploy, remediate, or open pull
 requests.
 
 ### registry_lookup
-Look up an MCP server in the 880-entry server security metadata registry.
+Look up an MCP server in the 967-entry server security metadata registry.
 ```
 registry_lookup(server_name="brave-search")
 ```
@@ -393,3 +420,5 @@ ingest_external_scan(scan_json="<SARIF or scanner JSON>", parse_only=true)
 | `fleet-audit` | Audit an endpoint or cloud inventory file and return graph-ready findings |
 | `incident-triage` | Prioritize a CVE or suspicious MCP finding using blast radius and runtime evidence |
 | `remediation-plan` | Draft a human-reviewed remediation plan without modifying files |
+| `cloud-connection-review` | Review a read-only cloud or Snowflake connection before the first scan |
+| `gateway-fleet-live-demo` | Walk through gateway and fleet enforcement with live evidence |

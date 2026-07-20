@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.96.3"
+version = "0.96.4"
 description = "Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure."
 readme = "PYPI_README.md"
 license = "Apache-2.0"
@@ -41,6 +41,9 @@ dependencies = [
     "toml>=0.10",
     "pyyaml>=6.0",
     "jsonschema>=4.0",
+    # MCP is a first-class advertised entry point (`uvx agent-bom mcp server`)
+    # and must work from the base package used by the official registry.
+    "mcp>=1.26",
     # Transitive dep pins — fix known CVEs flagged by OpenSSF/OSV
     "jinja2>=3.1.6",  # GHSA-cpwx-vrp4-4pq7, GHSA-gmj6-6f8f-6699 (sandbox breakout)
     "werkzeug>=3.1.8",  # GHSA-29vq-49wr-vm6x, GHSA-2g68-c3qc-8985, GHSA-87hc-h4r5-73f7, GHSA-f9vj-2wh5-fj8j, GHSA-hgf8-39gv-g3f2, GHSA-hrfv-mqp8-q5rw, GHSA-px8h-6qxv-m22q, GHSA-q34m-jh98-gwm2, GHSA-xg9f-g7g7-2323
@@ -181,7 +184,8 @@ visual = [
     "pytesseract>=0.3.10",
 ]
 mcp-server = [
-    "mcp>=1.26",
+    # Retained for install-command compatibility; Smithery remains specific
+    # to hosted MCP registry adapters rather than the core stdio server.
     "smithery>=0.4",
 ]
 dashboard = ["streamlit>=1.55.0", "plotly>=5.18.0", "pandas>=2.0.0"]

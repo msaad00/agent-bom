@@ -457,7 +457,7 @@ async def execute_tool_async(
                 log_actor,
             )
             return truncate_response_fn(json.dumps(denial))
-        if _scope_set(auth_scopes) & {"admin", "operator", "admin:*", "*"}:
+        if "operator_role" in kwargs and _scope_set(auth_scopes) & {"admin", "operator", "admin:*", "*"}:
             kwargs["operator_role"] = "admin"
     log_caller = _log_value(request_meta["caller"])
     log_request_id = _log_value(request_meta["request_id"])

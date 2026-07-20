@@ -43,7 +43,7 @@ def attach_resources_and_prompts(
 
     @mcp.resource("registry://servers")
     def registry_servers_resource() -> str:
-        """Browse the MCP server security metadata registry (427+ servers).
+        """Browse the MCP server security metadata registry (967 servers).
 
         Returns the full registry with risk levels (category-derived), tools,
         credential env vars (heuristic-inferred), and verification status

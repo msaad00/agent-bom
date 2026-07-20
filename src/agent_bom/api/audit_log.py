@@ -509,10 +509,7 @@ class SQLiteAuditLog:
         _audit_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(audit_log)").fetchall()}
         if "tenant_id" not in _audit_cols:
             self._conn.execute("ALTER TABLE audit_log ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
-            self._conn.execute(
-                "UPDATE audit_log SET tenant_id = "
-                "COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default')"
-            )
+            self._conn.execute("UPDATE audit_log SET tenant_id = COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default')")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_tenant_ts ON audit_log(tenant_id, timestamp DESC)")
         self._conn.execute("""CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (
             tenant_id TEXT PRIMARY KEY,
@@ -535,10 +532,7 @@ class SQLiteAuditLog:
         reconciled.
         """
         try:
-            self._conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_tenant_prevsig "
-                "ON audit_log(tenant_id, prev_signature)"
-            )
+            self._conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_tenant_prevsig ON audit_log(tenant_id, prev_signature)")
             self._conn.commit()
         except sqlite3.IntegrityError:
             self._conn.rollback()
@@ -585,16 +579,51 @@ class SQLiteAuditLog:
         return _AuditChainCheckpoint(entry_count=int(row[0]), head_signature=str(row[1]))
 
     def _upsert_checkpoint(self, tenant_id: str, head_signature: str) -> None:
+        # First-seed entry_count is the tenant's TRUE audit_log row count, not a
+        # hardcoded 1: a legacy tenant whose rows predate its first checkpoint
+        # upsert would otherwise seed entry_count=1 while N historical rows exist,
+        # so verify_integrity's truncation check under-counts until N further
+        # appends accrue (#4294). The COUNT runs in the same transaction as the
+        # preceding audit_log INSERT (so it includes the just-inserted row) and
+        # only on the INSERT branch; the steady-state ON CONFLICT path stays an
+        # O(1) increment. A genuine genesis (0 prior rows) still seeds 1.
         self._conn.execute(
             """
             INSERT INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature)
-            VALUES (?, 1, ?)
+            VALUES (?, (SELECT COUNT(*) FROM audit_log WHERE tenant_id = ?), ?)
             ON CONFLICT(tenant_id) DO UPDATE SET
                 entry_count = entry_count + 1,
                 head_signature = excluded.head_signature
             """,
-            (tenant_id, head_signature),
+            (tenant_id, tenant_id, head_signature),
         )
+
+    def backfill_checkpoints(self) -> int:
+        """Reconcile every tenant's checkpoint to its true chain state (#4294).
+
+        Recomputes ``entry_count`` (the tenant's audit_log row count) and
+        ``head_signature`` (the true chain tip in append/rowid order) directly
+        from ``audit_log``, healing legacy checkpoints seeded at ``entry_count=1``
+        and seeding tenants that have none. Idempotent: rerunning yields the same
+        rows. Returns the number of tenant checkpoints reconciled.
+        """
+        tenants = self._conn.execute("SELECT DISTINCT tenant_id FROM audit_log").fetchall()
+        reconciled = 0
+        for (tenant_id,) in tenants:
+            count_row = self._conn.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE tenant_id = ?",
+                (str(tenant_id),),
+            ).fetchone()
+            head = self._latest_signature_for_tenant(str(tenant_id))
+            if not count_row or not head:
+                continue
+            self._conn.execute(
+                "INSERT OR REPLACE INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature) VALUES (?, ?, ?)",
+                (str(tenant_id), int(count_row[0]), head),
+            )
+            reconciled += 1
+        self._conn.commit()
+        return reconciled
 
     def _latest_signature_for_tenant(self, tenant_id: str) -> str:
         # The chain head is the LAST-APPENDED row (max rowid), not the row with

@@ -93,29 +93,44 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
       their `--allow-insecure-no-auth` does NOT actually disable the SCIM /
       SAML / OIDC / API-key middleware path that's still in effect)
     """
-    if _is_loopback_host(host):
-        return
+    from agent_bom.api.middleware import (
+        AuthPostureError,
+        derive_auth_posture,
+        validate_auth_posture,
+    )
     from agent_bom.api.secret_source import secret_is_configured
 
     has_api_key = bool(api_key or secret_is_configured("AGENT_BOM_API_KEYS") or secret_is_configured("AGENT_BOM_API_KEY"))
-    has_oidc = _oidc_enabled()
-    has_scim = _scim_bearer_enabled()
-    has_saml = _saml_enabled()
-    from agent_bom.api.middleware import trusted_proxy_auth_usable
+    # One derivation, shared with configure_api: the CLI serve gate reads the
+    # same posture rather than re-deriving each credential-source fact from env.
+    posture = derive_auth_posture(
+        api_key_configured=has_api_key,
+        allow_unauthenticated=_resolve_allow_unauthenticated(allow_insecure_no_auth),
+        listener_host=host,
+    )
+    # A contradictory/broken auth configuration (e.g. malformed OIDC) is a
+    # fail-fast startup error on any host — consolidation surfaces it here
+    # instead of a per-request 500 later.
+    try:
+        validate_auth_posture(posture)
+    except AuthPostureError as exc:
+        raise click.ClickException(str(exc)) from exc
 
-    has_trusted_proxy = trusted_proxy_auth_usable()
-    if has_api_key or has_oidc or has_scim or has_saml or has_trusted_proxy:
+    if posture.listener_loopback:
+        return
+
+    if posture.programmatic_auth_configured:
         if allow_insecure_no_auth:
             active: list[str] = []
-            if has_api_key:
+            if posture.api_key:
                 active.append("API-key")
-            if has_oidc:
+            if posture.oidc_bearer:
                 active.append("OIDC")
-            if has_scim:
+            if posture.scim_bearer:
                 active.append("SCIM-bearer")
-            if has_saml:
+            if posture.saml:
                 active.append("SAML")
-            if has_trusted_proxy:
+            if posture.trusted_proxy:
                 active.append("trusted-proxy")
             click.secho(
                 f"warning: --allow-insecure-no-auth was passed but {', '.join(active)} authentication is "

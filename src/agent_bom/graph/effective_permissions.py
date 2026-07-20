@@ -238,8 +238,11 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
         elif evidence_authoritative:
             # Evaluated on COMPLETE evidence and authoritatively NOT admin — record
             # the (non-admin) evaluation basis and do NOT consult the keyword
-            # heuristic (this was a real verdict, not a missing guess).
-            p.attributes["admin_equivalence_basis"] = "policy_evaluation"
+            # heuristic (this was a real verdict, not a missing guess). Re-resolve
+            # through the graph before writing so the mutation persists on a
+            # store-backed container (the held principal may have been evicted from
+            # the LRU during the scan above); in-RAM this is the same object.
+            (graph.nodes.get(p.id) or p).attributes["admin_equivalence_basis"] = "policy_evaluation"
         else:
             # No documents, OR only PARTIAL/incomplete evidence (non-authoritative):
             # fall back to the name/keyword heuristic and fail toward flagging.
@@ -249,8 +252,10 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, object]:
                 admin_via_heuristic += 1
         if basis is not None:
             admin_principals.add(p.id)
-            p.attributes["admin_equivalent"] = True
-            p.attributes["admin_equivalence_basis"] = basis
+            # Re-resolve before mutating so the write persists store-backed (see above).
+            pnode = graph.nodes.get(p.id) or p
+            pnode.attributes["admin_equivalent"] = True
+            pnode.attributes["admin_equivalence_basis"] = basis
 
     def _group_closure(principal_id: str) -> set[str]:
         """Return the GROUP ids a principal belongs to, transitively (nested groups)."""

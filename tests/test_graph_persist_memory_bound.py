@@ -104,7 +104,7 @@ def test_production_persist_path_does_not_materialise_full_prior_graph(tmp_path:
     monkeypatch.setattr(pipeline, "_get_graph_store", lambda: store)
 
     new = _synthetic_graph("scan-2", 20)
-    monkeypatch.setattr(builder, "build_unified_graph_from_report", lambda report_json, scan_id, tenant_id: new)
+    monkeypatch.setattr(builder, "build_unified_graph_from_report", lambda report_json, scan_id, tenant_id, container=None: new)
 
     job = SimpleNamespace(job_id="scan-2", tenant_id="t1", progress=[])
     tracemalloc.start()

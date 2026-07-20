@@ -1062,6 +1062,7 @@ class PostgresGraphStore:
                 placeholders = ",".join(["%s"] * len(entity_types))
                 query += f" AND entity_type IN ({placeholders})"
                 params.extend(sorted(entity_types))
+            query += " ORDER BY id"
 
             node_ids: set[str] = set()
             for row in conn.execute(query, params).fetchall():
@@ -1083,6 +1084,7 @@ class PostgresGraphStore:
                 placeholders = ",".join(["%s"] * len(relationship_types))
                 edge_query += f" AND relationship IN ({placeholders})"
                 edge_params.extend(sorted(relationship_types))
+            edge_query += " ORDER BY source_id, target_id, relationship, source_run_id NULLS FIRST, activity_id NULLS FIRST"
 
             for row in conn.execute(edge_query, edge_params).fetchall():
                 if row[0] not in node_ids or row[1] not in node_ids:
@@ -1115,6 +1117,7 @@ class PostgresGraphStore:
                            summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
                     FROM attack_paths
                     WHERE tenant_id = %s AND scan_id = %s
+                    ORDER BY source_node, target_node, composite_risk DESC, path_nodes
                     """,
                     (tenant_id, effective_scan_id),
                 ).fetchall():
@@ -1138,6 +1141,7 @@ class PostgresGraphStore:
                     SELECT pattern, agents, risk_score, description, owasp_agentic_tag
                     FROM interaction_risks
                     WHERE tenant_id = %s AND scan_id = %s
+                    ORDER BY pattern, agents
                     """,
                     (tenant_id, effective_scan_id),
                 ).fetchall():

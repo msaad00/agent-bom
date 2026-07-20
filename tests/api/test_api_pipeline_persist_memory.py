@@ -78,10 +78,10 @@ def test_persist_phase_rebuilds_with_no_prior_current_graph_alive(tmp_path, monk
     refs: list[weakref.ref] = []
     alive_before_each_build: list[int] = []
 
-    def _tracking(report_json, *, scan_id, tenant_id):
+    def _tracking(report_json, *, scan_id, tenant_id, **kwargs):
         gc.collect()
         alive_before_each_build.append(sum(1 for r in refs if r() is not None))
-        graph = real_build(report_json, scan_id=scan_id, tenant_id=tenant_id)
+        graph = real_build(report_json, scan_id=scan_id, tenant_id=tenant_id, **kwargs)
         refs.append(weakref.ref(graph))
         return graph
 

@@ -356,6 +356,21 @@ def _graph_build_workspace_enabled() -> bool:
     return os.environ.get("AGENT_BOM_GRAPH_BUILD_WORKSPACE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _graph_store_backed_build_enabled() -> bool:
+    """Opt-in flag for building the graph into a store-backed container (#4055/#4075).
+
+    Default-off so the shipped build+persist path is byte-for-byte unchanged. When
+    on, ``_persist_graph_snapshot`` builds the correlated graph into a per-build
+    :class:`~agent_bom.graph.store_backed.StoreBackedUnifiedGraph` on a throwaway
+    private SQLite workspace (never the shared Postgres workspace tables, so no
+    cross-tenant workspace data lives mid-build), so Phase-A emission and the
+    Phase-B overlays run against the store and the producer's peak RSS is bounded
+    by the container's LRU working set rather than the whole node set. The
+    workspace is a context manager, dropped after the build even on exception.
+    """
+    return os.environ.get("AGENT_BOM_GRAPH_STORE_BACKED_BUILD", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _persist_via_build_workspace(graph_store: Any, graph: Any) -> dict[str, int]:
     """Stream a built graph through the bounded workspace into the store.
 
@@ -395,77 +410,92 @@ def _persist_graph_snapshot(
     snapshot so current-state views, diff views, alert delivery, and OCSF
     export all derive from the same persisted graph state.
     """
+    import contextlib
+
     from agent_bom.graph.builder import build_unified_graph_from_report
     from agent_bom.graph.delta_digest import compute_delta_alerts_from_digest
     from agent_bom.graph.webhooks import dispatch_delta_alerts
 
     tenant_id = job.tenant_id or "default"
     scan_id = report_json.get("scan_id") or job.job_id
-    graph = build_unified_graph_from_report(report_json, scan_id=scan_id, tenant_id=tenant_id)
 
-    from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+    # Opt-in (#4055/#4075): build the correlated graph into a per-build store-backed
+    # container on a throwaway private SQLite workspace so the producer's peak RSS is
+    # bounded by the container's LRU working set, not the whole node set. The context
+    # manager drops the workspace after the build+persist even on exception. Forced
+    # SQLite (never the shared Postgres workspace tables) so no cross-tenant workspace
+    # data lives mid-build. Default-off -> the shipped in-RAM producer path is
+    # byte-for-byte unchanged.
+    if _graph_store_backed_build_enabled():
+        from agent_bom.graph.store_backed import open_store_backed_unified_graph
 
-    tenant_token = set_current_tenant(tenant_id)
-    try:
-        prior_digest = None
-        graph_store = _get_graph_store()
-        previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id)
-        if previous_scan_id and previous_scan_id != scan_id:
-            # Bounded prior-snapshot digest instead of a second full UnifiedGraph
-            # load — keeps peak RSS decoupled from the prior graph size (#4055/#4075).
-            prior_digest = graph_store.prior_delta_digest(tenant_id=tenant_id, scan_id=previous_scan_id)
-        # Persist via the streamed write path (node/edge iterables) so the write
-        # never buffers a second copy of the graph; counts come from the store's
-        # running tally, not len(graph.*).
-        #
-        # First consumer of the storage-backed build workspace (#4075, PR-1):
-        # when enabled, the graph is spilled to a bounded workspace store and the
-        # persist streams back from it, producing a byte-identical snapshot. This
-        # is the seam the builder re-plumb (PR-2) will emit into directly to drop
-        # the producer's own materialisation; opt-in so the shipped path is
-        # unchanged by default.
-        if _graph_build_workspace_enabled():
-            counts = _persist_via_build_workspace(graph_store, graph)
-        else:
-            counts = graph_store.save_graph_streaming(
-                scan_id=graph.scan_id,
-                tenant_id=graph.tenant_id,
-                nodes=graph.nodes.values(),
-                edges=graph.edges,
-                attack_paths=graph.attack_paths,
-                interaction_risks=graph.interaction_risks,
-                analysis_status=graph.analysis_status,
-                created_at=graph.created_at,
-            )
-    finally:
-        reset_current_tenant(tenant_token)
+        container_cm: contextlib.AbstractContextManager[Any] = open_store_backed_unified_graph(
+            tenant_id=tenant_id, scan_id=scan_id, backend="sqlite"
+        )
+    else:
+        container_cm = contextlib.nullcontext(None)
 
-    node_count = counts.get("nodes", len(graph.nodes))
-    edge_count = counts.get("edges", len(graph.edges))
-    alerts = compute_delta_alerts_from_digest(prior_digest, graph)
-    delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
-    _logger.info(
-        "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d delta_delivered=%d",
-        scan_id,
-        tenant_id,
-        node_count,
-        edge_count,
-        len(alerts),
-        delivery["delivered"] if delivery else 0,
-    )
-    if lock:
-        with lock:
-            job.progress.append(f"Graph persisted: {node_count} nodes, {edge_count} edges")
-            if alerts:
-                job.progress.append(f"Graph delta alerts: {len(alerts)}")
-                if delivery and delivery["configured"]:
-                    summary = (
-                        f"Graph delta delivery: {delivery['delivered']}/{delivery['attempted']} "
-                        f"via {delivery['outbound_channels']} outbound channel(s)"
-                    )
-                    job.progress.append(summary)
-                else:
-                    job.progress.append(f"Graph delta export ready: {delivery['ocsf_event_count'] if delivery else 0} OCSF event(s)")
+    with container_cm as container:
+        graph = build_unified_graph_from_report(report_json, scan_id=scan_id, tenant_id=tenant_id, container=container)
+
+        from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+
+        tenant_token = set_current_tenant(tenant_id)
+        try:
+            prior_digest = None
+            graph_store = _get_graph_store()
+            previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id)
+            if previous_scan_id and previous_scan_id != scan_id:
+                # Bounded prior-snapshot digest instead of a second full UnifiedGraph
+                # load — keeps peak RSS decoupled from the prior graph size (#4055/#4075).
+                prior_digest = graph_store.prior_delta_digest(tenant_id=tenant_id, scan_id=previous_scan_id)
+            # Persist via the streamed write path (node/edge iterables) so the write
+            # never buffers a second copy of the graph; counts come from the store's
+            # running tally, not len(graph.*). When the store-backed build is on the
+            # iterables page straight out of the build workspace; when off they iterate
+            # the in-RAM graph. Both produce a byte-identical snapshot.
+            if _graph_build_workspace_enabled():
+                counts = _persist_via_build_workspace(graph_store, graph)
+            else:
+                counts = graph_store.save_graph_streaming(
+                    scan_id=graph.scan_id,
+                    tenant_id=graph.tenant_id,
+                    nodes=graph.nodes.values(),
+                    edges=graph.edges,
+                    attack_paths=graph.attack_paths,
+                    interaction_risks=graph.interaction_risks,
+                    analysis_status=graph.analysis_status,
+                    created_at=graph.created_at,
+                )
+        finally:
+            reset_current_tenant(tenant_token)
+
+        node_count = counts.get("nodes", len(graph.nodes))
+        edge_count = counts.get("edges", len(graph.edges))
+        alerts = compute_delta_alerts_from_digest(prior_digest, graph)
+        delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
+        _logger.info(
+            "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d delta_delivered=%d",
+            scan_id,
+            tenant_id,
+            node_count,
+            edge_count,
+            len(alerts),
+            delivery["delivered"] if delivery else 0,
+        )
+        if lock:
+            with lock:
+                job.progress.append(f"Graph persisted: {node_count} nodes, {edge_count} edges")
+                if alerts:
+                    job.progress.append(f"Graph delta alerts: {len(alerts)}")
+                    if delivery and delivery["configured"]:
+                        summary = (
+                            f"Graph delta delivery: {delivery['delivered']}/{delivery['attempted']} "
+                            f"via {delivery['outbound_channels']} outbound channel(s)"
+                        )
+                        job.progress.append(summary)
+                    else:
+                        job.progress.append(f"Graph delta export ready: {delivery['ocsf_event_count'] if delivery else 0} OCSF event(s)")
 
 
 # ─── ScanPipeline ────────────────────────────────────────────────────────────
@@ -602,9 +632,7 @@ def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None
             existing.agent_type = agent_type
             existing.config_path = agent.config_path or ""
             existing.source_id = _optional_str(getattr(agent, "source_id", "")) or existing.source_id
-            existing.device_fingerprint = (
-                _optional_str(getattr(agent, "device_fingerprint", "")) or existing.device_fingerprint
-            )
+            existing.device_fingerprint = _optional_str(getattr(agent, "device_fingerprint", "")) or existing.device_fingerprint
             existing.server_count = server_count
             existing.package_count = pkg_count
             existing.credential_count = cred_count

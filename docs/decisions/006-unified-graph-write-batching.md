@@ -77,13 +77,55 @@ The write path is bounded end to end and regression-guarded:
   span). That last guard exists because a re-materialization of the *incoming*
   snapshot is invisible to the prior-side guards.
 
-The remaining, un-bounded stage is the graph **producer**:
-`build_unified_graph_from_report` still materializes the whole correlated
-`UnifiedGraph` — nodes, edges, and its adjacency / reverse-adjacency / dedup
-indexes, with correlation overlays that query the whole graph — in memory before
-persist. So peak RSS for a single build+persist is set by the producer, not the
-write path. Removing that wall (streaming/two-pass overlays that emit into the
-storage-backed `GraphBuildWorkspace` instead of a resident graph) is the builder
-re-plumb tracked by #4075; a generator wrapper around the existing builder does
-not move peak RSS because the correlation phase already holds the whole graph.
-Until then, steer multi-million-node graphs to a server-side backend.
+### Producer: store-backed build (opt-in) — realized reduction
+
+By default the graph **producer** `build_unified_graph_from_report` materializes
+the whole correlated `UnifiedGraph` — nodes, edges, and its adjacency /
+reverse-adjacency / dedup indexes — in RAM, with correlation overlays that query
+the whole graph, before persist. So peak RSS for a single build+persist is set by
+the producer, not the write path.
+
+`AGENT_BOM_GRAPH_STORE_BACKED_BUILD` (default-off) moves that materialization off
+the heap. When enabled, `_persist_graph_snapshot` builds the graph into a
+per-build `StoreBackedUnifiedGraph` (see ADR-adjacent
+`src/agent_bom/graph/store_backed.py`) on a **throwaway private SQLite build
+workspace** — never the shared Postgres workspace tables, so no cross-tenant
+workspace data lives mid-build and the workspace-RLS question is moot. Phase-A
+emission and every Phase-B overlay (cnapp / effective-permissions /
+nhi-governance / attack-path-fusion / a2a-mcp / cost / aspm / runtime / repo) run
+against the store **unchanged**; only a bounded LRU working set + one keyset page
+live in RAM. The context manager drops the workspace after the build+persist,
+even on exception. The flag is scoped to the persist caller — the CLI, API, and
+export builders keep the in-RAM path — so nothing changes for anyone not opting
+in (no latency or behavior regression). The default must stay off until an ops
+decision flips it.
+
+Two overlays mutated a *held* node subset across passes (cnapp exposure marks;
+effective-permissions admin-equivalence marks) — a pattern the store's
+hand-out/write-back-on-eviction contract cannot serve once the held objects are
+evicted. Both were made store-safe with a minimal, byte-identical change:
+single-pass filtering (no full-node materialization) + re-resolving the node
+through the graph immediately before the mutation. In-RAM this re-resolve returns
+the same object, so the default path is unchanged.
+
+**Realized reduction (measured, not projected).** The store-backed build removes
+the dominant resident structures — the whole-node dict + adjacency /
+reverse-adjacency + dedup indexes — so the producer's peak drops to a small
+fraction of the in-RAM producer, and the advantage **widens with scale** (the
+in-RAM peak grows strictly faster): store/in-RAM peak measured ≈0.72 at 3.6k
+nodes → 0.52 at 7.2k → 0.44 at 14.4k → 0.39 at 28.8k, with in-RAM ≈2.45 KB/node
+(flat) versus store falling 1.72→0.98 KB/node.
+
+**Residual (honest boundary).** This is a large, measured reduction, **not** a
+strict sub-linear bound: a residual O(N) term survives — Phase-A's in-pass
+id-bookkeeping maps plus a few overlays' bounded node subsets stay resident — so
+the ratio converges to a constant fraction (~0.37) rather than to zero. Removing
+that residual (streaming Phase-A / two-pass overlays that never hold an O(N)
+working set) is the remaining #4075 work. Until then, still steer
+multi-million-node graphs to a server-side backend.
+
+Guards: `tests/graph/test_store_backed_build_wiring.py` (builder-into-store
+byte-identical + overlays store-safe under LRU eviction + producer-peak advantage
+widens with scale + default-off unchanged) and
+`tests/api/test_store_backed_build_persist.py` (persisted snapshot byte-identical
+flag-on vs -off on both SQLite and live Postgres persist targets).

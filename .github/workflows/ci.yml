@@ -1101,6 +1101,9 @@ jobs:
       - name: Verify README/docs consistency
         run: python scripts/check_release_consistency.py
 
+      - name: Verify agent capability manifest
+        run: python scripts/generate_agent_capability_manifest.py --check
+
       - name: Verify doc counts (MCP tools, detectors, pages) match source
         run: python scripts/check-counts.py
 
@@ -1140,7 +1143,7 @@ jobs:
       - name: Validate canonical README commands parse
         run: |
           uv run agent-bom --version >/dev/null
-          uv run agent-bom agents --help >/dev/null
+          uv run agent-bom scan --help >/dev/null
           uv run agent-bom check --help >/dev/null
           uv run agent-bom image --help >/dev/null
           uv run agent-bom iac --help >/dev/null

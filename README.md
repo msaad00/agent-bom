@@ -42,6 +42,11 @@ is required. Export evidence when another tool needs it:
 `agent-bom scan . -f sarif -o findings.sarif`. For scripts,
 `--project .` (short form: `-p .`) is equivalent.
 
+`-p`/`--project` expects a directory, not a manifest file. For large
+monorepos, point it at the workspace or service under review and run one scan
+per CI workspace; the current CLI does not pretend to provide an arbitrary
+path-exclude language.
+
 ## Three ways to use it
 
 | Product lane | First command | Evidence you get | Natural next step |
@@ -53,6 +58,19 @@ is required. Export evidence when another tool needs it:
 Discovery and static/cloud scanning are read-only. The self-hosted control plane
 stores evidence, and runtime modes make explicit policy decisions; those are
 separate operational boundaries, not all one read-only pipeline.
+
+## Who it is for
+
+| Team | Start here | Outcome |
+|---|---|---|
+| Developers and AI builders | `agent-bom scan .` | Inventory, findings, blast radius, and fix-first actions before code or agent changes ship |
+| AppSec and security engineering | `agent-bom scan . -f sarif -o findings.sarif` | Reachability-aware triage, graph paths, SBOMs, and CI gates |
+| Platform, SRE, and cloud teams | `agent-bom serve` or a shipped Helm profile | Customer-controlled API/UI, fleet evidence, Postgres tenancy, and runtime policy |
+| GRC, audit, and governance | Compliance exports and control-plane evidence views | Framework mappings, signed evidence bundles, audit history, and review context |
+| AI/MCP owners | `agent-bom mcp server` or `agent-bom gateway serve ...` | Tool/server inventory and explicit allow, warn, or block decisions |
+
+The product generates security and compliance evidence; it is not a replacement
+for a GRC system of record, IAM, SIEM, or a complete certification program.
 
 <p align="center">
   <picture>
@@ -173,7 +191,7 @@ graph evidence or hand the path directly to remediation.
 </p>
 
 The demo is intentionally comprehensive, so it is kept collapsed at README
-display width. Its seeded `reqeusts` typosquat produces an expected non-zero
+display width. Its seeded `requests` typosquat produces an expected non-zero
 security-gate exit; that is a demonstrated finding, not a failed recording.
 
 </details>

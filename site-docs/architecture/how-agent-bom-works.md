@@ -84,7 +84,7 @@ control-plane store. See `src/agent_bom/api/routes/scan.py` and
 ```mermaid
 flowchart TB
     subgraph Who["Who can push a scan"]
-        CLI["CLI · agent-bom agents --push-url"]
+        CLI["CLI · agent-bom scan --push-url"]
         CI["GitHub Action · artifact upload"]
         Coll["Collector · in-cluster push"]
     end

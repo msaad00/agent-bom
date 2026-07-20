@@ -52,7 +52,7 @@ High-signal entry points:
 - API app and routes: `src/agent_bom/api/server.py`, `src/agent_bom/api/routes/`
 - graph persistence/API: `src/agent_bom/db/graph_store.py`, `src/agent_bom/api/routes/graph.py`
 - MCP tools/server: `src/agent_bom/mcp_server.py`, `src/agent_bom/mcp_tools/`
-- runtime proxy/gateway: `src/agent_bom/proxy_server.py`, `src/agent_bom/gateway_server.py`
+- runtime proxy/gateway: `src/agent_bom/proxy.py`, `src/agent_bom/gateway_server.py`
 - dashboard: `ui/app/`, `ui/components/`, `ui/lib/`
 - deployment chart: `deploy/helm/agent-bom/templates/`
 
@@ -99,7 +99,7 @@ Important integration families:
 uv run pytest -q
 uv run ruff check src tests
 uv run mypy src/agent_bom
-uv run agent-bom agents --demo --offline
+uv run agent-bom scan --demo --offline
 
 cd ui
 npm run verify:toolchain
@@ -115,7 +115,7 @@ Minimum verification matrix:
 
 | Change scope | Minimum verification |
 |---|---|
-| CLI/scanner behavior | targeted `tests/test_cli*` or scanner tests plus one real `agent-bom agents` smoke |
+| CLI/scanner behavior | targeted `tests/test_cli*` or scanner tests plus one real `agent-bom scan` smoke |
 | API routes/models | targeted API tests plus schema/codegen check when contracts change |
 | graph persistence/API/UI | graph API tests plus a live or fixture graph with non-empty nodes and edges |
 | runtime proxy/gateway | targeted runtime tests plus a live JSON-RPC smoke when feasible |

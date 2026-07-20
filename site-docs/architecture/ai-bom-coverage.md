@@ -23,14 +23,14 @@ surface that supports it. If the evidence is partial, the table says so.
 
 | Surface | First command or API path | Artifact | Code or docs anchor |
 |---|---|---|---|
-| Local agents, MCP, packages, and credential references | `agent-bom agents -p . -f json -o ai-bom.json` | AI-BOM JSON, findings, graph-ready inventory | `src/agent_bom/cli/agents/`, `src/agent_bom/models.py`, `src/agent_bom/output/json_fmt.py` |
+| Local agents, MCP, packages, and credential references | `agent-bom scan . -f json -o ai-bom.json` | AI-BOM JSON, findings, graph-ready inventory | `src/agent_bom/cli/agents/`, `src/agent_bom/models.py`, `src/agent_bom/output/json_fmt.py` |
 | Model files and manifests | `agent-bom mcp server` then `model_file_scan` tool, or API scan route | model file list, unsafe-format flags, manifests | `src/agent_bom/model_files.py`, `src/agent_bom/mcp_tools/specialized.py`, `src/agent_bom/api/routes/scan.py` |
 | Model provenance | `agent-bom cloud model-provenance <org/model>` | Hub metadata, hash/signature/provenance evidence where available | `src/agent_bom/cloud/model_provenance.py`, `src/agent_bom/cli/cloud.py` |
 | Dataset cards and PII-oriented dataset evidence | dataset scan API/MCP specialized scanner | dataset metadata, license/source/version hints, warnings | `src/agent_bom/parsers/dataset_cards.py`, `src/agent_bom/parsers/dataset_pii_scanner.py` |
 | Training pipeline evidence | training-pipeline scan API/MCP specialized scanner | training run metadata, framework/source tags | `src/agent_bom/parsers/training_pipeline.py`, `tests/test_training_pipeline.py` |
 | Cloud, GPU, Kubernetes, and AI infrastructure | `agent-bom agents --preset enterprise`, `--gpu-scan`, `--k8s`, provider flags | provider-visible AI resources, workloads, GPU/firmware signals, findings | `src/agent_bom/cloud/`, `src/agent_bom/scanners/firmware_advisory.py`, `site-docs/architecture/ai-infrastructure.md` |
-| Runtime proxy and gateway | `agent-bom proxy ...`, `agent-bom gateway serve ...` | audit JSONL, policy decisions, runtime alerts | `src/agent_bom/proxy_server.py`, `src/agent_bom/gateway_server.py`, `site-docs/features/runtime-proxy.md` |
-| SBOM and compliance evidence | `agent-bom agents -p . -f cyclonedx`, `-f spdx`, compliance export paths | CycloneDX, SPDX, compliance evidence bundles | `src/agent_bom/output/cyclonedx_fmt.py`, `src/agent_bom/output/spdx_fmt.py`, `src/agent_bom/api/routes/compliance.py` |
+| Runtime proxy and gateway | `agent-bom proxy ...`, `agent-bom gateway serve ...` | audit JSONL, policy decisions, runtime alerts | `src/agent_bom/proxy.py`, `src/agent_bom/gateway_server.py`, `site-docs/features/runtime-proxy.md` |
+| SBOM and compliance evidence | `agent-bom scan . -f cyclonedx`, `-f spdx`, compliance export paths | CycloneDX, SPDX, compliance evidence bundles | `src/agent_bom/output/cyclonedx_fmt.py`, `src/agent_bom/output/spdx_fmt.py`, `src/agent_bom/api/routes/compliance.py` |
 
 ## Skills and guided workflows
 

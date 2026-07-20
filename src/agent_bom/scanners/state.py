@@ -53,8 +53,19 @@ def _scan_performance_state() -> dict[str, int]:
 
 
 def reset_scan_warnings() -> None:
+    """Reset all scan warning channels at a command/request boundary."""
     _scan_state_local.warnings = []
     _scan_state_local.coverage_warnings = []
+
+
+def reset_scan_warnings_only() -> None:
+    """Reset transient scanner warnings without discarding parser coverage gaps.
+
+    Project manifest parsers can run before vulnerability scanning and record a
+    structured coverage warning. The package scanner must clear warnings from a
+    prior scan, but must preserve those parser warnings for the final report.
+    """
+    _scan_state_local.warnings = []
 
 
 def record_scan_warning(message: str) -> None:

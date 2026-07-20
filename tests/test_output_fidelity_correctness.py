@@ -19,6 +19,7 @@ import logging
 
 import pytest
 
+from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import (
     Agent,
     AgentType,
@@ -171,6 +172,39 @@ def test_csv_export_includes_base_reachability():
     expected = machine_export_findings(report, [br])[0].reachability
     assert rows[0]["reachability"] == expected
     assert expected  # non-empty verdict
+
+
+def test_json_csv_and_sarif_include_explicit_and_blast_findings():
+    """All machine exports must retain CVEs alongside explicit policy findings."""
+    from agent_bom.output.csv_fmt import to_csv
+    from agent_bom.output.json_fmt import to_json
+    from agent_bom.output.sarif import to_sarif
+
+    br = _reachability_br()
+    # JSON's legacy blast-radius projection expects object-valued agent/server
+    # entries; keep this parity fixture focused on the mixed finding streams.
+    br.affected_agents = []
+    report = AIBOMReport(
+        agents=[],
+        blast_radii=[br],
+        findings=[
+            Finding(
+                finding_type=FindingType.CREDENTIAL_EXPOSURE,
+                source=FindingSource.SECRET_SCAN,
+                asset=Asset(name="OPENAI_API_KEY", asset_type="credential"),
+                severity="HIGH",
+            )
+        ],
+    )
+
+    payload = to_json(report)
+    csv_rows = list(csv.DictReader(io.StringIO(to_csv(report).lstrip("﻿"))))
+    sarif_results = to_sarif(report)["runs"][0]["results"]
+
+    assert len(payload["findings"]) == 2
+    assert payload["finding_summary"]["total"] == 2
+    assert len(csv_rows) == 2
+    assert len(sarif_results) == 2
 
 
 def test_parquet_export_includes_base_reachability():

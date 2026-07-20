@@ -27,6 +27,7 @@ from agent_bom.output.html.sections import (
     _non_cve_findings,
     _policy_findings_section,
     _remediation_list,
+    _scan_outcome_banner,
     _skill_audit_section,
     _summary_cards,
     _trust_assessment_section,
@@ -58,7 +59,14 @@ def to_html(
     policy_high = sum(1 for finding in policy_findings if str(finding.severity).lower() == "high")
     total_vulns = len(findings)
 
-    if crit or policy_crit:
+    from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
+
+    scan_run = effective_scan_run(report)
+    if scan_run.outcome is ScanOutcome.FAILED:
+        status_color, status_label = "#dc2626", "SCAN FAILED"
+    elif scan_run.outcome is ScanOutcome.PARTIAL:
+        status_color, status_label = "#d97706", "PARTIAL COVERAGE"
+    elif crit or policy_crit:
         status_color, status_label = "#dc2626", "CRITICAL FINDINGS"
     elif total_vulns or policy_high or policy_findings:
         status_color, status_label = "#d97706", "SECURITY FINDINGS"
@@ -214,6 +222,7 @@ def to_html(
   <!-- Delta / warn-gate banners (only rendered when applicable) -->
   {_delta_banner(report)}
   {_warn_gate_banner(report)}
+  {_scan_outcome_banner(report)}
 
   <!-- Summary stat cards -->
   <section id="summary">

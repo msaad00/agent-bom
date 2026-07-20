@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.models import AIBOMReport, Severity
-from agent_bom.output.finding_views import cve_findings, nested_vulnerabilities, severity_value
+from agent_bom.output.finding_views import cve_findings, nested_vulnerabilities, severity_value, unified_findings
 
 
 def to_badge(report: AIBOMReport) -> dict:
@@ -17,11 +18,29 @@ def to_badge(report: AIBOMReport) -> dict:
 
     Use with: https://img.shields.io/endpoint?url=<badge-json-url>
     """
-    findings = cve_findings(report)
+    findings = unified_findings(report)
     if findings:
         severities = [severity_value(finding) for finding in findings]
     else:
         severities = [vuln.severity.value for vuln in nested_vulnerabilities(report)]
+
+    scan_run = effective_scan_run(report)
+    if scan_run.outcome is ScanOutcome.FAILED:
+        return {
+            "schemaVersion": 1,
+            "label": "agent-bom",
+            "message": "scan failed",
+            "color": "red",
+            "namedLogo": "shield",
+        }
+    if scan_run.outcome is ScanOutcome.PARTIAL:
+        return {
+            "schemaVersion": 1,
+            "label": "agent-bom",
+            "message": "partial scan",
+            "color": "yellow",
+            "namedLogo": "shield",
+        }
 
     critical = len([severity for severity in severities if severity == Severity.CRITICAL.value])
     high = len([severity for severity in severities if severity == Severity.HIGH.value])

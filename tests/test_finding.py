@@ -653,6 +653,24 @@ def test_report_to_findings_returns_existing_when_populated():
     assert result[0].finding_type == FindingType.CIS_FAIL
 
 
+def test_report_to_findings_merges_explicit_and_blast_radius_findings():
+    """A report must expose CVEs and explicit policy findings together."""
+    report = _make_report_with_blast_radii(1)
+    report.findings = [
+        Finding(
+            finding_type=FindingType.CREDENTIAL_EXPOSURE,
+            source=FindingSource.SECRET_SCAN,
+            asset=Asset(name="OPENAI_API_KEY", asset_type="credential"),
+            severity="HIGH",
+        )
+    ]
+
+    findings = report.to_findings()
+
+    assert {finding.finding_type for finding in findings} == {FindingType.CVE, FindingType.CREDENTIAL_EXPOSURE}
+    assert len(findings) == 2
+
+
 def test_report_cve_findings_filters_by_type():
     report = _make_report_with_blast_radii(2)
     # Add a non-CVE finding manually

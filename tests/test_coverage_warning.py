@@ -174,6 +174,36 @@ def test_scan_packages_covered_release_no_warning(tmp_path, monkeypatch):
     assert consume_coverage_warnings() == []
 
 
+def test_package_scan_preserves_parser_coverage_warning(tmp_path, monkeypatch):
+    """Vulnerability scanning must not erase a malformed-manifest warning."""
+    from agent_bom.scanners import (
+        ScanOptions,
+        consume_coverage_warnings,
+        record_coverage_warning,
+        scan_packages,
+    )
+
+    db_path = tmp_path / "vulns.db"
+    conn = init_db(db_path)
+    conn.close()
+    monkeypatch.setattr("agent_bom.db.schema.DB_PATH", db_path)
+    monkeypatch.setattr("agent_bom.db.schema.db_freshness_days", lambda path=None: 0)
+    record_coverage_warning(
+        {
+            "ecosystem": "npm",
+            "release": "npm:/tmp/package-lock.json",
+            "reason": "manifest_parse_error",
+            "detail": "package-lock.json failed to parse",
+            "package_count": 0,
+            "advisory_rows": 0,
+        }
+    )
+
+    asyncio.run(scan_packages([], options=ScanOptions(offline=True)))
+
+    assert consume_coverage_warnings()[0]["reason"] == "manifest_parse_error"
+
+
 def test_json_and_console_surface_coverage_warnings():
     """The warning reaches the JSON report summary and the console summary panel."""
     from rich.console import Console

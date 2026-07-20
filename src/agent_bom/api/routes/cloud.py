@@ -498,7 +498,8 @@ async def cloud_cis_benchmark(
                         abandon_on_cancel=True,
                     )
             except TimeoutError:
-                _logger.warning("Cloud CIS benchmark timed out for %s", requested)
+                requested_for_log = re.sub(r"[\r\n]+", "", requested)
+                _logger.warning("Cloud CIS benchmark timed out for %s", requested_for_log)
                 return {
                     "error": "Provider benchmark timed out before completing.",
                     "provider": requested,

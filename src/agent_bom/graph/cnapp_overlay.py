@@ -241,9 +241,18 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
     Returns counts of exposed nodes, data stores, and toxic combinations added.
     Never raises into the builder.
     """
-    nodes = list(graph.nodes.values())
-    cloud_resources = [n for n in nodes if n.entity_type in (EntityType.CLOUD_RESOURCE, EntityType.RESOURCE, EntityType.SERVER)]
-    misconfigs = [n for n in nodes if n.entity_type == EntityType.MISCONFIGURATION]
+    # Single streaming pass over the node set that keeps only the (bounded)
+    # cloud-resource and misconfiguration subsets — never a full materialised list
+    # of every node — so the producer's peak stays bounded when the graph is
+    # store-backed (#4055/#4075). Byte-identical to the prior two comprehensions.
+    cloud_resources: list[UnifiedNode] = []
+    misconfigs: list[UnifiedNode] = []
+    for n in graph.nodes.values():
+        et = n.entity_type
+        if et in (EntityType.CLOUD_RESOURCE, EntityType.RESOURCE, EntityType.SERVER):
+            cloud_resources.append(n)
+        elif et == EntityType.MISCONFIGURATION:
+            misconfigs.append(n)
 
     # Resource id → set of vulnerability node ids affecting it (via VULNERABLE_TO).
     vulnerable_resources: set[str] = set()
@@ -283,7 +292,13 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
                 if ports:
                     node.attributes.setdefault("exposed_ports", []).extend(ports)
     # Also mark cloud resources whose own attributes/label signal public exposure.
-    for node in cloud_resources:
+    # Re-resolve through the graph before mutating so the write persists on a
+    # store-backed container (a held subset object may have been evicted from the
+    # LRU during the scan above); in-RAM this returns the same object, byte-identical.
+    for resource in cloud_resources:
+        node = graph.nodes.get(resource.id)
+        if node is None:
+            continue
         if node.attributes.get("internet_exposed") or _matches(_text_of(node), _EXPOSURE_KEYWORDS):
             node.attributes["internet_exposed"] = True
             exposed_ids.add(node.id)
@@ -302,7 +317,13 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
     # Classify data stores and attach a DATA_STORE companion node.
     data_stores_added = 0
     data_store_for_resource: dict[str, str] = {}
-    for node in cloud_resources:
+    # Re-resolve each held subset node through the graph so the exposure verdict read
+    # below (``internet_exposed``, set above) reflects the store-canonical object, not
+    # a possibly-evicted held copy. In-RAM this is the same object, byte-identical.
+    for resource in cloud_resources:
+        node = graph.nodes.get(resource.id)
+        if node is None:
+            continue
         if node.entity_type == EntityType.SERVER:
             continue
         if not _matches(_text_of(node), _DATA_STORE_KEYWORDS):

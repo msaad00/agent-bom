@@ -155,6 +155,8 @@ AGENT_BOM_NO_AUTO_DEV_KEY
 AGENT_BOM_NO_AUTO_CONNECTIONS_KEY
 # Opt-in flag for the storage-backed graph-build workspace (producer streaming); read in api/pipeline.py, path default in graph/build_workspace.py.
 AGENT_BOM_GRAPH_BUILD_WORKSPACE
+# Opt-in flag (#4055/#4075): build the correlated graph into a per-build store-backed container on a throwaway private SQLite workspace so the producer's peak RSS is bounded; default-off keeps the byte-identical in-RAM producer. Read in api/pipeline.py.
+AGENT_BOM_GRAPH_STORE_BACKED_BUILD
 # Dormancy window (days, default 90) before a non-human identity with no recent usage is flagged dormant; read in graph/nhi_governance.py.
 AGENT_BOM_NHI_DORMANT_DAYS
 # Opt-in window (days, default 0 = disabled) after which a dormant agent-bom-issued identity is auto-revoked; read in api/agent_identity_store.py.

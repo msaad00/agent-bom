@@ -426,6 +426,234 @@ def describe_security_header_posture() -> dict[str, object]:
     }
 
 
+class AuthPostureError(RuntimeError):
+    """Raised when the derived auth posture is internally contradictory.
+
+    A contradictory posture is a fail-fast startup error (surfaced by the CLI
+    serve/api gate) rather than a silent coexistence that only breaks at request
+    time.
+    """
+
+
+@dataclass(frozen=True)
+class AuthPosture:
+    """The single derived view of control-plane authentication posture.
+
+    Every reader — the CLI serve gate, ``/health``/operator surfaces (via the
+    runtime status), and the middleware — consumes this one object instead of
+    re-deriving the same facts from the environment. The boolean fields are the
+    raw credential-source facts (derived once by ``derive_auth_posture``); the
+    properties express the precedence order and the two aggregate views the
+    readers need.
+    """
+
+    listener_host: str
+    listener_loopback: bool
+    api_key: bool
+    oidc_bearer: bool
+    oidc_browser: bool
+    snowflake_oauth: bool
+    scim_bearer: bool
+    saml: bool
+    trusted_proxy: bool
+    anonymous_allowed: bool
+    oidc_config_invalid: bool = False
+    oidc_config_error: str | None = None
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        """Effective credential sources in resolver precedence order."""
+        ordered: list[str] = []
+        if self.scim_bearer:
+            ordered.append("scim_bearer")
+        if self.trusted_proxy:
+            ordered.append("trusted_proxy")
+        if self.oidc_bearer:
+            ordered.append("oidc_bearer")
+        if self.api_key:
+            ordered.append("api_key")
+        if self.oidc_browser:
+            ordered.append("oidc_browser")
+        if self.snowflake_oauth:
+            ordered.append("snowflake_oauth")
+        if self.saml:
+            ordered.append("saml_sso")
+        return tuple(ordered)
+
+    @property
+    def auth_configured(self) -> bool:
+        """True when any credential source (including browser SSO) is configured."""
+        return bool(self.sources)
+
+    @property
+    def programmatic_auth_configured(self) -> bool:
+        """The serve-gate view: excludes browser-interactive SSO.
+
+        ``oidc_browser`` / ``snowflake_oauth`` are browser-login flows that do
+        not gate programmatic API access, so the non-loopback serve gate does
+        not treat them as satisfying the auth requirement (unchanged behavior).
+        """
+        return self.api_key or self.oidc_bearer or self.scim_bearer or self.saml or self.trusted_proxy
+
+    @property
+    def configured_modes(self) -> list[str]:
+        """Operator/UI mode list — ordering preserved for existing consumers."""
+        modes: list[str] = []
+        if self.trusted_proxy:
+            modes.append("trusted_proxy")
+        if self.oidc_browser:
+            modes.append("oidc_browser")
+        if self.snowflake_oauth:
+            modes.append("snowflake_oauth")
+        if self.oidc_bearer:
+            modes.append("oidc_bearer")
+        if self.api_key:
+            modes.append("api_key")
+        if self.scim_bearer:
+            modes.append("scim_provisioning")
+        if self.saml:
+            modes.append("saml_sso")
+        return modes
+
+    @property
+    def auth_required(self) -> bool:
+        # An explicit unauthenticated opt-in means anonymous callers are served
+        # as NO_AUTH_ROLE, so authentication is not *required* — even when
+        # credentials are also configured for callers who want to elevate.
+        return not self.anonymous_allowed
+
+    @property
+    def recommended_ui_mode(self) -> str:
+        if self.anonymous_allowed and not self.auth_configured:
+            return "no_auth"
+        if self.trusted_proxy:
+            return "reverse_proxy_oidc"
+        if self.oidc_browser:
+            return "oidc_browser"
+        if self.snowflake_oauth:
+            return "snowflake_oauth"
+        if self.oidc_bearer:
+            return "oidc_bearer"
+        if self.saml or self.api_key:
+            # SAML SSO completes at the IdP and mints a short-lived session API
+            # key, so the dashboard uses the same session-key login surface.
+            return "session_api_key"
+        return "configure_auth"
+
+    def runtime_status(self) -> dict[str, object]:
+        """Project to the operator/UI runtime-status dict (the /health source)."""
+        return {
+            "auth_required": self.auth_required,
+            "auth_configured": self.auth_configured,
+            "configured_modes": self.configured_modes,
+            "recommended_ui_mode": self.recommended_ui_mode,
+            "unauthenticated_allowed": self.anonymous_allowed,
+        }
+
+    def summary_line(self) -> str:
+        """One structured line summarizing the posture for the startup log."""
+        sources = ">".join(self.sources) if self.sources else "none"
+        scope = "loopback" if self.listener_loopback else "non-loopback"
+        return (
+            f"auth posture: sources=[{sources}] "
+            f"anonymous={'on' if self.anonymous_allowed else 'off'} "
+            f"listener={self.listener_host}({scope}) "
+            f"trusted_proxy={'usable' if self.trusted_proxy else 'off'} "
+            f"oidc={'invalid' if self.oidc_config_invalid else ('configured' if self.oidc_bearer else 'off')}"
+        )
+
+
+_EMPTY_AUTH_POSTURE = AuthPosture(
+    listener_host="127.0.0.1",
+    listener_loopback=True,
+    api_key=False,
+    oidc_bearer=False,
+    oidc_browser=False,
+    snowflake_oauth=False,
+    scim_bearer=False,
+    saml=False,
+    trusted_proxy=False,
+    anonymous_allowed=False,
+)
+_AUTH_POSTURE: AuthPosture = _EMPTY_AUTH_POSTURE
+
+
+def derive_auth_posture(
+    *,
+    api_key_configured: bool,
+    allow_unauthenticated: bool,
+    listener_host: str | None = None,
+) -> AuthPosture:
+    """Derive the auth posture from the environment plus caller-known facts.
+
+    This is the single derivation of the env-based credential-source facts
+    (OIDC bearer/browser, Snowflake OAuth, SCIM, SAML, trusted proxy). The
+    caller supplies the two facts it uniquely knows — whether an API key source
+    is configured (static key flag / env keys / runtime key store) and whether
+    the unauthenticated opt-in is on — and the listener host being bound.
+    """
+    from agent_bom.api.oidc import OIDCConfig, OIDCError, oidc_enabled_from_env
+    from agent_bom.api.oidc_browser import oidc_browser_enabled_from_env
+    from agent_bom.api.saml import saml_enabled_from_env
+    from agent_bom.api.scim import scim_enabled_from_env
+    from agent_bom.api.snowflake_oauth import snowflake_oauth_enabled_from_env
+
+    oidc_bearer = oidc_enabled_from_env()
+    oidc_config_invalid = False
+    oidc_config_error: str | None = None
+    if oidc_bearer:
+        try:
+            OIDCConfig.from_env()
+        except OIDCError as exc:
+            from agent_bom.security import sanitize_error
+
+            oidc_config_invalid = True
+            oidc_config_error = sanitize_error(exc)
+
+    host = _configured_listener_host(listener_host)
+    return AuthPosture(
+        listener_host=host,
+        listener_loopback=_is_loopback_listener(host),
+        api_key=bool(api_key_configured),
+        oidc_bearer=oidc_bearer,
+        oidc_browser=oidc_browser_enabled_from_env(),
+        snowflake_oauth=snowflake_oauth_enabled_from_env(),
+        scim_bearer=scim_enabled_from_env(),
+        saml=saml_enabled_from_env(),
+        trusted_proxy=trusted_proxy_auth_usable(),
+        anonymous_allowed=bool(allow_unauthenticated),
+        oidc_config_invalid=oidc_config_invalid,
+        oidc_config_error=oidc_config_error,
+    )
+
+
+def validate_auth_posture(posture: AuthPosture) -> None:
+    """Raise ``AuthPostureError`` for an internally contradictory posture.
+
+    Consolidation, not policy change: this only rejects combinations that are
+    already broken today (a malformed/contradictory OIDC configuration currently
+    500s on the first OIDC request). Every combination that boots and serves
+    today keeps working — including trusted-proxy alongside direct OIDC on one
+    listener, which stays allowed.
+    """
+    if posture.oidc_config_invalid:
+        detail = posture.oidc_config_error or "OIDC configuration is invalid"
+        raise AuthPostureError(f"Invalid OIDC configuration: {detail}")
+
+
+def apply_auth_posture(posture: AuthPosture) -> None:
+    """Store the derived posture and project it into the runtime-status dict."""
+    global _AUTH_POSTURE
+    _AUTH_POSTURE = posture
+    _AUTH_RUNTIME_STATUS.clear()
+    _AUTH_RUNTIME_STATUS.update(posture.runtime_status())
+
+
+def get_auth_posture() -> AuthPosture:
+    """Return the last-applied derived auth posture (the single source of truth)."""
+    return _AUTH_POSTURE
+
+
 def configure_auth_runtime(
     *,
     api_key_configured: bool,
@@ -437,61 +665,27 @@ def configure_auth_runtime(
     snowflake_oauth_enabled: bool = False,
     unauthenticated_allowed: bool = False,
 ) -> None:
-    """Track the active auth modes for operator/UI introspection surfaces."""
-    configured_modes: list[str] = []
-    if trusted_proxy_enabled:
-        configured_modes.append("trusted_proxy")
-    if oidc_browser_enabled:
-        configured_modes.append("oidc_browser")
-    if snowflake_oauth_enabled:
-        configured_modes.append("snowflake_oauth")
-    if oidc_enabled:
-        configured_modes.append("oidc_bearer")
-    if api_key_configured:
-        configured_modes.append("api_key")
-    if scim_enabled:
-        configured_modes.append("scim_provisioning")
-    if saml_enabled:
-        configured_modes.append("saml_sso")
+    """Build and apply an :class:`AuthPosture` from already-derived source facts.
 
-    auth_configured = bool(configured_modes)
-    # An explicit unauthenticated opt-in means anonymous callers are served as
-    # NO_AUTH_ROLE, so authentication is not *required* — even when credentials
-    # are also configured for callers who want to elevate. This keeps the UI
-    # from rendering a login wall when public read-only access is genuinely on.
-    # Presenting a valid credential still authenticates to its role, and an
-    # invalid credential is still rejected; that enforcement lives in
-    # APIKeyMiddleware, not in this introspection surface.
-    auth_required = not unauthenticated_allowed
-
-    recommended_ui_mode = "configure_auth"
-    if unauthenticated_allowed and not auth_configured:
-        recommended_ui_mode = "no_auth"
-    elif trusted_proxy_enabled:
-        # Reverse-proxy SSO remains preferred when present.
-        recommended_ui_mode = "reverse_proxy_oidc"
-    elif oidc_browser_enabled:
-        recommended_ui_mode = "oidc_browser"
-    elif snowflake_oauth_enabled:
-        recommended_ui_mode = "snowflake_oauth"
-    elif oidc_enabled:
-        recommended_ui_mode = "oidc_bearer"
-    elif saml_enabled or api_key_configured:
-        # SAML SSO completes at the IdP and mints a short-lived session API key,
-        # so the dashboard uses the same session-key login surface as a static
-        # API key rather than the "configure auth" wall.
-        recommended_ui_mode = "session_api_key"
-
-    _AUTH_RUNTIME_STATUS.clear()
-    _AUTH_RUNTIME_STATUS.update(
-        {
-            "auth_required": auth_required,
-            "auth_configured": auth_configured,
-            "configured_modes": configured_modes,
-            "recommended_ui_mode": recommended_ui_mode,
-            "unauthenticated_allowed": unauthenticated_allowed,
-        }
+    Backward-compatible entry point: callers that have already resolved the
+    per-source booleans (notably ``configure_api``) hand them here, and the
+    posture object becomes the single stored source the runtime status,
+    ``/health``, and the startup log all read.
+    """
+    host = _configured_listener_host(None)
+    posture = AuthPosture(
+        listener_host=host,
+        listener_loopback=_is_loopback_listener(host),
+        api_key=bool(api_key_configured),
+        oidc_bearer=bool(oidc_enabled),
+        oidc_browser=bool(oidc_browser_enabled),
+        snowflake_oauth=bool(snowflake_oauth_enabled),
+        scim_bearer=bool(scim_enabled),
+        saml=bool(saml_enabled),
+        trusted_proxy=bool(trusted_proxy_enabled),
+        anonymous_allowed=bool(unauthenticated_allowed),
     )
+    apply_auth_posture(posture)
 
 
 def get_auth_runtime_status() -> dict[str, object]:
@@ -1327,7 +1521,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if oidc_cfg is None or not getattr(oidc_cfg, "enabled", False) or not auth.startswith("Bearer "):
             return Absent()
 
-        from agent_bom.api.oidc import OIDCError, record_oidc_decode_failure
+        from agent_bom.api.oidc import OIDCError, record_oidc_decode_failure, token_is_jwt_shaped
 
         try:
             _claims, oidc_role = oidc_cfg.verify(raw_key)
@@ -1367,7 +1561,26 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         except OIDCError as exc:
             record_oidc_decode_failure()
             _logger.debug("OIDC verification failed: %s", sanitize_text(exc))
-            # Fall through to API key check — OIDC failure is non-fatal if keys also configured
+            # PR2 decision (#4274): distinguish a presented-but-invalid OIDC
+            # credential from a bearer that simply is not an OIDC token.
+            #
+            # A JWT-shaped bearer (header.payload.signature with an ``alg``
+            # header) that fails verification — bad signature, wrong issuer /
+            # audience, expired, unconfigured issuer, replay, malformed claims —
+            # WAS presented as an OIDC token. It is terminal ``Invalid`` (a hard
+            # 401) and must never be silently retried against the API-key store.
+            #
+            # A bearer that is not JWT-shaped is not an OIDC token at all (e.g. a
+            # raw opaque API key sent as ``Authorization: Bearer``). It stays
+            # ``Absent`` so the API-key resolver can still authenticate it,
+            # preserving the legitimate key-as-bearer path.
+            if token_is_jwt_shaped(raw_key):
+                return Invalid(
+                    JSONResponse(
+                        status_code=401,
+                        content={"detail": "Unauthorized — OIDC bearer token verification failed"},
+                    )
+                )
             return Absent()
 
     async def _resolve_api_key(self, request: StarletteRequest, call_next: RequestResponseEndpoint, raw_key: str) -> Resolution:

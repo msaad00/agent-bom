@@ -26,14 +26,43 @@ def test_enforce_auth_defaults_loopback_always_passes() -> None:
     _enforce_auth_defaults("serve", "::1", api_key=None, allow_insecure_no_auth=False)
 
 
+def test_enforce_auth_defaults_browser_only_sso_still_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Browser-interactive OIDC alone does not gate programmatic API access.
+
+    The serve gate reads the shared posture's ``programmatic_auth_configured``,
+    which excludes browser-only SSO — so a non-loopback bind with only
+    ``oidc_browser`` configured must still refuse. Locks the posture-SoT wiring.
+    """
+    for name in (
+        "AGENT_BOM_API_KEY",
+        "AGENT_BOM_API_KEYS",
+        "AGENT_BOM_OIDC_ISSUER",
+        "AGENT_BOM_SCIM_BEARER_TOKEN",
+        "AGENT_BOM_TRUST_PROXY_AUTH",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr("agent_bom.api.oidc_browser.oidc_browser_enabled_from_env", lambda: True)
+    with pytest.raises(click.ClickException, match="Refusing to expose"):
+        _enforce_auth_defaults("serve", "0.0.0.0", api_key=None, allow_insecure_no_auth=False)
+
+
+def test_enforce_auth_defaults_raises_on_contradictory_oidc_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A contradictory OIDC config is a fail-fast startup error, not a per-request 500."""
+    monkeypatch.setenv("AGENT_BOM_OIDC_ISSUER", "https://corp.okta.com")
+    monkeypatch.setenv(
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+        '{"tenant-a":{"issuer":"https://a.example","audience":"agent-bom"}}',
+    )
+    with pytest.raises(click.ClickException, match="(?i)oidc"):
+        _enforce_auth_defaults("serve", "127.0.0.1", api_key=None, allow_insecure_no_auth=False)
+
+
 def test_enforce_auth_defaults_api_key_satisfies_check() -> None:
     """API key set => non-loopback bind allowed without --allow-insecure-no-auth."""
     _enforce_auth_defaults("serve", "0.0.0.0", api_key="secret", allow_insecure_no_auth=False)
 
 
-def test_enforce_auth_defaults_trusted_proxy_file_secret_satisfies_check(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_enforce_auth_defaults_trusted_proxy_file_secret_satisfies_check(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A strong mounted proxy secret is a valid non-loopback auth path."""
     _clear_auth_env(monkeypatch)
     secret_file = tmp_path / "trusted-proxy-secret"
@@ -45,9 +74,7 @@ def test_enforce_auth_defaults_trusted_proxy_file_secret_satisfies_check(
 
 
 @pytest.mark.parametrize("secret", [None, "too-short"])
-def test_enforce_auth_defaults_rejects_unusable_trusted_proxy_secret(
-    secret: str | None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_enforce_auth_defaults_rejects_unusable_trusted_proxy_secret(secret: str | None, monkeypatch: pytest.MonkeyPatch) -> None:
     """A flag without a strong attestation secret must remain fail-closed."""
     _clear_auth_env(monkeypatch)
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")

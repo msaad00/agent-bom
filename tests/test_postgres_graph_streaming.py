@@ -180,8 +180,9 @@ def test_streaming_snapshot_tally_matches_nodes(monkeypatch):
         "limits": {"max_nodes": 5000},
         "observed": {"node_count": 5001},
     }
-    # One durable snapshot commit plus the post-save ANALYZE stats commit.
-    assert conn.committed == 2
+    # The DML-only runtime role performs one durable snapshot commit. Planner
+    # maintenance runs separately under a table-owner role.
+    assert conn.committed == 1
 
 
 def test_save_graph_delegates_to_streaming(monkeypatch):
@@ -573,42 +574,25 @@ def test_retired_edge_update_records_ocsf_close_activity(monkeypatch):
     assert "activity_id = case when previous.activity_id = 1 then 3 else previous.activity_id end" in conn.retirement_sql
 
 
-def test_streaming_analyzes_graph_tables_after_bulk_save(monkeypatch):
-    """Bulk persist must refresh planner stats so the first cold read plans sanely.
-
-    Without a post-ingest ANALYZE, the first snapshot_stats query after a large
-    save_graph plans against stale statistics and can blow the app role's 30s
-    statement_timeout (~470ms once stats catch up). The targeted ANALYZE runs
-    after the snapshot commit, never database-wide.
-    """
+def test_streaming_does_not_run_privileged_analyze_as_runtime_role(monkeypatch):
+    """DML-only runtime credentials must not issue ANALYZE statements."""
     conn = _RecordingConn()
     store = _make_store(conn, monkeypatch)
 
     store.save_graph_streaming(scan_id="scan-a", tenant_id="t1", nodes=_nodes(3), edges=iter(()))
 
     analyzed = [call for call in conn.sql_calls if call.startswith("analyze ")]
-    for table in ("graph_nodes", "graph_edges", "graph_node_search", "attack_paths", "interaction_risks", "graph_snapshots"):
-        assert f"analyze {table}" in analyzed, f"missing ANALYZE for {table}; saw {analyzed}"
-    snapshot_insert_at = next(i for i, call in enumerate(conn.sql_calls) if call.startswith("insert into graph_snapshots"))
-    first_analyze_at = next(i for i, call in enumerate(conn.sql_calls) if call.startswith("analyze "))
-    assert first_analyze_at > snapshot_insert_at, "ANALYZE must run after the snapshot write"
-    assert conn.committed >= 2, "ANALYZE must be committed separately after the durable snapshot commit"
+    assert analyzed == []
 
 
-def test_streaming_analyze_failure_never_fails_the_save(monkeypatch):
-    """Stats refresh is best-effort: an ANALYZE error degrades, the save stands."""
+def test_streaming_save_stays_dml_only(monkeypatch):
+    """A DML-only role can save graph evidence without maintenance privileges."""
 
-    class _AnalyzeFailingConn(_RecordingConn):
-        def execute(self, sql, params=None):
-            if sql.strip().lower().startswith("analyze"):
-                raise RuntimeError("permission denied: ANALYZE")
-            return super().execute(sql, params)
-
-    conn = _AnalyzeFailingConn()
+    conn = _RecordingConn()
     store = _make_store(conn, monkeypatch)
 
     counts = store.save_graph_streaming(scan_id="scan-b", tenant_id="t1", nodes=_nodes(2), edges=iter(()))
 
     assert counts == {"nodes": 2, "edges": 0}
     assert conn.committed >= 1
-    assert conn.rolled_back >= 1
+    assert conn.rolled_back == 0

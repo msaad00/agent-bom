@@ -33,6 +33,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE IF EXISTS attack_paths DROP COLUMN IF EXISTS technique_mappings")
-    op.execute("ALTER TABLE IF EXISTS attack_paths DROP COLUMN IF EXISTS tool_exposure")
-    op.execute("ALTER TABLE IF EXISTS attack_paths DROP COLUMN IF EXISTS summary")
+    # These columns are additive compatibility fields used by newer readers.
+    # Dropping them during rollback would make an otherwise healthy database
+    # unreadable by the current application, and can destroy persisted evidence.
+    # Keep the downgrade intentionally non-destructive; a future maintenance
+    # migration may remove columns only with an explicit data-retention plan.
+    pass

@@ -937,13 +937,13 @@ class PostgresGraphStore:
             # failure must never fail the durable save that already committed.
             self._purge_expired_snapshots(conn, tenant)
 
-            # Refresh planner statistics for the tables this bulk write just
-            # churned. Without it the first cold read (snapshot_stats) after a
-            # large ingest plans against stale statistics and can exceed the
-            # app role's statement_timeout; the same query is sub-second once
-            # stats catch up. Targeted per-table ANALYZE, never database-wide,
-            # and best-effort: a failure must never fail the committed save.
-            self._analyze_graph_tables(conn)
+            # Planner statistics are maintained by PostgreSQL autovacuum and a
+            # separately privileged maintenance job. Do not issue ANALYZE from
+            # the application role: production runtime credentials are
+            # intentionally DML-only and PostgreSQL rejects ANALYZE for a role
+            # that does not own these tables. The committed write remains
+            # authoritative; operators that bulk-load unusually large tenants
+            # can run the documented maintenance job with an owner role.
 
         return {"nodes": node_count, "edges": edge_count}
 
@@ -984,23 +984,6 @@ class PostgresGraphStore:
             ):
                 builder.add_interaction_risk(row[0], _decode_json_array(row[1], field="interaction risk agents"))
         return builder.build()
-
-    def _analyze_graph_tables(self, conn: Any) -> None:
-        """Refresh planner statistics on the graph tables after a bulk save."""
-        try:
-            for table in (
-                "graph_nodes",
-                "graph_edges",
-                "graph_node_search",
-                "attack_paths",
-                "interaction_risks",
-                "graph_snapshots",
-            ):
-                conn.execute(f"ANALYZE {table}")  # nosec B608 - table names are static internal schema metadata
-            conn.commit()
-        except Exception as exc:  # noqa: BLE001 - stats refresh is best-effort
-            conn.rollback()
-            logger.warning("Post-save graph ANALYZE skipped: %s", sanitize_text(str(exc)))
 
     def _purge_expired_snapshots(self, conn: Any, tenant: str) -> None:
         """Delete this tenant's graph snapshots older than the retention window.

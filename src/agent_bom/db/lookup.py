@@ -354,6 +354,19 @@ def _alias_cluster_fix(row: sqlite3.Row, rows: list[sqlite3.Row], version: Optio
             continue
         if identifiers.isdisjoint(_row_identifiers(other)):
             continue
+        # An alias row is only a valid source of remediation metadata when its
+        # own affected range includes the installed version.  Advisory mirrors
+        # frequently share aliases while covering different releases; taking
+        # a fix from an unrelated range makes an otherwise unfixable finding
+        # look remediable (or, worse, hides a real finding after upgrade).
+        if version and _version_match_state(
+            version,
+            other["introduced"],
+            other["fixed"],
+            other["last_affected"],
+            other["ecosystem"],
+        ) != "affected":
+            continue
         fix = _resolve_fixed_version(other)
         if not fix or not is_valid_fix_version(fix):
             continue

@@ -4,6 +4,9 @@
 {{- if not $envFrom }}
 {{- $envFrom = .Values.controlPlane.api.envFrom }}
 {{- end }}
+{{- if and (not $envFrom) (not $migrations.env) }}
+{{- fail "controlPlane.migrations requires controlPlane.api.envFrom or controlPlane.migrations.env with AGENT_BOM_POSTGRES_URL" }}
+{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:

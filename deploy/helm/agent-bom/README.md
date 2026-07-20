@@ -11,13 +11,18 @@ the scanner CronJob and supporting RBAC only. The API, dashboard, gateway,
 proxy, firewall, MCP server mode, and Postgres wiring stay off until you opt in.
 
 For the full platform (browse findings in the UI, hit the REST API, enforce
-runtime policy), install with:
+runtime policy), start from a shipped profile. Profiles provide the required
+Postgres secret wiring and deployment-specific egress/ingress rules:
 
 ```bash
-helm upgrade --install agent-bom . \
-  -n agent-bom --create-namespace \
-  --set controlPlane.enabled=true
+python scripts/install_helm_profile.py focused-pilot --print-command
+python scripts/install_helm_profile.py focused-pilot
 ```
+
+The chart does not provision Postgres. A direct `--set controlPlane.enabled=true`
+install must supply `AGENT_BOM_POSTGRES_URL` through `controlPlane.api.envFrom`
+or `controlPlane.migrations.env`; otherwise template validation fails before
+Helm creates a partial control plane.
 
 Without that flag, Helm succeeds quietly and only scanner pieces land in the
 cluster. See the `controlPlane:` block in `values.yaml` for every subcomponent
@@ -32,11 +37,8 @@ From a checked-out repo (chart path `deploy/helm/agent-bom/`):
 helm upgrade --install agent-bom deploy/helm/agent-bom \
   -n agent-bom --create-namespace
 
-# API + UI control plane
-helm upgrade --install agent-bom deploy/helm/agent-bom \
-  -n agent-bom --create-namespace \
-  --set controlPlane.enabled=true \
-  --set controlPlane.ingress.enabled=true
+# API + UI control plane (use a shipped profile; it includes Postgres wiring)
+python scripts/install_helm_profile.py focused-pilot
 
 # Custom scan schedule
 helm upgrade --install agent-bom deploy/helm/agent-bom \

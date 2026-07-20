@@ -10,8 +10,12 @@ metadata:
     {{- include "agent-bom.labels" . | nindent 4 }}
 spec:
   podSelector:
+    {{- with .Values.networkPolicy.podSelector }}
+    {{- toYaml . | nindent 4 }}
+    {{- else }}
     matchLabels:
       app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+    {{- end }}
   policyTypes:
     - Egress
     {{- if or .Values.networkPolicy.restrictIngress (gt (len .Values.networkPolicy.ingress) 0) }}

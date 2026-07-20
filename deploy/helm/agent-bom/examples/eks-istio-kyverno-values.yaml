@@ -21,6 +21,9 @@ controlPlane:
       background: true
       requireControlPlanePodHardening: true
   api:
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-db
     env:
       - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
         value: "1"

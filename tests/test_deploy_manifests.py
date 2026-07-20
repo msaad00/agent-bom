@@ -344,6 +344,16 @@ def test_helm_scanner_defaults():
     assert "schedule" in scanner
 
 
+def test_helm_default_network_policy_is_scoped_to_scanner_pods():
+    """The scanner-only default must not block control-plane traffic."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    policy = doc["networkPolicy"]
+    assert policy["enabled"] is True
+    assert policy["podSelector"] == {
+        "matchLabels": {"app.kubernetes.io/component": "scanner"}
+    }
+
+
 def test_helm_control_plane_autoscaling_defaults():
     """Control plane ships explicit HPA defaults without enabling autoscaling by default."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())

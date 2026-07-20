@@ -258,6 +258,29 @@ def test_check_accepts_offline_flag(monkeypatch):
     assert seen == {"offline": True}
 
 
+def test_check_discards_stale_coverage_warnings_before_scan(monkeypatch):
+    from agent_bom.scanners import record_coverage_warning
+
+    record_coverage_warning(
+        {
+            "kind": "offline_ecosystem_gap",
+            "release": "stale-package@0.1.0",
+            "ecosystem": "pypi",
+            "reason": "state left by an earlier scan",
+        }
+    )
+
+    async def _scan_packages(_pkgs, **_kwargs):
+        return None
+
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _scan_packages)
+
+    result = CliRunner().invoke(main, ["check", "django@4.1.0", "--ecosystem", "pypi", "--offline", "--quiet"])
+
+    assert result.exit_code == 0
+    assert "CLEAN" in result.output
+
+
 class _DummyResponse:
     def __init__(self, status_code: int, payload: dict):
         self.status_code = status_code

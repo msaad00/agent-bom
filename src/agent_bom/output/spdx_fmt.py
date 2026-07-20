@@ -12,6 +12,7 @@ from agent_bom.checksums import spdx3_verified_using
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
 from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version
+from agent_bom.package_utils import synthesize_purl
 
 # Canonical SPDX 3.0.1 JSON-LD context (media type application/spdx+json-ld,
 # ``.spdx.json`` / ``.jsonld`` extension). Every SPDX 3.0.1 document references
@@ -190,9 +191,10 @@ def to_spdx(report: AIBOMReport) -> dict:
                     verified_using = spdx3_verified_using(pkg.checksums)
                     if verified_using:
                         pkg_element["verifiedUsing"] = verified_using
-                    if pkg.purl:
+                    purl = pkg.purl or synthesize_purl(pkg.name, pkg.version, pkg.ecosystem)
+                    if purl:
                         pkg_element["externalIdentifier"] = [
-                            {"type": "ExternalIdentifier", "externalIdentifierType": "packageUrl", "identifier": pkg.purl}
+                            {"type": "ExternalIdentifier", "externalIdentifierType": "packageUrl", "identifier": purl}
                         ]
                     if pkg.license_expression or pkg.license:
                         pkg_element["declaredLicense"] = pkg.license_expression or pkg.license

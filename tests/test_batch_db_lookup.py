@@ -254,3 +254,69 @@ def test_duplicate_sha_row_does_not_override_semver_unaffected(tmp_db):
 
     batch = lookup_packages_batch(tmp_db, [("pypi", "requests", "2.33.0")])
     assert "CVE-2024-DUPE" not in {v.id for v in batch[("pypi", "requests", "2.33.0")]}
+
+
+# ---------------------------------------------------------------------------
+# Fix-version merge across advisory aliases (PYSEC fix=None + GHSA fix=X)
+# ---------------------------------------------------------------------------
+
+
+def _insert_alias_pair(conn):
+    """Mirror of the real DB shape for CVE-2025-2999: PYSEC row without a fix
+    and its GHSA alias row carrying fixed=2.9.1, both for pypi/torch."""
+    conn.execute(
+        "INSERT OR REPLACE INTO vulns(id,summary,severity,cvss_score,fixed_version,aliases,source) VALUES (?,?,?,?,?,?,'osv')",
+        ("PYSEC-2025-193", "torch DoS", "high", 7.5, None, "BIT-pytorch-2025-2999,CVE-2025-2999,GHSA-vgrw-7cvw-pwgx"),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO vulns(id,summary,severity,cvss_score,fixed_version,aliases,source) VALUES (?,?,?,?,?,?,'osv')",
+        ("GHSA-vgrw-7cvw-pwgx", "torch DoS", "high", 7.5, "2.9.1", "BIT-pytorch-2025-2999,CVE-2025-2999,PYSEC-2025-193"),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,?)",
+        ("PYSEC-2025-193", "pypi", "torch", "0", "", "2.6.0-NA"),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,?)",
+        ("GHSA-vgrw-7cvw-pwgx", "pypi", "torch", "0", "2.9.1", ""),
+    )
+    conn.commit()
+
+
+def test_alias_cluster_recovers_missing_fix_version(tmp_db):
+    """A fix-less advisory row must inherit the fix its alias sibling carries.
+
+    Reporting the PYSEC row as fix=None over-claims "no fix available" and
+    lets --exclude-unfixable silently drop a fixable finding.
+    """
+    _insert_alias_pair(tmp_db)
+
+    vulns = lookup_package(tmp_db, "pypi", "torch", "2.4.0")
+    by_id = {v.id: v for v in vulns}
+    assert "PYSEC-2025-193" in by_id
+    assert by_id["PYSEC-2025-193"].fixed_version == "2.9.1", (
+        "fix-less PYSEC row must inherit the GHSA alias fix instead of over-claiming 'no fix'"
+    )
+    assert all(v.fixed_version == "2.9.1" for v in vulns)
+
+    batch = lookup_packages_batch(tmp_db, [("pypi", "torch", "2.4.0")])
+    batch_vulns = batch[("pypi", "torch", "2.4.0")]
+    assert batch_vulns and all(v.fixed_version == "2.9.1" for v in batch_vulns)
+
+
+def test_alias_fix_merge_ignores_unrelated_rows(tmp_db):
+    """Rows without a shared alias id must not donate their fix version."""
+    _insert_alias_pair(tmp_db)
+    tmp_db.execute(
+        "INSERT OR REPLACE INTO vulns(id,summary,severity,cvss_score,fixed_version,aliases,source) VALUES (?,?,?,?,?,?,'osv')",
+        ("PYSEC-2099-1", "unrelated torch vuln", "high", 7.5, None, "CVE-2099-1"),
+    )
+    tmp_db.execute(
+        "INSERT OR REPLACE INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,?)",
+        ("PYSEC-2099-1", "pypi", "torch", "0", "", "2.6.0"),
+    )
+    tmp_db.commit()
+
+    vulns = lookup_package(tmp_db, "pypi", "torch", "2.4.0")
+    by_id = {v.id: v for v in vulns}
+    assert by_id["PYSEC-2099-1"].fixed_version is None

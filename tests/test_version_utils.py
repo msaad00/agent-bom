@@ -428,3 +428,61 @@ def test_version_in_range_git_sha_bounds_not_affected():
     assert version_in_range("99.99.99", sha_intro, sha_fix, None, "pypi") is False
     assert version_in_range("10.0.1", sha_intro, None, None, "pypi") is False
     assert version_in_range("1.0.0", None, sha_fix, None, "pypi") is False
+
+
+# ---------------------------------------------------------------------------
+# Regression: local-version-style advisory bounds must not fail open
+# ---------------------------------------------------------------------------
+
+
+def test_version_in_range_local_suffix_bound_not_unbounded():
+    """A ``last_affected`` like ``2.6.0-NA`` must not match every version.
+
+    PYSEC advisories for torch carry wheel local-version artifacts in their
+    bounds (``2.6.0-NA``, ``2.6.0-cu124``). ``packaging.Version`` rejects
+    them, the comparator returned ``None``, every guard fell through, and the
+    range matched unboundedly — flagging ``torch@2.13.0`` with advisories
+    that describe <= 2.6.0.
+    """
+    # Exact audit repro: previously True (fail-open), must be False.
+    assert version_in_range("2.13.0", "0", "", "2.6.0-NA", "pypi") is False
+    assert version_in_range("2.13.0", "0", "", "2.6.0-cu124", "pypi") is False
+    assert version_in_range("2.13.0", "0", "", "2.7.1-NA", "pypi") is False
+    # Plain bound control (already correct today).
+    assert version_in_range("2.13.0", "0", "", "2.6.0", "pypi") is False
+
+
+def test_version_in_range_local_suffix_bound_keeps_true_positives():
+    """Sanitized suffixed bounds must still match genuinely affected versions."""
+    assert version_in_range("2.4.0", "0", "", "2.6.0-NA", "pypi") is True
+    assert version_in_range("2.5.1", "0", "", "2.6.0-cu124", "pypi") is True
+    assert version_in_range("2.6.0", "0", "", "2.6.0-NA", "pypi") is True
+    # Suffixed *fixed* bound: versions below the base stay affected.
+    assert version_in_range("2.4.0", "0", "2.6.0-NA", None, "pypi") is True
+
+
+def test_compare_version_order_sanitizes_local_suffix_bounds():
+    """Unknown ``-suffix`` bounds compare on their parseable base version."""
+    assert compare_version_order("2.13.0", "2.6.0-NA", "pypi") == 1
+    assert compare_version_order("2.4.0", "2.6.0-NA", "pypi") == -1
+    assert compare_version_order("2.4.0", "2.6.0-cu124", "pypi") == -1
+    # Equal base: the suffixed side orders ABOVE the bare release (mirrors
+    # PEP 440 local-version ordering), so a bare version never reads as
+    # already past a suffixed fix bound.
+    assert compare_version_order("2.6.0", "2.6.0-NA", "pypi") == -1
+    assert compare_version_order("2.6.0-NA", "2.6.0", "pypi") == 1
+
+
+def test_version_in_range_fails_closed_on_unparseable_bounds():
+    """A bound that cannot be compared is never grounds for a match."""
+    # Unparseable upper bound (not sanitizable): cannot place the version
+    # below it -> no match, instead of the old unbounded True.
+    assert version_in_range("1.5.0", "1.0.0", "not-a-version-at-all", None, "pypi") is False
+    assert version_in_range("1.5.0", "1.0.0", "", "not-a-version-at-all", "pypi") is False
+    # Unparseable *introduced* with a parseable upper bound that DOES match:
+    # keep the match (dropping it would suppress real vulnerabilities).
+    assert version_in_range("1.5.0", "!!garbage!!", "2.0.0", None, "pypi") is True
+    assert version_in_range("2.5.0", "!!garbage!!", "2.0.0", None, "pypi") is False
+    # Unparseable introduced and NO other bound: the only comparison failed,
+    # so no match may be claimed.
+    assert version_in_range("1.5.0", "!!garbage!!", None, None, "pypi") is False

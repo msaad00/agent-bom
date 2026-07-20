@@ -14,6 +14,16 @@ def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = No
     """Return CVE findings, accepting non-empty legacy BlastRadius overrides."""
     source_blast_radii = blast_radii if blast_radii is not None else report.blast_radii
     if source_blast_radii:
+        # The CLI/API dual-write path already materializes this exact projection
+        # on ``report.findings``. Reusing it avoids rebuilding and re-sanitizing
+        # every BlastRadius once per output format (JSON, CSV, SARIF, HTML,
+        # Markdown, JUnit, and graph exports). Fall back to the legacy conversion
+        # when the caller supplies a different or incomplete BlastRadius stream.
+        materialized = [finding for finding in report.findings if finding.finding_type == FindingType.CVE]
+        expected_ids = sorted(str(getattr(br.vulnerability, "id", "")) for br in source_blast_radii)
+        materialized_ids = sorted(str(finding.cve_id or finding.id or "") for finding in materialized)
+        if materialized and expected_ids == materialized_ids:
+            return materialized
         return [blast_radius_to_finding(br) for br in source_blast_radii]
 
     return [finding for finding in report.to_findings() if finding.finding_type in _MACHINE_EXPORT_TYPES]

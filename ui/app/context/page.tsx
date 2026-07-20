@@ -635,6 +635,11 @@ export default function ContextPage() {
       )}
 
       {/* Stats */}
+      {graphData?.stats.lateral_paths_truncated && (
+        <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-[11px] text-amber-200">
+          Showing a bounded set of highest-priority lateral paths for this large graph. Narrow the agent scope to inspect additional paths.
+        </div>
+      )}
       {graphData && <ContextStats data={graphData} compact />}
 
       {/* Main area: graph + sidebar */}

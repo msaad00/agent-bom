@@ -2118,19 +2118,21 @@ def scan(
     if context_graph_flag:
         from agent_bom.context_graph import (
             build_context_graph,
+            collect_lateral_paths,
             compute_interaction_risks,
-            find_lateral_paths,
             to_serializable,
         )
         from agent_bom.output import to_json as _to_json_for_graph
 
         _graph_json = _to_json_for_graph(report)
         _cg = build_context_graph(_graph_json["agents"], _graph_json.get("blast_radius", []))
-        _all_paths = []
-        for _a in agents:
-            _all_paths.extend(find_lateral_paths(_cg, f"agent:{_a.name}"))
+        _all_paths, _paths_truncated = collect_lateral_paths(
+            _cg,
+            (f"agent:{_a.name}" for _a in agents),
+        )
         _cg_risks = compute_interaction_risks(_cg)
         report.context_graph_data = to_serializable(_cg, _all_paths, _cg_risks)
+        report.context_graph_data["stats"]["lateral_paths_truncated"] = _paths_truncated
 
         from agent_bom.graph_backend import from_context_graph as _from_cg
 

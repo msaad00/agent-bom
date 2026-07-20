@@ -66,6 +66,8 @@ export interface ContextStats {
   max_lateral_depth: number;
   highest_path_risk: number;
   interaction_risk_count: number;
+  /** True when the server capped multi-source path collection for scale. */
+  lateral_paths_truncated?: boolean;
 }
 
 export interface ContextGraphData {
@@ -140,9 +142,9 @@ const EDGE_COLORS: Record<string, string> = {
   provides: "#a855f7", // purple   server→tool
   provides_tool: "#a855f7", // purple   server→tool
   vulnerable_to: "#ef4444", // red      server→vulnerability
-  shares_server: "#22d3ee", // cyan     agent↔agent
-  shares_credential: "#f97316", // orange agent↔agent
-  shares_cred: "#f97316", // orange   agent↔agent
+  shares_server: "#22d3ee", // cyan     agent↔agent/shared-server hub
+  shares_credential: "#f97316", // orange agent↔agent/shared-credential node
+  shares_cred: "#f97316", // orange   agent↔agent/shared-credential node
   member_of: "#60a5fa", // blue     identity→agent
 };
 

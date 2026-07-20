@@ -187,15 +187,22 @@ def _browser_extension_findings(browser_extensions: dict) -> list[dict[str, obje
 def _build_remediation_json(report: AIBOMReport) -> list[dict]:
     """Build JSON-serializable remediation plan with named assets and percentages."""
     from agent_bom.output import build_remediation_plan
+    from agent_bom.output.finding_views import cve_findings
 
-    plan = build_remediation_plan(report.blast_radii)
+    # The CLI/API dual-write path already materializes CVE ``Finding`` objects
+    # on ``report.findings``.  Reuse that projection instead of converting every
+    # BlastRadius again while building JSON remediation output.  Besides doing
+    # redundant sanitization, the legacy conversion walks nested dataclasses and
+    # can trigger an expensive repr of transitive server/package data at scale.
+    cve_rows = cve_findings(report)
+    plan = build_remediation_plan(cve_rows)
     total_agents = report.total_agents or 1
 
     all_creds: set[str] = set()
     all_tools: set[str] = set()
-    for br in report.blast_radii:
-        all_creds.update(br.exposed_credentials)
-        all_tools.update(t.name for t in br.exposed_tools)
+    for finding in cve_rows:
+        all_creds.update(finding.exposed_credentials)
+        all_tools.update(finding.exposed_tools)
     total_creds = len(all_creds) or 1
     total_tools = len(all_tools) or 1
 

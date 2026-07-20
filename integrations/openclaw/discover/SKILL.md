@@ -4,11 +4,11 @@ description: >-
   Discover AI agents, MCP servers, and configurations on this machine or
   environment. Use when: "find agents", "what's configured", "doctor",
   "what MCP servers", "show me what's installed", "mcp inventory".
-version: 0.96.3
+version: 0.96.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required.
-  Registry data (427+ MCP servers) is bundled in-package with zero network calls.
+  Registry data (967 MCP servers) is bundled in-package with zero network calls.
 metadata:
   author: msaad00
   homepage: https://github.com/msaad00/agent-bom
@@ -19,7 +19,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.96.3
+    docker: ghcr.io/msaad00/agent-bom:0.96.4
   openclaw:
     requires:
       bins: []
@@ -36,8 +36,8 @@ metadata:
       - darwin
       - linux
       - windows
-    credential_handling: "Env var values are NEVER extracted from config files. sanitize_env_vars() replaces all env values with ***REDACTED*** BEFORE any config data is processed or stored. Source: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159"
-    data_flow: "Purely local. Reads MCP client config files across 22+ AI tools. Only structural data (server names, commands, URLs) is extracted. Env var values are redacted before processing. No data leaves the machine."
+    credential_handling: "sanitize_env_vars() redacts credential-like and sensitive environment values before reporting; benign configuration values may remain in the in-memory model. Source: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py"
+    data_flow: "Purely local. Reads MCP client config files across 29 first-class client types. Structural fields and benign configuration values may be retained in memory; credential-like and sensitive values are redacted before reporting. No data leaves the machine."
     file_reads:
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -100,7 +100,7 @@ metadata:
 
 Discovers AI agents, MCP servers, and their configurations across 22+ AI tools
 on this machine. Shows what's installed, configured, and registered in the
-bundled 427+ MCP server registry.
+bundled 967-entry MCP server registry.
 
 ## Install
 

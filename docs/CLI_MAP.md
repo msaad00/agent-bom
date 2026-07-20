@@ -133,7 +133,7 @@ object is registered in two places so both the flat and grouped form work:
 | Flat (top-level) | Grouped | Notes |
 |---|---|---|
 | `agent-bom up` | `agent-bom serve` | `up` is a hidden alias of `serve` (same flags) — the canonical front-door verb for running the platform locally. |
-| `agent-bom scan` | `agent-bom agents` | `scan` is the canonical front-door verb; `agents` remains the discoverable visible command. Both discover + scan. |
+| `agent-bom scan` | `agent-bom agents` | `scan` is the canonical visible front-door verb; `agents` is a hidden compatibility alias. Both discover + scan. |
 | `agent-bom proxy …` | `agent-bom runtime proxy …` | Same `proxy_cmd`. Top-level for discoverability; grouped form keeps runtime commands together. |
 | `agent-bom proxy-bootstrap` | `agent-bom runtime bootstrap` | Same command, flat + grouped. |
 | `agent-bom audit` | `agent-bom runtime audit` | Same `audit_replay_cmd` (proxy audit-log replay). |

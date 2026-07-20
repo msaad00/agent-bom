@@ -52,9 +52,9 @@ available:
 
 ```bash
 agent-bom cloud aws --cis
-agent-bom cis-benchmark --provider azure
-agent-bom cis-benchmark --provider gcp
-agent-bom cis-benchmark --provider snowflake
+agent-bom cloud azure --cis
+agent-bom cloud gcp --cis
+agent-bom scan --snowflake --snowflake-cis-benchmark
 ```
 
 These checks are for deployed state, not planned state. They catch drift and
@@ -88,7 +88,7 @@ The useful question is not "IaC or CSPM?" It is:
 |---|---|---|
 | Before merge | `agent-bom iac ...` | Proposed infrastructure does not introduce known high-risk misconfiguration |
 | Before apply | `agent-bom iac ... --format sarif` in CI | The exact deployment artifact passed the gate |
-| After deploy | `agent-bom cis-benchmark --provider ...` | The live environment still satisfies benchmark expectations |
+| After deploy | `agent-bom cloud <aws|azure|gcp> --cis` or the Snowflake scan flags above | The live environment still satisfies benchmark expectations |
 | During investigation | graph exposure paths and findings APIs | Misconfiguration, packages, agents, credentials, and runtime evidence can be reviewed together |
 
 ## Boundary

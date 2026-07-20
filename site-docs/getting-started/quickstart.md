@@ -79,10 +79,14 @@ Price model and OTel ingest path: [docs/COST_MODEL.md](https://github.com/msaad0
 ## Run compliance mapping
 
 ```bash
-agent-bom scan --compliance owasp-llm
-agent-bom scan --compliance eu-ai-act
-agent-bom scan --compliance all
+agent-bom scan . --compliance
+agent-bom scan . --compliance --compliance-export owasp-llm
+agent-bom scan . --compliance --compliance-export eu-ai-act
 ```
+
+`--compliance` adds all mapped framework tags to findings. Use
+`--compliance-export <framework>` when you also need one framework-specific
+evidence bundle.
 
 ## Scan a container image
 
@@ -113,7 +117,7 @@ agent-bom mcp inventory
 ## Output formats
 
 ```bash
-agent-bom scan -f table    # terminal table (default)
+agent-bom scan -f console  # terminal output (default)
 agent-bom scan -f json     # JSON report
 agent-bom scan -f html     # HTML dashboard
 agent-bom scan -f sarif    # SARIF for GitHub Code Scanning

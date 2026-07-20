@@ -71,7 +71,7 @@ Tools (76):
     access_review       — List or get NHI access-review / recertification campaigns
 
 Resources (6):
-    registry://servers  — Browse 427+ server security metadata registry
+    registry://servers  — Browse the 967-entry server security metadata registry
     policy://template   — Default security policy template
     metrics://tools     — MCP tool execution metrics and limits
     schema://inventory-v1 — Canonical pushed-inventory schema contract
@@ -190,7 +190,13 @@ class _StaticBearerTokenVerifier:
             return AccessToken(
                 token=token,
                 client_id="agent-bom-operator-token",
-                scopes=["admin", "shield:write", "identity:write"],
+                scopes=[
+                    "admin",
+                    "findings:write",
+                    "identity:write",
+                    "shield:write",
+                    "ticketing:write",
+                ],
                 expires_at=_mcp_token_expiry_epoch(self._operator_token_expires_at),
                 resource=None,
             )

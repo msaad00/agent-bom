@@ -49,7 +49,6 @@ preflight-fix:  ## Regenerate every drift artifact so you never push stale OpenA
 	python scripts/generate_v1_schemas.py
 	python scripts/generate_env_var_reference.py
 	python sdks/shared/generate-patterns.py
-	ruff format src/ tests/
 	@echo "✓ regenerated — run 'git status', review, and commit the artifacts"
 
 docker-build:  ## Build Docker image

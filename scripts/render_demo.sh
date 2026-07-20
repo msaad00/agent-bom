@@ -71,8 +71,8 @@ run_step() {
 
 # ── Demo: posture-led scan → findings queue → package gate ──
 
-# 1. Full agent scan — posture grade, findings table, fix-first remediation
-run_step "Agent blast-radius scan" "agent-bom agents --demo --offline -f console" agent-bom agents --demo --offline -f console
+# 1. Full scan — posture grade, findings table, fix-first remediation
+run_step "Agent blast-radius scan" "agent-bom scan --demo --offline -f console" agent-bom scan --demo --offline -f console
 
 # 2. Pre-install CVE gate (offline, deterministic for GIF)
 run_step "Pre-install package gate" "agent-bom check pillow@9.0.0 --ecosystem pypi --offline" agent-bom check pillow@9.0.0 --ecosystem pypi --offline

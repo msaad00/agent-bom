@@ -6,7 +6,15 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from scripts.generate_doc_architecture_svgs import _audit_github_safe, _audit_layout, architecture, how_it_works, persona_value
+from scripts.generate_doc_architecture_svgs import (
+    MCP_TOOL_COUNT,
+    REST_OPERATION_COUNT,
+    _audit_github_safe,
+    _audit_layout,
+    architecture,
+    how_it_works,
+    persona_value,
+)
 
 IMAGES = Path(__file__).resolve().parents[1] / "docs" / "images"
 
@@ -42,8 +50,8 @@ def test_architecture_includes_core_surfaces() -> None:
     svg = architecture("light")
     assert "Unified Finding" in svg
     assert "UnifiedGraph" in svg
-    assert "73 tools" in svg
-    assert "283 ops" in svg
+    assert f"{MCP_TOOL_COUNT} tools" in svg
+    assert f"{REST_OPERATION_COUNT} ops" in svg
     assert "Agents &amp; MCP" in svg
 
 
@@ -51,7 +59,7 @@ def test_persona_value_renders_buyer_lanes() -> None:
     svg = persona_value("dark")
     assert "AppSec / GRC" in svg
     assert "findings queue" in svg
-    assert "283 API ops" in svg
+    assert f"{REST_OPERATION_COUNT} API ops" in svg
     assert "Self-hosted control plane" in svg
 
 

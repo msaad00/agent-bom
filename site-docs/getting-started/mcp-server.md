@@ -1,13 +1,13 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 70 MCP tools to any MCP client.
+agent-bom runs as an MCP server, exposing 76 MCP tools to any MCP client.
 The server card also advertises 6 resources and 8 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
-Most tools are read-only. Shield write actions require `operator_role=admin`,
-`operator_scopes=shield:write`, and an audit reason.
-Identity write actions require `operator_role=admin`, `operator_scopes=identity:write`, and an audit reason —
-the same admin/scope/audit contract for issuing, rotating, and revoking
-identities and granting or revoking just-in-time access.
+Most tools are read-only. Thirteen write-annotated tools cover scan-history
+diff, Shield, identity, external ingest, access review, and ticket workflows.
+Each requires `operator_role=admin`, its tool-specific write scope, and an audit
+reason. The registered scope families are `findings:write`, `identity:write`,
+`shield:write`, and `ticketing:write`.
 Those write arguments are audit context only — they no longer authorize the
 write by themselves. The request must authenticate with a separate
 `AGENT_BOM_MCP_OPERATOR_TOKEN` (the regular `AGENT_BOM_MCP_BEARER_TOKEN` is
@@ -15,8 +15,8 @@ read-only). Remote deployments should also set
 `AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT` and
 `AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT` to timezone-aware ISO-8601 timestamps;
 expired tokens are rejected before any scope is returned. Because the local
-stdio transport has no token channel, Shield and
-identity **write** tools are unavailable over stdio — run those actions from the
+stdio transport has no token channel, all **write** tools are unavailable over
+stdio — run those actions from the
 CLI or the authenticated REST control plane instead. Read-only tools work over
 stdio as before.
 

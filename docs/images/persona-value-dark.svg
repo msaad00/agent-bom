@@ -71,6 +71,6 @@
 <rect x="821" y="126" width="224" height="52" rx="8" fill="none" stroke="#fb7185" opacity="0.4"/>
 <rect x="829" y="142" width="3" height="14" rx="1.5" fill="#fb7185"/>
 <text x="839" y="150" font-family="Inter,system-ui,sans-serif" font-size="13.5" font-weight="800" fill="#e9e9ec">Agent-native surface</text>
-<text x="839" y="170" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="600" fill="#82828c">283 API ops · 70 MCP tools · SARIF</text>
+<text x="839" y="170" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="600" fill="#82828c">369 API ops · 76 MCP tools · SARIF</text>
 <rect x="24" y="196" width="1032" height="28" rx="8" fill="#0c1a14" stroke="#1f4438"/><text x="540" y="216" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#4ade80">LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph</text>
 </svg>

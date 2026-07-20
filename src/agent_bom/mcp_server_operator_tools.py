@@ -95,6 +95,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "diff",
             diff_impl,
+            destructive=True,
+            required_scope="findings:write",
             baseline=baseline,
             _run_scan_pipeline=run_scan_pipeline,
             _truncate_response=truncate_response,
@@ -1209,6 +1211,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "access_review",
             access_review_impl,
+            destructive=True,
+            required_scope="identity:write",
             campaign_id=campaign_id,
             tenant_id=tenant_id,
             limit=limit,

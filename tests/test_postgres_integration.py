@@ -311,3 +311,48 @@ def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
         "verify that ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY is in place "
         "and that the scan_jobs_tenant_isolation policy gates ALL commands."
     )
+
+
+def test_audit_append_persists_entry_tenant_under_mismatched_ambient_context():
+    """Regression for #4276: proxy-header auth emits its audit event BEFORE the
+    request tenant context is installed, so ``append`` runs while the ambient
+    contextvar still points at another tenant. The INSERT must bind the entry's
+    own tenant (as the head read already does) so RLS ``WITH CHECK`` accepts the
+    row instead of silently dropping the authentication event.
+    """
+    from agent_bom.api.audit_log import AuditEntry
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_store import PostgresAuditLog
+
+    store = PostgresAuditLog()
+    suffix = uuid4().hex
+    tenant = f"tenant-proxy-{suffix}"
+
+    # Ambient context deliberately left at its 'default' fallback, mirroring the
+    # middleware ordering at the proxy-auth call site.
+    first = AuditEntry(
+        action="auth.proxy_header_authenticated",
+        actor="proxy-user",
+        resource="/v1/findings",
+        details={"tenant_id": tenant},
+    )
+    store.append(first)
+    second = AuditEntry(
+        action="auth.proxy_header_authenticated",
+        actor="proxy-user",
+        resource="/v1/graph",
+        details={"tenant_id": tenant},
+    )
+    store.append(second)
+
+    token = set_current_tenant(tenant)
+    try:
+        rows = store.list_entries(action="auth.proxy_header_authenticated", tenant_id=tenant, limit=10)
+        verified, tampered = store.verify_integrity(tenant_id=tenant)
+    finally:
+        reset_current_tenant(token)
+
+    assert {e.entry_id for e in rows} == {first.entry_id, second.entry_id}, "proxy-auth audit events were dropped under Postgres RLS"
+    by_id = {e.entry_id: e for e in rows}
+    assert by_id[second.entry_id].prev_signature == by_id[first.entry_id].hmac_signature
+    assert (verified, tampered) == (2, 0)

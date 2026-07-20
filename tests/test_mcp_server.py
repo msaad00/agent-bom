@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -101,7 +102,40 @@ def test_static_bearer_verifier_keeps_read_and_operator_tokens_separate():
     assert read_access.scopes == ["read"]
     assert operator_access is not None
     assert operator_access.client_id == "agent-bom-operator-token"
-    assert set(operator_access.scopes) == {"admin", "shield:write", "identity:write"}
+    assert set(operator_access.scopes) == {
+        "admin",
+        "findings:write",
+        "identity:write",
+        "shield:write",
+        "ticketing:write",
+    }
+
+
+def test_static_operator_token_authorizes_every_registered_write_family():
+    """The configured operator token must reach every registered write family."""
+    from agent_bom.mcp_server import _StaticBearerTokenVerifier
+    from agent_bom.mcp_server_runtime import authorize_destructive_tool
+
+    verifier = _StaticBearerTokenVerifier("read-token", operator_token="operator-token")
+    operator_access = _run(verifier.verify_token("operator-token"))
+
+    assert operator_access is not None
+    server_root = Path(__file__).resolve().parents[1] / "src" / "agent_bom"
+    required_scopes = {
+        match
+        for path in server_root.glob("mcp_server_*.py")
+        for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
+    }
+    assert required_scopes == {"findings:write", "identity:write", "shield:write", "ticketing:write"}
+    for required_scope in required_scopes:
+        denial = authorize_destructive_tool(
+            "write-tool",
+            operator_role="admin",
+            operator_scopes=required_scope,
+            auth_scopes=",".join(operator_access.scopes),
+            required_scope=required_scope,
+        )
+        assert denial is None
 
 
 def test_static_bearer_verifier_rejects_expired_read_token():
@@ -503,6 +537,66 @@ def _fixed_request_meta(auth_scopes: str):
         }
 
     return _factory
+
+
+@patch("agent_bom.mcp_tools.sbom.diff_impl")
+def test_diff_write_requires_findings_scope(mock_diff):
+    """The history-mutating diff tool must fail closed for a read caller."""
+    from agent_bom import mcp_server
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("read")):
+        result = _call_tool(server, "diff", {})
+
+    assert result.get("status") == "blocked", result
+    assert result.get("required_role") == "admin", result
+    mock_diff.assert_not_called()
+
+
+@patch("agent_bom.mcp_tools.sbom.diff_impl")
+def test_diff_write_accepts_operator_findings_scope(mock_diff):
+    """An authenticated findings operator can run the persisted diff."""
+    from agent_bom import mcp_server
+    from agent_bom.mcp_server import create_mcp_server
+
+    mock_diff.return_value = json.dumps({"status": "ok"})
+    server = create_mcp_server()
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin,findings:write")):
+        result = _call_tool(server, "diff", {})
+
+    assert result == {"status": "ok"}
+    mock_diff.assert_called_once()
+
+
+@patch("agent_bom.mcp_tools.posture.access_review_impl")
+def test_access_review_write_requires_identity_scope(mock_access_review):
+    """Status-refresh persistence must not run for a read-only caller."""
+    from agent_bom import mcp_server
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("read")):
+        result = _call_tool(server, "access_review", {})
+
+    assert result.get("status") == "blocked", result
+    assert result.get("required_role") == "admin", result
+    mock_access_review.assert_not_called()
+
+
+@patch("agent_bom.mcp_tools.posture.access_review_impl")
+def test_access_review_write_accepts_operator_identity_scope(mock_access_review):
+    """An authenticated identity operator can refresh access-review status."""
+    from agent_bom import mcp_server
+    from agent_bom.mcp_server import create_mcp_server
+
+    mock_access_review.return_value = json.dumps({"status": "ok"})
+    server = create_mcp_server()
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin,identity:write")):
+        result = _call_tool(server, "access_review", {})
+
+    assert result == {"status": "ok"}
+    mock_access_review.assert_called_once()
 
 
 @patch("agent_bom.parsers.external_scanners.detect_and_parse")
@@ -1062,7 +1156,10 @@ def test_diff_no_baseline(mock_pipeline):
         from agent_bom.mcp_server import create_mcp_server
 
         server = create_mcp_server()
-        result = _call_tool(server, "diff", {})
+        from agent_bom import mcp_server
+
+        with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin,findings:write")):
+            result = _call_tool(server, "diff", {})
         assert "message" in result
         assert "baseline" in result["message"].lower()
 
@@ -1074,7 +1171,10 @@ def test_diff_no_agents(mock_pipeline):
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
-    result = _call_tool(server, "diff", {})
+    from agent_bom import mcp_server
+
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin,findings:write")):
+        result = _call_tool(server, "diff", {})
     assert "error" in result
 
 

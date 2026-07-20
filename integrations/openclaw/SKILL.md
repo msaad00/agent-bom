@@ -8,7 +8,7 @@ description: >-
   security checks. Use when the user mentions vulnerability scanning,
   MCP server trust, compliance, SBOM generation, CIS benchmarks, blast
   radius, or AI supply chain risk.
-version: 0.96.3
+version: 0.96.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -25,7 +25,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.96.3
+    docker: ghcr.io/msaad00/agent-bom:0.96.4
   openclaw:
     requires:
       bins: []
@@ -34,10 +34,11 @@ metadata:
     credential_policy: >-
       Zero credentials required for CVE scanning, blast radius, compliance
       evaluation, SBOM generation, and MCP registry lookups. Optional env vars
-      below increase rate limits or enable cloud CIS checks. Env var values in
-      discovered config files are replaced with ***REDACTED*** by
-      sanitize_env_vars() in the installed code — verify at
-      https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
+      below increase rate limits or enable cloud CIS checks. Credential-like
+      and sensitive env values in discovered config are replaced with
+      ***REDACTED*** before reporting; benign configuration values may remain
+      in memory. Verify the sanitize_env_vars() implementation at
+      https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py
     optional_env:
       - name: SNYK_TOKEN
         purpose: "Optional third-party vulnerability enrichment for code_scan (requires SNYK_TOKEN)"
@@ -82,16 +83,15 @@ metadata:
       - windows
     install_verification: >-
       VERIFY BEFORE running with any config files: (1) pip install agent-bom;
-      (2) Review sanitize_env_vars() at security.py#L159 — confirms env value
-      redaction; (3) Review discovery/__init__.py — confirms only structural
+      (2) Review sanitize_env_vars() in security.py — confirms sensitive-value
+      redaction; (3) Review discovery/__init__.py — confirms structural
       config data extracted; (4) agent-bom verify agent-bom — Sigstore
       provenance check; (5) Only then run agent-bom scan
     credential_handling: >-
-      Env var values are NEVER extracted from config files. sanitize_env_vars()
-      replaces all env values with ***REDACTED*** BEFORE any config data is
-      processed or stored. Only structural data (server names, commands, URLs)
-      passes through. Source:
-      https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
+      sanitize_env_vars() replaces credential-like and sensitive environment
+      values with ***REDACTED*** before reporting. Benign configuration values
+      may remain in the in-memory model. Source:
+      https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py
     data_flow: >-
       Scanning is local-first. What leaves the machine: (1) public package names
       and CVE IDs sent to vulnerability databases (OSV, NVD, EPSS, GitHub
@@ -99,10 +99,10 @@ metadata:
       calls to cloud providers (AWS/Azure/GCP/Snowflake) using your locally
       configured credentials, only when explicitly invoked. What stays local:
       all config file contents, env var values, credentials, scan results,
-      compliance tags, and SBOM data. Registry lookups (427+ MCP servers) are
-      bundled in-package with zero network calls. Env var values in discovered
-      config files are replaced with ***REDACTED*** by sanitize_env_vars() in
-      the installed code.
+      compliance tags, and SBOM data. Registry lookups (967 MCP servers) are
+      bundled in-package with zero network calls. Credential-like and sensitive
+      values in discovered config are redacted by sanitize_env_vars(); benign
+      configuration values may remain in memory.
     file_reads:
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
@@ -201,7 +201,7 @@ metadata:
 
 # agent-bom — AI Agent Infrastructure Security Scanner
 
-Discovers MCP clients and servers across 22 AI tools, scans for CVEs, maps
+Discovers MCP clients and servers across 29 first-class client types, scans for CVEs, maps
 blast radius, runs cloud CIS benchmarks, checks OWASP/NIST/MITRE compliance,
 generates SBOMs, and assesses AI infrastructure against AISVS v1.0 and MAESTRO
 framework layers.
@@ -278,7 +278,7 @@ agent-bom where             # show all discovery paths
 ### Registry & Trust
 | Tool | Description |
 |------|-------------|
-| `registry_lookup` | Look up MCP server in 427+ server security metadata registry |
+| `registry_lookup` | Look up MCP server in the 967-entry security metadata registry |
 | `marketplace_check` | Pre-install trust check with registry cross-reference |
 | `fleet_scan` | Batch registry lookup + risk scoring for MCP server inventories |
 | `tool_risk_assessment` | Score live-introspected MCP tool capabilities and server risk (READ/WRITE/EXECUTE/NETWORK classification + dangerous-combination flags) |
@@ -313,7 +313,7 @@ agent-bom where             # show all discovery paths
 ### Resources
 | Resource | Description |
 |----------|-------------|
-| `registry://servers` | Browse 427+ MCP server security metadata registry |
+| `registry://servers` | Browse the 967-entry MCP server security metadata registry |
 
 ## Example Workflows
 
@@ -391,9 +391,9 @@ before running with any config files:**
 pip install agent-bom
 
 # Step 2: Review redaction logic BEFORE scanning
-# sanitize_env_vars() replaces ALL env var values with ***REDACTED***
-# BEFORE any config data is processed or stored:
-# https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
+# sanitize_env_vars() redacts credential-like and sensitive env values before
+# reporting; benign configuration values may remain in the in-memory model:
+# https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py
 
 # Step 3: Review config parsing — only structural data extracted:
 # https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/discovery/__init__.py
@@ -406,8 +406,9 @@ agent-bom scan
 ```
 
 **What is extracted**: Server names, commands, args, and URLs from MCP client
-config files across 22 AI tools. **What is NOT extracted**: Env var values are
-replaced with `***REDACTED***` by `sanitize_env_vars()` before any processing.
+config files across 29 first-class client types. Credential-like and sensitive
+environment values are replaced with `***REDACTED***` by `sanitize_env_vars()`
+before reporting; benign configuration values may remain in the in-memory model.
 Only public package names and CVE IDs are sent to vulnerability databases.
 Cloud CIS checks use locally configured credentials and call only the cloud
 provider's own APIs.
@@ -415,6 +416,6 @@ provider's own APIs.
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.96.3`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.96.4`
 - **7,100+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

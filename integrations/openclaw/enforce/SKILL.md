@@ -4,7 +4,7 @@ description: >-
   Enforce security policies on MCP tool calls and block dangerous operations at
   runtime. Use when: "block risky calls", "apply policy", "proxy",
   "runtime protection", "policy enforcement", "intercept MCP calls".
-version: 0.96.3
+version: 0.96.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required.
@@ -19,7 +19,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.96.3
+    docker: ghcr.io/msaad00/agent-bom:0.96.4
   openclaw:
     requires:
       bins: []
@@ -62,9 +62,8 @@ against policy-as-code rules.
 
 ```bash
 pipx install agent-bom
-agent-bom proxy              # start enforcement proxy
-agent-bom policy apply policy.yaml  # apply a policy file
-agent-bom policy check       # check current policy status
+agent-bom gateway init-policy -o policy.json --format proxy --mode enforce
+agent-bom proxy --url https://mcp.example.com --policy policy.json
 ```
 
 ## When to Use
@@ -80,13 +79,8 @@ agent-bom policy check       # check current policy status
 
 ```bash
 # Start the enforcement proxy
-agent-bom proxy
-
-# Apply a policy file
-agent-bom policy apply policy.yaml
-
-# Check current policy status
-agent-bom policy check
+agent-bom gateway init-policy -o policy.json --format proxy --mode enforce
+agent-bom proxy --url https://mcp.example.com --policy policy.json
 ```
 
 ## Example Policy File

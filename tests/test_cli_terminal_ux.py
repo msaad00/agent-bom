@@ -97,7 +97,8 @@ def test_scan_next_steps_footer():
     print_scan_next_steps(con, report, quiet=False)
     out = buf.getvalue()
     assert "Next" in out
-    assert "agent-bom graph" in out
+    assert "agent-bom scan . -f graph-html -o agent-bom-graph.html" in out
+    assert "agent-bom graph\n" not in out
     # The HTML report suggestion must use `scan` (which owns -f/-o); `report`
     # is a command group with no -f option and would error "No such option: -f".
     assert "agent-bom scan . -f html -o agent-bom-report.html" in out

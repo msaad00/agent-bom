@@ -87,7 +87,7 @@
 
   <rect x="284" y="266" width="172" height="28" rx="6" fill="#292524" stroke="#78350f" stroke-width="0.5"/>
   <text x="296" y="284" class="mod-name">MCP Registry</text>
-  <text x="456" y="284" text-anchor="end" class="mod-sub" fill="#fbbf24">880 servers</text>
+  <text x="456" y="284" text-anchor="end" class="mod-sub" fill="#fbbf24">967 servers</text>
 
   <!-- Arrow 2→3 -->
   <line x1="474" y1="196" x2="502" y2="196" stroke="#f59e0b" stroke-width="2" opacity="0.4"/>

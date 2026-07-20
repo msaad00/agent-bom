@@ -181,6 +181,31 @@ agent-bom proxy-bootstrap \
 | **Graph / Runtime** | `exposure_paths`, `should_i_deploy`, `context_graph`, `graph_export`, `runtime_correlate`, `runtime_production_index`, `runtime_blueprints`, `runtime_blueprint_drift`, `proxy_status`, `proxy_alerts`, `gateway_status`, `shield_status`, `shield_start`, `shield_unblock`, `shield_break_glass`, `firewall_check`, `audit_query`, `audit_integrity`, `tool_risk_assessment` | Return ranked investigation paths, deploy decisions, graph exports, runtime posture, blueprints, drift checks, proxy alerts, audit-chain evidence, read-only firewall decisions, and audited Shield actions |
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan` | Scan AI artifacts, prompts, model files, and browser extensions; import tool-agnostic SARIF/SBOM/scanner evidence without executing its producer |
 
+<details>
+<summary>Complete current catalog (76 tools)</summary>
+
+`scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
+`intel_daily_brief`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
+`policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`,
+`skill_scan`, `skill_verify`, `skill_trust`, `verify`, `inventory_summary`,
+`inventory_list`, `inventory_asset`, `where`, `tool_risk_assessment`,
+`inventory`, `diff`, `marketplace_check`, `code_scan`, `context_graph`,
+`graph_export`, `analytics_query`, `cis_benchmark`, `kspm_cluster_posture`,
+`fleet_scan`, `runtime_correlate`, `runtime_production_index`,
+`runtime_blueprints`, `runtime_blueprint_drift`, `cost_report`, `anomaly_scan`,
+`drift_incidents`, `proxy_status`, `proxy_alerts`, `gateway_status`,
+`shield_status`, `shield_start`, `shield_unblock`, `shield_break_glass`,
+`identity_issue`, `identity_rotate`, `identity_revoke`, `identity_grant_jit`,
+`identity_revoke_jit`, `firewall_check`, `audit_query`, `audit_integrity`,
+`vector_db_scan`, `aisvs_benchmark`, `gpu_infra_scan`, `registry_sweep_scan`,
+`dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`,
+`model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ai_inventory_scan`,
+`license_compliance_scan`, `ingest_external_scan`, `cost_forecast`,
+`cost_allocation`, `credential_expiry`, `nhi_discover`, `cloud_inventory`,
+`access_review`, `create_ticket`, `sync_ticket_status`.
+
+</details>
+
 ## Agent-facing decision tools
 
 Two graph-native tools are the primary MCP entry points for headless security
@@ -215,8 +240,11 @@ live runtime traffic rather than static reachability.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  Shield and identity write tools require an authenticated MCP operator token
-  plus admin role, write scope, and audit reason; they are audit-logged.
+  The 13 write-annotated tools cover scan-history diff, Shield, identity,
+  external ingest, access review, and ticket workflows. They require an
+  authenticated MCP operator token plus admin role, their specific write
+  scope (`findings:write`, `identity:write`, `shield:write`, or
+  `ticketing:write`), and an audit reason; stdio cannot invoke them.
 - **No credential storage**: Never stores, logs, or transmits your credentials.
 - **No network exfiltration**: Scans local configs, queries public CVE databases.
 - **Agentless**: No agents installed on targets.
@@ -225,7 +253,7 @@ live runtime traffic rather than static reachability.
 
 The server exposes six MCP resources:
 
-- `registry://servers` — Browse the full 880-entry server security metadata registry
+- `registry://servers` — Browse the full 967-entry server security metadata registry
 - `policy://template` — Default security policy template
 - `metrics://tools` — Bounded MCP tool execution metrics
 - `schema://inventory-v1` — Canonical pushed-inventory schema contract

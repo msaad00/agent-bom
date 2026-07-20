@@ -64,6 +64,38 @@ def test_glama_build_manifest_verify_falls_back_for_head_checkout(monkeypatch):
     assert script.main(["--verify-manifest", "--git-ref", "HEAD"]) == 0
 
 
+def test_glama_build_manifest_requires_locked_uv_sync(monkeypatch):
+    script = _load_script("check_glama_listing.py")
+    read_repo_file = script._read_repo_file
+
+    def read_unlocked_dockerfile(relative_path, *, git_ref=None):
+        text = read_repo_file(relative_path, git_ref=git_ref)
+        if relative_path == script.GLAMA_DOCKERFILE:
+            return text.replace("uv sync --locked", "uv sync", 1)
+        return text
+
+    monkeypatch.setattr(script, "_read_repo_file", read_unlocked_dockerfile)
+
+    failures = script.verify_build_manifest()
+    assert any("reviewed uv.lock" in failure for failure in failures)
+
+
+def test_glama_build_manifest_requires_venv_on_mcp_proxy_path(monkeypatch):
+    script = _load_script("check_glama_listing.py")
+    read_repo_file = script._read_repo_file
+
+    def read_dockerfile_without_venv_path(relative_path, *, git_ref=None):
+        text = read_repo_file(relative_path, git_ref=git_ref)
+        if relative_path == script.GLAMA_DOCKERFILE:
+            return text.replace('ENV PATH="/app/.venv/bin:${PATH}"', 'ENV PATH="${PATH}"', 1)
+        return text
+
+    monkeypatch.setattr(script, "_read_repo_file", read_dockerfile_without_venv_path)
+
+    failures = script.verify_build_manifest()
+    assert any("mcp-proxy PATH" in failure for failure in failures)
+
+
 def test_glama_build_manifest_verify_rejects_missing_dockerfile(monkeypatch):
     script = _load_script("check_glama_listing.py")
     monkeypatch.setattr(script, "GLAMA_DOCKERFILE", "integrations/glama/does-not-exist.dockerfile")

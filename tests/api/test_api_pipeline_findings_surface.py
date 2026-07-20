@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.api import pipeline as pipeline_mod
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _run_scan_sync
+from agent_bom.graph import scan_findings as sf_mod
 
 
 def _scan_job(inventory_path: str) -> ScanJob:
@@ -56,13 +56,13 @@ def test_pipeline_output_phase_invokes_graph_derived_findings(tmp_path, monkeypa
     every hosted scan gets the same finding categories the CLI emits."""
     _patch_scan(monkeypatch)
     calls: list[tuple] = []
-    real = pipeline_mod.attach_graph_derived_findings
+    real = sf_mod.attach_graph_derived_findings
 
     def _spy(report, graph):
         calls.append((report, graph))
         return real(report, graph)
 
-    monkeypatch.setattr(pipeline_mod, "attach_graph_derived_findings", _spy)
+    monkeypatch.setattr(sf_mod, "attach_graph_derived_findings", _spy)
 
     job = _scan_job(_empty_inventory(tmp_path))
     _run_scan_sync(job)
@@ -78,7 +78,7 @@ def test_pipeline_surfaces_mcp_tool_rule_finding_end_to_end(tmp_path, monkeypatc
     """A discovered MCP tool with a stored schema-rule finding surfaces as a
     unified finding in job.result after the hosted scan completes."""
     _patch_scan(monkeypatch)
-    real = pipeline_mod.attach_graph_derived_findings
+    real = sf_mod.attach_graph_derived_findings
 
     def _wrapped(report, graph):
         from agent_bom.models import Agent, AgentType, MCPServer, MCPTool
@@ -105,7 +105,7 @@ def test_pipeline_surfaces_mcp_tool_rule_finding_end_to_end(tmp_path, monkeypatc
         report.agents = list(report.agents) + [agent]
         return real(report, graph)
 
-    monkeypatch.setattr(pipeline_mod, "attach_graph_derived_findings", _wrapped)
+    monkeypatch.setattr(sf_mod, "attach_graph_derived_findings", _wrapped)
 
     job = _scan_job(_empty_inventory(tmp_path))
     _run_scan_sync(job)

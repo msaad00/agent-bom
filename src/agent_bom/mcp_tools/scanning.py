@@ -251,6 +251,22 @@ async def _scan_impl_inner(
 
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
 
+        # Surface graph-derived finding categories (COMBINATION / CIEM_OVER_PRIVILEGE
+        # / NHI) so the MCP scan reaches CLI/API parity — the same shared build+attach
+        # helper both other surfaces use. Offloaded to a worker thread so the unified
+        # graph build never blocks the event loop; best-effort (never fails the scan).
+        if agents:
+            import asyncio
+
+            from agent_bom.graph.scan_findings import surface_graph_derived_findings
+
+            await asyncio.to_thread(
+                surface_graph_derived_findings,
+                report,
+                scan_id=report.scan_id or "mcp-scan",
+                tenant_id="default",
+            )
+
         # Format selection
         if output_format == "sarif":
             from agent_bom.output.sarif import to_sarif

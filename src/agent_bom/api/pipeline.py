@@ -36,7 +36,6 @@ from agent_bom.api.stores import (
     _jobs_put,
 )
 from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
-from agent_bom.graph.scan_findings import attach_graph_derived_findings
 from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
@@ -333,22 +332,18 @@ def _surface_graph_derived_findings(
     """Attach graph-derived findings (NHI-governance, toxic-combination) to the report.
 
     The unified graph built here — with its node dict, edge list, and adjacency /
-    reverse-adjacency indexes — plus the interim JSON are locals of this helper, so
-    they are released when it returns. Scoping them keeps the surfacing graph from
-    outliving the call and overlapping the persist phase's own graph rebuild, which
-    would otherwise leave the full-scan path holding two full current graphs at the
-    persist peak (#4055/#4075).
-    """
-    from agent_bom.graph.builder import build_unified_graph_from_report
-    from agent_bom.output import to_json
+    reverse-adjacency indexes — plus the interim JSON are locals of the shared
+    helper, so they are released when it returns. Scoping them keeps the surfacing
+    graph from outliving the call and overlapping the persist phase's own graph
+    rebuild, which would otherwise leave the full-scan path holding two full current
+    graphs at the persist peak (#4055/#4075).
 
-    interim_json = to_json(report)
-    findings_graph = build_unified_graph_from_report(
-        interim_json,
-        scan_id=scan_id,
-        tenant_id=tenant_id,
-    )
-    attach_graph_derived_findings(report, findings_graph)
+    Delegates to the single build+attach helper the CLI and MCP scan surfaces also
+    use, so all three emit the same graph-derived finding categories.
+    """
+    from agent_bom.graph.scan_findings import surface_graph_derived_findings
+
+    surface_graph_derived_findings(report, scan_id=scan_id, tenant_id=tenant_id)
 
 
 def _graph_build_workspace_enabled() -> bool:

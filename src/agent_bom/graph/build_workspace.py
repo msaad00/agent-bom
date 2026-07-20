@@ -19,9 +19,16 @@ Scope of this PR (PR-1 of the four-PR series):
   workspace into the store and produce a byte-identical snapshot (opt-in via
   ``AGENT_BOM_GRAPH_BUILD_WORKSPACE`` so the shipped default path is unchanged).
 
-Re-plumbing the builder's phases to emit **directly** into the workspace — which
-removes the builder's own materialisation and realises the #4055 peak-RSS bound
-end to end — is PR-2/3/4 of the series and is intentionally out of scope here.
+The follow-on foundation adds **random-access reads** to both backends —
+``get_node_payload`` / ``iter_node_payloads_by_type`` /
+``iter_edge_payloads_by_source`` / ``iter_edge_payloads_by_target`` — backed by
+indexed ``entity_type`` / ``source_id`` / ``target_id`` columns. These are the
+read side a store-backed producer needs so the builder's Phase-B overlays can
+query the staged graph without materialising the whole node set. They are
+**default-off and unwired**: no builder, container, or persist consumer calls
+them yet. The store-backed live graph container that consumes them (removing the
+builder's own materialisation to realise the #4055 peak-RSS bound end to end) is
+a later PR held for owner sign-off, and is intentionally out of scope here.
 """
 
 from __future__ import annotations
@@ -34,14 +41,15 @@ import uuid
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
-from agent_bom.graph.types import RelationshipType
+from agent_bom.graph.types import EntityType, RelationshipType
 
 _DEFAULT_BATCH_SIZE = 1000
 _UNIT_SEP = "\x1f"
+_RowT = TypeVar("_RowT", bound=tuple[str, ...])
 
 
 def _batch_size() -> int:
@@ -62,6 +70,16 @@ def _edge_key(edge: UnifiedEdge) -> str:
     return f"{edge.source}{_UNIT_SEP}{edge.target}{_UNIT_SEP}{rel}"
 
 
+def _node_entity_type(node: UnifiedNode) -> str:
+    """The entity_type as stored in the random-access index column.
+
+    Mirrors the ``EntityType.value`` string every graph surface indexes on, so
+    ``iter_node_payloads_by_type(entity_type)`` matches ``UnifiedGraph.nodes_by_type``.
+    """
+    et = node.entity_type
+    return et.value if isinstance(et, EntityType) else str(et)
+
+
 def _node_from_payload(payload: dict[str, Any]) -> UnifiedNode:
     """Reconstruct a node so its persisted form is byte-identical to the original.
 
@@ -79,15 +97,33 @@ def _edge_from_payload(payload: dict[str, Any]) -> UnifiedEdge:
 
 
 class WorkspaceBackend(Protocol):
-    """Bounded, tenant-scoped staging store for graph nodes and edges."""
+    """Bounded, tenant-scoped staging store for graph nodes and edges.
 
-    def add_node_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str]]) -> None: ...
+    Node rows are ``(node_id, payload, entity_type)`` and edge rows are
+    ``(edge_key, payload, source_id, target_id)``; the extra columns back the
+    random-access read methods (``get_node_payload`` /
+    ``iter_node_payloads_by_type`` / ``iter_edge_payloads_by_source`` /
+    ``iter_edge_payloads_by_target``) without ever parsing the opaque payload.
+    """
 
-    def add_edge_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str]]) -> None: ...
+    def add_node_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str, str]]) -> None: ...
+
+    def add_edge_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str, str, str]]) -> None: ...
 
     def iter_node_payloads(self, tenant_id: str, batch_size: int) -> Iterator[str]: ...
 
     def iter_edge_payloads(self, tenant_id: str, batch_size: int) -> Iterator[str]: ...
+
+    # Random-access reads (#4075 PR-2 foundation) — the read side a store-backed
+    # producer needs so Phase-B overlays can query without materialising the
+    # whole node set. No consumer is wired to these yet.
+    def get_node_payload(self, tenant_id: str, node_id: str) -> str | None: ...
+
+    def iter_node_payloads_by_type(self, tenant_id: str, entity_type: str, batch_size: int) -> Iterator[str]: ...
+
+    def iter_edge_payloads_by_source(self, tenant_id: str, node_id: str, batch_size: int) -> Iterator[str]: ...
+
+    def iter_edge_payloads_by_target(self, tenant_id: str, node_id: str, batch_size: int) -> Iterator[str]: ...
 
     def count_nodes(self, tenant_id: str) -> int: ...
 
@@ -110,39 +146,72 @@ class _SQLiteWorkspaceBackend:
             self._owns_file = False
         self._conn = sqlite3.connect(str(self._path))
         self._conn.execute("PRAGMA journal_mode=WAL")
+        # ``entity_type`` (nodes) and ``source_id``/``target_id`` (edges) back the
+        # random-access read indexes; kept in lock-step with the Postgres backend
+        # (graph_build_workspace_nodes/_edges). SQLite workspace DBs are private
+        # temp files created fresh per build, so the columns live directly in the
+        # CREATE TABLE (no ALTER-migration path is reachable, unlike shared PG).
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS ws_nodes ("
             "tenant_id TEXT NOT NULL, node_id TEXT NOT NULL, "
             "seq INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT NOT NULL, "
+            "entity_type TEXT NOT NULL DEFAULT '', "
             "UNIQUE(tenant_id, node_id))"
         )
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS ws_edges ("
             "tenant_id TEXT NOT NULL, edge_key TEXT NOT NULL, "
             "seq INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT NOT NULL, "
+            "source_id TEXT NOT NULL DEFAULT '', target_id TEXT NOT NULL DEFAULT '', "
             "UNIQUE(tenant_id, edge_key))"
         )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_ws_nodes_type ON ws_nodes (tenant_id, entity_type, seq)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_ws_edges_source ON ws_edges (tenant_id, source_id, seq)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_ws_edges_target ON ws_edges (tenant_id, target_id, seq)")
         self._conn.commit()
 
-    def _upsert(self, table: str, key_col: str, tenant_id: str, rows: Iterable[tuple[str, str]]) -> None:
+    def _upsert(
+        self,
+        table: str,
+        key_col: str,
+        extra_cols: tuple[str, ...],
+        tenant_id: str,
+        rows: Iterable[tuple[str, ...]],
+    ) -> None:
+        cols = ("tenant_id", key_col, "payload", *extra_cols)
+        placeholders = ", ".join("?" for _ in cols)
+        updates = ", ".join(f"{c}=excluded.{c}" for c in ("payload", *extra_cols))
         self._conn.executemany(
-            f"INSERT INTO {table} (tenant_id, {key_col}, payload) VALUES (?, ?, ?) "  # nosec B608 - static table/col
-            f"ON CONFLICT(tenant_id, {key_col}) DO UPDATE SET payload=excluded.payload",
-            ((tenant_id, key, payload) for key, payload in rows),
+            f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders}) "  # nosec B608 - static table/cols
+            f"ON CONFLICT(tenant_id, {key_col}) DO UPDATE SET {updates}",
+            ((tenant_id, *row) for row in rows),
         )
         self._conn.commit()
 
-    def add_node_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str]]) -> None:
-        self._upsert("ws_nodes", "node_id", tenant_id, rows)
+    def add_node_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str, str]]) -> None:
+        self._upsert("ws_nodes", "node_id", ("entity_type",), tenant_id, rows)
 
-    def add_edge_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str]]) -> None:
-        self._upsert("ws_edges", "edge_key", tenant_id, rows)
+    def add_edge_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str, str, str]]) -> None:
+        self._upsert("ws_edges", "edge_key", ("source_id", "target_id"), tenant_id, rows)
 
-    def _iter_payloads(self, table: str, tenant_id: str, batch_size: int) -> Iterator[str]:
+    def _iter_payloads(
+        self,
+        table: str,
+        tenant_id: str,
+        batch_size: int,
+        *,
+        where_col: str | None = None,
+        where_val: str | None = None,
+    ) -> Iterator[str]:
         cur = self._conn.cursor()
+        params: tuple[str, ...] = (tenant_id,)
+        predicate = ""
+        if where_col is not None:
+            predicate = f" AND {where_col} = ?"
+            params = (tenant_id, str(where_val))
         cur.execute(
-            f"SELECT payload FROM {table} WHERE tenant_id = ? ORDER BY seq",  # nosec B608 - static table
-            (tenant_id,),
+            f"SELECT payload FROM {table} WHERE tenant_id = ?{predicate} ORDER BY seq",  # nosec B608 - static table/col
+            params,
         )
         try:
             while True:
@@ -159,6 +228,22 @@ class _SQLiteWorkspaceBackend:
 
     def iter_edge_payloads(self, tenant_id: str, batch_size: int) -> Iterator[str]:
         return self._iter_payloads("ws_edges", tenant_id, batch_size)
+
+    def get_node_payload(self, tenant_id: str, node_id: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT payload FROM ws_nodes WHERE tenant_id = ? AND node_id = ?",
+            (tenant_id, node_id),
+        ).fetchone()
+        return str(row[0]) if row else None
+
+    def iter_node_payloads_by_type(self, tenant_id: str, entity_type: str, batch_size: int) -> Iterator[str]:
+        return self._iter_payloads("ws_nodes", tenant_id, batch_size, where_col="entity_type", where_val=entity_type)
+
+    def iter_edge_payloads_by_source(self, tenant_id: str, node_id: str, batch_size: int) -> Iterator[str]:
+        return self._iter_payloads("ws_edges", tenant_id, batch_size, where_col="source_id", where_val=node_id)
+
+    def iter_edge_payloads_by_target(self, tenant_id: str, node_id: str, batch_size: int) -> Iterator[str]:
+        return self._iter_payloads("ws_edges", tenant_id, batch_size, where_col="target_id", where_val=node_id)
 
     def _count(self, table: str, tenant_id: str) -> int:
         row = self._conn.execute(
@@ -214,46 +299,84 @@ class _PostgresWorkspaceBackend:
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS graph_build_workspace_nodes ("
             "workspace_id TEXT NOT NULL, tenant_id TEXT NOT NULL, node_id TEXT NOT NULL, "
-            "seq BIGSERIAL, payload TEXT NOT NULL, "
+            "seq BIGSERIAL, payload TEXT NOT NULL, entity_type TEXT NOT NULL DEFAULT '', "
             "PRIMARY KEY (workspace_id, tenant_id, node_id))"
         )
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS graph_build_workspace_edges ("
             "workspace_id TEXT NOT NULL, tenant_id TEXT NOT NULL, edge_key TEXT NOT NULL, "
             "seq BIGSERIAL, payload TEXT NOT NULL, "
+            "source_id TEXT NOT NULL DEFAULT '', target_id TEXT NOT NULL DEFAULT '', "
             "PRIMARY KEY (workspace_id, tenant_id, edge_key))"
         )
+        # Idempotent column migration for shared tables created by an earlier
+        # version (the PG workspace tables persist across builds), mirroring the
+        # postgres_graph._init_tables ADD COLUMN IF NOT EXISTS pattern.
+        self._conn.execute("ALTER TABLE graph_build_workspace_nodes ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT ''")
+        self._conn.execute("ALTER TABLE graph_build_workspace_edges ADD COLUMN IF NOT EXISTS source_id TEXT NOT NULL DEFAULT ''")
+        self._conn.execute("ALTER TABLE graph_build_workspace_edges ADD COLUMN IF NOT EXISTS target_id TEXT NOT NULL DEFAULT ''")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_gbw_nodes_seq ON graph_build_workspace_nodes (workspace_id, tenant_id, seq)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_gbw_edges_seq ON graph_build_workspace_edges (workspace_id, tenant_id, seq)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_gbw_nodes_type ON graph_build_workspace_nodes (workspace_id, tenant_id, entity_type, seq)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_gbw_edges_source ON graph_build_workspace_edges (workspace_id, tenant_id, source_id, seq)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_gbw_edges_target ON graph_build_workspace_edges (workspace_id, tenant_id, target_id, seq)"
+        )
 
-    def _upsert(self, table: str, key_col: str, tenant_id: str, rows: Iterable[tuple[str, str]]) -> None:
+    def _upsert(
+        self,
+        table: str,
+        key_col: str,
+        extra_cols: tuple[str, ...],
+        tenant_id: str,
+        rows: Iterable[tuple[str, ...]],
+    ) -> None:
+        cols = ("workspace_id", "tenant_id", key_col, "payload", *extra_cols)
+        placeholders = ", ".join("%s" for _ in cols)
+        updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in ("payload", *extra_cols))
         sql = (
-            f"INSERT INTO {table} (workspace_id, tenant_id, {key_col}, payload) "  # nosec B608 - static table/col
-            f"VALUES (%s, %s, %s, %s) "
-            f"ON CONFLICT (workspace_id, tenant_id, {key_col}) DO UPDATE SET payload = EXCLUDED.payload"
+            f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders}) "  # nosec B608 - static table/cols
+            f"ON CONFLICT (workspace_id, tenant_id, {key_col}) DO UPDATE SET {updates}"
         )
         with self._conn.cursor() as cur:
-            params = ((self._workspace_id, tenant_id, key, payload) for key, payload in rows)
+            params = ((self._workspace_id, tenant_id, *row) for row in rows)
             cur.executemany(sql, params)
 
-    def add_node_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str]]) -> None:
-        self._upsert("graph_build_workspace_nodes", "node_id", tenant_id, rows)
+    def add_node_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str, str]]) -> None:
+        self._upsert("graph_build_workspace_nodes", "node_id", ("entity_type",), tenant_id, rows)
 
-    def add_edge_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str]]) -> None:
-        self._upsert("graph_build_workspace_edges", "edge_key", tenant_id, rows)
+    def add_edge_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str, str, str]]) -> None:
+        self._upsert("graph_build_workspace_edges", "edge_key", ("source_id", "target_id"), tenant_id, rows)
 
-    def _iter_payloads(self, table: str, tenant_id: str, batch_size: int) -> Iterator[str]:
+    def _iter_payloads(
+        self,
+        table: str,
+        tenant_id: str,
+        batch_size: int,
+        *,
+        where_col: str | None = None,
+        where_val: str | None = None,
+    ) -> Iterator[str]:
         # Server-side named cursor streams rows in bounded chunks (itersize) so
         # the client never buffers the whole result set — a plain client cursor
         # would fetch every row on execute, defeating the memory bound. A named
         # cursor requires an open transaction, so wrap the scan in one (the
         # connection is autocommit for writes).
+        params: tuple[str, ...] = (self._workspace_id, tenant_id)
+        predicate = ""
+        if where_col is not None:
+            predicate = f" AND {where_col} = %s"
+            params = (self._workspace_id, tenant_id, str(where_val))
         name = f"gbw_{uuid.uuid4().hex}"
         with self._conn.transaction(), self._conn.cursor(name=name) as cur:
             cur.itersize = batch_size
             cur.execute(
-                f"SELECT payload FROM {table} WHERE workspace_id = %s AND tenant_id = %s ORDER BY seq",  # nosec B608
-                (self._workspace_id, tenant_id),
+                f"SELECT payload FROM {table} WHERE workspace_id = %s AND tenant_id = %s{predicate} ORDER BY seq",  # nosec B608
+                params,
             )
             for (payload,) in cur:
                 # payload is TEXT — yield the exact stored bytes.
@@ -264,6 +387,25 @@ class _PostgresWorkspaceBackend:
 
     def iter_edge_payloads(self, tenant_id: str, batch_size: int) -> Iterator[str]:
         return self._iter_payloads("graph_build_workspace_edges", tenant_id, batch_size)
+
+    def get_node_payload(self, tenant_id: str, node_id: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT payload FROM graph_build_workspace_nodes WHERE workspace_id = %s AND tenant_id = %s AND node_id = %s",
+            (self._workspace_id, tenant_id, node_id),
+        ).fetchone()
+        if not row:
+            return None
+        payload = row[0]
+        return payload if isinstance(payload, str) else json.dumps(payload)
+
+    def iter_node_payloads_by_type(self, tenant_id: str, entity_type: str, batch_size: int) -> Iterator[str]:
+        return self._iter_payloads("graph_build_workspace_nodes", tenant_id, batch_size, where_col="entity_type", where_val=entity_type)
+
+    def iter_edge_payloads_by_source(self, tenant_id: str, node_id: str, batch_size: int) -> Iterator[str]:
+        return self._iter_payloads("graph_build_workspace_edges", tenant_id, batch_size, where_col="source_id", where_val=node_id)
+
+    def iter_edge_payloads_by_target(self, tenant_id: str, node_id: str, batch_size: int) -> Iterator[str]:
+        return self._iter_payloads("graph_build_workspace_edges", tenant_id, batch_size, where_col="target_id", where_val=node_id)
 
     def _count(self, table: str, tenant_id: str) -> int:
         row = self._conn.execute(
@@ -325,11 +467,13 @@ class GraphBuildWorkspace:
         return self._tenant_id
 
     def add_nodes(self, nodes: Iterable[UnifiedNode]) -> None:
-        for batch in _batched(((n.id, json.dumps(n.to_dict(), default=str)) for n in nodes), self._batch_size):
+        rows = ((n.id, json.dumps(n.to_dict(), default=str), _node_entity_type(n)) for n in nodes)
+        for batch in _batched(rows, self._batch_size):
             self._backend.add_node_payloads(self._tenant_id, batch)
 
     def add_edges(self, edges: Iterable[UnifiedEdge]) -> None:
-        for batch in _batched(((_edge_key(e), json.dumps(e.to_dict(), default=str)) for e in edges), self._batch_size):
+        rows = ((_edge_key(e), json.dumps(e.to_dict(), default=str), e.source, e.target) for e in edges)
+        for batch in _batched(rows, self._batch_size):
             self._backend.add_edge_payloads(self._tenant_id, batch)
 
     def iter_nodes(self) -> Iterator[UnifiedNode]:
@@ -361,8 +505,8 @@ class GraphBuildWorkspace:
         self.close()
 
 
-def _batched(items: Iterable[tuple[str, str]], size: int) -> Iterator[list[tuple[str, str]]]:
-    batch: list[tuple[str, str]] = []
+def _batched(items: Iterable[_RowT], size: int) -> Iterator[list[_RowT]]:
+    batch: list[_RowT] = []
     for item in items:
         batch.append(item)
         if len(batch) >= size:

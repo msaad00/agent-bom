@@ -107,6 +107,25 @@ class MockConnection:
                 if table not in self._store:
                     self._store[table] = {}
                 self._store[table][params[0]] = params
+        elif sql_lower.startswith("with recursive chain") and "audit_log" in sql_lower:
+            # Model the chain-ordered walk (`_list_entries_chronological`): follow
+            # prev_signature -> hmac_signature links from the genesis row instead
+            # of ordering by timestamp, so head/verify stay correct under skew.
+            rows = list(self._store.get("audit_log", {}).values())
+            limit = params[-1] if params else None
+            team = params[0] if params and "a.team_id = %s" in sql_lower else None
+            if team is not None:
+                rows = [r for r in rows if r[5] == team]
+            by_prev = {r[7]: r for r in rows}
+            ordered: list[tuple] = []
+            cursor_sig = ""
+            while cursor_sig in by_prev:
+                row = by_prev[cursor_sig]
+                ordered.append(row)
+                cursor_sig = row[8]
+            if limit is not None:
+                ordered = ordered[: int(limit)]
+            cursor.rows = [(r[0], r[1], r[2], r[3], r[4], r[6], r[7], r[8]) for r in ordered]
         elif sql_lower.startswith("select"):
             if "select distinct on (team_id) team_id, hmac_signature" in sql_lower:
                 rows = list(self._store.get("audit_log", {}).values())

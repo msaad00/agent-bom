@@ -668,6 +668,13 @@ class TestMarkdown:
         assert "Suspicious credential exfiltration MCP server" in md
         assert "No vulnerabilities found" not in md
 
+    def test_summary_severity_counts_include_policy_findings(self):
+        report = _report_with_policy_finding()
+        md = to_markdown(report)
+
+        assert "| High | 1 |" in md
+        assert "| Medium | 1 |" in md
+
     def test_findings_table_preserves_enrichment_and_compliance_metadata(self):
         br = _make_blast_radius(pkg=_make_pkg("web-lib", "1.0.0"), vuln=_make_enriched_vuln())
         br.owasp_tags = ["LLM05"]
@@ -947,6 +954,56 @@ def test_prometheus_uses_unified_findings_without_blast_radii():
     assert 'vuln_id="CVE-2026-4242"' in metrics
     assert 'package="web-lib"' in metrics
     assert "agent_bom_kev_findings_total 1" in metrics
+
+
+def test_badge_includes_non_cve_findings_and_never_calls_them_clean():
+    report = _report_with_policy_finding()
+
+    badge = to_badge(report)
+
+    assert badge["color"] == "orange"
+    assert "high" in badge["message"]
+
+
+def test_partial_scan_is_not_rendered_as_clean_across_outputs():
+    report = _make_report()
+    report.coverage_warnings = [
+        {
+            "ecosystem": "pypi",
+            "release": "python 2.7",
+            "detail": "advisory data unavailable",
+        }
+    ]
+
+    markdown = to_markdown(report)
+    assert "Scan outcome: PARTIAL" in markdown
+    assert "No vulnerabilities found" not in markdown
+
+    badge = to_badge(report)
+    assert badge["message"] == "partial scan"
+    assert badge["color"] == "yellow"
+
+    html = to_html(report, [])
+    assert "PARTIAL COVERAGE" in html
+    assert "CLEAN" not in html
+
+    junit = ET.fromstring(to_junit(report))
+    assert junit.get("tests") == "1"
+    assert junit.get("errors") == "1"
+    assert junit.find("./testsuite/testcase/error") is not None
+
+    metrics = to_prometheus(report)
+    assert 'agent_bom_scan_outcome{outcome="partial"} 1' in metrics
+    assert "agent_bom_scan_issues_total 1" in metrics
+
+
+def test_sarif_preserves_sanitized_scan_issue_message():
+    report = _make_report()
+    report.coverage_warnings = [{"ecosystem": "npm", "release": "old", "detail": "advisory gap"}]
+
+    sarif = to_sarif(report)
+    notification = sarif["runs"][0]["invocations"][0]["toolExecutionNotifications"][0]
+    assert "advisory gap" in notification["message"]["text"]
 
 
 def test_html_renders_unified_non_cve_findings_with_asset_context():

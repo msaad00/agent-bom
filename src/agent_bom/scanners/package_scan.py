@@ -85,7 +85,7 @@ from agent_bom.scanners.state import (
     record_coverage_warning,
     record_scan_warning,
     reset_scan_performance,
-    reset_scan_warnings,
+    reset_scan_warnings_only,
 )
 from agent_bom.soc2 import tag_blast_radius as tag_soc2
 from agent_bom.vuln_compliance import tag_vulnerability as _tag_vuln
@@ -1035,7 +1035,7 @@ async def scan_packages(
                 pkg.name = _strip_extras(pkg.name)
             pkg.name = normalize_package_name(pkg.name, pkg.ecosystem)
 
-    reset_scan_warnings()
+    reset_scan_warnings_only()
     try:
         from agent_bom.resolver import reset_performance_stats as _reset_resolver_performance
 

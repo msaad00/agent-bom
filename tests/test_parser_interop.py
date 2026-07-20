@@ -89,6 +89,17 @@ class TestPoetryLock:
         # poetry.lock wins — version from poetry, not requirements.txt
         assert by_name["requests"].version == "2.31.0"
 
+    def test_poetry_declarations_are_used_without_lock(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.poetry.dependencies]\npython = \"^3.11\"\nrequests = \"^2.31\"\n"
+        )
+
+        pkgs = parse_pip_packages(tmp_path)
+
+        assert [pkg.name for pkg in pkgs] == ["requests"]
+        assert pkgs[0].version == "unknown"
+        assert pkgs[0].is_direct is True
+
 
 # ── uv.lock ──────────────────────────────────────────────────────────────────
 

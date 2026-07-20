@@ -66,6 +66,16 @@ def unified_export_findings(report: AIBOMReport, blast_radii: list[BlastRadius] 
     return findings
 
 
+def unified_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
+    """Return the complete finding stream for human and machine summaries.
+
+    Keep this name separate from ``unified_export_findings`` so callers that
+    only need a posture/severity summary do not imply a flat-file export
+    contract.  Both paths intentionally share the same deduplicated stream.
+    """
+    return unified_export_findings(report, blast_radii)
+
+
 def active_cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
     """Return CVE findings that remain active after VEX suppression."""
     from agent_bom.vex import active_blast_radii

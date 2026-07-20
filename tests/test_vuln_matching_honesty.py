@@ -56,6 +56,27 @@ def test_pyproject_range_not_emitted_as_exact_pin(tmp_path):
     assert pkgs["urllib3"].floating_reference is True
 
 
+def test_pep508_extras_preserve_package_and_version(tmp_path):
+    """Extras are metadata, not part of the PyPI package identity."""
+    (tmp_path / "requirements.txt").write_text("requests[security]==2.31.0\n")
+    pkgs = parse_pip_packages(tmp_path)
+
+    assert len(pkgs) == 1
+    assert pkgs[0].name == "requests"
+    assert pkgs[0].version == "2.31.0"
+    assert pkgs[0].purl == "pkg:pypi/requests@2.31.0"
+
+
+def test_pyproject_unpinned_and_extra_dependencies_are_not_dropped(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\nversion = "0"\ndependencies = ["requests", "urllib3[secure]==2.2.0"]\n'
+    )
+    pkgs = {p.name: p for p in parse_pip_packages(tmp_path)}
+
+    assert pkgs["requests"].version == "unknown"
+    assert pkgs["urllib3"].version == "2.2.0"
+
+
 # --- Defect 4: declaration-only manifests must not over-claim reachability --
 
 

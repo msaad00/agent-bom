@@ -9,6 +9,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-07-20
+
+### Added
+- Unified Parquet/Iceberg exports now include every unified finding type, keeping lake evidence aligned with JSON, SARIF, CSV, and graph outputs (#4307).
+- Legacy Postgres audit checkpoints can be reconciled from chain links and historical row counts without weakening tenant RLS (#4305).
+
+### Changed
+- Auth posture and OIDC bearer decisions now derive from one shared runtime model; JWT-shaped invalid credentials fail closed instead of falling through to API-key lookup (#4309).
+- Matching now uses strict SemVer prerelease ordering and range-aware alias remediation; Postgres graph persistence remains DML-only, while the store-backed UnifiedGraph seam was proven without changing default runtime wiring (#4303, #4308).
+
+### Fixed
+- Graph, CSV, and machine exports preserve policy and unified findings, escape untrusted content, and prevent spreadsheet formula injection (#4302).
+- Auto-seeded connection keys honor `AGENT_BOM_STATE_DIR`; audit rejection logs redact provider details; attack-path migration downgrades remain non-destructive (#4303).
+
 ## [0.96.4] - 2026-07-19
 
 ### Added
@@ -2380,7 +2394,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.4...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.0...HEAD
+[0.97.0]: https://github.com/msaad00/agent-bom/compare/v0.96.4...v0.97.0
 [0.96.4]: https://github.com/msaad00/agent-bom/compare/v0.96.3...v0.96.4
 [0.96.3]: https://github.com/msaad00/agent-bom/compare/v0.96.2...v0.96.3
 [0.96.2]: https://github.com/msaad00/agent-bom/compare/v0.96.1...v0.96.2

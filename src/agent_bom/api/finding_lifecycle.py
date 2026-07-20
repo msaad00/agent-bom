@@ -51,13 +51,7 @@ def resolve_canonical_id(payload: dict[str, Any], *, source: str = "") -> str:
         identifier = asset.get("identifier") or f"{asset.get('name', '')}:{asset.get('location') or ''}"
         asset_stable = canonical_id(asset_type, identifier)
 
-    rule = (
-        payload.get("vulnerability_id")
-        or payload.get("cve_id")
-        or payload.get("rule_id")
-        or payload.get("title")
-        or ""
-    )
+    rule = payload.get("vulnerability_id") or payload.get("cve_id") or payload.get("rule_id") or payload.get("title") or ""
     location = payload.get("location") or payload.get("file_path") or asset.get("location") or ""
     package = payload.get("package") or payload.get("package_name") or asset.get("name") or asset.get("identifier") or ""
     pkg_version = str(payload.get("package_version") or "")
@@ -210,6 +204,11 @@ def enriched_finding_payload(current_row: dict[str, Any]) -> dict[str, Any]:
     payload["first_seen"] = current_row.get("first_seen")
     payload["last_seen"] = current_row.get("last_seen")
     payload["scan_count"] = current_row.get("scan_count")
+    # Carry the denormalised sort rank so keyset cursors minted from this
+    # payload (merged scan+bulk path) resume with the store's severity order
+    # instead of collapsing to rank 0 and truncating the walk.
+    rank = current_row.get("severity_rank")
+    payload["severity_rank"] = int(rank) if rank is not None else _severity_rank(payload)
     canonical = current_row.get("canonical_id")
     if canonical:
         payload["canonical_id"] = canonical

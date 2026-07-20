@@ -29,6 +29,18 @@
       "default": null,
       "title": "Owner"
     },
+    "principal_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Principal Id"
+    },
     "role": {
       "default": "viewer",
       "title": "Role",

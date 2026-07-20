@@ -400,6 +400,11 @@ def scim_error_body(*, status_code: int, detail: str) -> dict[str, Any]:
 
 
 def _scim_key_matches_user(key: Any, *, subjects: set[str], subjects_lower: set[str], subject_ids: set[str]) -> bool:
+    # Stable principal binding is authoritative: a key keyed to the departing
+    # subject's principal id is revoked regardless of its display name.
+    principal_id = getattr(key, "principal_id", None)
+    if principal_id and principal_id in subject_ids:
+        return True
     if key.scim_subject_id and key.scim_subject_id in subject_ids:
         return True
     # Free-form CI keys created via POST /v1/auth/keys carry no scim_subject_id
@@ -414,7 +419,14 @@ def _scim_key_matches_user(key: Any, *, subjects: set[str], subjects_lower: set[
 
 
 def revoke_credentials_for_scim_user(tenant_id: str, user: Any) -> int:
-    """Revoke tenant API keys whose display name matches a deprovisioned SCIM user."""
+    """Revoke every tenant API key bound to a deprovisioned SCIM user.
+
+    Id-based first: each of the subject's stable ids (user_id / userName /
+    externalId) drives an indexed ``revoke_by_principal_id`` so a differently
+    named CI token bound only by ``principal_id`` is retired. A name/owner match
+    fallback then catches legacy keys minted before principal-id binding (rows
+    whose ``principal_id`` backfill could not be derived).
+    """
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import get_key_store
 
@@ -427,8 +439,17 @@ def revoke_credentials_for_scim_user(tenant_id: str, user: Any) -> int:
     if external_id:
         subject_ids.add(str(external_id))
     subjects_lower = {entry.lower() for entry in subjects if entry}
-    key_ids: set[str] = set()
+
+    revoked_ids: set[str] = set()
+    # Primary path: revoke by stable principal id (indexed, complete).
+    for principal in {sid for sid in subject_ids if sid}:
+        revoked_ids.update(store.revoke_by_principal_id(principal, tenant_id=tenant_id))
+
+    # Fallback path: legacy keys bound only by owner/name (no principal_id).
+    fallback_ids: set[str] = set()
     for key in store.list_keys(tenant_id):
+        if key.key_id in revoked_ids:
+            continue
         if not _scim_key_matches_user(
             key,
             subjects=subjects,
@@ -436,15 +457,16 @@ def revoke_credentials_for_scim_user(tenant_id: str, user: Any) -> int:
             subject_ids=subject_ids,
         ):
             continue
-        key_ids.add(key.key_id)
+        fallback_ids.add(key.key_id)
         if key.replacement_key_id:
-            key_ids.add(key.replacement_key_id)
-    revoked = 0
-    for key_id in key_ids:
-        if store.get(key_id) is None:
+            fallback_ids.add(key.replacement_key_id)
+    for key_id in fallback_ids:
+        if key_id in revoked_ids or store.get(key_id) is None:
             continue
-        store.remove(key_id)
-        revoked += 1
+        if store.remove(key_id):
+            revoked_ids.add(key_id)
+
+    for key_id in sorted(revoked_ids):
         log_action(
             "scim.api_key_revoked",
             actor="scim-provisioner",
@@ -452,4 +474,4 @@ def revoke_credentials_for_scim_user(tenant_id: str, user: Any) -> int:
             tenant_id=tenant_id,
             user_name=user.user_name,
         )
-    return revoked
+    return len(revoked_ids)

@@ -1636,6 +1636,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.api_key_scopes = list(api_key.scopes)
         if api_key.scim_subject_id:
             request.state.scim_subject_id = api_key.scim_subject_id
+        # Carry the stable principal binding into the request so authz/tenant
+        # context is keyed to the subject's id, not its display name.
+        if api_key.principal_id:
+            request.state.principal_id = api_key.principal_id
         # SAML-minted keys are named "saml:<subject>" — surface that
         # as a distinct auth method so operators can trace who came
         # in via which IdP path even after the key has been issued.

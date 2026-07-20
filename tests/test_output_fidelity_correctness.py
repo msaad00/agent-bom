@@ -207,6 +207,36 @@ def test_json_csv_and_sarif_include_explicit_and_blast_findings():
     assert len(sarif_results) == 2
 
 
+def test_json_exposes_namespace_neutral_advisory_and_unique_asset_contract():
+    """GHSA/OSV identifiers and repeated assets remain joinable without renaming legacy fields."""
+    from agent_bom.output.json_fmt import to_json
+
+    asset = Asset(name="shared-package", asset_type="package", identifier="pkg:pypi/shared-package@1.0.0")
+    first = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.SBOM,
+        asset=asset,
+        severity="high",
+        cve_id="GHSA-demo-1234",
+        evidence={"advisory_aliases": ["OSV-demo-1234"]},
+    )
+    second = Finding(
+        finding_type=FindingType.CVE,
+        source=first.source,
+        asset=asset,
+        severity="medium",
+        cve_id="GHSA-other-5678",
+    )
+    payload = to_json(AIBOMReport(findings=[first, second]))
+
+    assert payload["findings"][0]["finding_category"] == "vulnerability"
+    assert payload["findings"][0]["vulnerability_id"] == "GHSA-demo-1234"
+    assert payload["findings"][0]["advisory_ids"] == ["GHSA-demo-1234", "OSV-demo-1234"]
+    assert payload["summary"]["unique_assets"] == 1
+    assert payload["assets"][0]["stable_id"] == asset.stable_id
+    assert len(payload["assets"][0]["finding_ids"]) == 2
+
+
 def test_parquet_export_includes_base_reachability():
     pytest.importorskip("pyarrow")
     import pyarrow as pa

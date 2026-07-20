@@ -1877,7 +1877,7 @@ def test_audit_append_rejection_logs_rate_limited_warning(mock_pool, caplog, mon
 
     def failing_execute(sql, params=None):
         if sql.strip().lower().startswith("insert into audit_log"):
-            raise RuntimeError('new row violates row-level security policy for table "audit_log"')
+            raise RuntimeError('connection postgres://audit:secret@example.invalid/db violated row-level security policy')
         return real_execute(sql, params)
 
     monkeypatch.setattr(conn, "execute", failing_execute)
@@ -1891,6 +1891,8 @@ def test_audit_append_rejection_logs_rate_limited_warning(mock_pool, caplog, mon
         with pytest.raises(RuntimeError):
             store.append(entry)
         assert len(_rejection_warnings()) == 1
+        assert "secret@example.invalid" not in caplog.text
+        assert "internal error occurred" in caplog.text.lower()
 
         caplog.clear()
         with pytest.raises(RuntimeError):

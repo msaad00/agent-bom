@@ -15,6 +15,7 @@ from agent_bom.api.audit_log import (
 )
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.baseline import TrendPoint
+from agent_bom.security import sanitize_error
 
 from .postgres_common import (
     ConnectionPool,
@@ -52,7 +53,7 @@ def _warn_append_rejected(action: str, tenant_id: str, exc: Exception) -> None:
         "(further rejections are logged at most once per %.0fs)",
         action,
         tenant_id,
-        exc,
+        sanitize_error(exc, generic=True),
         _APPEND_REJECT_WARN_INTERVAL_SECONDS,
     )
 

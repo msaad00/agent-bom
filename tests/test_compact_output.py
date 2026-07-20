@@ -606,6 +606,16 @@ def test_compact_graph_findings_silent_when_empty():
     assert _plain(_capture(print_compact_graph_findings, report)).strip() == ""
 
 
+def test_compact_graph_findings_escapes_untrusted_rich_markup():
+    from agent_bom.output import print_compact_graph_findings
+
+    report = AIBOMReport(agents=[], findings=[_combo_finding("close [/bold]")])
+    output = _plain(_capture(print_compact_graph_findings, report))
+
+    assert "close" in output
+    assert "[/bold]" in output
+
+
 def test_compact_blast_radius_never_truncates_cve_ids_at_80_cols():
     """The vulnerability ID is the one column that must never truncate."""
     pkg = Package(name="averyverylongpackagename-for-width", version="1.2.3", ecosystem="pypi", vulnerabilities=[])

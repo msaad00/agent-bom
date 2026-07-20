@@ -121,6 +121,74 @@ def test_postgres_workspace_roundtrip_is_byte_identical() -> None:
     assert got_edges == want_edges
 
 
+def test_postgres_random_access_parity() -> None:
+    """The store's random-access reads mirror the in-RAM graph accessors (PG).
+
+    Same differential oracle as the SQLite suite: byte-identical payloads from
+    ``get_node_payload`` / ``iter_node_payloads_by_type`` /
+    ``iter_edge_payloads_by_source`` / ``iter_edge_payloads_by_target`` versus
+    the fully-materialised graph's ``get_node`` / ``nodes_by_type`` /
+    ``edges_from`` / ``edges_to``. The graph is directed-only, so the store
+    (populated from canonical ``graph.edges``) equals the in-RAM adjacency.
+    """
+    graph = _graph(400)
+    wsid = f"ra-{uuid.uuid4().hex}"
+    tenant = "t1"
+    backend = _PostgresWorkspaceBackend(_DSN, wsid)
+    ws = GraphBuildWorkspace(backend, tenant_id=tenant, batch_size=64)
+    try:
+        ws.add_nodes(graph.nodes.values())
+        ws.add_edges(graph.edges)
+
+        for nid, node in graph.nodes.items():
+            payload = backend.get_node_payload(tenant, nid)
+            assert payload is not None, f"node {nid} not retrievable by id"
+            assert json.loads(payload) == node.to_dict()
+            assert payload == json.dumps(node.to_dict(), default=str), "get_node_payload not byte-identical"
+        assert backend.get_node_payload(tenant, "no-such-node") is None
+
+        for et in {n.entity_type for n in graph.nodes.values()}:
+            got = [json.loads(p) for p in backend.iter_node_payloads_by_type(tenant, et.value, 32)]
+            want = [n.to_dict() for n in graph.nodes_by_type(et)]
+            assert got == want, f"nodes_by_type parity diverged for {et}"
+        assert list(backend.iter_node_payloads_by_type(tenant, "not-a-real-type", 32)) == []
+
+        for s in {e.source for e in graph.edges}:
+            got = [json.loads(p) for p in backend.iter_edge_payloads_by_source(tenant, s, 32)]
+            want = [e.to_dict() for e in graph.edges_from(s)]
+            assert got == want, f"edges_from parity diverged for source {s}"
+        for t in {e.target for e in graph.edges}:
+            got = [json.loads(p) for p in backend.iter_edge_payloads_by_target(tenant, t, 32)]
+            want = [e.to_dict() for e in graph.edges_to(t)]
+            assert got == want, f"edges_to parity diverged for target {t}"
+    finally:
+        backend.close()
+
+
+def test_postgres_random_access_reads_are_tenant_scoped() -> None:
+    wsid = f"ra-iso-{uuid.uuid4().hex}"
+    backend = _PostgresWorkspaceBackend(_DSN, wsid)
+    alpha = GraphBuildWorkspace(backend, tenant_id="alpha")
+    beta = GraphBuildWorkspace(backend, tenant_id="beta")
+    try:
+        alpha.add_nodes([UnifiedNode(id="shared:1", entity_type=EntityType.AGENT, label="alpha-agent")])
+        beta.add_nodes([UnifiedNode(id="shared:1", entity_type=EntityType.AGENT, label="beta-agent")])
+        alpha.add_edges([UnifiedEdge(source="shared:1", target="a2", relationship=RelationshipType.DEPENDS_ON)])
+        beta.add_edges([UnifiedEdge(source="shared:1", target="b2", relationship=RelationshipType.DEPENDS_ON)])
+
+        assert json.loads(backend.get_node_payload("alpha", "shared:1"))["label"] == "alpha-agent"
+        assert json.loads(backend.get_node_payload("beta", "shared:1"))["label"] == "beta-agent"
+
+        a_by_type = [json.loads(p) for p in backend.iter_node_payloads_by_type("alpha", EntityType.AGENT.value, 8)]
+        assert [n["label"] for n in a_by_type] == ["alpha-agent"]
+        a_edges = [json.loads(p) for p in backend.iter_edge_payloads_by_source("alpha", "shared:1", 8)]
+        assert [e["target"] for e in a_edges] == ["a2"]
+        b_edges = [json.loads(p) for p in backend.iter_edge_payloads_by_target("beta", "b2", 8)]
+        assert [e["source"] for e in b_edges] == ["shared:1"]
+    finally:
+        backend.close()  # DELETE by workspace_id clears both tenants' rows
+
+
 def test_postgres_workspace_tenant_isolation() -> None:
     wsid = f"iso-{uuid.uuid4().hex}"
     backend_a = _PostgresWorkspaceBackend(_DSN, wsid)

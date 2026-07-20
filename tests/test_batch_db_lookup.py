@@ -320,3 +320,17 @@ def test_alias_fix_merge_ignores_unrelated_rows(tmp_db):
     vulns = lookup_package(tmp_db, "pypi", "torch", "2.4.0")
     by_id = {v.id: v for v in vulns}
     assert by_id["PYSEC-2099-1"].fixed_version is None
+
+
+def test_alias_fix_merge_ignores_sibling_with_disjoint_affected_range(tmp_db):
+    """An alias sibling covering another release must not donate its fix."""
+    _insert_alias_pair(tmp_db)
+    tmp_db.execute(
+        "UPDATE affected SET introduced = ?, fixed = ? WHERE vuln_id = ?",
+        ("3.0.0", "3.1.0", "GHSA-vgrw-7cvw-pwgx"),
+    )
+    tmp_db.commit()
+
+    vulns = lookup_package(tmp_db, "pypi", "torch", "2.4.0")
+    by_id = {v.id: v for v in vulns}
+    assert by_id["PYSEC-2025-193"].fixed_version is None

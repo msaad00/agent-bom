@@ -473,6 +473,14 @@ def test_compare_version_order_sanitizes_local_suffix_bounds():
     assert compare_version_order("2.6.0-NA", "2.6.0", "pypi") == 1
 
 
+def test_compare_npm_arbitrary_semver_prerelease_uses_semver_precedence():
+    """Unknown npm prerelease identifiers must sort below their release."""
+    assert compare_version_order("1.0.0-foo", "1.0.0", "npm") == -1
+    assert compare_version_order("1.0.0-foo.2", "1.0.0-foo.10", "npm") == -1
+    assert compare_version_order("1.0.0-1", "1.0.0-foo", "npm") == -1
+    assert version_in_range("1.0.0-foo", "0", "1.0.0", None, "npm") is True
+
+
 def test_version_in_range_fails_closed_on_unparseable_bounds():
     """A bound that cannot be compared is never grounds for a match."""
     # Unparseable upper bound (not sanitizable): cannot place the version

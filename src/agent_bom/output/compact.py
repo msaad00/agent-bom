@@ -670,6 +670,8 @@ def print_compact_graph_findings(report: AIBOMReport, limit: int = 10) -> None:
     List each one (title + severity badge + one-line evidence chain) so the
     console drills to the same evidence as every machine surface.
     """
+    from rich.markup import escape
+
     from agent_bom.graph.severity import severity_worst_first_rank
     from agent_bom.output import _sev_badge, console
     from agent_bom.output.finding_views import _MACHINE_EXPORT_TYPES, finding_severity
@@ -684,15 +686,18 @@ def print_compact_graph_findings(report: AIBOMReport, limit: int = 10) -> None:
     console.print(Rule(lane_title("analyze", f"Graph & Policy Findings ({len(findings)})"), style="dim"))
     for finding in findings[:limit]:
         category = finding.finding_type.value
-        console.print(f"  {_sev_badge(finding_severity(finding))} [dim]{category}[/dim] [bold]{finding.title}[/bold]")
+        console.print(
+            f"  {_sev_badge(finding_severity(finding))} [dim]{escape(category)}[/dim] "
+            f"[bold]{escape(finding.title or '')}[/bold]"
+        )
         chain_parts: list[str] = []
         if finding.affected_agents:
-            chain_parts.append(", ".join(finding.affected_agents[:3]))
+            chain_parts.append(escape(", ".join(finding.affected_agents[:3])))
         if finding.affected_servers:
-            chain_parts.append(", ".join(finding.affected_servers[:3]))
+            chain_parts.append(escape(", ".join(finding.affected_servers[:3])))
         if finding.exposed_credentials:
-            chain_parts.append(f"[yellow]{', '.join(finding.exposed_credentials[:3])}[/yellow]")
-        evidence_line = " → ".join(chain_parts) or _compact_detail(finding.description or "", limit=110)
+            chain_parts.append(f"[yellow]{escape(', '.join(finding.exposed_credentials[:3]))}[/yellow]")
+        evidence_line = " → ".join(chain_parts) or escape(_compact_detail(finding.description or "", limit=110))
         if evidence_line:
             console.print(f"      [dim]{evidence_line}[/dim]")
     if len(findings) > limit:

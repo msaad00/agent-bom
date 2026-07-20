@@ -57,7 +57,7 @@ All agent-bom MCP tools become available in Cortex Code:
 | `check` | Pre-install CVE check for a package |
 | `blast_radius` | Map CVE impact across agents and credentials |
 | `policy_check` | Evaluate security policy against findings |
-| `registry_lookup` | Query 967 MCP server security metadata records |
+| `registry_lookup` | Query 1013 MCP server security metadata records |
 | `generate_sbom` | Generate CycloneDX or SPDX SBOM |
 | `compliance` | Map findings to OWASP, NIST, MITRE, EU AI Act, and related frameworks |
 | `remediate` | Prioritized remediation plan |

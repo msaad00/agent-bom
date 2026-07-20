@@ -89,7 +89,7 @@ def quickstart_cmd(
     click.echo("agent-bom quickstart")
     click.echo("")
     click.echo("Local scan:")
-    click.echo("  agent-bom agents --demo --offline")
+    click.echo("  agent-bom scan --demo --offline")
     click.echo("")
     click.echo("Sample data:")
     if dry_run:
@@ -215,7 +215,7 @@ def _resolve_agent_bom() -> str | None:
 
 
 def _sample_scan_command(sample_dir: Path, *, offline: bool) -> str:
-    command = f"agent-bom agents --inventory {sample_dir / 'inventory.json'} -p {sample_dir}"
+    command = f"agent-bom scan --inventory {sample_dir / 'inventory.json'} -p {sample_dir}"
     if offline:
         return f"{command} --offline"
     return f"{command} --enrich"

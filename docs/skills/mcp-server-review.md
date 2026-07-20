@@ -16,7 +16,7 @@ pip install agent-bom
 
 ### 1. Registry Lookup
 
-Check if the server is in agent-bom's curated registry (967 servers, 894 verified):
+Check if the server is in agent-bom's curated registry (1013 servers, 940 verified):
 
 ```bash
 # Via CLI

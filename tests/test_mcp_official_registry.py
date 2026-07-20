@@ -230,6 +230,7 @@ def test_sync_adds_new(mock_client_factory, mock_request, tmp_path):
         assert entry["source_fetched_at"].endswith("Z")
         assert entry["version_source"] == "official-registry"
         assert data["_mcp_registry_sync_source"] == "mcp-official"
+        assert data["_total_servers"] == len(data["servers"])
 
 
 @patch("agent_bom.mcp_official_registry.request_with_retry")

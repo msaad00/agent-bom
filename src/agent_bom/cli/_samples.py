@@ -37,4 +37,4 @@ def first_run_sample(output: Path, force: bool) -> None:
     click.echo(f"Wrote {len(written)} files to {output}")
     click.echo("")
     click.echo("Next:")
-    click.echo(f"  agent-bom agents --inventory {output / 'inventory.json'} -p {output} --enrich")
+    click.echo(f"  agent-bom scan --inventory {output / 'inventory.json'} -p {output} --enrich")

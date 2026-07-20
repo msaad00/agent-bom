@@ -14,12 +14,19 @@ from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.finding_views import (
     evidence,
     is_package_malicious,
-    machine_export_findings,
     package_ecosystem,
     package_name,
     package_version,
     severity_value,
+    unified_export_findings,
 )
+
+# Lake/Parquet schema version. v1 = the CVE+malicious 28-column table; v2 adds
+# the three appended unified columns (``finding_type``/``finding_id``/``title``)
+# and widens the row set to every unified finding type (#4280). The bump is
+# purely additive: no v1 column is renamed, retyped, or reordered, so existing
+# Iceberg/lake consumers keep reading the same columns unchanged.
+PARQUET_SCHEMA_VERSION = "2"
 
 _COLUMNS = [
     "cve_id",
@@ -50,6 +57,13 @@ _COLUMNS = [
     "reachable_affected_symbols",
     "graph_reachable",
     "graph_min_hop_distance",
+    # Appended (not inserted) so positional consumers of the original CVE
+    # columns keep working; new nullable columns for the unified finding types
+    # (COMBINATION / PROMPT_SECURITY / CIS / SAST / secret) that a CVE-only row
+    # leaves null. Mirrors the CSV export (#4279).
+    "finding_type",
+    "finding_id",
+    "title",
 ]
 
 
@@ -92,22 +106,29 @@ def _row_dict(finding) -> dict[str, Any]:
         "reachable_affected_symbols": ";".join(evidence(finding, "reachable_affected_symbols", []) or []) or None,
         "graph_reachable": evidence(finding, "graph_reachable", None),
         "graph_min_hop_distance": evidence(finding, "graph_min_hop_distance", None),
+        "finding_type": finding.finding_type.value,
+        "finding_id": finding.id,
+        "title": finding.title or None,
     }
 
 
 def to_arrow_table(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None):
-    """Build a PyArrow table of CVE findings using the shared 28-col schema.
+    """Build a PyArrow table of every unified finding using the shared schema.
 
     Shared by the Parquet file writer and the Iceberg catalog exporter so lake
-    consumers always see one consistent table shape.
+    consumers always see one consistent table shape. Rows cover the full unified
+    stream — CVE + malicious-package plus COMBINATION / PROMPT_SECURITY / CIS /
+    SAST / secret findings (#4280) — with the CVE-specific columns null for
+    non-CVE rows and the appended ``finding_type``/``finding_id``/``title``
+    columns populated for every row.
     """
     pa, _ = _require_pyarrow()
-    rows = [_row_dict(finding) for finding in machine_export_findings(report, blast_radii)]
+    rows = [_row_dict(finding) for finding in unified_export_findings(report, blast_radii)]
     return pa.Table.from_pylist(rows, schema=_schema(pa))
 
 
 def to_parquet_bytes(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> bytes:
-    """Serialize CVE findings to an in-memory Parquet file."""
+    """Serialize every unified finding to an in-memory Parquet file."""
     pa, pq = _require_pyarrow()
     table = to_arrow_table(report, blast_radii)
     sink = pa.BufferOutputStream()
@@ -120,7 +141,7 @@ def export_parquet(
     output_path: str,
     blast_radii: list[BlastRadius] | None = None,
 ) -> None:
-    """Write CVE findings as a Parquet file."""
+    """Write every unified finding as a Parquet file."""
     Path(output_path).write_bytes(to_parquet_bytes(report, blast_radii))
 
 
@@ -155,8 +176,12 @@ def _schema(pa):
             ("reachable_affected_symbols", pa.string()),
             ("graph_reachable", pa.bool_()),
             ("graph_min_hop_distance", pa.int64()),
+            ("finding_type", pa.string()),
+            ("finding_id", pa.string()),
+            ("title", pa.string()),
         ],
+        metadata={b"agent_bom.parquet_schema_version": PARQUET_SCHEMA_VERSION.encode()},
     )
 
 
-__all__ = ["export_parquet", "to_arrow_table", "to_parquet_bytes"]
+__all__ = ["PARQUET_SCHEMA_VERSION", "export_parquet", "to_arrow_table", "to_parquet_bytes"]

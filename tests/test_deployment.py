@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -641,10 +643,31 @@ def test_primary_api_image_includes_snowflake_extra_for_snowflake_backend():
 def test_runtime_dockerfile_builds_from_repo_source():
     """Runtime image should install agent-bom from the checked-out source tree, not PyPI."""
     content = (ROOT / "deploy" / "docker" / "Dockerfile.runtime").read_text()
-    assert "COPY pyproject.toml README.md PYPI_README.md LICENSE ./" in content
+    assert "COPY pyproject.toml uv.lock README.md PYPI_README.md LICENSE ./" in content
     assert "COPY src/ ./src/" in content
-    assert 'pip install --no-cache-dir --prefix=/install ".[runtime]"' in content
+    assert "uv sync --locked --no-dev --no-editable --extra runtime" in content
+    assert "COPY --from=builder /app/.venv /app/.venv" in content
     assert "agent-bom==${VERSION}" not in content
+
+
+@pytest.mark.parametrize(
+    "dockerfile",
+    [
+        ROOT / "deploy" / "docker" / "Dockerfile.mcp",
+        ROOT / "deploy" / "docker" / "Dockerfile.runtime",
+        ROOT / "deploy" / "docker" / "Dockerfile.snowpark",
+        ROOT / "deploy" / "docker" / "Dockerfile.sse",
+        ROOT / "integrations" / "glama" / "Dockerfile",
+    ],
+)
+def test_maintained_python_images_install_project_from_reviewed_lock(dockerfile):
+    """Every maintained project image must reproduce the reviewed Python graph."""
+    content = dockerfile.read_text()
+    assert "COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:" in content
+    assert "uv.lock" in content
+    assert "uv sync --locked --no-dev --no-editable" in content
+    assert "COPY --from=builder /app/.venv /app/.venv" in content
+    assert "pip install --no-cache-dir --prefix=/install" not in content
 
 
 def test_compose_examples_pass_through_proxy_and_ca_env():

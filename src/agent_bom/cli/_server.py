@@ -78,7 +78,7 @@ def _saml_enabled() -> bool:
 def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_insecure_no_auth: bool) -> None:
     """Refuse unauthenticated non-loopback binds unless explicitly overridden.
 
-    Recognises five auth paths:
+    Recognises six auth paths:
     - explicit API key (--api-key / AGENT_BOM_API_KEY)
     - OIDC (AGENT_BOM_OIDC_ISSUER + tenant providers)
     - SCIM bearer (AGENT_BOM_SCIM_BEARER_TOKEN) -- the SCIM middleware
@@ -87,6 +87,7 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
       authenticate against the IdP and receive a short-lived session API key;
       anonymous requests still fail closed via the API-key middleware, which
       stays installed whenever any auth path is configured
+    - trusted reverse-proxy auth (feature flag + strong env/file secret)
     - --allow-insecure-no-auth (explicit override; emits a loud warning when
       another auth method is also configured so operators understand that
       their `--allow-insecure-no-auth` does NOT actually disable the SCIM /
@@ -100,7 +101,10 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
     has_oidc = _oidc_enabled()
     has_scim = _scim_bearer_enabled()
     has_saml = _saml_enabled()
-    if has_api_key or has_oidc or has_scim or has_saml:
+    from agent_bom.api.middleware import trusted_proxy_auth_usable
+
+    has_trusted_proxy = trusted_proxy_auth_usable()
+    if has_api_key or has_oidc or has_scim or has_saml or has_trusted_proxy:
         if allow_insecure_no_auth:
             active: list[str] = []
             if has_api_key:
@@ -111,6 +115,8 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
                 active.append("SCIM-bearer")
             if has_saml:
                 active.append("SAML")
+            if has_trusted_proxy:
+                active.append("trusted-proxy")
             click.secho(
                 f"warning: --allow-insecure-no-auth was passed but {', '.join(active)} authentication is "
                 "still configured -- requests will continue to be authenticated. "
@@ -126,6 +132,7 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
         "Set --api-key / AGENT_BOM_API_KEY, configure AGENT_BOM_API_KEYS, configure AGENT_BOM_OIDC_ISSUER / "
         "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, set AGENT_BOM_SCIM_BEARER_TOKEN, configure SAML SSO "
         "(AGENT_BOM_SAML_IDP_ENTITY_ID / AGENT_BOM_SAML_SP_ENTITY_ID + related), "
+        "configure AGENT_BOM_TRUST_PROXY_AUTH with a strong AGENT_BOM_TRUST_PROXY_AUTH_SECRET, "
         "or pass --allow-insecure-no-auth to override."
     )
 

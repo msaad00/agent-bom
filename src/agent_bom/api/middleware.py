@@ -175,6 +175,20 @@ def get_trusted_proxy_auth_status() -> dict[str, object]:
     }
 
 
+def trusted_proxy_auth_usable() -> bool:
+    """Return whether trusted-proxy auth is enabled with a strong resolved secret.
+
+    The feature flag alone is not an authentication mechanism.  Treat unreadable
+    mounted secrets, missing values, and weak values as unusable so startup gates
+    and health posture describe the same boundary enforced by the middleware.
+    """
+    try:
+        status = get_trusted_proxy_auth_status()
+    except (OSError, ValueError):
+        return False
+    return status.get("status") in {"ok", "issuer_unpinned"}
+
+
 _PROXY_CONTROL_PLANE_MTLS_MODES = {"app_native", "delegated", "disabled"}
 
 

@@ -819,7 +819,9 @@ def configure_api(
     snowflake_oauth_enabled = snowflake_oauth_enabled_from_env()
     scim_enabled = scim_enabled_from_env()
     saml_enabled = saml_enabled_from_env()
-    trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
+    from agent_bom.api.middleware import trusted_proxy_auth_usable
+
+    trusted_proxy_enabled = trusted_proxy_auth_usable()
     auth_configured = bool(
         api_key
         or static_api_key_configured

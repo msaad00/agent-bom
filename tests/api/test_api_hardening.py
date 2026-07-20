@@ -218,6 +218,51 @@ def test_file_api_key_remains_visible_in_runtime_auth_posture(tmp_path, monkeypa
         configure_api(api_key=None)
 
 
+@pytest.mark.parametrize("secret", [None, "too-short"])
+def test_unusable_trusted_proxy_is_not_advertised_as_configured(monkeypatch, secret):
+    """Health must not label a missing/weak proxy attestation secret as auth."""
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET_FILE", raising=False)
+    if secret is None:
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", secret)
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+
+    configure_api(api_key=None)
+    try:
+        health = TestClient(app).get("/health").json()
+        assert health["auth_required"] is True
+        assert health["auth_configured"] is False
+        assert "trusted_proxy" not in health["configured_auth_modes"]
+    finally:
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", raising=False)
+        monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+        configure_api(api_key=None)
+
+
+def test_trusted_proxy_file_secret_is_advertised_as_configured(tmp_path, monkeypatch):
+    """Health should report trusted proxy only when its mounted secret is usable."""
+    secret_file = tmp_path / "trusted-proxy-secret"
+    secret_file.write_text("trusted-proxy-secret-material-32-bytes\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET_FILE", str(secret_file))
+    monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", raising=False)
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+
+    configure_api(api_key=None)
+    try:
+        health = TestClient(app).get("/health").json()
+        assert health["auth_configured"] is True
+        assert "trusted_proxy" in health["configured_auth_modes"]
+    finally:
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET_FILE", raising=False)
+        monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+        configure_api(api_key=None)
+
+
 def test_direct_asgi_import_configures_rbac_api_keys_from_env(monkeypatch):
     """AGENT_BOM_API_KEYS should fail closed and preserve per-key roles."""
     raw_admin = "raw-uvicorn-admin-key"
@@ -1408,11 +1453,13 @@ def test_configure_api_enables_auth_middleware_for_tenant_bound_oidc(monkeypatch
 def test_configure_api_enables_auth_middleware_for_trusted_proxy(monkeypatch):
     """Trusted-proxy browser auth must also install the auth middleware."""
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret-with-32-plus-bytes")
     configure_api(api_key=None)
     try:
         assert any(m.cls is APIKeyMiddleware for m in app.user_middleware)
     finally:
         monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", raising=False)
         configure_api(api_key=None)
 
 

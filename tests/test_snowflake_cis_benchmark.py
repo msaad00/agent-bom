@@ -694,3 +694,42 @@ def test_snowflake_report_exposes_error_and_evaluation_counts():
     assert payload["errored"] == 1
     assert payload["evaluated"] == 0
     assert payload["not_applicable"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Exception-path titles must stay own-worded (never docstring-derived)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingCursor:
+    """Cursor whose every query fails, forcing the per-check exception path."""
+
+    description = None
+
+    def execute(self, sql):
+        raise RuntimeError("simulated query failure")
+
+    def fetchall(self):
+        return []
+
+
+class TestExceptionPathTitles:
+    def test_error_metadata_covers_every_check(self):
+        """Every runnable check must have own-worded error metadata so no
+        error path ever falls back to docstring (CIS-house-style) text."""
+        from agent_bom.cloud.snowflake_cis_benchmark import _CHECK_ERROR_METADATA
+
+        expected_ids = {
+            "1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
+            "2.1", "2.2", "3.1", "3.2", "4.1", "4.2", "5.1", "5.2",
+        }
+        assert set(_CHECK_ERROR_METADATA) == expected_ids
+
+    def test_exception_path_emits_own_worded_title(self):
+        """A check that raises must report the own-worded catalog title, not
+        text derived from the check function's docstring (verbatim CIS)."""
+        report = _run_selected_with_source(_RaisingCursor(), "1.3")
+
+        assert report.checks[0].status == CheckStatus.ERROR
+        assert report.checks[0].title == "Session idle timeout 4 hours or less"
+        assert not report.checks[0].title.lower().startswith("ensure")

@@ -210,6 +210,33 @@ class TestBuildGraph:
         assert len(shares) == 1
         assert shares[0].metadata["credential"] == "API_KEY"
 
+    def test_large_shared_groups_use_bounded_edges(self):
+        def _shared_server(name):
+            return {
+                **_server(name=name),
+                "env": {},
+                "credential_env_vars": ["SHARED_TOKEN"],
+            }
+
+        agents = [
+            _agent(name=f"agent-{i}", servers=[_shared_server("shared-srv")])
+            for i in range(100)
+        ]
+        graph = build_context_graph(agents, [])
+
+        server_shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_SERVER]
+        cred_shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_CREDENTIAL]
+        # The old pairwise implementation emitted 4,950 edges per resource.
+        assert len(server_shares) == 100
+        assert len(cred_shares) == 100
+        assert "shared-server:shared-srv" in graph.nodes
+        assert graph.nodes["cred:SHARED_TOKEN"].metadata["shared_agent_count"] == 100
+
+        risks = compute_interaction_risks(graph)
+        patterns = {risk.pattern for risk in risks}
+        assert "shared_server" in patterns
+        assert "shared_credential" in patterns
+
 
 # ---------------------------------------------------------------------------
 # TestLateralPaths

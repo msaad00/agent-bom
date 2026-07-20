@@ -403,7 +403,7 @@ def build_context_graph(
     for _cred_name, agent_names in cred_to_agents.items():
         unique = sorted(set(agent_names))
         if len(unique) >= 2:
-            metadata = {"credential": _cred_name}
+            metadata: dict[str, object] = {"credential": _cred_name}
             if len(unique) > _MAX_PAIRWISE_SHARED_AGENTS:
                 # The canonical credential node already connects all of its
                 # servers.  Add one linear agent→credential edge per member;

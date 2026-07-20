@@ -1630,7 +1630,10 @@ def scan(
                     "unknown": "dim",
                 }
                 _sev_str = " · ".join(f"[{_sev_color[s]}]{sev_counts[s]} {s}[/{_sev_color[s]}]" for s in _sev_order if s in sev_counts)
-                con.print(f"  [red]⚠[/red] Scan complete — {_sev_str}")
+                # Scope-labeled: this breakdown covers package CVE findings
+                # only. Graph-derived findings surface after graph analysis
+                # below, and the all-categories totals line reconciles both.
+                con.print(f"  [red]⚠[/red] Scan complete — package CVEs: {_sev_str}")
             elif offline:
                 if unresolved:
                     con.print(
@@ -2071,15 +2074,41 @@ def scan(
 
         surface_graph_derived_findings(report, scan_id=_scan_id, tenant_id=_resolve_cli_tenant_id())
         if not quiet:
+            # Non-zero counts here are bad news — warn, don't checkmark.
             _n_toxic = len(report.toxic_combination_findings_data or [])
             _n_nhi = len(report.nhi_governance_findings or [])
             _n_ciem = len(report.ciem_over_privilege_findings_data or [])
             if _n_toxic:
-                con.print(f"  [green]✓[/green] Toxic combinations: {_n_toxic} finding(s)")
+                con.print(f"  [yellow]⚠[/yellow] Toxic combinations: {_n_toxic} finding(s)")
             if _n_nhi:
-                con.print(f"  [green]✓[/green] NHI governance: {_n_nhi} finding(s)")
+                con.print(f"  [yellow]⚠[/yellow] NHI governance: {_n_nhi} finding(s)")
             if _n_ciem:
-                con.print(f"  [green]✓[/green] CIEM over-privilege: {_n_ciem} finding(s)")
+                con.print(f"  [yellow]⚠[/yellow] CIEM over-privilege: {_n_ciem} finding(s)")
+            if verbose and (_n_toxic or _n_nhi or _n_ciem):
+                from agent_bom.finding import FindingSource as _FindingSource
+
+                for _gf in report.to_findings():
+                    if _gf.source is _FindingSource.GRAPH_ANALYSIS:
+                        con.print(f"      [dim]{str(_gf.severity).upper()}[/dim] {_gf.title}")
+            # One labeled all-categories totals line reconciles the
+            # package-CVE progress breakdown above with the unified findings
+            # stream every machine surface (JSON/API/MCP) reports.
+            _unified = report.to_findings()
+            if _unified:
+                _u_counts: dict[str, int] = {}
+                for _uf in _unified:
+                    _u_sev = str(_uf.effective_severity() or "unknown").lower()
+                    _u_counts[_u_sev] = _u_counts.get(_u_sev, 0) + 1
+                _u_order = ["critical", "high", "medium", "low", "unknown"]
+                _u_color = {
+                    "critical": "red bold",
+                    "high": "red",
+                    "medium": "yellow",
+                    "low": "blue",
+                    "unknown": "dim",
+                }
+                _u_str = " · ".join(f"[{_u_color[s]}]{_u_counts[s]} {s}[/{_u_color[s]}]" for s in _u_order if s in _u_counts)
+                con.print(f"  [red]⚠[/red] Findings — {_u_str} [dim](all finding categories)[/dim]")
 
     # ── Context graph: lateral movement analysis ────────────────────
     # Build whenever requested — credential pivots / SHARES_CREDENTIAL lateral

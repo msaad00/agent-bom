@@ -1260,19 +1260,23 @@ async def scan_packages(
                 gap_ecos = sorted({eco for p in uncovered for eco in _db_ecosystems_for_package(p)})
                 skipped_names = ", ".join(f"{pkg.name}@{pkg.version}" for pkg in uncovered[:5])
                 suffix = f" (+{len(uncovered) - 5} more)" if len(uncovered) > 5 else ""
+                # A package can map to no DB ecosystem at all; never render an
+                # empty "()" parenthetical in that case.
+                eco_note = f" ({', '.join(gap_ecos)})" if gap_ecos else ""
+                eco_clause = f" {', '.join(gap_ecos)}" if gap_ecos else ""
                 _logger.warning(
-                    "Offline mode: %d package(s) in ecosystem(s) with no local DB advisories (%s) skipped",
+                    "Offline mode: %d package(s) in ecosystem(s) with no local DB advisories%s skipped",
                     len(uncovered),
-                    ", ".join(gap_ecos),
+                    eco_note,
                 )
                 console.print(
                     f"  [yellow]⚠[/yellow] Offline coverage gap: {len(uncovered)} package(s) in "
-                    f"ecosystem(s) the local DB has no advisories for ({', '.join(gap_ecos)}): "
+                    f"ecosystem(s) the local DB has no advisories for{eco_note}: "
                     f"{skipped_names}{suffix}. Run `agent-bom db update` for full coverage."
                 )
                 _emit_scan_warning(
-                    f"offline coverage gap: {len(uncovered)} package(s) in ecosystem(s) "
-                    f"{', '.join(gap_ecos)} have no advisories in the local vulnerability DB"
+                    f"offline coverage gap: {len(uncovered)} package(s) in ecosystem(s)"
+                    f"{eco_clause} have no advisories in the local vulnerability DB"
                 )
                 # Structured signal so consumers (e.g. `check`) can fail closed
                 # deterministically instead of string-matching the warning above.

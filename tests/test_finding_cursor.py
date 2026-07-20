@@ -198,6 +198,55 @@ def test_lifecycle_metrics_defaults_cvss_score_to_zero() -> None:
     assert metrics["cvss_score"] == 0.0
 
 
+def test_severity_cursor_from_payload_row_derives_rank_from_severity() -> None:
+    """Enriched API payloads carry ``severity`` but historically not
+    ``severity_rank``; the cursor must never silently collapse to rank 0."""
+    from agent_bom.api.finding_cursor import cursor_from_current_row
+    from agent_bom.graph.severity import severity_policy_rank
+
+    payload_row = {
+        "id": "payload-1",
+        "canonical_id": "payload-1",
+        "severity": "high",
+        "last_seen": "2026-07-19T00:00:00Z",
+    }
+    token = cursor_from_current_row(payload_row, sort="severity")
+    primary, last_seen, canonical_id = decode_finding_cursor(token, expected_sort="severity")
+    assert primary == float(severity_policy_rank("high"))
+    assert last_seen == "2026-07-19T00:00:00Z"
+    assert canonical_id == "payload-1"
+
+
+def test_row_is_after_cursor_severity_derives_rank_from_severity() -> None:
+    """A row missing ``severity_rank`` must compare by its severity string,
+    not fall to rank 0 (which made every real row look already-consumed)."""
+    from agent_bom.api.finding_cursor import row_is_after_cursor
+    from agent_bom.graph.severity import severity_policy_rank
+
+    medium_row = {
+        "canonical_id": "medium-1",
+        "severity": "medium",
+        "last_seen": "2026-07-19T00:00:00Z",
+    }
+    # Descending severity sort: a medium row sorts BEFORE a low cursor, so it
+    # is not "after" the cursor. Rank-0 fallback wrongly claimed it was.
+    assert not row_is_after_cursor(
+        medium_row,
+        sort="severity",
+        primary=float(severity_policy_rank("low")),
+        last_seen="2026-07-19T00:00:00Z",
+        canonical_id="low-1",
+    )
+    # And it IS after a critical cursor.
+    assert row_is_after_cursor(
+        medium_row,
+        sort="severity",
+        primary=float(severity_policy_rank("critical")),
+        last_seen="2026-07-19T00:00:00Z",
+        canonical_id="crit-1",
+    )
+
+
 def test_findings_api_rejects_cursor_with_offset() -> None:
     client = TestClient(app)
     headers = proxy_headers(tenant="default")

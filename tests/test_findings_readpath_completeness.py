@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore, set_compliance_hub_store
@@ -64,7 +65,13 @@ def _seed_scan_job(tenant: str, count: int) -> None:
     _get_store().put(job)
 
 
-def _walk_keyset(client: TestClient, headers: dict[str, str], *, limit: int) -> list[str]:
+def _walk_keyset(
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    limit: int,
+    sort: str = "effective_reach",
+) -> list[str]:
     """Follow the documented keyset contract: advance while ``has_more``."""
     seen: list[str] = []
     cursor = ""
@@ -72,7 +79,7 @@ def _walk_keyset(client: TestClient, headers: dict[str, str], *, limit: int) -> 
     while True:
         guard += 1
         assert guard < 1000, "keyset walk did not terminate"
-        url = f"/v1/findings?limit={limit}&sort=effective_reach"
+        url = f"/v1/findings?limit={limit}&sort={sort}"
         if cursor:
             url += f"&cursor={cursor}"
         body = client.get(url, headers=headers).json()
@@ -178,6 +185,74 @@ def test_keyset_walks_mixed_scan_and_bulk_zero_dup_zero_drop() -> None:
     assert len(seen) == len(expected), f"expected {len(expected)} rows, got {len(seen)}"
     assert len(set(seen)) == len(seen), "keyset walk produced duplicates"
     assert set(seen) == expected
+
+
+_MIXED_SEVERITIES = ("critical", "high", "medium", "low")
+
+
+@pytest.mark.parametrize("sort", ["severity", "cvss", "effective_reach"])
+def test_keyset_walk_mixed_estate_all_sorts_reconciles_total(sort: str) -> None:
+    """Cursor walks under every sort must return exactly ``total`` rows.
+
+    Regression: the merged scan+bulk resume cursor was minted from enriched
+    API payloads, which never carried ``severity_rank`` — the severity cursor
+    decoded rank 0, the resume keyset matched nothing, and the bulk half was
+    silently reported exhausted while ``total`` still counted it.
+    """
+    tenant = f"mixed-sorts-{uuid4().hex}"
+    store = InMemoryComplianceHubStore()
+    set_compliance_hub_store(store)
+    bulk = [
+        {
+            "id": f"bulk-{idx:03d}",
+            "severity": _MIXED_SEVERITIES[idx % len(_MIXED_SEVERITIES)],
+            "cvss_score": float((idx * 3) % 10),
+            "effective_reach_score": float(500 - idx),
+            "origin": "bulk_ingest",
+            "source": "test",
+            "batch_id": "mixed-sorts-batch",
+        }
+        for idx in range(17)
+    ]
+    store.add(tenant, bulk)
+    store.upsert_current_batch(tenant, bulk, observed_at="2026-07-19T00:00:00Z", batch_id="mixed-sorts-batch", source="test")
+
+    set_job_store(InMemoryJobStore())
+    job = ScanJob(
+        job_id=f"scan-job-{uuid4().hex}",
+        tenant_id=tenant,
+        created_at="2026-07-19T10:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-07-19T10:01:00Z"
+    job.result = {
+        "findings": [
+            {
+                "id": f"scan-{idx:03d}",
+                "vulnerability_id": f"CVE-2026-{idx:04d}",
+                "severity": _MIXED_SEVERITIES[idx % len(_MIXED_SEVERITIES)],
+                "cvss_score": 4.0 + (idx % 6),
+                "effective_reach_score": float(1000 - idx),
+                "package": f"pkg-{idx}",
+            }
+            for idx in range(9)
+        ]
+    }
+    _get_store().put(job)
+
+    client = TestClient(app)
+    headers = proxy_headers(tenant=tenant)
+
+    first = client.get(f"/v1/findings?limit=4&sort={sort}", headers=headers).json()
+    total = first["total"]
+    assert total == 26
+
+    seen = _walk_keyset(client, headers, limit=4, sort=sort)
+    expected = {f"scan-{i:03d}" for i in range(9)} | {f"bulk-{i:03d}" for i in range(17)}
+    assert len(set(seen)) == len(seen), f"sort={sort} keyset walk produced duplicates"
+    assert set(seen) == expected, f"sort={sort} walk dropped {sorted(expected - set(seen))}"
+    assert len(seen) == total, f"sort={sort} walked {len(seen)} rows but total reported {total}"
 
 
 # --------------------------------------------------------------------------

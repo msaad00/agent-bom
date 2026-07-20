@@ -586,6 +586,19 @@ def test_check_maven_bare_artifact_fails_closed(monkeypatch):
     assert "No known vulnerabilities" not in result.output
 
 
+def test_check_maven_coordinate_remains_supported(monkeypatch):
+    """Fully qualified Maven coordinates continue through the scanner."""
+    _patch_check_scan(monkeypatch, [])
+
+    result = CliRunner().invoke(
+        main,
+        ["check", "org.apache.logging.log4j:log4j-core@2.14.1", "--ecosystem", "maven"],
+    )
+
+    assert result.exit_code == 0
+    assert "No known vulnerabilities" in result.output
+
+
 def test_check_maven_bare_artifact_json_is_incomplete(monkeypatch):
     """Machine-readable Maven ambiguity must carry the incomplete contract."""
 

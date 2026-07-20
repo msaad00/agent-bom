@@ -42,6 +42,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,6 +57,7 @@ from agent_bom.api.connection_store import (
     get_connection_store,
 )
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.config import CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
@@ -904,7 +906,19 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
         raise HTTPException(status_code=400, detail=f"Unsupported provider '{record.provider}'.")
 
     try:
-        _test_connection_broker(record)
+        # The broker exchange is synchronous provider network I/O; run it in a
+        # worker thread under backpressure so a hung endpoint can never stall
+        # the event loop (a burst sheds with a 429 instead).
+        async with adaptive_backpressure("cloud_connection_test"):
+            await anyio.to_thread.run_sync(_test_connection_broker, record)
+    except BackpressureRejectedError as exc:
+        # A shed request never reached the broker — do not flip the connection
+        # to error, just ask the caller to retry.
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     except Exception as exc:  # noqa: BLE001 - broker failure
         detail = _safe_connection_detail(exc)
         _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
@@ -964,7 +978,20 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
         raise HTTPException(status_code=400, detail=f"Unsupported provider '{record.provider}'.")
 
     try:
-        summary = _run_connection_scan(record, tenant_id)
+        # The brokered scan runs synchronous provider inventory + CIS discovery
+        # (minutes of network I/O); run it in a worker thread under backpressure
+        # so a live scan can never stall the event loop (a burst sheds with a
+        # 429 instead).
+        async with adaptive_backpressure("cloud_connection_scan"):
+            summary = await anyio.to_thread.run_sync(_run_connection_scan, record, tenant_id)
+    except BackpressureRejectedError as exc:
+        # A shed request never started the scan — do not flip the connection to
+        # error, just ask the caller to retry.
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
         # Persist an actionable, secret-free detail (why + how to fix). Broker and
         # discovery errors are curated safe strings; anything unexpected falls back

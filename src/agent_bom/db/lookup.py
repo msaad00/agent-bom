@@ -177,7 +177,7 @@ def lookup_package(
                     severity=row["severity"],
                     cvss_score=row["cvss_score"],
                     cvss_vector=row["cvss_vector"],
-                    fixed_version=_resolve_fixed_version(row),
+                    fixed_version=_resolve_fixed_version_with_aliases(row, rows, version),
                     epss_probability=epss_prob,
                     epss_percentile=epss_pct,
                     is_kev=kev_date is not None,
@@ -317,6 +317,65 @@ def _resolve_fixed_version(row: sqlite3.Row) -> Optional[str]:
     if rollup and is_valid_fix_version(rollup):
         return rollup
     return None
+
+
+def _row_identifiers(row: sqlite3.Row) -> set[str]:
+    """Vulnerability id plus its comma-separated aliases as a set."""
+    ids = {row["id"]}
+    ids.update(alias.strip() for alias in (row["aliases"] or "").split(",") if alias.strip())
+    return ids
+
+
+def _alias_cluster_fix(row: sqlite3.Row, rows: list[sqlite3.Row], version: Optional[str]) -> Optional[str]:
+    """Recover a missing fix version from alias-linked sibling rows.
+
+    OSV mirrors one advisory under several ids (PYSEC / GHSA / …) linked by
+    aliases, and the sources disagree on fix metadata — e.g. CVE-2025-2999
+    surfaces via a PYSEC row with no fix while its GHSA alias row in the same
+    DB carries ``fixed=2.9.1``. Reporting the fix-less row as "no fix
+    available" over-claims and lets ``--exclude-unfixable`` drop a fixable
+    finding. For the same ecosystem/package, take the minimal valid fix among
+    alias siblings that still exceeds the queried version. Distro-release
+    ecosystems are excluded: there an empty per-release fix authoritatively
+    means *no fix for this release*.
+    """
+    if _is_distro_release_ecosystem(row["ecosystem"]):
+        return None
+    from agent_bom.scanners.osv import is_valid_fix_version
+    from agent_bom.version_utils import compare_version_order
+
+    identifiers = _row_identifiers(row)
+    comparator_eco = _comparator_ecosystem(row["ecosystem"])
+    best: Optional[str] = None
+    for other in rows:
+        if other["id"] == row["id"]:
+            continue
+        if other["ecosystem"] != row["ecosystem"] or other["package_name"] != row["package_name"]:
+            continue
+        if identifiers.isdisjoint(_row_identifiers(other)):
+            continue
+        fix = _resolve_fixed_version(other)
+        if not fix or not is_valid_fix_version(fix):
+            continue
+        if version:
+            fix_vs_version = compare_version_order(fix, version, comparator_eco)
+            if fix_vs_version is None or fix_vs_version <= 0:
+                continue  # a "fix" at/below the installed version resolves nothing
+        if best is None:
+            best = fix
+        else:
+            fix_vs_best = compare_version_order(fix, best, comparator_eco)
+            if fix_vs_best is not None and fix_vs_best < 0:
+                best = fix
+    return best
+
+
+def _resolve_fixed_version_with_aliases(row: sqlite3.Row, rows: list[sqlite3.Row], version: Optional[str]) -> Optional[str]:
+    """Per-row fix resolution, falling back to the alias cluster when missing."""
+    fixed = _resolve_fixed_version(row)
+    if fixed is not None:
+        return fixed
+    return _alias_cluster_fix(row, rows, version)
 
 
 def _comparator_ecosystem(ecosystem: str) -> str:
@@ -545,7 +604,7 @@ def lookup_packages_batch(
                         severity=row["severity"],
                         cvss_score=row["cvss_score"],
                         cvss_vector=row["cvss_vector"],
-                        fixed_version=_resolve_fixed_version(row),
+                        fixed_version=_resolve_fixed_version_with_aliases(row, rows, version),
                         epss_probability=epss_prob,
                         epss_percentile=epss_pct,
                         is_kev=kev_date is not None,

@@ -1,7 +1,7 @@
 """CSV output for spreadsheet/SIEM ingestion and executive reporting.
 
-One row per vulnerability finding with all enrichment data.
-UTF-8 BOM included for Excel compatibility.
+One row per finding — every unified finding type, not just CVEs — with all
+enrichment data. UTF-8 BOM included for Excel compatibility.
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.finding_views import (
     evidence,
     is_package_malicious,
-    machine_export_findings,
     package_ecosystem,
     package_name,
     package_version,
     severity_value,
+    unified_export_findings,
 )
 
 _COLUMNS = [
@@ -50,12 +50,17 @@ _COLUMNS = [
     "reachable_affected_symbols",
     "graph_reachable",
     "graph_min_hop_distance",
+    # Appended (not inserted) so positional consumers of the original CVE
+    # columns keep working; header-based consumers see them either way.
+    "finding_type",
+    "finding_id",
+    "title",
 ]
 
 
 def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Convert an AIBOMReport to CSV string with UTF-8 BOM."""
-    findings = machine_export_findings(report, blast_radii)
+    findings = unified_export_findings(report, blast_radii)
 
     buf = io.StringIO()
     # UTF-8 BOM for Excel auto-detection
@@ -95,6 +100,9 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
                 "reachable_affected_symbols": ";".join(evidence(finding, "reachable_affected_symbols", []) or []),
                 "graph_reachable": evidence(finding, "graph_reachable", ""),
                 "graph_min_hop_distance": evidence(finding, "graph_min_hop_distance", ""),
+                "finding_type": finding.finding_type.value,
+                "finding_id": finding.id,
+                "title": finding.title or "",
             }
         )
 

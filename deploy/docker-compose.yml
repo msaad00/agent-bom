@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ── DEPRECATED (DEV profile) ─────────────────────────────────────────────────
 # Prefer `deploy/docker-compose.fullstack.yml` for local API+UI dev, or
 # `deploy/docker-compose.platform.yml` for a production-shaped stack.

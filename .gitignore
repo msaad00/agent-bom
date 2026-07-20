@@ -36,6 +36,9 @@ ui/.next/
 .coverage
 .claude/worktrees/
 .codex/
+.cursor/
+.playwright-mcp/
+.venv-*/
 AUDIT_*.md
 ui/.claude/
 # macOS / iCloud duplicate conflict files — keep them out of git even if they

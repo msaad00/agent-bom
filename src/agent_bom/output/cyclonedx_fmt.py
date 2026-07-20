@@ -23,6 +23,7 @@ from agent_bom.asset_provenance import (
 from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
 from agent_bom.checksums import cyclonedx_hashes
 from agent_bom.models import AIBOMReport, Vulnerability
+from agent_bom.package_utils import synthesize_purl
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 from agent_bom.vex import vex_justification_to_cdx
 
@@ -619,8 +620,12 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     "version": pkg.version,
                     "properties": pkg_properties,
                 }
-                if pkg.purl:
-                    pkg_component["purl"] = pkg.purl
+                # purl is the join key for downstream SBOM consumers: pass the
+                # resolved purl through, else synthesize one from the known
+                # ecosystem+name+version.
+                purl = pkg.purl or synthesize_purl(pkg.name, pkg.version, pkg.ecosystem)
+                if purl:
+                    pkg_component["purl"] = purl
                 if pkg.license_expression or pkg.license:
                     lic_val = pkg.license_expression or pkg.license or ""
                     # CycloneDX 1.7: compound expressions (AND/OR/WITH) use

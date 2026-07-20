@@ -1,9 +1,10 @@
-version: "3.8"
-
 # ── Profile: AUTHENTICATED PRODUCT OVERLAY ───────────────────────────────────
 # The private customer / CISO experience: a single-host, login-gated agent-bom
 # instance where a REAL cloud account is connected read-only. This is the exact
 # opposite of the public anonymous demo.
+#
+# OVERLAY ONLY — this file must be layered on docker-compose.platform.yml; it
+# fails standalone `docker compose config` by design (no image/build keys).
 #
 # Layer it on top of the production-shaped platform compose:
 #

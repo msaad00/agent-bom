@@ -539,7 +539,9 @@ def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
             left_had_pre = left_stripped != left
             right_had_pre = right_stripped != right
             if not left_had_pre and not right_had_pre:
-                return None  # no pre-release tag — original failure stands
+                # No recognized pre-release tag — try local-version-style
+                # suffixes (``2.6.0-NA``, ``2.6.0-cu124``) before giving up.
+                return _compare_with_local_suffix_strip(left, right, eco)
             ln = normalize_version(left_stripped, eco)
             rn = normalize_version(right_stripped, eco)
             base_cmp = (Version(ln) > Version(rn)) - (Version(ln) < Version(rn))
@@ -556,7 +558,10 @@ def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
                 return 1
             return 0
         except Exception:  # noqa: BLE001
-            return None
+            # One side stripped a pre-release tag but the other still failed
+            # to parse (e.g. ``2.6.0-NA`` vs a plain release) — the local-
+            # suffix fall-back handles both sides uniformly.
+            return _compare_with_local_suffix_strip(left, right, eco)
 
 
 _SEMVER_PRERELEASE_TAGS = frozenset(
@@ -593,6 +598,75 @@ def _strip_semver_prerelease_tag(version: str) -> str:
     if tag in _SEMVER_PRERELEASE_TAGS:
         return base
     return version
+
+
+def _split_local_style_suffix(version: str, ecosystem: str) -> tuple[str, bool] | None:
+    """Split a local-version-style suffix off *version* if the base parses.
+
+    PyPI wheel local versions leak into advisory bounds as ``2.6.0+cu124`` /
+    ``2.6.0-cu124`` / ``2.6.0-NA``. Returns ``(parseable_base, had_suffix)``,
+    or ``None`` when neither the full string nor any stripped base parses.
+    """
+    from packaging.version import Version
+
+    try:
+        Version(normalize_version(version, ecosystem))
+        return version, False
+    except Exception:  # noqa: BLE001
+        pass
+    for sep in ("+", "-"):
+        base, separator, _suffix = version.partition(sep)
+        if not separator or not base:
+            continue
+        try:
+            Version(normalize_version(base, ecosystem))
+        except Exception:  # noqa: BLE001
+            continue
+        return base, True
+    return None
+
+
+def _compare_with_local_suffix_strip(left: str, right: str, ecosystem: str) -> int | None:
+    """Compare after stripping unrecognized local/build-style suffixes.
+
+    Bounds like ``2.6.0-NA`` (PYSEC torch advisories) are neither PEP 440 nor
+    recognized SemVer pre-releases; compare on the parseable base instead of
+    returning ``None`` (which fails the range matcher open). On an equal base
+    the suffixed side orders ABOVE the bare release — mirroring PEP 440
+    local-version ordering — so a bare version never reads as already past a
+    suffixed fix bound.
+    """
+    left_split = _split_local_style_suffix(left, ecosystem)
+    right_split = _split_local_style_suffix(right, ecosystem)
+    if left_split is None or right_split is None:
+        return None
+    left_base, left_suffixed = left_split
+    right_base, right_suffixed = right_split
+    if not (left_suffixed or right_suffixed):
+        return None  # nothing was stripped — the original failure stands
+
+    from packaging.version import Version
+
+    left_version = Version(normalize_version(left_base, ecosystem))
+    right_version = Version(normalize_version(right_base, ecosystem))
+    if left_version != right_version:
+        return 1 if left_version > right_version else -1
+    if left_suffixed and not right_suffixed:
+        return 1
+    if right_suffixed and not left_suffixed:
+        return -1
+    return 0
+
+
+@lru_cache(maxsize=4096)
+def _warn_unparseable_bound(bound: str, ecosystem: str) -> None:
+    """Log (once per distinct bound) that a range comparison was dropped."""
+    _logger.warning(
+        "Advisory version bound %r (%s) is unparseable; failing closed — the bound "
+        "cannot establish a match, so affected-range accuracy may be reduced",
+        bound,
+        ecosystem,
+    )
 
 
 @lru_cache(maxsize=65536)
@@ -638,18 +712,36 @@ def version_in_range(
                 if not is_lower and boundary == last and cmp > 0:
                     return False
 
+    # Fail CLOSED per bound: a comparison that cannot be performed is never
+    # grounds for a match. An unparseable UPPER bound (fixed / last_affected)
+    # means the version cannot be placed inside the range — no match. An
+    # unparseable LOWER bound (introduced) is treated as satisfied so that a
+    # parseable upper bound can still confirm a real match — unless it was the
+    # only bound, in which case no comparison was performed at all.
+    intro_unperformed = False
     if intro:
         intro_cmp = compare_version_order(version, intro, ecosystem)
         if intro_cmp is not None and intro_cmp < 0:
             return False
+        if intro_cmp is None:
+            _warn_unparseable_bound(intro, ecosystem)
+            intro_unperformed = True
     if fix:
         fix_cmp = compare_version_order(version, fix, ecosystem)
-        if fix_cmp is not None and fix_cmp >= 0:
+        if fix_cmp is None:
+            _warn_unparseable_bound(fix, ecosystem)
+            return False
+        if fix_cmp >= 0:
             return False
     if last:
         last_cmp = compare_version_order(version, last, ecosystem)
-        if last_cmp is not None and last_cmp > 0:
+        if last_cmp is None:
+            _warn_unparseable_bound(last, ecosystem)
             return False
+        if last_cmp > 0:
+            return False
+    if intro_unperformed and not fix and not last:
+        return False
     return True
 
 

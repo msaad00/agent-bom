@@ -264,7 +264,11 @@ _CHECK_ERROR_METADATA = {
         "critical",
         "1 - Account and Authentication",
     ),
+    "1.3": ("Session idle timeout 4 hours or less", "medium", "1 - Account and Authentication"),
     "1.4": ("ACCOUNTADMIN granted to at most 2 users", "critical", "1 - Account and Authentication"),
+    "2.1": ("Account-level network policies configured", "high", "2 - Network Security"),
+    "2.2": ("Network policies disallow unrestricted access", "critical", "2 - Network Security"),
+    "3.1": ("Tri-Secret Secure (customer-managed key) enabled", "high", "3 - Data Protection"),
     "3.2": ("Data sharing restricted to authorized accounts", "medium", "3 - Data Protection"),
     "4.2": ("Login history free of excessive failed auth attempts", "medium", "4 - Monitoring and Logging"),
     "5.1": ("PUBLIC role has no direct privilege grants", "high", "5 - Access Control"),
@@ -354,7 +358,7 @@ _AUTH_SECTION = "1 - Account and Authentication"
 
 
 def _check_1_1(cursor: Any) -> CISCheckResult:
-    """CIS 1.1 — Ensure MFA is enabled for all users with password authentication."""
+    """CIS 1.1 — MFA enabled for password-auth users."""
     result = CISCheckResult(
         check_id="1.1",
         title="MFA enabled for password-auth users",
@@ -382,7 +386,7 @@ def _check_1_1(cursor: Any) -> CISCheckResult:
 
 
 def _check_1_2(cursor: Any) -> CISCheckResult:
-    """CIS 1.2 — Ensure minimum password length is set to 14 or greater."""
+    """CIS 1.2 — Minimum password length 14 or greater."""
     result = CISCheckResult(
         check_id="1.2",
         title="Minimum password length 14 or greater",
@@ -411,7 +415,7 @@ def _check_1_2(cursor: Any) -> CISCheckResult:
 
 
 def _check_1_3(cursor: Any) -> CISCheckResult:
-    """CIS 1.3 — Ensure session idle timeout is set to 4 hours or less."""
+    """CIS 1.3 — Session idle timeout 4 hours or less."""
     result = CISCheckResult(
         check_id="1.3",
         title="Session idle timeout 4 hours or less",
@@ -434,7 +438,7 @@ def _check_1_3(cursor: Any) -> CISCheckResult:
 
 
 def _check_1_4(cursor: Any) -> CISCheckResult:
-    """CIS 1.4 — Ensure ACCOUNTADMIN role is granted to no more than 2 users."""
+    """CIS 1.4 — ACCOUNTADMIN granted to at most 2 users."""
     result = CISCheckResult(
         check_id="1.4",
         title="ACCOUNTADMIN granted to at most 2 users",
@@ -462,7 +466,7 @@ def _check_1_4(cursor: Any) -> CISCheckResult:
 
 
 def _check_1_5(cursor: Any) -> CISCheckResult:
-    """CIS 1.5 — Ensure password reuse is limited by password history of 24 or greater."""
+    """CIS 1.5 — Password history of 24 or greater."""
     result = CISCheckResult(
         check_id="1.5",
         title="Password history of 24 or greater",
@@ -491,7 +495,7 @@ def _check_1_5(cursor: Any) -> CISCheckResult:
 
 
 def _check_1_6(cursor: Any) -> CISCheckResult:
-    """CIS 1.6 — Ensure password maximum age is set to 90 days or less."""
+    """CIS 1.6 — Password maximum age 90 days or less."""
     result = CISCheckResult(
         check_id="1.6",
         title="Password maximum age 90 days or less",
@@ -527,7 +531,7 @@ _NETWORK_SECTION = "2 - Network Security"
 
 
 def _check_2_1(cursor: Any) -> CISCheckResult:
-    """CIS 2.1 — Ensure network policies are configured at the account level."""
+    """CIS 2.1 — Account-level network policies configured."""
     result = CISCheckResult(
         check_id="2.1",
         title="Account-level network policies configured",
@@ -551,7 +555,7 @@ def _check_2_1(cursor: Any) -> CISCheckResult:
 
 
 def _check_2_2(cursor: Any) -> CISCheckResult:
-    """CIS 2.2 — Ensure network policies do not allow unrestricted access (0.0.0.0/0)."""
+    """CIS 2.2 — Network policies disallow unrestricted access (0.0.0.0/0)."""
     result = CISCheckResult(
         check_id="2.2",
         title="Network policies disallow unrestricted access",
@@ -589,7 +593,7 @@ _DATA_SECTION = "3 - Data Protection"
 
 
 def _check_3_1(cursor: Any) -> CISCheckResult:
-    """CIS 3.1 — Ensure Tri-Secret Secure (customer-managed key) is enabled."""
+    """CIS 3.1 — Tri-Secret Secure (customer-managed key) enabled."""
     result = CISCheckResult(
         check_id="3.1",
         title="Tri-Secret Secure (customer-managed key) enabled",
@@ -613,7 +617,7 @@ def _check_3_1(cursor: Any) -> CISCheckResult:
 
 
 def _check_3_2(cursor: Any) -> CISCheckResult:
-    """CIS 3.2 — Ensure data sharing is restricted to authorized accounts."""
+    """CIS 3.2 — Data sharing restricted to authorized accounts."""
     result = CISCheckResult(
         check_id="3.2",
         title="Data sharing restricted to authorized accounts",
@@ -651,7 +655,7 @@ _MONITORING_SECTION = "4 - Monitoring and Logging"
 
 
 def _check_4_1(cursor: Any) -> CISCheckResult:
-    """CIS 4.1 — Ensure access history is enabled and being collected."""
+    """CIS 4.1 — Access history enabled and collected."""
     result = CISCheckResult(
         check_id="4.1",
         title="Access history enabled and collected",
@@ -685,7 +689,7 @@ def _check_4_1(cursor: Any) -> CISCheckResult:
 
 
 def _check_4_2(cursor: Any) -> CISCheckResult:
-    """CIS 4.2 — Ensure login history shows no failed authentication patterns."""
+    """CIS 4.2 — Login history free of excessive failed auth attempts."""
     result = CISCheckResult(
         check_id="4.2",
         title="Login history free of excessive failed auth attempts",
@@ -727,7 +731,7 @@ _ACCESS_SECTION = "5 - Access Control"
 
 
 def _check_5_1(cursor: Any) -> CISCheckResult:
-    """CIS 5.1 — Ensure the PUBLIC role has no direct privilege grants on objects."""
+    """CIS 5.1 — PUBLIC role has no direct privilege grants."""
     result = CISCheckResult(
         check_id="5.1",
         title="PUBLIC role has no direct privilege grants",
@@ -754,7 +758,7 @@ def _check_5_1(cursor: Any) -> CISCheckResult:
 
 
 def _check_5_2(cursor: Any) -> CISCheckResult:
-    """CIS 5.2 — Ensure no users have ACCOUNTADMIN as their default role."""
+    """CIS 5.2 — No users default to ACCOUNTADMIN role."""
     result = CISCheckResult(
         check_id="5.2",
         title="No users default to ACCOUNTADMIN role",
@@ -877,10 +881,13 @@ def run_benchmark(
                 report.checks.append(check_result)
             except Exception as exc:
                 logger.warning("CIS Snowflake check %s failed: %s", check_id, exc)
+                # Own-worded catalog title only — never docstring-derived text,
+                # which would reproduce the copyrighted CIS house-style title.
+                error_metadata = _CHECK_ERROR_METADATA.get(check_id)
                 report.checks.append(
                     CISCheckResult(
                         check_id=check_id,
-                        title=check_fn.__doc__.split("—")[1].strip().rstrip(".") if check_fn.__doc__ else "",
+                        title=error_metadata[0] if error_metadata else f"Check {check_id} could not be evaluated",
                         status=CheckStatus.ERROR,
                         severity="unknown",
                         evidence=f"Query error: {exc}",

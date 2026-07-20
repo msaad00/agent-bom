@@ -41,6 +41,21 @@ def machine_export_findings(report: AIBOMReport, blast_radii: list[BlastRadius] 
     return findings
 
 
+def unified_export_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
+    """Every unified finding for flat exports — no type silently dropped.
+
+    ``machine_export_findings`` covers only CVE + malicious-package rows, so
+    exports built on it lost COMBINATION / PROMPT_SECURITY / CIS / SAST /
+    secret findings with no indicator while the console stream showed them.
+    Keep the CVE half on ``machine_export_findings`` (it honors legacy
+    BlastRadius overrides and dedups synthesized malicious rows) and append
+    every other finding type from the unified stream.
+    """
+    findings = machine_export_findings(report, blast_radii)
+    findings.extend(finding for finding in report.to_findings() if finding.finding_type not in _MACHINE_EXPORT_TYPES)
+    return findings
+
+
 def active_cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
     """Return CVE findings that remain active after VEX suppression."""
     from agent_bom.vex import active_blast_radii

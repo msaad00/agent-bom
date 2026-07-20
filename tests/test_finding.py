@@ -653,6 +653,20 @@ def test_report_to_findings_returns_existing_when_populated():
     assert result[0].finding_type == FindingType.CIS_FAIL
 
 
+def test_cve_findings_reuses_dual_write_projection():
+    """Output views must not reconvert the same BlastRadius stream repeatedly."""
+    from agent_bom.output.finding_views import cve_findings
+
+    report = _make_report_with_blast_radii(2)
+    report.findings = report.to_findings()
+
+    projected = cve_findings(report, report.blast_radii)
+
+    assert projected is not report.findings
+    assert projected == report.findings
+    assert all(item.finding_type == FindingType.CVE for item in projected)
+
+
 def test_report_cve_findings_filters_by_type():
     report = _make_report_with_blast_radii(2)
     # Add a non-CVE finding manually

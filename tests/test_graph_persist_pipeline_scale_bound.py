@@ -85,7 +85,7 @@ def _persist_peak(tmp_path: Path, monkeypatch, n: int) -> int:
 
     new = _synthetic_graph("scan-new", n)
     monkeypatch.setattr(pipeline, "_get_graph_store", lambda: store)
-    monkeypatch.setattr(builder, "build_unified_graph_from_report", lambda report_json, scan_id, tenant_id: new)
+    monkeypatch.setattr(builder, "build_unified_graph_from_report", lambda report_json, scan_id, tenant_id, container=None: new)
 
     job = SimpleNamespace(job_id="scan-new", tenant_id="t1", progress=[])
 

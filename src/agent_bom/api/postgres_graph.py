@@ -1055,7 +1055,7 @@ class PostgresGraphStore:
             query = (
                 "SELECT id, entity_type, label, category_uid, class_uid, type_uid, status, risk_score, severity, severity_id, "
                 "first_seen, last_seen, attributes, compliance_tags, data_sources, dimensions "
-                "FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s"
+                "FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s ORDER BY id"
             )
             params: list[Any] = [tenant_id, effective_scan_id]
             if entity_types:
@@ -1077,6 +1077,7 @@ class PostgresGraphStore:
                        source_scan_id, source_run_id, evidence, activity_id, scan_id
                 FROM graph_edges
                 WHERE tenant_id = %s AND scan_id = %s
+                ORDER BY source_id, target_id, relationship, source_run_id NULLS FIRST, activity_id NULLS FIRST
             """
             edge_params: list[Any] = [tenant_id, effective_scan_id]
             if relationship_types:
@@ -1115,6 +1116,7 @@ class PostgresGraphStore:
                            summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
                     FROM attack_paths
                     WHERE tenant_id = %s AND scan_id = %s
+                    ORDER BY source_node, target_node, composite_risk DESC, path_nodes
                     """,
                     (tenant_id, effective_scan_id),
                 ).fetchall():
@@ -1138,6 +1140,7 @@ class PostgresGraphStore:
                     SELECT pattern, agents, risk_score, description, owasp_agentic_tag
                     FROM interaction_risks
                     WHERE tenant_id = %s AND scan_id = %s
+                    ORDER BY pattern, agents
                     """,
                     (tenant_id, effective_scan_id),
                 ).fetchall():

@@ -1509,7 +1509,22 @@ async def scan_agents(
                 if _pkg_key(pkg) in vuln_map:
                     pkg.vulnerabilities = vuln_map[_pkg_key(pkg)]
 
-    # Build blast radius analysis
+    # Build blast radius analysis. Registry enrichment is keyed by MCP server,
+    # not by vulnerable package. Keep one cache for the whole scan: a server can
+    # expose many packages, and matching the same registry catalog once per
+    # package turns a linear build into an avoidable package×catalog walk.
+    from agent_bom.parsers import get_registry_entry
+
+    _registry_cache: dict[tuple[str, str, tuple[str, ...], str], dict | None] = {}
+
+    def _registry_key(server: MCPServer) -> tuple[str, str, tuple[str, ...], str]:
+        return (
+            server.name,
+            server.command,
+            tuple(server.args),
+            server.url or "",
+        )
+
     blast_radii = []
     for pkg in unique_packages:
         if not pkg.vulnerabilities:
@@ -1527,21 +1542,19 @@ async def scan_agents(
         # the registry CLAIMS the server has, not what was introspected.
         # We include them for visibility but mark them so blast radius
         # consumers can distinguish confirmed vs phantom tools.
-        from agent_bom.parsers import get_registry_entry
-
         exposed_creds: list[str] = []
         exposed_tools: list = []
         phantom_tools: list = []
-        _registry_cache: dict[str, dict | None] = {}
         for server in affected_servers:
             server_creds = server.credential_names
             server_tools = list(server.tools)  # copy — don't mutate server
 
             # Registry enrichment: if no tools/creds known from config, use registry
             if not server_tools or not server_creds:
-                if server.name not in _registry_cache:
-                    _registry_cache[server.name] = get_registry_entry(server)
-                reg = _registry_cache[server.name]
+                registry_key = _registry_key(server)
+                if registry_key not in _registry_cache:
+                    _registry_cache[registry_key] = get_registry_entry(server)
+                reg = _registry_cache[registry_key]
                 if reg:
                     if not server_tools and reg.get("tools"):
                         from agent_bom.models import MCPTool

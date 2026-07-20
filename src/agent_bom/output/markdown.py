@@ -6,6 +6,7 @@ Produces a self-contained Markdown report with summary table and detailed findin
 from __future__ import annotations
 
 from agent_bom.compliance_utils import framework_qualified_finding_tags
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.finding import Finding, FindingType
 from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.models import AIBOMReport, BlastRadius
@@ -20,6 +21,7 @@ from agent_bom.output.finding_views import (
     reachability_label,
     severity_counts,
     severity_value,
+    unified_findings,
 )
 
 
@@ -28,6 +30,8 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     brs = blast_radii or report.blast_radii
     cve_rows = cve_findings(report, blast_radii)
     policy_findings = _non_cve_findings(report)
+    all_findings = unified_findings(report, blast_radii)
+    scan_run = effective_scan_run(report)
     lines: list[str] = []
 
     # Header
@@ -38,9 +42,18 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     lines.append("")
 
     # Summary
-    sev_counts = severity_counts(cve_rows)
+    sev_counts = severity_counts(all_findings)
     lines.append("## Summary")
     lines.append("")
+
+    if scan_run.outcome is not ScanOutcome.COMPLETE:
+        label = scan_run.outcome.value.upper()
+        lines.append(f"## Scan outcome: {label}")
+        lines.append("")
+        lines.append("This report does not represent complete coverage; a low or zero finding count is not a clean bill of health.")
+        for issue in scan_run.issues:
+            lines.append(f"- **{issue.source}**: {issue.message}")
+        lines.append("")
     lines.append("| Metric | Count |")
     lines.append("|--------|-------|")
     lines.append(f"| Agents discovered | {report.total_agents} |")
@@ -58,7 +71,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     if trust_lines:
         lines.extend(trust_lines)
 
-    if not brs and not policy_findings:
+    if not brs and not policy_findings and scan_run.outcome is ScanOutcome.COMPLETE:
         lines.append("No vulnerabilities found.")
         return "\n".join(lines) + "\n"
 

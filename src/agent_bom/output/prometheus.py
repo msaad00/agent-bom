@@ -22,6 +22,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.output.finding_views import (
     cve_findings,
@@ -105,6 +106,7 @@ def to_prometheus(
     agent_bom_agent_vulnerabilities_total  Gauge  Per-agent, per-severity counts
     """
     findings = cve_findings(report, blast_radii)
+    scan_run = effective_scan_run(report)
     lines: list[str] = []
 
     def header(name: str, help_text: str, metric_type: str = "gauge") -> None:
@@ -114,6 +116,14 @@ def to_prometheus(
     # ── agent_bom_info ────────────────────────────────────────────────────
     header("info", "agent-bom tool metadata (always 1)")
     lines.append(_metric("info", 1, ("version", report.tool_version), ("scan_at", report.generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"))))
+    lines.append("")
+
+    # An empty/partial scan must never look healthy to an alerting system.
+    header("scan_outcome", "Scan execution quality (1 for the current outcome)")
+    for outcome in ScanOutcome:
+        lines.append(_metric("scan_outcome", 1 if scan_run.outcome is outcome else 0, ("outcome", outcome.value)))
+    header("scan_issues_total", "Number of bounded scan execution issues")
+    lines.append(_metric("scan_issues_total", len(scan_run.issues)))
     lines.append("")
 
     # ── agent_bom_scan_timestamp_seconds ─────────────────────────────────

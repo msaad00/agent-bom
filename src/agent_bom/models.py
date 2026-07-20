@@ -1396,15 +1396,23 @@ class AIBOMReport:
         secret findings are always appended so machine consumers (JSON/SARIF/CSV)
         see them, not just the console.
         """
-        if self.findings:
-            base = list(self.findings)
-        else:
-            from agent_bom.finding import blast_radius_to_finding
+        from agent_bom.finding import blast_radius_to_finding
 
-            base = [blast_radius_to_finding(br) for br in self.blast_radii]
+        # Keep explicit non-CVE findings even when the legacy blast-radius
+        # projection is also present. API/VEX paths can update the projection
+        # after the unified stream was built; dropping either side makes JSON
+        # disagree with CSV/SARIF and hides policy findings from consumers.
+        base = list(self.findings)
+        existing_ids = {getattr(f, "canonical_id", getattr(f, "id", None)) for f in base}
+        for br in self.blast_radii:
+            finding = blast_radius_to_finding(br)
+            finding_id = getattr(finding, "canonical_id", getattr(finding, "id", None))
+            if finding_id not in existing_ids:
+                base.append(finding)
+                existing_ids.add(finding_id)
         # Avoid double-counting if a dual-write path ever adds the same secret
         # finding, but do not suppress unrelated secret findings in the side block.
-        existing_ids = {getattr(f, "id", None) for f in base}
+        existing_ids = {getattr(f, "canonical_id", getattr(f, "id", None)) for f in base}
         base.extend(finding for finding in self._secret_findings() if finding.id not in existing_ids)
         cis_existing = existing_ids | {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._cloud_cis_findings() if finding.id not in cis_existing)

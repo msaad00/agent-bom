@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from xml.etree.ElementTree import Element, SubElement, indent, tostring
 
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.finding import Finding
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.output.finding_views import (
@@ -29,12 +30,14 @@ from agent_bom.output.finding_views import (
 def to_junit(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Convert an AIBOMReport to JUnit XML string."""
     findings = cve_findings(report, blast_radii)
+    scan_run = effective_scan_run(report)
+    incomplete_without_findings = scan_run.outcome is not ScanOutcome.COMPLETE and not findings
 
     testsuites = Element("testsuites")
     testsuites.set("name", "agent-bom")
-    testsuites.set("tests", str(len(findings)))
+    testsuites.set("tests", str(len(findings) + int(incomplete_without_findings)))
     testsuites.set("failures", str(sum(1 for finding in findings if has_high_or_critical(finding))))
-    testsuites.set("errors", str(sum(1 for finding in findings if is_medium(finding))))
+    testsuites.set("errors", str(sum(1 for finding in findings if is_medium(finding)) + int(incomplete_without_findings)))
     testsuites.set("time", "0")
 
     # Group by ecosystem
@@ -78,6 +81,18 @@ def to_junit(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) 
                 skipped = SubElement(tc, "skipped")
                 skipped.set("message", f"{sev.upper()}: {summary}")
                 skipped.text = detail
+
+    if incomplete_without_findings:
+        suite = SubElement(testsuites, "testsuite")
+        suite.set("name", "scan-execution")
+        suite.set("tests", "1")
+        suite.set("failures", "0")
+        suite.set("errors", "1")
+        suite.set("time", "0")
+        testcase = SubElement(suite, "testcase", classname="agent-bom.scan", name=f"scan {scan_run.outcome.value}", time="0")
+        error = SubElement(testcase, "error", type="scan_execution")
+        error.set("message", f"Scan {scan_run.outcome.value}: incomplete evidence")
+        error.text = "\n".join(f"{issue.source}: {issue.message}" for issue in scan_run.issues)
 
     indent(testsuites, space="  ")
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(testsuites, encoding="unicode")

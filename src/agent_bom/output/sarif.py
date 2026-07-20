@@ -30,7 +30,7 @@ from agent_bom.output.finding_views import (
     package_name,
     package_version,
 )
-from agent_bom.security import sanitize_sensitive_payload
+from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
 _SARIF_SEVERITY_MAP = {
     Severity.CRITICAL: "error",
@@ -1025,7 +1025,7 @@ def to_sarif(
                     {
                         "descriptor": {"id": issue.code},
                         "level": issue.severity,
-                        "message": {"text": _sanitize_sarif_text("scan issue", issue.message, fallback="Scan execution issue")},
+                        "message": {"text": sanitize_text(issue.message) or "Scan execution issue"},
                         "properties": {
                             "stage": issue.stage,
                             "source": issue.source,

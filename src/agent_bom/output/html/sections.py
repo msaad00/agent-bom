@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.finding import FindingType
 from agent_bom.graph.severity import (
     SEVERITY_THRESHOLD_LABELS,
@@ -155,6 +156,24 @@ def _warn_gate_banner(report: "AIBOMReport") -> str:
         f"&#x26a0;&#xfe0f; <b>Warn gate triggered</b>: {count} finding(s) at or above "
         f"<b>{sev}</b> severity &mdash; exit 0 (warning only, not a hard failure)"
         "</div>"
+    )
+
+
+def _scan_outcome_banner(report: "AIBOMReport") -> str:
+    """Render an explicit coverage banner so empty partial scans are not CLEAN."""
+    run = effective_scan_run(report)
+    if run.outcome is ScanOutcome.COMPLETE:
+        return ""
+    failed = run.outcome is ScanOutcome.FAILED
+    color = "#dc2626" if failed else "#d97706"
+    label = "SCAN FAILED" if failed else "PARTIAL COVERAGE"
+    issues = "".join(f"<li>{_esc(issue.source)}: {_esc(issue.message)}</li>" for issue in run.issues)
+    return (
+        f'<div style="background:{color}18;border:1px solid {color};border-radius:8px;'
+        'padding:10px 16px;margin-bottom:12px;font-size:.85rem;'
+        f'color:{color}">&#x26a0;&#xfe0f; <b>{label}</b>: this report does not represent complete '
+        f'coverage. A low or zero finding count is not a clean bill of health.'
+        f'<ul style="margin:6px 0 0 18px">{issues}</ul></div>'
     )
 
 

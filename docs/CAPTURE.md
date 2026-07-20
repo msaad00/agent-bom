@@ -68,7 +68,7 @@ deterministic public screenshot set.
 | `lineage-graph-live.png` | `/graph?capture=1` | Focused filtered attack path across agent, MCP server, package, and finding nodes | Shows the investigation drilldown without whole-tenant edge spaghetti |
 | `context-map-live.png` | `/context?capture=1` | Capture one agent-scoped context map with reachable MCP servers and the lateral movement side panel | Shows a non-CVE topology view so README proof is not only package-to-finding blast radius |
 | `fleet-state-live.png` | `/fleet?capture=1` | Expanded quarantined agent row with owner, environment, and enforcement state | Shows environment and lifecycle state as control-plane evidence instead of implying the local scan alone owns review state |
-| `identity-audit-live.png` | `/audit?capture=1` | Identity-resource filter with issue, rotate, and revoke lifecycle rows | Shows IAM lifecycle evidence and audit-chain posture from the deterministic capture fixture |
+| `identity-audit-live.png` | `/audit?capture=1` | Identity-resource posture summary with auth, key, and tenant-quota panels | Shows the visible IAM posture frame from the deterministic capture fixture |
 | `dependency-map-live.png` | `/findings?capture=1` | Capture findings queue with seeded package and CVE evidence | Proves package/CVE posture from the same seeded demo estate |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
@@ -83,7 +83,7 @@ as two dashboard frames rather than one stitched full-page export:
 2. `dashboard-paths-live.png`
    Unique exposure paths, recent scans, and activity
 3. `cloud-accounts-live.png`
-   Cloud accounts onboarding with provider catalog
+   Connected evidence sources with provider catalog
 4. `new-scan-live.png`
    New Scan form with scope chips and public repo URL mode
 

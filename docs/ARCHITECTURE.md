@@ -41,8 +41,8 @@ flowchart TB
 
 | Surface | First command | Primary artifact | Production move |
 |---|---|---|---|
-| Local scan | `agent-bom agents -p .` | findings, SBOM, SARIF, HTML, graph export | GitHub Action or Docker scan in CI |
-| Control plane | `agent-bom agents -p . --push-url ...` | fleet inventory, scan jobs, graph state | Helm/EKS with Postgres and tenant auth |
+| Local scan | `agent-bom scan .` | findings, SBOM, SARIF, HTML, graph export | GitHub Action or Docker scan in CI |
+| Control plane | `agent-bom scan -p . --push-url ...` | fleet inventory, scan jobs, graph state | Helm/EKS with Postgres and tenant auth |
 | Runtime enforcement | `agent-bom proxy ...` or `agent-bom mcp server` | audit JSONL, policy decisions, blocks | gateway/proxy sidecars and Shield SDK |
 
 For a repo-level map of where each layer lives in `src/agent_bom/`, see
@@ -244,7 +244,7 @@ sequenceDiagram
     participant BlastRadius
     participant Reporter
 
-    User->>CLI: agent-bom agents [options]
+    User->>CLI: agent-bom scan [options]
     CLI->>Discovery: Detect MCP configs, images, clouds
     Discovery-->>CLI: Agents, servers, packages, tools
 

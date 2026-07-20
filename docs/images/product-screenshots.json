@@ -66,7 +66,7 @@
     {
       "path": "identity-audit-live.png",
       "page": "/audit?capture=1",
-      "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
+      "scope": "Identity-resource posture summary with auth, key, and tenant-quota panels",
       "visible_version": "0.97.0"
     },
     {

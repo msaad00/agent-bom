@@ -38,6 +38,7 @@ format:  ## Format code with ruff
 preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do this before pushing a PR
 	@echo "→ OpenAPI artifacts (docs/openapi/)";   python scripts/export_openapi.py --check
 	@echo "→ v1 schemas (docs/schemas/v1/)";        python scripts/generate_v1_schemas.py --check
+	@echo "→ agent capability manifest";             python scripts/generate_agent_capability_manifest.py --check
 	@echo "→ product surface contract";             python scripts/check_product_surface_contract.py
 	@echo "→ release/README consistency";           python scripts/check_release_consistency.py
 	@echo "→ env-var reference";                    python scripts/generate_env_var_reference.py --check

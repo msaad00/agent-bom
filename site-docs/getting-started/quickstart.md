@@ -9,7 +9,7 @@ pip install agent-bom
 ## Scan your local AI environment
 
 ```bash
-agent-bom agents
+agent-bom scan .
 ```
 
 This auto-discovers local MCP clients and AI agent configs, extracts configured

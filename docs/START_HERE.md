@@ -25,7 +25,7 @@ New here? [`FIRST_RUN.md`](FIRST_RUN.md) is the canonical quickstart —
 CI gate (GitHub Action):
 
 ```yaml
-- uses: msaad00/agent-bom@v0.94.2
+- uses: msaad00/agent-bom@v0.97.0
 ```
 
 - Output formats, exit codes, and the full command set:
@@ -107,8 +107,8 @@ agent-bom mcp server                      # stdio MCP server: 76 tools, 6 resour
 
 - MCP server setup + client guides: [`MCP_SERVER.md`](MCP_SERVER.md),
   [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md)
-- Tool catalog (read-mostly; 3 audited Shield write actions): see the
-  `Tools (70)` block in
+- Tool catalog (76 tools; sensitive writes remain admin-gated): see the
+  `Tools (76)` block in
   [`../src/agent_bom/mcp_server.py`](../src/agent_bom/mcp_server.py)
 - Typed control-plane clients: [`PYTHON_API.md`](PYTHON_API.md),
   [`../sdks/go/README.md`](../sdks/go/README.md)

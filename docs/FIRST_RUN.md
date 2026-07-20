@@ -41,18 +41,18 @@ Demo mode - curated agent + MCP sample with known-vulnerable packages.
 Offline mode - bundled demo advisory DB only
 
 Discovery
-  [ok] 2 agent(s) from curated sample environment
+  [ok] 5 agent(s) from curated sample environment
 
 Package Extraction
-  12 packages (7 pypi, 5 npm)
+  23 packages (14 pypi, 9 npm)
 
 Vulnerability Scan
-  [ok] Demo advisory DB: 11 vulnerabilities found (offline)
-  [warn] Found 11 vulnerabilities across 11 findings
-  [warn] Scan complete - 1 critical, 7 high, 3 medium
+  [ok] Demo advisory DB: 15 vulnerabilities found (offline)
+  [warn] Found 15 vulnerabilities across 15 findings
+  [warn] Scan complete - 2 critical, 10 high, 3 medium
 
 agent-bom <installed version>
-agents=2 servers=4 packages=12 vulnerabilities=11
+agents=5 servers=10 packages=23 vulnerabilities=15
 ```
 
 What to look for:
@@ -61,9 +61,9 @@ What to look for:
 |---|---|---|
 | `Demo mode` | Uses the bundled curated sample instead of your workstation config. | The first run is reproducible and safe to share in a bug report or sales demo. |
 | `Offline mode` | Uses the bundled demo advisory DB and no network calls. | The command does not depend on live OSV/GHSA/network availability or a pre-synced local DB. |
-| `2 agent(s)` | Loads sample **AI client/host** surfaces such as Cursor and Claude Desktop (distinct from background/framework agents). | Findings are tied to AI clients and agents, not only package names. |
-| `12 packages` | Extracts Python and npm package evidence behind MCP servers. | The scan proves supply-chain inventory before reporting risk. |
-| `11 vulnerabilities` | Matches vulnerable demo package versions against curated advisory-backed ranges. | The findings are advisory-backed; they are not invented demo rows. |
+| `5 agent(s)` | Loads sample **AI client/host** surfaces plus service agents. | Findings are tied to AI clients and agents, not only package names. |
+| `23 packages` | Extracts Python and npm package evidence behind MCP servers. | The scan proves supply-chain inventory before reporting risk. |
+| `15 vulnerabilities` | Matches vulnerable demo package versions against curated advisory-backed ranges. | The findings are advisory-backed; they are not invented demo rows. |
 | severity summary | Groups findings by critical/high/medium/low. | Operators can immediately prioritize the highest-risk fixes. |
 | `agents=... servers=...` | Prints a compact inventory summary. | The same evidence can move into JSON, SARIF, SBOM, HTML, graph, or dashboard workflows. |
 

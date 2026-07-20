@@ -31,6 +31,7 @@ fi
 python scripts/check_release_consistency.py || fail=1
 python scripts/check_product_surface_contract.py || fail=1
 python scripts/export_openapi.py --check || fail=1
+python scripts/generate_agent_capability_manifest.py --check || fail=1
 
 if [ "$fail" -ne 0 ]; then
   printf '\nPRE-FLIGHT FAILED — do NOT push a release tag.\n' >&2

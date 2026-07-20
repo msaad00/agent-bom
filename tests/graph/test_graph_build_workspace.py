@@ -19,6 +19,7 @@ The real-Postgres backend (incl. a cross-process writer race) is exercised in
 
 from __future__ import annotations
 
+import json
 import tracemalloc
 from pathlib import Path
 
@@ -232,6 +233,99 @@ def test_workspace_tenant_isolation() -> None:
         assert beta_nodes["shared:1"] == "beta-agent"
         assert "a-only" in alpha_nodes and "a-only" not in beta_nodes
         assert "b-only" in beta_nodes and "b-only" not in alpha_nodes
+    finally:
+        backend.close()
+
+
+def _assert_random_access_parity(backend, tenant: str, graph: UnifiedGraph) -> None:
+    """The store's random-access reads mirror the in-RAM graph accessors.
+
+    Differential oracle: for every node id, entity_type, and edge endpoint, the
+    payloads the backend returns via its random-access indexes must be
+    byte-identical to what the fully-materialised in-RAM ``UnifiedGraph`` returns
+    from ``get_node`` / ``nodes_by_type`` / ``edges_from`` / ``edges_to``. The
+    graphs here are directed-only, so ``adjacency``/``reverse_adjacency`` hold
+    exactly the canonical ``graph.edges`` the store was populated from (no
+    synthesised bidirectional reverse edges), and order is insertion order on
+    both sides.
+    """
+    # get_node_payload — exact hit, byte-identical, and an honest miss.
+    for nid, node in graph.nodes.items():
+        payload = backend.get_node_payload(tenant, nid)
+        assert payload is not None, f"node {nid} not retrievable by id"
+        assert json.loads(payload) == node.to_dict()
+        assert payload == json.dumps(node.to_dict(), default=str), "get_node_payload not byte-identical"
+    assert backend.get_node_payload(tenant, "no-such-node") is None
+
+    # iter_node_payloads_by_type — same members, same order as nodes_by_type.
+    for et in {n.entity_type for n in graph.nodes.values()}:
+        got = [json.loads(p) for p in backend.iter_node_payloads_by_type(tenant, et.value, 16)]
+        want = [n.to_dict() for n in graph.nodes_by_type(et)]
+        assert got == want, f"nodes_by_type parity diverged for {et}"
+    # a type with no members yields nothing.
+    assert list(backend.iter_node_payloads_by_type(tenant, "not-a-real-type", 16)) == []
+
+    # edges by source / target — same members, same order as edges_from/edges_to.
+    for s in {e.source for e in graph.edges}:
+        got = [json.loads(p) for p in backend.iter_edge_payloads_by_source(tenant, s, 16)]
+        want = [e.to_dict() for e in graph.edges_from(s)]
+        assert got == want, f"edges_from parity diverged for source {s}"
+    for t in {e.target for e in graph.edges}:
+        got = [json.loads(p) for p in backend.iter_edge_payloads_by_target(tenant, t, 16)]
+        want = [e.to_dict() for e in graph.edges_to(t)]
+        assert got == want, f"edges_to parity diverged for target {t}"
+
+
+def test_random_access_parity_on_synthetic_graph() -> None:
+    graph = _synthetic_graph("s", 300, tenant="t1")
+    backend = _SQLiteWorkspaceBackend()
+    ws = GraphBuildWorkspace(backend, tenant_id="t1", batch_size=64)
+    try:
+        ws.add_nodes(graph.nodes.values())
+        ws.add_edges(graph.edges)
+        _assert_random_access_parity(backend, ws.tenant_id, graph)
+    finally:
+        ws.close()
+
+
+def test_random_access_parity_on_real_builder_fixture() -> None:
+    from agent_bom.graph.builder import build_unified_graph_from_report
+
+    report = json.loads((Path(__file__).parent.parent / "fixtures" / "agent_bom_self_scan_inventory.json").read_text())
+    graph = build_unified_graph_from_report(report, scan_id="s", tenant_id="t1")
+    assert len(graph.nodes) > 0 and len(graph.edges) > 0
+
+    backend = _SQLiteWorkspaceBackend()
+    ws = GraphBuildWorkspace(backend, tenant_id="t1", batch_size=8)
+    try:
+        ws.add_nodes(graph.nodes.values())
+        ws.add_edges(graph.edges)
+        _assert_random_access_parity(backend, ws.tenant_id, graph)
+    finally:
+        ws.close()
+
+
+def test_random_access_reads_are_tenant_scoped() -> None:
+    backend = _SQLiteWorkspaceBackend()
+    alpha = GraphBuildWorkspace(backend, tenant_id="alpha")
+    beta = GraphBuildWorkspace(backend, tenant_id="beta")
+    try:
+        alpha.add_nodes([UnifiedNode(id="shared:1", entity_type=EntityType.AGENT, label="alpha-agent")])
+        beta.add_nodes([UnifiedNode(id="shared:1", entity_type=EntityType.AGENT, label="beta-agent")])
+        alpha.add_edges([UnifiedEdge(source="shared:1", target="a2", relationship=RelationshipType.DEPENDS_ON)])
+        beta.add_edges([UnifiedEdge(source="shared:1", target="b2", relationship=RelationshipType.DEPENDS_ON)])
+
+        # Random-access reads never cross the tenant boundary.
+        assert json.loads(backend.get_node_payload("alpha", "shared:1"))["label"] == "alpha-agent"
+        assert json.loads(backend.get_node_payload("beta", "shared:1"))["label"] == "beta-agent"
+
+        a_by_type = [json.loads(p) for p in backend.iter_node_payloads_by_type("alpha", EntityType.AGENT.value, 8)]
+        assert [n["label"] for n in a_by_type] == ["alpha-agent"]
+
+        a_edges = [json.loads(p) for p in backend.iter_edge_payloads_by_source("alpha", "shared:1", 8)]
+        assert [e["target"] for e in a_edges] == ["a2"]
+        b_edges = [json.loads(p) for p in backend.iter_edge_payloads_by_target("beta", "b2", 8)]
+        assert [e["source"] for e in b_edges] == ["shared:1"]
     finally:
         backend.close()
 

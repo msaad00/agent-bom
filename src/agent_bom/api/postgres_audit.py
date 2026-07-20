@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from agent_bom.api.audit_log import (
@@ -29,6 +30,31 @@ logger = logging.getLogger(__name__)
 # Name of the per-tenant chain-head uniqueness guard. A concurrent fork violates
 # it (SQLSTATE 23505), which `append` catches to re-read the head and re-link.
 _AUDIT_FORK_GUARD_INDEX = "audit_log_team_prevsig_uniq"
+
+
+# Callers deliberately swallow audit failures so audit side effects never block
+# the request (e.g. "audit must not block auth"). Without a log here, a rejected
+# INSERT would drop hash-chained events invisibly.
+_APPEND_REJECT_WARN_INTERVAL_SECONDS = 60.0
+_last_append_reject_warn_monotonic = float("-inf")
+
+
+def _warn_append_rejected(action: str, tenant_id: str, exc: Exception) -> None:
+    """Rate-limited visibility for audit appends the database rejected."""
+    global _last_append_reject_warn_monotonic
+    now = time.monotonic()
+    if now - _last_append_reject_warn_monotonic < _APPEND_REJECT_WARN_INTERVAL_SECONDS:
+        return
+    _last_append_reject_warn_monotonic = now
+    logger.warning(
+        "Audit append rejected (action=%s tenant=%s): %s — the entry was NOT "
+        "persisted; callers that swallow audit errors are losing audit events "
+        "(further rejections are logged at most once per %.0fs)",
+        action,
+        tenant_id,
+        exc,
+        _APPEND_REJECT_WARN_INTERVAL_SECONDS,
+    )
 
 
 def _is_chain_fork_conflict(exc: Exception) -> bool:
@@ -235,35 +261,45 @@ class PostgresAuditLog:
         # and re-inserts. Both statements share one transaction so a rejected
         # INSERT rolls back its checkpoint bump too.
         attempts = 0
-        while True:
-            attempts += 1
-            entry.prev_signature = self._latest_signature_for_tenant(tenant_id)
-            entry.sign()
-            try:
-                with _tenant_connection(self._pool) as conn:
-                    conn.execute(
-                        """INSERT INTO audit_log
-                           (entry_id, timestamp, action, actor, resource, team_id, details, prev_signature, hmac_signature)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                        (
-                            entry.entry_id,
-                            entry.timestamp,
-                            entry.action,
-                            entry.actor,
-                            entry.resource,
-                            tenant_id,
-                            json.dumps(entry.details),
-                            entry.prev_signature,
-                            entry.hmac_signature,
-                        ),
-                    )
-                    self._upsert_checkpoint(conn, tenant_id, entry.hmac_signature)
-                    conn.commit()
-            except Exception as exc:
-                if _is_chain_fork_conflict(exc) and attempts <= _MAX_APPEND_RETRIES:
-                    continue
-                raise
-            break
+        # Bind the entry's own tenant for the INSERT, not just the head read:
+        # callers may emit audit events before installing the request tenant
+        # context (e.g. proxy-header auth), leaving the ambient contextvar on
+        # another tenant — the RLS WITH CHECK on audit_log/audit_chain_checkpoint
+        # would then reject the row and the event would be lost.
+        token = _current_tenant.set(tenant_id)
+        try:
+            while True:
+                attempts += 1
+                entry.prev_signature = self._latest_signature_for_tenant(tenant_id)
+                entry.sign()
+                try:
+                    with _tenant_connection(self._pool) as conn:
+                        conn.execute(
+                            """INSERT INTO audit_log
+                               (entry_id, timestamp, action, actor, resource, team_id, details, prev_signature, hmac_signature)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                            (
+                                entry.entry_id,
+                                entry.timestamp,
+                                entry.action,
+                                entry.actor,
+                                entry.resource,
+                                tenant_id,
+                                json.dumps(entry.details),
+                                entry.prev_signature,
+                                entry.hmac_signature,
+                            ),
+                        )
+                        self._upsert_checkpoint(conn, tenant_id, entry.hmac_signature)
+                        conn.commit()
+                except Exception as exc:
+                    if _is_chain_fork_conflict(exc) and attempts <= _MAX_APPEND_RETRIES:
+                        continue
+                    _warn_append_rejected(entry.action, tenant_id, exc)
+                    raise
+                break
+        finally:
+            _current_tenant.reset(token)
         self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
 
     def list_entries(

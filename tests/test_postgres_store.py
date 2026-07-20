@@ -1810,3 +1810,70 @@ def test_server_lifespan_postgres_source_store():
 
     source = inspect.getsource(server._lifespan)
     assert "PostgresSourceStore" in source
+
+
+# ─── Audit append tenant alignment (#4276) ────────────────────────────────────
+
+
+def test_audit_append_binds_entry_tenant_for_insert(mock_pool):
+    """The audit INSERT must run under the entry's own tenant GUC, not the
+    ambient contextvar, so RLS WITH CHECK accepts the row when a caller emits
+    an audit event before installing the request tenant context."""
+    from agent_bom.api.audit_log import AuditEntry
+    from agent_bom.api.postgres_store import PostgresAuditLog
+
+    store = PostgresAuditLog(pool=mock_pool)
+    conn = mock_pool._conn
+    conn.executed.clear()
+
+    entry = AuditEntry(
+        action="auth.proxy_header_authenticated",
+        actor="proxy-user",
+        resource="/v1/findings",
+        details={"tenant_id": "tenant-mismatch-probe"},
+    )
+    store.append(entry)
+
+    insert_idx = next(i for i, (sql, _) in enumerate(conn.executed) if sql.strip().lower().startswith("insert into audit_log"))
+    tenant_bindings = [params for sql, params in conn.executed[:insert_idx] if "app.tenant_id" in sql]
+    assert tenant_bindings, "audit INSERT ran on a connection with no tenant session bound"
+    assert tenant_bindings[-1] == ("tenant-mismatch-probe",), (
+        "audit INSERT connection was bound to the ambient tenant, not the entry's tenant; "
+        "RLS WITH CHECK would reject the row on a real Postgres"
+    )
+
+
+def test_audit_append_rejection_logs_rate_limited_warning(mock_pool, caplog, monkeypatch):
+    """A rejected audit append must emit a (rate-limited) warning so callers
+    that swallow audit errors by design cannot lose events invisibly."""
+    import logging
+
+    from agent_bom.api import postgres_audit
+    from agent_bom.api.audit_log import AuditEntry
+    from agent_bom.api.postgres_store import PostgresAuditLog
+
+    store = PostgresAuditLog(pool=mock_pool)
+    conn = mock_pool._conn
+    real_execute = conn.execute
+
+    def failing_execute(sql, params=None):
+        if sql.strip().lower().startswith("insert into audit_log"):
+            raise RuntimeError('new row violates row-level security policy for table "audit_log"')
+        return real_execute(sql, params)
+
+    monkeypatch.setattr(conn, "execute", failing_execute)
+    monkeypatch.setattr(postgres_audit, "_last_append_reject_warn_monotonic", float("-inf"))
+
+    def _rejection_warnings():
+        return [r for r in caplog.records if "audit append rejected" in r.message.lower()]
+
+    entry = AuditEntry(action="scan", actor="w", resource="pkg", details={"tenant_id": "t1"})
+    with caplog.at_level(logging.WARNING, logger="agent_bom.api.postgres_audit"):
+        with pytest.raises(RuntimeError):
+            store.append(entry)
+        assert len(_rejection_warnings()) == 1
+
+        caplog.clear()
+        with pytest.raises(RuntimeError):
+            store.append(AuditEntry(action="scan", actor="w", resource="pkg2", details={"tenant_id": "t1"}))
+        assert not _rejection_warnings(), "rejection warning is not rate-limited"

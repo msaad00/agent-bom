@@ -17,8 +17,21 @@ POSTGRES_STORE_PARITY = VERSIONS_DIR / "20260717_01_postgres_store_parity.py"
 GRAPH_ANALYSIS_STATUS = VERSIONS_DIR / "20260717_02_graph_analysis_status.py"
 GRAPH_SNAPSHOT_JSON_PARITY = VERSIONS_DIR / "20260717_03_graph_snapshot_json_parity.py"
 RUNTIME_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260718_01_runtime_schema_authority.py"
+AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
+RUNTIME_SCHEMA_SQL = POSTGRES_DIR / "runtime-schema.sql"
+
+# The fork-guard UNIQUE index is spelled differently in its two schema sources:
+# the dedicated migration concatenates two quoted Python string literals, while
+# runtime-schema.sql packs the columns with no spaces. Canonicalise both (drop
+# quotes + all whitespace, lowercase) before matching so the assertion tracks
+# the DDL, not the formatting.
+_FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_uniqonaudit_log(team_id,prev_signature)"
+
+
+def _canonical_sql(text: str) -> str:
+    return re.sub(r"[\s\"]+", "", text).lower()
 
 
 def _load_module(path: Path, name: str):
@@ -140,6 +153,32 @@ def test_graph_snapshot_json_parity_migration_is_idempotent_and_chained():
         assert f"ALTER COLUMN {column} DROP DEFAULT" in sql
         assert f"ALTER COLUMN {column} TYPE TEXT" in sql
         assert f"ALTER COLUMN {column} SET DEFAULT '{{}}'" in sql
+
+
+def test_audit_fork_guard_index_migration_is_chained_and_recreates_the_index() -> None:
+    """The hash-chain fork-guard UNIQUE index must live in migration-owned SQL.
+
+    ``PostgresAuditLog._ensure_fork_guard_index`` no longer runs when Postgres is
+    authoritative (``_init_tables`` early-returns), so the ``UNIQUE (team_id,
+    prev_signature)`` guard was left in no migration after #4232 — silently,
+    because nothing asserted it. This is that missing regression guard: the
+    dedicated migration must exist, chain from the runtime-schema-authority head,
+    and (idempotently) recreate the index with the exact head key.
+    """
+    sql = AUDIT_FORK_GUARD_INDEX.read_text()
+    assert re.search(r'revision\s*=\s*"20260719_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260718_01"', sql)
+    assert _FORK_GUARD_INDEX_CANON in _canonical_sql(sql), "migration must CREATE UNIQUE INDEX audit_log_team_prevsig_uniq"
+    assert "DROP INDEX IF EXISTS audit_log_team_prevsig_uniq" in sql  # reversible
+
+
+def test_audit_fork_guard_index_is_present_in_runtime_schema_authority() -> None:
+    """runtime-schema.sql is applied wholesale by the 20260718_01 head-authority
+    migration, so the fork guard must be present there too (belt-and-suspenders
+    with the dedicated 20260719_01 migration). A future edit that drops it from
+    the migration-owned schema — the #4232 class of regression — fails here."""
+    sql = RUNTIME_SCHEMA_SQL.read_text()
+    assert _FORK_GUARD_INDEX_CANON in _canonical_sql(sql), "runtime-schema.sql must define audit_log_team_prevsig_uniq"
 
 
 def test_runtime_schema_authority_is_the_alembic_head() -> None:

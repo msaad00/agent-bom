@@ -189,6 +189,89 @@ def test_chain_fork_conflict_detector_matches_only_fork_violations() -> None:
     not os.environ.get("AGENT_BOM_POSTGRES_URL"),
     reason="requires a live PostgreSQL (AGENT_BOM_POSTGRES_URL) — mock pool cannot enforce the unique fork guard",
 )
+def test_postgres_head_read_is_chain_ordered_not_timestamp_ordered() -> None:
+    """A retried/clock-skewed append must not poison the head and livelock (#4284).
+
+    Regression for the audit-chain livelock: the chain head was selected by
+    ``ORDER BY timestamp DESC``, but ``AuditEntry.timestamp`` is stamped at entry
+    creation. A writer that loses the fork race re-signs against the advanced
+    head yet commits *later* with its *original, older* timestamp, so timestamp
+    order diverges from chain order. The head read then returns a non-tip row
+    whose successor slot is already taken — every subsequent append re-links to
+    that stale head, hits the fork-guard UNIQUE violation, re-reads the same
+    stale head, and retries to exhaustion: the tenant can never append again.
+
+    This reproduces the skew deterministically (no threads): a genesis row with a
+    *later* wall-clock timestamp than its own successor. The head must still be
+    the true chain tip (the last-committed row), and a further append must
+    succeed and link to it.
+    """
+    import uuid
+
+    from agent_bom.api.postgres_common import _current_tenant, set_current_tenant
+    from agent_bom.api.postgres_store import PostgresAuditLog
+
+    store = PostgresAuditLog()
+    tenant = f"tenant-skew-{uuid.uuid4().hex[:12]}"
+    token = set_current_tenant(tenant)
+    try:
+        # Genesis carries a LATER timestamp than its successor — the exact skew a
+        # retried append produces (commit order != timestamp order).
+        genesis = AuditEntry(
+            action="scan",
+            actor="w",
+            resource="genesis",
+            details={"tenant_id": tenant},
+            timestamp="2020-01-01T00:00:09+00:00",
+        )
+        store.append(genesis)
+        genesis_sig = genesis.hmac_signature
+
+        successor = AuditEntry(
+            action="scan",
+            actor="w",
+            resource="successor",
+            details={"tenant_id": tenant},
+            timestamp="2020-01-01T00:00:01+00:00",
+        )
+        store.append(successor)
+        true_tip_sig = successor.hmac_signature
+
+        # The genesis has the max timestamp but its successor slot is already
+        # taken; the true chain tip is the last-committed row (`successor`).
+        head = store._latest_signature_for_tenant(tenant)
+        assert head == true_tip_sig, (
+            "head read returned a non-tip row — timestamp-ordered head selection "
+            f"poisons the chain (#4284): got {head!r}, expected tip {true_tip_sig!r}, "
+            f"genesis was {genesis_sig!r}"
+        )
+
+        # A further append must link to the true tip and succeed — on the buggy
+        # code this exhausts every fork-guard retry and raises (livelock).
+        third = AuditEntry(
+            action="scan",
+            actor="w",
+            resource="third",
+            details={"tenant_id": tenant},
+        )
+        store.append(third)
+        assert third.prev_signature == true_tip_sig
+
+        entries = store.list_entries(limit=1000, tenant_id=tenant)
+        prevs = [e.prev_signature for e in entries]
+        assert len(prevs) == len(set(prevs)), "chain forked: rows share a prev_signature"
+
+        verified, tampered = store.verify_integrity(tenant_id=tenant)
+        assert tampered == 0, f"verify_integrity reported {tampered} tampered rows"
+        assert verified == 3
+    finally:
+        _current_tenant.reset(token)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("AGENT_BOM_POSTGRES_URL"),
+    reason="requires a live PostgreSQL (AGENT_BOM_POSTGRES_URL) — mock pool cannot enforce the unique fork guard",
+)
 def test_postgres_concurrent_append_does_not_fork_chain() -> None:
     """Cross-thread appends against a live Postgres store must not fork the chain.
 

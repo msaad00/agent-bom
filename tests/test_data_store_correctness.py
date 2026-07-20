@@ -120,10 +120,21 @@ class _FakeAuditConn:
             if "team_id = %s" in s:
                 rows = [r for r in rows if r["team_id"] == p[0]]
             return _FakeResult([(len(rows),)])
-        if "FROM audit_log" in s and "ORDER BY timestamp ASC" in s:
+        if "WITH RECURSIVE chain" in s and "audit_log" in s:
+            # Model the chain-ordered walk (`_list_entries_chronological`): follow
+            # prev_signature -> hmac_signature links from the genesis row, not
+            # wall-clock timestamp order, so the walk is correct under skew.
             self.pool.audit_read_sessions.append((self.tenant, self.bypass))
-            rows = [r for r in self._visible_audit() if r["team_id"] == p[0]]
-            rows.sort(key=lambda r: (r["timestamp"], r["entry_id"]))
+            visible = self._visible_audit()
+            if "a.team_id = %s" in s:
+                visible = [r for r in visible if r["team_id"] == p[0]]
+            by_prev = {r["prev_signature"]: r for r in visible}
+            ordered: list[dict] = []
+            cursor_sig = ""
+            while cursor_sig in by_prev:
+                row = by_prev[cursor_sig]
+                ordered.append(row)
+                cursor_sig = row["hmac_signature"]
             limit = p[-1]
             return _FakeResult(
                 [
@@ -137,7 +148,7 @@ class _FakeAuditConn:
                         r["prev_signature"],
                         r["hmac_signature"],
                     )
-                    for r in rows[:limit]
+                    for r in ordered[:limit]
                 ]
             )
         if "INSERT INTO audit_log" in s:

@@ -139,10 +139,7 @@ class PostgresAuditLog:
         """
         try:
             with self._pool.connection() as conn:
-                conn.execute(
-                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_AUDIT_FORK_GUARD_INDEX} "
-                    "ON audit_log (team_id, prev_signature)"
-                )
+                conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {_AUDIT_FORK_GUARD_INDEX} ON audit_log (team_id, prev_signature)")
                 conn.commit()
         except Exception:
             logger.warning(
@@ -171,8 +168,27 @@ class PostgresAuditLog:
                     "SELECT COUNT(*) FROM audit_log WHERE team_id = %s",
                     (tenant_id,),
                 ).fetchone()
+                # The chain tip is the successor-free row (its hmac_signature is
+                # no other row's prev_signature), NOT the max-timestamp row: a
+                # legacy dataset written by the pre-#4284 append path can carry a
+                # true tip whose wall-clock timestamp predates an earlier link, so
+                # a timestamp-ordered bootstrap would bake a stale head into the
+                # checkpoint that the append fast path now trusts. The fork-guard
+                # UNIQUE (team_id, prev_signature) makes the NOT EXISTS an index
+                # probe; this one-time startup rebuild is bounded by tenant size.
                 head_row = conn.execute(
-                    "SELECT hmac_signature FROM audit_log WHERE team_id = %s ORDER BY timestamp DESC, entry_id DESC LIMIT 1",
+                    """
+                    SELECT a.hmac_signature
+                    FROM audit_log a
+                    WHERE a.team_id = %s
+                      AND NOT EXISTS (
+                          SELECT 1 FROM audit_log b
+                          WHERE b.team_id = a.team_id
+                            AND b.prev_signature = a.hmac_signature
+                      )
+                    ORDER BY a.hmac_signature
+                    LIMIT 1
+                    """,
                     (tenant_id,),
                 ).fetchone()
                 if not count_row or not head_row:
@@ -223,16 +239,58 @@ class PostgresAuditLog:
         )
 
     def _latest_signature_for_tenant(self, tenant_id: str) -> str:
-        # audit_log is under FORCE ROW LEVEL SECURITY, so a raw connection (no
-        # tenant session) resolves abom_current_tenant() to 'default' and returns
-        # zero rows for every other tenant — leaving prev_signature empty and
-        # silently breaking the HMAC chain. Bind the requested tenant on a
-        # tenant-scoped connection so RLS returns that tenant's real chain head.
+        # The chain head is the LAST-COMMITTED row, NOT the row with the latest
+        # wall-clock timestamp. `AuditEntry.timestamp` is stamped at entry
+        # creation, so a retried append (a fork-guard loser) re-signs against the
+        # advanced head yet commits later carrying its original, older timestamp.
+        # ORDER BY timestamp then returns a non-tip row whose successor slot is
+        # already taken, so every subsequent append re-links to that stale head,
+        # violates the fork guard, and retries to exhaustion — a permanent
+        # per-tenant livelock (#4284). `audit_chain_checkpoint.head_signature` is
+        # bumped in the SAME transaction as each audit_log insert (and rolled
+        # back with a rejected fork), so it is the authoritative commit-order tip
+        # and an O(1) primary-key read. `_get_checkpoint` binds the requested
+        # tenant on the connection so FORCE ROW LEVEL SECURITY returns that
+        # tenant's own checkpoint row rather than the ambient tenant's.
+        checkpoint = self._get_checkpoint(tenant_id)
+        if checkpoint is not None:
+            return checkpoint.head_signature
+        # No checkpoint row yet. In a migration-owned deployment the checkpoint
+        # table is created empty and never batch-backfilled, so a tenant whose
+        # audit_log rows predate its first checkpoint upsert has none. Treating
+        # that as an empty chain (genesis, prev='') would try to re-insert a
+        # second genesis and livelock against the fork guard, so derive the true
+        # tip directly from audit_log — the successor-free row (its
+        # hmac_signature is no other row's prev_signature), NOT the max-timestamp
+        # row (#4284). The very next append seeds the checkpoint from it.
+        return self._chain_tip_signature_from_log(tenant_id)
+
+    def _chain_tip_signature_from_log(self, tenant_id: str) -> str:
+        """Return the tenant's chain tip derived from audit_log links (no checkpoint).
+
+        The tip is the row whose ``hmac_signature`` is not referenced as any
+        other row's ``prev_signature``. This is chain-order-correct regardless of
+        wall-clock timestamp skew; the fork-guard UNIQUE (team_id, prev_signature)
+        makes the NOT EXISTS an index probe. Returns ``""`` for a tenant with no
+        rows (a genuine genesis). Binds the requested tenant so FORCE ROW LEVEL
+        SECURITY returns that tenant's rows rather than the ambient tenant's.
+        """
         token = _current_tenant.set(tenant_id)
         try:
             with _tenant_connection(self._pool) as conn:
                 row = conn.execute(
-                    "SELECT hmac_signature FROM audit_log WHERE team_id = %s ORDER BY timestamp DESC, entry_id DESC LIMIT 1",
+                    """
+                    SELECT a.hmac_signature
+                    FROM audit_log a
+                    WHERE a.team_id = %s
+                      AND NOT EXISTS (
+                          SELECT 1 FROM audit_log b
+                          WHERE b.team_id = a.team_id
+                            AND b.prev_signature = a.hmac_signature
+                      )
+                    ORDER BY a.hmac_signature
+                    LIMIT 1
+                    """,
                     (tenant_id,),
                 ).fetchone()
         finally:
@@ -368,16 +426,43 @@ class PostgresAuditLog:
         limit: int,
         tenant_id: str | None = None,
     ) -> list[AuditEntry]:
-        clauses: list[str] = []
+        # Walk the entries in true chain-link order (genesis first), NOT by
+        # wall-clock timestamp. `AuditEntry.timestamp` is stamped at entry
+        # creation, so a retried or clock-skewed append can commit out of step
+        # with its chain position (#4284) — a timestamp-ordered walk then mis-
+        # scores a perfectly valid chain as tampered (its `prev_signature` no
+        # longer matches the timestamp-preceding row). Follow the hash links from
+        # the genesis row (`prev_signature = ''`) instead, mirroring the SQLite
+        # path's append-ordered (`rowid ASC`) walk. RLS scopes rows to the bound
+        # tenant and the fork-guard UNIQUE (team_id, prev_signature) makes each
+        # recursive step an index probe; content tampering is still caught by
+        # `entry.verify()` and the checkpoint entry-count/head comparison.
+        anchor_clause = ""
         params: list[object] = []
         if tenant_id is not None:
-            clauses.append("team_id = %s")
+            anchor_clause = "AND a.team_id = %s"
             params.append(tenant_id)
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        sql = (
-            "SELECT entry_id, timestamp, action, actor, resource, details, prev_signature, hmac_signature "
-            f"FROM audit_log{where} ORDER BY timestamp ASC, entry_id ASC LIMIT %s"  # nosec B608
-        )
+        sql = f"""
+            WITH RECURSIVE chain AS (
+                SELECT a.entry_id, a.timestamp, a.action, a.actor, a.resource,
+                       a.details, a.prev_signature, a.hmac_signature, a.team_id,
+                       0 AS depth
+                FROM audit_log a
+                WHERE a.prev_signature = '' {anchor_clause}
+                UNION ALL
+                SELECT n.entry_id, n.timestamp, n.action, n.actor, n.resource,
+                       n.details, n.prev_signature, n.hmac_signature, n.team_id,
+                       c.depth + 1
+                FROM audit_log n
+                JOIN chain c
+                  ON n.team_id = c.team_id AND n.prev_signature = c.hmac_signature
+            )
+            SELECT entry_id, timestamp, action, actor, resource, details,
+                   prev_signature, hmac_signature
+            FROM chain
+            ORDER BY depth
+            LIMIT %s
+        """  # nosec B608 - anchor_clause is a constant; values are parameterized
         params.append(limit)
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(sql, tuple(params)).fetchall()

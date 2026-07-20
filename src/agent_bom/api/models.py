@@ -873,6 +873,10 @@ class CreateKeyRequest(BaseModel):
     # User this key is issued on behalf of (e.g. a SCIM user_id/user_name). Lets
     # deprovisioning revoke free-form CI keys that don't name the departing user.
     owner: str | None = None
+    # Canonical stable principal id to bind this key to. When omitted the store
+    # derives it from scim_subject_id → owner. Deprovisioning a subject revokes
+    # every key keyed to its principal_id.
+    principal_id: str | None = None
 
 
 class RotateKeyRequest(BaseModel):

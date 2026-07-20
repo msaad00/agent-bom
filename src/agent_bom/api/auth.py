@@ -40,6 +40,10 @@ class ApiKey:
     # user_id / user_name / external_id). Lets deprovisioning revoke free-form
     # CI keys whose ``name`` doesn't match the departing user.
     owner: str | None = None
+    # Canonical stable principal id this key is bound to. Set at creation
+    # (explicit → scim_subject_id → owner). Deprovisioning a subject revokes
+    # every key keyed to its principal_id, independent of the display ``name``.
+    principal_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -131,6 +135,7 @@ class ApiKey:
             "replacement_key_id": self.replacement_key_id,
             "scim_subject_id": self.scim_subject_id,
             "owner": self.owner,
+            "principal_id": self.principal_id,
             "state": self.lifecycle_state(now=current),
             "overlap_seconds_remaining": overlap_remaining_seconds,
         }
@@ -358,6 +363,7 @@ def create_api_key(
     tenant_id: str = "default",
     scim_subject_id: str | None = None,
     owner: str | None = None,
+    principal_id: str | None = None,
 ) -> tuple[str, ApiKey]:
     """Generate a new API key.
 
@@ -374,6 +380,7 @@ def create_api_key(
         tenant_id=tenant_id,
         scim_subject_id=scim_subject_id,
         owner=owner,
+        principal_id=principal_id,
     )
 
 
@@ -386,12 +393,19 @@ def create_api_key_record(
     tenant_id: str = "default",
     scim_subject_id: str | None = None,
     owner: str | None = None,
+    principal_id: str | None = None,
 ) -> ApiKey:
     """Create a stored API key record for an operator-supplied raw key."""
     salt = os.urandom(16)
     key_hash = _derive_key(raw_key, salt)
     normalized_expiry = normalize_api_key_expiry(expires_at)
     owner_normalized = owner.strip() if isinstance(owner, str) and owner.strip() else None
+    scim_subject_normalized = scim_subject_id.strip() if isinstance(scim_subject_id, str) and scim_subject_id.strip() else scim_subject_id
+    # The canonical stable binding: an explicit principal id wins; otherwise fall
+    # back to the SCIM subject id, then the free-form owner, so every key carries
+    # a revocation key even when the caller only supplied one of the legacy hints.
+    principal_normalized = principal_id.strip() if isinstance(principal_id, str) and principal_id.strip() else None
+    resolved_principal = principal_normalized or scim_subject_normalized or owner_normalized
     return ApiKey(
         key_id=secrets.token_hex(8),
         key_hash=key_hash,
@@ -404,6 +418,7 @@ def create_api_key_record(
         tenant_id=tenant_id,
         scim_subject_id=scim_subject_id,
         owner=owner_normalized,
+        principal_id=resolved_principal,
     )
 
 
@@ -450,6 +465,29 @@ class KeyStore:
                     return True
             return False
 
+    def revoke_by_principal_id(self, principal_id: str, tenant_id: str | None = None) -> list[str]:
+        """Revoke every active key bound to ``principal_id`` and return their ids.
+
+        Id-based, complete revocation: a deprovisioned subject loses all of its
+        keys regardless of display ``name``. Scoped to ``tenant_id`` when given so
+        one tenant's deprovision never revokes another tenant's identically-keyed
+        credentials.
+        """
+        if not principal_id:
+            return []
+        revoked: list[str] = []
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            for key in self._keys:
+                if key.principal_id != principal_id or key.is_revoked():
+                    continue
+                if tenant_id is not None and key.tenant_id != tenant_id:
+                    continue
+                key.revoked_at = now
+                key.rotation_overlap_until = None
+                revoked.append(key.key_id)
+        return revoked
+
     def mark_rotating(self, key_id: str, *, replacement_key_id: str, overlap_until: str) -> bool:
         with self._lock:
             for key in self._keys:
@@ -491,6 +529,7 @@ class KeyStoreProtocol(Protocol):
 
     def add(self, key: ApiKey) -> None: ...
     def remove(self, key_id: str) -> bool: ...
+    def revoke_by_principal_id(self, principal_id: str, tenant_id: str | None = None) -> list[str]: ...
     def mark_rotating(self, key_id: str, *, replacement_key_id: str, overlap_until: str) -> bool: ...
     def get(self, key_id: str) -> ApiKey | None: ...
     def list_keys(self, tenant_id: str | None = None) -> list[ApiKey]: ...

@@ -173,6 +173,34 @@ def _enforce_control_plane_listener_posture(host: str) -> None:
         raise click.ClickException(str(exc)) from exc
 
 
+def _enforce_database_role_posture(command: str) -> None:
+    """Fail fast at boot when the configured Postgres role can bypass tenant RLS.
+
+    Tenant isolation on Postgres is enforced solely by ``FORCE ROW LEVEL
+    SECURITY``; a ``SUPERUSER`` / ``BYPASSRLS`` role ignores it and voids the
+    isolation. ``_guard_rls_capable_role`` already refuses such a role, but only
+    lazily on the first pool use (i.e. per request). Running it here — beside the
+    non-loopback auth gate, before uvicorn binds — turns that into a single,
+    actionable boot error instead of a 500 on every request. No-op unless
+    Postgres is the active backend; only an RLS-bypass verdict is fatal, a
+    transient connect/probe failure defers to the request-time guard.
+    """
+    if os.environ.get("SNOWFLAKE_ACCOUNT"):
+        return
+    if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        return
+    from agent_bom.api import postgres_common
+
+    try:
+        postgres_common.preflight_rls_capable_role()
+    except postgres_common.RlsRolePrivilegeError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except Exception:  # noqa: BLE001 - connectivity/probe blips defer to the request-time guard
+        # A DB that is briefly unreachable at bind must not block startup; the
+        # same guard re-runs on the next successful pool use (lifespan/request).
+        pass
+
+
 def _enforce_remote_mcp_auth_defaults(host: str, bearer_token: str | None, allow_insecure_no_auth: bool) -> None:
     """Refuse unauthenticated remote MCP transports on non-loopback binds."""
     if bearer_token or _is_loopback_host(host):
@@ -610,6 +638,7 @@ def serve_cmd(
 
     _enforce_auth_defaults("serve", host, api_key, allow_insecure_no_auth)
     _enforce_control_plane_listener_posture(host)
+    _enforce_database_role_posture("serve")
     tls_kwargs = _uvicorn_tls_kwargs()
 
     seeded_connection_key = _maybe_seed_local_connection_key(host=host, allow_insecure_no_auth=allow_insecure_no_auth)
@@ -889,6 +918,7 @@ def api_cmd(
 
     _enforce_auth_defaults("api", host, api_key, allow_insecure_no_auth)
     _enforce_control_plane_listener_posture(host)
+    _enforce_database_role_posture("api")
     tls_kwargs = _uvicorn_tls_kwargs()
 
     seeded_connection_key = _maybe_seed_local_connection_key(host=host, allow_insecure_no_auth=allow_insecure_no_auth)

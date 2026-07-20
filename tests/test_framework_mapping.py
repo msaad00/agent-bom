@@ -594,8 +594,47 @@ def test_cloud_cis_benchmark_titles_are_own_descriptors_not_copyrighted():
 
     cloud_dir = _cloud_cis_benchmark_dir()
     joined_source = "\n".join((cloud_dir / name).read_text() for name in _CLOUD_CIS_BENCHMARK_MODULES)
-    in_source = sorted(t for t in forbidden if f'"{t}"' in joined_source)
-    assert not in_source, f"Verbatim copyrighted CIS titles still vendored as string literals: {in_source}"
+    # Plain substring scan (not just quoted literals) so verbatim titles hiding
+    # in docstrings or comments are caught too — docstrings feed error-path
+    # titles in some modules, so they are an emission surface, not just prose.
+    in_source = sorted(t for t in forbidden if t in joined_source)
+    assert not in_source, f"Verbatim copyrighted CIS titles still vendored in module source: {in_source}"
+
+
+def _cis_check_docstring_descriptors(module_name: str) -> list[str]:
+    """Return the post-em-dash descriptor of every ``_check_*`` docstring."""
+    import ast
+
+    source = (_cloud_cis_benchmark_dir() / module_name).read_text()
+    descriptors: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("_check"):
+            continue
+        doc = ast.get_docstring(node) or ""
+        if "—" in doc:
+            descriptors.append(doc.split("—", 1)[1].strip().rstrip("."))
+    return descriptors
+
+
+def test_cis_docstring_derived_titles_are_own_descriptors():
+    """Modules that derive check titles from ``_check_*`` docstrings (error
+    paths use ``fn.__doc__``) must keep those docstrings own-worded: the
+    docstring is an emission surface, so CIS-house-style "Ensure ..." text
+    there leaks verbatim copyrighted titles into results."""
+    docstring_title_modules = ("aws_cis_benchmark.py", "snowflake_cis_benchmark.py")
+
+    # Self-updating scope guard: any module that starts deriving titles from
+    # __doc__ must be added here (and get own-worded docstrings).
+    for name in _CLOUD_CIS_BENCHMARK_MODULES:
+        source = (_cloud_cis_benchmark_dir() / name).read_text()
+        if "__doc__" in source:
+            assert name in docstring_title_modules, f"{name} derives titles from __doc__ but is not docstring-guarded"
+
+    for name in docstring_title_modules:
+        descriptors = _cis_check_docstring_descriptors(name)
+        assert descriptors, f"{name}: no _check_* docstring descriptors found — scan is broken"
+        offenders = [d for d in descriptors if d.lower().startswith("ensure ")]
+        assert not offenders, f"{name}: CIS-house-style docstring descriptors must be reworded: {offenders}"
 
 
 def test_vendored_catalog_integrity_and_counts_reconcile():

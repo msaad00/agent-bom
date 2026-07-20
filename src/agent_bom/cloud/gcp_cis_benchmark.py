@@ -330,7 +330,7 @@ def _check_1_1(project_id: str) -> CISCheckResult:
 
 
 def _check_1_2(project_id: str) -> CISCheckResult:
-    """CIS 1.2 — Ensure multi-factor authentication is enforced for all users."""
+    """CIS 1.2 — MFA enforced for all users."""
     return CISCheckResult(
         check_id="1.2",
         title="MFA enforced for all users",

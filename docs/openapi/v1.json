@@ -6622,7 +6622,7 @@
     "/v1/agents/mesh": {
       "get": {
         "deprecated": true,
-        "description": "Get a ReactFlow-compatible mesh topology of all discovered agents.\n\nShows agents, their MCP servers, tools, and vulnerability overlay\nas an interactive graph.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).",
+        "description": "Get a ReactFlow-compatible mesh topology of all discovered agents.\n\nShows agents, their MCP servers, tools, and vulnerability overlay\nas an interactive graph.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).\n\nThe synchronous discovery + store scans run in a worker thread so they\nnever block the event loop.",
         "operationId": "get_agent_mesh_v1_agents_mesh_get",
         "responses": {
           "200": {
@@ -6646,7 +6646,7 @@
     },
     "/v1/agents/{agent_name}": {
       "get": {
-        "description": "Get detailed view of a single agent with cross-referenced scan data.",
+        "description": "Get detailed view of a single agent with cross-referenced scan data.\n\nThe synchronous discovery + store scans run in a worker thread so they\nnever block the event loop.",
         "operationId": "get_agent_detail_v1_agents__agent_name__get",
         "parameters": [
           {
@@ -8719,7 +8719,7 @@
     },
     "/v1/cis/checks": {
       "get": {
-        "description": "List tenant-scoped CIS benchmark checks with indexed filters where available.",
+        "description": "List tenant-scoped CIS benchmark checks with indexed filters where available.\n\nThe synchronous store reads (columnar/analytics queries plus the in-memory\nscan-job fallback) run in a worker thread under adaptive backpressure so a\ndeep listing cannot block the event loop; under saturation the endpoint\nsheds with ``429 + Retry-After``.",
         "operationId": "list_cis_benchmark_checks_v1_cis_checks_get",
         "parameters": [
           {
@@ -8872,7 +8872,7 @@
     "/v1/cis/trends": {
       "get": {
         "deprecated": true,
-        "description": "Time-bucketed CIS finding counts for trend / drilldown surfaces.\n\nResolves to the columnar store (Postgres ``cis_benchmark_checks`` \u2192\nClickHouse) when available; otherwise reconstructs the aggregation\nin-memory from the tenant's recent scan results so single-node and\nSQLite-only deployments still return data.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).\n\nQuery parameters:\n- ``days`` (1\u2013366, default 30): rolling window size.\n- ``bucket`` (``hour`` | ``day`` | ``week``, default ``day``): bucket\n  width. Anything else falls back to ``day``.\n- ``cloud`` / ``section`` / ``status`` / ``severity``: optional\n  single-value filters narrowing the slice before aggregation.",
+        "description": "Time-bucketed CIS finding counts for trend / drilldown surfaces.\n\nResolves to the columnar store (Postgres ``cis_benchmark_checks`` \u2192\nClickHouse) when available; otherwise reconstructs the aggregation\nin-memory from the tenant's recent scan results so single-node and\nSQLite-only deployments still return data.\n\nSoft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).\n\nQuery parameters:\n- ``days`` (1\u2013366, default 30): rolling window size.\n- ``bucket`` (``hour`` | ``day`` | ``week``, default ``day``): bucket\n  width. Anything else falls back to ``day``.\n- ``cloud`` / ``section`` / ``status`` / ``severity``: optional\n  single-value filters narrowing the slice before aggregation.\n\nThe synchronous aggregation (columnar/analytics stores plus the in-memory\nscan-job fallback) runs in a worker thread under adaptive backpressure so\nit never blocks the event loop; under saturation the endpoint sheds with\n``429 + Retry-After``.",
         "operationId": "cis_benchmark_trends_v1_cis_trends_get",
         "parameters": [
           {

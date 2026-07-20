@@ -573,7 +573,7 @@ def render_graph_script(
       if (t === 'agent') {{
         var meta = '';
         if (d.agentType) meta += 'Type: ' + d.agentType + '\\n';
-        if (d.source) meta += 'Source: ' + d.source + '\\n';
+        if (d.discovery_source) meta += 'Source: ' + d.discovery_source + '\\n';
         if (d.configPath) meta += 'Config: ' + d.configPath;
         document.getElementById('sidebarMeta').textContent = meta;
         var s = '<div class="sidebar-label">Statistics</div><ul class="sidebar-list">';

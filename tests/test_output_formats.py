@@ -1084,3 +1084,77 @@ class TestCycloneDXPurlSynthesis:
         assert pkg_elements
         identifiers = [i["identifier"] for e in pkg_elements for i in e.get("externalIdentifier", [])]
         assert "pkg:npm/express@4.17.1" in identifiers
+
+
+# ---------------------------------------------------------------------------
+# Graph surfaces: graph-derived finding categories + node-field hygiene
+# ---------------------------------------------------------------------------
+
+
+def _combination_finding(agent_name: str = "claude") -> Finding:
+    return Finding(
+        finding_type=FindingType.COMBINATION,
+        source=FindingSource.GRAPH_ANALYSIS,
+        asset=Asset(name=agent_name, asset_type="agent"),
+        severity="high",
+        title=f"AI agent can reach a credential or privileged tool: {agent_name}",
+        description="An AI agent's tool-use chain reaches a credential or privileged tool node.",
+    )
+
+
+def test_cytoscape_graph_includes_graph_derived_finding_categories():
+    """COMBINATION / policy findings must appear in the graph element list, not just JSON/API."""
+    from agent_bom.output.graph import build_graph_elements
+
+    agent = _make_agent(servers=[_make_server()])
+    report = _make_report(agents=[agent])
+    report.findings = [_combination_finding("claude")]
+
+    elements = build_graph_elements(report, [])
+    finding_nodes = [el["data"] for el in elements if el.get("data", {}).get("type") == "finding"]
+
+    assert finding_nodes, "graph element list must carry graph-derived finding nodes"
+    node = finding_nodes[0]
+    assert node["category"] == "COMBINATION"
+    assert node["severity"] == "high"
+    assert "AI agent can reach a credential or privileged tool" in node["title"]
+    # Edge links the finding to its agent asset node.
+    edges = [el["data"] for el in elements if el.get("data", {}).get("type") == "has_finding" and el["data"].get("target") == node["id"]]
+    assert edges and edges[0]["source"] == "a:claude"
+
+
+def test_cytoscape_agent_nodes_use_discovery_source_not_reserved_source():
+    """``source``/``target`` are reserved edge fields in the Cytoscape element
+    format — node data must not reuse ``source`` for discovery provenance."""
+    from agent_bom.output.graph import build_graph_elements
+
+    report = _make_report(agents=[_make_agent(servers=[_make_server()])])
+    elements = build_graph_elements(report, [])
+    agent_node = next(el["data"] for el in elements if el.get("data", {}).get("type") == "agent")
+
+    assert agent_node.get("discovery_source") == "local"
+    assert "source" not in agent_node
+
+
+def test_graph_html_is_self_contained_and_carries_finding_categories(tmp_path):
+    """graph-html must render offline (no CDN <script src>) and embed the
+    unified finding categories, not just CVEs."""
+    from agent_bom.output.graph import export_graph_html
+
+    pkg = _make_pkg()
+    agent = _make_agent(servers=[_make_server(packages=[pkg])])
+    report = _make_report(agents=[agent])
+    report.findings = [_combination_finding("claude")]
+    br = _make_blast_radius(pkg=pkg, agents=[agent])
+
+    out = tmp_path / "graph.html"
+    export_graph_html(report, [br], str(out))
+    html = out.read_text(encoding="utf-8")
+
+    assert '<script src="http' not in html, "graph HTML must not depend on CDN scripts"
+    # Inlined pinned vendor libraries are present.
+    assert "The Cytoscape Consortium" in html
+    assert "cytoscapeDagre" in html
+    # Graph-derived finding categories reach the embedded data + risk panel.
+    assert "COMBINATION" in html
+    assert "AI agent can reach a credential or privileged tool" in html

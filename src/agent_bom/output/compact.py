@@ -63,7 +63,11 @@ def _compact_detail(text: str, limit: int = 88) -> str:
     clean = " ".join(text.split())
     if len(clean) <= limit:
         return clean
-    return clean[: limit - 1].rstrip() + "…"
+    trimmed = clean[: limit - 1].rstrip()
+    # Never end on dangling connector punctuation ("… posture — …" cut right
+    # after the dash renders as a stray "—…" fragment when the line wraps).
+    trimmed = trimmed.rstrip("—·-,:;")
+    return trimmed.rstrip() + "…"
 
 
 def _page_window(total: int, limit: int, page: int) -> tuple[int, int, int]:
@@ -203,6 +207,7 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
             if len(weak_dimensions) >= 2:
                 break
 
+    badge_parts_present = False
     if coverage_incomplete:
         posture = "[bold black on yellow] PARTIAL COVERAGE [/bold black on yellow]"
         border_style = "yellow"
@@ -227,6 +232,7 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
             badge_parts.append(f"[dim]{unknown_count} advisory[/dim]")
         posture = "  ".join(badge_parts) if badge_parts else "[dim]advisory findings pending severity[/dim]"
         border_style = "red" if sev_counts.get("CRITICAL", 0) > 0 else "yellow"
+        badge_parts_present = bool(badge_parts)
 
     # Credential count
     cred_names: list[str] = []
@@ -257,14 +263,19 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
         # Default verdict-led form: verdict + inventory + a compact posture
         # card + optional --verbose hint. The posture grade is now surfaced
         # inline so a normal scan reads a posture verdict in one screen.
+        # Scope-label the headline: these totals come from the unified findings
+        # stream (package CVEs + graph/policy findings), not package CVEs alone.
+        posture_scope = " [dim]· all finding categories[/dim]" if badge_parts_present else ""
         lines = [
-            f"  [bold]Security posture:[/bold]  {posture}",
+            f"  [bold]Security posture:[/bold]  {posture}{posture_scope}",
             inventory_line,
         ]
         if scorecard.score < 100 or high_risk_policy_count:
             grade_line = f"  [bold]Posture grade:[/bold]  {_posture_grade_badge(scorecard.grade)} {scorecard.score:.0f}/100"
             if scorecard_summary:
-                grade_line += f"  [dim]{_compact_detail(scorecard_summary, limit=48)}[/dim]"
+                # limit=45 keeps the grade line inside an 80-col panel (no
+                # wrapped "—…" fragment on the default terminal width).
+                grade_line += f"  [dim]{_compact_detail(scorecard_summary, limit=45)}[/dim]"
             lines.append(grade_line)
             if weak_dimensions:
                 lines.append(f"  [dim]Top driver:[/dim] [yellow]{weak_dimensions[0].name}[/yellow]")
@@ -438,10 +449,12 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         title = f"Findings ({shown_n})"
     console.print(Rule(lane_title("analyze", title), style="dim"))
 
-    # Context-aware table layout
+    # Context-aware table layout. The vulnerability ID column has no ratio so
+    # it sizes to content and never truncates — the ID is the one cell that
+    # must stay copy-pasteable; flexible columns absorb narrow widths instead.
     table = Table(expand=True, padding=(0, 1))
     table.add_column("Sev", no_wrap=True)
-    table.add_column("Vulnerability", no_wrap=True, ratio=2)
+    table.add_column("Vulnerability", no_wrap=True)
     table.add_column("Package", ratio=2)
     if has_blast_context:
         table.add_column("Blast Radius", ratio=3, no_wrap=True)
@@ -649,6 +662,43 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5, page: int = 1
     console.print()
 
 
+def print_compact_graph_findings(report: AIBOMReport, limit: int = 10) -> None:
+    """Graph-derived and policy findings with title, severity, and evidence.
+
+    COMBINATION / PROMPT_SECURITY / NHI / CIEM findings are part of the unified
+    stream the JSON/API report carries, but the CVE table never shows them.
+    List each one (title + severity badge + one-line evidence chain) so the
+    console drills to the same evidence as every machine surface.
+    """
+    from agent_bom.graph.severity import severity_worst_first_rank
+    from agent_bom.output import _sev_badge, console
+    from agent_bom.output.finding_views import _MACHINE_EXPORT_TYPES, finding_severity
+
+    findings = [finding for finding in report.to_findings() if finding.finding_type not in _MACHINE_EXPORT_TYPES]
+    if not findings:
+        return
+
+    findings.sort(key=lambda finding: severity_worst_first_rank(str(finding.severity)))
+
+    console.print()
+    console.print(Rule(lane_title("analyze", f"Graph & Policy Findings ({len(findings)})"), style="dim"))
+    for finding in findings[:limit]:
+        category = finding.finding_type.value
+        console.print(f"  {_sev_badge(finding_severity(finding))} [dim]{category}[/dim] [bold]{finding.title}[/bold]")
+        chain_parts: list[str] = []
+        if finding.affected_agents:
+            chain_parts.append(", ".join(finding.affected_agents[:3]))
+        if finding.affected_servers:
+            chain_parts.append(", ".join(finding.affected_servers[:3]))
+        if finding.exposed_credentials:
+            chain_parts.append(f"[yellow]{', '.join(finding.exposed_credentials[:3])}[/yellow]")
+        evidence_line = " → ".join(chain_parts) or _compact_detail(finding.description or "", limit=110)
+        if evidence_line:
+            console.print(f"      [dim]{evidence_line}[/dim]")
+    if len(findings) > limit:
+        console.print(f"  [dim]... {len(findings) - limit} more — --verbose full list[/dim]")
+
+
 def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
     """Per-cloud CIS posture with top failing checks + remediation.
 
@@ -748,12 +798,14 @@ def print_compact_export_hint(report: AIBOMReport) -> None:
     vuln_color = "red" if report.total_vulnerabilities > 0 else "green"
     # Label this per-package CVE-instance total with an explicit scope so it
     # never reads as the same number as the scan-lane finding count or the
-    # severity breakdown (they legitimately differ — see honest-counts).
+    # severity breakdown (they legitimately differ — see honest-counts). The
+    # same CVE counts once per package copy here, so "instance(s)" keeps it
+    # distinct from the deduped "package CVEs" finding total on the scan line.
     console.print(
         f"\n  [bold]{report.total_agents} agents[/bold] · "
         f"[bold]{report.total_servers} servers[/bold] · "
         f"[bold]{report.total_packages} packages[/bold] · "
-        f"[bold {vuln_color}]{report.total_vulnerabilities} package CVEs[/bold {vuln_color}]"
+        f"[bold {vuln_color}]{report.total_vulnerabilities} package CVE instance(s)[/bold {vuln_color}]"
     )
 
 
@@ -762,6 +814,7 @@ __all__ = [
     "print_compact_agents",
     "print_compact_blast_radius",
     "print_compact_remediation",
+    "print_compact_graph_findings",
     "print_compact_cis_posture",
     "print_compact_export_hint",
     # Helpers kept public for callers that already import them.

@@ -567,104 +567,108 @@ async def ingest_traces(request: Request, body: dict, screen_content: bool | Non
     is screened in-memory and never persisted.
     """
     try:
-        from agent_bom.otel_ingest import flag_vulnerable_tool_calls, parse_otel_traces
-
         tenant_id = _tenant_id(request)
-        # GenAI cost spans are independent of tool-call traces — price them first
-        # so spend is captured even for payloads with no adk.tool.* spans.
-        llm_cost = _persist_llm_costs(body, tenant_id=tenant_id)
-
-        # Opt-in, privacy-safe content screening (off by default).
-        content_findings: list[dict[str, Any]] = []
-        if _screen_content_enabled(screen_content):
-            content_findings = _screen_trace_content_events(body, tenant_id=tenant_id)
-
-        traces = parse_otel_traces(body)
-        if not traces:
-            return {
-                "traces": 0,
-                "flagged": [],
-                "llm_calls": llm_cost["calls"],
-                "llm_cost_usd": llm_cost["cost_usd"],
-                "content_findings": content_findings,
-                "content_screened": _screen_content_enabled(screen_content),
-                "message": "No tool call traces found",
-            }
-
-        # Gather vulnerable packages and servers from scan history
-        vuln_packages: dict[str, set[str]] = defaultdict(set)
-        vuln_servers: dict[str, set[str]] = defaultdict(set)
-        for job in _get_store().list_all(tenant_id=tenant_id):
-            if job.status == JobStatus.DONE and job.result:
-                for br in job.result.get("blast_radius", []):
-                    cve_id = br.get("vulnerability_id", "")
-                    pkg = br.get("package", "")
-                    if pkg:
-                        if cve_id:
-                            vuln_packages[pkg].add(cve_id)
-                        else:
-                            vuln_packages[pkg]
-                    for srv in br.get("affected_servers", []):
-                        name = srv if isinstance(srv, str) else srv.get("name", "")
-                        if name:
-                            if cve_id:
-                                vuln_servers[name].add(cve_id)
-                            else:
-                                vuln_servers[name]
-
-        flagged = flag_vulnerable_tool_calls(
-            traces,
-            {pkg: sorted(cves) for pkg, cves in vuln_packages.items()},
-            {server: sorted(cves) for server, cves in vuln_servers.items()},
-        )
-
-        if flagged:
-            analytics_events = [
-                {
-                    "event_id": f"{flag.trace.trace_id}:{flag.trace.span_id}",
-                    "event_timestamp": _now(),
-                    "event_type": "vulnerable_tool_call",
-                    "detector": "otel_vulnerable_tool_call",
-                    "severity": flag.severity,
-                    "tool_name": flag.trace.tool_name,
-                    "message": flag.reason,
-                    "agent_name": "",
-                    "session_id": flag.trace.trace_id,
-                    "trace_id": flag.trace.trace_id,
-                    "span_id": flag.trace.span_id,
-                    "source_id": "otel",
-                }
-                for flag in flagged
-            ]
-            try:
-                _get_analytics_store().record_events(analytics_events, tenant_id=tenant_id)
-            except Exception:  # noqa: BLE001
-                _logger.warning("Trace analytics sync skipped", exc_info=True)
-            _persist_runtime_observations(analytics_events, tenant_id=tenant_id, source="otel")
-
-        return {
-            "traces": len(traces),
-            "persisted_events": len(flagged),
-            "llm_calls": llm_cost["calls"],
-            "llm_cost_usd": llm_cost["cost_usd"],
-            "content_findings": content_findings,
-            "content_screened": _screen_content_enabled(screen_content),
-            "flagged": [
-                {
-                    "tool_name": f.trace.tool_name,
-                    "server": f.server or f.trace.server_name,
-                    "package_name": f.package_name or f.trace.package_name,
-                    "cve_ids": f.matched_cves,
-                    "reason": f.reason,
-                    "severity": f.severity,
-                    "span_id": f.trace.span_id,
-                }
-                for f in flagged
-            ],
-        }
+        return await asyncio.to_thread(_ingest_traces_sync, body, tenant_id, _screen_content_enabled(screen_content))
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+
+
+def _ingest_traces_sync(body: dict, tenant_id: str, screen: bool) -> dict:
+    from agent_bom.otel_ingest import flag_vulnerable_tool_calls, parse_otel_traces
+
+    # GenAI cost spans are independent of tool-call traces — price them first
+    # so spend is captured even for payloads with no adk.tool.* spans.
+    llm_cost = _persist_llm_costs(body, tenant_id=tenant_id)
+
+    # Opt-in, privacy-safe content screening (off by default).
+    content_findings: list[dict[str, Any]] = []
+    if screen:
+        content_findings = _screen_trace_content_events(body, tenant_id=tenant_id)
+
+    traces = parse_otel_traces(body)
+    if not traces:
+        return {
+            "traces": 0,
+            "flagged": [],
+            "llm_calls": llm_cost["calls"],
+            "llm_cost_usd": llm_cost["cost_usd"],
+            "content_findings": content_findings,
+            "content_screened": screen,
+            "message": "No tool call traces found",
+        }
+
+    # Gather vulnerable packages and servers from scan history
+    vuln_packages: dict[str, set[str]] = defaultdict(set)
+    vuln_servers: dict[str, set[str]] = defaultdict(set)
+    for job in _get_store().list_all(tenant_id=tenant_id):
+        if job.status == JobStatus.DONE and job.result:
+            for br in job.result.get("blast_radius", []):
+                cve_id = br.get("vulnerability_id", "")
+                pkg = br.get("package", "")
+                if pkg:
+                    if cve_id:
+                        vuln_packages[pkg].add(cve_id)
+                    else:
+                        vuln_packages[pkg]
+                for srv in br.get("affected_servers", []):
+                    name = srv if isinstance(srv, str) else srv.get("name", "")
+                    if name:
+                        if cve_id:
+                            vuln_servers[name].add(cve_id)
+                        else:
+                            vuln_servers[name]
+
+    flagged = flag_vulnerable_tool_calls(
+        traces,
+        {pkg: sorted(cves) for pkg, cves in vuln_packages.items()},
+        {server: sorted(cves) for server, cves in vuln_servers.items()},
+    )
+
+    if flagged:
+        analytics_events = [
+            {
+                "event_id": f"{flag.trace.trace_id}:{flag.trace.span_id}",
+                "event_timestamp": _now(),
+                "event_type": "vulnerable_tool_call",
+                "detector": "otel_vulnerable_tool_call",
+                "severity": flag.severity,
+                "tool_name": flag.trace.tool_name,
+                "message": flag.reason,
+                "agent_name": "",
+                "session_id": flag.trace.trace_id,
+                "trace_id": flag.trace.trace_id,
+                "span_id": flag.trace.span_id,
+                "source_id": "otel",
+            }
+            for flag in flagged
+        ]
+        try:
+            _get_analytics_store().record_events(analytics_events, tenant_id=tenant_id)
+        except Exception:  # noqa: BLE001
+            _logger.warning("Trace analytics sync skipped", exc_info=True)
+        _persist_runtime_observations(analytics_events, tenant_id=tenant_id, source="otel")
+
+    return {
+        "traces": len(traces),
+        "persisted_events": len(flagged),
+        "llm_calls": llm_cost["calls"],
+        "llm_cost_usd": llm_cost["cost_usd"],
+        "content_findings": content_findings,
+        "content_screened": screen,
+        "flagged": [
+            {
+                "tool_name": f.trace.tool_name,
+                "server": f.server or f.trace.server_name,
+                "package_name": f.package_name or f.trace.package_name,
+                "cve_ids": f.matched_cves,
+                "reason": f.reason,
+                "severity": f.severity,
+                "span_id": f.trace.span_id,
+            }
+            for f in flagged
+        ],
+    }
 
 
 # ─── Per-span attack-path correlation (#3898) ─────────────────────────────
@@ -903,18 +907,23 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     )
     job.status = JobStatus.DONE
     job.completed_at = _now()
-    job_result = _normalize_pushed_report(body, fallback_scan_id=job.job_id)
-    job_result["pushed"] = True
-    job.result = job_result
-    job.progress.append(f"Received via push from source={body.source_id}")
-    try:
-        _persist_graph_snapshot(job, job_result)
-    except Exception as exc:  # noqa: BLE001
-        _logger.warning("Pushed-result graph persistence failed: %s", sanitize_text(exc))
-        job.progress.append(f"Graph persistence skipped: {sanitize_error(exc)}")
-    # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
-    with tenant_quota_guard(tenant_id, lambda: enforce_retained_jobs_quota(tenant_id)):
-        _get_store().put(job)
+
+    def _persist() -> dict:
+        job_result = _normalize_pushed_report(body, fallback_scan_id=job.job_id)
+        job_result["pushed"] = True
+        job.result = job_result
+        job.progress.append(f"Received via push from source={body.source_id}")
+        try:
+            _persist_graph_snapshot(job, job_result)
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Pushed-result graph persistence failed: %s", sanitize_text(exc))
+            job.progress.append(f"Graph persistence skipped: {sanitize_error(exc)}")
+        # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
+        with tenant_quota_guard(tenant_id, lambda: enforce_retained_jobs_quota(tenant_id)):
+            _get_store().put(job)
+        return job_result
+
+    job_result = await asyncio.to_thread(_persist)
     return {
         "job_id": job.job_id,
         "source_id": body.source_id,

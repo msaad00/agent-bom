@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import ValidationError
 
@@ -284,6 +285,9 @@ async def run_source(request: Request, source_id: str) -> dict:
 
 @router.get("/sources/{source_id}/jobs", tags=["sources"])
 async def list_source_jobs(request: Request, source_id: str) -> dict:
-    source = _source_for_request(request, source_id)
-    jobs = [job.model_dump() for job in _get_store().list_all(tenant_id=source.tenant_id) if job.source_id == source.source_id]
-    return {"source_id": source.source_id, "jobs": jobs, "count": len(jobs)}
+    def _load() -> dict:
+        source = _source_for_request(request, source_id)
+        jobs = [job.model_dump() for job in _get_store().list_all(tenant_id=source.tenant_id) if job.source_id == source.source_id]
+        return {"source_id": source.source_id, "jobs": jobs, "count": len(jobs)}
+
+    return await anyio.to_thread.run_sync(_load)

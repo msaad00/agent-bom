@@ -117,3 +117,25 @@ def test_attack_paths_round_trip_on_migration_owned_schema(migrated_fresh_databa
     assert got.credential_exposure == ["prod-db-password"]
     assert got.vuln_ids == ["CVE-2026-0001"]
     assert [m.technique_id for m in got.technique_mappings] == ["T1078"]
+
+
+def test_audit_fork_guard_unique_index_present_after_migrate_to_head(migrated_fresh_database):
+    """The hash-chain fork guard must exist in a schema built ONLY by Alembic.
+
+    ``PostgresAuditLog._ensure_fork_guard_index`` never runs when Postgres is
+    authoritative (``_init_tables`` early-returns), so a migration that dropped
+    ``UNIQUE (team_id, prev_signature)`` (#4232) would leave concurrent appends
+    across ``uvicorn --workers N`` able to fork the chain with nothing to catch
+    it. Assert the index exists, is UNIQUE, and covers exactly the head key.
+    """
+    import psycopg
+
+    with psycopg.connect(os.environ["AGENT_BOM_POSTGRES_URL"]) as conn:
+        row = conn.execute(
+            "SELECT indexdef FROM pg_indexes WHERE tablename = 'audit_log' AND indexname = 'audit_log_team_prevsig_uniq'"
+        ).fetchone()
+
+    assert row is not None, "audit_log fork-guard index missing from migration-owned schema"
+    indexdef = row[0]
+    assert "UNIQUE INDEX" in indexdef
+    assert "team_id" in indexdef and "prev_signature" in indexdef

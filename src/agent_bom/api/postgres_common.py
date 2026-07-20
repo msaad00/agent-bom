@@ -235,13 +235,9 @@ def _get_pool() -> ConnectionPool:
         if auth_mode == AUTH_MODE_IAM:
             import psycopg
 
-            base_connect: Callable[..., object] = getattr(
-                psycopg.Connection.connect, "__func__", psycopg.Connection.connect
-            )
+            base_connect: Callable[..., object] = getattr(psycopg.Connection.connect, "__func__", psycopg.Connection.connect)
 
-            def connect_with_iam_token(
-                cls: type[object], conninfo: str = "", **connect_kwargs: object
-            ) -> object:
+            def connect_with_iam_token(cls: type[object], conninfo: str = "", **connect_kwargs: object) -> object:
                 """Resolve a fresh short-lived IAM token for every connection."""
                 connect_kwargs["password"] = resolve_postgres_secret()
                 return base_connect(cls, conninfo, **connect_kwargs)
@@ -321,6 +317,18 @@ def _guard_rls_capable_role(pool: ConnectionPool) -> None:
         )
         return
     raise RlsRolePrivilegeError(message)
+
+
+def preflight_rls_capable_role() -> None:
+    """Enforce the non-RLS-bypass role guard eagerly, at server bind time.
+
+    :func:`_guard_rls_capable_role` otherwise runs lazily on the first pool use
+    (the first request), so an RLS-bypassing role is only detected mid-flight as
+    a per-request 500. Building the pool here triggers the same guard at boot so
+    an unsafe role — or the operator's explicit ``AGENT_BOM_ALLOW_SUPERUSER_DB``
+    acknowledgement — is surfaced before uvicorn accepts traffic (epic #4274).
+    """
+    _get_pool()
 
 
 def reset_pool() -> None:

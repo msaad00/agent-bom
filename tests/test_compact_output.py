@@ -505,13 +505,13 @@ def test_compact_export_hint():
     """Shows key metrics summary."""
     agent = _make_agent(servers=[_make_server()])
     report = AIBOMReport(agents=[agent])
-    output = _capture(print_compact_export_hint, report)
+    output = _plain(_capture(print_compact_export_hint, report))
     assert "agents" in output
     assert "servers" in output
     assert "packages" in output
     # The per-package CVE-instance total is labelled with an explicit scope so it
     # can't read as the same metric as the scan-lane finding count (honesty).
-    assert "package CVEs" in output
+    assert "package CVE instance" in output
 
 
 def test_compact_export_hint_vuln_total_is_scope_labeled():
@@ -526,7 +526,7 @@ def test_compact_export_hint_vuln_total_is_scope_labeled():
     report = AIBOMReport(agents=[_make_agent(servers=[server])])
     output = _plain(_capture(print_compact_export_hint, report))
     assert report.total_vulnerabilities >= 1
-    assert f"{report.total_vulnerabilities} package CVEs" in output
+    assert f"{report.total_vulnerabilities} package CVE instance" in output
     # The ambiguous bare "N vulns" phrasing is gone.
     assert " vulns" not in output
 
@@ -554,3 +554,78 @@ def test_compact_cis_posture_uses_govern_lane():
 
     assert "GOVERN" in output
     assert "Cloud Security Posture" in output
+
+
+# ---------------------------------------------------------------------------
+# Graph/policy finding drill-down + console honesty polish
+# ---------------------------------------------------------------------------
+
+
+def _capture_width(fn, *args, width=80, **kwargs) -> str:
+    buf = StringIO()
+    con = Console(file=buf, width=width, force_terminal=True, no_color=True)
+    import agent_bom.output as out_mod
+
+    orig = out_mod.console
+    out_mod.console = con
+    try:
+        fn(*args, **kwargs)
+    finally:
+        out_mod.console = orig
+    return buf.getvalue()
+
+
+def _combo_finding(name="cursor"):
+    return Finding(
+        finding_type=FindingType.COMBINATION,
+        source=FindingSource.GRAPH_ANALYSIS,
+        asset=Asset(name=name, asset_type="agent"),
+        severity="high",
+        title=f"AI agent can reach a credential or privileged tool: {name}",
+        description="An AI agent's tool-use chain reaches a credential or privileged tool node.",
+    )
+
+
+def test_compact_graph_findings_lists_titles_and_evidence():
+    """Graph-derived findings must drill to title + severity + evidence in console."""
+    from agent_bom.output import print_compact_graph_findings
+
+    report = AIBOMReport(agents=[], findings=[_combo_finding("cursor")])
+    output = _plain(_capture(print_compact_graph_findings, report))
+
+    assert "AI agent can reach a credential or privileged tool: cursor" in output
+    assert "HIGH" in output
+    assert "COMBINATION" in output
+    assert "tool-use chain reaches a credential" in output
+
+
+def test_compact_graph_findings_silent_when_empty():
+    from agent_bom.output import print_compact_graph_findings
+
+    report = AIBOMReport(agents=[])
+    assert _plain(_capture(print_compact_graph_findings, report)).strip() == ""
+
+
+def test_compact_blast_radius_never_truncates_cve_ids_at_80_cols():
+    """The vulnerability ID is the one column that must never truncate."""
+    pkg = Package(name="averyverylongpackagename-for-width", version="1.2.3", ecosystem="pypi", vulnerabilities=[])
+    server = _make_server(name="server-with-long-name", packages=[pkg])
+    agent = _make_agent(name="agent-with-long-name", servers=[server])
+    vuln = _vuln("CVE-2020-14343", Severity.CRITICAL, fixed="5.4")
+    br = _blast(vuln, pkg, [agent], [server], creds=["AWS_SECRET_ACCESS_KEY"])
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+
+    output = _plain(_capture_width(print_compact_blast_radius, report, width=80))
+
+    assert "CVE-2020-14343" in output
+    assert "CVE-2020-143…" not in output
+
+
+def test_compact_detail_never_ends_on_dangling_punctuation():
+    from agent_bom.output.compact import _compact_detail
+
+    text = "Weak best-practice/config posture (F, 37.0%) — improve credential hygiene now"
+    out = _compact_detail(text, limit=48)
+    assert out.endswith("…")
+    trimmed = out[:-1].rstrip()
+    assert not trimmed.endswith(("—", "·", "-", ","))

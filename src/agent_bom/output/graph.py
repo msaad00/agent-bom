@@ -164,7 +164,10 @@ def build_graph_elements(
                     "tip": (f"Agent: {agent.name}\nType: {agent.agent_type.value}\nSource: {source}\nServers: {len(agent.mcp_servers)}"),
                     "agentType": agent.agent_type.value,
                     "configPath": sanitize_path_label(agent.config_path) if agent.config_path else "",
-                    "source": source,
+                    # "source"/"target" are reserved edge fields in the
+                    # Cytoscape element format — a node-level "source" key makes
+                    # standards-following consumers misclassify nodes as edges.
+                    "discovery_source": source,
                     "serverCount": len(agent.mcp_servers),
                     "packageCount": agent.total_packages,
                     "vulnCount": agent.total_vulnerabilities,
@@ -465,6 +468,59 @@ def build_graph_elements(
                         )
 
     _append_repo_structure_elements(elements, report, collapse_cves=collapse_cves, vuln_pkg_keys=vuln_pkg_keys)
+    elements.extend(_graph_policy_finding_elements(report))
+    return elements
+
+
+def _graph_policy_findings(report: "AIBOMReport") -> list["Finding"]:
+    """Unified-stream findings the CVE-centric builders never surface
+    (COMBINATION, PROMPT_SECURITY, NHI, CIEM, CIS, ...)."""
+    from agent_bom.output.finding_views import _MACHINE_EXPORT_TYPES
+
+    try:
+        return [finding for finding in report.to_findings() if finding.finding_type not in _MACHINE_EXPORT_TYPES]
+    except Exception:  # noqa: BLE001 — graph export must not fail on findings surfacing
+        return []
+
+
+def _graph_policy_finding_elements(report: "AIBOMReport") -> list[dict]:
+    """Cytoscape elements for graph-derived / policy finding categories.
+
+    The unified findings stream (the one JSON/API/MCP report) carries
+    COMBINATION and other non-CVE categories; emit one ``finding`` node per
+    entry — linked to its agent asset node when present — so graph exports
+    reconcile with every other scan surface.
+    """
+    findings = _graph_policy_findings(report)
+    if not findings:
+        return []
+
+    agent_ids = {f"a:{agent.name}" for agent in report.agents}
+    elements: list[dict] = []
+    for finding in findings:
+        severity = str(finding.effective_severity() or "unknown").lower()
+        category = finding.finding_type.value
+        node_id = f"finding:{finding.id}"
+        description = " ".join((finding.description or "").split())
+        elements.append(
+            {
+                "data": {
+                    "id": node_id,
+                    "label": f"{category}\n{severity.upper()}",
+                    "type": "finding",
+                    "category": category,
+                    "severity": severity,
+                    "title": finding.title,
+                    "tip": (f"{finding.title}\nCategory: {category}\nSeverity: {severity}\n{description[:220]}"),
+                    "searchText": f"{finding.title} {category} {severity}".lower(),
+                }
+            }
+        )
+        asset = getattr(finding, "asset", None)
+        if getattr(asset, "asset_type", "") == "agent":
+            asset_node = f"a:{getattr(asset, 'name', '')}"
+            if asset_node in agent_ids:
+                elements.append({"data": {"source": asset_node, "target": node_id, "type": "has_finding"}})
     return elements
 
 
@@ -871,9 +927,10 @@ def export_graph_html(
 ) -> None:
     """Export an interactive standalone HTML file with Cytoscape.js supply chain graph.
 
-    By default, loads Cytoscape + dagre from pinned CDNs and embeds data inline.
+    By default, inlines the pinned Cytoscape + dagre bundles vendored with the
+    package and embeds data inline, so the export renders fully offline.
     ``offline_assets=True`` emits a static airgap-safe graph summary with no
-    external script dependencies.
+    scripts at all.
     Supports zoom, pan, click-to-inspect, legend, and PNG export.
     """
     from pathlib import Path
@@ -881,6 +938,7 @@ def export_graph_html(
     from agent_bom.output.finding_views import cve_findings
 
     findings = cve_findings(report, blast_radii)
+    policy_findings = _graph_policy_findings(report)
     elements = build_graph_elements(report, blast_radii, include_cve_nodes=False, collapse_cves=True)
     elements_json = json.dumps(elements, indent=2)
 
@@ -889,12 +947,29 @@ def export_graph_html(
     total_pkgs = sum(a.total_packages for a in report.agents)
     total_vulns = len(findings)
     top_risks_json = json.dumps(_graph_priority_summary(findings, collapse_cves=True), indent=2)
-    overview_json = json.dumps(_graph_overview(findings), indent=2)
+    # The severity chips reconcile with the unified stream: CVE findings plus
+    # the graph-derived categories the finding nodes carry.
+    overview_json = json.dumps(_graph_overview(findings + policy_findings), indent=2)
+    category_findings_json = json.dumps(
+        [
+            {
+                "nodeId": f"finding:{finding.id}",
+                "category": finding.finding_type.value,
+                "severity": str(finding.effective_severity() or "unknown").lower(),
+                "title": finding.title,
+                "summary": " ".join((finding.description or "").split())[:220],
+            }
+            for finding in policy_findings
+        ],
+        indent=2,
+    )
 
     html_content = _GRAPH_HTML_TEMPLATE.format(
+        vendor_scripts=_vendor_script_tags(),
         elements_json=elements_json,
         top_risks_json=top_risks_json,
         overview_json=overview_json,
+        category_findings_json=category_findings_json,
         total_agents=total_agents,
         total_servers=total_servers,
         total_pkgs=total_pkgs,
@@ -910,6 +985,47 @@ def export_graph_html(
             overview=_graph_overview(findings),
         )
     Path(output_path).write_text(html_content, encoding="utf-8")
+
+
+#: Pinned vendor bundles inlined into the standalone graph HTML so the export
+#: renders with no network access (an ``--offline`` scan must not produce an
+#: artifact that needs a CDN). Versions match the upstream npm releases:
+#: cytoscape 3.30.2, dagre 0.8.5, cytoscape-dagre 2.5.0.
+_VENDOR_JS_FILES = ("cytoscape.min.js", "dagre.min.js", "cytoscape-dagre.js")
+
+_CDN_FALLBACK_TAGS = (
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"'
+    ' onerror="graphAssetLoadFailed()"></script>\n'
+    '<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"'
+    ' onerror="graphAssetLoadFailed()"></script>\n'
+    '<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.js"'
+    ' onerror="graphAssetLoadFailed()"></script>'
+)
+
+
+def _vendor_script_tags() -> str:
+    """Return inline ``<script>`` blocks for the pinned graph libraries.
+
+    Falls back to the pinned CDN URLs — with a visible failure notice instead
+    of a silent blank canvas — only if the vendored files are missing from the
+    installed package.
+    """
+    from importlib import resources
+
+    try:
+        blocks = []
+        vendor = resources.files("agent_bom.output").joinpath("vendor")
+        for name in _VENDOR_JS_FILES:
+            js = vendor.joinpath(name).read_text(encoding="utf-8")
+            blocks.append(f"<script>\n{js}\n</script>")
+        return "\n".join(blocks)
+    except Exception:  # noqa: BLE001 — degrade to CDN + explicit offline notice
+        notice = (
+            "<script>function graphAssetLoadFailed(){document.getElementById('cy').innerHTML="
+            '\'<p style="padding:24px;color:#ffd33d">This graph export requires internet access to render '
+            "(CDN graph libraries could not be loaded).</p>';}</script>"
+        )
+        return notice + "\n" + _CDN_FALLBACK_TAGS
 
 
 def _html_escape(value: object) -> str:
@@ -1094,6 +1210,10 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
     <h2>Top risky paths</h2>
     <div class="hint">Start here. These are the blast-radius paths with the highest risk score in this report.</div>
     <div id="riskList"></div>
+    <h2 id="findingHead" style="margin-top:14px">Correlated findings</h2>
+    <div class="hint" id="findingHint">Graph-derived findings (toxic combinations, prompt security, policy)
+    from the same unified stream as the report.</div>
+    <div id="findingList"></div>
   </div>
 </div>
 <div id="legend" class="panel">
@@ -1108,6 +1228,7 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
   <div><span class="dot" style="background:#da3633"></span> CVE critical</div>
   <div><span class="dot" style="background:#db6d28"></span> CVE high</div>
   <div><span class="dot" style="background:#d29922"></span> CVE medium</div>
+  <div><span class="dot" style="background:#a371f7"></span> Graph finding</div>
 </div>
 <div id="detail" class="panel">
   <div class="inner">
@@ -1122,13 +1243,12 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
   <button onclick="cy.zoom(cy.zoom()/1.2);cy.center()">-</button>
   <button onclick="dlPng()">PNG</button>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+{vendor_scripts}
 <script>
 const els={elements_json};
 const topRisks={top_risks_json};
 const overview={overview_json};
+const categoryFindings={category_findings_json};
 let activeRiskNodeId=null;
 let focusedPathOnly=true;
 let credentialsOnly=false;
@@ -1199,6 +1319,8 @@ const cy=cytoscape({{
       'shape':'diamond','width':100,'height':44}}}},
     {{selector:'node[type="cve"][severity="unknown"], node[type^="cve_unknown"]',style:{{'background-color':'#4b5563','color':'#d1d5db',
       'shape':'roundrectangle','width':90,'height':40,'opacity':0.66}}}},
+    {{selector:'node[type="finding"]',style:{{'background-color':'#2d1f47','border-color':'#a371f7','border-width':2,
+      'shape':'hexagon','width':180,'height':56,'font-size':11}}}},
     {{selector:'edge',style:{{'width':1.5,'line-color':'#444','target-arrow-color':'#444',
       'target-arrow-shape':'triangle','curve-style':'bezier','arrow-scale':0.8,'opacity':0.7}}}},
     {{selector:'edge[type="hosts"]',style:{{'line-color':'#4a9eff','target-arrow-color':'#4a9eff','width':2}}}},
@@ -1215,6 +1337,7 @@ const cy=cytoscape({{
     }}}},
     {{selector:'edge[type="depends_on"][maxSeverity = "high"]',style:{{'line-color':'#ff8a24','target-arrow-color':'#ff8a24','width':2}}}},
     {{selector:'edge[type="contains"]',style:{{'line-color':'#0d9488','target-arrow-color':'#0d9488','width':1.6}}}},
+    {{selector:'edge[type="has_finding"]',style:{{'line-style':'dashed','line-color':'#a371f7','target-arrow-color':'#a371f7','width':1.8}}}},
     {{selector:'edge[type="affects"]',style:{{'line-style':'dashed','line-color':'#ff5d5d','target-arrow-color':'#ff5d5d','width':1.8}}}},
     {{selector:'.faded',style:{{'opacity':0.08}}}},
     {{selector:'.focus',style:{{'opacity':1,'border-width':4,'border-color':'#58a6ff','z-index':9999}}}},
@@ -1584,6 +1707,28 @@ function renderRiskList(){{
   `).join('');
 }}
 
+function renderFindingList(){{
+  const list=document.getElementById('findingList');
+  if(!categoryFindings.length){{
+    document.getElementById('findingHead').style.display='none';
+    document.getElementById('findingHint').style.display='none';
+    list.innerHTML='';
+    return;
+  }}
+  list.innerHTML=categoryFindings.map((finding)=>`
+    <button class="risk-item" data-node-id="${{finding.nodeId}}" onclick="focusRisk('${{finding.nodeId}}')">
+      <div class="risk-head">
+        <div class="risk-title">${{escapeHtml(finding.title)}}</div>
+      </div>
+      <div class="risk-meta">
+        <span class="pill ${{severityClass(finding.severity)}}">${{escapeHtml(finding.severity.toUpperCase())}}</span>
+        <span class="pill">${{escapeHtml(finding.category)}}</span>
+      </div>
+      <div class="risk-summary">${{escapeHtml(finding.summary ? finding.summary.slice(0, 130) : '')}}</div>
+    </button>
+  `).join('');
+}}
+
 cy.on('tap','node',function(e){{
   const node = e.target;
   if(togglePackageExpansion(node)){{
@@ -1617,6 +1762,7 @@ function dlPng(){{
 }}
 
 renderRiskList();
+renderFindingList();
 updateOverview();
 document.getElementById('chip-focus').classList.add('active');
 cy.ready(function(){{

@@ -176,6 +176,7 @@ from agent_bom.output.compact import (  # noqa: E402 — intentional bottom impo
     print_compact_blast_radius,
     print_compact_cis_posture,
     print_compact_export_hint,
+    print_compact_graph_findings,
     print_compact_remediation,
     print_compact_summary,
 )

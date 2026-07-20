@@ -436,3 +436,25 @@ def test_scan_packages_offline_uncovered_ecosystem_warns_without_discarding(monk
         # Must complete without raising; emits a coverage-gap warning instead.
         asyncio.run(scan_packages([pkg]))
     assert any("offline coverage gap" in w for w in warnings), warnings
+
+
+def test_scan_packages_offline_gap_warning_omits_empty_ecosystem_parens(monkeypatch):
+    """A package that maps to no local-DB ecosystem must not render an empty
+    "advisories for ()" parenthetical in the coverage-gap warning."""
+    from agent_bom.scanners import scan_packages
+
+    pkg = _make_pkg("mystery", "1.0.0", eco="unknown-eco")  # maps to no DB ecosystem
+    monkeypatch.setattr("agent_bom.scanners.offline_mode", True)
+
+    warnings: list[str] = []
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value={"pypi", "npm"}),
+        patch("agent_bom.scanners.record_scan_warning", side_effect=warnings.append),
+    ):
+        asyncio.run(scan_packages([pkg]))
+
+    assert any("offline coverage gap" in w for w in warnings), warnings
+    assert all("()" not in w for w in warnings), warnings
+    # No double space left behind where the ecosystem list would have gone.
+    assert all("ecosystem(s)  " not in w for w in warnings), warnings

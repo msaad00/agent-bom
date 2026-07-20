@@ -37,6 +37,7 @@ from agent_bom.output import (
     print_compact_blast_radius,
     print_compact_cis_posture,
     print_compact_export_hint,
+    print_compact_graph_findings,
     print_compact_remediation,
     print_compact_summary,
     print_export_hint,
@@ -379,6 +380,7 @@ def render_output(
                     print_agent_tree(report)
                 print_severity_chart(report)
                 print_blast_radius(report, fixable_only=fixable_only)
+                print_compact_graph_findings(report, limit=100)
                 if not no_tree:
                     print_attack_flow_tree(report)
                 print_threat_frameworks(report)
@@ -389,6 +391,7 @@ def render_output(
                 print_compact_agents(report)
                 print_section_divider(con, "Findings")
                 print_compact_blast_radius(report, fixable_only=fixable_only, page=compact_page)
+                print_compact_graph_findings(report)
 
             # AI enrichment output (both modes)
             if report.executive_summary:

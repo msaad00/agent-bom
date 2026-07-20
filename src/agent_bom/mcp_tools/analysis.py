@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 
+from agent_bom.graph.completeness import graph_completeness
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
     CODE_NOT_FOUND_AGENTS,
@@ -111,6 +112,12 @@ async def context_graph_impl(
 
         risks = compute_interaction_risks(graph)
         result = to_serializable(graph, paths, risks)
+        paths_truncated = bool(result.get("stats", {}).get("lateral_paths_truncated"))
+        result["completeness"] = graph_completeness(
+            returned=len(paths),
+            sampled=paths_truncated,
+            reason="lateral_path_budget" if paths_truncated else "",
+        )
         return _truncate_response(json.dumps(result, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP tool error")

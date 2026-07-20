@@ -68,12 +68,24 @@ export interface ContextStats {
   interaction_risk_count: number;
 }
 
+/** Explicitly describes whether a bounded graph response is exhaustive. */
+export interface GraphCompleteness {
+  status: "complete" | "sampled" | "truncated";
+  complete: boolean;
+  sampled: boolean;
+  truncated: boolean;
+  returned: number;
+  total?: number;
+  reason?: string;
+}
+
 export interface ContextGraphData {
   nodes: ContextGraphNode[];
   edges: ContextGraphEdge[];
   lateral_paths: LateralPath[];
   interaction_risks: InteractionRisk[];
   stats: ContextStats;
+  completeness?: GraphCompleteness;
 }
 
 // ─── Kind → ReactFlow node type ──────────────────────────────────────────────

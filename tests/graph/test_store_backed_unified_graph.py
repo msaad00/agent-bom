@@ -207,6 +207,24 @@ def test_add_node_merge_union_matches_in_ram() -> None:
         store.close()
 
 
+def test_add_node_caller_mutation_survives_lru_eviction() -> None:
+    """A newly added node remains write-back safe before it is evicted."""
+    store = _sqlite_store(tenant_id="t1", scan_id="s", capacity=1)
+    try:
+        first = UnifiedNode(id="first", entity_type=EntityType.PACKAGE, label="first")
+        store.add_node(first)
+        first.attributes["post_add"] = True
+
+        # Loading a second node evicts the first from the one-entry cache.
+        store.add_node(UnifiedNode(id="second", entity_type=EntityType.PACKAGE, label="second"))
+
+        reloaded = store.get_node("first")
+        assert reloaded is not None
+        assert reloaded.attributes["post_add"] is True
+    finally:
+        store.close()
+
+
 def test_add_edge_dedup_evidence_merge_matches_in_ram() -> None:
     def _e(evidence: dict) -> UnifiedEdge:
         return UnifiedEdge(

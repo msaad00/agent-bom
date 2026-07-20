@@ -14,6 +14,7 @@ from pathlib import Path
 
 from agent_bom.models import Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
+from agent_bom.version_utils import strip_pip_extras
 
 logger = logging.getLogger(__name__)
 
@@ -305,17 +306,19 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                 packages.append(git_pkg)
                 continue
             # Parse name==version, name>=version, etc.
-            match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
+            match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
             if match:
-                name, operator, version = match.groups()
+                raw_name, operator, version = match.groups()
+                name, _ = strip_pip_extras(raw_name)
                 packages.append(_requirement_package(name, operator, version, is_direct=True))
             else:
                 # Just a name, no version
-                name_match = re.match(r"^([a-zA-Z0-9_.-]+)", line)
+                name_match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)", line)
                 if name_match:
+                    name, _ = strip_pip_extras(name_match.group(1))
                     packages.append(
                         Package(
-                            name=name_match.group(1),
+                            name=name,
                             version="unknown",
                             ecosystem="pypi",
                             is_direct=True,
@@ -353,10 +356,24 @@ def parse_pip_packages(directory: Path) -> list[Package]:
             proj_data = toml.loads(read_text_limited(pyproject))
             deps = proj_data.get("project", {}).get("dependencies", [])
             for dep in deps:
-                match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", dep)
+                match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", dep)
                 if match:
-                    name, operator, version = match.groups()
+                    raw_name, operator, version = match.groups()
+                    name, _ = strip_pip_extras(raw_name)
                     packages.append(_requirement_package(name, operator, version, is_direct=True))
+                else:
+                    bare = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)", dep)
+                    if bare:
+                        name, _ = strip_pip_extras(bare.group(1))
+                        packages.append(
+                            Package(
+                                name=name,
+                                version="unknown",
+                                ecosystem="pypi",
+                                is_direct=True,
+                                reachability_evidence="declaration_only",
+                            )
+                        )
         except Exception as e:
             logger.debug(f"Failed to parse pyproject.toml at {pyproject}: {e}")
 
@@ -376,16 +393,18 @@ def _parse_requirements_lines(lines: list[str], is_direct: bool = True) -> list[
         line = raw.strip()
         if not line or line.startswith("#") or line.startswith("-"):
             continue
-        m = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
+        m = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
         if m:
-            req_name, operator, req_version = m.groups()
+            raw_name, operator, req_version = m.groups()
+            req_name, _ = strip_pip_extras(raw_name)
             packages.append(_requirement_package(req_name, operator, req_version, is_direct=is_direct))
         else:
-            bare = re.match(r"^([a-zA-Z0-9_.-]+)", line)
+            bare = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)", line)
             if bare:
+                req_name, _ = strip_pip_extras(bare.group(1))
                 packages.append(
                     Package(
-                        name=bare.group(1),
+                        name=req_name,
                         version="unknown",
                         ecosystem="pypi",
                         is_direct=is_direct,

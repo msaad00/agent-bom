@@ -66,6 +66,8 @@ export interface ContextStats {
   max_lateral_depth: number;
   highest_path_risk: number;
   interaction_risk_count: number;
+  /** True when the server capped multi-source path collection for scale. */
+  lateral_paths_truncated?: boolean;
 }
 
 export interface ContextGraphData {

@@ -52,6 +52,21 @@ describe("ScanForm", () => {
       sources: [],
       count: 0,
     });
+    vi.spyOn(api, "listJobs").mockResolvedValue({
+      jobs: [
+        {
+          job_id: "job-recent-1",
+          status: "done",
+          created_at: "2026-01-01T00:00:00Z",
+          request: {},
+          scan_outcome: "complete",
+        },
+      ],
+      count: 1,
+      total: 1,
+      limit: 3,
+      offset: 0,
+    });
   });
 
   it("renders where-am-i-scanning modes and scope summary", async () => {
@@ -62,7 +77,14 @@ describe("ScanForm", () => {
     expect(screen.getByRole("tab", { name: "Cloud account" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Ad-hoc" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Data source" })).toBeInTheDocument();
-    expect(screen.getByText("Scope")).toBeInTheDocument();
+    expect(screen.getByText("Scope now")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "What this scan produces" })).toBeInTheDocument();
+    expect(screen.getByText("Read-only boundary")).toBeInTheDocument();
+    expect(screen.getByText("No cloud accounts")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Agent and MCP discovery")).toBeInTheDocument();
+      expect(screen.getByText("Complete")).toBeInTheDocument();
+    });
 
     await user.click(screen.getByRole("tab", { name: "Cloud account" }));
     await waitFor(() => {
@@ -122,7 +144,7 @@ describe("ScanForm", () => {
 
     render(<ScanForm />);
     await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
-    expect(screen.getByText("Scope")).toBeInTheDocument();
+    expect(screen.getByText("Scope now")).toBeInTheDocument();
     expect(screen.getByText(/Local MCP configs on control plane host/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Start scan/i }));
@@ -196,7 +218,9 @@ describe("ScanForm", () => {
     expect(screen.getByText(/surfaces auto-detected/i)).toBeInTheDocument();
     expect(screen.getByText(/Secrets & credentials/i)).toBeInTheDocument();
     expect(screen.getByText(/not git URLs/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Scan repo/i }));
+    expect(screen.getByText("SBOM evidence")).toBeInTheDocument();
+    expect(screen.getByText(/Repository code is not executed/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Scan repository/i }));
     expect(startScan).toHaveBeenCalledWith({
       repo_url: "https://github.com/org/repo",
       enrich: false,
@@ -214,7 +238,7 @@ describe("ScanForm", () => {
     await user.type(input, "github.com/org/repo");
 
     expect(screen.getByText(/Enter a full http\(s\):\/\/ URL/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Scan repo/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Scan repository/i })).toBeDisabled();
   });
 
   it("surfaces the AI/ML supply-chain scan panel from its own tab", async () => {

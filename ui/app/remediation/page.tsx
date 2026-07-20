@@ -592,7 +592,8 @@ function RemediationPage() {
           <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl px-5 py-4">
             <p className="text-sm text-[var(--text-secondary)]">
               <span className="font-semibold text-emerald-400">
-                Fixing the top 5 packages
+                Fixing the top {Math.min(5, items.length)} package
+                {Math.min(5, items.length) !== 1 ? "s" : ""}
               </span>{" "}
               clears{" "}
               <span className="font-semibold text-[var(--foreground)]">

@@ -601,7 +601,7 @@ function RuntimePostureCard({ runtime }: { runtime: GatewayPolicyRuntimeSummary 
   }
 
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(9,9,11,0.98))] p-5">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -647,7 +647,7 @@ function FirewallRuntimeCard({ runtime }: { runtime: FirewallRuntimeStats }) {
   const enforcementMode = runtime.recent[0]?.enforcement_mode ?? null;
 
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(9,9,11,0.98))] p-5 space-y-4">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5 space-y-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">

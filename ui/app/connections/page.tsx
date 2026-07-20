@@ -814,7 +814,7 @@ function ConnectionsHub() {
   const canManageSources = !session?.auth_required || hasCapability("sources.manage");
   const canRunScans = !session?.auth_required || hasCapability("scan.run");
   const canManageFleet = hasCapability("fleet.manage");
-  const cloudService = serviceEntry(counts?.services, "cloud_accounts");
+  const registryCloudService = serviceEntry(counts?.services, "cloud_accounts");
   const dataSourcesService = serviceEntry(counts?.services, "data_sources");
 
   // Cloud connections.
@@ -1186,6 +1186,18 @@ function ConnectionsHub() {
     return stamps[0] ?? null;
   }, [connections]);
   const hasConnections = connections.length > 0;
+  // The direct connection inventory is the most specific source of truth for
+  // this page. Older posture responses can omit service-registry state, so do
+  // not tell an operator that cloud accounts are locked while rendering a
+  // connected account beside that banner.
+  const cloudService =
+    hasConnections && registryCloudService.state === "locked"
+      ? {
+          ...registryCloudService,
+          state: lastAccountScan ? ("live" as const) : ("connected" as const),
+          count: Math.max(registryCloudService.count, connections.length),
+        }
+      : registryCloudService;
 
   const connectedByProvider = useMemo(() => {
     const map: Record<string, number> = {};
@@ -1362,6 +1374,7 @@ function ConnectionsHub() {
           cloudService={cloudService}
           connections={connections}
           connectionsCount={connections.length}
+          lastAccountScan={lastAccountScan}
           scanCount={counts?.scan_count ?? 0}
           findingsCount={counts?.total ?? 0}
           canManage={canManage}
@@ -1527,6 +1540,7 @@ function ConnectSegment({
   cloudService,
   connections,
   connectionsCount,
+  lastAccountScan,
   scanCount,
   findingsCount,
   canManage,
@@ -1539,6 +1553,7 @@ function ConnectSegment({
   cloudService: ReturnType<typeof serviceEntry>;
   connections: CloudConnectionRecord[];
   connectionsCount: number;
+  lastAccountScan: string | null;
   scanCount: number;
   findingsCount: number;
   canManage: boolean;
@@ -1572,7 +1587,7 @@ function ConnectSegment({
       <CoverageCockpit
         counts={counts}
         scanCount={counts?.scan_count ?? null}
-        latestScanLabel={null}
+        latestScanLabel={lastAccountScan ? formatWhen(lastAccountScan) : null}
         connections={connections}
       />
 

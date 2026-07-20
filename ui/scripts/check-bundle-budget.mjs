@@ -54,7 +54,11 @@ const BUDGETS = {
   // still pass with margin). Restore ~16 KiB of headroom to 3552 KiB so routine
   // CI variance stops failing UI Validate on backend PRs; largest-chunk and
   // shared-runtime budgets are unchanged.
-  totalClientJsBytes: 3_637_248,
+  // The evidence-oriented New Scan workspace measures 3566.7 KiB on Linux,
+  // 14.7 KiB above the prior ceiling (collector plan, artifact preview, and
+  // recent jobs). Keep 17 KiB of bounded headroom without changing either
+  // chunk ceiling.
+  totalClientJsBytes: 3_670_016,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

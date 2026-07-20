@@ -87,7 +87,7 @@ modes enforce live tool traffic at a separate runtime boundary.
 | Boundary | Entry point | Service path | Persistence or artifact |
 |---|---|---|---|
 | Local scan | CLI, CI, Docker | Python scanner and correlation engine | console/files; optional SQLite history |
-| Control plane | Next.js UI, REST SDK | auth/tenant/rate-limit/audit middleware → FastAPI services | Postgres + RLS for shared deployments; SQLite for a local pilot |
+| Control plane | Next.js UI, REST SDK | TLS/HTTPS ingress → authentication/tenant/rate-limit/audit middleware → FastAPI services | Postgres + RLS for shared deployments; SQLite for a local pilot |
 | Agent interface | MCP clients | MCP server → shared scanning, finding and graph services | the same normalized evidence contracts |
 | Runtime enforcement | MCP/tool traffic | gateway or proxy → policy, detectors and audit | SQLite or Postgres audit records |
 
@@ -155,11 +155,13 @@ graph evidence or hand the path directly to remediation.
 </p>
 
 <details>
-<summary><b>More control-plane views</b> — posture and runtime decisions</summary>
+<summary><b>More control-plane views</b> — posture, runtime, and evidence intake</summary>
 
 | Risk overview | Review runtime decisions |
 |:---:|:---:|
 | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview command center with posture grade, unique findings, scan coverage, and operations" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway KPI rollup and tool-call feed" width="430" /> |
+| **Connect evidence sources** | **Start a scan** |
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Connections hub across cloud, code, AI, and data sources" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan evidence workspace with expected outputs, collector plan, and read-only boundary" width="430" /> |
 
 </details>
 

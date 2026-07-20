@@ -73,4 +73,26 @@ def attach_graph_derived_findings(report: "AIBOMReport", graph: "UnifiedGraph") 
         _logger.debug("CIEM over-privilege findings surfacing skipped: %s", exc)
 
 
-__all__ = ["attach_graph_derived_findings"]
+def surface_graph_derived_findings(report: "AIBOMReport", *, scan_id: str, tenant_id: str) -> None:
+    """Build the unified graph from ``report`` and attach graph-derived findings.
+
+    The single build+attach entry point shared by the CLI (default path), the API
+    scan pipeline, and the MCP scan tool, so every scan surface emits the same
+    graph-derived categories (``COMBINATION`` / ``CIEM_OVER_PRIVILEGE`` / ``NHI``).
+
+    The interim JSON and the throwaway graph are locals released when this returns,
+    so the surfacing graph never outlives the call. Best-effort: a graph-build or
+    surfacing failure is logged and swallowed — it must never fail the scan.
+    """
+    try:
+        from agent_bom.graph.builder import build_unified_graph_from_report
+        from agent_bom.output import to_json
+
+        interim_json = to_json(report)
+        graph = build_unified_graph_from_report(interim_json, scan_id=scan_id, tenant_id=tenant_id)
+        attach_graph_derived_findings(report, graph)
+    except Exception as exc:  # noqa: BLE001 — never fail the scan on findings surfacing
+        _logger.debug("graph-derived findings surfacing skipped: %s", exc)
+
+
+__all__ = ["attach_graph_derived_findings", "surface_graph_derived_findings"]

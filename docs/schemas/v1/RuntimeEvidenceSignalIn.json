@@ -1,0 +1,76 @@
+{
+  "additionalProperties": false,
+  "description": "One raw CWPP runtime/EDR signal in an ingest batch.\n\nTenant/provider/account are NOT taken from the client here \u2014 they come from\nthe authenticated source (confused-deputy guard in ``build_runtime_signal``).\n``provider``/``account_id`` may be echoed for the source's own bookkeeping but\na mismatch against the authenticated source is rejected.",
+  "properties": {
+    "account_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Account Id"
+    },
+    "dedup_key": {
+      "title": "Dedup Key",
+      "type": "string"
+    },
+    "evidence": {
+      "additionalProperties": true,
+      "title": "Evidence",
+      "type": "object"
+    },
+    "observed_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed At"
+    },
+    "provider": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider"
+    },
+    "severity": {
+      "default": "unknown",
+      "title": "Severity",
+      "type": "string"
+    },
+    "signal_type": {
+      "title": "Signal Type",
+      "type": "string"
+    },
+    "title": {
+      "default": "",
+      "title": "Title",
+      "type": "string"
+    },
+    "workload_ref": {
+      "title": "Workload Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workload_ref",
+    "signal_type",
+    "dedup_key"
+  ],
+  "title": "RuntimeEvidenceSignalIn",
+  "type": "object"
+}

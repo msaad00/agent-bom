@@ -233,6 +233,8 @@ AGENT_BOM_GCP_IMPERSONATE_SA
 AGENT_BOM_GCP_INVENTORY
 # Defensive cap (default 200) on the number of projects walked in the GCP org/folder tree multi-project fan-out.
 AGENT_BOM_GCP_MAX_PROJECTS
+# JSON array provisioning CWPP runtime-evidence ingest sources (source_id/tenant/provider/account/secret_hash); read once to build the process-global source registry. Fail-closed: empty/malformed registers no source.
+AGENT_BOM_RUNTIME_EVIDENCE_SOURCES
 AGENT_BOM_GRAPH_DB
 AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK
 AGENT_BOM_GRAPH_DELTA_WEBHOOK

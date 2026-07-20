@@ -33,8 +33,15 @@ from urllib.parse import urlencode
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from agent_bom.api.models import RuntimeEvidenceIngestRequest
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.cloud.runtime_workload_evidence import (
+    SourceAuthenticationError,
+    get_runtime_source_registry,
+    ingest_runtime_signals,
+)
+from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
 from agent_bom.rbac import require_authenticated_permission
 
 router = APIRouter(tags=["cloud"])
@@ -800,3 +807,62 @@ async def cloud_account_summary(
             detail=exc.to_dict(),
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+
+
+@router.post("/cloud/runtime-evidence/ingest", tags=["cloud"])
+async def cloud_runtime_evidence_ingest(
+    request: Request,
+    body: RuntimeEvidenceIngestRequest,
+    _role: Any = _SCAN_DEP,
+) -> dict[str, Any]:
+    """Ingest a batch of CWPP runtime/EDR workload signals (#4158 stage 3).
+
+    The authenticated, tenant-scoped door for the runtime workload-evidence store.
+    Without this route the store had no caller in a deployed product and could
+    never be populated. Read-only posture: agent-bom never writes to a customer
+    target and persists redacted metadata only (raw bytes / secret values are
+    dropped at construction). Each source is pre-registered with a hashed shared
+    secret (no per-action credentials); ``provider``/``account`` bind to the
+    authenticated source, never the payload (confused-deputy guard).
+
+    Fail-closed: an unknown source id, a bad secret, or a source owned by a
+    different tenant all return the same generic ``401`` so a caller cannot
+    enumerate valid source ids or tenants. The ingest runs off the event loop in a
+    worker thread under backpressure so a batch can never stall ``/health``.
+    """
+    tenant_id = _tenant(request)
+
+    def _ingest() -> dict[str, Any]:
+        registry = get_runtime_source_registry()
+        source = registry.get(body.source_id)
+        # Tenant binding: the authenticated request tenant must own the source.
+        # Fold "wrong tenant" into the same auth failure so a caller cannot probe
+        # which source ids exist in another tenant.
+        if source is None or source.tenant_id != tenant_id:
+            raise SourceAuthenticationError("runtime evidence source authentication failed")
+        result = ingest_runtime_signals(
+            registry=registry,
+            source_id=body.source_id,
+            secret=body.secret,
+            raw_signals=[s.model_dump(exclude_none=True) for s in body.signals],
+            store=get_runtime_workload_evidence_store(),
+        )
+        return result.to_dict()
+
+    try:
+        async with adaptive_backpressure("runtime_evidence_ingest"):
+            return await anyio.to_thread.run_sync(_ingest)
+    except SourceAuthenticationError as exc:
+        # Generic 401 — never reveal whether the source id or the secret was wrong.
+        raise HTTPException(status_code=401, detail="Runtime evidence source authentication failed") from exc
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("Runtime evidence ingest failed")
+        raise HTTPException(status_code=500, detail="Runtime evidence ingest failed; see server logs.") from exc

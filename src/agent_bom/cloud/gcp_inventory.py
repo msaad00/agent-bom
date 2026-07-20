@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -304,6 +305,7 @@ def discover_inventory(
     include_disks: bool = True,
     include_messaging: bool = True,
     force: bool = False,
+    usage_resolver: Any = None,
 ) -> dict[str, Any]:
     """Enumerate the general GCP estate (GCS, instances + firewalls, SAs).
 
@@ -443,6 +445,7 @@ def discover_inventory(
             iam_bindings=iam_bindings,
             role_resolver=role_resolver,
             missing=missing,
+            usage_resolver=usage_resolver,
         )
         iam_groups = _build_iam_group_principals(iam_bindings, member_kinds, project_id=resolved_project, role_resolver=role_resolver)
     if include_containers:
@@ -979,6 +982,48 @@ def _build_iam_group_principals(
     return groups
 
 
+# Fail-closed default when no read-only GCP usage source is wired: usage is
+# UNEVALUABLE, never fabricated as "used" or "unused". Shaped like the AWS
+# Access-Advisor payload (``state`` + ``records``) the graph builder consumes, so
+# a "state != available" bundle makes the builder attach NO ``last_used_at`` and
+# NO access-advisor edges → ``nhi_governance`` stays fail-closed (no phantom
+# dormant / over-grant finding). A live GCP usage source (Policy Analyzer activity
+# / audit-log last-authentication) can be injected via ``usage_resolver`` to
+# populate real telemetry — DEFERRED: no such read-only API is wired in this repo
+# yet, so production inventory honestly reports "usage source not configured".
+_GCP_SA_USAGE_DEFERRED: dict[str, Any] = {
+    "state": "unavailable",
+    "diagnostic": "gcp_service_account_usage_source_not_configured",
+    "records": [],
+}
+
+
+def _service_account_usage_evidence(
+    email: str, roles: list[str], resolver: Any
+) -> dict[str, Any]:
+    """Resolve read-only usage evidence for one service account (never fabricated).
+
+    ``resolver`` is an optional callable ``(email, roles) -> Mapping`` supplying
+    real last-authentication telemetry (mirrors the AWS Access-Advisor collector
+    injection point). When absent or failing, usage is reported as unevaluable so
+    downstream CIEM stays fail-closed.
+    """
+    if resolver is None:
+        return dict(_GCP_SA_USAGE_DEFERRED)
+    try:
+        evidence = resolver(email, list(roles))
+    except Exception:  # noqa: BLE001 — a usage lookup failure must never sink inventory
+        return {"state": "unavailable", "diagnostic": "gcp_usage_resolver_error", "records": []}
+    if not isinstance(evidence, Mapping):
+        return dict(_GCP_SA_USAGE_DEFERRED)
+    records = evidence.get("records")
+    return {
+        "state": str(evidence.get("state") or "unavailable"),
+        "diagnostic": str(evidence.get("diagnostic") or "gcp_usage_resolver"),
+        "records": list(records) if isinstance(records, list) else [],
+    }
+
+
 def _discover_service_accounts(
     project_id: str,
     *,
@@ -987,6 +1032,7 @@ def _discover_service_accounts(
     iam_bindings: dict[str, list[str]] | None = None,
     role_resolver: Any = None,
     missing: list[dict[str, str]] | None = None,
+    usage_resolver: Any = None,
 ) -> list[dict[str, Any]]:
     """Enumerate all service accounts in the project (read-only).
 
@@ -996,6 +1042,12 @@ def _discover_service_accounts(
     effective-permissions overlay and ``OVERPERMISSIONED_TO_SENSITIVE`` /
     CIEM reasoning fire on GCP — mirroring the AWS IAM path. Privilege defaults to
     ``unknown`` when no binding is found — inventory never guesses an inflated level.
+
+    Each record also carries ``usage_evidence`` (AWS Access-Advisor shape) so the
+    graph builder can attach ``last_used_at`` + access-advisor grant edges and
+    ``nhi_governance`` can evaluate GCP identities for over-grant / dormancy. With
+    no wired read-only GCP usage source, usage is reported UNEVALUABLE (fail-closed,
+    never fabricated); a ``usage_resolver`` injects real last-auth telemetry.
     """
     try:
         from google.cloud import iam_admin_v1
@@ -1027,6 +1079,7 @@ def _discover_service_accounts(
                     "policies": policies,
                     "trust_principals": [],
                     "privilege_level": _highest_privilege(roles),
+                    "usage_evidence": _service_account_usage_evidence(email, roles, usage_resolver),
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed service accounts list must not sink the scan

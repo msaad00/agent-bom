@@ -369,8 +369,9 @@ def _maybe_seed_local_connection_key(*, host: str, allow_insecure_no_auth: bool)
     Otherwise this is a no-op and connection creation keeps its existing
     behaviour (a 503 until the operator provides ``AGENT_BOM_CONNECTIONS_KEY``).
 
-    The key is written to ``~/.agent-bom/connections.key`` so it survives
-    restarts and previously-stored ciphertext stays decryptable. On success the
+    The key is written beneath ``AGENT_BOM_STATE_DIR`` when set (otherwise
+    ``~/.agent-bom/connections.key``) so local stacks can isolate all state.
+    It survives restarts and previously-stored ciphertext stays decryptable. On success the
     process-local ``AGENT_BOM_CONNECTIONS_KEY_FILE`` is pointed at the file and
     the resolver cache is reset. Any failure degrades silently to the prior
     fail-closed behaviour rather than blocking boot.
@@ -393,7 +394,8 @@ def _maybe_seed_local_connection_key(*, host: str, allow_insecure_no_auth: bool)
     if connections_key_configured():
         return None
     try:
-        path = seed_local_connection_key(Path.home() / ".agent-bom")
+        state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+        path = seed_local_connection_key(state_dir)
     except Exception:  # noqa: BLE001 - never block boot; stay fail-closed on connect
         return None
     os.environ[f"{CONNECTIONS_KEY_ENV}_FILE"] = str(path)

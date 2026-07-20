@@ -75,6 +75,14 @@ def test_loopback_seed_enables_encrypt_decrypt_roundtrip(monkeypatch: pytest.Mon
     assert decrypt_secret(token) == "external-id-abc"
 
 
+def test_loopback_seed_honors_state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    state_dir = tmp_path / "isolated-state"
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(state_dir))
+    seeded = _maybe_seed_local_connection_key(host="127.0.0.1", allow_insecure_no_auth=False)
+    assert seeded == str(state_dir / LOCAL_KEY_FILENAME)
+    assert (state_dir / LOCAL_KEY_FILENAME).is_file()
+
+
 def test_insecure_no_auth_nonloopback_seeds(monkeypatch: pytest.MonkeyPatch):
     # The pilot compose binds 0.0.0.0 inside the container with
     # --allow-insecure-no-auth; that local bring-up should still seed.

@@ -388,6 +388,7 @@ async def sync_from_smithery(
         from datetime import datetime, timezone
 
         local_data["servers"] = local_servers
+        local_data["_total_servers"] = len(local_servers)
         local_data["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         local_data["_smithery_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         _REGISTRY_PATH.write_text(dumps_registry_json(local_data), encoding="utf-8")

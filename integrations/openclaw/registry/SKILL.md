@@ -1,7 +1,7 @@
 ---
 name: agent-bom-registry
 description: >-
-  MCP server security registry and trust assessment — look up servers in the 967-entry
+  MCP server security registry and trust assessment — look up servers in the 1013-entry
   server security metadata registry, run pre-install marketplace checks, batch
   fleet risk scoring, assess skill file trust, and run SAST code scans. Use when
   the user mentions MCP server trust, registry lookup, marketplace check, or
@@ -42,7 +42,7 @@ metadata:
       - darwin
       - linux
       - windows
-    data_flow: "Purely local. Registry data (967 MCP server metadata records) is bundled in the package. Lookups are in-memory string matches. Skill trust analysis parses user-provided SKILL.md content passed as a string argument."
+    data_flow: "Purely local. Registry data (1013 MCP server metadata records) is bundled in the package. Lookups are in-memory string matches. Skill trust analysis parses user-provided SKILL.md content passed as a string argument."
     file_reads:
       - "user-provided SKILL.md files (for skill_trust analysis)"
     file_writes: []
@@ -59,7 +59,7 @@ metadata:
 
 # agent-bom-registry — MCP Server Trust & Security Registry
 
-Look up MCP servers in the 967-entry server security metadata registry, assess skill
+Look up MCP servers in the 1013-entry server security metadata registry, assess skill
 file trust, and run pre-install marketplace checks.
 
 ## Install
@@ -74,7 +74,7 @@ agent-bom mcp scan @modelcontextprotocol/server-filesystem --ecosystem npm
 
 | Tool | Description |
 |------|-------------|
-| `registry_lookup` | Look up MCP server in the 967-entry security metadata registry |
+| `registry_lookup` | Look up MCP server in the 1013-entry security metadata registry |
 | `marketplace_check` | Pre-install trust check with registry cross-reference |
 | `fleet_scan` | Batch registry lookup + risk scoring for MCP server inventories |
 | `skill_scan` | Scan instruction files for package refs, trust, and findings |
@@ -103,7 +103,7 @@ fleet_scan(servers=["brave-search", "github", "slack"])
 
 | Resource | Description |
 |----------|-------------|
-| `registry://servers` | Browse the 967-entry MCP server security metadata registry |
+| `registry://servers` | Browse the 1013-entry MCP server security metadata registry |
 
 ## Privacy & Data Handling
 

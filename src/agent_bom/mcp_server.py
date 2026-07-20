@@ -71,7 +71,7 @@ Tools (76):
     access_review       — List or get NHI access-review / recertification campaigns
 
 Resources (6):
-    registry://servers  — Browse the 967-entry server security metadata registry
+    registry://servers  — Browse the 1013-entry server security metadata registry
     policy://template   — Default security policy template
     metrics://tools     — MCP tool execution metrics and limits
     schema://inventory-v1 — Canonical pushed-inventory schema contract

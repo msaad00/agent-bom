@@ -294,6 +294,9 @@ def test_sync_skips_existing(mock_client_factory, mock_request, tmp_path):
         assert result.added == 1
         assert result.skipped == 1
 
+        data = json.loads(reg_file.read_text())
+        assert data["_total_servers"] == len(data["servers"])
+
 
 def test_sync_no_token():
     """Sync without token returns empty result."""

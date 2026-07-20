@@ -119,11 +119,25 @@ class WorkspaceBackend(Protocol):
     # whole node set. No consumer is wired to these yet.
     def get_node_payload(self, tenant_id: str, node_id: str) -> str | None: ...
 
+    def get_edge_payload(self, tenant_id: str, edge_key: str) -> str | None: ...
+
     def iter_node_payloads_by_type(self, tenant_id: str, entity_type: str, batch_size: int) -> Iterator[str]: ...
 
     def iter_edge_payloads_by_source(self, tenant_id: str, node_id: str, batch_size: int) -> Iterator[str]: ...
 
     def iter_edge_payloads_by_target(self, tenant_id: str, node_id: str, batch_size: int) -> Iterator[str]: ...
+
+    # Keyset-paged reads (#4075 PR-3) — each call runs one bounded, self-contained
+    # query (no server-side cursor left open), so the store-backed live graph
+    # container can interleave write-back between pages without a cursor conflict.
+    # ``fetch_node_page`` rows are ``(seq, node_id, payload)``; ``fetch_edge_page``
+    # rows are ``(seq, payload)``. Both order by ``seq`` (insertion order) and
+    # return rows with ``seq > after_seq`` — keyset the last seq to page forward.
+    def fetch_node_page(self, tenant_id: str, after_seq: int, limit: int, entity_type: str | None = None) -> list[tuple[int, str, str]]: ...
+
+    def fetch_edge_page(
+        self, tenant_id: str, after_seq: int, limit: int, source_id: str | None = None, target_id: str | None = None
+    ) -> list[tuple[int, str]]: ...
 
     def count_nodes(self, tenant_id: str) -> int: ...
 
@@ -235,6 +249,46 @@ class _SQLiteWorkspaceBackend:
             (tenant_id, node_id),
         ).fetchone()
         return str(row[0]) if row else None
+
+    def get_edge_payload(self, tenant_id: str, edge_key: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT payload FROM ws_edges WHERE tenant_id = ? AND edge_key = ?",
+            (tenant_id, edge_key),
+        ).fetchone()
+        return str(row[0]) if row else None
+
+    def fetch_node_page(self, tenant_id: str, after_seq: int, limit: int, entity_type: str | None = None) -> list[tuple[int, str, str]]:
+        params: tuple[Any, ...] = (tenant_id,)
+        predicate = ""
+        if entity_type is not None:
+            predicate = " AND entity_type = ?"
+            params = (tenant_id, entity_type)
+        params = (*params, after_seq, limit)
+        rows = self._conn.execute(
+            f"SELECT seq, node_id, payload FROM ws_nodes WHERE tenant_id = ?{predicate} "  # nosec B608 - static cols
+            "AND seq > ? ORDER BY seq LIMIT ?",
+            params,
+        ).fetchall()
+        return [(int(seq), str(node_id), str(payload)) for seq, node_id, payload in rows]
+
+    def fetch_edge_page(
+        self, tenant_id: str, after_seq: int, limit: int, source_id: str | None = None, target_id: str | None = None
+    ) -> list[tuple[int, str]]:
+        params: tuple[Any, ...] = (tenant_id,)
+        predicate = ""
+        if source_id is not None:
+            predicate = " AND source_id = ?"
+            params = (tenant_id, source_id)
+        elif target_id is not None:
+            predicate = " AND target_id = ?"
+            params = (tenant_id, target_id)
+        params = (*params, after_seq, limit)
+        rows = self._conn.execute(
+            f"SELECT seq, payload FROM ws_edges WHERE tenant_id = ?{predicate} "  # nosec B608 - static cols
+            "AND seq > ? ORDER BY seq LIMIT ?",
+            params,
+        ).fetchall()
+        return [(int(seq), str(payload)) for seq, payload in rows]
 
     def iter_node_payloads_by_type(self, tenant_id: str, entity_type: str, batch_size: int) -> Iterator[str]:
         return self._iter_payloads("ws_nodes", tenant_id, batch_size, where_col="entity_type", where_val=entity_type)
@@ -398,6 +452,49 @@ class _PostgresWorkspaceBackend:
         payload = row[0]
         return payload if isinstance(payload, str) else json.dumps(payload)
 
+    def get_edge_payload(self, tenant_id: str, edge_key: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT payload FROM graph_build_workspace_edges WHERE workspace_id = %s AND tenant_id = %s AND edge_key = %s",
+            (self._workspace_id, tenant_id, edge_key),
+        ).fetchone()
+        if not row:
+            return None
+        payload = row[0]
+        return payload if isinstance(payload, str) else json.dumps(payload)
+
+    def fetch_node_page(self, tenant_id: str, after_seq: int, limit: int, entity_type: str | None = None) -> list[tuple[int, str, str]]:
+        params: tuple[Any, ...] = (self._workspace_id, tenant_id)
+        predicate = ""
+        if entity_type is not None:
+            predicate = " AND entity_type = %s"
+            params = (self._workspace_id, tenant_id, entity_type)
+        params = (*params, after_seq, limit)
+        rows = self._conn.execute(
+            f"SELECT seq, node_id, payload FROM graph_build_workspace_nodes "  # nosec B608 - static cols
+            f"WHERE workspace_id = %s AND tenant_id = %s{predicate} AND seq > %s ORDER BY seq LIMIT %s",
+            params,
+        ).fetchall()
+        return [(int(seq), str(node_id), p if isinstance(p, str) else json.dumps(p)) for seq, node_id, p in rows]
+
+    def fetch_edge_page(
+        self, tenant_id: str, after_seq: int, limit: int, source_id: str | None = None, target_id: str | None = None
+    ) -> list[tuple[int, str]]:
+        params: tuple[Any, ...] = (self._workspace_id, tenant_id)
+        predicate = ""
+        if source_id is not None:
+            predicate = " AND source_id = %s"
+            params = (self._workspace_id, tenant_id, source_id)
+        elif target_id is not None:
+            predicate = " AND target_id = %s"
+            params = (self._workspace_id, tenant_id, target_id)
+        params = (*params, after_seq, limit)
+        rows = self._conn.execute(
+            f"SELECT seq, payload FROM graph_build_workspace_edges "  # nosec B608 - static cols
+            f"WHERE workspace_id = %s AND tenant_id = %s{predicate} AND seq > %s ORDER BY seq LIMIT %s",
+            params,
+        ).fetchall()
+        return [(int(seq), p if isinstance(p, str) else json.dumps(p)) for seq, p in rows]
+
     def iter_node_payloads_by_type(self, tenant_id: str, entity_type: str, batch_size: int) -> Iterator[str]:
         return self._iter_payloads("graph_build_workspace_nodes", tenant_id, batch_size, where_col="entity_type", where_val=entity_type)
 
@@ -516,6 +613,30 @@ def _batched(items: Iterable[_RowT], size: int) -> Iterator[list[_RowT]]:
         yield batch
 
 
+def open_workspace_backend(*, workspace_id: str = "", backend: str = "auto") -> WorkspaceBackend:
+    """Open a raw :class:`WorkspaceBackend` on the appropriate store.
+
+    ``backend="auto"`` selects Postgres when ``AGENT_BOM_POSTGRES_URL`` is set,
+    otherwise a private SQLite temp database. ``workspace_id`` namespaces a build
+    on the shared Postgres tables (defaults to a fresh UUID); it is ignored by the
+    process-local SQLite backend. Shared by :func:`open_graph_build_workspace` and
+    the store-backed live graph container.
+    """
+    wsid = workspace_id or uuid.uuid4().hex
+    dsn = os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip()
+    chosen = backend
+    if chosen == "auto":
+        chosen = "postgres" if dsn else "sqlite"
+
+    if chosen == "postgres":
+        if not dsn:
+            raise ValueError("AGENT_BOM_POSTGRES_URL is required for the postgres workspace backend.")
+        return _PostgresWorkspaceBackend(dsn, wsid)
+    if chosen == "sqlite":
+        return _SQLiteWorkspaceBackend()
+    raise ValueError(f"unknown workspace backend {backend!r}")
+
+
 def open_graph_build_workspace(
     *,
     tenant_id: str = "",
@@ -530,19 +651,5 @@ def open_graph_build_workspace(
     on the shared Postgres tables (defaults to a fresh UUID); it is ignored by
     the process-local SQLite backend.
     """
-    wsid = workspace_id or uuid.uuid4().hex
-    dsn = os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip()
-    chosen = backend
-    if chosen == "auto":
-        chosen = "postgres" if dsn else "sqlite"
-
-    impl: WorkspaceBackend
-    if chosen == "postgres":
-        if not dsn:
-            raise ValueError("AGENT_BOM_POSTGRES_URL is required for the postgres workspace backend.")
-        impl = _PostgresWorkspaceBackend(dsn, wsid)
-    elif chosen == "sqlite":
-        impl = _SQLiteWorkspaceBackend()
-    else:
-        raise ValueError(f"unknown workspace backend {backend!r}")
+    impl = open_workspace_backend(workspace_id=workspace_id, backend=backend)
     return GraphBuildWorkspace(impl, tenant_id=tenant_id, batch_size=batch_size)

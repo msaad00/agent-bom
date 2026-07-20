@@ -7,6 +7,7 @@ from agent_bom.context_graph import (
     EdgeKind,
     NodeKind,
     build_context_graph,
+    collect_lateral_paths,
     compute_interaction_risks,
     find_lateral_paths,
     to_serializable,
@@ -209,6 +210,34 @@ class TestBuildGraph:
         shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_CREDENTIAL]
         assert len(shares) == 1
         assert shares[0].metadata["credential"] == "API_KEY"
+
+    def test_large_shared_groups_use_bounded_edges(self):
+        def _shared_server(name):
+            return {
+                **_server(name=name),
+                "env": {},
+                "credential_env_vars": ["SHARED_TOKEN"],
+            }
+
+        agents = [
+            _agent(name=f"agent-{i}", servers=[_shared_server("shared-srv")])
+            for i in range(100)
+        ]
+        graph = build_context_graph(agents, [])
+
+        server_shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_SERVER]
+        cred_shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_CREDENTIAL]
+        # The old pairwise implementation emitted 4,950 edges per resource.
+        assert len(server_shares) == 100
+        assert len(cred_shares) == 100
+        assert "shared-server:shared-srv" in graph.nodes
+        assert graph.nodes["cred:SHARED_TOKEN"].metadata["shared_agent_count"] == 100
+        assert all("shared_agents" not in edge.metadata for edge in server_shares + cred_shares)
+
+        risks = compute_interaction_risks(graph)
+        patterns = {risk.pattern for risk in risks}
+        assert "shared_server" in patterns
+        assert "shared_credential" in patterns
 
 
 # ---------------------------------------------------------------------------
@@ -751,3 +780,15 @@ class TestLateralPathDeterminism:
         out_first = json.dumps(to_serializable(graph, first, risks), default=str, sort_keys=True)
         out_second = json.dumps(to_serializable(graph, second, risks), default=str, sort_keys=True)
         assert out_first == out_second
+
+    def test_multi_source_collection_is_bounded_and_reports_sampling(self):
+        agents = [_agent(name=f"agent-{i}", servers=[_server(name="shared")]) for i in range(120)]
+        graph = build_context_graph(agents, [])
+        paths, truncated = collect_lateral_paths(
+            graph,
+            (f"agent:agent-{i}" for i in range(120)),
+            max_sources=3,
+            max_paths=10,
+        )
+        assert len(paths) <= 10
+        assert truncated is True

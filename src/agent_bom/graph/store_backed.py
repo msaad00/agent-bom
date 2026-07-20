@@ -385,6 +385,10 @@ class StoreBackedUnifiedGraph(UnifiedGraph):
         # the in-RAM dict's first-insert ordering), then cache for identity.
         self._backend.add_node_payloads(self._tenant, [_node_to_row(node)])
         self._cache_put(node.id, node)
+        # The caller owns the object it passed and may mutate it immediately
+        # after add_node(). Mark the cached identity dirty so an LRU eviction
+        # writes those in-place changes back instead of silently losing them.
+        self._mark_dirty(node.id)
 
     def add_edge(self, edge: UnifiedEdge) -> None:
         key = _edge_key(edge)

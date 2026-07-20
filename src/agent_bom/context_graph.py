@@ -18,7 +18,7 @@ import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Iterable, Optional
 
 from agent_bom.constants import is_credential_key as _is_credential_key
 from agent_bom.graph import (
@@ -68,8 +68,10 @@ class EdgeKind(str, Enum):
     EXPOSES = "exposes"  # server → credential
     PROVIDES = "provides"  # server → tool
     VULNERABLE_TO = "vulnerable_to"  # server → vulnerability
-    SHARES_SERVER = "shares_server"  # agent ↔ agent
-    SHARES_CREDENTIAL = "shares_credential"  # agent ↔ agent
+    # Small groups use direct agent↔agent edges.  Large groups use a bounded
+    # shared-resource endpoint so graph construction stays linear.
+    SHARES_SERVER = "shares_server"
+    SHARES_CREDENTIAL = "shares_credential"
     ATTACHED_TO = "attached_to"  # iam_role → agent (workload identity correlation)
 
 
@@ -346,38 +348,103 @@ def build_context_graph(
                         )
                     )
 
-    # ── Shared server edges (agent ↔ agent) ───────────────────────────
+    # ── Shared server edges ───────────────────────────────────────────
+    # Pairwise edges are useful for small groups, but become O(N²) for a
+    # common shared MCP server.  Keep the readable direct form up to a fixed
+    # threshold and use one bounded hub node for larger groups.  The hub is
+    # still traversable by the lateral-path BFS and carries the full group in
+    # metadata for risk/reporting consumers.
     for _srv_name, agent_names in server_to_agents.items():
         unique = sorted(set(agent_names))
         if len(unique) >= 2:
-            for i, a1 in enumerate(unique):
-                for a2 in unique[i + 1 :]:
+            if len(unique) > _MAX_PAIRWISE_SHARED_AGENTS:
+                hub_id = f"shared-server:{_srv_name}"
+                graph.add_node(
+                    GraphNode(
+                        id=hub_id,
+                        kind=NodeKind.SERVER,
+                        label=_srv_name,
+                        metadata={
+                            "shared_group": True,
+                            "shared_agent_count": len(unique),
+                            "shared_agents": unique,
+                        },
+                    )
+                )
+                for agent_name in unique:
                     graph.add_edge(
                         GraphEdge(
-                            source=f"agent:{a1}",
-                            target=f"agent:{a2}",
+                            source=f"agent:{agent_name}",
+                            target=hub_id,
                             kind=EdgeKind.SHARES_SERVER,
                             weight=3.0,
-                            metadata={"server": _srv_name},
+                            metadata={
+                                "server": _srv_name,
+                                "shared_group": True,
+                                "shared_agent_count": len(unique),
+                            },
                         )
                     )
+            else:
+                for i, a1 in enumerate(unique):
+                    for a2 in unique[i + 1 :]:
+                        graph.add_edge(
+                            GraphEdge(
+                                source=f"agent:{a1}",
+                                target=f"agent:{a2}",
+                                kind=EdgeKind.SHARES_SERVER,
+                                weight=3.0,
+                                metadata={"server": _srv_name},
+                            )
+                        )
 
-    # ── Shared credential edges (agent ↔ agent) ──────────────────────
+    # ── Shared credential edges ──────────────────────────────────────
     # Deduplication is now handled by ContextGraph.add_edge() in O(1).
     for _cred_name, agent_names in cred_to_agents.items():
         unique = sorted(set(agent_names))
         if len(unique) >= 2:
-            for i, a1 in enumerate(unique):
-                for a2 in unique[i + 1 :]:
+            metadata: dict[str, object] = {"credential": _cred_name}
+            if len(unique) > _MAX_PAIRWISE_SHARED_AGENTS:
+                # The canonical credential node already connects all of its
+                # servers.  Add one linear agent→credential edge per member;
+                # reverse adjacency lets BFS discover the other agents without
+                # materializing every pair.
+                cred_id = f"cred:{_cred_name}"
+                if cred_id in graph.nodes:
+                    graph.nodes[cred_id].metadata.update(
+                        {
+                            "shared_group": True,
+                            "shared_agent_count": len(unique),
+                            "shared_agents": unique,
+                        }
+                    )
+                metadata = {
+                    **metadata,
+                    "shared_group": True,
+                    "shared_agent_count": len(unique),
+                }
+                for agent_name in unique:
                     graph.add_edge(
                         GraphEdge(
-                            source=f"agent:{a1}",
-                            target=f"agent:{a2}",
+                            source=f"agent:{agent_name}",
+                            target=cred_id,
                             kind=EdgeKind.SHARES_CREDENTIAL,
                             weight=4.0,
-                            metadata={"credential": _cred_name},
+                            metadata=metadata,
                         )
                     )
+            else:
+                for i, a1 in enumerate(unique):
+                    for a2 in unique[i + 1 :]:
+                        graph.add_edge(
+                            GraphEdge(
+                                source=f"agent:{a1}",
+                                target=f"agent:{a2}",
+                                kind=EdgeKind.SHARES_CREDENTIAL,
+                                weight=4.0,
+                                metadata=metadata,
+                            )
+                        )
 
     # ── Effective-reach scoring (issue #2262) ─────────────────────────
     # Annotate every vulnerability node with a deterministic 0..100
@@ -399,6 +466,35 @@ def build_context_graph(
 
 _MAX_PATHS = 100
 _MAX_QUEUE_SIZE = 10_000  # Prevent OOM on large graphs (100+ agents)
+_MAX_PAIRWISE_SHARED_AGENTS = 64
+_MAX_LATERAL_PATH_SOURCES = 100
+_MAX_LATERAL_PATHS = 1_000
+
+
+def collect_lateral_paths(
+    graph: ContextGraph,
+    source_node_ids: Iterable[str],
+    *,
+    max_depth: int = 4,
+    max_sources: int = _MAX_LATERAL_PATH_SOURCES,
+    max_paths: int = _MAX_LATERAL_PATHS,
+) -> tuple[list[LateralPath], bool]:
+    """Collect paths from a bounded set of sources.
+
+    Large estates can contain thousands of agents. Running a full BFS for
+    every source repeats work and creates an unbounded response. This helper
+    keeps source order deterministic, caps total paths, and reports whether
+    the result is intentionally sampled.
+    """
+    paths: list[LateralPath] = []
+    sources_seen = 0
+    for source_id in source_node_ids:
+        if sources_seen >= max_sources or len(paths) >= max_paths:
+            return paths[:max_paths], True
+        sources_seen += 1
+        remaining = max_paths - len(paths)
+        paths.extend(find_lateral_paths(graph, source_id, max_depth=max_depth)[:remaining])
+    return paths[:max_paths], False
 
 
 def find_lateral_paths(
@@ -615,17 +711,40 @@ def compute_interaction_risks(graph: ContextGraph) -> list[InteractionRisk]:
     shared_servers: dict[str, list[str]] = defaultdict(list)
     shared_creds: dict[str, list[str]] = defaultdict(list)
 
+    # Large shared groups keep membership once on the shared resource node,
+    # rather than duplicating a full agent list on every linear edge.
+    for node in graph.nodes.values():
+        members = node.metadata.get("shared_agents")
+        if not isinstance(members, list):
+            continue
+        if node.kind == NodeKind.SERVER:
+            shared_servers[node.label].extend(str(name) for name in members)
+        elif node.kind == NodeKind.CREDENTIAL:
+            shared_creds[node.label].extend(str(name) for name in members)
+
     for edge in graph.edges:
         if edge.kind == EdgeKind.SHARES_SERVER:
             srv_name = edge.metadata.get("server", "")
-            a1 = edge.source.removeprefix("agent:")
-            a2 = edge.target.removeprefix("agent:")
-            shared_servers[srv_name].extend([a1, a2])
+            members = edge.metadata.get("shared_agents")
+            if isinstance(members, list):
+                shared_servers[srv_name].extend(str(name) for name in members)
+            elif edge.metadata.get("shared_group"):
+                continue
+            elif edge.source.startswith("agent:") and edge.target.startswith("agent:"):
+                a1 = edge.source.removeprefix("agent:")
+                a2 = edge.target.removeprefix("agent:")
+                shared_servers[srv_name].extend([a1, a2])
         elif edge.kind == EdgeKind.SHARES_CREDENTIAL:
             cred_name = edge.metadata.get("credential", "")
-            a1 = edge.source.removeprefix("agent:")
-            a2 = edge.target.removeprefix("agent:")
-            shared_creds[cred_name].extend([a1, a2])
+            members = edge.metadata.get("shared_agents")
+            if isinstance(members, list):
+                shared_creds[cred_name].extend(str(name) for name in members)
+            elif edge.metadata.get("shared_group"):
+                continue
+            elif edge.source.startswith("agent:") and edge.target.startswith("agent:"):
+                a1 = edge.source.removeprefix("agent:")
+                a2 = edge.target.removeprefix("agent:")
+                shared_creds[cred_name].extend([a1, a2])
 
     # ── Pattern: shared credential ────────────────────────────────────
     for cred_name, agent_names in shared_creds.items():

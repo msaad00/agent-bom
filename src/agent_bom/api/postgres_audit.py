@@ -227,16 +227,70 @@ class PostgresAuditLog:
         return _AuditChainCheckpoint(entry_count=int(row[0]), head_signature=str(row[1]))
 
     def _upsert_checkpoint(self, conn: Any, tenant_id: str, head_signature: str) -> None:
+        # First-seed entry_count is the tenant's TRUE audit_log row count, not a
+        # hardcoded 1: a legacy tenant whose rows predate its first checkpoint
+        # upsert (the migration-owned schema creates the table empty and never
+        # runs _hydrate_checkpoints) would otherwise seed entry_count=1 while N
+        # historical rows exist, so verify_integrity's truncation check
+        # (len(entries) == checkpoint.entry_count) under-counts until N further
+        # appends accrue (#4294). The COUNT runs in the SAME transaction as the
+        # audit_log INSERT that precedes it (so it includes the just-inserted
+        # row) and only on the INSERT branch; the steady-state ON CONFLICT path
+        # stays an O(1) increment, correct because each append adds exactly one
+        # row once the checkpoint is seeded true. A genuine genesis (0 prior
+        # rows) still seeds 1 — the just-inserted row.
         conn.execute(
             """
             INSERT INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature)
-            VALUES (%s, 1, %s)
+            VALUES (%s, (SELECT COUNT(*) FROM audit_log WHERE team_id = %s), %s)
             ON CONFLICT (tenant_id) DO UPDATE SET
                 entry_count = audit_chain_checkpoint.entry_count + 1,
                 head_signature = EXCLUDED.head_signature
             """,
-            (tenant_id, head_signature),
+            (tenant_id, tenant_id, head_signature),
         )
+
+    def backfill_checkpoints(self) -> int:
+        """Reconcile every tenant's checkpoint to its true chain state (#4294).
+
+        Recomputes ``entry_count`` (the tenant's audit_log row count) and
+        ``head_signature`` (the successor-free chain tip — chain-order-correct
+        regardless of wall-clock timestamp skew, mirroring
+        ``_chain_tip_signature_from_log`` and #4293's head derivation) directly
+        from ``audit_log`` for every tenant, healing legacy checkpoints seeded at
+        ``entry_count=1`` and seeding tenants that have none. Idempotent: rerunning
+        yields the same rows. Runs under an RLS-bypass maintenance session because
+        it spans every tenant (same trusted context as ``_hydrate_checkpoints``).
+        Returns the number of tenant checkpoints reconciled.
+        """
+        with bypass_tenant_rls(audit=False), _tenant_connection(self._pool) as conn:
+            result = conn.execute(
+                """
+                INSERT INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature)
+                SELECT a.team_id,
+                       COUNT(*),
+                       (
+                           SELECT h.hmac_signature
+                           FROM audit_log h
+                           WHERE h.team_id = a.team_id
+                             AND NOT EXISTS (
+                                 SELECT 1 FROM audit_log b
+                                 WHERE b.team_id = h.team_id
+                                   AND b.prev_signature = h.hmac_signature
+                             )
+                           ORDER BY h.hmac_signature
+                           LIMIT 1
+                       )
+                FROM audit_log a
+                GROUP BY a.team_id
+                ON CONFLICT (tenant_id) DO UPDATE SET
+                    entry_count = EXCLUDED.entry_count,
+                    head_signature = EXCLUDED.head_signature
+                """
+            )
+            reconciled = result.rowcount if result.rowcount is not None and result.rowcount >= 0 else 0
+            conn.commit()
+        return reconciled
 
     def _latest_signature_for_tenant(self, tenant_id: str) -> str:
         # The chain head is the LAST-COMMITTED row, NOT the row with the latest

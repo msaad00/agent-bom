@@ -76,16 +76,28 @@ class MockConnection:
                     table = "gateway_policies"
                 elif "policy_audit_log" in sql:
                     table = "policy_audit_log"
-                elif "audit_log" in sql:
-                    table = "audit_log"
                 elif "audit_chain_checkpoint" in sql:
+                    # Checked before "audit_log" because the seed upsert's
+                    # entry_count subquery `(SELECT COUNT(*) FROM audit_log ...)`
+                    # references audit_log too (#4294).
                     table = "audit_chain_checkpoint"
-                    tenant_id, head_signature = params
+                    # Params are (tenant_id, [count_tenant_id], head_signature):
+                    # the seed form carries the COUNT-subquery tenant param.
+                    tenant_id = params[0]
+                    head_signature = params[-1]
                     existing = self._store.setdefault(table, {}).get(tenant_id)
-                    entry_count = int(existing[1]) + 1 if existing and "on conflict" in sql_lower else 1
+                    if existing and "on conflict" in sql_lower:
+                        entry_count = int(existing[1]) + 1
+                    else:
+                        # Seed = the tenant's TRUE audit_log row count (#4294),
+                        # not a hardcoded 1; the audit_log INSERT already ran.
+                        audit_rows = [r for r in self._store.get("audit_log", {}).values() if r[5] == tenant_id]
+                        entry_count = len(audit_rows) or 1
                     self._store[table][tenant_id] = (tenant_id, entry_count, head_signature)
                     self._cursors.append(cursor)
                     return cursor
+                elif "audit_log" in sql:
+                    table = "audit_log"
                 elif "trend_history" in sql:
                     table = "trend_history"
                 elif "scan_schedules" in sql:

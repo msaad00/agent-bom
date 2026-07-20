@@ -1023,3 +1023,64 @@ def test_svg_paginates_dense_node_columns() -> None:
     assert 'id="page-1"' in svg
     assert 'id="page-2"' in svg
     assert "55 packages" in svg
+
+
+# ── CycloneDX purl synthesis ─────────────────────────────────────────────────
+
+
+class TestCycloneDXPurlSynthesis:
+    """purl is the join key for downstream SBOM tooling — components with a
+    known ecosystem+name+version must carry one even when the scanner did not
+    resolve an explicit purl."""
+
+    def _component(self, pkg: Package, name: str) -> dict:
+        from agent_bom.output.cyclonedx_fmt import to_cyclonedx
+
+        report = _make_report(agents=[_make_agent(servers=[_make_server(packages=[pkg])])])
+        cdx = to_cyclonedx(report)
+        return next(c for c in cdx["components"] if c["name"] == name)
+
+    def test_npm_purl_synthesized_from_ecosystem_name_version(self):
+        comp = self._component(_make_pkg("express", "4.17.1", "npm"), "express")
+        assert comp["purl"] == "pkg:npm/express@4.17.1"
+
+    def test_pypi_purl_is_normalized(self):
+        comp = self._component(_make_pkg("Flask_Login", "0.6.2", "pypi"), "Flask_Login")
+        assert comp["purl"] == "pkg:pypi/flask-login@0.6.2"
+
+    def test_explicit_purl_is_authoritative(self):
+        pkg = _make_pkg("express", "4.17.1", "npm")
+        pkg.purl = "pkg:npm/express@4.17.1?arch=x64"
+        comp = self._component(pkg, "express")
+        assert comp["purl"] == "pkg:npm/express@4.17.1?arch=x64"
+
+    def test_unknown_ecosystem_omits_purl(self):
+        comp = self._component(_make_pkg("mystery", "1.0.0", "unknown"), "mystery")
+        assert "purl" not in comp
+
+    def test_unresolved_version_omits_purl(self):
+        comp = self._component(_make_pkg("express", "unknown", "npm"), "express")
+        assert "purl" not in comp
+
+    def test_demo_inventory_components_all_carry_purls(self):
+        from agent_bom.cli._common import _build_agents_from_inventory
+        from agent_bom.demo import DEMO_INVENTORY
+        from agent_bom.output.cyclonedx_fmt import to_cyclonedx
+
+        agents = _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
+        cdx = to_cyclonedx(_make_report(agents=agents))
+        libraries = [c for c in cdx["components"] if c["type"] == "library"]
+        assert libraries
+        missing = [c["name"] for c in libraries if not c.get("purl")]
+        assert not missing, f"library components without purl: {missing}"
+        express = next(c for c in libraries if c["name"] == "express")
+        assert express["purl"] == "pkg:npm/express@4.17.1"
+
+    def test_spdx_external_identifier_purl_synthesized(self):
+        pkg = _make_pkg("express", "4.17.1", "npm")
+        report = _make_report(agents=[_make_agent(servers=[_make_server(packages=[pkg])])])
+        spdx = to_spdx(report)
+        pkg_elements = [e for e in spdx["@graph"] if e.get("type") == "software_Package" and e.get("name") == "express"]
+        assert pkg_elements
+        identifiers = [i["identifier"] for e in pkg_elements for i in e.get("externalIdentifier", [])]
+        assert "pkg:npm/express@4.17.1" in identifiers

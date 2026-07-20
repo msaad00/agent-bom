@@ -11,8 +11,14 @@ CREATE TABLE IF NOT EXISTS control_plane_schema_versions (
 -- columns and indexes.
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS scim_subject_id TEXT;
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS owner TEXT;
+-- Stable principal binding: deprovisioning a subject revokes every key keyed to
+-- its principal_id (not its free-form display name). Backfill mirrors
+-- create_api_key_record precedence (scim_subject_id -> owner).
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS principal_id TEXT;
+UPDATE api_keys SET principal_id = COALESCE(NULLIF(scim_subject_id, ''), NULLIF(owner, '')) WHERE principal_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_api_keys_scim_subject ON api_keys(team_id,scim_subject_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(team_id,owner);
+CREATE INDEX IF NOT EXISTS idx_api_keys_principal ON api_keys(team_id,principal_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_team_action_ts ON audit_log(team_id,action,timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_team_resource_ts ON audit_log(team_id,resource text_pattern_ops,timestamp DESC);
 -- Hash-chain fork guard (#3665-class): at most one row may link to any predecessor

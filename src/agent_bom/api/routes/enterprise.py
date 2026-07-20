@@ -546,6 +546,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
             tenant_id=tenant_id,
             scim_subject_id=resolve_scim_subject_binding(request, req.scim_subject_id),
             owner=req.owner,
+            principal_id=req.principal_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
@@ -571,6 +572,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
         "created_at": api_key.created_at,
         "expires_at": api_key.expires_at,
         "owner": api_key.owner,
+        "principal_id": api_key.principal_id,
         "message": "Store the raw_key securely — it will not be shown again.",
     }
 
@@ -613,6 +615,7 @@ async def rotate_key(
             tenant_id=current_key.tenant_id,
             scim_subject_id=current_key.scim_subject_id,
             owner=current_key.owner,
+            principal_id=current_key.principal_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
@@ -1516,6 +1519,7 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
         scopes=["saml-session"],
         tenant_id=assertion.tenant_id,
         scim_subject_id=scim_subject_id,
+        principal_id=scim_subject_id,
     )
     get_key_store().add(api_key)
     log_action(

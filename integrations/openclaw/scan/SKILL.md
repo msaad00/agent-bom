@@ -6,7 +6,7 @@ description: >-
   KEV), container images, provenance, filesystems, and SBOMs. Use
   when: "check package", "scan image", "verify", "is this safe",
   "scan dependencies", "CVE lookup", "blast radius".
-version: 0.96.3
+version: 0.96.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Native container image
@@ -22,7 +22,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.96.3
+    docker: ghcr.io/msaad00/agent-bom:0.96.4
   openclaw:
     requires:
       bins: []
@@ -41,7 +41,7 @@ metadata:
       - darwin
       - linux
       - windows
-    credential_handling: "Env var values are NEVER extracted from config files. sanitize_env_vars() replaces all env values with ***REDACTED*** BEFORE any config data is processed or stored. Only structural data (server names, commands, URLs) passes through. Source: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159"
+    credential_handling: "sanitize_env_vars() redacts credential-like and sensitive environment values before reporting; benign configuration values may remain in the in-memory model. Source: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py"
     data_flow: "All scanning is local-first. Only public package names and CVE IDs are sent to vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). No credentials, config file contents, or scan results leave the machine."
     file_reads:
       # Claude Desktop
@@ -130,7 +130,7 @@ agent-bom scan             # discover agents and scan dependencies
 agent-bom check langchain==0.1.0  # check a specific package with version
 agent-bom image nginx:1.25   # scan container image (native)
 agent-bom fs .               # scan filesystem packages
-agent-bom sbom .             # generate SBOM
+agent-bom scan . -f cyclonedx -o sbom.json  # generate an SBOM
 agent-bom verify agent-bom   # verify Sigstore provenance
 agent-bom where              # show all discovery paths
 ```
@@ -223,9 +223,9 @@ agent-bom scan --format sarif --output agent-bom.sarif --fail-on-severity high
 pip install agent-bom
 
 # Step 2: Review redaction logic BEFORE scanning
-# sanitize_env_vars() replaces ALL env var values with ***REDACTED***
-# BEFORE any config data is processed or stored:
-# https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py#L159
+# sanitize_env_vars() redacts credential-like and sensitive env values before
+# reporting; benign configuration values may remain in the in-memory model:
+# https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py
 
 # Step 3: Verify package provenance (Sigstore)
 agent-bom verify agent-bom
@@ -237,6 +237,6 @@ agent-bom scan
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.96.3`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.96.4`
 - **7,100+ tests** with CodeQL + OpenSSF Scorecard
 - **No telemetry**: Zero tracking, zero analytics

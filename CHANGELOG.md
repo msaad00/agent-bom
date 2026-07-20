@@ -9,12 +9,34 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.96.4] - 2026-07-19
+
 ### Added
-- Scheduled findings export now reaches four more destinations — Azure Blob and GCS object stores, plus BigQuery and Databricks warehouse tables — each connect-once with brokered credentials and fail-closed on missing config (#4040).
-- Remediation now files tickets through the connect-once ITSM plane: the row action reads the stored `/v1/ticketing` connection, previews the ticket, and surfaces the ticket key + status with a sync action — no per-action credentials, tokens, or URLs (#4004).
+- Live Kubernetes posture is first-class evidence across CLI, API, UI, and MCP, with versioned benchmark provenance and a least-privilege in-cluster deployment path (#4236, #4250).
+- Authorization evidence now covers AWS Access Advisor and fail-closed Azure/GCP collection, projects into the graph, and reports evidence health for CIEM decisions (#4145, #4171, #4178, #4199).
+- Read-only DSPM classification now covers production databases and Azure Blob; scheduled findings exports add Azure Blob, GCS, BigQuery, and Databricks destinations (#4090, #4238, #4260).
+- The framework library adds vendored NIST 800-53 controls and crosswalks, typed ATT&CK/ATLAS mappings, signed MCP scan attestations, CWPP lifecycle evidence, and tenant-scoped operator self-posture (#4213, #4217, #4221, #4228, #4230, #4234).
+- Remediation can file and synchronize tickets through the connect-once ITSM plane without per-action credentials (#4090).
+
+### Changed
+- Graph persistence, attack-path campaigns, search indexing, and hub ingest/read paths use bounded or streamed working sets with atomic retries and explicit truncation (#4074, #4078, #4091, #4097, #4223, #4231, #4237).
+- Cloud SDKs move into a dedicated collector image, while maintained Python images install the reviewed `uv.lock` dependency graph with a digest-pinned uv binary (#4256, #4271).
+- The scan workspace, findings/graph proof, README, CLI walkthrough, and architecture presentation were refreshed against the shipped product surfaces (#4248, #4252, #4270).
+
+### Fixed
+- Postgres now treats Alembic as schema authority, restores RLS/idempotency/audit-index parity, and decodes native graph JSONB reads correctly (#4110, #4140, #4192, #4232, #4243, #4257).
+- Scan outcomes, warnings, graph-derived finding categories, keyset pagination, and exports now preserve the same evidence semantics across CLI, API, and hosted paths (#4215, #4233, #4255, #4266, #4267).
+- Gateway, ClickHouse, and graph pipelines now bound relay buffers, outage queues, reconciliation state, and prior-snapshot work (#4074, #4091, #4240, #4244).
+- Compliance scoring no longer treats missing evidence as a pass, double-counts subsumed findings, or exposes borrowed benchmark prose (#4249, #4262, #4268).
+- CI now isolates shared scanner state, distributes tests hermetically, validates the Glama locked-image contract, and scans exact Git event ranges without a pull-request API dependency (#4251, #4254, #4271, #4272).
+
+### Security
+- IAM conditions, conditional-access evaluation, external DSSE signer trust, and partial identity evidence fail closed instead of silently weakening enforcement (#4080, #4163, #4179, #4182).
+- Egress validation, delivery boundaries, gateway buffering, audit-chain serialization, and ClickHouse buffering were hardened against rebinding, leakage, forks, and unbounded memory growth (#4185, #4240, #4244, #4245).
+- File-mounted API keys, trusted-proxy secrets, and confidential OIDC client secrets now share the same startup, middleware, and health posture; weak or unresolved secrets remain unavailable (#4271).
 
 ### Removed
-- Retired the legacy `POST /v1/findings/jira` route and its per-action static-token path, superseded by the connect-once ticketing plane (#4004).
+- Retired the legacy `POST /v1/findings/jira` static-token path in favor of the connect-once ticketing plane (#4090).
 
 ## [0.96.3] - 2026-07-16
 
@@ -2358,7 +2380,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.3...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.96.4...HEAD
+[0.96.4]: https://github.com/msaad00/agent-bom/compare/v0.96.3...v0.96.4
 [0.96.3]: https://github.com/msaad00/agent-bom/compare/v0.96.2...v0.96.3
 [0.96.2]: https://github.com/msaad00/agent-bom/compare/v0.96.1...v0.96.2
 [0.96.1]: https://github.com/msaad00/agent-bom/compare/v0.96.0...v0.96.1

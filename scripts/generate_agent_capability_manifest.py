@@ -149,7 +149,7 @@ def main() -> None:
     else:
         snapshot = {"version": _version(), "metrics": []}
 
-    content = render(snapshot) + "\n"
+    content = render(snapshot).rstrip() + "\n"
     if args.write:
         OUT.write_text(content, encoding="utf-8")
         print(f"wrote {OUT}")

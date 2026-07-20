@@ -362,10 +362,6 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     assert f"{len(card['tools'])} MCP tools" in docs
     assert "Most tools are read-only" in docs
     assert "AGENT_BOM_MCP_OPERATOR_TOKEN" in docs
-    assert "Shield write actions require `operator_role=admin`" in docs
-    assert "operator_scopes=shield:write" in docs
-    assert "Identity write actions require `operator_role=admin`" in docs
-    assert "operator_scopes=identity:write" in docs
     write_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
     assert sorted(write_tools) == [
         "access_review",
@@ -382,6 +378,9 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "shield_unblock",
         "sync_ticket_status",
     ]
+    assert f"{len(write_tools)} write-annotated tools" in docs
+    for required_scope in ("findings:write", "identity:write", "shield:write", "ticketing:write"):
+        assert required_scope in docs
     for resource in card["resources"]:
         assert resource["uri"] in docs
     for prompt in card["prompts"]:

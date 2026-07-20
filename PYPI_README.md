@@ -120,7 +120,10 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 - **Dependency confusion detection** — flags internal naming patterns
 - **VEX generation** — auto-triage with CWE/CVE/CPE-aware reachability (package + function-level when advisory symbols exist)
 
-Read-only. Agentless. No secrets leave your machine unless you explicitly enable an outbound integration.
+Discovery and static/cloud scanning are read-only and agentless. Proxy,
+gateway, Shield, and control-plane write tools are separate, explicit runtime
+or authenticated operations. No secrets leave your machine unless you
+explicitly enable an outbound integration.
 
 ## How the data moves
 

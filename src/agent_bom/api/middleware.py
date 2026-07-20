@@ -13,7 +13,8 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
 
@@ -701,6 +702,54 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+@dataclass(frozen=True)
+class Resolved:
+    """A resolver authenticated a principal; ``response`` is the downstream result.
+
+    The resolver has already applied the per-route authorization/tenant policy
+    and dispatched (or produced the terminal authz rejection for) the request.
+    """
+
+    response: Response
+
+
+@dataclass(frozen=True)
+class Invalid:
+    """A resolver saw a credential it could not accept.
+
+    Terminal: a presented-but-invalid credential is returned as-is and never
+    falls through to a later resolver or the anonymous fallback.
+    """
+
+    response: Response
+
+
+@dataclass(frozen=True)
+class Absent:
+    """No credential this resolver can act on — the pipeline tries the next one."""
+
+
+Resolution = Resolved | Invalid | Absent
+
+
+async def run_resolver_chain(resolvers: Iterable[Callable[[], Awaitable[Resolution]]]) -> Response | None:
+    """Run an ordered authentication resolver chain: first non-Absent result wins.
+
+    This is the single place that expresses the pipeline's control-flow
+    invariant — ``Absent`` continues to the next resolver, while both
+    ``Resolved`` and ``Invalid`` are terminal and return their response
+    immediately. Returns ``None`` only when every resolver is ``Absent`` (the
+    production chain ends in a terminal resolver, so that never happens there;
+    it is meaningful for unit tests exercising the loop directly).
+    """
+    for resolver in resolvers:
+        result = await resolver()
+        if isinstance(result, Absent):
+            continue
+        return result.response
+    return None
+
+
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """Optional API key authentication via Bearer token or X-API-Key header.
 
@@ -1178,49 +1227,96 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 _logger.critical("Rejecting request while Postgres tenant RLS bypass context is active")
                 return JSONResponse(status_code=500, content={"detail": "Tenant isolation guard is not clean"})
 
-        if self._is_scim_path(request.url.path):
-            return await self._try_scim_bearer_auth(request, call_next)
+        return await self.resolve_principal(request, call_next)
 
+    async def resolve_principal(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
+        """Decide authentication for a request through one ordered resolver chain.
+
+        This is the single authentication decision point. Each credential source
+        (SCIM bearer, browser session, trusted proxy, static key, OIDC bearer,
+        API key, anonymous fallback) is a resolver returning ``Resolved`` (a
+        principal was authenticated), ``Invalid`` (a credential was presented and
+        rejected — terminal, never falls through), or ``Absent`` (nothing to act
+        on — try the next resolver). The order and per-resolver semantics are
+        exactly those of the previous inline dispatch chain; see the individual
+        ``_resolve_*`` methods. The final resolver is always terminal.
+        """
         session_token = request.cookies.get(SESSION_COOKIE_NAME, "")
-        if session_token:
-            session_response = await self._try_browser_session_auth(request, call_next, session_token)
-            if session_response is not None:
-                return session_response
-
         # Extract raw key from headers for CLI and service clients.
-        raw_key = ""
         auth = request.headers.get("authorization", "")
-        if auth.startswith("Bearer "):
-            raw_key = auth[7:]
+        raw_key = auth[7:] if auth.startswith("Bearer ") else ""
         if not raw_key:
             raw_key = request.headers.get("x-api-key", "")
 
-        if not raw_key:
-            proxy_response = await self._try_proxy_header_auth(request, call_next)
-            if proxy_response is not None:
-                return proxy_response
-            # No API key, no session cookie, no trusted-proxy attestation. If the
-            # operator opted into anonymous read-only access AND no credential
-            # was presented in any form, serve the request as NO_AUTH_ROLE
-            # instead of 401. A present-but-malformed credential (e.g. an
-            # unsupported Authorization scheme) must NOT silently downgrade to
-            # anonymous — it is treated as a presented credential and rejected.
-            if self._allow_unauthenticated and not self._credential_presented(request, auth):
-                return await self._serve_anonymous(request, call_next)
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"},
-            )
+        resolvers: tuple[Callable[[], Awaitable[Resolution]], ...] = (
+            lambda: self._resolve_scim_bearer(request, call_next),
+            lambda: self._resolve_browser_session(request, call_next, session_token),
+            lambda: self._resolve_trusted_proxy(request, call_next, raw_key),
+            lambda: self._resolve_static_key(request, call_next, raw_key),
+            lambda: self._resolve_oidc_bearer(request, call_next, raw_key, auth),
+            lambda: self._resolve_api_key(request, call_next, raw_key),
+            lambda: self._resolve_terminal(request, call_next, raw_key, auth),
+        )
+        response = await run_resolver_chain(resolvers)
+        if response is not None:
+            return response
+        # Unreachable: the terminal resolver never returns Absent. Fail closed.
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
+    @staticmethod
+    def _classify_terminal(request: StarletteRequest, response: Response) -> Resolution:
+        """Tag a terminal helper Response as Resolved or Invalid.
+
+        The SCIM / browser-session / trusted-proxy helpers set
+        ``request.state.auth_method`` only once a principal is established; an
+        auth rejection returns a JSONResponse without it. Both outcomes are
+        terminal, so the distinction is purely semantic (and sets up the
+        post-resolution policy point), never a control-flow change.
+        """
+        if getattr(request.state, "auth_method", None):
+            return Resolved(response)
+        return Invalid(response)
+
+    async def _resolve_scim_bearer(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Resolution:
+        if not self._is_scim_path(request.url.path):
+            return Absent()
+        return self._classify_terminal(request, await self._try_scim_bearer_auth(request, call_next))
+
+    async def _resolve_browser_session(
+        self, request: StarletteRequest, call_next: RequestResponseEndpoint, session_token: str
+    ) -> Resolution:
+        if not session_token:
+            return Absent()
+        return self._classify_terminal(request, await self._try_browser_session_auth(request, call_next, session_token))
+
+    async def _resolve_trusted_proxy(self, request: StarletteRequest, call_next: RequestResponseEndpoint, raw_key: str) -> Resolution:
+        # Trusted-proxy headers are consulted only when no API key was presented,
+        # preserving the previous ``if not raw_key`` gate.
+        if raw_key:
+            return Absent()
+        proxy_response = await self._try_proxy_header_auth(request, call_next)
+        if proxy_response is None:
+            return Absent()
+        return self._classify_terminal(request, proxy_response)
+
+    async def _resolve_static_key(self, request: StarletteRequest, call_next: RequestResponseEndpoint, raw_key: str) -> Resolution:
         # Simple mode: single static key (backward compatible, all access)
+        if not raw_key:
+            return Absent()
         if self._api_key and secrets.compare_digest(raw_key, self._api_key):
             request.state.api_key_name = "static-key"
             request.state.api_key_role = "admin"
             request.state.tenant_id = "default"
             request.state.auth_method = "static_api_key"
-            return await self._call_with_tenant_context(request, call_next)
+            return Resolved(await self._call_with_tenant_context(request, call_next))
+        return Absent()
 
+    async def _resolve_oidc_bearer(
+        self, request: StarletteRequest, call_next: RequestResponseEndpoint, raw_key: str, auth: str
+    ) -> Resolution:
         # OIDC mode: try JWT verification when AGENT_BOM_OIDC_ISSUER is set
+        if not raw_key:
+            return Absent()
         if not self._oidc_checked:
             from agent_bom.api.oidc import OIDCConfig
 
@@ -1228,100 +1324,136 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             self._oidc_checked = True
 
         oidc_cfg = self._oidc_config
-        if oidc_cfg is not None and getattr(oidc_cfg, "enabled", False) and auth.startswith("Bearer "):
-            from agent_bom.api.oidc import OIDCError, record_oidc_decode_failure
+        if oidc_cfg is None or not getattr(oidc_cfg, "enabled", False) or not auth.startswith("Bearer "):
+            return Absent()
 
-            try:
-                _claims, oidc_role = oidc_cfg.verify(raw_key)
-                required = self._required_role(request.method, request.url.path)
-                from agent_bom.api.auth import Role
+        from agent_bom.api.oidc import OIDCError, record_oidc_decode_failure
 
-                tenant_id = oidc_cfg.resolve_tenant(_claims)
-                subject = _claims.get("email") or _claims.get("preferred_username") or _claims.get("sub", "oidc-user")
-                upstream_role = Role(oidc_role)
-                effective_role, scim_error = self._resolve_runtime_role(
-                    request,
-                    tenant_id=tenant_id,
-                    upstream_role=upstream_role,
-                    subjects=(subject, _claims.get("email"), _claims.get("preferred_username"), _claims.get("upn"), _claims.get("sub")),
-                )
-                if scim_error is not None:
-                    return scim_error
-                required_role = Role(required)
-                if effective_role is not None and self._role_allows(effective_role, required_role):
-                    request.state.api_key_name = subject
-                    request.state.api_key_role = effective_role.value
-                    request.state.tenant_id = tenant_id
-                    request.state.auth_method = "oidc"
-                    # Short issuer suffix helps operators recognize which IdP
-                    # resolved the token without leaking the full URL to all
-                    # request-scoped log fields.
-                    issuer = str(_claims.get("iss") or "")
-                    request.state.auth_issuer = issuer.rsplit("/", 1)[-1][:64] if issuer else None
-                    return await self._call_with_tenant_context(request, call_next)
-                actual_role = effective_role.value if effective_role else oidc_role
-                return JSONResponse(
+        try:
+            _claims, oidc_role = oidc_cfg.verify(raw_key)
+            required = self._required_role(request.method, request.url.path)
+            from agent_bom.api.auth import Role
+
+            tenant_id = oidc_cfg.resolve_tenant(_claims)
+            subject = _claims.get("email") or _claims.get("preferred_username") or _claims.get("sub", "oidc-user")
+            upstream_role = Role(oidc_role)
+            effective_role, scim_error = self._resolve_runtime_role(
+                request,
+                tenant_id=tenant_id,
+                upstream_role=upstream_role,
+                subjects=(subject, _claims.get("email"), _claims.get("preferred_username"), _claims.get("upn"), _claims.get("sub")),
+            )
+            if scim_error is not None:
+                return Invalid(scim_error)
+            required_role = Role(required)
+            if effective_role is not None and self._role_allows(effective_role, required_role):
+                request.state.api_key_name = subject
+                request.state.api_key_role = effective_role.value
+                request.state.tenant_id = tenant_id
+                request.state.auth_method = "oidc"
+                # Short issuer suffix helps operators recognize which IdP
+                # resolved the token without leaking the full URL to all
+                # request-scoped log fields.
+                issuer = str(_claims.get("iss") or "")
+                request.state.auth_issuer = issuer.rsplit("/", 1)[-1][:64] if issuer else None
+                return Resolved(await self._call_with_tenant_context(request, call_next))
+            actual_role = effective_role.value if effective_role else oidc_role
+            return Invalid(
+                JSONResponse(
                     status_code=403,
                     content={"detail": f"Forbidden — requires {required} role, OIDC session has {actual_role}"},
                 )
-            except OIDCError as exc:
-                record_oidc_decode_failure()
-                _logger.debug("OIDC verification failed: %s", sanitize_text(exc))
-                # Fall through to API key check — OIDC failure is non-fatal if keys also configured
+            )
+        except OIDCError as exc:
+            record_oidc_decode_failure()
+            _logger.debug("OIDC verification failed: %s", sanitize_text(exc))
+            # Fall through to API key check — OIDC failure is non-fatal if keys also configured
+            return Absent()
 
+    async def _resolve_api_key(self, request: StarletteRequest, call_next: RequestResponseEndpoint, raw_key: str) -> Resolution:
         # RBAC mode: check against KeyStore
+        if not raw_key:
+            return Absent()
         from agent_bom.api.auth import Role, get_key_store
 
         store = get_key_store()
-        if store.has_keys():
-            # ``store.verify`` runs a ~21ms scrypt derivation (in-memory store) or
-            # a blocking DB read (Postgres store); offload it to a worker thread so
-            # it never stalls the async event loop while unrelated requests wait.
-            api_key = await anyio.to_thread.run_sync(store.verify, raw_key)
-            if api_key:
-                required = self._required_role(request.method, request.url.path)
-                required_role = Role(required)
-                effective_role = api_key.role
-                if api_key.name.startswith("saml:") or api_key.scim_subject_id:
-                    subjects = [api_key.name.removeprefix("saml:"), api_key.name]
-                    if api_key.scim_subject_id:
-                        subjects.append(api_key.scim_subject_id)
-                    effective_role, scim_error = self._resolve_runtime_role(
-                        request,
-                        tenant_id=api_key.tenant_id,
-                        upstream_role=api_key.role,
-                        subjects=tuple(subjects),
-                    )
-                    if scim_error is not None:
-                        return scim_error
-                    effective_role = effective_role or api_key.role
-                if not self._role_allows(effective_role, required_role):
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": f"Forbidden — requires {required} role, you have {effective_role.value}"},
-                    )
-                required_scope = self._required_scope(request.method, request.url.path)
-                if not api_key.has_scope(required_scope):
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": f"Forbidden — requires scope {required_scope}"},
-                    )
-                request.state.api_key_name = api_key.name
-                request.state.api_key_role = effective_role.value
-                request.state.tenant_id = api_key.tenant_id
-                request.state.api_key_id = api_key.key_id
-                request.state.api_key_scopes = list(api_key.scopes)
-                if api_key.scim_subject_id:
-                    request.state.scim_subject_id = api_key.scim_subject_id
-                # SAML-minted keys are named "saml:<subject>" — surface that
-                # as a distinct auth method so operators can trace who came
-                # in via which IdP path even after the key has been issued.
-                request.state.auth_method = "saml" if api_key.name.startswith("saml:") else "api_key"
-                return await self._call_with_tenant_context(request, call_next)
+        if not store.has_keys():
+            return Absent()
+        # ``store.verify`` runs a ~21ms scrypt derivation (in-memory store) or
+        # a blocking DB read (Postgres store); offload it to a worker thread so
+        # it never stalls the async event loop while unrelated requests wait.
+        api_key = await anyio.to_thread.run_sync(store.verify, raw_key)
+        if not api_key:
+            return Absent()
+        required = self._required_role(request.method, request.url.path)
+        required_role = Role(required)
+        effective_role = api_key.role
+        if api_key.name.startswith("saml:") or api_key.scim_subject_id:
+            subjects = [api_key.name.removeprefix("saml:"), api_key.name]
+            if api_key.scim_subject_id:
+                subjects.append(api_key.scim_subject_id)
+            resolved_role, scim_error = self._resolve_runtime_role(
+                request,
+                tenant_id=api_key.tenant_id,
+                upstream_role=api_key.role,
+                subjects=tuple(subjects),
+            )
+            if scim_error is not None:
+                return Invalid(scim_error)
+            effective_role = resolved_role or api_key.role
+        if not self._role_allows(effective_role, required_role):
+            return Invalid(
+                JSONResponse(
+                    status_code=403,
+                    content={"detail": f"Forbidden — requires {required} role, you have {effective_role.value}"},
+                )
+            )
+        required_scope = self._required_scope(request.method, request.url.path)
+        if not api_key.has_scope(required_scope):
+            return Invalid(
+                JSONResponse(
+                    status_code=403,
+                    content={"detail": f"Forbidden — requires scope {required_scope}"},
+                )
+            )
+        request.state.api_key_name = api_key.name
+        request.state.api_key_role = effective_role.value
+        request.state.tenant_id = api_key.tenant_id
+        request.state.api_key_id = api_key.key_id
+        request.state.api_key_scopes = list(api_key.scopes)
+        if api_key.scim_subject_id:
+            request.state.scim_subject_id = api_key.scim_subject_id
+        # SAML-minted keys are named "saml:<subject>" — surface that
+        # as a distinct auth method so operators can trace who came
+        # in via which IdP path even after the key has been issued.
+        request.state.auth_method = "saml" if api_key.name.startswith("saml:") else "api_key"
+        return Resolved(await self._call_with_tenant_context(request, call_next))
 
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Unauthorized — invalid API key"},
+    async def _resolve_terminal(self, request: StarletteRequest, call_next: RequestResponseEndpoint, raw_key: str, auth: str) -> Resolution:
+        """Final resolver: anonymous fallback (opt-in) or a hard 401.
+
+        Reached only after every credential source returned Absent.
+        """
+        if not raw_key:
+            # No API key, no session cookie, no trusted-proxy attestation. If the
+            # operator opted into anonymous read-only access AND no credential
+            # was presented in any form, serve the request as NO_AUTH_ROLE
+            # instead of 401. A present-but-malformed credential (e.g. an
+            # unsupported Authorization scheme) must NOT silently downgrade to
+            # anonymous — it is treated as a presented credential and rejected.
+            if self._allow_unauthenticated and not self._credential_presented(request, auth):
+                return Resolved(await self._serve_anonymous(request, call_next))
+            return Invalid(
+                JSONResponse(
+                    status_code=401,
+                    content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"},
+                )
+            )
+        return Invalid(
+            JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized — invalid API key"},
+            )
         )
 
     def _is_scim_path(self, path: str) -> bool:

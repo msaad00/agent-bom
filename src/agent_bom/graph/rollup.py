@@ -22,6 +22,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.severity import OCSF_SEVERITY_NAMES, SEVERITY_BUCKETS_WORST_FIRST, SEVERITY_RANK
@@ -438,6 +439,12 @@ def rollup_view(
             "orphan_shown_count": len(orphans),
             "orphan_truncated_count": len(truncated_orphan_ids),
         },
+        "completeness": graph_completeness(
+            returned=len(top_level),
+            total=len(containers) + len(orphan_ids),
+            truncated=bool(truncated_orphan_ids),
+            reason="orphan_limit" if truncated_orphan_ids else "",
+        ),
     }
 
 
@@ -462,6 +469,7 @@ def drill_down(
             "filters": _filters_dict(filters),
             "children": [],
             "summary": {"direct_child_count": 0, "returned_child_count": 0},
+            "completeness": graph_completeness(returned=0, total=0),
         }
 
     children = _contains_children(graph)
@@ -509,6 +517,7 @@ def drill_down(
             "direct_child_count": len(direct),
             "returned_child_count": len(child_entries),
         },
+        "completeness": graph_completeness(returned=len(child_entries), total=len(direct)),
     }
 
 
@@ -527,11 +536,12 @@ def attack_path_view(
     ``edges``) the caller already materialised — this function does not derive
     paths, it only assembles the readable view around them.
     """
-    ranked = sorted(
+    ranked_all = sorted(
         attack_paths,
         key=lambda p: (getattr(p, "composite_risk", 0.0), len(getattr(p, "hops", []))),
         reverse=True,
-    )[: max(0, max_paths)]
+    )
+    ranked = ranked_all[: max(0, max_paths)]
 
     path_node_ids: list[str] = []
     seen_nodes: set[str] = set()
@@ -580,6 +590,12 @@ def attack_path_view(
             "path_edge_count": len(path_edges),
             "collapsed_count": len(collapsed_off_path),
         },
+        "completeness": graph_completeness(
+            returned=len(ranked),
+            total=len(ranked_all),
+            truncated=len(ranked_all) > len(ranked),
+            reason="path_limit" if len(ranked_all) > len(ranked) else "",
+        ),
     }
 
 

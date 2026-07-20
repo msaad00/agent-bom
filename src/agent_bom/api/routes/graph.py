@@ -55,6 +55,7 @@ from agent_bom.graph import (
     UnifiedGraph,
     UnifiedNode,
 )
+from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
 from agent_bom.security import sanitize_error
 
@@ -1414,6 +1415,12 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
         "interaction_risks": interaction_risks,
         "stats": stats,
         "pagination": pagination,
+        "completeness": graph_completeness(
+            returned=len(paged_nodes),
+            total=len(all_nodes),
+            truncated=pagination["has_more"],
+            reason="node_page_limit" if pagination["has_more"] else "",
+        ),
         "attack_path_pagination": {
             "total": len(matching_paths),
             "limit": _FILTERED_GRAPH_ATTACK_PATH_LIMIT,
@@ -1480,6 +1487,12 @@ def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str
             "package": package,
             "agent": agent,
         },
+        "completeness": graph_completeness(
+            returned=len(cards),
+            total=len(ranked_paths),
+            truncated=len(ranked_paths) > len(cards),
+            reason="path_card_limit" if len(ranked_paths) > len(cards) else "",
+        ),
     }
 
 
@@ -1521,6 +1534,12 @@ def _serialize_attack_path_queue(
         "interaction_risks": [],
         "stats": stats,
         "pagination": _page_meta(total, offset, limit),
+        "completeness": graph_completeness(
+            returned=len(paths),
+            total=total,
+            truncated=offset + len(paths) < total,
+            reason="path_page_limit" if offset + len(paths) < total else "",
+        ),
     }
 
 
@@ -1558,6 +1577,11 @@ def _governance_graph_payload(
     for node in graph.nodes.values():
         if node.entity_type in governance_types:
             counts[node.entity_type.value] = counts.get(node.entity_type.value, 0) + 1
+    governance_truncated = (
+        len(nodes) < len(keep_ids)
+        or len(edges) < len(candidate_edges)
+        or len(attack_paths) < len(matching_paths)
+    )
     return {
         "scan_id": graph.scan_id,
         "tenant_id": tenant_id,
@@ -1578,6 +1602,12 @@ def _governance_graph_payload(
             "limit": attack_path_limit,
             "has_more": len(matching_paths) > attack_path_limit,
         },
+        "completeness": graph_completeness(
+            returned=len(nodes),
+            total=len(keep_ids),
+            truncated=governance_truncated,
+            reason="governance_budget" if governance_truncated else "",
+        ),
     }
 
 
@@ -1588,11 +1618,12 @@ def _semantic_cluster_payload(
     min_members: int,
     limit: int,
 ) -> dict[str, Any]:
-    clusters = [
+    all_clusters = [
         cluster
         for cluster in build_semantic_clusters(graph.nodes.values(), graph.edges, min_members=min_members)
         if cluster.kind in selected_kinds
-    ][:limit]
+    ]
+    clusters = all_clusters[:limit]
     return {
         "scan_id": graph.scan_id,
         "tenant_id": graph.tenant_id,
@@ -1600,6 +1631,12 @@ def _semantic_cluster_payload(
         "clusters": [cluster.to_dict() for cluster in clusters],
         "stats": semantic_cluster_stats(clusters),
         "available_kinds": list(SEMANTIC_CLUSTER_KINDS),
+        "completeness": graph_completeness(
+            returned=len(clusters),
+            total=len(all_clusters),
+            truncated=len(all_clusters) > len(clusters),
+            reason="cluster_limit" if len(all_clusters) > len(clusters) else "",
+        ),
     }
 
 
@@ -1874,6 +1911,12 @@ async def get_graph(
             min_severity_rank=min_rank,
         ),
         "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
+        "completeness": graph_completeness(
+            returned=len(paged_nodes),
+            total=total,
+            truncated=bool(next_cursor) or offset + len(paged_nodes) < total,
+            reason="node_page_limit" if bool(next_cursor) or offset + len(paged_nodes) < total else "",
+        ),
     }
 
 
@@ -1979,7 +2022,9 @@ async def get_graph_diff(
 ) -> dict:
     """Diff two scan snapshots — nodes/edges added, removed, changed."""
     diff = await _graph_store_call(_get_graph_store_or_503().diff_snapshots, old, new, tenant_id=_tenant(request))
-    return _tag_diff_change_kinds(diff)
+    diff = _tag_diff_change_kinds(diff)
+    diff["completeness"] = graph_completeness(returned=1, total=1)
+    return diff
 
 
 @router.get("/graph/edges/active", tags=["graph"])
@@ -1988,7 +2033,10 @@ async def get_active_graph_edges(
     at: str = Query(..., description="ISO timestamp for replay lookup"),
 ) -> list[dict]:
     """Return edge versions active at a timestamp for replay views."""
-    return await _graph_store_call(_get_graph_store_or_503().active_edges_at, at, tenant_id=_tenant(request))
+    edges = await _graph_store_call(_get_graph_store_or_503().active_edges_at, at, tenant_id=_tenant(request))
+    # Preserve the historical list response shape; callers receive all edges
+    # selected by the timestamp query and no page-level sampling is applied.
+    return edges
 
 
 @router.get("/graph/edges/changes", tags=["graph"])
@@ -1998,7 +2046,10 @@ async def get_graph_edge_changes(
     new: str = Query(..., description="New scan ID"),
 ) -> dict:
     """Return edge lifecycle changes between two scan snapshots."""
-    return await _graph_store_call(_get_graph_store_or_503().changed_edges_between_scans, old, new, tenant_id=_tenant(request))
+    changes = await _graph_store_call(_get_graph_store_or_503().changed_edges_between_scans, old, new, tenant_id=_tenant(request))
+    if isinstance(changes, dict):
+        changes["completeness"] = graph_completeness(returned=1, total=1)
+    return changes
 
 
 @router.get("/graph/attack-paths", tags=["graph"], responses={200: _ATTACK_PATHS_OPENAPI_RESPONSE})
@@ -2272,6 +2323,12 @@ async def get_graph_paths(
             if ap.source == source_node_id
         ],
         "pagination": pagination,
+        "completeness": graph_completeness(
+            returned=len(paged_paths),
+            total=len(all_paths),
+            truncated=pagination["has_more"],
+            reason="path_page_limit" if pagination["has_more"] else "",
+        ),
     }
 
 
@@ -2347,6 +2404,12 @@ async def search_graph(
             "next_cursor": next_cursor or "",
             "has_more": bool(next_cursor) if cursor else offset + limit < total,
         },
+        "completeness": graph_completeness(
+            returned=len(results),
+            total=total,
+            truncated=bool(next_cursor) or offset + len(results) < total,
+            reason="search_page_limit" if bool(next_cursor) or offset + len(results) < total else "",
+        ),
     }
 
 
@@ -2439,6 +2502,12 @@ async def list_graph_agents(
             for node in agents
         ],
         "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
+        "completeness": graph_completeness(
+            returned=len(agents),
+            total=total,
+            truncated=bool(next_cursor) or offset + len(agents) < total,
+            reason="agent_page_limit" if bool(next_cursor) or offset + len(agents) < total else "",
+        ),
     }
 
 
@@ -2538,6 +2607,12 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
             dynamic_only=body.dynamic_only,
             include_ids=set(body.roots),
         ).to_dict(),
+        "completeness": graph_completeness(
+            returned=len(filtered_graph.nodes),
+            total=filtered_graph.stats().get("node_count", len(filtered_graph.nodes)),
+            truncated=truncated,
+            reason="traversal_budget" if truncated else "",
+        ),
     }
 
 
@@ -2564,6 +2639,7 @@ async def get_graph_node(
         "neighbors": node_context["neighbors"],
         "sources": node_context["sources"],
         "impact": node_context["impact"],
+        "completeness": graph_completeness(returned=1, total=1),
     }
 
 
@@ -2610,6 +2686,7 @@ async def get_graph_node_neighbors(
             "truncated": False,
             "neighbors": [],
             "edges": [],
+            "completeness": graph_completeness(returned=0, total=0),
         }
 
     selected_edges: list = []
@@ -2657,6 +2734,12 @@ async def get_graph_node_neighbors(
         "truncated": truncated,
         "neighbors": [node.to_dict() for node in ordered_nodes],
         "edges": [edge.to_dict() for edge in bounded_edges],
+        "completeness": graph_completeness(
+            returned=len(ordered_nodes),
+            total=total_neighbors,
+            truncated=truncated,
+            reason="neighbor_limit" if truncated else "",
+        ),
     }
 
 

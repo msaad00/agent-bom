@@ -1347,7 +1347,10 @@ def _run_scan_sync(job: ScanJob) -> None:
                 raise RuntimeError(f"Failed to load VEX file: {vex_exc}") from vex_exc
             _vex_count = apply_vex(report, _vex_doc)
             report.vex_data = vex_to_serializable(_vex_doc)
-            report.findings = [blast_radius_to_finding(br) for br in blast_radii]
+            # Preserve non-CVE policy findings while replacing stale CVE
+            # projections with the VEX-updated blast-radius representation.
+            non_cve_findings = [finding for finding in report.findings if finding.finding_type.value != "CVE"]
+            report.findings = [blast_radius_to_finding(br) for br in blast_radii] + non_cve_findings
             with lock:
                 job.progress.append(f"VEX applied: {_vex_count} vulnerabilities updated from {req.vex}")
         try:

@@ -16,6 +16,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
@@ -516,137 +517,152 @@ async def get_agent_mesh(request: Request) -> dict:
     as an interactive graph.
 
     Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
+
+    The synchronous discovery + store scans run in a worker thread so they
+    never block the event loop.
     """
     try:
-        from agent_bom.output.agent_mesh import build_agent_mesh
-        from agent_bom.parsers import extract_packages
-
-        agents = _discover_agents_with_demo_fallback()
-        for agent in agents:
-            for server in agent.mcp_servers:
-                if not server.packages:
-                    server.packages = extract_packages(server)
-
-        tenant_id = _tenant_id(request)
-        scan_history_index = _build_scan_history_index(tenant_id)
-        gateway_index = _build_gateway_index(tenant_id)
-        fleet_index = {(item.canonical_id or item.name): item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
-        for agent in agents:
-            _persist_agent_observations(
-                tenant_id,
-                agent,
-                fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "") or agent.name),
-                scan_history_index=scan_history_index,
-                gateway_index=gateway_index,
-            )
-        observation_index = _observation_index(tenant_id)
-        agents_data = [
-            _serialize_agent(
-                a,
-                fleet_agent=fleet_index.get(getattr(a, "canonical_id", "") or a.name),
-                scan_history_index=scan_history_index,
-                gateway_index=gateway_index,
-                observation_index=observation_index,
-            )
-            for a in agents
-        ]
-
-        # Gather blast radius from completed scans for vuln overlay.
-        all_blast: list[dict] = []
-        for job in _get_store().list_all(tenant_id=_tenant_id(request)):
-            if job.status == JobStatus.DONE and job.result:
-                all_blast.extend(job.result.get("blast_radius", []))
-
-        return build_agent_mesh(agents_data, all_blast)
+        return await anyio.to_thread.run_sync(_get_agent_mesh_impl, request)
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
-@router.get("/agents/{agent_name}", tags=["discovery"])
-async def get_agent_detail(request: Request, agent_name: str) -> dict:
-    """Get detailed view of a single agent with cross-referenced scan data."""
-    try:
-        from agent_bom.discovery import discover_all
-        from agent_bom.parsers import extract_packages
+def _get_agent_mesh_impl(request: Request) -> dict:
+    from agent_bom.output.agent_mesh import build_agent_mesh
+    from agent_bom.parsers import extract_packages
 
-        agents = discover_all()
-        agent = None
-        for a in agents:
-            if a.name == agent_name:
-                agent = a
-                break
-
-        if agent is None:
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-
+    agents = _discover_agents_with_demo_fallback()
+    for agent in agents:
         for server in agent.mcp_servers:
             if not server.packages:
                 server.packages = extract_packages(server)
 
-        # Cross-reference blast radii from completed scans
-        agent_blast: list[dict] = []
-        for job in _get_store().list_all(tenant_id=_tenant_id(request)):
-            if job.status != JobStatus.DONE or not job.result:
-                continue
-            for br in job.result.get("blast_radius", []):
-                if agent_name in br.get("affected_agents", []):
-                    agent_blast.append(br)
-
-        total_packages = sum(len(s.packages) for s in agent.mcp_servers)
-        total_tools = sum(len(s.tools) for s in agent.mcp_servers)
-        all_credentials: list[str] = []
-        for s in agent.mcp_servers:
-            all_credentials.extend(s.credential_names)
-
-        severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-        for br in agent_blast:
-            sev = (br.get("severity") or "").lower()
-            if sev in severity_counts:
-                severity_counts[sev] += 1
-
-        fleet_agent = None
-        tenant_id = _tenant_id(request)
-        for candidate in _get_fleet_store().list_by_tenant(tenant_id):
-            if candidate.name == agent_name:
-                fleet_agent = candidate.model_dump()
-                break
-        scan_history_index = _build_scan_history_index(tenant_id)
-        gateway_index = _build_gateway_index(tenant_id)
+    tenant_id = _tenant_id(request)
+    scan_history_index = _build_scan_history_index(tenant_id)
+    gateway_index = _build_gateway_index(tenant_id)
+    fleet_index = {(item.canonical_id or item.name): item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+    for agent in agents:
         _persist_agent_observations(
             tenant_id,
             agent,
-            fleet_agent=fleet_agent,
+            fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "") or agent.name),
             scan_history_index=scan_history_index,
             gateway_index=gateway_index,
         )
-        observation_index = _observation_index(tenant_id)
+    observation_index = _observation_index(tenant_id)
+    agents_data = [
+        _serialize_agent(
+            a,
+            fleet_agent=fleet_index.get(getattr(a, "canonical_id", "") or a.name),
+            scan_history_index=scan_history_index,
+            gateway_index=gateway_index,
+            observation_index=observation_index,
+        )
+        for a in agents
+    ]
 
-        return {
-            "agent": _serialize_agent(
-                agent,
-                fleet_agent=fleet_agent,
-                scan_history_index=scan_history_index,
-                gateway_index=gateway_index,
-                observation_index=observation_index,
-            ),
-            "summary": {
-                "total_servers": len(agent.mcp_servers),
-                "total_packages": total_packages,
-                "total_tools": total_tools,
-                "total_credentials": len(all_credentials),
-                "total_vulnerabilities": len(agent_blast),
-                "severity_breakdown": severity_counts,
-            },
-            "blast_radius": agent_blast,
-            "credentials": all_credentials,
-            "fleet": fleet_agent,
-        }
+    # Gather blast radius from completed scans for vuln overlay.
+    all_blast: list[dict] = []
+    for job in _get_store().list_all(tenant_id=_tenant_id(request)):
+        if job.status == JobStatus.DONE and job.result:
+            all_blast.extend(job.result.get("blast_radius", []))
+
+    return build_agent_mesh(agents_data, all_blast)
+
+
+@router.get("/agents/{agent_name}", tags=["discovery"])
+async def get_agent_detail(request: Request, agent_name: str) -> dict:
+    """Get detailed view of a single agent with cross-referenced scan data.
+
+    The synchronous discovery + store scans run in a worker thread so they
+    never block the event loop.
+    """
+    try:
+        return await anyio.to_thread.run_sync(_get_agent_detail_impl, request, agent_name)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Agent detail failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+
+
+def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
+    from agent_bom.discovery import discover_all
+    from agent_bom.parsers import extract_packages
+
+    agents = discover_all()
+    agent = None
+    for a in agents:
+        if a.name == agent_name:
+            agent = a
+            break
+
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+
+    for server in agent.mcp_servers:
+        if not server.packages:
+            server.packages = extract_packages(server)
+
+    # Cross-reference blast radii from completed scans
+    agent_blast: list[dict] = []
+    for job in _get_store().list_all(tenant_id=_tenant_id(request)):
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        for br in job.result.get("blast_radius", []):
+            if agent_name in br.get("affected_agents", []):
+                agent_blast.append(br)
+
+    total_packages = sum(len(s.packages) for s in agent.mcp_servers)
+    total_tools = sum(len(s.tools) for s in agent.mcp_servers)
+    all_credentials: list[str] = []
+    for s in agent.mcp_servers:
+        all_credentials.extend(s.credential_names)
+
+    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for br in agent_blast:
+        sev = (br.get("severity") or "").lower()
+        if sev in severity_counts:
+            severity_counts[sev] += 1
+
+    fleet_agent = None
+    tenant_id = _tenant_id(request)
+    for candidate in _get_fleet_store().list_by_tenant(tenant_id):
+        if candidate.name == agent_name:
+            fleet_agent = candidate.model_dump()
+            break
+    scan_history_index = _build_scan_history_index(tenant_id)
+    gateway_index = _build_gateway_index(tenant_id)
+    _persist_agent_observations(
+        tenant_id,
+        agent,
+        fleet_agent=fleet_agent,
+        scan_history_index=scan_history_index,
+        gateway_index=gateway_index,
+    )
+    observation_index = _observation_index(tenant_id)
+
+    return {
+        "agent": _serialize_agent(
+            agent,
+            fleet_agent=fleet_agent,
+            scan_history_index=scan_history_index,
+            gateway_index=gateway_index,
+            observation_index=observation_index,
+        ),
+        "summary": {
+            "total_servers": len(agent.mcp_servers),
+            "total_packages": total_packages,
+            "total_tools": total_tools,
+            "total_credentials": len(all_credentials),
+            "total_vulnerabilities": len(agent_blast),
+            "severity_breakdown": severity_counts,
+        },
+        "blast_radius": agent_blast,
+        "credentials": all_credentials,
+        "fleet": fleet_agent,
+    }
 
 
 @router.get("/agents/{agent_name}/lifecycle", tags=["discovery"])

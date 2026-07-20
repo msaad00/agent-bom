@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Annotated, Any, cast
 from urllib.parse import urlsplit
 
+import anyio.to_thread
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -1937,8 +1938,12 @@ async def test_siem_connection(
             raise HTTPException(status_code=400, detail=f"Invalid URL: {sanitize_error(url_exc)}")
 
     try:
-        connector = create_connector(siem_type, SIEMConfig(name=siem_type, url=url, token=token))
-        healthy = connector.health_check()
+
+        def _probe() -> bool:
+            connector = create_connector(siem_type, SIEMConfig(name=siem_type, url=url, token=token))
+            return connector.health_check()
+
+        healthy = await anyio.to_thread.run_sync(_probe)
         log_action(
             "siem.test",
             actor=actor,

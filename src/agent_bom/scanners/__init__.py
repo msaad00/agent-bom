@@ -75,6 +75,7 @@ from agent_bom.scanners.state import (
     record_scan_warning,
     reset_scan_performance,
     reset_scan_warnings,
+    reset_scan_warnings_only,
 )
 
 __all__ = [
@@ -133,6 +134,7 @@ __all__ = [
     "request_with_retry",
     "reset_scan_performance",
     "reset_scan_warnings",
+    "reset_scan_warnings_only",
     "scan_agents",
     "scan_agents_sync",
     "scan_agents_with_enrichment",

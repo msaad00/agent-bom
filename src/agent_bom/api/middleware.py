@@ -1392,7 +1392,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             subjects = [api_key.name.removeprefix("saml:"), api_key.name]
             if api_key.scim_subject_id:
                 subjects.append(api_key.scim_subject_id)
-            effective_role, scim_error = self._resolve_runtime_role(
+            resolved_role, scim_error = self._resolve_runtime_role(
                 request,
                 tenant_id=api_key.tenant_id,
                 upstream_role=api_key.role,
@@ -1400,7 +1400,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             )
             if scim_error is not None:
                 return Invalid(scim_error)
-            effective_role = effective_role or api_key.role
+            effective_role = resolved_role or api_key.role
         if not self._role_allows(effective_role, required_role):
             return Invalid(
                 JSONResponse(

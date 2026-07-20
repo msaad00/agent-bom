@@ -67,6 +67,9 @@ topologySpread:
     topologyKey: kubernetes.io/hostname
 
 tests:
+  # The hook checks API/UI endpoints and is rendered only when the control
+  # plane is enabled. Keep it available for full-stack profiles without
+  # making the scanner-only default claim a live service check.
   enabled: true
   includeUi: true
   image:
@@ -780,6 +783,12 @@ startupProbe:
 
 networkPolicy:
   enabled: true
+  # The default chart is scanner-only. Scope this baseline policy to scanner
+  # pods so enabling the control plane does not silently block Postgres,
+  # identity, cloud, or UI/API traffic before operators provide egress rules.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: scanner
   restrictIngress: true
   ingress: []
   allowDns: true

@@ -70,6 +70,15 @@ def main() -> int:
 
     chart_dir = helm_chart_dir(REPO_ROOT)
     _run(["helm", "lint", str(chart_dir)])
+
+    default_rendered = _render(["helm", "template", "agent-bom-default", str(chart_dir)])
+    if "agent-bom-test-connection" in default_rendered:
+        print(
+            "error: scanner-only default must not render the control-plane connection test hook",
+            file=sys.stderr,
+        )
+        return 1
+
     for profile in selected:
         cmd = ["helm", "template", f"agent-bom-{profile.name}", str(chart_dir)]
         for values_file in profile.values_files:

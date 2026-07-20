@@ -296,7 +296,7 @@ def _check_1_1(project_id: str) -> CISCheckResult:
     """CIS 1.1 — Ensure corporate login credentials are used."""
     result = CISCheckResult(
         check_id="1.1",
-        title="Ensure that corporate login credentials are used",
+        title="Corporate login credentials used",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove IAM bindings for members using gmail.com accounts. Use corporate/organisational login credentials instead.",
@@ -333,7 +333,7 @@ def _check_1_2(project_id: str) -> CISCheckResult:
     """CIS 1.2 — Ensure multi-factor authentication is enforced for all users."""
     return CISCheckResult(
         check_id="1.2",
-        title="Ensure multi-factor authentication is enforced for all users",
+        title="MFA enforced for all users",
         status=CheckStatus.NOT_APPLICABLE,
         severity="high",
         evidence="MFA enforcement is configured at the Google Workspace / Cloud Identity level and cannot be verified via project-level API calls. Manual verification required.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -346,7 +346,7 @@ def _check_1_3(project_id: str) -> CISCheckResult:
     """CIS 1.3 — Ensure Security Key enforcement is enabled for all admin accounts."""
     return CISCheckResult(
         check_id="1.3",
-        title="Ensure Security Key enforcement is enabled for all admin accounts",
+        title="Security Key enforcement for admin accounts",
         status=CheckStatus.NOT_APPLICABLE,
         severity="high",
         evidence="Security Key enforcement is configured at the Google Workspace / Cloud Identity level and cannot be verified via project-level API calls. Manual verification required.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -359,7 +359,7 @@ def _check_1_4(project_id: str) -> CISCheckResult:
     """CIS 1.4 — Ensure service account keys are not created for user-managed service accounts."""
     result = CISCheckResult(
         check_id="1.4",
-        title="Ensure service account keys are not created for user-managed service accounts",
+        title="No user-managed service account keys",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation=(
@@ -404,7 +404,7 @@ def _check_1_5(project_id: str) -> CISCheckResult:
     """CIS 1.5 — Ensure primitive roles (Owner/Editor) are not used on the project."""
     result = CISCheckResult(
         check_id="1.5",
-        title="Ensure primitive roles (Owner/Editor) are not assigned at project level",
+        title="No primitive roles (Owner/Editor) at project level",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Replace primitive Owner/Editor bindings with predefined or custom roles following least privilege.",
@@ -446,7 +446,7 @@ def _check_1_6(project_id: str) -> CISCheckResult:
     """CIS 1.6 — Ensure service account has no admin privileges."""
     result = CISCheckResult(
         check_id="1.6",
-        title="Ensure service account has no admin privileges",
+        title="Service accounts lack admin privileges",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation=(
@@ -489,7 +489,7 @@ def _check_1_7(project_id: str) -> CISCheckResult:
     """CIS 1.7 — Ensure user-managed service accounts do not have admin privileges."""
     result = CISCheckResult(
         check_id="1.7",
-        title="Ensure user-managed service accounts do not have admin privileges",
+        title="User-managed service accounts lack admin privileges",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation=(
@@ -537,7 +537,7 @@ def _check_1_8(project_id: str) -> CISCheckResult:
     """CIS 1.8 — Ensure rotation for user-managed service account keys is within 90 days."""
     result = CISCheckResult(
         check_id="1.8",
-        title="Ensure user-managed service account keys are rotated within 90 days",
+        title="User-managed service account keys rotated within 90 days",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Rotate user-managed service account keys every 90 days or less. Prefer short-lived credentials via Workload Identity.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -586,7 +586,7 @@ def _check_1_9(project_id: str) -> CISCheckResult:
     """CIS 1.9 — Ensure Cloud KMS encryption keys are not anonymously or publicly accessible."""
     result = CISCheckResult(
         check_id="1.9",
-        title="Ensure Cloud KMS encryption keys are not anonymously or publicly accessible",
+        title="Cloud KMS keys not publicly accessible",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation="Remove allUsers and allAuthenticatedUsers from Cloud KMS key IAM policies.",
@@ -626,7 +626,7 @@ def _check_1_10(project_id: str) -> CISCheckResult:
     """CIS 1.10 — Ensure KMS encryption keys are rotated within a period of 90 days."""
     result = CISCheckResult(
         check_id="1.10",
-        title="Ensure KMS encryption keys are rotated within 90 days",
+        title="KMS keys rotated within 90 days",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set a rotation period of 90 days or less on all Cloud KMS encryption keys.",
@@ -667,7 +667,7 @@ def _check_1_11(project_id: str) -> CISCheckResult:
     """CIS 1.11 — Ensure separation of duties is enforced while assigning KMS-related roles."""
     result = CISCheckResult(
         check_id="1.11",
-        title="Ensure separation of duties is enforced while assigning KMS-related roles",
+        title="Separation of duties for KMS role assignment",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Ensure no user has both cloudkms.admin and any of cloudkms.cryptoKeyEncrypterDecrypter, cloudkms.cryptoKeyEncrypter, or cloudkms.cryptoKeyDecrypter roles.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -718,7 +718,7 @@ def _check_1_12(project_id: str) -> CISCheckResult:
     """CIS 1.12 — Ensure API keys are restricted to only APIs the application needs."""
     result = CISCheckResult(
         check_id="1.12",
-        title="Ensure API keys are restricted to only APIs the application needs",
+        title="API keys restricted to needed APIs",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Restrict each API key to only the specific APIs required by the application.",
@@ -759,7 +759,7 @@ def _check_1_13(project_id: str) -> CISCheckResult:
     """CIS 1.13 — Ensure API keys are restricted to specific hosts and apps."""
     result = CISCheckResult(
         check_id="1.13",
-        title="Ensure API keys are restricted to specific hosts and apps",
+        title="API keys restricted to specific hosts and apps",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Add application restrictions (HTTP referrers, IP addresses, Android/iOS apps) to each API key.",
@@ -802,7 +802,7 @@ def _check_1_14(project_id: str) -> CISCheckResult:
     """CIS 1.14 — Ensure API keys are rotated within 90 days."""
     result = CISCheckResult(
         check_id="1.14",
-        title="Ensure API keys are rotated within 90 days",
+        title="API keys rotated within 90 days",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Rotate API keys every 90 days or less to reduce the impact of compromised keys.",
@@ -846,7 +846,7 @@ def _check_1_15(project_id: str) -> CISCheckResult:
     """CIS 1.15 — Ensure essential contacts is configured for the organization."""
     result = CISCheckResult(
         check_id="1.15",
-        title="Ensure essential contacts is configured for the organization",
+        title="Essential contacts configured for the org",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Configure Essential Contacts for SECURITY, TECHNICAL, and BILLING notification categories.",
@@ -893,7 +893,7 @@ def _check_2_1(project_id: str) -> CISCheckResult:
     """CIS 2.1 — Ensure Cloud Audit Logs is configured to log Admin Activity and Data Access."""
     result = CISCheckResult(
         check_id="2.1",
-        title="Ensure Cloud Audit Logs is configured for all services",
+        title="Cloud Audit Logs configured for all services",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable DATA_READ and DATA_WRITE audit log types for all services in the project IAM policy.",
@@ -932,7 +932,7 @@ def _check_2_2(project_id: str) -> CISCheckResult:
     """CIS 2.2 — Ensure a log sink is configured for all log entries."""
     result = CISCheckResult(
         check_id="2.2",
-        title="Ensure a log sink is configured to export all log entries",
+        title="Log sink exports all log entries",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation=(
@@ -973,7 +973,7 @@ def _check_2_3(project_id: str) -> CISCheckResult:
     """CIS 2.3 — Ensure log metric filter and alerts exist for Project Ownership changes."""
     result = CISCheckResult(
         check_id="2.3",
-        title="Ensure log metric filter and alerts exist for Project Ownership changes",
+        title="Log metric filter and alerts for Project Ownership changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for (protoPayload.serviceName="cloudresourcemanager.googleapis.com") AND (ProjectOwnership OR projectOwnerInvitee).',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1008,7 +1008,7 @@ def _check_2_4(project_id: str) -> CISCheckResult:
     """CIS 2.4 — Ensure log metric filter and alerts exist for Audit Configuration changes."""
     result = CISCheckResult(
         check_id="2.4",
-        title="Ensure log metric filter and alerts exist for Audit Configuration changes",
+        title="Log metric filter and alerts for Audit Configuration changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for protoPayload.methodName="SetIamPolicy" AND protoPayload.serviceData.policyDelta.auditConfigDeltas:*.',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1043,7 +1043,7 @@ def _check_2_5(project_id: str) -> CISCheckResult:
     """CIS 2.5 — Ensure log metric filter and alerts exist for Custom Role changes."""
     result = CISCheckResult(
         check_id="2.5",
-        title="Ensure log metric filter and alerts exist for Custom Role changes",
+        title="Log metric filter and alerts for Custom Role changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for resource.type="iam_role" AND (methodName="google.iam.admin.v1.CreateRole" OR methodName="google.iam.admin.v1.DeleteRole" OR methodName="google.iam.admin.v1.UpdateRole").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1078,7 +1078,7 @@ def _check_2_6(project_id: str) -> CISCheckResult:
     """CIS 2.6 — Ensure log metric filter and alerts exist for VPC Network Firewall Rule changes."""
     result = CISCheckResult(
         check_id="2.6",
-        title="Ensure log metric filter and alerts exist for VPC Network Firewall Rule changes",
+        title="Log metric filter and alerts for VPC firewall rule changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for resource.type="gce_firewall_rule" AND (methodName:"compute.firewalls.patch" OR methodName:"compute.firewalls.insert" OR methodName:"compute.firewalls.delete").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1113,7 +1113,7 @@ def _check_2_7(project_id: str) -> CISCheckResult:
     """CIS 2.7 — Ensure log metric filter and alerts exist for VPC Network Route changes."""
     result = CISCheckResult(
         check_id="2.7",
-        title="Ensure log metric filter and alerts exist for VPC Network Route changes",
+        title="Log metric filter and alerts for VPC route changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for resource.type="gce_route" AND (methodName:"compute.routes.delete" OR methodName:"compute.routes.insert").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1148,7 +1148,7 @@ def _check_2_8(project_id: str) -> CISCheckResult:
     """CIS 2.8 — Ensure log metric filter and alerts exist for VPC Network changes."""
     result = CISCheckResult(
         check_id="2.8",
-        title="Ensure log metric filter and alerts exist for VPC Network changes",
+        title="Log metric filter and alerts for VPC network changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for resource.type="gce_network" AND (methodName:"compute.networks.insert" OR methodName:"compute.networks.patch" OR methodName:"compute.networks.delete" OR methodName:"compute.networks.removePeering" OR methodName:"compute.networks.addPeering").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1183,7 +1183,7 @@ def _check_2_9(project_id: str) -> CISCheckResult:
     """CIS 2.9 — Ensure log metric filter and alerts exist for Cloud Storage IAM permission changes."""
     result = CISCheckResult(
         check_id="2.9",
-        title="Ensure log metric filter and alerts exist for Cloud Storage IAM permission changes",
+        title="Log metric filter and alerts for Cloud Storage IAM changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for resource.type="gcs_bucket" AND protoPayload.methodName="storage.setIamPermissions".',
@@ -1218,7 +1218,7 @@ def _check_2_10(project_id: str) -> CISCheckResult:
     """CIS 2.10 — Ensure log metric filter and alerts exist for SQL instance configuration changes."""
     result = CISCheckResult(
         check_id="2.10",
-        title="Ensure log metric filter and alerts exist for SQL instance configuration changes",
+        title="Log metric filter and alerts for SQL instance config changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for protoPayload.methodName="cloudsql.instances.update".',
@@ -1253,7 +1253,7 @@ def _check_2_11(project_id: str) -> CISCheckResult:
     """CIS 2.11 — Ensure log metric filter and alerts exist for DNS Zone changes."""
     result = CISCheckResult(
         check_id="2.11",
-        title="Ensure log metric filter and alerts exist for DNS Zone changes",
+        title="Log metric filter and alerts for DNS zone changes",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation='Create a log metric filter for resource.type="dns_managed_zone" AND (methodName:"dns.managedZones.create" OR methodName:"dns.managedZones.patch" OR methodName:"dns.managedZones.update" OR methodName:"dns.managedZones.delete").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1288,7 +1288,7 @@ def _check_2_12(project_id: str) -> CISCheckResult:
     """CIS 2.12 — Ensure Cloud DNS logging is enabled for all VPC networks."""
     result = CISCheckResult(
         check_id="2.12",
-        title="Ensure Cloud DNS logging is enabled for all VPC networks",
+        title="Cloud DNS logging enabled for all VPC networks",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable DNS logging on all Cloud DNS managed zones by setting the logging configuration.",
@@ -1332,7 +1332,7 @@ def _check_3_1(project_id: str) -> CISCheckResult:
     """CIS 3.1 — Ensure the default VPC network does not exist in a project."""
     result = CISCheckResult(
         check_id="3.1",
-        title="Ensure the default VPC network does not exist in the project",
+        title="No default VPC network in the project",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Delete the 'default' VPC network and create custom VPC networks with explicit firewall rules.",
@@ -1365,7 +1365,7 @@ def _check_3_2(project_id: str) -> CISCheckResult:
     """CIS 3.2 — Ensure legacy networks do not exist in the project."""
     result = CISCheckResult(
         check_id="3.2",
-        title="Ensure legacy networks do not exist in the project",
+        title="No legacy networks in the project",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Delete legacy networks and create VPC networks with custom subnet mode instead.",
@@ -1403,7 +1403,7 @@ def _check_3_3(project_id: str) -> CISCheckResult:
     """CIS 3.3 — Ensure DNSSEC is enabled for Cloud DNS."""
     result = CISCheckResult(
         check_id="3.3",
-        title="Ensure that DNSSEC is enabled for Cloud DNS",
+        title="DNSSEC enabled for Cloud DNS",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable DNSSEC on all public Cloud DNS managed zones.",
@@ -1442,7 +1442,7 @@ def _check_3_4(project_id: str) -> CISCheckResult:
     """CIS 3.4 — Ensure RSASHA1 is not used for key-signing in DNSSEC."""
     result = CISCheckResult(
         check_id="3.4",
-        title="Ensure that RSASHA1 is not used for the key-signing key in Cloud DNS DNSSEC",
+        title="RSASHA1 not used for DNSSEC key-signing key",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Use RSASHA256, RSASHA512, or ECDSAP256SHA256 for DNSSEC key-signing keys instead of RSASHA1.",
@@ -1480,7 +1480,7 @@ def _check_3_5(project_id: str) -> CISCheckResult:
     """CIS 3.5 — Ensure RSASHA1 is not used for zone-signing in DNSSEC."""
     result = CISCheckResult(
         check_id="3.5",
-        title="Ensure that RSASHA1 is not used for the zone-signing key in Cloud DNS DNSSEC",
+        title="RSASHA1 not used for DNSSEC zone-signing key",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Use RSASHA256, RSASHA512, or ECDSAP256SHA256 for DNSSEC zone-signing keys instead of RSASHA1.",
@@ -1518,7 +1518,7 @@ def _check_3_8(project_id: str) -> CISCheckResult:
     """CIS 3.8 — Ensure Firewall Rules for ICMP are not open to the world."""
     result = CISCheckResult(
         check_id="3.8",
-        title="Ensure that Firewall Rules for ICMP are not open to the world",
+        title="ICMP firewall rules not open to the world",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Remove or restrict firewall rules that allow ICMP from 0.0.0.0/0 or ::/0.",
@@ -1564,7 +1564,7 @@ def _check_3_10(project_id: str) -> CISCheckResult:
     """CIS 3.10 — Ensure private Google access is enabled for all subnets."""
     result = CISCheckResult(
         check_id="3.10",
-        title="Ensure Private Google Access is enabled for all subnets in a VPC",
+        title="Private Google Access enabled on all subnets",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable Private Google Access on all subnets to allow VMs without external IPs to reach Google APIs.",
@@ -1604,7 +1604,7 @@ def _check_3_9(project_id: str) -> CISCheckResult:
     """CIS 3.9 — Ensure VPC Flow Logs are enabled for every subnet."""
     result = CISCheckResult(
         check_id="3.9",
-        title="Ensure VPC Flow Logs are enabled for every subnet",
+        title="VPC Flow Logs enabled on every subnet",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable VPC Flow Logs on all subnets for network monitoring and forensics.",
@@ -1645,7 +1645,7 @@ def _check_3_6(project_id: str) -> CISCheckResult:
     """CIS 3.6 — Ensure SSH access is restricted from the internet."""
     result = CISCheckResult(
         check_id="3.6",
-        title="Ensure that SSH access is restricted from the internet (port 22)",
+        title="SSH (port 22) restricted from the internet",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation="Remove or restrict firewall rules that allow TCP port 22 from 0.0.0.0/0 or ::/0.",
@@ -1692,7 +1692,7 @@ def _check_3_7(project_id: str) -> CISCheckResult:
     """CIS 3.7 — Ensure RDP access is restricted from the internet."""
     result = CISCheckResult(
         check_id="3.7",
-        title="Ensure that RDP access is restricted from the internet (port 3389)",
+        title="RDP (port 3389) restricted from the internet",
         status=CheckStatus.ERROR,
         severity="critical",
         recommendation="Remove or restrict firewall rules that allow TCP port 3389 from 0.0.0.0/0 or ::/0.",
@@ -1744,7 +1744,7 @@ def _check_4_1(project_id: str) -> CISCheckResult:
     """CIS 4.1 — Ensure instances are not configured to use default service account."""
     result = CISCheckResult(
         check_id="4.1",
-        title="Ensure instances are not configured to use default service account",
+        title="Instances not using default service account",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation=(
@@ -1789,7 +1789,7 @@ def _check_4_2(project_id: str) -> CISCheckResult:
     """CIS 4.2 — Ensure instances are not configured to use the default service account with full access."""
     result = CISCheckResult(
         check_id="4.2",
-        title="Ensure instances are not configured to use the default service account with full access to all APIs",
+        title="Instances not using default service account with full API access",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove the default service account or restrict its scopes. Do not use https://www.googleapis.com/auth/cloud-platform scope with the default SA.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -1836,7 +1836,7 @@ def _check_4_3(project_id: str) -> CISCheckResult:
     """CIS 4.3 — Ensure 'Block Project-wide SSH Keys' is enabled for VM instances."""
     result = CISCheckResult(
         check_id="4.3",
-        title="Ensure 'Block Project-wide SSH Keys' is enabled for VM instances",
+        title="Block Project-wide SSH Keys enabled on VMs",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation=(
@@ -1887,7 +1887,7 @@ def _check_4_4(project_id: str) -> CISCheckResult:
     """CIS 4.4 — Ensure OS login is enabled for a project."""
     result = CISCheckResult(
         check_id="4.4",
-        title="Ensure OS Login is enabled for a project",
+        title="OS Login enabled for the project",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the 'enable-oslogin' metadata key to 'TRUE' at the project level.",
@@ -1928,7 +1928,7 @@ def _check_4_5(project_id: str) -> CISCheckResult:
     """CIS 4.5 — Ensure 'Enable connecting to serial ports' is not enabled for VM instances."""
     result = CISCheckResult(
         check_id="4.5",
-        title="Ensure 'Enable connecting to serial ports' is not enabled for VM instances",
+        title="Serial-port connection disabled on VMs",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set 'serial-port-enable' metadata to 'false' or remove it from all VM instances.",
@@ -1974,7 +1974,7 @@ def _check_4_6(project_id: str) -> CISCheckResult:
     """CIS 4.6 — Ensure IP forwarding is not enabled on instances."""
     result = CISCheckResult(
         check_id="4.6",
-        title="Ensure that IP forwarding is not enabled on Instances",
+        title="IP forwarding disabled on instances",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Disable IP forwarding on instances unless explicitly required for NAT or routing functions.",
@@ -2014,7 +2014,7 @@ def _check_4_7(project_id: str) -> CISCheckResult:
     """CIS 4.7 — Ensure VM disks for critical VMs are encrypted with CSEK."""
     result = CISCheckResult(
         check_id="4.7",
-        title="Ensure VM disks for critical VMs are encrypted with Customer-Supplied Encryption Keys (CSEK)",
+        title="Critical VM disks encrypted with CSEK",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Encrypt VM disks with Customer-Supplied Encryption Keys (CSEK) for critical workloads.",
@@ -2055,7 +2055,7 @@ def _check_4_8(project_id: str) -> CISCheckResult:
     """CIS 4.8 — Ensure Compute instances are launched with Shielded VM enabled."""
     result = CISCheckResult(
         check_id="4.8",
-        title="Ensure Compute instances are launched with Shielded VM enabled",
+        title="Compute instances launched with Shielded VM",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable Shielded VM features (vTPM and Integrity Monitoring) on all Compute instances.",
@@ -2101,7 +2101,7 @@ def _check_4_9(project_id: str) -> CISCheckResult:
     """CIS 4.9 — Ensure that Compute instances do not have public IP addresses."""
     result = CISCheckResult(
         check_id="4.9",
-        title="Ensure that Compute instances do not have public IP addresses",
+        title="Compute instances lack public IP addresses",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove external IP addresses from Compute instances. Use Cloud NAT or IAP for outbound/inbound access.",
@@ -2149,7 +2149,7 @@ def _check_4_11(project_id: str) -> CISCheckResult:
     """CIS 4.11 — Ensure that Compute instances have Confidential Computing enabled."""
     result = CISCheckResult(
         check_id="4.11",
-        title="Ensure that Compute instances have Confidential Computing enabled",
+        title="Confidential Computing enabled on instances",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable Confidential Computing on Compute instances for memory encryption.",
@@ -2195,7 +2195,7 @@ def _check_5_1(project_id: str) -> CISCheckResult:
     """CIS 5.1 — Ensure Cloud Storage buckets are not publicly accessible."""
     result = CISCheckResult(
         check_id="5.1",
-        title="Ensure that Cloud Storage bucket is not anonymously or publicly accessible",
+        title="Cloud Storage buckets not publicly accessible",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove allUsers and allAuthenticatedUsers from bucket IAM policies.",
@@ -2250,7 +2250,7 @@ def _check_5_2(project_id: str) -> CISCheckResult:
     """CIS 5.2 — Ensure that Cloud Storage buckets have uniform bucket-level access enabled."""
     result = CISCheckResult(
         check_id="5.2",
-        title="Ensure that Cloud Storage buckets have uniform bucket-level access enabled",
+        title="Uniform bucket-level access enabled on buckets",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Enable uniform bucket-level access on all Cloud Storage buckets to use IAM exclusively for access control.",
@@ -2294,7 +2294,7 @@ def _check_6_1(project_id: str) -> CISCheckResult:
     """CIS 6.1 — Ensure Cloud SQL database instances require all incoming connections to use SSL."""
     result = CISCheckResult(
         check_id="6.1",
-        title="Ensure Cloud SQL database instances require all incoming connections to use SSL",
+        title="Cloud SQL requires SSL for all connections",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable 'Require SSL' (requireSsl) on all Cloud SQL instances to encrypt connections in transit.",
@@ -2332,7 +2332,7 @@ def _check_6_2(project_id: str) -> CISCheckResult:
     """CIS 6.2 — Ensure Cloud SQL database instances do not have public IPs."""
     result = CISCheckResult(
         check_id="6.2",
-        title="Ensure that Cloud SQL database instances do not have public IPs",
+        title="Cloud SQL instances lack public IPs",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove public IP addresses from Cloud SQL instances and use private IP or Cloud SQL Proxy instead.",
@@ -2370,7 +2370,7 @@ def _check_6_3(project_id: str) -> CISCheckResult:
     """CIS 6.3 — Ensure Cloud SQL database instances have automated backups enabled."""
     result = CISCheckResult(
         check_id="6.3",
-        title="Ensure that Cloud SQL database instances have automated backups enabled",
+        title="Cloud SQL automated backups enabled",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Enable automated backups on all Cloud SQL instances.",
@@ -2407,7 +2407,7 @@ def _check_6_4(project_id: str) -> CISCheckResult:
     """CIS 6.4 — Ensure Cloud SQL PostgreSQL instances have log_error_verbosity set to DEFAULT or stricter."""
     result = CISCheckResult(
         check_id="6.4",
-        title="Ensure Cloud SQL for PostgreSQL instances have log_error_verbosity set to DEFAULT or stricter",
+        title="Cloud SQL PostgreSQL log_error_verbosity DEFAULT or stricter",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the log_error_verbosity database flag to DEFAULT or TERSE on PostgreSQL instances.",
@@ -2453,7 +2453,7 @@ def _check_6_5(project_id: str) -> CISCheckResult:
     """CIS 6.5 — Ensure Cloud SQL PostgreSQL instances have log_connections enabled."""
     result = CISCheckResult(
         check_id="6.5",
-        title="Ensure that Cloud SQL for PostgreSQL instances have log_connections database flag set to on",
+        title="Cloud SQL PostgreSQL log_connections flag on",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the log_connections database flag to 'on' on all PostgreSQL instances.",
@@ -2498,7 +2498,7 @@ def _check_6_6(project_id: str) -> CISCheckResult:
     """CIS 6.6 — Ensure Cloud SQL PostgreSQL instances have log_disconnections enabled."""
     result = CISCheckResult(
         check_id="6.6",
-        title="Ensure that Cloud SQL for PostgreSQL instances have log_disconnections database flag set to on",
+        title="Cloud SQL PostgreSQL log_disconnections flag on",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the log_disconnections database flag to 'on' on all PostgreSQL instances.",
@@ -2543,7 +2543,7 @@ def _check_6_7(project_id: str) -> CISCheckResult:
     """CIS 6.7 — Ensure Cloud SQL PostgreSQL instances have log_min_duration_statement set to -1."""
     result = CISCheckResult(
         check_id="6.7",
-        title="Ensure that Cloud SQL for PostgreSQL instances have log_min_duration_statement set to -1",
+        title="Cloud SQL PostgreSQL log_min_duration_statement set to -1",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set the log_min_duration_statement database flag to '-1' to disable logging of statement durations (prevents sensitive data leakage).",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
@@ -2593,7 +2593,7 @@ def _check_7_1(project_id: str) -> CISCheckResult:
     """CIS 7.1 — Ensure BigQuery datasets are not anonymously or publicly accessible."""
     result = CISCheckResult(
         check_id="7.1",
-        title="Ensure that BigQuery datasets are not anonymously or publicly accessible",
+        title="BigQuery datasets not publicly accessible",
         status=CheckStatus.ERROR,
         severity="high",
         recommendation="Remove allUsers and allAuthenticatedUsers from BigQuery dataset IAM policies.",
@@ -2636,7 +2636,7 @@ def _check_7_2(project_id: str) -> CISCheckResult:
     """CIS 7.2 — Ensure BigQuery datasets have default table expiration configured."""
     result = CISCheckResult(
         check_id="7.2",
-        title="Ensure that a default Customer-managed encryption key (CMEK) is specified for all BigQuery Data Sets",
+        title="Default CMEK specified for BigQuery datasets",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set a default table expiration on all BigQuery datasets to automatically clean up unused tables.",
@@ -2677,7 +2677,7 @@ def _check_7_3(project_id: str) -> CISCheckResult:
     """CIS 7.3 — Ensure BigQuery datasets are encrypted with Customer-Managed Keys (CMK)."""
     result = CISCheckResult(
         check_id="7.3",
-        title="Ensure that all BigQuery Tables are encrypted with Customer-managed encryption key (CMEK)",
+        title="BigQuery tables encrypted with CMEK",
         status=CheckStatus.ERROR,
         severity="medium",
         recommendation="Set a default KMS key on all BigQuery datasets so that new tables are automatically encrypted with CMEK.",

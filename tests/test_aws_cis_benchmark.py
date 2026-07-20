@@ -2565,3 +2565,52 @@ class TestRunBenchmark:
             report = run_benchmark(checks=["1.4", "1.5"])
             assert report.total == 2
             assert {c.check_id for c in report.checks} == {"1.4", "1.5"}
+
+    def test_error_path_titles_are_own_descriptors_not_verbatim_cis(self):
+        """Copyright guard for the AWS error path.
+
+        On a boto3 failure ``_run_check`` derives the check title from the
+        function docstring via ``_extract_title``. That title is emitted as
+        ``CISCheckResult.title``, so the docstring must carry agent-bom's own
+        descriptor keyed to the CIS check id — never the verbatim (copyrighted)
+        official CIS Foundations Benchmark title. This drives every check onto
+        the error path and asserts no emitted title reproduces the CIS
+        "Ensure ..." house style or a known verbatim title.
+        """
+
+        class _RaisingClient:
+            def __getattr__(self, _name):
+                def _raise(*_a, **_k):
+                    raise RuntimeError("forced failure")
+
+                return _raise
+
+        modules_patch, mock_boto3 = _mock_boto3_modules()
+        with modules_patch:
+            mock_session = MagicMock()
+            mock_boto3.Session.return_value = mock_session
+            mock_session.region_name = "us-east-1"
+
+            mock_sts = MagicMock()
+            mock_sts.get_caller_identity.return_value = {"Account": "123"}
+
+            def client_factory(service, **_kwargs):
+                if service == "sts":
+                    return mock_sts
+                return _RaisingClient()
+
+            mock_session.client.side_effect = client_factory
+
+            report = run_benchmark()
+
+        assert report.total == 60
+        # The forced failures must actually exercise the error path.
+        assert sum(1 for c in report.checks if c.status == CheckStatus.ERROR) >= 50
+        offenders = [c.title for c in report.checks if c.title.lower().startswith("ensure ")]
+        assert not offenders, f"AWS error-path titles leak verbatim CIS text: {offenders}"
+        forbidden = {
+            "Ensure MFA is enabled for the root user account",
+            "Ensure no root user account access key exists",
+            "Maintain current contact details",
+        }
+        assert not (forbidden & {c.title for c in report.checks})

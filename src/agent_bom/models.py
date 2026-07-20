@@ -213,8 +213,11 @@ class Vulnerability:
           working on (or using) exploits.
         - ``"public_exploit"`` — EPSS percentile ≥ 80. Public exploit
           code exists but widespread exploitation not yet observed.
-        - ``"theoretical"`` — no KEV, low EPSS. Exploitation is
-          theoretically possible but not currently evidenced.
+        - ``"theoretical"`` — no KEV, but EPSS *is* present and low.
+          Exploitation is assessed as possible-but-not-evidenced.
+        - ``"unassessed"`` — no KEV, no EPSS score, and no EPSS
+          percentile. There is no basis for any exploit assessment, so
+          no assessed-sounding label is fabricated from absent signal.
 
         The monotonic ordering means the highest-severity signal wins
         (KEV always beats EPSS-only signals) and never double-counts.
@@ -228,6 +231,8 @@ class Vulnerability:
 
         if self.is_kev:
             return "actively_exploited"
+        if self.epss_score is None and self.epss_percentile is None:
+            return "unassessed"  # no signal → no fabricated assessment
         epss = self.epss_score or 0.0
         pct = self.epss_percentile or 0.0
         if epss >= EPSS_ACTIVE_EXPLOITATION_THRESHOLD or pct >= 95.0:

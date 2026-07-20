@@ -65,6 +65,20 @@ def test_no_data_when_nothing_mapped():
     assert line["summary"]["evaluated"] == 0
 
 
+def test_no_data_forces_zero_score_even_with_passing_controls():
+    """Contract guard: a no_data line can never carry a non-zero score.
+
+    With ``scan_count=0`` the line is ``no_data`` regardless of any evaluated
+    controls; the raw score must be zeroed so JSON consumers never read a
+    passing score off an unscanned estate (§11 honesty).
+    """
+    cis_statuses = {("aws", "2.1.2"): "pass"}  # a passing evaluated control
+    line = build_nist_800_53_catalog_line([], cis_statuses, scan_count=0)
+    assert line["status"] == "no_data"
+    assert line["summary"]["evaluated"] >= 1
+    assert line["score"] == 0.0
+
+
 def test_drill_reconciles_and_family_rollup_sums_back():
     all_blast, cis_statuses = _scenario()
     line = build_nist_800_53_catalog_line(all_blast, cis_statuses, scan_count=1)

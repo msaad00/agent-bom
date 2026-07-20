@@ -335,10 +335,10 @@ jobs:
 
   refresh-collector-latest:
     name: Rebuild and publish collector latest from latest release tag
-    # The cloud-SDK collector's whole reason to exist (#4239): this daily rebuild
-    # of `agent-bom-collector:latest` absorbs newer boto3/azure/google/snowflake
-    # SDK wheels (within the pinned floors) WITHOUT a control-plane version bump,
-    # so the provider SDK layer stays current on its own cadence.
+    # Rebuild the released collector with current reviewed runtime-security
+    # overlays and base-image patches. Python/provider SDK versions stay frozen
+    # to the release tag's uv.lock; version changes require a reviewed lockfile
+    # update rather than silently drifting during a scheduled build.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

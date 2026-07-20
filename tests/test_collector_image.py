@@ -53,16 +53,19 @@ def test_collector_runs_as_non_root_with_healthcheck() -> None:
 
 
 def test_collector_installs_cloud_sdk_extras_not_hardcoded_versions() -> None:
-    """The SDK versions come from the pyproject extras, never re-declared here.
+    """The SDK groups come from pyproject and exact versions from uv.lock.
 
     Guards the single-source-of-truth contract with #3835's drift gate: the
-    Dockerfile installs `.[${AGENT_BOM_EXTRAS}]` and must not pin any anchor SDK
-    to a literal version of its own (which would silently fork the floor).
+    Dockerfile selects the requested extras from the reviewed ``uv.lock`` and
+    must not pin any anchor SDK to a literal version of its own (which would
+    silently fork the lockfile contract).
     """
     text = DOCKERFILE.read_text()
-    assert 'pip install --no-cache-dir --prefix=/install ".[${AGENT_BOM_EXTRAS}]"' in text, (
-        "collector must install the pyproject cloud extras as the single source of truth"
-    )
+    assert "COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:" in text
+    assert "COPY pyproject.toml uv.lock README.md PYPI_README.md LICENSE ./" in text
+    assert "uv sync --locked --no-dev --no-editable" in text
+    assert "COPY --from=builder /app/.venv /app/.venv" in text
+    assert 'pip install --no-cache-dir --prefix=/install ".[${AGENT_BOM_EXTRAS}]"' not in text
     default = re.search(r"^ARG AGENT_BOM_EXTRAS=(\S+)$", text, re.M)
     assert default, "collector must declare a default AGENT_BOM_EXTRAS build arg"
     extras = set(default.group(1).split(","))

@@ -185,6 +185,39 @@ def test_direct_asgi_import_configures_static_api_key_from_env(monkeypatch):
         configure_api(api_key=None)
 
 
+def test_file_api_key_remains_visible_in_runtime_auth_posture(tmp_path, monkeypatch):
+    """A mounted API-key secret must remain visible after CLI reconfiguration.
+
+    Compose starts the API with ``AGENT_BOM_API_KEY_FILE`` and the CLI calls
+    ``configure_api(api_key=None)`` after the initial ASGI import.  Enforcement
+    already resolves the mounted key; the health/session posture must not
+    regress to ``auth_configured=false`` during that second configuration.
+    """
+    secret_file = tmp_path / "api-key"
+    secret_file.write_text("mounted-control-plane-key\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_BOM_API_KEY_FILE", str(secret_file))
+    monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
+    monkeypatch.delenv("AGENT_BOM_API_KEYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+
+    configure_api_from_env()
+    configure_api(api_key=None)
+    try:
+        client = TestClient(app)
+        health = client.get("/health").json()
+        assert health["auth_required"] is True
+        assert health["auth_configured"] is True
+        assert "api_key" in health["configured_auth_modes"]
+        assert client.get(
+            "/v1/auth/policy",
+            headers={"Authorization": "Bearer mounted-control-plane-key"},
+        ).status_code == 200
+    finally:
+        monkeypatch.delenv("AGENT_BOM_API_KEY_FILE", raising=False)
+        monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+        configure_api(api_key=None)
+
+
 def test_direct_asgi_import_configures_rbac_api_keys_from_env(monkeypatch):
     """AGENT_BOM_API_KEYS should fail closed and preserve per-key roles."""
     raw_admin = "raw-uvicorn-admin-key"

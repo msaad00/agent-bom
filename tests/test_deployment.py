@@ -631,7 +631,11 @@ def test_primary_api_image_includes_snowflake_extra_for_snowflake_backend():
     """
     content = (ROOT / "Dockerfile").read_text()
     assert "ARG AGENT_BOM_EXTRAS=api,snowflake,postgres,aws,azure,gcp" in content
-    assert 'pip install --no-cache-dir --prefix=/install ".[${AGENT_BOM_EXTRAS}]"' in content
+    assert "COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:" in content
+    assert "COPY pyproject.toml uv.lock README.md PYPI_README.md LICENSE ./" in content
+    assert "uv sync --locked --no-dev --no-editable" in content
+    assert "COPY --from=builder /app/.venv /app/.venv" in content
+    assert 'pip install --no-cache-dir --prefix=/install ".[${AGENT_BOM_EXTRAS}]"' not in content
 
 
 def test_runtime_dockerfile_builds_from_repo_source():

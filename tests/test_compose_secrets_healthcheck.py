@@ -69,6 +69,17 @@ def test_every_long_lived_service_has_a_healthcheck(path: Path) -> None:
     )
 
 
+def test_platform_api_healthcheck_uses_a_binary_shipped_in_the_image() -> None:
+    """The primary image ships Python, not curl; its probe must be runnable."""
+    data = yaml.safe_load((COMPOSE_DIR / "docker-compose.platform.yml").read_text(encoding="utf-8"))
+    probe = data["services"]["api"]["healthcheck"]["test"]
+    rendered = " ".join(str(part) for part in probe)
+    assert probe[0] == "CMD-SHELL"
+    assert "python -c" in rendered
+    assert "urllib.request" in rendered
+    assert "curl" not in rendered
+
+
 def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     path = COMPOSE_DIR / "docker-compose.platform.yml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))

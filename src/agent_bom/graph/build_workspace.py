@@ -343,43 +343,19 @@ class _PostgresWorkspaceBackend:
         self._dsn = dsn
         self._workspace_id = workspace_id
         self._conn = psycopg.connect(dsn, autocommit=True)
-        self._ensure_tables()
+        self._verify_tables()
 
-    def _ensure_tables(self) -> None:
-        # payload is stored as TEXT, not JSONB: JSONB normalises key order, which
-        # would change the persisted ``attributes`` byte-for-byte after the
-        # downstream ``json.dumps``. TEXT preserves the exact serialised bytes so
-        # the workspace round-trip stays byte-identical to the direct save.
-        self._conn.execute(
-            "CREATE TABLE IF NOT EXISTS graph_build_workspace_nodes ("
-            "workspace_id TEXT NOT NULL, tenant_id TEXT NOT NULL, node_id TEXT NOT NULL, "
-            "seq BIGSERIAL, payload TEXT NOT NULL, entity_type TEXT NOT NULL DEFAULT '', "
-            "PRIMARY KEY (workspace_id, tenant_id, node_id))"
-        )
-        self._conn.execute(
-            "CREATE TABLE IF NOT EXISTS graph_build_workspace_edges ("
-            "workspace_id TEXT NOT NULL, tenant_id TEXT NOT NULL, edge_key TEXT NOT NULL, "
-            "seq BIGSERIAL, payload TEXT NOT NULL, "
-            "source_id TEXT NOT NULL DEFAULT '', target_id TEXT NOT NULL DEFAULT '', "
-            "PRIMARY KEY (workspace_id, tenant_id, edge_key))"
-        )
-        # Idempotent column migration for shared tables created by an earlier
-        # version (the PG workspace tables persist across builds), mirroring the
-        # postgres_graph._init_tables ADD COLUMN IF NOT EXISTS pattern.
-        self._conn.execute("ALTER TABLE graph_build_workspace_nodes ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT ''")
-        self._conn.execute("ALTER TABLE graph_build_workspace_edges ADD COLUMN IF NOT EXISTS source_id TEXT NOT NULL DEFAULT ''")
-        self._conn.execute("ALTER TABLE graph_build_workspace_edges ADD COLUMN IF NOT EXISTS target_id TEXT NOT NULL DEFAULT ''")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_gbw_nodes_seq ON graph_build_workspace_nodes (workspace_id, tenant_id, seq)")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_gbw_edges_seq ON graph_build_workspace_edges (workspace_id, tenant_id, seq)")
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_gbw_nodes_type ON graph_build_workspace_nodes (workspace_id, tenant_id, entity_type, seq)"
-        )
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_gbw_edges_source ON graph_build_workspace_edges (workspace_id, tenant_id, source_id, seq)"
-        )
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_gbw_edges_target ON graph_build_workspace_edges (workspace_id, tenant_id, target_id, seq)"
-        )
+    def _verify_tables(self) -> None:
+        """Verify migration-owned workspace tables without executing DDL."""
+        rows = self._conn.execute(
+            "SELECT to_regclass(%s), to_regclass(%s)",
+            ("public.graph_build_workspace_nodes", "public.graph_build_workspace_edges"),
+        ).fetchone()
+        if not rows or rows[0] is None or rows[1] is None:
+            self._conn.close()
+            raise RuntimeError(
+                "Postgres graph workspace schema is not migrated; run Alembic upgrade head before starting the service."
+            )
 
     def _upsert(
         self,

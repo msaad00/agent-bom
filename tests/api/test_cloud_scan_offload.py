@@ -128,5 +128,41 @@ async def test_slow_inventory_scan_keeps_event_loop_responsive(monkeypatch):
     assert result["status"] == "disabled"
 
 
+@pytest.mark.asyncio
+async def test_cloud_cis_timeout_returns_bounded_unavailable_envelope(monkeypatch):
+    """Provider credential/metadata retries cannot hold an API request forever."""
+    monkeypatch.setattr(cloud, "_tenant", lambda request: "t-timeout")
+    monkeypatch.setattr(cloud, "_cloud_cis_timeout_seconds", lambda: 0.01)
+
+    def _stuck(*_args, **_kwargs):
+        time.sleep(0.25)
+        return {"provider": "aws"}
+
+    monkeypatch.setattr(cloud, "_run_cis_benchmark", _stuck)
+    result = await cloud.cloud_cis_benchmark(
+        request=object(),
+        provider="aws",
+        checks="",
+        region="",
+        profile="",
+        subscription_id="",
+        project_id="",
+    )
+
+    assert result == {
+        "error": "Provider benchmark timed out before completing.",
+        "provider": "aws",
+        "tenant_id": "t-timeout",
+        "status": "unavailable",
+        "timed_out": True,
+        "audit_metadata": {
+            "read_only": True,
+            "writes_performed": False,
+            "provider": "aws",
+            "note": "No cloud resource was mutated; retry with a scoped provider connection.",
+        },
+    }
+
+
 async def _trivial() -> str:
     return "responsive"

@@ -49,7 +49,7 @@ def _run_persist(tmp_path: Path, monkeypatch, *, enabled: bool, graph, store_nam
     store = SQLiteGraphStore(tmp_path / store_name)
     monkeypatch.setattr(pipeline, "_get_graph_store", lambda: store)
     # Same pre-built graph both runs → removes build-time timestamp drift.
-    monkeypatch.setattr(builder, "build_unified_graph_from_report", lambda report_json, scan_id, tenant_id: graph)
+    monkeypatch.setattr(builder, "build_unified_graph_from_report", lambda report_json, scan_id, tenant_id, container=None: graph)
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)  # force SQLite workspace backend
     if enabled:
         monkeypatch.setenv("AGENT_BOM_GRAPH_BUILD_WORKSPACE", "1")

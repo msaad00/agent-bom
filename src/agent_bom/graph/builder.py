@@ -53,6 +53,7 @@ def build_unified_graph_from_report(
     *,
     scan_id: str = "",
     tenant_id: str = "",
+    container: UnifiedGraph | None = None,
 ) -> UnifiedGraph:
     """Build a UnifiedGraph from the persisted AIBOM report JSON contract.
 
@@ -60,13 +61,24 @@ def build_unified_graph_from_report(
         report_json: The dict produced by ``output.json_fmt.to_json(report)``.
         scan_id: Scan identifier (defaults to report's scan_id).
         tenant_id: Multi-tenant isolation key.
+        container: Optional pre-constructed graph container to emit into. When
+            ``None`` (the default, and every CLI/API/export caller) an in-RAM
+            :class:`UnifiedGraph` is built, byte-identical to the shipped path.
+            The persist path (:func:`agent_bom.api.pipeline._persist_graph_snapshot`)
+            passes a per-build
+            :class:`~agent_bom.graph.store_backed.StoreBackedUnifiedGraph` on a
+            throwaway SQLite workspace under the opt-in
+            ``AGENT_BOM_GRAPH_STORE_BACKED_BUILD`` flag so Phase-A emission and the
+            Phase-B overlays run against the store, bounding the producer's peak
+            RSS (#4055/#4075). The caller owns the container's lifecycle (it is a
+            context manager); this function never closes it.
 
     Returns:
-        A fully populated :class:`UnifiedGraph`.
+        A fully populated :class:`UnifiedGraph` (the ``container`` when supplied).
     """
     span = _GRAPH_TRACER.start_span("graph.build_unified_graph_from_report") if _GRAPH_TRACER else None
     sid = scan_id or report_json.get("scan_id", "")
-    graph = UnifiedGraph(scan_id=sid, tenant_id=tenant_id)
+    graph = container if container is not None else UnifiedGraph(scan_id=sid, tenant_id=tenant_id)
 
     agents_data = report_json.get("agents", [])
     blast_data = report_json.get("blast_radius", report_json.get("blast_radii", []))

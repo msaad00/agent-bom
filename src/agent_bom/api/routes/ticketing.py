@@ -29,6 +29,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -179,7 +180,7 @@ async def create_connection(request: Request, body: TicketingConnectionCreate, _
                 detail="Connection secret encryption is not configured (AGENT_BOM_CONNECTIONS_KEY unset); refusing to store a secret.",
             )
         try:
-            secret_encrypted = encrypt_secret(body.secret.strip())
+            secret_encrypted = await anyio.to_thread.run_sync(encrypt_secret, body.secret.strip())
         except ConnectionSecretError as exc:
             _logger.warning("Ticketing secret encryption unavailable")
             raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
@@ -199,7 +200,7 @@ async def create_connection(request: Request, body: TicketingConnectionCreate, _
         created_at=now,
         updated_at=now,
     )
-    get_ticketing_store().put_connection(record)
+    await anyio.to_thread.run_sync(get_ticketing_store().put_connection, record)
     log_action(
         "ticketing_connection.create",
         actor=_actor(request),
@@ -215,7 +216,7 @@ async def create_connection(request: Request, body: TicketingConnectionCreate, _
 async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the tenant's ticketing connections (non-secret metadata only)."""
     tenant_id = _tenant(request)
-    records = get_ticketing_store().list_connections(tenant_id)
+    records = await anyio.to_thread.run_sync(get_ticketing_store().list_connections, tenant_id)
     return {
         "schema_version": "ticketing.connections.v1",
         "tenant_id": tenant_id,
@@ -228,7 +229,7 @@ async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str
 async def get_connection(request: Request, connection_id: str, _role: Any = _READ_DEP) -> dict[str, Any]:
     """Return one ticketing connection's non-secret metadata (tenant-scoped)."""
     tenant_id = _tenant(request)
-    record = get_ticketing_store().get_connection(tenant_id, connection_id)
+    record = await anyio.to_thread.run_sync(get_ticketing_store().get_connection, tenant_id, connection_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Connection {connection_id} not found")
     return record.to_public_dict()
@@ -239,10 +240,10 @@ async def delete_connection(request: Request, connection_id: str, _role: Any = _
     """Revoke a ticketing connection owned by the tenant."""
     tenant_id = _tenant(request)
     store = get_ticketing_store()
-    record = store.get_connection(tenant_id, connection_id)
+    record = await anyio.to_thread.run_sync(store.get_connection, tenant_id, connection_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Connection {connection_id} not found")
-    store.delete_connection(tenant_id, connection_id)
+    await anyio.to_thread.run_sync(store.delete_connection, tenant_id, connection_id)
     log_action(
         "ticketing_connection.delete",
         actor=_actor(request),
@@ -277,7 +278,7 @@ async def create_ticket(request: Request, body: TicketCreate, _role: Any = _WRIT
 async def list_tickets(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the tenant's filed tickets (finding→ticket links + last status)."""
     tenant_id = _tenant(request)
-    links = get_ticketing_store().list_ticket_links(tenant_id)
+    links = await anyio.to_thread.run_sync(get_ticketing_store().list_ticket_links, tenant_id)
     return {
         "schema_version": "ticketing.tickets.v1",
         "tenant_id": tenant_id,

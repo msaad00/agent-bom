@@ -109,5 +109,8 @@ async def mitre_coverage(request: Request) -> dict[str, Any]:
     tenant_id = require_request_tenant_id(request)
     from agent_bom.api.stores import _get_store
 
-    jobs = _get_store().list_all(tenant_id=tenant_id)
-    return await anyio.to_thread.run_sync(_build_coverage, tenant_id, jobs)
+    def _load_and_build() -> dict[str, Any]:
+        jobs = _get_store().list_all(tenant_id=tenant_id)
+        return _build_coverage(tenant_id, jobs)
+
+    return await anyio.to_thread.run_sync(_load_and_build)

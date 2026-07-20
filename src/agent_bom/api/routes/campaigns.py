@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime
+from functools import partial
 from typing import Any, Literal, cast
 
 import anyio.to_thread
@@ -471,7 +472,7 @@ async def campaign_verification_queue(
 ) -> dict[str, Any]:
     tenant_id = _tenant(request)
     after = _decode_queue_cursor(cursor, tenant_id)
-    rows = get_campaign_store().list_verification_queue(tenant_id, after=after, limit=limit + 1)
+    rows = await anyio.to_thread.run_sync(partial(get_campaign_store().list_verification_queue, tenant_id, after=after, limit=limit + 1))
     has_more = len(rows) > limit
     page = rows[:limit]
     entries = [
@@ -663,7 +664,9 @@ async def sync_campaign_tickets(
     campaign = _find_campaign(_campaigns(request, source), campaign_id)
     _require_complete_membership(campaign)
     finding_ids = set(campaign["finding_ids"])
-    links = get_ticketing_store().list_ticket_links_for_findings(tenant_id, finding_ids, limit=1001)
+    links = await anyio.to_thread.run_sync(
+        partial(get_ticketing_store().list_ticket_links_for_findings, tenant_id, finding_ids, limit=1001)
+    )
     if len(links) > 1000:
         raise HTTPException(status_code=409, detail="Campaign has too many linked tickets for one bounded sync snapshot.")
     links.sort(key=lambda link: link.id)

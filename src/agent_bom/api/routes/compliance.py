@@ -645,7 +645,32 @@ async def list_cis_benchmark_checks(
     limit: int = 100,
     offset: int = 0,
 ) -> dict:
-    """List tenant-scoped CIS benchmark checks with indexed filters where available."""
+    """List tenant-scoped CIS benchmark checks with indexed filters where available.
+
+    The synchronous store reads (columnar/analytics queries plus the in-memory
+    scan-job fallback) run in a worker thread under adaptive backpressure so a
+    deep listing cannot block the event loop; under saturation the endpoint
+    sheds with ``429 + Retry-After``.
+    """
+    try:
+        async with adaptive_backpressure("compliance"):
+            return await anyio.to_thread.run_sync(_list_cis_benchmark_checks_impl, request, cloud, status, priority, limit, offset)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+
+def _list_cis_benchmark_checks_impl(
+    request: Request,
+    cloud: str | None,
+    status: str | None,
+    priority: int | None,
+    limit: int,
+    offset: int,
+) -> dict:
     tenant_id = _tenant_id(request)
     safe_limit = max(1, min(int(limit), 500))
     safe_offset = max(0, int(offset))
@@ -760,7 +785,32 @@ async def cis_benchmark_trends(
       width. Anything else falls back to ``day``.
     - ``cloud`` / ``section`` / ``status`` / ``severity``: optional
       single-value filters narrowing the slice before aggregation.
+
+    The synchronous aggregation (columnar/analytics stores plus the in-memory
+    scan-job fallback) runs in a worker thread under adaptive backpressure so
+    it never blocks the event loop; under saturation the endpoint sheds with
+    ``429 + Retry-After``.
     """
+    try:
+        async with adaptive_backpressure("compliance"):
+            return await anyio.to_thread.run_sync(_cis_benchmark_trends_impl, request, days, bucket, cloud, section, status, severity)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+
+def _cis_benchmark_trends_impl(
+    request: Request,
+    days: int,
+    bucket: str,
+    cloud: str | None,
+    section: str | None,
+    status: str | None,
+    severity: str | None,
+) -> dict:
     tenant_id = _tenant_id(request)
     bucket_unit = bucket if bucket in {"hour", "day", "week"} else "day"
     days_clamped = max(1, min(int(days), 366))
@@ -2561,5 +2611,5 @@ async def clear_hub_findings(request: Request) -> dict:
     """
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
-    removed = get_compliance_hub_store().clear(_tenant_id(request))
+    removed = await anyio.to_thread.run_sync(get_compliance_hub_store().clear, _tenant_id(request))
     return {"removed": removed}

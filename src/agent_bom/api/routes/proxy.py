@@ -16,10 +16,12 @@ import time
 from collections import Counter, OrderedDict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path as _Path
 from threading import Lock
 from typing import TYPE_CHECKING, Any, cast
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
@@ -240,7 +242,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
 
     if analytics_events:
         try:
-            _get_analytics_store().record_events(analytics_events, tenant_id=tenant_id)
+            await anyio.to_thread.run_sync(partial(_get_analytics_store().record_events, analytics_events, tenant_id=tenant_id))
         except Exception:
             pass
 

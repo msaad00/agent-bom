@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 
@@ -467,6 +468,10 @@ async def discovered_upstreams(request: Request) -> dict:
     merging with their authored overrides.
     """
     tenant_id = require_request_tenant_id(request)
+    return await anyio.to_thread.run_sync(_build_discovered_upstreams, tenant_id)
+
+
+def _build_discovered_upstreams(tenant_id: str) -> dict:
     jobs = _get_store().list_all(tenant_id=tenant_id)
 
     # Key by (name, url) so two laptops reporting the same MCP name pointed

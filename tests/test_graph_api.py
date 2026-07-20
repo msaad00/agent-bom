@@ -2310,6 +2310,7 @@ class TestGraphStoreBackendSelection:
         second = client.get("/v1/graph/search", params={"q": "server", "limit": 2, "cursor": next_cursor})
         assert second.status_code == 200
         assert second.json()["pagination"]["cursor"] == next_cursor
+        assert second.json()["completeness"]["status"] == "truncated"
 
     def test_graph_cursor_rejects_invalid_values(self, recording_graph_store):
         client = TestClient(app)
@@ -2355,6 +2356,7 @@ class TestGraphStoreBackendSelection:
         assert [path["target"] for path in body["paths"]] == ["server:s", "vuln:cve"]
         assert body["attack_paths"][0]["exposure_path"]["nodeIds"] == ["agent:a", "server:s", "vuln:cve"]
         assert body["attack_paths"][0]["exposure_path"]["severity"] == "critical"
+        assert body["completeness"]["status"] == "complete"
         assert any(call[0] == "bfs_paths" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
@@ -2557,6 +2559,14 @@ class TestGraphStoreBackendSelection:
         body = response.json()
         assert body["roots"] == ["agent:a"]
         assert body["truncated"] is False
+        assert body["completeness"] == {
+            "status": "complete",
+            "complete": True,
+            "sampled": False,
+            "truncated": False,
+            "returned": 3,
+            "total": 3,
+        }
         assert set(body["depth_by_node"]) == {"agent:a", "server:s", "vuln:CVE-2026-1"}
         assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:CVE-2026-1"}
         assert {(edge["source"], edge["target"]) for edge in body["edges"]} == {
@@ -2838,6 +2848,8 @@ class TestGraphStoreBackendSelection:
         assert body["total_neighbors"] == 5
         assert len(body["neighbors"]) == 2
         assert body["truncated"] is True
+        assert body["completeness"]["status"] == "truncated"
+        assert body["completeness"]["total"] == 5
         # Bounded set is deterministic so repeated expands are stable.
         assert [node["id"] for node in body["neighbors"]] == ["pkg:p0", "pkg:p1"]
 

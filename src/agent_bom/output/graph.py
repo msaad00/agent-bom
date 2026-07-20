@@ -477,10 +477,7 @@ def _graph_policy_findings(report: "AIBOMReport") -> list["Finding"]:
     (COMBINATION, PROMPT_SECURITY, NHI, CIEM, CIS, ...)."""
     from agent_bom.output.finding_views import _MACHINE_EXPORT_TYPES
 
-    try:
-        return [finding for finding in report.to_findings() if finding.finding_type not in _MACHINE_EXPORT_TYPES]
-    except Exception:  # noqa: BLE001 — graph export must not fail on findings surfacing
-        return []
+    return [finding for finding in report.to_findings() if finding.finding_type not in _MACHINE_EXPORT_TYPES]
 
 
 def _graph_policy_finding_elements(report: "AIBOMReport") -> list[dict]:
@@ -851,9 +848,10 @@ def _graph_priority_summary(findings: list["Finding"], *, collapse_cves: bool = 
 
     priorities: list[dict] = []
     for finding in sorted(findings, key=lambda item: float(item.risk_score or 0.0), reverse=True)[:8]:
+        is_policy = not finding.cve_id
         vuln_id = finding.cve_id or finding.title
-        node_id = f"cve:{vuln_id}"
-        if collapse_cves and finding.affected_agents and finding.affected_servers:
+        node_id = f"finding:{finding.id}" if is_policy else f"cve:{vuln_id}"
+        if not is_policy and collapse_cves and finding.affected_agents and finding.affected_servers:
             node_id = _package_node_id(
                 package_name(finding),
                 package_ecosystem(finding),
@@ -888,6 +886,18 @@ def _graph_priority_summary(findings: list["Finding"], *, collapse_cves: bool = 
             }
         )
     return priorities
+
+
+def _json_for_script(value: object, *, indent: int = 2) -> str:
+    """Serialize data for a JavaScript block without allowing HTML breakout."""
+    return (
+        json.dumps(value, indent=indent)
+        .replace("&", r"\u0026")
+        .replace("<", r"\u003c")
+        .replace(">", r"\u003e")
+        .replace("\u2028", r"\u2028")
+        .replace("\u2029", r"\u2029")
+    )
 
 
 def _graph_overview(findings: list["Finding"]) -> dict[str, int]:
@@ -940,17 +950,18 @@ def export_graph_html(
     findings = cve_findings(report, blast_radii)
     policy_findings = _graph_policy_findings(report)
     elements = build_graph_elements(report, blast_radii, include_cve_nodes=False, collapse_cves=True)
-    elements_json = json.dumps(elements, indent=2)
+    elements_json = _json_for_script(elements)
 
     total_agents = len(report.agents)
     total_servers = sum(len(a.mcp_servers) for a in report.agents)
     total_pkgs = sum(a.total_packages for a in report.agents)
     total_vulns = len(findings)
-    top_risks_json = json.dumps(_graph_priority_summary(findings, collapse_cves=True), indent=2)
+    all_findings = findings + policy_findings
+    top_risks_json = _json_for_script(_graph_priority_summary(all_findings, collapse_cves=True))
     # The severity chips reconcile with the unified stream: CVE findings plus
     # the graph-derived categories the finding nodes carry.
-    overview_json = json.dumps(_graph_overview(findings + policy_findings), indent=2)
-    category_findings_json = json.dumps(
+    overview_json = _json_for_script(_graph_overview(all_findings))
+    category_findings_json = _json_for_script(
         [
             {
                 "nodeId": f"finding:{finding.id}",
@@ -961,7 +972,6 @@ def export_graph_html(
             }
             for finding in policy_findings
         ],
-        indent=2,
     )
 
     html_content = _GRAPH_HTML_TEMPLATE.format(
@@ -981,8 +991,8 @@ def export_graph_html(
             total_servers=total_servers,
             total_pkgs=total_pkgs,
             total_vulns=total_vulns,
-            top_risks=_graph_priority_summary(findings, collapse_cves=True),
-            overview=_graph_overview(findings),
+            top_risks=_graph_priority_summary(all_findings, collapse_cves=True),
+            overview=_graph_overview(all_findings),
         )
     Path(output_path).write_text(html_content, encoding="utf-8")
 
@@ -1051,7 +1061,11 @@ def _to_offline_graph_html(
             "</li>"
         )
     risk_html = "\n".join(risk_items) or "<li>No vulnerable paths were present in this graph export.</li>"
-    sev = overview.get("severityCounts") if isinstance(overview, dict) else {}
+    sev = (
+        {key: overview.get(key, 0) for key in ("critical", "high", "medium", "low")}
+        if isinstance(overview, dict)
+        else {}
+    )
     sev_rows = ""
     if isinstance(sev, dict):
         sev_rows = "\n".join(f"<tr><th>{_html_escape(k)}</th><td>{_html_escape(v)}</td></tr>" for k, v in sorted(sev.items()))
@@ -1690,21 +1704,28 @@ function renderRiskList(){{
     return;
   }}
   list.innerHTML=topRisks.map((risk, index)=>`
-    <button class="risk-item${{index===0 ? ' active' : ''}}" data-node-id="${{risk.nodeId}}" onclick="focusRisk('${{risk.nodeId}}')">
+    <button class="risk-item${{index===0 ? ' active' : ''}}"
+      data-node-id="${{escapeHtml(risk.nodeId)}}" data-node-index="${{index}}"
+      onclick="focusRiskByIndex(${{index}})">
       <div class="risk-head">
-        <div class="risk-title">${{risk.vulnerabilityId}} in ${{risk.packageName}}</div>
-        <div class="risk-score">risk ${{risk.riskScore}}</div>
+        <div class="risk-title">${{escapeHtml(risk.vulnerabilityId)}}${{risk.packageName ? ' in '+escapeHtml(risk.packageName) : ''}}</div>
+        <div class="risk-score">risk ${{escapeHtml(risk.riskScore)}}</div>
       </div>
       <div class="risk-meta">
-        <span class="pill ${{severityClass(risk.severity)}}">${{risk.severity.toUpperCase()}}</span>
-        <span class="pill">${{risk.reachability}}</span><br>
-        ${{risk.agentCount}} agent(s) · ${{risk.serverCount}} server(s) ·
-        ${{risk.credentialCount}} credential(s) · ${{risk.toolCount}} tool(s)
-        ${{risk.fixVersion ? '<br>Fix: '+risk.fixVersion : ''}}
+        <span class="pill ${{severityClass(risk.severity)}}">${{escapeHtml(String(risk.severity || '').toUpperCase())}}</span>
+        <span class="pill">${{escapeHtml(risk.reachability)}}</span><br>
+        ${{escapeHtml(risk.agentCount)}} agent(s) · ${{escapeHtml(risk.serverCount)}} server(s) ·
+        ${{escapeHtml(risk.credentialCount)}} credential(s) · ${{escapeHtml(risk.toolCount)}} tool(s)
+        ${{risk.fixVersion ? '<br>Fix: '+escapeHtml(risk.fixVersion) : ''}}
       </div>
-      <div class="risk-summary">${{risk.summary ? risk.summary.slice(0, 130) : 'No summary available.'}}</div>
+      <div class="risk-summary">${{escapeHtml(risk.summary ? risk.summary.slice(0, 130) : 'No summary available.')}}</div>
     </button>
   `).join('');
+}}
+
+function focusRiskByIndex(index){{
+  const risk = topRisks[index];
+  if(risk) focusRisk(risk.nodeId);
 }}
 
 function renderFindingList(){{
@@ -1716,7 +1737,9 @@ function renderFindingList(){{
     return;
   }}
   list.innerHTML=categoryFindings.map((finding)=>`
-    <button class="risk-item" data-node-id="${{finding.nodeId}}" onclick="focusRisk('${{finding.nodeId}}')">
+    <button class="risk-item" data-node-id="${{escapeHtml(finding.nodeId)}}"
+      data-node-index="${{categoryFindings.indexOf(finding)}}"
+      onclick="focusRiskByFindingIndex(${{categoryFindings.indexOf(finding)}})">
       <div class="risk-head">
         <div class="risk-title">${{escapeHtml(finding.title)}}</div>
       </div>
@@ -1727,6 +1750,11 @@ function renderFindingList(){{
       <div class="risk-summary">${{escapeHtml(finding.summary ? finding.summary.slice(0, 130) : '')}}</div>
     </button>
   `).join('');
+}}
+
+function focusRiskByFindingIndex(index){{
+  const finding = categoryFindings[index];
+  if(finding) focusRisk(finding.nodeId);
 }}
 
 cy.on('tap','node',function(e){{

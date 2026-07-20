@@ -14,7 +14,7 @@ def test_doctor_groups_output_and_shows_next_steps():
     assert "Runtime surfaces" in result.output
     assert "Platform integrations" in result.output
     assert "Next commands" in result.output
-    assert "agent-bom agents --demo --offline" in result.output
+    assert "agent-bom scan --demo --offline" in result.output
 
 
 def test_doctor_suppresses_raw_discovery_output(monkeypatch):

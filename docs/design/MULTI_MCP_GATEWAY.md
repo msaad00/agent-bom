@@ -41,10 +41,13 @@ agent-bom gateway serve \
   --upstreams upstreams.yaml \
   --control-plane-url https://agent-bom.example.com \
   --control-plane-token "$CP_TOKEN" \
-  --policy-refresh-seconds 30 \
-  --audit-push-interval 10 \
-  --response-signing-key /var/run/secrets/gateway/ed25519.pem
+  --policy-reload-seconds 30 \
+  --bearer-token "$GATEWAY_TOKEN"
 ```
+
+The gateway pushes runtime audit events to the control plane when
+`--control-plane-url` is configured. `--response-sign-key` is a **proxy-only**
+option; it is not accepted by `gateway serve`.
 
 ### `upstreams.yaml`
 
@@ -128,7 +131,7 @@ flowchart LR
 | Policy fetch from control plane | `control_plane_url` / `control_plane_token` path in [`run_proxy`](../../src/agent_bom/proxy.py:527) | Extract into a module both `run_proxy` and `gateway serve` call |
 | Runtime detectors | [`agent_bom.runtime.detectors`](../../src/agent_bom/runtime/detectors.py) | Reuse unchanged |
 | Audit-push client | Proxy's current HTTPX POST to `/v1/proxy/audit` | Extract |
-| Response signing | `response_signing_key` path already in `run_proxy` | Reuse |
+| Response signing | `response_signing_key` path in `run_proxy` | Proxy-only; gateway audit events use the control-plane audit chain when configured |
 | `GatewayPolicy` format | [`agent_bom.api.policy_store`](../../src/agent_bom/api/policy_store.py) | Unchanged |
 | Metrics | [`agent_bom.api.metrics`](../../src/agent_bom/api/metrics.py) | Add per-upstream labelled counters |
 | Auth (API key / OIDC / SAML) | [`agent_bom.api.middleware`](../../src/agent_bom/api/middleware.py) | Gateway must accept the same auth methods the control plane does |

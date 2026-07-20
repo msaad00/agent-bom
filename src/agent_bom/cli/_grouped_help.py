@@ -159,6 +159,6 @@ class GroupedGroup(SuggestingGroup):
         formatter.write_paragraph()
         formatter.write_text(
             "Navigation tips: get started with connect → scan → graph → report. "
-            "Run `agent-bom doctor` for readiness, `agent-bom agents --demo` for a "
+            "Run `agent-bom doctor` for readiness, `agent-bom scan --demo` for a "
             "reproducible local run, and `agent-bom COMMAND --help` for command-specific flags."
         )

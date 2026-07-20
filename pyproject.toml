@@ -302,7 +302,7 @@ override-dependencies = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-agent_bom = ["mcp_registry.json", "ui_dist/**", "data/*.json", "output/vendor/*.js"]
+agent_bom = ["mcp_registry.json", "ui_dist/**", "data/*.json", "output/vendor/*.js", "output/vendor/*.md"]
 
 [tool.smithery]
 server = "agent_bom.mcp_server:create_smithery_server"

@@ -29,7 +29,7 @@ from agent_bom.parsers import extract_packages
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results")
 @click.option("-f", "--format", "output_format", type=click.Choice(["console", "json"]), default="console", show_default=True)
 @click.option("--json", "as_json", is_flag=True, help="Deprecated alias for `--format json`.")
-@click.option("--demo", is_flag=True, help="Show the bundled demo inventory (matches `agent-bom agents --demo`).")
+@click.option("--demo", is_flag=True, help="Show the bundled demo inventory (matches `agent-bom scan --demo`).")
 @click.pass_context
 def inventory(
     ctx: click.Context,

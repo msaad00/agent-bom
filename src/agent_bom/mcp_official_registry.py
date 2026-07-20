@@ -340,6 +340,7 @@ async def sync_from_official_registry(
 
     if not dry_run and result.added > 0:
         local_data["servers"] = local_servers
+        local_data["_total_servers"] = len(local_servers)
         local_data["_updated"] = _utc_date()
         local_data["_mcp_registry_sync"] = _utc_timestamp()
         local_data["_mcp_registry_sync_source"] = result.source
@@ -405,6 +406,7 @@ async def sync_from_legacy_github_registry(
 
     if not dry_run and result.added > 0:
         local_data["servers"] = local_servers
+        local_data["_total_servers"] = len(local_servers)
         local_data["_updated"] = _utc_date()
         local_data["_mcp_registry_sync"] = _utc_timestamp()
         local_data["_mcp_registry_sync_source"] = result.source

@@ -36,7 +36,7 @@ def machine_export_findings(report: AIBOMReport, blast_radii: list[BlastRadius] 
     findings.extend(
         finding
         for finding in report.to_findings()
-        if finding.finding_type == FindingType.MALICIOUS_PACKAGE and getattr(finding, "id", None) not in seen
+        if finding.finding_type in _MACHINE_EXPORT_TYPES and getattr(finding, "id", None) not in seen
     )
     return findings
 

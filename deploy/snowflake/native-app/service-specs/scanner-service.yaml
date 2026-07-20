@@ -1,7 +1,7 @@
 spec:
   containers:
     - name: agent-bom-scanner
-      image: /agent_bom_provider/spcs/agent_bom_repo/agent-bom-scanner:v0_96_4
+      image: /agent_bom_provider/spcs/agent_bom_repo/agent-bom-scanner:v0_97_0
       env:
         AGENT_BOM_STORE_BACKEND: snowflake
         AGENT_BOM_SNOWFLAKE_NATIVE_APP: "1"

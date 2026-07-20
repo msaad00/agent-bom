@@ -145,6 +145,8 @@ SURFACES = [
     "PYPI_README.md",
     "DOCKER_HUB_README.md",
     "docs/ARCHITECTURE.md",
+    "docs/CLAUDE_INTEGRATION.md",
+    "docs/PRODUCT_BRIEF.md",
     "pyproject.toml",
     "action.yml",
 ]

@@ -86,6 +86,60 @@ def _purl_identity(purl: str) -> tuple[str, str, str] | None:
     return ecosystem, name, version
 
 
+# Registry ecosystems whose purl type + name/namespace layout are unambiguous
+# from (ecosystem, name, version) alone. OS packages (deb/rpm/apk) are absent
+# on purpose: their purls require a distro namespace and qualifiers that the
+# bare package identity does not carry, so synthesizing one would be a guess.
+_PURL_SYNTHESIS_TYPES = {
+    "npm": "npm",
+    "pypi": "pypi",
+    "go": "golang",
+    "golang": "golang",
+    "cargo": "cargo",
+    "maven": "maven",
+    "nuget": "nuget",
+    "gem": "gem",
+    "rubygems": "gem",
+    "composer": "composer",
+    "conda": "conda",
+}
+
+_UNRESOLVED_VERSIONS = frozenset({"", "unknown", "latest"})
+
+
+def synthesize_purl(name: str, version: str, ecosystem: str) -> Optional[str]:
+    """Build a spec-valid purl from a known ecosystem+name+version.
+
+    Returns ``None`` when the ecosystem has no unambiguous purl type or the
+    version is unresolved — an absent purl is honest; a guessed one is not.
+    ``PackageURL`` applies the per-type normalization rules (pypi lowering and
+    ``_``→``-``, npm lowering, component percent-encoding).
+    """
+    purl_type = _PURL_SYNTHESIS_TYPES.get((ecosystem or "").strip().lower())
+    raw_name = (name or "").strip()
+    raw_version = (version or "").strip()
+    if not purl_type or not raw_name or raw_version.lower() in _UNRESOLVED_VERSIONS:
+        return None
+
+    namespace: str | None = None
+    if purl_type == "maven":
+        # Maven identities arrive as group:artifact (or group/artifact).
+        group_artifact = raw_name.replace(":", "/")
+        if "/" not in group_artifact:
+            return None
+        namespace, _, raw_name = group_artifact.rpartition("/")
+    elif "/" in raw_name:
+        # npm @scope/name, golang module paths, composer vendor/package.
+        namespace, _, raw_name = raw_name.rpartition("/")
+
+    try:
+        from packageurl import PackageURL
+
+        return PackageURL(type=purl_type, namespace=namespace or None, name=raw_name, version=raw_version).to_string()
+    except Exception:
+        return None
+
+
 def canonical_package_identity(name: str, version: str, ecosystem: str, purl: str | None = None) -> tuple[str, str, str]:
     """Return the canonical package identity used by scan, graph, and history.
 
@@ -209,5 +263,6 @@ __all__ = [
     "normalize_package_name",
     "parse_debian_source_name",
     "reference_host_and_path",
+    "synthesize_purl",
     "ubuntu_release_branch",
 ]

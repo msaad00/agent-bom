@@ -148,6 +148,13 @@ def parse_poetry_lock(directory: Path) -> list[Package]:
             )
     except Exception as exc:
         logger.debug("Failed to parse poetry.lock at %s: %s", lock_file, exc)
+        from agent_bom.coverage import record_manifest_parse_warning
+
+        record_manifest_parse_warning(
+            ecosystem="pypi",
+            path=str(lock_file),
+            detail=f"poetry.lock failed to parse ({exc}); Python dependencies were not scanned",
+        )
 
     return packages
 
@@ -205,6 +212,13 @@ def parse_uv_lock(directory: Path) -> list[Package]:
             )
     except Exception as exc:
         logger.debug("Failed to parse uv.lock at %s: %s", lock_file, exc)
+        from agent_bom.coverage import record_manifest_parse_warning
+
+        record_manifest_parse_warning(
+            ecosystem="pypi",
+            path=str(lock_file),
+            detail=f"uv.lock failed to parse ({exc}); Python dependencies were not scanned",
+        )
 
     return packages
 
@@ -355,6 +369,16 @@ def parse_pip_packages(directory: Path) -> list[Package]:
 
             proj_data = toml.loads(read_text_limited(pyproject))
             deps = proj_data.get("project", {}).get("dependencies", [])
+            if not deps:
+                poetry_deps = proj_data.get("tool", {}).get("poetry", {}).get("dependencies", {})
+                deps = []
+                for raw_name, raw_spec in poetry_deps.items():
+                    if str(raw_name).lower() == "python":
+                        continue
+                    if isinstance(raw_spec, dict):
+                        raw_spec = raw_spec.get("version", "*")
+                    spec = str(raw_spec or "*")
+                    deps.append(f"{raw_name}{spec}")
             for dep in deps:
                 match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", dep)
                 if match:
@@ -376,6 +400,13 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                         )
         except Exception as e:
             logger.debug(f"Failed to parse pyproject.toml at {pyproject}: {e}")
+            from agent_bom.coverage import record_manifest_parse_warning
+
+            record_manifest_parse_warning(
+                ecosystem="pypi",
+                path=str(pyproject),
+                detail=f"pyproject.toml failed to parse ({e}); Python dependencies were not scanned",
+            )
 
     return packages
 

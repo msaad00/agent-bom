@@ -166,6 +166,13 @@ does not require a manual `alembic upgrade head`. See
 [Control-Plane Helm — migration contract](../site-docs/deployment/control-plane-helm.md)
 for the one-time `init.sql` stamp path and the non-Helm override.
 
+For **Compose** (`deploy/docker-compose.platform.yml` and overlays that layer
+it), a one-shot `migrate` service runs the same contract before `api` starts:
+stamp baseline `20260416_01` when the volume was first created from `init.sql`,
+then `alembic upgrade head`. Image upgrades therefore apply schema changes on
+`docker compose up` without a manual Alembic step. The migrate container uses
+the Postgres bootstrap/admin role (DDL); the API stays on `agent_bom_app` (DML).
+
 ---
 
 ## Tier 3 — Operator-hosted / gated POC

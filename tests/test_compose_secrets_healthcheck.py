@@ -33,6 +33,11 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         # depends_on uses postgres healthcheck for ordering.
         "agent-bom",
     },
+    "docker-compose.platform.yml": {
+        # One-shot Alembic upgrade (stamp init.sql baseline if needed, then
+        # upgrade head). Exits 0; API waits on service_completed_successfully.
+        "migrate",
+    },
     "docker-compose.runtime-example.yml": {
         # The mcp-server container talks stdio to the proxy and never opens a
         # TCP listener — there is no port to probe.
@@ -181,9 +186,17 @@ def test_compose_stacks_never_interpolate_postgres_passwords(compose_name: str) 
         assert "POSTGRES_APP_PASSWORD" not in env, f"{compose_name}:{name} must not set POSTGRES_APP_PASSWORD"
         for key, value in env.items():
             if key == "AGENT_BOM_POSTGRES_URL":
-                assert value.startswith("postgresql://agent_bom_app@"), (
-                    f"{compose_name}:{name} must connect as agent_bom_app without an embedded password"
-                )
+                # Long-lived API services use the DML-only app role. The one-shot
+                # migrate service is the Helm-equivalent DDL path and uses the
+                # bootstrap/admin role (password still file-mounted).
+                if name == "migrate":
+                    assert value.startswith("postgresql://agent_bom@"), (
+                        f"{compose_name}:migrate must connect as bootstrap agent_bom without an embedded password"
+                    )
+                else:
+                    assert value.startswith("postgresql://agent_bom_app@"), (
+                        f"{compose_name}:{name} must connect as agent_bom_app without an embedded password"
+                    )
 
 
 def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
@@ -206,6 +219,34 @@ def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
     assert api.get("ports") == ["${AGENT_BOM_API_BIND_HOST:-127.0.0.1}:${API_PORT:-8422}:8422"]
     secrets = set(api.get("secrets") or [])
     assert {"api_key", "audit_hmac_key", "browser_session_signing_key", "connections_key"} <= secrets
+
+
+def test_platform_migrate_runs_alembic_before_api() -> None:
+    """Compose upgrades must apply Alembic the same way Helm's migrate Job does."""
+    path = COMPOSE_DIR / "docker-compose.platform.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    services = data.get("services") or {}
+    migrate = services.get("migrate") or {}
+    api = services.get("api") or {}
+
+    assert migrate.get("entrypoint") == ["python"]
+    assert migrate.get("command") == ["deploy/supabase/postgres/compose_migrate.py"]
+    assert migrate.get("working_dir") == "/opt/agent-bom"
+    assert migrate.get("restart") == "no"
+    env = {
+        item.split("=", 1)[0]: item.split("=", 1)[1]
+        for item in (migrate.get("environment") or [])
+        if isinstance(item, str) and "=" in item
+    }
+    assert env.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom@")
+    assert env.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_password"
+    assert "postgres_password" in set(migrate.get("secrets") or [])
+    assert (migrate.get("depends_on") or {}).get("postgres", {}).get("condition") == "service_healthy"
+
+    api_deps = api.get("depends_on") or {}
+    assert api_deps.get("migrate", {}).get("condition") == "service_completed_successfully"
+    script = COMPOSE_DIR / "supabase" / "postgres" / "compose_migrate.py"
+    assert script.is_file(), "migrate script must ship under deploy/supabase/postgres (image COPY path)"
 
 
 def test_platform_ui_binds_loopback_by_default() -> None:

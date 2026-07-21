@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Compose platform stack runs a one-shot `migrate` service before `api`
+  (stamp `init.sql` baselines when needed, then `alembic upgrade head`), matching
+  the Helm migration Job so image upgrades apply Postgres schema changes without
+  a manual Alembic step.
+
 ### Fixed
 - Hosted POC hardening overlay no longer opts into anonymous API access.
   `AGENT_BOM_DEMO_ESTATE` / `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` /

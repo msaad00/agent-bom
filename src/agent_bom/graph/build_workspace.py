@@ -362,6 +362,16 @@ class _PostgresWorkspaceBackend:
                 "Postgres graph workspace schema is not migrated; run Alembic upgrade head before starting the service."
             )
 
+    def _bind_tenant(self, tenant_id: str) -> None:
+        """Bind ``app.tenant_id`` for FORCE RLS (transaction-local).
+
+        Workspace methods take an explicit ``tenant_id``; the session must match
+        that value so ``WITH CHECK`` / ``USING`` policies accept the rows.
+        """
+        tid = _normalize_tenant(tenant_id)
+        self._conn.execute("SELECT set_config('app.tenant_id', %s, true)", (tid,))
+        self._conn.execute("SELECT set_config('app.bypass_rls', %s, true)", ("0",))
+
     def _upsert(
         self,
         table: str,
@@ -377,9 +387,12 @@ class _PostgresWorkspaceBackend:
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders}) "  # nosec B608 - static table/cols
             f"ON CONFLICT (workspace_id, tenant_id, {key_col}) DO UPDATE SET {updates}"
         )
-        with self._conn.cursor() as cur:
-            params = ((self._workspace_id, tenant_id, *row) for row in rows)
-            cur.executemany(sql, params)
+        # Materialize once — the transaction may retry and generators are one-shot.
+        batch = tuple((self._workspace_id, tenant_id, *row) for row in rows)
+        with self._conn.transaction():
+            self._bind_tenant(tenant_id)
+            with self._conn.cursor() as cur:
+                cur.executemany(sql, batch)
 
     def add_node_payloads(self, tenant_id: str, rows: Iterable[tuple[str, str, str]]) -> None:
         self._upsert("graph_build_workspace_nodes", "node_id", ("entity_type",), tenant_id, rows)
@@ -408,6 +421,7 @@ class _PostgresWorkspaceBackend:
             params = (self._workspace_id, tenant_id, str(where_val))
         name = f"gbw_{uuid.uuid4().hex}"
         with self._conn.transaction(), self._conn.cursor(name=name) as cur:
+            self._bind_tenant(tenant_id)
             cur.itersize = batch_size
             cur.execute(
                 f"SELECT payload FROM {table} WHERE workspace_id = %s AND tenant_id = %s{predicate} ORDER BY seq",  # nosec B608
@@ -424,20 +438,24 @@ class _PostgresWorkspaceBackend:
         return self._iter_payloads("graph_build_workspace_edges", tenant_id, batch_size)
 
     def get_node_payload(self, tenant_id: str, node_id: str) -> str | None:
-        row = self._conn.execute(
-            "SELECT payload FROM graph_build_workspace_nodes WHERE workspace_id = %s AND tenant_id = %s AND node_id = %s",
-            (self._workspace_id, tenant_id, node_id),
-        ).fetchone()
+        with self._conn.transaction():
+            self._bind_tenant(tenant_id)
+            row = self._conn.execute(
+                "SELECT payload FROM graph_build_workspace_nodes WHERE workspace_id = %s AND tenant_id = %s AND node_id = %s",
+                (self._workspace_id, tenant_id, node_id),
+            ).fetchone()
         if not row:
             return None
         payload = row[0]
         return payload if isinstance(payload, str) else json.dumps(payload)
 
     def get_edge_payload(self, tenant_id: str, edge_key: str) -> str | None:
-        row = self._conn.execute(
-            "SELECT payload FROM graph_build_workspace_edges WHERE workspace_id = %s AND tenant_id = %s AND edge_key = %s",
-            (self._workspace_id, tenant_id, edge_key),
-        ).fetchone()
+        with self._conn.transaction():
+            self._bind_tenant(tenant_id)
+            row = self._conn.execute(
+                "SELECT payload FROM graph_build_workspace_edges WHERE workspace_id = %s AND tenant_id = %s AND edge_key = %s",
+                (self._workspace_id, tenant_id, edge_key),
+            ).fetchone()
         if not row:
             return None
         payload = row[0]
@@ -450,11 +468,13 @@ class _PostgresWorkspaceBackend:
             predicate = " AND entity_type = %s"
             params = (self._workspace_id, tenant_id, entity_type)
         params = (*params, after_seq, limit)
-        rows = self._conn.execute(
-            f"SELECT seq, node_id, payload FROM graph_build_workspace_nodes "  # nosec B608 - static cols
-            f"WHERE workspace_id = %s AND tenant_id = %s{predicate} AND seq > %s ORDER BY seq LIMIT %s",
-            params,
-        ).fetchall()
+        with self._conn.transaction():
+            self._bind_tenant(tenant_id)
+            rows = self._conn.execute(
+                f"SELECT seq, node_id, payload FROM graph_build_workspace_nodes "  # nosec B608 - static cols
+                f"WHERE workspace_id = %s AND tenant_id = %s{predicate} AND seq > %s ORDER BY seq LIMIT %s",
+                params,
+            ).fetchall()
         return [(int(seq), str(node_id), p if isinstance(p, str) else json.dumps(p)) for seq, node_id, p in rows]
 
     def fetch_edge_page(
@@ -469,11 +489,13 @@ class _PostgresWorkspaceBackend:
             predicate = " AND target_id = %s"
             params = (self._workspace_id, tenant_id, target_id)
         params = (*params, after_seq, limit)
-        rows = self._conn.execute(
-            f"SELECT seq, payload FROM graph_build_workspace_edges "  # nosec B608 - static cols
-            f"WHERE workspace_id = %s AND tenant_id = %s{predicate} AND seq > %s ORDER BY seq LIMIT %s",
-            params,
-        ).fetchall()
+        with self._conn.transaction():
+            self._bind_tenant(tenant_id)
+            rows = self._conn.execute(
+                f"SELECT seq, payload FROM graph_build_workspace_edges "  # nosec B608 - static cols
+                f"WHERE workspace_id = %s AND tenant_id = %s{predicate} AND seq > %s ORDER BY seq LIMIT %s",
+                params,
+            ).fetchall()
         return [(int(seq), p if isinstance(p, str) else json.dumps(p)) for seq, p in rows]
 
     def iter_node_payloads_by_type(self, tenant_id: str, entity_type: str, batch_size: int) -> Iterator[str]:
@@ -486,10 +508,12 @@ class _PostgresWorkspaceBackend:
         return self._iter_payloads("graph_build_workspace_edges", tenant_id, batch_size, where_col="target_id", where_val=node_id)
 
     def _count(self, table: str, tenant_id: str) -> int:
-        row = self._conn.execute(
-            f"SELECT COUNT(*) FROM {table} WHERE workspace_id = %s AND tenant_id = %s",  # nosec B608 - static table
-            (self._workspace_id, tenant_id),
-        ).fetchone()
+        with self._conn.transaction():
+            self._bind_tenant(tenant_id)
+            row = self._conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE workspace_id = %s AND tenant_id = %s",  # nosec B608 - static table
+                (self._workspace_id, tenant_id),
+            ).fetchone()
         return int(row[0]) if row else 0
 
     def count_nodes(self, tenant_id: str) -> int:
@@ -500,15 +524,19 @@ class _PostgresWorkspaceBackend:
 
     def close(self) -> None:
         # Drop only this workspace's rows; the shared tables persist for reuse.
+        # Bypass RLS so cleanup clears every tenant that staged into this
+        # workspace_id (multi-tenant tests share one workspace backend).
         try:
-            self._conn.execute(
-                "DELETE FROM graph_build_workspace_nodes WHERE workspace_id = %s",
-                (self._workspace_id,),
-            )
-            self._conn.execute(
-                "DELETE FROM graph_build_workspace_edges WHERE workspace_id = %s",
-                (self._workspace_id,),
-            )
+            with self._conn.transaction():
+                self._conn.execute("SELECT set_config('app.bypass_rls', %s, true)", ("1",))
+                self._conn.execute(
+                    "DELETE FROM graph_build_workspace_nodes WHERE workspace_id = %s",
+                    (self._workspace_id,),
+                )
+                self._conn.execute(
+                    "DELETE FROM graph_build_workspace_edges WHERE workspace_id = %s",
+                    (self._workspace_id,),
+                )
         finally:
             self._conn.close()
 

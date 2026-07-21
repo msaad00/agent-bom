@@ -137,6 +137,8 @@ def test_graph_tables_have_rls_policies():
         "interaction_risks",
         "graph_filter_presets",
         "graph_node_search",
+        "graph_build_workspace_nodes",
+        "graph_build_workspace_edges",
     ):
         assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in SQL
         assert f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY" in SQL
@@ -166,6 +168,11 @@ def test_graph_build_workspace_schema_is_migration_owned():
     assert 'down_revision = "20260720_02"' in body
     assert "CREATE TABLE IF NOT EXISTS graph_build_workspace_nodes" in body
     assert "CREATE TABLE IF NOT EXISTS graph_build_workspace_edges" in body
+    rls = versions / "20260721_01_graph_build_workspace_rls.py"
+    rls_body = rls.read_text()
+    assert 'down_revision = "20260720_03"' in rls_body
+    assert "graph_build_workspace_nodes" in rls_body
+    assert "FORCE ROW LEVEL SECURITY" in rls_body
 
 
 def test_graph_snapshot_json_fields_are_text_in_baseline():

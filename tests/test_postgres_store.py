@@ -1490,6 +1490,12 @@ def test_graph_store_init_tolerates_restricted_pg_trgm_extension():
     assert pool._conn.transaction_events == ["commit", "rollback"]
     assert any("CREATE TABLE IF NOT EXISTS graph_nodes" in sql for sql, _ in pool._conn.executed)
     assert any("ALTER TABLE graph_nodes ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed)
+    assert any(
+        "ALTER TABLE graph_build_workspace_nodes ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed
+    )
+    assert any(
+        "ALTER TABLE graph_build_workspace_edges ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed
+    )
     assert any("CREATE EXTENSION IF NOT EXISTS pg_trgm" in sql for sql, _ in pool._conn.executed)
 
 

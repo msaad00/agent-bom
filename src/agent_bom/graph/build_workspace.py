@@ -336,13 +336,18 @@ class _PostgresWorkspaceBackend:
     by ``itersize`` rather than the total row count.
     """
 
-    def __init__(self, dsn: str, workspace_id: str) -> None:
+    def __init__(self, dsn: str, workspace_id: str, *, password: str | None = None) -> None:
         import psycopg
 
         self._psycopg = psycopg
         self._dsn = dsn
         self._workspace_id = workspace_id
-        self._conn = psycopg.connect(dsn, autocommit=True)
+        connect_kwargs: dict[str, Any] = {"autocommit": True}
+        if password is not None:
+            # Keep mounted/static/IAM credentials out of the DSN, which can be
+            # exposed by connection diagnostics or server activity views.
+            connect_kwargs["password"] = password
+        self._conn = psycopg.connect(dsn, **connect_kwargs)
         self._verify_tables()
 
     def _verify_tables(self) -> None:
@@ -607,7 +612,18 @@ def open_workspace_backend(*, workspace_id: str = "", backend: str = "auto") -> 
     if chosen == "postgres":
         if not dsn:
             raise ValueError("AGENT_BOM_POSTGRES_URL is required for the postgres workspace backend.")
-        return _PostgresWorkspaceBackend(dsn, wsid)
+        # The API pool already resolves ``*_FILE`` and IAM credentials through
+        # postgres_common. Use the same contract for the graph workspace when
+        # it is opened from the configured application DSN. Direct callers may
+        # still pass an explicit DSN (including a test-only embedded password).
+        password: str | None = None
+        configured_dsn = os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip()
+        if dsn == configured_dsn:
+            from agent_bom.api.postgres_common import resolve_postgres_secret, resolve_postgres_url
+
+            dsn = resolve_postgres_url()
+            password = resolve_postgres_secret()
+        return _PostgresWorkspaceBackend(dsn, wsid, password=password)
     if chosen == "sqlite":
         return _SQLiteWorkspaceBackend()
     raise ValueError(f"unknown workspace backend {backend!r}")

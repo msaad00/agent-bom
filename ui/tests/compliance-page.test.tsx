@@ -119,6 +119,10 @@ describe("CompliancePage (dense restyle)", () => {
     expect(within(strip).getByText("Passing")).toBeInTheDocument();
     expect(within(strip).getByText("Failing")).toBeInTheDocument();
 
+    const disclaimer = screen.getByTestId("compliance-helper-disclaimer");
+    expect(disclaimer).toHaveTextContent(/not a certification/i);
+    expect(disclaimer).toHaveTextContent(/evidence helper/i);
+
     const table = screen.getByTestId("compliance-frameworks-table");
     // Short labels appear as the primary framework name.
     expect(within(table).getByText("LLM")).toBeInTheDocument();

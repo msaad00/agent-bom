@@ -42,6 +42,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   graph test module docstring matches auto-enable behavior.
 
 ### Changed
+- README: clean top-nav Live demo link (offline fallback lives under scan/demo
+  body copy), lead with product visuals, and collapse persona / connector /
+  architecture tables under `<details>`.
 - Remove private strategy and agent-session audit ledgers from the public tree
   (`docs/archive/STRATEGIC_AUDIT_*`, `docs/archive/AUDIT.md`, `docs/audits/`);
   soften large-enterprise procurement phrasing. CI

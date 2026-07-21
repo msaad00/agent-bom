@@ -285,22 +285,32 @@ def test_postgres_init_resets_app_password_guc_after_reading_it() -> None:
     assert reset_idx > read_idx, "the RESET of init.app_password must come after the read that uses it."
 
 
-def test_postgres_init_raises_when_app_password_missing() -> None:
-    """If init.app_password is unset/empty (e.g. the wrapper could not read the
-    secret file), init.sql must RAISE EXCEPTION and abort loudly — never fall
-    through to CREATE ROLE ... PASSWORD NULL (a broken passwordless app role) or
-    silently skip creation, which surfaces later as an opaque runtime
-    'password authentication failed for user "agent_bom_app"'."""
+def test_postgres_init_distinguishes_empty_vs_unset_app_password() -> None:
+    """init.sql must never CREATE ROLE ... PASSWORD NULL (a broken passwordless
+    app role that later surfaces as an opaque 'password authentication failed').
+
+    It distinguishes two cases:
+      * empty GUC (misconfigured secret) -> RAISE EXCEPTION and abort loudly;
+      * unset GUC / NULL (Alembic migrations, integration-test bootstrap, and
+        wrapper-less local dev) -> skip app-role creation, since the role is
+        provisioned out of band there. Aborting here would break those paths."""
     init_sql = (COMPOSE_DIR / "supabase" / "postgres" / "init.sql").read_text(encoding="utf-8")
 
     read_idx = init_sql.find("current_setting('init.app_password'")
     assert read_idx != -1
 
-    assert "RAISE EXCEPTION 'init.app_password is not set" in init_sql, (
-        "init.sql must RAISE EXCEPTION when the app password GUC is unset/empty, not silently skip app-role creation."
+    # Empty GUC must fail loud (never create a passwordless role).
+    assert "app_pass = ''" in init_sql
+    assert "RAISE EXCEPTION 'init.app_password is empty" in init_sql, (
+        "init.sql must RAISE EXCEPTION when the app-password GUC is set but empty (misconfigured secret)."
     )
-    # The old dev-mode fallback (silent NOTICE skip) must be gone.
-    assert "skipping app user creation" not in init_sql, "init.sql must not silently skip app-role creation on a missing password."
+    # Unset GUC (NULL) must skip cleanly so migrations / test bootstrap / dev
+    # that run init.sql without the wrapper are not aborted.
+    assert "skipping app user creation" in init_sql, (
+        "init.sql must skip app-role creation (not abort) when init.app_password is unset (NULL)."
+    )
+    # A passwordless CREATE ROLE only ever runs under a non-empty password guard.
+    assert "PASSWORD NULL" not in init_sql
 
 
 def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:

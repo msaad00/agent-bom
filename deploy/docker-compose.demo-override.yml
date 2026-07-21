@@ -1,0 +1,27 @@
+# ── Profile: PUBLIC DEMO OVERLAY ─────────────────────────────────────────────
+# Demo-only anonymous + seeded-estate overlay for the public hosted demo
+# (demo.agent-bom.com). Not for customer POCs or internet-exposed secure
+# deployments.
+#
+# OVERLAY ONLY — layer on top of platform + hosted-poc:
+#
+#   docker compose \
+#     -f deploy/docker-compose.platform.yml \
+#     -f deploy/docker-compose.hosted-poc.yml \
+#     -f deploy/docker-compose.demo-override.yml \
+#     up -d --build
+#
+# hosted-poc.yml stays auth-required and passes hosted_poc_preflight.py.
+# This file intentionally opts into AGENT_BOM_ALLOW_UNAUTHENTICATED_API so the
+# public demo opens as a read-only viewer with a seeded DEMO_ESTATE.
+
+services:
+  api:
+    environment:
+      - AGENT_BOM_DEMO_ESTATE=1
+      # Public demo opens anonymously into a read-only viewer dashboard.
+      # DEMO_ESTATE + NO_AUTH_ROLE=viewer only take effect once unauthenticated
+      # access is actually enabled — without this flag the demo falls back to the
+      # API-key sign-in wall and can never open anonymously as intended.
+      - AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1
+      - AGENT_BOM_NO_AUTH_ROLE=viewer

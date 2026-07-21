@@ -118,7 +118,7 @@ API/UI ports on all interfaces and does not mount the placeholder Postgres
 password:
 
 ```bash
-python scripts/deploy/hosted_poc_preflight.py --write-postgres-secret
+python scripts/deploy/hosted_poc_preflight.py --write-secret
 ```
 
 The preflight fails closed when required secrets are missing, the browser API
@@ -246,6 +246,11 @@ Keep Caddy as the only public listener. The Postgres container remains internal
 and `deploy/docker-compose.hosted-poc.yml` binds the API/UI ports to loopback,
 so they are reachable only from Caddy on the VM.
 
+The public anonymous demo (seeded estate + viewer without login) is **not**
+this overlay. It layers
+`deploy/docker-compose.demo-override.yml` on top of platform + hosted-poc and
+is only used by the demo redeploy path.
+
 ### Customer-0 proof checklist
 
 Run this checklist before inviting anyone:
@@ -281,9 +286,12 @@ workflow automates it without any stored SSH keys or long-lived AWS credentials:
 - **Remote steps on the VM:** confirm `DEMO_DEPLOY_DIR` is a git checkout →
   `git pull --ff-only` → `docker compose ... build` (stack keeps serving) →
   `docker compose ... up -d` (brief restart) →
-  `scripts/deploy/hosted_poc_preflight.py --write-postgres-secret` (fail-closed)
-  → `scripts/deploy/hosted_poc_smoke.sh`. The job fails if the preflight or smoke
-  fails, so a bad redeploy never gets promoted silently. When dispatched with
+  `scripts/deploy/hosted_poc_preflight.py --write-secret` (fail-closed; validates
+  platform + hosted-poc only) → `scripts/deploy/hosted_poc_smoke.sh`. Compose
+  build/up layers `docker-compose.demo-override.yml` for anonymous seeded demo
+  estate; that overlay is intentionally excluded from the preflight security
+  gate. The job fails if the preflight or smoke fails, so a bad redeploy never
+  gets promoted silently. When dispatched with
   `reset_demo=true` it also runs `scripts/deploy/demo-reset.sh`.
 - **No plaintext secrets in CI.** All secret material stays on the VM as the
   existing `deploy/secrets/` file mounts. The remote script sources an optional

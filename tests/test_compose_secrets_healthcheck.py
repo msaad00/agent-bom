@@ -44,6 +44,11 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         # base platform compose and inherited at merge time.
         "api",
     },
+    "docker-compose.demo-override.yml": {
+        # Public-demo overlay on platform + hosted-poc; environment only.
+        # Healthchecks are defined once in the base platform compose.
+        "api",
+    },
     "docker-compose.product.yml": {
         # Overlay applied on top of docker-compose.platform.yml; it only sets
         # authenticated-product environment. Healthchecks are defined once in
@@ -257,14 +262,38 @@ def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     api_env = services["api"]["environment"]
     assert "ports" not in services["api"]
     assert "ui" not in services
+    # Hardening overlay only — anonymous demo flags live in demo-override.yml.
     assert api_env == [
         "AGENT_BOM_SESSION_COOKIE_SECURE=1",
+    ]
+    assert "AGENT_BOM_ALLOW_UNAUTHENTICATED_API" not in "\n".join(api_env)
+    assert "AGENT_BOM_DEMO_ESTATE" not in "\n".join(api_env)
+
+
+def test_demo_override_opts_into_anonymous_seeded_estate() -> None:
+    path = COMPOSE_DIR / "docker-compose.demo-override.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    api_env = (data.get("services") or {})["api"]["environment"]
+    assert api_env == [
         "AGENT_BOM_DEMO_ESTATE=1",
-        # Public demo opens anonymously into a read-only viewer; DEMO_ESTATE +
-        # NO_AUTH_ROLE only take effect once unauthenticated access is enabled.
         "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1",
         "AGENT_BOM_NO_AUTH_ROLE=viewer",
     ]
+
+
+def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
+    """Public demo must layer demo-override; preflight must use --write-secret."""
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "demo-redeploy.yml").read_text(encoding="utf-8")
+    assert "deploy/docker-compose.demo-override.yml" in workflow
+    assert "hosted_poc_preflight.py --write-secret" in workflow
+    assert "--write-postgres-secret" not in workflow
+
+    # Security gate remains platform + hosted-poc only (no demo anon flags).
+    preflight_src = (root / "scripts" / "deploy" / "hosted_poc_preflight.py").read_text(encoding="utf-8")
+    assert "docker-compose.hosted-poc.yml" in preflight_src
+    assert "docker-compose.demo-override.yml" not in preflight_src
+    assert "hosted compose must not opt into unauthenticated API" in preflight_src
 
 
 def test_postgres_init_resets_app_password_guc_after_reading_it() -> None:

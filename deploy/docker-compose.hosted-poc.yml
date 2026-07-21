@@ -1,5 +1,5 @@
 # ── Profile: HOSTED POC OVERLAY ──────────────────────────────────────────────
-# Hosted POC hardening overlay.
+# Hosted POC hardening overlay for customer-facing / secure POC deployments.
 #
 # OVERLAY ONLY — this file must be layered on docker-compose.platform.yml; it
 # fails standalone `docker compose config` by design (no image/build keys).
@@ -12,19 +12,17 @@
 #     -f deploy/docker-compose.hosted-poc.yml \
 #     up -d --build
 #
-# The base platform file now binds API and UI to loopback by default. This
-# overlay keeps the customer-0 VM posture explicit and sets browser-session
-# cookies to Secure because Caddy terminates public TLS on 443 and proxies to
-# local HTTP ports.
+# Auth stays required. Public anonymous demo flags live only in
+# deploy/docker-compose.demo-override.yml (layered by the demo redeploy path).
+# The hosted_poc_preflight.py security gate forbids
+# AGENT_BOM_ALLOW_UNAUTHENTICATED_API in this overlay.
+#
+# The base platform file binds API and UI to loopback by default. This overlay
+# keeps the customer-0 VM posture explicit and sets browser-session cookies to
+# Secure because Caddy terminates public TLS on 443 and proxies to local HTTP
+# ports.
 
 services:
   api:
     environment:
       - AGENT_BOM_SESSION_COOKIE_SECURE=1
-      - AGENT_BOM_DEMO_ESTATE=1
-      # Public demo opens anonymously into a read-only viewer dashboard.
-      # DEMO_ESTATE + NO_AUTH_ROLE=viewer only take effect once unauthenticated
-      # access is actually enabled — without this flag the demo falls back to the
-      # API-key sign-in wall and can never open anonymously as intended.
-      - AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1
-      - AGENT_BOM_NO_AUTH_ROLE=viewer

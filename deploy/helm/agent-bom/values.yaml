@@ -5,10 +5,18 @@
 # dashboard, gateway, proxy, firewall, MCP server, and Postgres are all gated
 # behind `controlPlane.enabled=true`. EKS / GKE / AKS users that want the full
 # platform — running scans, browsing findings in the UI, hitting the REST API,
-# enforcing runtime policy — must set:
+# enforcing runtime policy — should start from a shipped profile, which wires the
+# required Postgres + auth Secrets:
 #
-#     helm install agent-bom agent-bom/agent-bom \
-#       --set controlPlane.enabled=true
+#     python scripts/install_helm_profile.py focused-pilot --print-command
+#     python scripts/install_helm_profile.py focused-pilot
+#
+# A bare `--set controlPlane.enabled=true` is NOT enough on its own: the
+# control plane needs `AGENT_BOM_POSTGRES_URL` and the control-plane auth Secret
+# (browser-session / audit / connections keys + a login backend) supplied via
+# `controlPlane.api.envFrom`, or template validation fails before Helm creates a
+# partial control plane. See `examples/postgres-secret.example.yaml` +
+# `examples/control-plane-auth-secret.example.yaml` and the chart README.
 #
 # Without that flag a `helm install` succeeds quietly and only the scanner
 # pieces are deployed. See the `controlPlane:` block below (around line 257)

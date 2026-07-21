@@ -64,6 +64,47 @@ python scripts/install_helm_profile.py production \
   --set controlPlane.ingress.hosts[0].host=agent-bom.acme.internal
 ```
 
+## Control-plane secrets (create these before `helm install`)
+
+No chart template renders the control-plane Secrets — you create them
+out-of-band from a real secret manager (External Secrets Operator, SOPS, AWS
+Secrets Manager, CI store) and keep the populated files out of git. A profile
+whose `controlPlane.api.envFrom` references a Secret that does not exist leaves
+the API/UI pods in `CreateContainerConfigError`, and the multi-replica profiles
+additionally fail closed at boot when the browser-session / audit keys are
+absent. Two example manifests document every key:
+
+- `postgres-secret.example.yaml` → `agent-bom-control-plane-db`
+  (`AGENT_BOM_POSTGRES_URL`). Used by the split-Secret profiles (`eks-vanilla`).
+- `control-plane-auth-secret.example.yaml` → the auth/session keys
+  (`AGENT_BOM_BROWSER_SESSION_SIGNING_KEY`, `AGENT_BOM_AUDIT_HMAC_KEY`,
+  `AGENT_BOM_CONNECTIONS_KEY`, `AGENT_BOM_API_KEYS`, and — for the combined
+  single-Secret profiles — `AGENT_BOM_POSTGRES_URL`). It carries one block per
+  profile; copy the block matching your profile.
+
+Generate the placeholder values with:
+
+```bash
+openssl rand -hex 32   # AGENT_BOM_BROWSER_SESSION_SIGNING_KEY, AGENT_BOM_AUDIT_HMAC_KEY
+openssl rand -hex 24   # AGENT_BOM_API_KEYS key (append ":admin")
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # AGENT_BOM_CONNECTIONS_KEY
+```
+
+Which keys each profile requires, and its first-run login posture:
+
+| Profile | Secret(s) `envFrom` references | Required keys | First-run login |
+|---|---|---|---|
+| `focused-pilot` (`eks-mcp-pilot`) | `agent-bom-control-plane` (combined) | `AGENT_BOM_POSTGRES_URL`, `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY` (replicas 2), `AGENT_BOM_CONNECTIONS_KEY`, `AGENT_BOM_API_KEYS` | Seeded `AGENT_BOM_API_KEYS` admin key |
+| `eks-vanilla` | `agent-bom-control-plane-db` + `agent-bom-control-plane-auth` | db: `AGENT_BOM_POSTGRES_URL`; auth: `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY` (replicas 2), `AGENT_BOM_AUDIT_HMAC_KEY` (`REQUIRE_AUDIT_HMAC=1`), `AGENT_BOM_CONNECTIONS_KEY`, `AGENT_BOM_API_KEYS` | Seeded `AGENT_BOM_API_KEYS` admin key |
+| `sqlite-pilot` | `agent-bom-control-plane` (demo) | `AGENT_BOM_CONNECTIONS_KEY` only (sqlite, replicas 1) | Anonymous — the profile sets a **visible, demo-only** `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1` (viewer role). Not for production |
+
+Swap `AGENT_BOM_API_KEYS` for the OIDC block
+(`AGENT_BOM_OIDC_ISSUER` / `AGENT_BOM_OIDC_CLIENT_ID` /
+`AGENT_BOM_OIDC_REDIRECT_URI` / `AGENT_BOM_OIDC_CLIENT_SECRET`) on the API env
+when an IdP is available. Session cookies are marked `Secure` automatically on
+the clustered/production profiles (replicas > 1), so no cookie flag is needed;
+the sqlite demo intentionally leaves it off so login works over plain HTTP.
+
 ## Operator guidance
 
 - The chart intentionally does not install a Postgres subchart. Production

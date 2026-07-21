@@ -19,6 +19,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   binds `app.tenant_id` per operation so staging rows cannot cross tenants.
 
 ### Fixed
+- Attack-path Path view always lays hops left-to-right (no odd-row snake), so
+  wrapped critical paths no longer draw an inbound arrow into the finding from
+  empty space.
 - Helm scanner, KSPM, and control-plane backup CronJobs fail loud
   (`jobTemplate.spec.backoffLimit: 0`, `restartPolicy: Never`) so a bad run
   surfaces as a Failed Job instead of retrying quietly under `OnFailure`.

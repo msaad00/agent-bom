@@ -254,3 +254,41 @@ Before a release readiness claim, check:
 - README, Docker Hub README, docs site, version surfaces, and changelog alignment
 
 If a check cannot be run, say so directly and keep the claim narrower.
+
+## Cursor Cloud specific instructions
+
+The startup update script already installs `uv`, runs `uv sync --extra dev-all`
+(Python deps into `.venv`), and `npm install --prefix ui` (dashboard deps). You
+do not need to reinstall.
+
+- **Run Python via `uv run`.** `uv` manages `.venv`; there is no bare `python`
+  on PATH (only `python3`). Use `uv run agent-bom …`, `uv run pytest …`,
+  `uv run ruff check src tests`. `uv` lives in `~/.local/bin`. Note `make dev` /
+  `make _dev-api` invoke bare `python`, so prefer `uv run agent-bom serve …`
+  directly over `make dev`.
+- **Services and ports.** API (FastAPI) on `:8422`, Next.js dashboard on
+  `:3000`. The UI proxies `/v1`, `/health`, `/version`, `/ws` to
+  `NEXT_PUBLIC_API_URL` (default `http://localhost:8422`), so start the API
+  before the UI. SQLite is the default store — no external DB needed for local
+  dev. Postgres/ClickHouse/gateway/proxy/MCP are optional lanes.
+- **Auth gotcha (non-obvious).** The API is auth-by-default and fails closed:
+  protected `/v1/*` endpoints return 401 with no auth configured, so the
+  dashboard shows no data. For local dev, start the API with
+  `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1`. The `--allow-insecure-no-auth` flag
+  alone only relaxes the non-loopback *bind* gate — it does not enable
+  per-request unauthenticated access; the env var does. Full local dev command:
+  `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 uv run agent-bom serve --port 8422 --cors-allow-all --allow-insecure-no-auth --reload`,
+  then `npm run dev --prefix ui`.
+- **Seeding dashboard data / API-triggered scans.** The dashboard reads the API
+  store, which a local CLI scan does not populate. Trigger scans via
+  `POST /v1/scan` or the UI `/scan` page. The ad-hoc **Workstation** scope needs
+  no inputs and completes quickly. To scan local paths through the API, set
+  `AGENT_BOM_API_LOCAL_PATH_SCANS=enabled` and
+  `AGENT_BOM_API_SCAN_ROOT=<dir>`, then pass paths **relative** to that root
+  (absolute paths are rejected, symlinked components are rejected, and the path
+  must be owned by the API process user). `uv run agent-bom samples first-run
+  --target <dir>` writes a sample inventory to scan.
+- **Lint version drift.** `uv sync` installs the latest `ruff`, which is newer
+  than the pinned `.pre-commit-config.yaml` / CI `ruff`, so `uv run ruff check`
+  may report a small number of pre-existing findings that CI's pinned ruff does
+  not. Match CI by using the pinned version when a discrepancy matters.

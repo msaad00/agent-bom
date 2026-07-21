@@ -25,7 +25,7 @@ agent-bom iac Dockerfile k8s/ infra/main.tf --format sarif --output agent-bom-ia
 In GitHub Actions, use the `iac` scan type or the `iac` input:
 
 ```yaml
-- uses: msaad00/agent-bom@v0.97.1
+- uses: msaad00/agent-bom@v0.97.2
   with:
     scan-type: iac
     scan-ref: infra/main.tf,k8s/

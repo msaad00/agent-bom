@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 
 from agent_bom.api.graph_store import SQLiteGraphStore
-from agent_bom.graph import RelationshipType, UnifiedEdge
+from agent_bom.graph import RelationshipType, UnifiedEdge, build_workspace
 from agent_bom.graph.build_workspace import (
     GraphBuildWorkspace,
     _SQLiteWorkspaceBackend,
@@ -43,6 +43,30 @@ def _force_sqlite_backends(monkeypatch: pytest.MonkeyPatch) -> None:
     # retention lookup local (it routes to the Postgres pool when this env is
     # set) so the suite is deterministic regardless of an ambient Postgres URL.
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+
+
+def test_postgres_workspace_resolves_mounted_password_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The workspace uses the same secret-file contract as the API pool."""
+    secret_file = tmp_path / "postgres-password"
+    secret_file.write_text("app-secret\n", encoding="utf-8")
+    configured_dsn = "postgresql://agent_bom_app@db.example:5432/agent_bom"
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", configured_dsn)
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_PASSWORD_FILE", str(secret_file))
+
+    seen: dict[str, object] = {}
+
+    class _FakePostgresBackend:
+        def __init__(self, dsn: str, workspace_id: str, *, password: str | None = None) -> None:
+            seen.update(dsn=dsn, workspace_id=workspace_id, password=password)
+
+    monkeypatch.setattr(build_workspace, "_PostgresWorkspaceBackend", _FakePostgresBackend)
+    build_workspace.open_workspace_backend(backend="postgres", workspace_id="secret-file")
+
+    assert seen == {
+        "dsn": "postgresql://agent_bom_app@db.example:5432/agent_bom",
+        "workspace_id": "secret-file",
+        "password": "app-secret",
+    }
 
 
 def _synthetic_graph(scan: str, n: int, tenant: str = "t1") -> UnifiedGraph:

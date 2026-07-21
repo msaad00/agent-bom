@@ -153,12 +153,19 @@ export function LineageDetailPanel({
   onShowBlastRadius,
   blastRadiusActive = false,
   blastRadiusLoading = false,
+  variant = "overlay",
+  headerSlot,
+  footerSlot,
 }: {
   data: LineageNodeData;
   onClose: () => void;
   onShowBlastRadius?: (() => void) | undefined;
   blastRadiusActive?: boolean;
   blastRadiusLoading?: boolean;
+  /** overlay = absolute side panel (mesh/lineage); inline = stacked under canvas */
+  variant?: "overlay" | "inline";
+  headerSlot?: ReactNode;
+  footerSlot?: ReactNode;
 }) {
   const Icon = TYPE_ICON[data.nodeType];
   const osvUrl =
@@ -194,14 +201,19 @@ export function LineageDetailPanel({
         "epss_score",
         "is_kev",
         "fixed_version",
+        "node_id",
       ]).has(key);
     },
   );
 
+  const shellClass =
+    variant === "inline"
+      ? `relative w-full max-w-none border ${TYPE_BORDER[data.nodeType]} bg-[var(--background)]/95 overflow-y-auto rounded-xl`
+      : `absolute right-0 top-0 bottom-0 w-80 bg-[var(--background)]/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50 overflow-y-auto`;
+
   return (
-    <div
-      className={`absolute right-0 top-0 bottom-0 w-80 bg-[var(--background)]/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50 overflow-y-auto`}
-    >
+    <div className={shellClass} data-testid="graph-entity-drawer">
+
       <div className="p-4 space-y-4">
         <div className="flex items-start justify-between">
           <div>
@@ -222,6 +234,8 @@ export function LineageDetailPanel({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {headerSlot}
 
         {data.nodeType === "provider" && data.agentCount !== undefined && (
           <Row label="Hosted agents" value={data.agentCount} />
@@ -628,6 +642,8 @@ export function LineageDetailPanel({
             </div>
           </div>
         )}
+
+        {footerSlot}
       </div>
     </div>
   );

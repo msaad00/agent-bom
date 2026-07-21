@@ -26,7 +26,7 @@ import {
 } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { LargeGraphOverview } from "@/components/large-graph-overview";
-import { LineageDetailPanel } from "@/components/lineage-detail";
+import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import {
   GraphEmptyState,
   GraphFindingsFallback,
@@ -3117,8 +3117,10 @@ function GraphPageInner() {
           )}
 
           {selectedNode && (
-            <LineageDetailPanel
+            <GraphEntityDrawer
               data={selectedNode}
+              scanId={selectedScanId || undefined}
+              enrich={false}
               onClose={() => {
                 setSelectedNode(null);
                 setSelectedNodeId(null);

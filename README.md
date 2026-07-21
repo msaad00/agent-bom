@@ -184,7 +184,7 @@ graph evidence or hand the path directly to remediation.
 </details>
 
 <details>
-<summary><b>Full CLI walkthrough</b> — current 0.97.0 console demo</summary>
+<summary><b>Full CLI walkthrough</b> — current 0.97.1 console demo</summary>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo showing inventory, findings, remediation, and package gate" width="820" />
@@ -216,7 +216,7 @@ matches your role:
 Beyond the basics — `agent-bom graph` (multi-hop exposure paths),
 `agent-bom remediate -p .` (advisory fix plan),
 `agent-bom identity credential-expiry`, `agent-bom cost forecast`, and the CI
-gate `uses: msaad00/agent-bom@v0.97.0`. Full command map:
+gate `uses: msaad00/agent-bom@v0.97.1`. Full command map:
 [docs/CLI_MAP.md](docs/CLI_MAP.md) · role routing:
 [docs/START_HERE.md](docs/START_HERE.md) · all entry points and auth
 boundaries: [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md)

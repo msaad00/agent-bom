@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.97.1] - 2026-07-21
+
+### Fixed
+- Store-backed graph workspaces now resolve mounted Postgres password files and IAM-style credentials through the same hardened connection contract as the API, while keeping secrets out of DSNs (#4330).
+- Bounded cloud scans, graph workspace provisioning, and advisory/asset identity outputs are included in the released mainline contracts (#4328, #4329).
+
 ## [0.97.0] - 2026-07-20
 
 ### Added
@@ -2394,7 +2400,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.1...HEAD
+[0.97.1]: https://github.com/msaad00/agent-bom/compare/v0.97.0...v0.97.1
 [0.97.0]: https://github.com/msaad00/agent-bom/compare/v0.96.4...v0.97.0
 [0.96.4]: https://github.com/msaad00/agent-bom/compare/v0.96.3...v0.96.4
 [0.96.3]: https://github.com/msaad00/agent-bom/compare/v0.96.2...v0.96.3

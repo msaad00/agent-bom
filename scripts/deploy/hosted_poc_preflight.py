@@ -197,8 +197,16 @@ def _write_secret_files(root: Path, *, force: bool) -> None:
             print(f"secret already exists: {secret_path}")
             continue
         secret_path.write_text(writers[name](), encoding="utf-8")
-        secret_path.chmod(stat.S_IRUSR)
-        print(f"wrote {secret_path} with mode 0400")
+        # World-readable (0644) on purpose: compose (non-swarm) bind-mounts
+        # these host files into /run/secrets/* preserving the HOST file
+        # permissions — the long-syntax mode/uid/gid fields are swarm-only and
+        # ignored by compose — so the non-root container users (postgres UID 70
+        # running initdb scripts, the API app user) must be able to read the
+        # bind-mounted file or they crash-loop with EACCES. On a single-tenant
+        # self-host/demo VM the host filesystem is the trust boundary; swarm/k8s
+        # deployments use proper per-container secret perms instead.
+        secret_path.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        print(f"wrote {secret_path} with mode 0644")
 
 
 def _compose_config(root: Path) -> str:

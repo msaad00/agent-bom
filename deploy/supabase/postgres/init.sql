@@ -1166,8 +1166,11 @@ $$;
 -- LEAST PRIVILEGE: App user — DML only, no DDL (cannot CREATE/DROP/ALTER)
 -- ══════════════════════════════════════════════════════════════════════════════
 
--- Password is injected via POSTGRES_APP_PASSWORD env var in the wrapper script.
--- If not set, this block is skipped and the admin user is used (dev fallback).
+-- Password is injected via the init.app_password GUC by 00-init-wrapper.sh,
+-- which reads /run/secrets/postgres_app_password. If the GUC is unset/empty
+-- (e.g. the wrapper could not read the secret file) we RAISE EXCEPTION and
+-- abort init loudly at the real root cause — never silently limp on to create
+-- a broken passwordless app role that later fails runtime authentication.
 DO $$
 DECLARE
     app_pass TEXT;
@@ -1211,7 +1214,7 @@ BEGIN
 
         RAISE NOTICE 'agent_bom_app user created with DML-only access';
     ELSE
-        RAISE NOTICE 'POSTGRES_APP_PASSWORD not set — skipping app user creation (dev mode)';
+        RAISE EXCEPTION 'init.app_password is not set — the init-wrapper could not read /run/secrets/postgres_app_password; check the secret file exists and is readable by the postgres user';
     END IF;
 END
 $$;

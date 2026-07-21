@@ -26,7 +26,13 @@ printf %s "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.gen
 # printf %s "$(openssl rand -hex 32)" > deploy/secrets/trust_proxy_auth_secret
 # printf %s "$(openssl rand -hex 32)" > deploy/secrets/scim_bearer_token
 
-chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
+# 0644 (world-readable), NOT 0400: compose bind-mounts these host files into
+# /run/secrets/* preserving host perms (the mode/uid/gid long-syntax fields are
+# swarm-only, ignored by compose), and the non-root container users — postgres
+# UID 70 running initdb, the API app user — must read them. On a single-tenant
+# self-host VM the host filesystem is the trust boundary; swarm/k8s use
+# per-container secret perms instead.
+chmod 0644 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
   deploy/secrets/api_key deploy/secrets/audit_hmac_key \
   deploy/secrets/browser_session_signing_key deploy/secrets/connections_key
 ```

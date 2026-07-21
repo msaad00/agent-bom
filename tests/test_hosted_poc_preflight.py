@@ -163,7 +163,11 @@ def test_preflight_can_write_secret_files(tmp_path: Path) -> None:
     ):
         path = secrets_dir / name
         assert len(path.read_text(encoding="utf-8")) >= 32
-        assert oct(path.stat().st_mode & 0o777) == "0o400"
+        # 0644 (world-readable): compose bind-mounts these host files into
+        # /run/secrets/* preserving HOST perms, and the non-root container
+        # users (postgres UID 70, the API app user) must read them. See the
+        # generated-secret write path for the full rationale.
+        assert oct(path.stat().st_mode & 0o777) == "0o644"
 
 
 def test_secret_generation_does_not_require_hosted_url_configuration(

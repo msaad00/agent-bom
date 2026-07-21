@@ -227,9 +227,9 @@ def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home(
     assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])
     assert "api_key" in (api.get("secrets") or [])
     assert "postgres_app_password" in (api.get("secrets") or [])
-    assert "postgres_password" in ((data.get("secrets") or {}))
-    assert "postgres_app_password" in ((data.get("secrets") or {}))
-    assert "api_key" in ((data.get("secrets") or {}))
+    assert "postgres_password" in (data.get("secrets") or {})
+    assert "postgres_app_password" in (data.get("secrets") or {})
+    assert "api_key" in (data.get("secrets") or {})
 
 
 @pytest.mark.parametrize(
@@ -247,6 +247,7 @@ def test_compose_stacks_never_interpolate_control_plane_secrets(compose_name: st
     ):
         assert f"${{{name}" not in text, f"{compose_name} must not interpolate {name}"
         assert f"{name}_FILE" in text, f"{compose_name} must set {name}_FILE"
+
 
 def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     path = COMPOSE_DIR / "docker-compose.hosted-poc.yml"
@@ -279,6 +280,24 @@ def test_postgres_init_resets_app_password_guc_after_reading_it() -> None:
         "not persist in pg_db_role_setting (readable by any connected role)."
     )
     assert reset_idx > read_idx, "the RESET of init.app_password must come after the read that uses it."
+
+
+def test_postgres_init_raises_when_app_password_missing() -> None:
+    """If init.app_password is unset/empty (e.g. the wrapper could not read the
+    secret file), init.sql must RAISE EXCEPTION and abort loudly — never fall
+    through to CREATE ROLE ... PASSWORD NULL (a broken passwordless app role) or
+    silently skip creation, which surfaces later as an opaque runtime
+    'password authentication failed for user "agent_bom_app"'."""
+    init_sql = (COMPOSE_DIR / "supabase" / "postgres" / "init.sql").read_text(encoding="utf-8")
+
+    read_idx = init_sql.find("current_setting('init.app_password'")
+    assert read_idx != -1
+
+    assert "RAISE EXCEPTION 'init.app_password is not set" in init_sql, (
+        "init.sql must RAISE EXCEPTION when the app password GUC is unset/empty, not silently skip app-role creation."
+    )
+    # The old dev-mode fallback (silent NOTICE skip) must be gone.
+    assert "skipping app user creation" not in init_sql, "init.sql must not silently skip app-role creation on a missing password."
 
 
 def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:

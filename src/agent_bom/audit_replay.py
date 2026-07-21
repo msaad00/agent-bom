@@ -350,6 +350,20 @@ def display_rich(
     if s and (s.total_blocked > 0 or s.relay_errors > 0):
         exit_code = 1
 
+    # Summary-less logs previously ignored blocked tool_calls for exit (only
+    # summary.total_blocked counted). Align with display_json / module docs when
+    # tool calls are in the active display scope. Relay errors stay filter-aware
+    # via the table block below — do not fail closed on out-of-scope relays.
+    tools_in_scope = not alerts_only and (
+        type_filter_normalized is None or type_filter_normalized == "tools/call"
+    )
+    if exit_code == 0 and not s and tools_in_scope:
+        scoped_calls = log.tool_calls
+        if tool_filter:
+            scoped_calls = [c for c in scoped_calls if tool_filter.lower() in c.tool.lower()]
+        if any(c.policy == "blocked" for c in scoped_calls):
+            exit_code = 1
+
     # ── Tool call table ─────────────────────────────────────────────────────
     if not alerts_only:
         calls = log.tool_calls

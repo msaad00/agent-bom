@@ -17,6 +17,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
   Deployment Freshness workflow (opens/closes the same supply-chain drift issue
   used for Railway and Smithery).
 
+### Fixed
+- MCP server-card `registry_servers` now tracks the bundled registry total (was
+  stale at 427); card `read_only` is false to match write-gated Shield/identity/
+  ticketing tools; Connections UI and `mcp_server.py` docstring list all 76 tools.
+- Glama freshness checker accepts README's "exposes N MCP tools" phrasing.
+- `agent-bom audit` rich display fails closed on blocked tool calls even when the
+  log has no `proxy_summary` trailer (aligned with `--json`).
+
 ### Changed
 - Drop no-op `dependency-pin-check.yml` and the non-blocking main-only `ci.yml` `agent-bom-scan` job (covered by PR Security Gate + post-merge self-scan).
 - Demo redeploy now triggers on successful `Release` workflow completion

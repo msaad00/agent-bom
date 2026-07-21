@@ -55,7 +55,9 @@ def _load_version() -> str:
 
 def _load_readme_tool_count() -> str:
     text = README.read_text(encoding="utf-8")
-    match = re.search(r"MCP server mode advertises\s+(\d+)\s+MCP tools", text)
+    # Prefer the current README phrasing ("exposes"); keep "advertises" as a
+    # fallback so older release tags still parse during surface-freshness probes.
+    match = re.search(r"MCP server mode (?:exposes|advertises)\s+(\d+)\s+MCP tools", text)
     if not match:
         raise SystemExit("README.md MCP tool count sentence not found")
     return match.group(1)
@@ -92,10 +94,7 @@ def verify_build_manifest(git_ref: str | None = None) -> list[str]:
             continue
         data = json.loads(manifest_text)
         if data.get("dockerfile") != GLAMA_DOCKERFILE:
-            failures.append(
-                f"{manifest_path} dockerfile must be {GLAMA_DOCKERFILE!r}, "
-                f"found {data.get('dockerfile')!r}"
-            )
+            failures.append(f"{manifest_path} dockerfile must be {GLAMA_DOCKERFILE!r}, found {data.get('dockerfile')!r}")
     return failures
 
 
@@ -108,13 +107,21 @@ def _fetch(url: str, timeout: int) -> str:
 def _check(page: str, version: str, tool_count: str) -> list[str]:
     expected_tokens = [
         f"v{version}",
-        f"MCP server mode advertises {tool_count} MCP tools",
+        # Accept either phrasing while Glama's rendered README catches up.
+        # Presence of the tool-count sentence is what matters for freshness.
     ]
     failures = [f"missing current Glama listing token: {token!r}" for token in expected_tokens if token not in page]
+    tool_count_ok = bool(
+        re.search(rf"MCP server mode (?:exposes|advertises)\s+{re.escape(tool_count)}\s+MCP tools", page)
+        or f"MCP server mode exposes {tool_count} MCP tools" in page
+        or f"MCP server mode advertises {tool_count} MCP tools" in page
+    )
+    if not tool_count_ok:
+        failures.append(f"missing current Glama listing token: 'MCP server mode exposes|advertises {tool_count} MCP tools'")
 
     stale_patterns = [
         r"uses:\s*msaad00/agent-bom@v0\.88\.4",
-        r"MCP server mode advertises\s+55\s+MCP tools",
+        r"MCP server mode (?:exposes|advertises)\s+55\s+MCP tools",
         r"18 tools for CVE scanning",
         r"98c3e543",  # pre-0.92.0 pinned Glama build ref from audit #3472
         r"git checkout 98c3e543",

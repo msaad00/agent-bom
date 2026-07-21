@@ -648,6 +648,26 @@ def test_display_rich_with_blocked_calls():
     assert code == 1
 
 
+def test_display_rich_blocked_without_summary_fails_closed():
+    """Rich path must match JSON exit semantics when proxy_summary is absent."""
+    log = AuditLog(
+        tool_calls=[
+            ToolCallEntry(
+                ts="2025-01-01T00:00:00Z",
+                tool="run_shell",
+                policy="blocked",
+                reason="policy",
+                agent_id="agent1",
+                args={},
+                payload_sha256="hash",
+                message_id=1,
+            )
+        ],
+    )
+    assert display_rich(log) == 1
+    assert display_json(log) == 1
+
+
 def test_display_rich_alerts_only():
     log = AuditLog(
         alerts=[

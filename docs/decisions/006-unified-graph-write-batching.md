@@ -85,9 +85,11 @@ reverse-adjacency / dedup indexes — in RAM, with correlation overlays that que
 the whole graph, before persist. So peak RSS for a single build+persist is set by
 the producer, not the write path.
 
-`AGENT_BOM_GRAPH_STORE_BACKED_BUILD` (default-off) moves that materialization off
-the heap. When enabled, `_persist_graph_snapshot` builds the graph into a
-per-build `StoreBackedUnifiedGraph` (see ADR-adjacent
+`AGENT_BOM_GRAPH_STORE_BACKED_BUILD` moves that materialization off the heap
+when forced on, and — when unset — auto-enables once a cheap entity estimate of
+the incoming report reaches `AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES` (default
+5000). Explicit `0/false/off` always wins. When enabled, `_persist_graph_snapshot`
+builds the graph into a per-build `StoreBackedUnifiedGraph` (see ADR-adjacent
 `src/agent_bom/graph/store_backed.py`) on a **throwaway private SQLite build
 workspace** — never the shared Postgres workspace tables, so no cross-tenant
 workspace data lives mid-build and the workspace-RLS question is moot. Phase-A
@@ -95,10 +97,12 @@ emission and every Phase-B overlay (cnapp / effective-permissions /
 nhi-governance / attack-path-fusion / a2a-mcp / cost / aspm / runtime / repo) run
 against the store **unchanged**; only a bounded LRU working set + one keyset page
 live in RAM. The context manager drops the workspace after the build+persist,
-even on exception. The flag is scoped to the persist caller — the CLI, API, and
-export builders keep the in-RAM path — so nothing changes for anyone not opting
-in (no latency or behavior regression). The default must stay off until an ops
-decision flips it.
+even on exception. CLI / export builders that never pass a container stay
+in-RAM; below-threshold API scans keep the byte-identical in-RAM producer. This
+is a measured peak-RSS reduction (~2.5–3× lower producer peak, residual O(N)
+floor ~0.37), not a claim of strict bounded memory — multi-million-node estates
+still need a server-side backend. Large builds write O(graph) bytes to pod
+ephemeral storage while the throwaway SQLite workspace is open.
 
 Two overlays mutated a *held* node subset across passes (cnapp exposure marks;
 effective-permissions admin-equivalence marks) — a pattern the store's

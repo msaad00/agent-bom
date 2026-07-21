@@ -27,7 +27,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -57,7 +57,7 @@ jobs:
       python: ${{ steps.classify.outputs.python }}
       ui: ${{ steps.classify.outputs.ui }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -147,7 +147,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The Docker base-image policy gate uses `git blame --porcelain` to
           # read the commit timestamp of `# pending-digest` markers and reject
@@ -326,7 +326,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-python
         with:
@@ -373,7 +373,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-python
         with:
@@ -400,7 +400,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up UI toolchain
         uses: ./.github/actions/setup-ui
@@ -564,7 +564,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Helm
         run: |
@@ -654,7 +654,7 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-python
         with:
@@ -731,7 +731,7 @@ jobs:
         # wall-clock near the 4-5 minute mark instead of ~10.
         python-version: ${{ github.event_name == 'pull_request' && fromJSON('["3.13"]') || fromJSON('["3.11", "3.13", "3.14"]') }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-python
         with:
@@ -844,7 +844,7 @@ jobs:
     # the cloud extras here and actually execute every extra-gated import line.
     if: always() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true')
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-python
         with:
@@ -894,7 +894,7 @@ jobs:
       AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS: "5"
       PGPASSWORD: testpass
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-python
         with:
@@ -1014,7 +1014,7 @@ jobs:
           done
           apk add --no-cache git
 
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build deps (Alpine)
         run: |
@@ -1087,7 +1087,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-python
         with:
@@ -1168,7 +1168,7 @@ jobs:
     # suite (docs-only PRs); a failed or cancelled test still blocks it.
     if: ${{ !cancelled() && needs.security.result == 'success' && needs.lint.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-python
         with:
@@ -1211,7 +1211,7 @@ jobs:
       contents: read
     needs: [security, lint, test]
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up QEMU (arm64 emulation)
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
@@ -1295,63 +1295,7 @@ jobs:
               print(f'OS scan parse error (non-blocking): {e}')
           " || true
 
-  # 6. agent-bom Self-Scan (dogfooding with test SBOM)
-  # Runs on main push only — not needed on every PR
-  agent-bom-scan:
-    name: agent-bom Self-Scan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [test]
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - uses: ./.github/actions/setup-python
-        with:
-          python-version: '3.11'
-
-      - name: Install agent-bom from source
-        run: uv sync --frozen --extra dev
-
-      - name: Generate real SBOM from installed packages (pip-audit CycloneDX)
-        run: |
-          # Generate a real CycloneDX SBOM from all packages installed in the venv.
-          # This is what agent-bom actually scans — its own supply chain, not test fixtures.
-          uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 --format=cyclonedx-json --output /tmp/agent-bom-self-scan.cdx.json \
-            --skip-editable || true
-          if [ ! -f /tmp/agent-bom-self-scan.cdx.json ]; then
-            echo '{"bomFormat":"CycloneDX","specVersion":"1.4","components":[]}' \
-              > /tmp/agent-bom-self-scan.cdx.json
-          fi
-
-      - name: Run agent-bom scan (real installed packages)
-        run: |
-          # Scan the real venv SBOM — dogfoods the scanner against actual deps.
-          # Any CVE here is a real vulnerability in agent-bom's supply chain.
-          uv run agent-bom sbom /tmp/agent-bom-self-scan.cdx.json \
-            -f json -o /tmp/agent-bom-self-scan-results.json || true
-          # Also generate SARIF for potential future upload
-          uv run agent-bom sbom /tmp/agent-bom-self-scan.cdx.json \
-            -f sarif -o results.sarif || true
-          if [ ! -f results.sarif ]; then
-            cat > results.sarif <<'JSON'
-          {"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}
-          JSON
-          fi
-          # Print summary so it's visible in workflow output
-          echo "=== agent-bom self-scan summary ==="
-          if [ -f /tmp/agent-bom-self-scan-results.json ]; then
-            python3 -c "import json,sys; d=json.load(open('/tmp/agent-bom-self-scan-results.json')); f=d.get('findings',d.get('vulnerabilities',[])); sev=lambda s: sum(1 for x in f if x.get('severity','').lower()==s); c,h,m,lo=sev('critical'),sev('high'),sev('medium'),sev('low'); print('Total:',len(f),'| Critical:',c,'| High:',h,'| Medium:',m,'| Low:',lo); [print('WARNING: CVE in own deps:',x.get('id','?'),x.get('package',{}).get('name','?'),x.get('package',{}).get('version','?')) for x in f if x.get('severity','').lower() in ('critical','high')]" || true
-          fi
-
-      # SARIF upload intentionally omitted: a schedule/push-only SARIF category
-      # creates a "code scanning configuration" GitHub expects on every PR.
-      # When any PR run skips it, GitHub shows "1 configuration not found".
-      # Results are fully visible in the workflow output above.
-
-  # 7. Dogfood GitHub Action (test action.yml via uses: ./)
+  # 6. Dogfood GitHub Action (test action.yml via uses: ./)
   action-dogfood:
     name: Dogfood GitHub Action
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.action == 'true')
@@ -1361,7 +1305,7 @@ jobs:
       contents: read
     needs: [changes]
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # 7a. Basic SARIF scan (clean SBOM)
       - name: "Dogfood: SARIF format (clean SBOM)"

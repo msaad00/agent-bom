@@ -12,6 +12,11 @@ name: Demo redeploy
 # vars/secrets documented in docs/HOSTED_POC.md → "Demo redeploy".
 
 on:
+  # Primary trigger: workflow_run fires even when Release publishes with the
+  # default GITHUB_TOKEN (which suppresses `release: published` workflow starts).
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   release:
     types: [published]
   workflow_dispatch:
@@ -31,6 +36,11 @@ concurrency:
 jobs:
   redeploy:
     name: Redeploy hosted demo via SSM
+    # Skip failed Release runs; keep release + manual dispatch always eligible.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Protected environment: this repo is public, so gate every run behind a
@@ -79,7 +89,7 @@ jobs:
           DEMO_INSTANCE_ID: ${{ vars.DEMO_INSTANCE_ID }}
           DEMO_DEPLOY_DIR: ${{ vars.DEMO_DEPLOY_DIR || '/opt/agent-bom' }}
           RESET_DEMO: ${{ inputs.reset_demo || 'false' }}
-          RELEASE_REF: ${{ github.event.release.tag_name || github.sha }}
+          RELEASE_REF: ${{ github.event.release.tag_name || github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
 
@@ -93,6 +103,14 @@ jobs:
           set -eu
           DEPLOY_DIR="__DEPLOY_DIR__"
           RESET_DEMO="__RESET_DEMO__"
+          # Fail loud when vars.DEMO_DEPLOY_DIR does not match the VM checkout
+          # (bare `cd` under dash only prints "can't cd", which hid past failures).
+          if [ ! -d "$DEPLOY_DIR/.git" ]; then
+            echo "ERROR: DEPLOY_DIR=$DEPLOY_DIR is not a git checkout."
+            echo "Set repo Actions var DEMO_DEPLOY_DIR to the VM path that contains"
+            echo "the agent-bom .git directory (see docs/HOSTED_POC.md → Demo redeploy)."
+            exit 1
+          fi
           cd "$DEPLOY_DIR"
 
           # Optional on-VM env file carries the non-secret URL wiring the
@@ -108,11 +126,20 @@ jobs:
           echo "== git pull =="
           git pull --ff-only
 
+          # Build images first while the previous stack keeps serving, then
+          # restart containers briefly — avoids a long Cloudflare 502 window
+          # during `up -d --build`.
+          echo "== docker compose build =="
+          docker compose \
+            -f deploy/docker-compose.platform.yml \
+            -f deploy/docker-compose.hosted-poc.yml \
+            build
+
           echo "== docker compose up =="
           docker compose \
             -f deploy/docker-compose.platform.yml \
             -f deploy/docker-compose.hosted-poc.yml \
-            up -d --build
+            up -d
 
           echo "== preflight (fail-closed) =="
           python3 scripts/deploy/hosted_poc_preflight.py --write-postgres-secret

@@ -1,8 +1,9 @@
 name: Deployment Freshness
 
-# Checks that the protected Railway surface serves the latest release and that
-# the Smithery catalog listing is live with a non-empty tool inventory. Runs
-# daily and on-demand. Opens an issue if stale or misconfigured.
+# Checks that the protected Railway surface serves the latest release, that
+# the Smithery catalog listing is live with a non-empty tool inventory, and that
+# the public hosted demo (demo.agent-bom.com) answers /health on the expected
+# version. Runs daily and on-demand. Opens an issue if stale or misconfigured.
 
 on:
   schedule:
@@ -20,7 +21,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Get expected version from repo
         id: expected
@@ -135,8 +136,48 @@ jobs:
             echo "::warning::Smithery catalog listing is missing remote deployment metadata or tools"
           fi
 
+      - name: Check hosted demo (demo.agent-bom.com)
+        id: demo
+        continue-on-error: true
+        env:
+          DEMO_PUBLIC_URL: ${{ vars.DEMO_PUBLIC_URL }}
+        run: |
+          DEMO_URL="${DEMO_PUBLIC_URL:-https://demo.agent-bom.com}"
+          HEALTH_URL="${DEMO_URL%/}/health"
+          echo "Checking $HEALTH_URL ..."
+          EXPECTED="${{ steps.expected.outputs.version }}"
+          RESPONSE=$(curl -fsS --max-time 15 "$HEALTH_URL" 2>/dev/null || echo '')
+          if [ -z "$RESPONSE" ]; then
+            echo "demo_version=unreachable" >> "$GITHUB_OUTPUT"
+            echo "probe_failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Hosted demo unreachable at $HEALTH_URL (HTTP failure / timeout)"
+            exit 0
+          fi
+          DEPLOYED=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              print(data.get('version') or data.get('status') or 'unknown')
+          except Exception:
+              print('unknown')
+          ")
+          echo "demo_version=$DEPLOYED" >> "$GITHUB_OUTPUT"
+          echo "Demo version: $DEPLOYED (expected: $EXPECTED)"
+          if [ "$DEPLOYED" = "unknown" ] || [ "$DEPLOYED" = "ok" ]; then
+            # /health may return status=ok without version on older builds; treat
+            # missing version as probe_failed only when body is not JSON-ok.
+            HAS_VERSION=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if d.get('version') else 'no')")
+            if [ "$HAS_VERSION" != "yes" ]; then
+              echo "probe_failed=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::Hosted demo /health missing version field"
+            fi
+          elif [ "$DEPLOYED" != "$EXPECTED" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Hosted demo version $DEPLOYED != expected $EXPECTED"
+          fi
+
       - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
-        if: steps.railway.outputs.stale == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true'
+        if: steps.railway.outputs.stale == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true' || steps.demo.outputs.stale == 'true' || steps.demo.outputs.probe_failed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -145,6 +186,7 @@ jobs:
           PUBLIC="${{ steps.public.outputs.public_version }}"
           PUBLIC_TOOLS="${{ steps.public.outputs.tool_count }}"
           PUBLIC_AUTH="${{ steps.public.outputs.auth_required }}"
+          DEMO="${{ steps.demo.outputs.demo_version }}"
           TITLE="supply-chain-drift: deployment surfaces out of sync with $EXPECTED"
 
           gh label create supply-chain-drift --color FBCA04 --description "Automated supply-chain or deployment drift detection" >/dev/null 2>&1 || true
@@ -161,8 +203,9 @@ jobs:
           |---------|---------|----------|---------------|------------|
           | Railway (protected) | $RAILWAY | $EXPECTED | true | — |
           | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
+          | Hosted demo | $DEMO | $EXPECTED | read-only sandbox | — |
 
-          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API lists a remote deployment with tools, then re-run this workflow.
+          **Action**: Ensure the protected Railway deployment is fresh, the Smithery catalog API lists a remote deployment with tools, and \`demo.agent-bom.com/health\` serves the expected version (see docs/HOSTED_POC.md → Demo redeploy), then re-run this workflow.
 
           This issue was auto-updated by the deployment-freshness workflow.
           EOF
@@ -180,8 +223,9 @@ jobs:
           |---------|---------|----------|---------------|------------|
           | Railway (protected) | $RAILWAY | $EXPECTED | true | — |
           | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
+          | Hosted demo | $DEMO | $EXPECTED | read-only sandbox | — |
 
-          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API lists a remote deployment with tools, then re-run this workflow.
+          **Action**: Ensure the protected Railway deployment is fresh, the Smithery catalog API lists a remote deployment with tools, and \`demo.agent-bom.com/health\` serves the expected version (see docs/HOSTED_POC.md → Demo redeploy), then re-run this workflow.
 
           This issue was auto-created by the deployment-freshness workflow.
           EOF
@@ -237,7 +281,7 @@ jobs:
           fi
 
       - name: Close supply-chain drift issue when deployment is fresh
-        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true' && steps.public.outputs.not_configured != 'true' && steps.public.outputs.stale != 'true' && steps.public.outputs.probe_failed != 'true' && steps.public.outputs.auth_gate != 'true'
+        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true' && steps.public.outputs.not_configured != 'true' && steps.public.outputs.stale != 'true' && steps.public.outputs.probe_failed != 'true' && steps.public.outputs.auth_gate != 'true' && steps.demo.outputs.stale != 'true' && steps.demo.outputs.probe_failed != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

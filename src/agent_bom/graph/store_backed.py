@@ -1,7 +1,7 @@
-"""Store-backed live :class:`UnifiedGraph` (#4075 PR-3 — proven but unwired).
+"""Store-backed live :class:`UnifiedGraph` (#4075 — persist auto-wiring).
 
 The graph *producer* (:func:`agent_bom.graph.builder.build_unified_graph_from_report`)
-and its Phase-B overlays build the whole correlated graph in RAM: they add and
+and its Phase-B overlays can build the correlated graph in RAM: they add and
 merge nodes/edges, then random-access + mutate the full node set in a forward-
 feeding chain. That in-RAM materialisation is the remaining wall on the #4055
 write-path peak-RSS bound.
@@ -33,11 +33,13 @@ byte-identical. Every traversal / filter / view algorithm is **inherited
 unchanged** from :class:`UnifiedGraph` and runs against the store-backed
 ``nodes`` / ``edges`` / ``adjacency`` / ``reverse_adjacency`` views.
 
-**Default-off and unwired.** No builder, overlay, or persist caller constructs
-this container in production; the shipped path still materialises the in-RAM
-:class:`UnifiedGraph`. Tests are the only callers. Wiring the builder/overlays
-through it (and the deferred build-latency + PG-workspace-RLS decisions) is held
-for owner sign-off as PR-4.
+**Auto-wired on the persist path.** ``_persist_graph_snapshot`` builds into this
+container when ``AGENT_BOM_GRAPH_STORE_BACKED_BUILD`` is forced on, or when that
+flag is unset and the report entity estimate reaches
+``AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES`` (default 5000). Explicit off keeps
+the in-RAM producer. CLI/export callers that never pass a container stay in-RAM.
+Shared Postgres workspace builds remain deferred (private SQLite build workspace
+only).
 """
 
 from __future__ import annotations

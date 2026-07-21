@@ -80,7 +80,6 @@ Dependency and supply-chain controls are enforced through multiple workflows:
 
 - `dependency-review.yml` for per-PR dependency diffs
 - `dependency-submission.yml` for GitHub dependency graph visibility
-- `dependency-pin-check.yml` for transitive security pin discipline
 - `cve-freshness.yml` for daily dependency vulnerability checks
 - `container-rescan.yml` for image rescans
 - `cflite-pr.yml` for parser and ingestion fuzzing

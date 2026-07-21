@@ -575,6 +575,16 @@ def reset_global_test_state():
     _restore_config_auth(config_auth_snapshot)
     _restore_output_console(output_console_snapshot)
 
+    for var, value in {
+        **auth_env_snapshot,
+        **storage_env_snapshot,
+        **server_env_snapshot,
+    }.items():
+        if value is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = value
+
     _reset_resolver_state()
     _reset_registry_state()
     _reset_identity_cache_state()

@@ -1,9 +1,9 @@
 ---
-description: Never commit private strategy / GTM / scorecard material to the public tree
+description: Never commit private strategy / GTM / agent audit ledgers to the public tree
 alwaysApply: true
 ---
 
-# No private strategy in the public tree
+# No private strategy or agent audits in the public tree
 
 From `AGENTS.md` — non-negotiable for every agent in this repo.
 
@@ -13,18 +13,18 @@ From `AGENTS.md` — non-negotiable for every agent in this repo.
 - Named prospect, partner, advisor, or individual targeting notes
 - Customer or partner target lists
 - AE / commercial scorecards and “harsh re-rate” / absolute pilot-readiness tables
-- Agent-session tooling credits in audit ledgers or docs
+- Cursor / Claude / Codex persona or codebase audit ledgers (`docs/audits/`, `docs/archive/AUDIT*`)
 
 ## Do instead
 
-- Keep strategy and commercial critique in **private notes or chat**
-- Public engineering audits: product evidence, commands run, persona progress tied to shipped surfaces
-- Public positioning: capability gaps and our lanes (scan → control plane → runtime), not named-person or GTM plans
+- Keep strategy, commercial critique, and agent audit write-ups in **private notes or chat**
+- Public docs: product evidence, operator runbooks, first-command → artifact → next-step
+- Public positioning: capability gaps and our lanes (scan → control plane → runtime)
 
 ## Before opening or updating a PR
 
-1. Do not add files named like `STRATEGIC_AUDIT*`, `*_GTM_*`, `PRIVATE_STRATEGY*`, or `*COMMERCIAL_SCORECARD*`
+1. Do not add `docs/audits/`, `docs/archive/AUDIT*`, `STRATEGIC_AUDIT*`, or scorecard files
 2. Search the branch diff for private scorecard phrases (`harsh re-rate`, `absolute pilot readiness`)
-3. Do not paste “must-remove” leak inventories that re-list private names into PR bodies
+3. Do not paste leak inventories that re-list private names into PR bodies
 
 `scripts/check_public_docs_hygiene.py` fails CI if those artifacts return.

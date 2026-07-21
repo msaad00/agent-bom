@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Public-docs hygiene: keep private strategy and scorecards out of the OSS tree.
+"""Public-docs hygiene: keep private strategy and agent audits out of the OSS tree.
 
 The public repo is read by strangers. These classes of material must never ship:
 
-  1. Archived / named strategy artifacts (filenames like STRATEGIC_AUDIT*,
-     PRIVATE_STRATEGY*, *GTM*AUDIT*, *COMMERCIAL_SCORECARD*).
-  2. Private pilot scorecard phrases ("harsh re-rate", "absolute pilot
-     readiness") in docs, site-docs, CHANGELOG, or UI copy.
-  3. Strategic-audit title banners that reintroduce the deleted private memo.
+  1. Strategy artifacts (filenames like STRATEGIC_AUDIT*, PRIVATE_STRATEGY*,
+     *GTM*AUDIT*, *COMMERCIAL_SCORECARD*).
+  2. Agent-session / persona audit ledgers under docs/audits/ or
+     docs/archive/AUDIT*.
+  3. Private pilot scorecard phrases ("harsh re-rate", "absolute pilot
+     readiness") and deleted strategic-audit banners.
 
-Engineering audit ledgers may keep product evidence and persona progress
-scores. They must not carry private positioning plans or scorecard re-rates.
+Public docs are product evidence and operator runbooks only — not
+Cursor/Claude/Codex review write-ups or commercial scorecards.
 
 Exit 0 = clean. Exit 1 = a violation. Pure stdlib so it runs anywhere in CI.
 """
@@ -31,6 +32,13 @@ FORBIDDEN_BASENAME_RES: tuple[re.Pattern[str], ...] = (
     re.compile(r"^PRIVATE_STRATEGY", re.I),
     re.compile(r"GTM.*AUDIT|AUDIT.*GTM", re.I),
     re.compile(r"COMMERCIAL_SCORECARD", re.I),
+    # Persona / codebase audit ledgers (agent-session write-ups).
+    re.compile(r"^AUDIT(-\d|\.md$|$)", re.I),
+)
+
+# Entire trees that must stay empty / absent in the public checkout.
+FORBIDDEN_PATH_PREFIXES: tuple[str, ...] = (
+    "docs/audits/",
 )
 
 # Content scan roots (markdown / copy surfaces strangers read).
@@ -62,6 +70,7 @@ CONTENT_SCAN_SKIP: frozenset[str] = frozenset(
         SELF,
         "AGENTS.md",
         "CLAUDE.md",
+        "docs/archive/README.md",
     }
 )
 
@@ -78,6 +87,10 @@ FORBIDDEN_CONTENT: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"#\s*agent-bom\s+Strategic\s+Audit\b", re.I),
         "private strategic-audit memo title (do not reintroduce)",
+    ),
+    (
+        re.compile(r"#\s*agent-bom\s+Codebase\s+Audit\b", re.I),
+        "agent-session codebase audit ledger (do not reintroduce)",
     ),
     (
         re.compile(r"\bTrademark\s*&\s*IP\s+Protection\b", re.I),
@@ -108,7 +121,15 @@ def _iter_tracked_ish() -> list[Path]:
             rel = p.relative_to(REPO_ROOT).as_posix()
             if _excluded(rel):
                 continue
-            if p.suffix.lower() in CONTENT_SUFFIXES or p.name.upper().startswith("STRATEGIC"):
+            if p.suffix.lower() in CONTENT_SUFFIXES or p.name.upper().startswith(
+                ("STRATEGIC", "AUDIT")
+            ):
+                out.append(p)
+    # Also catch a resurrected docs/audits tree even if empty of md later.
+    audits = REPO_ROOT / "docs" / "audits"
+    if audits.is_dir():
+        for p in audits.rglob("*"):
+            if p.is_file():
                 out.append(p)
     return sorted(set(out))
 
@@ -116,11 +137,24 @@ def _iter_tracked_ish() -> list[Path]:
 def main() -> int:
     violations: list[str] = []
 
+    audits_dir = REPO_ROOT / "docs" / "audits"
+    if audits_dir.exists():
+        violations.append(
+            "docs/audits/: forbidden agent-session audit ledger directory "
+            "(keep persona reviews in private notes)"
+        )
+
     for path in _iter_tracked_ish():
         rel = path.relative_to(REPO_ROOT).as_posix()
+        if any(rel == p.rstrip("/") or rel.startswith(p) for p in FORBIDDEN_PATH_PREFIXES):
+            violations.append(f"{rel}: forbidden path under docs/audits/")
+            continue
         for pat in FORBIDDEN_BASENAME_RES:
             if pat.search(path.name):
-                violations.append(f"{rel}: forbidden private-strategy filename ({path.name})")
+                # Allow non-ledger uses outside docs/ (e.g. test fixtures).
+                if not rel.startswith("docs/"):
+                    continue
+                violations.append(f"{rel}: forbidden audit/strategy filename ({path.name})")
                 break
 
     for path in _iter_tracked_ish():
@@ -140,13 +174,13 @@ def main() -> int:
     if violations:
         print(
             "Public-docs hygiene check FAILED — private strategy/scorecard "
-            "material must stay out of the OSS tree:\n"
+            "and agent audit ledgers must stay out of the OSS tree:\n"
         )
         for v in violations:
             print(f"  {v}")
         print(
-            "\nKeep strategy, named-prospect lists, and harsh scorecards in "
-            "private notes. Public audits may record product evidence only."
+            "\nKeep strategy, named-prospect lists, harsh scorecards, and "
+            "Cursor/Claude persona audits in private notes — not docs/."
         )
         return 1
 

@@ -22,10 +22,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   graph test module docstring matches auto-enable behavior.
 
 ### Changed
-- Remove an archived strategy document that did not belong in the public tree;
-  redact internal tooling credits from engineering audit ledgers and soften
-  large-enterprise procurement phrasing. CI now guards against reintroducing
-  private strategy / scorecard artifacts.
+- Remove private strategy and agent-session audit ledgers from the public tree
+  (`docs/archive/STRATEGIC_AUDIT_*`, `docs/archive/AUDIT.md`, `docs/audits/`);
+  soften large-enterprise procurement phrasing. CI
+  (`scripts/check_public_docs_hygiene.py`) blocks reintroduction.
 
 ## [0.97.2] - 2026-07-21
 

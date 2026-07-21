@@ -348,7 +348,7 @@ LLM spend onto nodes and rolls it up along `CONTAINS` into `subtree_cost_usd`.
 
 ## 4. Compliance Tagging
 
-Every finding is tagged against curated compliance frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the generated control counts.
+Every finding is tagged against curated compliance frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated **evidence helper** — a subset of each framework focused on AI/MCP/agent risk-relevant controls — not a certification claim, audit opinion, or complete catalog. See [Coverage per framework](#coverage-per-framework) below for the generated control counts.
 
 ```mermaid
 graph LR

@@ -1,9 +1,10 @@
 # Enterprise Control Mapping
 
 This page maps common procurement and audit questions to implemented
-`agent-bom` controls. It is an evidence index, not a certification claim.
-Auditors should validate the linked code, tests, workflows, and deployment
-settings in the customer environment.
+`agent-bom` controls. It is a curated **evidence helper / index**, not a
+certification claim, audit opinion, or complete control catalog. Auditors should
+validate the linked code, tests, workflows, and deployment settings in the
+customer environment.
 
 ## How To Use This Map
 

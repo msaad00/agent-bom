@@ -38,6 +38,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   (`docs/archive/STRATEGIC_AUDIT_*`, `docs/archive/AUDIT.md`, `docs/audits/`);
   soften large-enterprise procurement phrasing. CI
   (`scripts/check_public_docs_hygiene.py`) blocks reintroduction.
+- Compliance UI and docs label framework mappings as a curated evidence helper,
+  not a certification or complete control catalog (dashboard disclaimer +
+  `site-docs/features/compliance.md` / `CONTROL_MAPPING.md` / `ARCHITECTURE.md`).
 
 ## [0.97.2] - 2026-07-21
 

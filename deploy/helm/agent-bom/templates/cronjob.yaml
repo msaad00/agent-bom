@@ -181,7 +181,13 @@ spec:
             - name: snowflake-key
               secret:
                 secretName: {{ $cloud.snowflake.keySecretName | quote }}
-                defaultMode: 0400
+                # 0440 (group read), not 0400: the pod runs as uid 100 while the
+                # kubelet mounts secret files owned by root. Group read is what
+                # makes the key readable by the non-root user via the fsGroup
+                # supplemental group. (On fsGroup-managed volumes the kubelet
+                # already widens 0400→0440; 0440 makes that explicit and correct
+                # by construction if the mount is ever moved off fsGroup.)
+                defaultMode: 0440
             {{- end }}
             {{- with .Values.scanner.extraVolumes }}
             {{- toYaml . | nindent 12 }}

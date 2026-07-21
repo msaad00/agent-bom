@@ -349,9 +349,7 @@ def test_helm_default_network_policy_is_scoped_to_scanner_pods():
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
     policy = doc["networkPolicy"]
     assert policy["enabled"] is True
-    assert policy["podSelector"] == {
-        "matchLabels": {"app.kubernetes.io/component": "scanner"}
-    }
+    assert policy["podSelector"] == {"matchLabels": {"app.kubernetes.io/component": "scanner"}}
 
 
 def test_helm_control_plane_autoscaling_defaults():
@@ -810,3 +808,98 @@ def test_sqlite_pilot_disables_postgres_migration_hook():
     """SQLite pilot should not render the Alembic migration hook."""
     doc = yaml.safe_load((HELM_DIR / "examples" / "eks-control-plane-sqlite-pilot-values.yaml").read_text())
     assert doc["controlPlane"]["migrations"]["postgres"]["enabled"] is False
+
+
+# ─── Control-plane secret wiring: first-run must not CreateContainerConfigError ──
+
+
+def _documented_control_plane_secret_names() -> dict[str, set[str]]:
+    """Map every documented control-plane Secret name → its stringData keys.
+
+    Covers both packaged example manifests (postgres + auth) since no chart
+    template renders these Secrets; operators create them from the examples.
+    """
+    documented: dict[str, set[str]] = {}
+    for name in ("postgres-secret.example.yaml", "control-plane-auth-secret.example.yaml"):
+        path = HELM_DIR / "examples" / name
+        for doc in yaml.safe_load_all(path.read_text()):
+            if not doc or doc.get("kind") != "Secret":
+                continue
+            # A name may appear in more than one per-profile block (e.g. the
+            # combined focused-pilot Secret and the minimal sqlite demo Secret
+            # both use `agent-bom-control-plane`). Union the keys shown for it.
+            keys = set((doc.get("stringData") or {}).keys())
+            documented.setdefault(doc["metadata"]["name"], set()).update(keys)
+    return documented
+
+
+def _profile_envfrom_secret_names(values: dict) -> set[str]:
+    names: set[str] = set()
+    control_plane = values.get("controlPlane") or {}
+    for section in ("api", "backup", "migrations"):
+        block = control_plane.get(section) or {}
+        for entry in block.get("envFrom") or []:
+            ref = entry.get("secretRef") or {}
+            if ref.get("name"):
+                names.add(ref["name"])
+    return names
+
+
+def test_control_plane_auth_secret_example_is_shipped_and_enumerates_code_keys():
+    """The auth Secret every control-plane profile references must be documented.
+
+    Without it a first `helm install` leaves API/UI pods in
+    CreateContainerConfigError. The example must enumerate the exact env-var
+    names the code reads (secret_source.resolve_secret), not guessed keys.
+    """
+    documented = _documented_control_plane_secret_names()
+    # Combined single-Secret profile (focused-pilot) carries DB + auth together.
+    combined = documented["agent-bom-control-plane"]
+    assert {
+        "AGENT_BOM_POSTGRES_URL",
+        "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY",
+        "AGENT_BOM_CONNECTIONS_KEY",
+        "AGENT_BOM_API_KEYS",
+    } <= combined
+    # Split auth Secret (eks-vanilla, REQUIRE_AUDIT_HMAC=1) needs the audit key.
+    auth = documented["agent-bom-control-plane-auth"]
+    assert {
+        "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY",
+        "AGENT_BOM_AUDIT_HMAC_KEY",
+        "AGENT_BOM_CONNECTIONS_KEY",
+        "AGENT_BOM_API_KEYS",
+    } <= auth
+
+
+def test_control_plane_profiles_reference_only_documented_secrets():
+    """Every profile's envFrom secretRef must resolve to a shipped example."""
+    documented = set(_documented_control_plane_secret_names())
+    profiles = (
+        "eks-mcp-pilot-values.yaml",
+        "eks-vanilla-values.yaml",
+        "eks-control-plane-sqlite-pilot-values.yaml",
+    )
+    for profile in profiles:
+        values = yaml.safe_load((HELM_DIR / "examples" / profile).read_text())
+        referenced = _profile_envfrom_secret_names(values)
+        assert referenced, f"{profile} references no control-plane Secret"
+        undocumented = referenced - documented
+        assert not undocumented, f"{profile} references undocumented Secret(s): {undocumented}"
+
+
+def test_sqlite_pilot_opens_a_working_first_run_login():
+    """The single-replica demo profile has no auth backend; it must ship the
+    visible demo-only unauthenticated overlay so login is not a dead wall."""
+    values = yaml.safe_load((HELM_DIR / "examples" / "eks-control-plane-sqlite-pilot-values.yaml").read_text())
+    env = {e["name"]: e["value"] for e in values["controlPlane"]["api"]["env"]}
+    assert env.get("AGENT_BOM_ALLOW_UNAUTHENTICATED_API") == "1"
+
+
+def test_snowflake_key_secret_mount_is_group_readable_under_fsgroup():
+    """The scanner pod runs as uid 100 with fsGroup 1000; the mounted Snowflake
+    key must be group-readable (0440), not owner-only 0400."""
+    cronjob = (HELM_DIR / "templates" / "cronjob.yaml").read_text()
+    assert "defaultMode: 0440" in cronjob
+    assert "defaultMode: 0400" not in cronjob
+    values = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    assert values["podSecurityContext"]["fsGroup"] == 1000

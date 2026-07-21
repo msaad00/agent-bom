@@ -11,6 +11,12 @@ controlPlane:
     env:
       - name: AGENT_BOM_DB
         value: /var/lib/agent-bom/control-plane.sqlite
+      # DEMO ONLY — opens the dashboard anonymously at the viewer role so a fresh
+      # `helm install` has a working first-run without an auth backend. Never use
+      # this posture in production; drop it and seed AGENT_BOM_API_KEYS (see
+      # control-plane-auth-secret.example.yaml) or OIDC for a real login.
+      - name: AGENT_BOM_ALLOW_UNAUTHENTICATED_API
+        value: "1"
     extraVolumes:
       - name: sqlite-data
         persistentVolumeClaim:

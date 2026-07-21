@@ -5,7 +5,7 @@ import { CoverageCockpit } from "@/components/coverage-cockpit";
 import { api } from "@/lib/api";
 
 describe("CoverageCockpit", () => {
-  it("renders deployment, accounts, and scans pillars with Wiz-style coverage copy", async () => {
+  it("renders deployment, accounts, and scans pillars with enterprise-console coverage copy", async () => {
     vi.spyOn(api, "listCloudConnections").mockResolvedValue({
       schema_version: "cloud.connections.v1",
       tenant_id: "default",

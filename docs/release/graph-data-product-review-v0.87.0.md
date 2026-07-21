@@ -287,7 +287,7 @@ confidence/provenance first-class enough. Required edge display:
 - evidence count
 - stale/drift/new flags
 
-This matters for Fortune 500 buyers because they will ask why a relationship is
+This matters for large-enterprise buyers because they will ask why a relationship is
 trusted.
 
 ### 5. Time and diff need to be visual, not hidden

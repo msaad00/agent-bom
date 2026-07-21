@@ -109,7 +109,7 @@ The product should be framed deployment-first:
 - **self-hosted operator plane** in the customer's own infrastructure
 - **entry points** through CLI, GitHub Action, fleet ingest, proxy, and gateway
 - **pilot** as a narrower rollout profile of the same architecture, not a separate product shape
-- **Fortune-500 deployment readiness** as customer-controlled infrastructure,
+- **Large-enterprise deployment readiness** as customer-controlled infrastructure,
   explicit auth/tenant/storage choices, and evidence-backed operations, not as
   a hosted SaaS claim
 

@@ -1,4 +1,4 @@
-# Quick wins queue (internal, validated 2026-07-06)
+# Quick wins queue (validated 2026-07-06)
 
 Operator-facing priority queue — **not** published on the docs site. Track customer-facing
 progress on open epics ([#3499](https://github.com/msaad00/agent-bom/issues/3499) reachability,

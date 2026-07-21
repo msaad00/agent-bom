@@ -4,7 +4,7 @@
 
 **Date**: 2026-03-07
 **Version audited**: v0.60.0 (post-PR #321, #322, #324)
-**Auditor**: Claude Code (automated + manual review)
+**Auditor**: automated + manual internal review
 
 This document is delta-trackable. Each finding has a status. Re-run the audit and compare against this file to see what changed.
 

@@ -9,6 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 ### Fixed
 - Hosted POC hardening overlay no longer opts into anonymous API access.
   `AGENT_BOM_DEMO_ESTATE` / `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` /
@@ -20,6 +21,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Docs honesty: authenticated-hosted overlay matrix points anonymous demo at
   `demo-override.yml`; PRODUCT_BRIEF marks webhook outbox as shipped; store-backed
   graph test module docstring matches auto-enable behavior.
+=======
+### Changed
+- Remove archived strategic/GTM audit from the public tree; redact internal
+  agent-tooling credits and large-enterprise procurement phrasing that read as
+  private positioning notes.
+>>>>>>> 341d7ea3 (chore(docs): scrub private strategy and agent metadata from public tree)
 
 ## [0.97.2] - 2026-07-21
 

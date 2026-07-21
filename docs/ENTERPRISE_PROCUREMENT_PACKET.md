@@ -13,7 +13,7 @@ in use.
 
 `agent-bom` is ready for self-hosted enterprise pilots operated behind the
 customer's identity, network, storage, monitoring, and secret-management
-controls. The product should not be represented as turnkey Fortune-500 SaaS
+controls. The product should not be represented as turnkey large-enterprise SaaS
 procurement-ready until the remaining customer/legal evidence and hosted-service
 controls are complete.
 
@@ -66,7 +66,7 @@ artifacts alongside the product evidence above:
    `docs/ENTERPRISE_SUPPORT_MODEL.md`, plus any customer-owned support contract
    or internal incident workflow.
 
-## Current Gaps Before Fortune-500 Procurement Claims
+## Current Gaps Before Large-Enterprise Procurement Claims
 
 These tracks are intentionally explicit so the release does not overclaim:
 
@@ -97,5 +97,5 @@ Use this wording for the current release:
 > provides AI agent, MCP, package, vulnerability, fleet, and graph visibility
 > with tenant-aware control-plane foundations and verifiable release artifacts.
 
-Do not claim turnkey Fortune-500 SaaS procurement readiness until the open gaps
+Do not claim turnkey large-enterprise SaaS procurement readiness until the open gaps
 above are closed with evidence.

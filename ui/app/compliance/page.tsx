@@ -583,10 +583,14 @@ function CompliancePageContent() {
             </span>
             {data.latest_scan ? <span>Latest {formatDate(data.latest_scan)}</span> : null}
             <span>{totalFail} failing controls</span>
-            <span>
-              AI supply-chain frameworks + cloud CIS posture when accounts are connected — not a full CNAPP claim.
-            </span>
           </div>
+          <p
+            className="mt-2 max-w-3xl text-xs leading-relaxed text-[color:var(--text-secondary)]"
+            data-testid="compliance-helper-disclaimer"
+          >
+            Curated evidence helper for AI/MCP/agent risk — not a certification, audit opinion, or complete
+            control catalog. Validate mapped controls against your environment and auditor scope.
+          </p>
         </div>
         <button
           onClick={() => void handleExportPack()}

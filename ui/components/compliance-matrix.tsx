@@ -262,6 +262,13 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
 
   return (
     <div className="space-y-4">
+      <p
+        className="text-xs leading-relaxed text-[color:var(--text-secondary)]"
+        data-testid="compliance-matrix-helper-disclaimer"
+      >
+        Matrix rows are curated control mappings for evidence triage — not a certification claim or complete
+        framework catalog.
+      </p>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Search */}

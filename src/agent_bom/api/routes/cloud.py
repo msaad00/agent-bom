@@ -30,6 +30,7 @@ import re
 from typing import Any, cast
 from urllib.parse import urlencode
 
+import anyio
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
@@ -42,6 +43,7 @@ from agent_bom.cloud.runtime_workload_evidence import (
     ingest_runtime_signals,
 )
 from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
+from agent_bom.config import CLOUD_CIS_TIMEOUT_SECONDS
 from agent_bom.rbac import require_authenticated_permission
 
 router = APIRouter(tags=["cloud"])
@@ -113,6 +115,10 @@ def _clean_tokens(values: Any, pattern: re.Pattern[str], *, cap: int = 500) -> l
         if len(cleaned) >= cap:
             break
     return cleaned
+
+
+def _cloud_cis_timeout_seconds() -> float:
+    return CLOUD_CIS_TIMEOUT_SECONDS
 
 
 def _tenant(request: Request) -> str:
@@ -474,18 +480,39 @@ async def cloud_cis_benchmark(
     try:
         # A full CIS benchmark runs synchronous provider SDK/network evaluation;
         # offload it to a worker thread under backpressure so it never stalls the
-        # event loop (a burst sheds with a 429 instead).
+        # event loop (a burst sheds with a 429 instead). The timeout abandons the
+        # worker if a provider SDK is stuck in credential/metadata retries; the
+        # request must not hold an API slot indefinitely.
         async with adaptive_backpressure("cloud_cis"):
-            return await anyio.to_thread.run_sync(
-                _run_cis_benchmark,
-                tenant_id,
-                requested,
-                check_list,
-                region_arg,
-                profile_arg,
-                subscription_id,
-                project_id,
-            )
+            try:
+                with anyio.fail_after(_cloud_cis_timeout_seconds()):
+                    return await anyio.to_thread.run_sync(
+                        _run_cis_benchmark,
+                        tenant_id,
+                        requested,
+                        check_list,
+                        region_arg,
+                        profile_arg,
+                        subscription_id,
+                        project_id,
+                        abandon_on_cancel=True,
+                    )
+            except TimeoutError:
+                requested_for_log = re.sub(r"[\r\n]+", "", requested)
+                _logger.warning("Cloud CIS benchmark timed out for %s", requested_for_log)
+                return {
+                    "error": "Provider benchmark timed out before completing.",
+                    "provider": requested,
+                    "tenant_id": tenant_id,
+                    "status": "unavailable",
+                    "timed_out": True,
+                    "audit_metadata": {
+                        "read_only": True,
+                        "writes_performed": False,
+                        "provider": requested,
+                        "note": "No cloud resource was mutated; retry with a scoped provider connection.",
+                    },
+                }
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,

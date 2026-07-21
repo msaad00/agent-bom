@@ -93,6 +93,8 @@ def test_all_expected_tables_exist():
         "trend_history",
         "scan_schedules",
         "osv_cache",
+        "graph_build_workspace_nodes",
+        "graph_build_workspace_edges",
     }
     assert expected.issubset(_tables()), f"Missing tables: {expected - _tables()}"
 
@@ -139,6 +141,31 @@ def test_graph_tables_have_rls_policies():
         assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in SQL
         assert f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY" in SQL
         assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
+
+
+def test_graph_build_workspace_schema_is_migration_owned():
+    """The bounded producer must work with a DML-only runtime role."""
+    for table, columns in {
+        "graph_build_workspace_nodes": ("workspace_id", "tenant_id", "node_id", "seq", "payload", "entity_type"),
+        "graph_build_workspace_edges": (
+            "workspace_id",
+            "tenant_id",
+            "edge_key",
+            "seq",
+            "payload",
+            "source_id",
+            "target_id",
+        ),
+    }.items():
+        assert set(columns).issubset(_columns_for(table)), f"{table} missing workspace columns"
+    assert "idx_gbw_nodes_seq" in _indexes()
+    assert "idx_gbw_edges_seq" in _indexes()
+    versions = Path(__file__).parent.parent / "deploy" / "supabase" / "postgres" / "alembic" / "versions"
+    migration = versions / "20260720_03_graph_build_workspace.py"
+    body = migration.read_text()
+    assert 'down_revision = "20260720_02"' in body
+    assert "CREATE TABLE IF NOT EXISTS graph_build_workspace_nodes" in body
+    assert "CREATE TABLE IF NOT EXISTS graph_build_workspace_edges" in body
 
 
 def test_graph_snapshot_json_fields_are_text_in_baseline():
@@ -540,8 +567,9 @@ def test_job_queue_status_partial_index():
 
 
 def test_job_queue_payload_jsonb():
-    assert "payload" in SQL
-    assert "JSONB" in SQL.split("payload")[1][:20].upper()
+    start = SQL.index("CREATE TABLE IF NOT EXISTS job_queue")
+    payload = SQL.index("payload", start)
+    assert "JSONB" in SQL[payload : payload + 30].upper()
 
 
 # ── scan_schedules RLS / tenant contract ────────────────────────────────────

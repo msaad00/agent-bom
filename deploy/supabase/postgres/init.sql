@@ -385,6 +385,41 @@ CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source_traversable
     ON graph_edges(tenant_id, scan_id, source_id)
     WHERE traversable = 1;
 
+-- ── Tables: Graph build workspace ───────────────────────────────────────────
+-- Temporary, tenant-scoped staging rows used by the bounded store-backed graph
+-- producer. The application role only needs DML; Alembic/init owns this DDL.
+CREATE TABLE IF NOT EXISTS graph_build_workspace_nodes (
+    workspace_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    seq BIGSERIAL,
+    payload TEXT NOT NULL,
+    entity_type TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (workspace_id, tenant_id, node_id)
+);
+
+CREATE TABLE IF NOT EXISTS graph_build_workspace_edges (
+    workspace_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    edge_key TEXT NOT NULL,
+    seq BIGSERIAL,
+    payload TEXT NOT NULL,
+    source_id TEXT NOT NULL DEFAULT '',
+    target_id TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (workspace_id, tenant_id, edge_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gbw_nodes_seq
+    ON graph_build_workspace_nodes (workspace_id, tenant_id, seq);
+CREATE INDEX IF NOT EXISTS idx_gbw_edges_seq
+    ON graph_build_workspace_edges (workspace_id, tenant_id, seq);
+CREATE INDEX IF NOT EXISTS idx_gbw_nodes_type
+    ON graph_build_workspace_nodes (workspace_id, tenant_id, entity_type, seq);
+CREATE INDEX IF NOT EXISTS idx_gbw_edges_source
+    ON graph_build_workspace_edges (workspace_id, tenant_id, source_id, seq);
+CREATE INDEX IF NOT EXISTS idx_gbw_edges_target
+    ON graph_build_workspace_edges (workspace_id, tenant_id, target_id, seq);
+
 CREATE TABLE IF NOT EXISTS graph_snapshots (
     scan_id      TEXT NOT NULL,
     tenant_id    TEXT NOT NULL DEFAULT 'default',

@@ -438,6 +438,9 @@ ENRICHMENT_MAX_CACHE_ENTRIES = _int("AGENT_BOM_ENRICHMENT_MAX_CACHE", 10_000)
 API_MAX_CONCURRENT_JOBS = _int("AGENT_BOM_API_MAX_JOBS", 10)
 API_SCAN_WORKERS = _int("AGENT_BOM_API_SCAN_WORKERS", min(4, (os.cpu_count() or 2)))
 API_SCAN_WORKER_RECYCLE_JOBS = _int("AGENT_BOM_API_SCAN_WORKER_RECYCLE_JOBS", 10)
+# Wall-clock bound for optional cloud CIS provider calls. Provider SDKs may
+# retry metadata/credential lookups; the API always returns within this cap.
+CLOUD_CIS_TIMEOUT_SECONDS = min(max(_float("AGENT_BOM_CLOUD_CIS_TIMEOUT_SECONDS", 60.0), 1.0), 300.0)
 # Distributed scan dispatch (multi-replica work-stealing). When enabled, scan
 # jobs are enqueued to a shared Postgres dispatch queue and any control-plane
 # replica claims them via FOR UPDATE SKIP LOCKED, so scan throughput scales with

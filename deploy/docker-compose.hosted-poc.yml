@@ -20,11 +20,9 @@
 services:
   api:
     environment:
+      # Hardened, customer-facing POC posture: auth stays REQUIRED. Anonymous
+      # access and demo-estate seeding are NOT set here — that would open every
+      # hosted POC anonymously and trips hosted_poc_preflight (which fails closed
+      # on AGENT_BOM_ALLOW_UNAUTHENTICATED_API). The public demo opts into those
+      # via deploy/docker-compose.demo-override.yml, layered on top.
       - AGENT_BOM_SESSION_COOKIE_SECURE=1
-      - AGENT_BOM_DEMO_ESTATE=1
-      # Public demo opens anonymously into a read-only viewer dashboard.
-      # DEMO_ESTATE + NO_AUTH_ROLE=viewer only take effect once unauthenticated
-      # access is actually enabled — without this flag the demo falls back to the
-      # API-key sign-in wall and can never open anonymously as intended.
-      - AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1
-      - AGENT_BOM_NO_AUTH_ROLE=viewer

@@ -44,6 +44,12 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         # base platform compose and inherited at merge time.
         "api",
     },
+    "docker-compose.demo-override.yml": {
+        # Public-demo overlay layered on platform + hosted-poc; it only sets the
+        # demo-only anonymous/demo-estate environment. Healthchecks come from the
+        # base platform compose and are inherited at merge time.
+        "api",
+    },
     "docker-compose.product.yml": {
         # Overlay applied on top of docker-compose.platform.yml; it only sets
         # authenticated-product environment. Healthchecks are defined once in
@@ -257,14 +263,23 @@ def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     api_env = services["api"]["environment"]
     assert "ports" not in services["api"]
     assert "ui" not in services
-    assert api_env == [
-        "AGENT_BOM_SESSION_COOKIE_SECURE=1",
-        "AGENT_BOM_DEMO_ESTATE=1",
-        # Public demo opens anonymously into a read-only viewer; DEMO_ESTATE +
-        # NO_AUTH_ROLE only take effect once unauthenticated access is enabled.
-        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1",
-        "AGENT_BOM_NO_AUTH_ROLE=viewer",
-    ]
+    # Hardened POC posture: auth stays required. Anonymous access / demo-estate
+    # seeding must NOT be baked into hosted-poc — they belong in the demo-only
+    # overlay so real customer POCs are not opened anonymously (and so
+    # hosted_poc_preflight, which fails closed on unauth, still passes).
+    assert api_env == ["AGENT_BOM_SESSION_COOKIE_SECURE=1"]
+    assert "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1" not in api_env
+
+
+def test_demo_override_carries_anonymous_and_demo_estate_flags() -> None:
+    """The public-demo overlay is the ONLY place the anonymous/demo flags live,
+    layered on top of hosted-poc for the showcase estate."""
+    path = COMPOSE_DIR / "docker-compose.demo-override.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    api_env = ((data.get("services") or {}).get("api") or {}).get("environment") or []
+    assert "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1" in api_env
+    assert "AGENT_BOM_NO_AUTH_ROLE=viewer" in api_env
+    assert "AGENT_BOM_DEMO_ESTATE=1" in api_env
 
 
 def test_postgres_init_resets_app_password_guc_after_reading_it() -> None:

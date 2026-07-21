@@ -118,7 +118,7 @@ API/UI ports on all interfaces and does not mount the placeholder Postgres
 password:
 
 ```bash
-python scripts/deploy/hosted_poc_preflight.py --write-postgres-secret
+python scripts/deploy/hosted_poc_preflight.py --write-secret
 ```
 
 The preflight fails closed when required secrets are missing, the browser API
@@ -281,7 +281,7 @@ workflow automates it without any stored SSH keys or long-lived AWS credentials:
 - **Remote steps on the VM:** confirm `DEMO_DEPLOY_DIR` is a git checkout →
   `git pull --ff-only` → `docker compose ... build` (stack keeps serving) →
   `docker compose ... up -d` (brief restart) →
-  `scripts/deploy/hosted_poc_preflight.py --write-postgres-secret` (fail-closed)
+  `scripts/deploy/hosted_poc_preflight.py --write-secret` (fail-closed)
   → `scripts/deploy/hosted_poc_smoke.sh`. The job fails if the preflight or smoke
   fails, so a bad redeploy never gets promoted silently. When dispatched with
   `reset_demo=true` it also runs `scripts/deploy/demo-reset.sh`.

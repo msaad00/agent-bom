@@ -113,7 +113,7 @@ caddy run --config deploy/caddy/Caddyfile.hosted-poc
 ### 1e. Preflight (fail-closed)
 
 ```bash
-python scripts/deploy/hosted_poc_preflight.py --write-postgres-secret
+python scripts/deploy/hosted_poc_preflight.py --write-secret
 ```
 
 This fails closed when required secrets are missing, `AGENT_BOM_ALLOW_UNAUTHENTICATED_API`

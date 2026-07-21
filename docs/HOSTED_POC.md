@@ -99,6 +99,10 @@ docker compose \
   ps
 ```
 
+`up` runs a one-shot `migrate` service before `api` (Alembic stamp + `upgrade
+head`), so image upgrades apply schema changes without a manual migration step.
+See [DEPLOY_PLATFORM.md](DEPLOY_PLATFORM.md) for the Compose vs Helm contract.
+
 Seed a disposable demo graph after the API is healthy:
 
 ```bash

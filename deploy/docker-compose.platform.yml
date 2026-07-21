@@ -72,6 +72,31 @@ services:
       - backend
     restart: unless-stopped
 
+  # One-shot schema migrate (Helm equivalent: controlplane-alembic-migration-job).
+  # Uses the bootstrap/admin role for DDL; the API stays on agent_bom_app (DML).
+  # Fresh volumes from init.sql are stamped to baseline 20260416_01 once, then
+  # upgrade head applies later revisions on image upgrades.
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: agent-bom:latest
+    container_name: agent-bom-migrate
+    working_dir: /opt/agent-bom
+    entrypoint: ["python"]
+    command: ["deploy/supabase/postgres/compose_migrate.py"]
+    environment:
+      - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: "no"
+
   api:
     build:
       context: ..
@@ -114,6 +139,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8422/health')\""]
       interval: 15s

@@ -270,17 +270,21 @@ Redeploying by hand (SSH in, `git pull`, `docker compose up`, rerun preflight +
 smoke) is easy to forget after a release. The `.github/workflows/demo-redeploy.yml`
 workflow automates it without any stored SSH keys or long-lived AWS credentials:
 
-- **Triggers:** every published GitHub release, plus manual `workflow_dispatch`
-  with an optional `reset_demo` boolean.
+- **Triggers:** successful completion of the `Release` workflow (`workflow_run`,
+  so redeploy still fires when Release publishes with the default
+  `GITHUB_TOKEN`), plus `release: published` when a non-suppressed release event
+  is available, plus manual `workflow_dispatch` with an optional `reset_demo`
+  boolean.
 - **Transport:** AWS SSM Run Command (`AWS-RunShellScript`) against the demo
   instance — no inbound SSH. AWS auth is short-lived OIDC role assumption via
   `aws-actions/configure-aws-credentials`.
-- **Remote steps on the VM:** `git pull --ff-only` → `docker compose -f
-  deploy/docker-compose.platform.yml -f deploy/docker-compose.hosted-poc.yml up
-  -d --build` → `scripts/deploy/hosted_poc_preflight.py --write-postgres-secret`
-  (fail-closed) → `scripts/deploy/hosted_poc_smoke.sh`. The job fails if the
-  preflight or smoke fails, so a bad redeploy never gets promoted silently. When
-  dispatched with `reset_demo=true` it also runs `scripts/deploy/demo-reset.sh`.
+- **Remote steps on the VM:** confirm `DEMO_DEPLOY_DIR` is a git checkout →
+  `git pull --ff-only` → `docker compose ... build` (stack keeps serving) →
+  `docker compose ... up -d` (brief restart) →
+  `scripts/deploy/hosted_poc_preflight.py --write-postgres-secret` (fail-closed)
+  → `scripts/deploy/hosted_poc_smoke.sh`. The job fails if the preflight or smoke
+  fails, so a bad redeploy never gets promoted silently. When dispatched with
+  `reset_demo=true` it also runs `scripts/deploy/demo-reset.sh`.
 - **No plaintext secrets in CI.** All secret material stays on the VM as the
   existing `deploy/secrets/` file mounts. The remote script sources an optional
   on-VM env file `deploy/secrets/redeploy.env` (chmod `0400`, owned by the deploy
@@ -304,7 +308,7 @@ it, set these repo Actions **variables** and **secret**:
 |---|---|---|
 | `DEMO_INSTANCE_ID` | var | EC2 instance id of the demo VM (`i-...`). Gate: unset ⇒ workflow no-ops. |
 | `AWS_REGION` | var | Region of the demo VM. Defaults to `us-east-1` if unset. |
-| `DEMO_DEPLOY_DIR` | var | Repo checkout dir on the VM. Defaults to `/opt/agent-bom`. |
+| `DEMO_DEPLOY_DIR` | var | Repo checkout dir on the VM. Defaults to `/opt/agent-bom`. Must contain a `.git` directory — the remote script fails loud if it does not. |
 | `DEMO_DEPLOY_ROLE_ARN` | secret | IAM role ARN the workflow assumes via OIDC. Its trust policy must allow this repo's GitHub OIDC subject, and its permissions must allow `ssm:SendCommand` / `ssm:GetCommandInvocation` on the instance. |
 
 The instance also needs the SSM agent running and an instance profile granting

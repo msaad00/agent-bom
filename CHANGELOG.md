@@ -9,6 +9,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `agent-bom attest mcp sign|verify` signs and verifies per-instance MCP scan
+  attestations from a completed scan JSON report (DSSE / dedicated Ed25519 key
+  domain), making the MCP attestation foundation reachable from the CLI.
+- Hosted-demo freshness is monitored daily via `demo.agent-bom.com/health` in the
+  Deployment Freshness workflow (opens/closes the same supply-chain drift issue
+  used for Railway and Smithery).
+
+### Changed
+- Demo redeploy now triggers on successful `Release` workflow completion
+  (`workflow_run`), builds images before restarting containers to shorten 502
+  windows, and fails loud when `DEMO_DEPLOY_DIR` is not a git checkout.
+- Store-backed UnifiedGraph builds auto-enable above
+  `AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES` (default 5000) when
+  `AGENT_BOM_GRAPH_STORE_BACKED_BUILD` is unset; explicit off still forces the
+  in-RAM producer. Residual O(N) peak is unchanged — this is a measured reduction,
+  not a strict memory bound.
+- README product diagrams (how-it-works + blast-radius, light/dark) simplified to
+  the three-lane story and a single blast-radius path; live-demo link documents a
+  local `uvx agent-bom scan --demo --offline` fallback.
+
 ## [0.97.1] - 2026-07-21
 
 ### Fixed
@@ -35,7 +56,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Live Kubernetes posture is first-class evidence across CLI, API, UI, and MCP, with versioned benchmark provenance and a least-privilege in-cluster deployment path (#4236, #4250).
 - Authorization evidence now covers AWS Access Advisor and fail-closed Azure/GCP collection, projects into the graph, and reports evidence health for CIEM decisions (#4145, #4171, #4178, #4199).
 - Read-only DSPM classification now covers production databases and Azure Blob; scheduled findings exports add Azure Blob, GCS, BigQuery, and Databricks destinations (#4090, #4238, #4260).
-- The framework library adds vendored NIST 800-53 controls and crosswalks, typed ATT&CK/ATLAS mappings, signed MCP scan attestations, CWPP lifecycle evidence, and tenant-scoped operator self-posture (#4213, #4217, #4221, #4228, #4230, #4234).
+- The framework library adds vendored NIST 800-53 controls and crosswalks, typed ATT&CK/ATLAS mappings, a signing/verification foundation for MCP scan attestations, CWPP lifecycle evidence, and tenant-scoped operator self-posture (#4213, #4217, #4221, #4228, #4230, #4234).
 - Remediation can file and synchronize tickets through the connect-once ITSM plane without per-action credentials (#4090).
 
 ### Changed

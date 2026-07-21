@@ -20,7 +20,7 @@
 <p align="center">Discover assets, scan and enrich findings, map blast radius and compliance, and enforce runtime policy—from a local CLI or your self-hosted control plane.</p>
 
 <p align="center">
-  <a href="https://demo.agent-bom.com"><b>Live demo</b></a> (read-only sandbox) ·
+  <a href="https://demo.agent-bom.com"><b>Live demo</b></a> (read-only sandbox; if unreachable run <code>uvx agent-bom scan --demo --offline</code>) ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
   <a href="docs/FIRST_RUN.md">First Run</a> ·
   <a href="site-docs/deployment/overview.md">Self-host</a> ·
@@ -75,7 +75,7 @@ for a GRC system of record, IAM, SIEM, or a complete certification program.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast-radius drilldown — package to finding to MCP server to agent" width="900" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast radius: one package finding fans out to MCP servers, agents, secrets, and tools" width="900" />
   </picture>
 </p>
 
@@ -90,7 +90,7 @@ credential references, and agents that can reach it. Coverage and boundaries:
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom product flow from read-only sources through scanning and graph correlation to reports, the self-hosted control plane, and optional runtime enforcement" width="1100" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom three product lanes: local scan, self-hosted control plane, and runtime gateway on one Finding + UnifiedGraph model" width="1100" />
   </picture>
 </p>
 
@@ -146,7 +146,8 @@ Matching mechanics and release evidence:
 
 ## See the product
 
-Try the [live demo](https://demo.agent-bom.com) (read-only sandbox). These
+Try the [live demo](https://demo.agent-bom.com) (read-only sandbox; if
+unreachable, run `uvx agent-bom scan --demo --offline`). These
 captures come from the shipped Next.js routes using explicitly labeled,
 synthetic demo evidence.
 

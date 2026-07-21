@@ -72,7 +72,9 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `findings` | List normalized findings, manage the triage queue, record decisions, and export signed OpenVEX evidence |
 | `findings push` | Push normalized findings or Trivy / Grype / Syft JSON to `POST /v1/findings/bulk` on the control plane |
 | `findings list` | List findings from the control plane; prints lifecycle columns when bulk-ingest metadata is present |
-| `attest` | Sign tenant-bound SBOM DSSE-PAE attestations and verify explicit Ed25519 trust policies |
+| `attest` | Sign tenant-bound SBOM DSSE-PAE attestations and per-instance MCP scan attestations; verify against explicit Ed25519 trust policies |
+| `attest mcp sign` | Sign a completed scan JSON into a DSSE MCP scan attestation for one server |
+| `attest mcp verify` | Verify an MCP scan attestation (optional `--accept` consumes replay once) |
 
 SBOM signing is fail-closed and does not reuse the compliance/audit HMAC
 fallback. Configure a persistent Ed25519 private key, preferably through the
@@ -85,6 +87,17 @@ agent-bom attest verify report.cdx.json \
   --tenant-id tenant-a \
   --public-key trusted-sbom-signing.pub.pem \
   --replay-cache /var/lib/agent-bom/attestation-replay.sqlite3
+```
+
+MCP scan attestations use a dedicated signing key (never the SBOM/compliance
+key):
+
+```bash
+export AGENT_BOM_MCP_SCAN_ED25519_PRIVATE_KEY_PEM_FILE=/run/secrets/mcp-scan-signing.pem
+agent-bom attest mcp sign scan.json --server filesystem-server --tenant-id tenant-a
+agent-bom attest mcp verify scan.json.mcp-attestation.intoto.json \
+  --tenant-id tenant-a \
+  --public-key trusted-mcp-scan-signing.pub.pem
 ```
 
 Verification never trusts a key embedded in an envelope. Older envelopes remain

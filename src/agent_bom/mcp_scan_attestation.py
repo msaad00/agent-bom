@@ -30,7 +30,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -225,15 +225,13 @@ def _findings_for_server(report: Mapping[str, Any], server: Mapping[str, Any]) -
         str(server.get("canonical_id") or ""),
     }
     server_ids.discard("")
-    packages = server.get("packages") if isinstance(server.get("packages"), list) else []
-    package_names = {
-        str(pkg.get("name") or "").lower()
-        for pkg in packages
-        if isinstance(pkg, dict) and pkg.get("name")
-    }
+    packages_raw = server.get("packages")
+    packages: list[Any] = packages_raw if isinstance(packages_raw, list) else []
+    package_names = {str(pkg.get("name") or "").lower() for pkg in packages if isinstance(pkg, dict) and pkg.get("name")}
     related: list[dict[str, str]] = []
     seen: set[str] = set()
-    findings_raw = report.get("findings") if isinstance(report.get("findings"), list) else []
+    findings_raw_value = report.get("findings")
+    findings_raw: list[Any] = findings_raw_value if isinstance(findings_raw_value, list) else []
     for finding in findings_raw:
         if not isinstance(finding, Mapping):
             continue
@@ -275,7 +273,7 @@ def _findings_for_server(report: Mapping[str, Any], server: Mapping[str, Any]) -
     return related
 
 
-def _default_verdict(server: Mapping[str, Any], findings: list[Mapping[str, Any]]) -> str:
+def _default_verdict(server: Mapping[str, Any], findings: Sequence[Mapping[str, Any]]) -> str:
     if server.get("security_blocked") is True:
         return "BLOCK"
     severities = {str(f.get("severity") or "").lower() for f in findings}
@@ -313,15 +311,18 @@ def evidence_from_scan_report(
     )
     fingerprint = str(selected.get("fingerprint") or "").strip()
     if not fingerprint:
-        fingerprint = "fp-" + _sha256_obj(
-            {
-                "name": selected.get("name"),
-                "command": selected.get("command"),
-                "args": selected.get("args") or [],
-                "url": selected.get("url"),
-                "transport": selected.get("transport"),
-            }
-        )[:32]
+        fingerprint = (
+            "fp-"
+            + _sha256_obj(
+                {
+                    "name": selected.get("name"),
+                    "command": selected.get("command"),
+                    "args": selected.get("args") or [],
+                    "url": selected.get("url"),
+                    "transport": selected.get("transport"),
+                }
+            )[:32]
+        )
 
     instance_digest = _sha256_obj(
         {

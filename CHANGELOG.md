@@ -18,6 +18,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
   used for Railway and Smithery).
 
 ### Changed
+- Drop no-op `dependency-pin-check.yml` and the non-blocking main-only `ci.yml` `agent-bom-scan` job (covered by PR Security Gate + post-merge self-scan).
 - Demo redeploy now triggers on successful `Release` workflow completion
   (`workflow_run`), builds images before restarting containers to shorten 502
   windows, and fails loud when `DEMO_DEPLOY_DIR` is not a git checkout.

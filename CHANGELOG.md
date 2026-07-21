@@ -54,9 +54,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `AGENT_BOM_GRAPH_STORE_BACKED_BUILD` is unset; explicit off still forces the
   in-RAM producer. Residual O(N) peak is unchanged — this is a measured reduction,
   not a strict memory bound (#4336).
-- README product diagrams (how-it-works + blast-radius, light/dark) simplified to
-  the three-lane story and a single blast-radius path; live-demo link documents a
-  local `uvx agent-bom scan --demo --offline` fallback (#4336).
+- README how-it-works diagrams (light/dark) simplified to the three-lane story;
+  live-demo link documents a local `uvx agent-bom scan --demo --offline` fallback
+  (#4336). Blast-radius diagrams remain the GitHub-safe generator art.
 
 ## [0.97.1] - 2026-07-21
 

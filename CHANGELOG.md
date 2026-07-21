@@ -9,6 +9,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Hosted POC hardening overlay no longer opts into anonymous API access.
+  `AGENT_BOM_DEMO_ESTATE` / `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` /
+  `AGENT_BOM_NO_AUTH_ROLE=viewer` move to
+  `deploy/docker-compose.demo-override.yml` so customer hosted-poc deploys stay
+  auth-required and `hosted_poc_preflight.py` can pass. Demo redeploy layers the
+  demo overlay and calls `--write-secret` (was a nonexistent
+  `--write-postgres-secret`).
+- Docs honesty: authenticated-hosted overlay matrix points anonymous demo at
+  `demo-override.yml`; PRODUCT_BRIEF marks webhook outbox as shipped; store-backed
+  graph test module docstring matches auto-enable behavior.
+
 ## [0.97.2] - 2026-07-21
 
 ### Added

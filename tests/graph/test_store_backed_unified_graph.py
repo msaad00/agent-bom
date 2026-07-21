@@ -15,8 +15,11 @@ Proves :class:`StoreBackedUnifiedGraph` is a drop-in for the in-RAM
 * peak RAM grows **sub-linearly** vs a full in-RAM copy as the graph scales;
 * tenant isolation holds on a shared backend.
 
-The store-backed container is **default-off and unwired** — no builder, overlay,
-or persist caller constructs it in production. These tests are the only callers.
+The store-backed container **auto-enables** in the API pipeline when
+``AGENT_BOM_GRAPH_STORE_BACKED_BUILD`` is unset and the entity estimate is at or
+above ``AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES`` (default 5000). Explicit off
+still forces the in-RAM producer. These tests lock byte-identity and memory
+behavior for that path.
 """
 
 from __future__ import annotations

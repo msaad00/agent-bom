@@ -29,7 +29,7 @@ signed release evidence.
 | Package build | `uv build --out-dir /tmp/agent-bom-build` | Wheel and sdist build from a clean tree. |
 | PyPI smoke | `python -m venv /tmp/agent-bom-smoke && /tmp/agent-bom-smoke/bin/pip install agent-bom==<version> && /tmp/agent-bom-smoke/bin/agent-bom --version` | Published package installs in a fresh environment. |
 | Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real report, graph, posture, and no coverage warnings. |
-| Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-postgres-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
+| Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
 
 Do not publish a release as hosted-ready when any required line above is red.
 

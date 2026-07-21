@@ -8,22 +8,23 @@ demo.
 
 !!! danger "Safety rule — never mix the two"
     **Never connect a real cloud account to the anonymous demo.** The public
-    demo (`AGENT_BOM_DEMO_ESTATE=1` + `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1`)
-    serves synthetic data to unauthenticated viewers. Real cloud posture,
+    demo layers `deploy/docker-compose.demo-override.yml`
+    (`AGENT_BOM_DEMO_ESTATE=1` + `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1`) so
+    synthetic data is served to unauthenticated viewers. Real cloud posture,
     findings, and graph data must only ever live behind the authenticated
     profile described here.
 
 ## Demo vs. authenticated product
 
-Both run from the same `deploy/docker-compose.platform.yml` base; only the
-**overlay** differs.
+Both run from the same `deploy/docker-compose.platform.yml` base; the
+**overlay stack** differs.
 
-| Setting | Public anonymous demo | Authenticated product |
+| Setting | Public anonymous demo | Authenticated product / secure hosted POC |
 |---|---|---|
-| Overlay | `deploy/docker-compose.hosted-poc.yml` | `deploy/docker-compose.product.yml` |
+| Overlays | `hosted-poc.yml` + **`demo-override.yml`** | `product.yml` (or `hosted-poc.yml` alone — auth required) |
 | `AGENT_BOM_DEMO_ESTATE` | `1` (synthetic estate seeded) | `0` (never seeded) |
-| `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` | `1` (anonymous read) | `0` (auth required) |
-| `AGENT_BOM_NO_AUTH_ROLE` | `viewer` (implicit role) | unset (no implicit role) |
+| `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` | `1` via **demo-override only** | unset / `0` (auth required) |
+| `AGENT_BOM_NO_AUTH_ROLE` | `viewer` (demo-override) | unset (no implicit role) |
 | Auth | none — anyone with the URL | API key and/or OIDC/SAML SSO |
 | Postgres role | falls back to admin owner | **requires** `agent_bom_app` (DML-only, NOSUPERUSER/NOBYPASSRLS) |
 | Data | curated fake graph | real connected cloud posture / CIS / graph |
@@ -31,6 +32,8 @@ Both run from the same `deploy/docker-compose.platform.yml` base; only the
 The product overlay is minimal on purpose: it flips the demo guards off,
 forces the non-superuser app role via `:?` (fail-closed) env expansion, and
 keeps browser-session cookies Secure. Auth env is wired by the platform base.
+`hosted-poc.yml` alone is the **hardening** overlay (Secure cookies, loopback);
+it does **not** enable anonymous API access.
 
 ## 0. Prerequisites
 
@@ -113,7 +116,7 @@ caddy run --config deploy/caddy/Caddyfile.hosted-poc
 ### 1e. Preflight (fail-closed)
 
 ```bash
-python scripts/deploy/hosted_poc_preflight.py --write-postgres-secret
+python scripts/deploy/hosted_poc_preflight.py --write-secret
 ```
 
 This fails closed when required secrets are missing, `AGENT_BOM_ALLOW_UNAUTHENTICATED_API`

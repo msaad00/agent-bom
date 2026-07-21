@@ -16,8 +16,8 @@
 # Full step-by-step (first admin, connect-your-cloud, log in) lives in
 # site-docs/deployment/authenticated-hosted-instance.md.
 #
-# What this overlay guarantees vs. the demo overlays
-# (docker-compose.hosted-poc.yml sets DEMO_ESTATE=1 + NO_AUTH_ROLE=viewer):
+# What this overlay guarantees vs. the public demo overlay
+# (docker-compose.demo-override.yml sets DEMO_ESTATE=1 + anon viewer):
 #   - AGENT_BOM_DEMO_ESTATE=0         no synthetic estate is ever seeded
 #   - AGENT_BOM_ALLOW_UNAUTHENTICATED_API=0   anonymous API access is off
 #   - NO_AUTH_ROLE is NOT set         there is no implicit unauthenticated role

@@ -19,6 +19,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   binds `app.tenant_id` per operation so staging rows cannot cross tenants.
 
 ### Fixed
+- Helm scanner, KSPM, and control-plane backup CronJobs fail loud
+  (`jobTemplate.spec.backoffLimit: 0`, `restartPolicy: Never`) so a bad run
+  surfaces as a Failed Job instead of retrying quietly under `OnFailure`.
 - Hosted POC hardening overlay no longer opts into anonymous API access.
   `AGENT_BOM_DEMO_ESTATE` / `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` /
   `AGENT_BOM_NO_AUTH_ROLE=viewer` move to

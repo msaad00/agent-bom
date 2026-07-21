@@ -797,6 +797,19 @@ def test_alembic_migration_hook_template():
     assert "backoffLimit: {{ $migrations.backoffLimit }}" in template
 
 
+def test_scheduled_cronjobs_are_fail_loud():
+    """Scanner / KSPM / backup CronJobs must not silently retry forever."""
+    for name in (
+        "cronjob.yaml",
+        "kspm-cronjob.yaml",
+        "controlplane-backup-cronjob.yaml",
+    ):
+        template = (HELM_DIR / "templates" / name).read_text()
+        assert "backoffLimit: 0" in template, f"{name} must set jobTemplate.spec.backoffLimit: 0"
+        assert "restartPolicy: Never" in template, f"{name} must use restartPolicy: Never"
+        assert "restartPolicy: OnFailure" not in template, f"{name} must not use OnFailure retries"
+
+
 def test_scanner_only_cronjob_warning_annotation():
     """Scanner-only renders should surface an install-time warning annotation."""
     template = (HELM_DIR / "templates" / "cronjob.yaml").read_text()

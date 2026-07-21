@@ -29,6 +29,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   auth-required and `hosted_poc_preflight.py` can pass. Demo redeploy layers the
   demo overlay and calls `--write-secret` (was a nonexistent
   `--write-postgres-secret`).
+- Public demo estate no longer goes empty ~1h after boot: curated
+  `demo-estate-bootstrap` scan jobs are exempt from `AGENT_BOM_API_JOB_TTL`
+  cleanup, bootstrap reseeds when only an empty demo marker remains, and the
+  API cleanup loop self-heals a missing findings spine. Demo redeploy now fails
+  closed when `/v1/findings` total is zero.
 - Docs honesty: authenticated-hosted overlay matrix points anonymous demo at
   `demo-override.yml`; PRODUCT_BRIEF marks webhook outbox as shipped; store-backed
   graph test module docstring matches auto-enable behavior.

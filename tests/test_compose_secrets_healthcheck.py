@@ -329,6 +329,9 @@ def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
     assert "deploy/docker-compose.demo-override.yml" in workflow
     assert "hosted_poc_preflight.py --write-secret" in workflow
     assert "--write-postgres-secret" not in workflow
+    # Empty findings spine is a demo outage — redeploy must fail closed on it.
+    assert "demo estate smoke" in workflow
+    assert "/v1/findings?limit=1" in workflow
 
     # Security gate remains platform + hosted-poc only (no demo anon flags).
     preflight_src = (root / "scripts" / "deploy" / "hosted_poc_preflight.py").read_text(encoding="utf-8")

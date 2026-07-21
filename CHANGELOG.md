@@ -9,35 +9,54 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.97.2] - 2026-07-21
+
 ### Added
 - `agent-bom attest mcp sign|verify` signs and verifies per-instance MCP scan
   attestations from a completed scan JSON report (DSSE / dedicated Ed25519 key
-  domain), making the MCP attestation foundation reachable from the CLI.
+  domain), making the MCP attestation foundation reachable from the CLI (#4336).
+- `agent-bom auth setup-oidc` guides browser SSO / OIDC setup: validates issuer
+  discovery and emits a copy-paste `AGENT_BOM_OIDC_*` env block (does not change
+  token validation) (#4335).
 - Hosted-demo freshness is monitored daily via `demo.agent-bom.com/health` in the
   Deployment Freshness workflow (opens/closes the same supply-chain drift issue
-  used for Railway and Smithery).
+  used for Railway and Smithery) (#4336).
+- Helm ships `examples/control-plane-auth-secret.example.yaml` with a
+  per-profile required-key matrix so first-install auth Secrets are documented
+  before `envFrom` (#4337).
 
 ### Fixed
+- Compose self-host first-run bootstrap: secret files are writable by container
+  users (`0644`), postgres init fails loud when the app password is missing, and
+  hosted-poc sets `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1` so anonymous demo
+  viewers are not blocked by the API-key wall (#4335).
+- Helm first-install auth posture: profiles document required Secret keys
+  (including multi-replica browser session signing and audit HMAC), Snowflake
+  key mounts use `0440`, and the sqlite demo enables anonymous viewer access
+  (#4337).
 - MCP server-card `registry_servers` now tracks the bundled registry total (was
   stale at 427); card `read_only` is false to match write-gated Shield/identity/
-  ticketing tools; Connections UI and `mcp_server.py` docstring list all 76 tools.
-- Glama freshness checker accepts README's "exposes N MCP tools" phrasing.
+  ticketing tools; Connections UI and `mcp_server.py` docstring list all 76 tools
+  (#4346).
+- Glama freshness checker accepts README's "exposes N MCP tools" phrasing (#4346).
 - `agent-bom audit` rich display fails closed on blocked tool calls even when the
-  log has no `proxy_summary` trailer (aligned with `--json`).
+  log has no `proxy_summary` trailer (aligned with `--json`) (#4346).
 
 ### Changed
-- Drop no-op `dependency-pin-check.yml` and the non-blocking main-only `ci.yml` `agent-bom-scan` job (covered by PR Security Gate + post-merge self-scan).
+- Drop no-op `dependency-pin-check.yml` and the non-blocking main-only `ci.yml`
+  `agent-bom-scan` job (covered by PR Security Gate + post-merge self-scan)
+  (#4336).
 - Demo redeploy now triggers on successful `Release` workflow completion
   (`workflow_run`), builds images before restarting containers to shorten 502
-  windows, and fails loud when `DEMO_DEPLOY_DIR` is not a git checkout.
+  windows, and fails loud when `DEMO_DEPLOY_DIR` is not a git checkout (#4336).
 - Store-backed UnifiedGraph builds auto-enable above
   `AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES` (default 5000) when
   `AGENT_BOM_GRAPH_STORE_BACKED_BUILD` is unset; explicit off still forces the
   in-RAM producer. Residual O(N) peak is unchanged — this is a measured reduction,
-  not a strict memory bound.
+  not a strict memory bound (#4336).
 - README product diagrams (how-it-works + blast-radius, light/dark) simplified to
   the three-lane story and a single blast-radius path; live-demo link documents a
-  local `uvx agent-bom scan --demo --offline` fallback.
+  local `uvx agent-bom scan --demo --offline` fallback (#4336).
 
 ## [0.97.1] - 2026-07-21
 
@@ -2430,7 +2449,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.2...HEAD
+[0.97.2]: https://github.com/msaad00/agent-bom/compare/v0.97.1...v0.97.2
 [0.97.1]: https://github.com/msaad00/agent-bom/compare/v0.97.0...v0.97.1
 [0.97.0]: https://github.com/msaad00/agent-bom/compare/v0.96.4...v0.97.0
 [0.96.4]: https://github.com/msaad00/agent-bom/compare/v0.96.3...v0.96.4

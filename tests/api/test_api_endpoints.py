@@ -54,6 +54,24 @@ def _fresh_client():
 # ---------------------------------------------------------------------------
 
 
+def test_brand_mark_svg_is_public() -> None:
+    client, _store = _fresh_client()
+    resp = client.get("/brand/mark.svg")
+    assert resp.status_code == 200
+    assert "image/svg" in resp.headers.get("content-type", "")
+    assert b"<svg" in resp.content
+    assert b"agent-bom" in resp.content or b"linearGradient" in resp.content
+
+
+def test_openapi_uses_brand_favicon() -> None:
+    client, _store = _fresh_client()
+    schema = client.get("/openapi.json").json()
+    assert schema["info"]["title"] == "agent-bom API"
+    docs = client.get("/docs")
+    assert docs.status_code == 200
+    assert "/brand/mark.svg" in docs.text
+
+
 def test_health_endpoint():
     """Public liveness is minimal; authenticated status carries diagnostics."""
     client, _ = _fresh_client()

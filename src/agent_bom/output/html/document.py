@@ -135,7 +135,7 @@ def to_html(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>agent-bom AI-BOM &mdash; {_esc(generated)}</title>
+  <title>agent-bom scan report &mdash; {_esc(generated)}</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
   <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
@@ -151,10 +151,25 @@ def to_html(
 <!-- Sidebar Navigation -->
 <div class="sidebar" id="mainSidebar">
   <div class="sidebar-brand">
-    <div class="brand-icon">&#x1f6e1;&#xfe0f;</div>
+    <div class="brand-icon" aria-hidden="true" title="agent-bom mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" role="img">
+        <defs>
+          <linearGradient id="abmHtmlMark" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#34d399"/>
+            <stop offset="100%" stop-color="#06b6d4"/>
+          </linearGradient>
+        </defs>
+        <rect x="3.5" y="3.5" width="57" height="57" rx="15" fill="#0c1210" stroke="url(#abmHtmlMark)" stroke-width="2"/>
+        <circle cx="32" cy="30.2" r="12" fill="#0f1a17" stroke="url(#abmHtmlMark)" stroke-width="2.4"/>
+        <path d="M32 18.4V13.5" stroke="url(#abmHtmlMark)" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="32" cy="11.9" r="2.1" fill="url(#abmHtmlMark)"/>
+        <circle cx="28" cy="28.9" r="2.7" fill="#34d399"/>
+        <circle cx="36" cy="28.9" r="2.7" fill="#22d3ee"/>
+        <path d="M28.3 35.4h7.4" stroke="url(#abmHtmlMark)" stroke-width="1.9" stroke-linecap="round"/>
+      </svg>
+    </div>
     <div>
       <div class="brand-text">agent-bom</div>
-      <div class="brand-sub">Open security scanner for AI infrastructure</div>
     </div>
   </div>
   <div class="sidebar-status">

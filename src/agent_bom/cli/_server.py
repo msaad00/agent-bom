@@ -260,12 +260,10 @@ def _configure_analytics_backend(
 
 
 def _emit_runtime_summary(title: str, rows: list[tuple[str, str]], *, err: bool = False) -> None:
-    """Print a compact, aligned startup summary block."""
-    click.echo("", err=err)
-    click.echo(f"  {title}", err=err)
-    for label, value in rows:
-        click.echo(f"  {label:<11} {value}", err=err)
-    click.echo("  Press Ctrl+C to stop.\n", err=err)
+    """Print a compact, aligned startup summary block with the BOM mark."""
+    from agent_bom.output.brand_tokens import emit_cli_runtime_summary
+
+    emit_cli_runtime_summary(title, rows, err=err)
 
 
 _MCP_WORKFLOW_NAMES = (

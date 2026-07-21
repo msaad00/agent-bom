@@ -392,6 +392,13 @@ from agent_bom.cli._identity_group import identity_group  # noqa: E402
 main.add_command(identity_group)
 
 # ---------------------------------------------------------------------------
+# Auth (SSO/OIDC onboarding) group — `agent-bom auth setup-oidc`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._auth_group import auth_group  # noqa: E402
+
+main.add_command(auth_group)
+
+# ---------------------------------------------------------------------------
 # Ingest command group — `agent-bom ingest [hardware]`
 # ---------------------------------------------------------------------------
 from agent_bom.cli._ingest_group import ingest_group  # noqa: E402

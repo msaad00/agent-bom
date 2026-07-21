@@ -1166,8 +1166,13 @@ $$;
 -- LEAST PRIVILEGE: App user — DML only, no DDL (cannot CREATE/DROP/ALTER)
 -- ══════════════════════════════════════════════════════════════════════════════
 
--- Password is injected via POSTGRES_APP_PASSWORD env var in the wrapper script.
--- If not set, this block is skipped and the admin user is used (dev fallback).
+-- Password is injected via the init.app_password GUC by 00-init-wrapper.sh,
+-- which reads /run/secrets/postgres_app_password. An empty GUC means a
+-- misconfigured secret, so we RAISE EXCEPTION and abort loudly at the real
+-- root cause — never limp on to create a broken passwordless app role. An
+-- unset GUC (NULL) is the out-of-band path used by Alembic migrations, the
+-- integration-test bootstrap, and wrapper-less local dev, where the app role
+-- is provisioned separately — skip creation here instead of aborting.
 DO $$
 DECLARE
     app_pass TEXT;
@@ -1210,8 +1215,16 @@ BEGIN
         REVOKE CREATE ON SCHEMA public FROM agent_bom_app;
 
         RAISE NOTICE 'agent_bom_app user created with DML-only access';
+    ELSIF app_pass = '' THEN
+        -- GUC set but empty: the wrapper reads a non-empty secret and errors on
+        -- an empty file, so an empty GUC is a misconfigured deployment — fail
+        -- loud rather than create a broken passwordless role.
+        RAISE EXCEPTION 'init.app_password is empty — /run/secrets/postgres_app_password had no value; check the secret file contents and that it is readable by the postgres user';
     ELSE
-        RAISE NOTICE 'POSTGRES_APP_PASSWORD not set — skipping app user creation (dev mode)';
+        -- Unset GUC (NULL): the app role is provisioned out of band. Normal path
+        -- for Alembic migrations, the integration-test bootstrap, and local dev
+        -- that run init.sql without the secret-injecting wrapper.
+        RAISE NOTICE 'init.app_password not set — skipping app user creation (provisioned by the init-wrapper in production)';
     END IF;
 END
 $$;

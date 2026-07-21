@@ -74,7 +74,18 @@ make fullstack-up       # == docker compose -f deploy/docker-compose.fullstack.y
 
 Prefer to write the secret files by hand? Generate all six with `openssl` /
 Fernet as documented in [`deploy/secrets/README.md`](../deploy/secrets/README.md),
-`chmod 0400` them, then run the compose command above.
+`chmod 0644` them (world-readable — compose bind-mounts preserve host perms and
+the non-root postgres/API container users must read `/run/secrets/*`; the host
+filesystem is the trust boundary on a single-tenant self-host VM), then run the
+compose command above.
+
+> **Re-running a failed first `up`?** The Postgres init scripts (`init.sql`,
+> app-role bootstrap) run **only against an empty data volume**. A stack that
+> half-initialized (e.g. an unreadable secret aborted init) leaves a stale
+> volume that init will *not* re-stamp. Wipe it before retrying:
+> `docker compose -f deploy/docker-compose.fullstack.yml down && docker volume rm deploy_postgres-data`
+> (use the volume name from `docker volume ls`; the compose-project prefix
+> varies), then `make secrets` and bring the stack up again.
 
 Postgres and control-plane secrets are Docker secret files only — never `.env`
 or compose env. The API connects as `agent_bom_app` (DML-only), not the image

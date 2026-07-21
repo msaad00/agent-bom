@@ -241,7 +241,10 @@ printf %s "$(openssl rand -hex 32)" > deploy/secrets/api_key
 printf %s "$(openssl rand -hex 32)" > deploy/secrets/audit_hmac_key
 printf %s "$(openssl rand -hex 32)" > deploy/secrets/browser_session_signing_key
 printf %s "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" > deploy/secrets/connections_key
-chmod 0400 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
+# 0644, not 0400: compose bind-mounts preserve host perms and the non-root
+# postgres (UID 70) + API users must read /run/secrets/* (host FS is the
+# trust boundary on a single-tenant self-host VM).
+chmod 0644 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
   deploy/secrets/api_key deploy/secrets/audit_hmac_key \
   deploy/secrets/browser_session_signing_key deploy/secrets/connections_key
 scripts/deploy/install.sh platform-docker

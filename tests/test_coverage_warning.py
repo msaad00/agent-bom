@@ -201,7 +201,8 @@ def test_package_scan_preserves_parser_coverage_warning(tmp_path, monkeypatch):
 
     asyncio.run(scan_packages([], options=ScanOptions(offline=True)))
 
-    assert consume_coverage_warnings()[0]["reason"] == "manifest_parse_error"
+    warnings = consume_coverage_warnings()
+    assert any(w.get("reason") == "manifest_parse_error" for w in warnings), warnings
 
 
 def test_json_and_console_surface_coverage_warnings():

@@ -227,9 +227,9 @@ def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home(
     assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])
     assert "api_key" in (api.get("secrets") or [])
     assert "postgres_app_password" in (api.get("secrets") or [])
-    assert "postgres_password" in ((data.get("secrets") or {}))
-    assert "postgres_app_password" in ((data.get("secrets") or {}))
-    assert "api_key" in ((data.get("secrets") or {}))
+    assert "postgres_password" in (data.get("secrets") or {})
+    assert "postgres_app_password" in (data.get("secrets") or {})
+    assert "api_key" in (data.get("secrets") or {})
 
 
 @pytest.mark.parametrize(
@@ -248,6 +248,7 @@ def test_compose_stacks_never_interpolate_control_plane_secrets(compose_name: st
         assert f"${{{name}" not in text, f"{compose_name} must not interpolate {name}"
         assert f"{name}_FILE" in text, f"{compose_name} must set {name}_FILE"
 
+
 def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     path = COMPOSE_DIR / "docker-compose.hosted-poc.yml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -259,6 +260,9 @@ def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     assert api_env == [
         "AGENT_BOM_SESSION_COOKIE_SECURE=1",
         "AGENT_BOM_DEMO_ESTATE=1",
+        # Public demo opens anonymously into a read-only viewer; DEMO_ESTATE +
+        # NO_AUTH_ROLE only take effect once unauthenticated access is enabled.
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1",
         "AGENT_BOM_NO_AUTH_ROLE=viewer",
     ]
 
@@ -279,6 +283,34 @@ def test_postgres_init_resets_app_password_guc_after_reading_it() -> None:
         "not persist in pg_db_role_setting (readable by any connected role)."
     )
     assert reset_idx > read_idx, "the RESET of init.app_password must come after the read that uses it."
+
+
+def test_postgres_init_distinguishes_empty_vs_unset_app_password() -> None:
+    """init.sql must never CREATE ROLE ... PASSWORD NULL (a broken passwordless
+    app role that later surfaces as an opaque 'password authentication failed').
+
+    It distinguishes two cases:
+      * empty GUC (misconfigured secret) -> RAISE EXCEPTION and abort loudly;
+      * unset GUC / NULL (Alembic migrations, integration-test bootstrap, and
+        wrapper-less local dev) -> skip app-role creation, since the role is
+        provisioned out of band there. Aborting here would break those paths."""
+    init_sql = (COMPOSE_DIR / "supabase" / "postgres" / "init.sql").read_text(encoding="utf-8")
+
+    read_idx = init_sql.find("current_setting('init.app_password'")
+    assert read_idx != -1
+
+    # Empty GUC must fail loud (never create a passwordless role).
+    assert "app_pass = ''" in init_sql
+    assert "RAISE EXCEPTION 'init.app_password is empty" in init_sql, (
+        "init.sql must RAISE EXCEPTION when the app-password GUC is set but empty (misconfigured secret)."
+    )
+    # Unset GUC (NULL) must skip cleanly so migrations / test bootstrap / dev
+    # that run init.sql without the wrapper are not aborted.
+    assert "skipping app user creation" in init_sql, (
+        "init.sql must skip app-role creation (not abort) when init.app_password is unset (NULL)."
+    )
+    # A passwordless CREATE ROLE only ever runs under a non-empty password guard.
+    assert "PASSWORD NULL" not in init_sql
 
 
 def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:

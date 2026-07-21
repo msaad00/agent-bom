@@ -17,7 +17,7 @@ fi
 
 if [ ! -f "${APP_PASS_FILE}" ]; then
     echo "ERROR: missing app role secret at ${APP_PASS_FILE}."
-    echo "Create deploy/secrets/postgres_app_password (chmod 0400) before compose up."
+    echo "Create deploy/secrets/postgres_app_password (chmod 0644) before compose up."
     echo "Refusing to fall back to the bootstrap/admin role."
     exit 1
 fi

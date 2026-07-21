@@ -118,6 +118,8 @@ metadata or environment defaults.
 | `policy` | Policy templates, application, and install-guard checks |
 | `firewall` | Inter-agent firewall policy validate / list / check |
 | `trust` | Show data access, network, auth, and storage boundaries |
+| `auth` | Configure dashboard authentication — guided browser SSO / OIDC setup |
+| `auth setup-oidc` | Interactive/non-interactive wizard that emits validated OIDC env config (e.g. Sign in with Google) |
 | `fleet` | Manage AI agent fleet discovery, lifecycle, and posture |
 | `fleet sync` | Discover local MCP agents and push inventory to `POST /v1/fleet/sync` |
 | `cost` | LLM FinOps posture — spend forecast and chargeback rollups (read-only) |

@@ -26,7 +26,9 @@ curl -fsS -X DELETE "${BASE}/v1/compliance/hub/findings" "${HDR[@]}" | cat
 echo
 
 if [ "${AGENT_BOM_DEMO_ESTATE:-0}" = "1" ]; then
-  echo "Demo estate bootstrap will re-seed on next API restart."
+  echo "Demo estate bootstrap will re-seed on the next cleanup-loop tick (~60s)"
+  echo "or immediately on API restart. Set AGENT_BOM_DEMO_ESTATE_FORCE=1 to"
+  echo "force a fresh curated scan job even when one is already present."
 fi
 
 echo "Done."

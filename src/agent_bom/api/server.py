@@ -1039,6 +1039,20 @@ async def _cleanup_loop() -> None:
         await asyncio.sleep(60)
         store = _get_store()
         store.cleanup_expired(_JOB_TTL_SECONDS)
+        # Public demo self-heal: if AGENT_BOM_DEMO_ESTATE is on and the curated
+        # scan job is missing/empty (TTL wipe, partial boot, operator reset),
+        # reseed without waiting for a container restart. Cheap no-op when a
+        # usable demo job is already present.
+        try:
+            from agent_bom.demo_estate.bootstrap import (
+                demo_estate_enabled,
+                maybe_bootstrap_demo_estate,
+            )
+
+            if demo_estate_enabled():
+                await asyncio.to_thread(maybe_bootstrap_demo_estate)
+        except Exception:  # noqa: BLE001
+            _logger.warning("demo estate cleanup-loop reseed skipped", exc_info=True)
         # Tier-B replay-log TTL purge (#2261). Wrapped so a backend hiccup
         # never takes down the whole cleanup loop.
         try:

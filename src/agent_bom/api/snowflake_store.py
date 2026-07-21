@@ -277,14 +277,18 @@ class SnowflakeJobStore:
             return summaries
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
+        from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
+
         with self._connect() as conn:
             cur = conn.cursor()
+            # triggered_by lives inside the VARIANT payload on Snowflake.
             cur.execute(
                 """DELETE FROM scan_jobs
                    WHERE status IN ('done', 'failed', 'cancelled')
                      AND completed_at IS NOT NULL
+                     AND COALESCE(data:triggered_by::STRING, '') <> %s
                      AND TIMESTAMPDIFF(SECOND, completed_at, CURRENT_TIMESTAMP()) > %s""",
-                (ttl_seconds,),
+                (DEMO_ESTATE_TRIGGERED_BY, ttl_seconds),
             )
             return cur.rowcount or 0
 

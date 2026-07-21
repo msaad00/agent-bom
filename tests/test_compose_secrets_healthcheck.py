@@ -260,6 +260,9 @@ def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     assert api_env == [
         "AGENT_BOM_SESSION_COOKIE_SECURE=1",
         "AGENT_BOM_DEMO_ESTATE=1",
+        # Public demo opens anonymously into a read-only viewer; DEMO_ESTATE +
+        # NO_AUTH_ROLE only take effect once unauthenticated access is enabled.
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1",
         "AGENT_BOM_NO_AUTH_ROLE=viewer",
     ]
 

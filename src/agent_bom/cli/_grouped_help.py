@@ -39,6 +39,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
                 "fleet",
                 "cost",
                 "identity",
+                "auth",
                 "serve",
                 "schedule",
                 "remediate",

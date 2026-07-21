@@ -248,7 +248,11 @@ export function LoginPanel({
 
           {!ssoConfigured && !proxyOrBearerHint ? (
             <p className="mt-6 border-t border-[var(--border-subtle)] pt-4 text-center text-xs text-[var(--text-tertiary)]">
-              Setting up single sign-on? Configure browser OIDC, a reverse proxy, or an OIDC issuer in your deployment.
+              Setting up single sign-on? Run{" "}
+              <code className="rounded bg-[var(--surface)] px-1 py-0.5 font-mono text-[var(--text-secondary)]">
+                agent-bom auth setup-oidc
+              </code>{" "}
+              for a guided &ldquo;Sign in with Google&rdquo; / OIDC walkthrough (see docs/AUTH_SSO.md).
             </p>
           ) : null}
         </div>

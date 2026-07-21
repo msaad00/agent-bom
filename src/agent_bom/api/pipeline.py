@@ -18,7 +18,7 @@ import os
 import sys
 import threading
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
@@ -352,23 +352,81 @@ def _graph_build_workspace_enabled() -> bool:
     Default-off so the shipped persist path is byte-for-byte unchanged. When on,
     the persist streams from the storage-backed workspace instead of the
     materialised graph — the seam PR-2 will emit into directly.
+
+    When the store-backed producer is active, this consumer path is skipped
+    (the streamed save already pages out of the container).
     """
     return os.environ.get("AGENT_BOM_GRAPH_BUILD_WORKSPACE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
-def _graph_store_backed_build_enabled() -> bool:
-    """Opt-in flag for building the graph into a store-backed container (#4055/#4075).
+_DEFAULT_STORE_BACKED_MIN_ENTITIES = 5_000
 
-    Default-off so the shipped build+persist path is byte-for-byte unchanged. When
-    on, ``_persist_graph_snapshot`` builds the correlated graph into a per-build
-    :class:`~agent_bom.graph.store_backed.StoreBackedUnifiedGraph` on a throwaway
-    private SQLite workspace (never the shared Postgres workspace tables, so no
-    cross-tenant workspace data lives mid-build), so Phase-A emission and the
-    Phase-B overlays run against the store and the producer's peak RSS is bounded
-    by the container's LRU working set rather than the whole node set. The
-    workspace is a context manager, dropped after the build even on exception.
+
+def _estimate_graph_entities(report_json: Mapping[str, Any] | dict[str, Any]) -> int:
+    """Cheap O(report) entity estimate for the store-backed auto gate.
+
+    Counts agents, nested MCP servers/packages, top-level packages, findings,
+    and blast-radius entries already resident in ``report_json``. Under-approximates
+    final graph node count (overlays mint extras) — acceptable for a heuristic.
     """
-    return os.environ.get("AGENT_BOM_GRAPH_STORE_BACKED_BUILD", "").strip().lower() in ("1", "true", "yes", "on")
+    total = 0
+    agents = report_json.get("agents") or []
+    if isinstance(agents, list):
+        total += len(agents)
+        for agent in agents:
+            if not isinstance(agent, dict):
+                continue
+            servers = agent.get("mcp_servers") or []
+            if not isinstance(servers, list):
+                continue
+            total += len(servers)
+            for server in servers:
+                if isinstance(server, dict):
+                    packages = server.get("packages") or []
+                    if isinstance(packages, list):
+                        total += len(packages)
+    for key in ("packages", "findings"):
+        value = report_json.get(key) or []
+        if isinstance(value, list):
+            total += len(value)
+    blast = report_json.get("blast_radius") or []
+    if isinstance(blast, list):
+        total += len(blast)
+    elif isinstance(blast, dict):
+        total += len(blast)
+    return total
+
+
+def _graph_store_backed_build_enabled(report_json: Mapping[str, Any] | dict[str, Any] | None = None) -> bool:
+    """Whether to build the graph into a store-backed container (#4055/#4075).
+
+    Tri-state:
+
+    * ``AGENT_BOM_GRAPH_STORE_BACKED_BUILD=1/true/on`` — force on
+    * ``=0/false/off`` — force off (wins over the size heuristic)
+    * unset — auto-on when ``report_json`` entity estimate is at or above
+      ``AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES`` (default 5000)
+
+    When on, ``_persist_graph_snapshot`` builds the correlated graph into a
+    per-build :class:`~agent_bom.graph.store_backed.StoreBackedUnifiedGraph` on a
+    throwaway private SQLite workspace (never the shared Postgres workspace
+    tables). Small local / below-threshold scans keep the in-RAM producer.
+    """
+    raw = os.environ.get("AGENT_BOM_GRAPH_STORE_BACKED_BUILD", "").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if report_json is None:
+        return False
+    threshold_raw = os.environ.get("AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES", "").strip()
+    try:
+        threshold = int(threshold_raw) if threshold_raw else _DEFAULT_STORE_BACKED_MIN_ENTITIES
+    except ValueError:
+        threshold = _DEFAULT_STORE_BACKED_MIN_ENTITIES
+    if threshold < 1:
+        threshold = _DEFAULT_STORE_BACKED_MIN_ENTITIES
+    return _estimate_graph_entities(report_json) >= threshold
 
 
 def _persist_via_build_workspace(graph_store: Any, graph: Any) -> dict[str, int]:
@@ -419,14 +477,13 @@ def _persist_graph_snapshot(
     tenant_id = job.tenant_id or "default"
     scan_id = report_json.get("scan_id") or job.job_id
 
-    # Opt-in (#4055/#4075): build the correlated graph into a per-build store-backed
-    # container on a throwaway private SQLite workspace so the producer's peak RSS is
-    # bounded by the container's LRU working set, not the whole node set. The context
-    # manager drops the workspace after the build+persist even on exception. Forced
-    # SQLite (never the shared Postgres workspace tables) so no cross-tenant workspace
-    # data lives mid-build. Default-off -> the shipped in-RAM producer path is
-    # byte-for-byte unchanged.
-    if _graph_store_backed_build_enabled():
+    # Store-backed producer (#4055/#4075): auto-on above the entity threshold
+    # (or forced via AGENT_BOM_GRAPH_STORE_BACKED_BUILD). Builds into a per-build
+    # store-backed container on a throwaway private SQLite workspace so peak RSS
+    # is bounded by the LRU working set. Forced SQLite (never shared Postgres
+    # workspace tables). Explicit off / below-threshold keeps the in-RAM producer.
+    store_backed = _graph_store_backed_build_enabled(report_json)
+    if store_backed:
         from agent_bom.graph.store_backed import open_store_backed_unified_graph
 
         container_cm: contextlib.AbstractContextManager[Any] = open_store_backed_unified_graph(
@@ -454,7 +511,9 @@ def _persist_graph_snapshot(
             # running tally, not len(graph.*). When the store-backed build is on the
             # iterables page straight out of the build workspace; when off they iterate
             # the in-RAM graph. Both produce a byte-identical snapshot.
-            if _graph_build_workspace_enabled():
+            # Skip the older workspace re-stream when the store-backed producer is
+            # already paging out of the container (superseding path).
+            if (not store_backed) and _graph_build_workspace_enabled():
                 counts = _persist_via_build_workspace(graph_store, graph)
             else:
                 counts = graph_store.save_graph_streaming(

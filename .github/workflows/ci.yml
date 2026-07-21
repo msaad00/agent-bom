@@ -1295,63 +1295,7 @@ jobs:
               print(f'OS scan parse error (non-blocking): {e}')
           " || true
 
-  # 6. agent-bom Self-Scan (dogfooding with test SBOM)
-  # Runs on main push only — not needed on every PR
-  agent-bom-scan:
-    name: agent-bom Self-Scan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [test]
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - uses: ./.github/actions/setup-python
-        with:
-          python-version: '3.11'
-
-      - name: Install agent-bom from source
-        run: uv sync --frozen --extra dev
-
-      - name: Generate real SBOM from installed packages (pip-audit CycloneDX)
-        run: |
-          # Generate a real CycloneDX SBOM from all packages installed in the venv.
-          # This is what agent-bom actually scans — its own supply chain, not test fixtures.
-          uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 --format=cyclonedx-json --output /tmp/agent-bom-self-scan.cdx.json \
-            --skip-editable || true
-          if [ ! -f /tmp/agent-bom-self-scan.cdx.json ]; then
-            echo '{"bomFormat":"CycloneDX","specVersion":"1.4","components":[]}' \
-              > /tmp/agent-bom-self-scan.cdx.json
-          fi
-
-      - name: Run agent-bom scan (real installed packages)
-        run: |
-          # Scan the real venv SBOM — dogfoods the scanner against actual deps.
-          # Any CVE here is a real vulnerability in agent-bom's supply chain.
-          uv run agent-bom sbom /tmp/agent-bom-self-scan.cdx.json \
-            -f json -o /tmp/agent-bom-self-scan-results.json || true
-          # Also generate SARIF for potential future upload
-          uv run agent-bom sbom /tmp/agent-bom-self-scan.cdx.json \
-            -f sarif -o results.sarif || true
-          if [ ! -f results.sarif ]; then
-            cat > results.sarif <<'JSON'
-          {"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}
-          JSON
-          fi
-          # Print summary so it's visible in workflow output
-          echo "=== agent-bom self-scan summary ==="
-          if [ -f /tmp/agent-bom-self-scan-results.json ]; then
-            python3 -c "import json,sys; d=json.load(open('/tmp/agent-bom-self-scan-results.json')); f=d.get('findings',d.get('vulnerabilities',[])); sev=lambda s: sum(1 for x in f if x.get('severity','').lower()==s); c,h,m,lo=sev('critical'),sev('high'),sev('medium'),sev('low'); print('Total:',len(f),'| Critical:',c,'| High:',h,'| Medium:',m,'| Low:',lo); [print('WARNING: CVE in own deps:',x.get('id','?'),x.get('package',{}).get('name','?'),x.get('package',{}).get('version','?')) for x in f if x.get('severity','').lower() in ('critical','high')]" || true
-          fi
-
-      # SARIF upload intentionally omitted: a schedule/push-only SARIF category
-      # creates a "code scanning configuration" GitHub expects on every PR.
-      # When any PR run skips it, GitHub shows "1 configuration not found".
-      # Results are fully visible in the workflow output above.
-
-  # 7. Dogfood GitHub Action (test action.yml via uses: ./)
+  # 6. Dogfood GitHub Action (test action.yml via uses: ./)
   action-dogfood:
     name: Dogfood GitHub Action
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.action == 'true')

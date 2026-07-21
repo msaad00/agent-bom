@@ -30,7 +30,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -68,6 +68,7 @@ __all__ = [
     "accept_mcp_scan_attestation",
     "build_mcp_scan_statement",
     "compute_evidence_digest",
+    "evidence_from_scan_report",
     "mcp_catalog_attestation_receipt",
     "mcp_catalog_trust_label",
     "sign_mcp_scan_attestation",
@@ -158,6 +159,218 @@ def compute_evidence_digest(findings: Iterable[Mapping[str, Any]]) -> str:
         normalized.append({field_name: str(finding.get(field_name, "")) for field_name in _STABLE_FINDING_FIELDS})
     normalized.sort(key=lambda item: item["finding_id"])
     return hashlib.sha256(_canonical_bytes({"findings": normalized})).hexdigest()
+
+
+def _sha256_obj(value: Any) -> str:
+    return hashlib.sha256(_canonical_bytes(value)).hexdigest()
+
+
+def _iter_mcp_servers(report: Mapping[str, Any]) -> list[dict[str, Any]]:
+    servers: list[dict[str, Any]] = []
+    agents = report.get("agents") or []
+    if not isinstance(agents, list):
+        return servers
+    for agent in agents:
+        if not isinstance(agent, dict):
+            continue
+        nested = agent.get("mcp_servers") or []
+        if not isinstance(nested, list):
+            continue
+        for server in nested:
+            if isinstance(server, dict):
+                servers.append(server)
+    return servers
+
+
+def _match_mcp_server(report: Mapping[str, Any], server: str) -> dict[str, Any]:
+    needle = server.strip()
+    if not needle:
+        raise AttestationSigningError("mcp_server_required")
+    matches: list[dict[str, Any]] = []
+    for candidate in _iter_mcp_servers(report):
+        names = {
+            str(candidate.get("name") or ""),
+            str(candidate.get("stable_id") or ""),
+            str(candidate.get("canonical_id") or ""),
+            str(candidate.get("registry_id") or ""),
+        }
+        if needle in names:
+            matches.append(candidate)
+    if not matches:
+        raise AttestationSigningError("mcp_server_not_found")
+    if len(matches) > 1:
+        raise AttestationSigningError("mcp_server_ambiguous")
+    return matches[0]
+
+
+def _normalize_finding_for_digest(finding: Mapping[str, Any]) -> dict[str, str] | None:
+    finding_id = finding.get("finding_id") or finding.get("id")
+    if not isinstance(finding_id, str) or not finding_id:
+        return None
+    rule_id = finding.get("rule_id") or finding.get("vulnerability_id") or finding.get("cve_id") or ""
+    category = finding.get("category") or finding.get("finding_category") or finding.get("finding_type") or ""
+    return {
+        "finding_id": str(finding_id),
+        "rule_id": str(rule_id),
+        "severity": str(finding.get("severity") or ""),
+        "category": str(category),
+    }
+
+
+def _findings_for_server(report: Mapping[str, Any], server: Mapping[str, Any]) -> list[dict[str, str]]:
+    server_name = str(server.get("name") or "")
+    server_ids = {
+        server_name,
+        str(server.get("stable_id") or ""),
+        str(server.get("canonical_id") or ""),
+    }
+    server_ids.discard("")
+    packages_raw = server.get("packages")
+    packages: list[Any] = packages_raw if isinstance(packages_raw, list) else []
+    package_names = {str(pkg.get("name") or "").lower() for pkg in packages if isinstance(pkg, dict) and pkg.get("name")}
+    related: list[dict[str, str]] = []
+    seen: set[str] = set()
+    findings_raw_value = report.get("findings")
+    findings_raw: list[Any] = findings_raw_value if isinstance(findings_raw_value, list) else []
+    for finding in findings_raw:
+        if not isinstance(finding, Mapping):
+            continue
+        normalized = _normalize_finding_for_digest(finding)
+        if normalized is None or normalized["finding_id"] in seen:
+            continue
+        matched = False
+        affected = finding.get("affected_servers") or []
+        if isinstance(affected, list) and server_name and server_name in affected:
+            matched = True
+        asset = finding.get("asset")
+        if isinstance(asset, Mapping):
+            asset_keys = {
+                str(asset.get("name") or ""),
+                str(asset.get("stable_id") or ""),
+                str(asset.get("canonical_id") or ""),
+            }
+            if server_ids & asset_keys:
+                matched = True
+        title = str(finding.get("title") or "").lower()
+        for pkg_name in package_names:
+            if pkg_name and pkg_name in title:
+                matched = True
+                break
+        if matched:
+            seen.add(normalized["finding_id"])
+            related.append(normalized)
+    if not related:
+        # Bind the whole finding set when linkage fields are absent so the digest
+        # still covers scan evidence for the selected instance.
+        for finding in findings_raw:
+            if not isinstance(finding, Mapping):
+                continue
+            normalized = _normalize_finding_for_digest(finding)
+            if normalized is None or normalized["finding_id"] in seen:
+                continue
+            seen.add(normalized["finding_id"])
+            related.append(normalized)
+    return related
+
+
+def _default_verdict(server: Mapping[str, Any], findings: Sequence[Mapping[str, Any]]) -> str:
+    if server.get("security_blocked") is True:
+        return "BLOCK"
+    severities = {str(f.get("severity") or "").lower() for f in findings}
+    if "critical" in severities:
+        return "FAIL"
+    if "high" in severities or findings:
+        return "WARN"
+    return "PASS"
+
+
+def evidence_from_scan_report(
+    report: Mapping[str, Any],
+    *,
+    server: str,
+    tenant_id: str,
+    verdict: str | None = None,
+    ttl_seconds: int = _DEFAULT_TTL_SECONDS,
+    run_id: str | None = None,
+) -> MCPScanEvidence:
+    """Derive :class:`MCPScanEvidence` from a completed scan JSON report.
+
+    Selects one MCP server by ``name`` / ``stable_id`` / ``canonical_id`` /
+    ``registry_id``. Digests bind instance identity, packages, and findings that
+    reference the server. Verdict defaults from ``security_blocked`` and finding
+    severity unless overridden.
+    """
+    selected = _match_mcp_server(report, server)
+    packages = selected.get("packages") if isinstance(selected.get("packages"), list) else []
+    related = _findings_for_server(report, selected)
+    catalog_id = (
+        str(selected.get("registry_id") or "").strip()
+        or str(selected.get("stable_id") or "").strip()
+        or str(selected.get("canonical_id") or "").strip()
+        or str(selected.get("name") or "").strip()
+    )
+    fingerprint = str(selected.get("fingerprint") or "").strip()
+    if not fingerprint:
+        fingerprint = (
+            "fp-"
+            + _sha256_obj(
+                {
+                    "name": selected.get("name"),
+                    "command": selected.get("command"),
+                    "args": selected.get("args") or [],
+                    "url": selected.get("url"),
+                    "transport": selected.get("transport"),
+                }
+            )[:32]
+        )
+
+    instance_digest = _sha256_obj(
+        {
+            "name": selected.get("name"),
+            "stable_id": selected.get("stable_id"),
+            "canonical_id": selected.get("canonical_id"),
+            "registry_id": selected.get("registry_id"),
+            "command": selected.get("command"),
+            "args": selected.get("args") or [],
+            "url": selected.get("url"),
+            "transport": selected.get("transport"),
+            "fingerprint": fingerprint,
+        }
+    )
+    sbom_digest = _sha256_obj(packages)
+    evidence_digest = compute_evidence_digest(related)
+    scan_id = str(report.get("scan_id") or "").strip() or "scan-unknown"
+    resolved_run_id = (run_id or scan_id).strip()
+    now = datetime.now(timezone.utc)
+    observed_raw = report.get("generated_at")
+    if isinstance(observed_raw, datetime):
+        try:
+            observed_at = _normalize_datetime(observed_raw)
+        except AttestationSigningError:
+            observed_at = now
+    elif isinstance(observed_raw, str):
+        observed_at = _parse_signed_datetime(observed_raw) or now
+    else:
+        observed_at = now
+    resolved_verdict = (verdict or _default_verdict(selected, related)).upper()
+    return MCPScanEvidence(
+        tenant_id=tenant_id,
+        scan_id=scan_id,
+        run_id=resolved_run_id,
+        catalog_id=catalog_id,
+        instance_digest=instance_digest,
+        capability_fingerprint=fingerprint,
+        sbom_digest=sbom_digest,
+        evidence_digest=evidence_digest,
+        verdict=resolved_verdict,
+        issued_at=now,
+        observed_at=observed_at,
+        references={
+            "server_name": str(selected.get("name") or ""),
+            "transport": str(selected.get("transport") or ""),
+        },
+        ttl_seconds=ttl_seconds,
+    )
 
 
 @dataclass(frozen=True, slots=True)

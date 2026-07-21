@@ -20,8 +20,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Docs honesty: authenticated-hosted overlay matrix points anonymous demo at
   `demo-override.yml`; PRODUCT_BRIEF marks webhook outbox as shipped; store-backed
   graph test module docstring matches auto-enable behavior.
-- Audit ledger §H: Fable re-rate of v0.97.2 (absolute pilot scores) and hosting
-  align (self-host Postgres primary; Snowflake Postgres optional; no SaaS pivot).
 
 ## [0.97.2] - 2026-07-21
 

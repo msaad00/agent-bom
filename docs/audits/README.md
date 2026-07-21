@@ -6,7 +6,7 @@ waves.
 
 | Ledger | Product | Focus |
 |---|---|---|
-| [AUDIT-2026-07-21.md](AUDIT-2026-07-21.md) | v0.97.1 → §H v0.97.2 | Persona progress vs v0.93.5; evening re-rate + hosting align |
+| [AUDIT-2026-07-21.md](AUDIT-2026-07-21.md) | v0.97.1 | Persona progress vs v0.93.5 (~2 weeks) |
 | [AUDIT-2026-07-03.md](AUDIT-2026-07-03.md) | v0.92–0.93 | Engineering issue ledger + dimension scores |
 
 - Issues listed as fixed are addressed on current `main` unless a file header

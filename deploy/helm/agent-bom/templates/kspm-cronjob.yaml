@@ -20,6 +20,8 @@ spec:
   failedJobsHistoryLimit: {{ .Values.scanner.failedJobsHistoryLimit }}
   jobTemplate:
     spec:
+      # Fail loud: one pod failure marks the Job Failed (no silent retries).
+      backoffLimit: 0
       template:
         metadata:
           labels:
@@ -94,5 +96,5 @@ spec:
           tolerations:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          restartPolicy: OnFailure
+          restartPolicy: Never
 {{- end }}

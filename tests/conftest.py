@@ -72,6 +72,20 @@ def _reset_enrichment_posture_state() -> None:
         pass
 
 
+def _reset_scan_warning_state() -> None:
+    # Coverage / scan warnings live on threading.local. Under xdist that is
+    # per-worker-thread state across many tests: a prior scan can leave an
+    # offline_ecosystem_gap dict (no "reason") that makes a later assertion on
+    # consume_coverage_warnings()[0]["reason"] raise KeyError. Drain both
+    # channels between tests.
+    try:
+        from agent_bom.scanners.state import reset_scan_warnings
+
+        reset_scan_warnings()
+    except Exception:
+        pass
+
+
 def _reset_resolver_state() -> None:
     try:
         import agent_bom.resolver as resolver
@@ -511,6 +525,7 @@ def reset_global_test_state():
     _reset_proxy_route_state()
     _reset_runtime_state()
     _reset_enrichment_posture_state()
+    _reset_scan_warning_state()
 
     # Snapshot auth env AFTER module-scoped setup has run (setup_module fires
     # before this function-scoped fixture), so module-level auth env is captured
@@ -560,16 +575,6 @@ def reset_global_test_state():
     _restore_config_auth(config_auth_snapshot)
     _restore_output_console(output_console_snapshot)
 
-    for var, value in {
-        **auth_env_snapshot,
-        **storage_env_snapshot,
-        **server_env_snapshot,
-    }.items():
-        if value is None:
-            os.environ.pop(var, None)
-        else:
-            os.environ[var] = value
-
     _reset_resolver_state()
     _reset_registry_state()
     _reset_identity_cache_state()
@@ -578,3 +583,4 @@ def reset_global_test_state():
     _reset_proxy_route_state()
     _reset_runtime_state()
     _reset_enrichment_posture_state()
+    _reset_scan_warning_state()

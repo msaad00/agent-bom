@@ -19,6 +19,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   binds `app.tenant_id` per operation so staging rows cannot cross tenants.
 
 ### Fixed
+- Attack-path Path view always lays hops left-to-right (no odd-row snake), so
+  wrapped critical paths no longer draw an inbound arrow into the finding from
+  empty space.
 - Helm scanner, KSPM, and control-plane backup CronJobs fail loud
   (`jobTemplate.spec.backoffLimit: 0`, `restartPolicy: Never`) so a bad run
   surfaces as a Failed Job instead of retrying quietly under `OnFailure`.
@@ -43,6 +46,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   (`docs/archive/STRATEGIC_AUDIT_*`, `docs/archive/AUDIT.md`, `docs/audits/`);
   soften large-enterprise procurement phrasing. CI
   (`scripts/check_public_docs_hygiene.py`) blocks reintroduction.
+- Compliance UI and docs label framework mappings as a curated evidence helper,
+  not a certification or complete control catalog (dashboard disclaimer +
+  `site-docs/features/compliance.md` / `CONTROL_MAPPING.md` / `ARCHITECTURE.md`).
 
 ## [0.97.2] - 2026-07-21
 

@@ -123,4 +123,24 @@ describe("buildPathGraphLayout auto-fit", () => {
     expect(layout.edges).toHaveLength(4);
     expect(layout.relationshipLabels).toHaveLength(4);
   });
+
+  it("keeps every row left-to-right so wrapped paths do not snake backwards", () => {
+    // 7 hops is the demo critical-path shape (identity → … → finding): one full
+    // row of 4, then 3 on the next row. Odd-row boustrophedon previously put
+    // the finding on the bottom-left with an inbound arrow from empty space.
+    const layout = buildPathGraphLayout(makePath(7));
+    expect(layout.nodes).toHaveLength(7);
+    const row0 = layout.nodes.slice(0, 4);
+    const row1 = layout.nodes.slice(4);
+    for (let i = 1; i < row0.length; i += 1) {
+      expect(row0[i]!.x).toBeGreaterThan(row0[i - 1]!.x);
+    }
+    for (let i = 1; i < row1.length; i += 1) {
+      expect(row1[i]!.x).toBeGreaterThan(row1[i - 1]!.x);
+    }
+    // Finding (last hop) sits to the right of the first hop on its row.
+    expect(row1[row1.length - 1]!.x).toBeGreaterThan(row1[0]!.x);
+    // Wrap edge: last of row0 is rightmost; first of row1 is leftmost.
+    expect(row0[row0.length - 1]!.x).toBeGreaterThan(row1[0]!.x);
+  });
 });

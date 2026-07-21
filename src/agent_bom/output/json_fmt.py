@@ -736,6 +736,50 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
     }
 
 
+def _build_asset_inventory(findings: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Materialize unique finding assets for cross-surface joins.
+
+    Findings may repeat the same package, cloud resource, or MCP server. Keep
+    one stable asset record and attach the finding IDs that reference it so the
+    UI/control plane can navigate from inventory to evidence without treating
+    repeated finding rows as duplicate assets.
+    """
+    assets: dict[str, dict[str, object]] = {}
+    for finding in findings:
+        raw_asset = finding.get("asset")
+        if not isinstance(raw_asset, dict):
+            continue
+        stable_id = str(raw_asset.get("stable_id") or raw_asset.get("canonical_id") or "").strip()
+        if not stable_id:
+            continue
+        asset = assets.setdefault(
+            stable_id,
+            {
+                "schema_version": "1",
+                "stable_id": stable_id,
+                "canonical_id": str(raw_asset.get("canonical_id") or stable_id),
+                "name": raw_asset.get("name"),
+                "asset_type": raw_asset.get("asset_type"),
+                "identifier": raw_asset.get("identifier"),
+                "location": raw_asset.get("location"),
+                "provider": raw_asset.get("provider"),
+                "account_ref": raw_asset.get("account_ref"),
+                "region": raw_asset.get("region"),
+                "environment": raw_asset.get("environment"),
+                "finding_ids": [],
+            },
+        )
+        finding_id = str(finding.get("canonical_id") or finding.get("id") or "").strip()
+        finding_ids = asset["finding_ids"]
+        if isinstance(finding_ids, list) and finding_id and finding_id not in finding_ids:
+            finding_ids.append(finding_id)
+    for asset in assets.values():
+        finding_ids = asset["finding_ids"]
+        if isinstance(finding_ids, list):
+            asset["finding_ids"] = sorted(str(item) for item in finding_ids)
+    return [assets[key] for key in sorted(assets)]
+
+
 def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
     """Compare configured servers against observed/runtime evidence."""
     introspection_results = {
@@ -941,6 +985,7 @@ def to_json(report: AIBOMReport) -> dict:
     cve_pairs = list(zip(cve_findings(report, report.blast_radii), report.blast_radii, strict=True)) if report.blast_radii else []
     exposure_paths = [exposure_path_for_report_finding(finding, br=br, rank=rank) for rank, (finding, br) in enumerate(cve_pairs, start=1)]
     unified_findings = [finding.to_dict() for finding in report.to_findings()]
+    asset_inventory = _build_asset_inventory(unified_findings)
     finding_summary = _build_finding_summary(unified_findings)
     from agent_bom.evidence.scan_run import effective_scan_run
 
@@ -980,11 +1025,13 @@ def to_json(report: AIBOMReport) -> dict:
             "total_vulnerabilities": report.total_vulnerabilities,
             "critical_findings": len(report.critical_vulns),
             "total_findings": finding_summary["total"],
+            "unique_assets": len(asset_inventory),
             "critical_unified_findings": finding_summary["by_severity"]["critical"],
             "high_unified_findings": finding_summary["by_severity"]["high"],
             "coverage_warnings": list(report.coverage_warnings),
         },
         "finding_summary": finding_summary,
+        "assets": asset_inventory,
         "coverage_warnings": list(report.coverage_warnings),
         "inventory_snapshot": inventory_snapshot,
         "agents": [

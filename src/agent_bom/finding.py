@@ -36,7 +36,7 @@ def stable_id(*parts: str) -> str:
 class FindingType(str, Enum):
     """What category of issue this finding represents."""
 
-    CVE = "CVE"  # Software vulnerability (from OSV/GHSA/NVIDIA)
+    CVE = "CVE"  # Legacy software-vulnerability value (from OSV/GHSA/NVIDIA)
     CIS_FAIL = "CIS_FAIL"  # CIS benchmark control failure
     CIS_ERROR = "CIS_ERROR"  # CIS control could not be evaluated reliably
     CLOUD_BEST_PRACTICE_FAIL = "CLOUD_BEST_PRACTICE_FAIL"
@@ -353,7 +353,7 @@ class Finding:
         )
         if not self.id:
             # Deterministic ID: same CVE on same asset always same ID
-            cve_part = self.cve_id or self.title
+            cve_part = self.vulnerability_id or self.title
             pkg_name = ""
             pkg_version = ""
             if self.asset.asset_type == "package" and self.asset.identifier:
@@ -379,6 +379,45 @@ class Finding:
     def canonical_id(self) -> str:
         """Canonical alias for id used by report and graph consumers."""
         return self.id
+
+    @property
+    def vulnerability_id(self) -> Optional[str]:
+        """Canonical advisory identity, regardless of CVE/GHSA/OSV namespace.
+
+        ``cve_id`` remains the wire-compatible legacy field. New producers may
+        populate ``evidence.vulnerability_id`` and consumers should prefer this
+        namespace-neutral alias when joining findings to advisories.
+        """
+        if self.cve_id:
+            return self.cve_id
+        raw = self.evidence.get("vulnerability_id") if isinstance(self.evidence, dict) else None
+        return str(raw).strip() or None if raw is not None else None
+
+    @property
+    def advisory_ids(self) -> list[str]:
+        """Return deterministic, de-duplicated CVE/GHSA/OSV advisory aliases."""
+        raw: list[object] = [self.vulnerability_id]
+        if isinstance(self.evidence, dict):
+            raw.extend(self.evidence.get("cve_ids") or [])
+            raw.extend(self.evidence.get("advisory_aliases") or [])
+            raw.extend(self.evidence.get("advisory_ids") or [])
+        seen: set[str] = set()
+        result: list[str] = []
+        for value in raw:
+            item = str(value or "").strip()
+            if item and item not in seen:
+                seen.add(item)
+                result.append(item)
+        return result
+
+    @property
+    def finding_category(self) -> str:
+        """Stable category for consumers while legacy finding types remain intact."""
+        if self.finding_type is FindingType.CVE:
+            return "vulnerability"
+        if self.finding_type in {FindingType.CIS_FAIL, FindingType.CIS_ERROR}:
+            return "compliance"
+        return self.finding_type.value.lower()
 
     def _legacy_control_tags(self) -> list[ControlTag]:
         """Return normalized controls derived from legacy tag arrays."""
@@ -454,6 +493,7 @@ class Finding:
             "id": self.id,
             "canonical_id": self.canonical_id,
             "finding_type": self.finding_type.value,
+            "finding_category": self.finding_category,
             "source": self.source.value,
             "asset": {
                 "name": self.asset.name,
@@ -481,6 +521,8 @@ class Finding:
             "title": self.title,
             "description": self.description,
             "cve_id": self.cve_id,
+            "vulnerability_id": self.vulnerability_id,
+            "advisory_ids": self.advisory_ids,
             "cve_ids": self.evidence.get("cve_ids") or ([self.cve_id] if self.cve_id else []),
             "match_confidence_tier": self.evidence.get("match_confidence_tier"),
             "advisory_aliases": self.evidence.get("advisory_aliases") or [],

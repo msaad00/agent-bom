@@ -165,6 +165,7 @@ def test_cnapp_overlay_store_safe_under_eviction(monkeypatch: pytest.MonkeyPatch
     # cnapp mints DATA_STORE companion nodes; freeze their default timestamps so the
     # two independent overlay runs are comparable (drift here is a test artifact).
     monkeypatch.setattr("agent_bom.graph.node._now_iso", lambda: _FIXED_CREATED_AT)
+    monkeypatch.setattr("agent_bom.graph.edge._now_iso", lambda: _FIXED_CREATED_AT, raising=False)
     ram = UnifiedGraph(scan_id="s", tenant_id="t1", created_at=_FIXED_CREATED_AT)
     _make_cnapp_estate(ram, resources=30, fillers=60)
     ram_stats = apply_cnapp_overlay(ram)

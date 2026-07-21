@@ -76,14 +76,16 @@ export function buildPathGraphLayout(path: ExposurePath): PathGraphLayout {
   const pitchX = nodeWidth + COLUMN_GAP;
   const rowGap = nodeHeight + ROW_GAP_EXTRA;
 
+  // Always place hops left-to-right, wrapping to a new row. A prior
+  // boustrophedon (snake) layout made long paths reverse on odd rows while
+  // edges still assumed L→R ports — so the inbound arrow into the finding
+  // looked like it came from empty space (README screenshot regression).
   const nodes: PathGraphNode[] = path.hops.map((hop, index) => {
     const row = Math.floor(index / columns);
     const col = index % columns;
-    // Boustrophedon rows so a wrapped path reads left-to-right, then back.
-    const visualCol = row % 2 === 0 ? col : columns - 1 - col;
     return {
       ...hop,
-      x: MARGIN_X + visualCol * pitchX,
+      x: MARGIN_X + col * pitchX,
       y: MARGIN_Y + row * rowGap,
     };
   });
@@ -99,23 +101,41 @@ export function buildPathGraphLayout(path: ExposurePath): PathGraphLayout {
   const edges: PathGraphEdge[] = nodes.slice(0, -1).map((source, index) => {
     const target = nodes[index + 1]!;
     const relationship = relationshipForPathStep(path, source.id, target.id, index);
-    const startX = source.x + nodeWidth;
-    const startY = source.y + nodeHeight / 2;
-    const endX = target.x;
-    const endY = target.y + nodeHeight / 2;
-    const sameRow = Math.abs(startY - endY) < 10;
-    const control = sameRow ? Math.max(40, Math.abs(endX - startX) / 2) : 56;
-    const pathD = sameRow
-      ? `M ${startX} ${startY} C ${startX + control} ${startY}, ${endX - control} ${endY}, ${endX} ${endY}`
-      : `M ${source.x + nodeWidth / 2} ${source.y + nodeHeight} C ${source.x + nodeWidth / 2} ${source.y + nodeHeight + control}, ${target.x + nodeWidth / 2} ${target.y - control}, ${target.x + nodeWidth / 2} ${target.y}`;
+    const sameRow = Math.abs(source.y - target.y) < 10;
+    const control = sameRow ? Math.max(40, Math.abs(target.x - source.x) / 2) : 56;
+    let pathD: string;
+    let labelX: number;
+    let labelY: number;
+    if (sameRow) {
+      // Direction-aware ports so a same-row edge never draws "into" a node
+      // from empty space on the wrong side.
+      const leftToRight = target.x >= source.x;
+      const startX = leftToRight ? source.x + nodeWidth : source.x;
+      const endX = leftToRight ? target.x : target.x + nodeWidth;
+      const midY = source.y + nodeHeight / 2;
+      const c1 = leftToRight ? startX + control : startX - control;
+      const c2 = leftToRight ? endX - control : endX + control;
+      pathD = `M ${startX} ${midY} C ${c1} ${midY}, ${c2} ${midY}, ${endX} ${midY}`;
+      labelX = (startX + endX) / 2;
+      labelY = midY;
+    } else {
+      // Row wrap: drop from the end of the prior row to the start of the next.
+      const startX = source.x + nodeWidth / 2;
+      const startY = source.y + nodeHeight;
+      const endX = target.x + nodeWidth / 2;
+      const endY = target.y;
+      pathD = `M ${startX} ${startY} C ${startX} ${startY + control}, ${endX} ${endY - control}, ${endX} ${endY}`;
+      labelX = (startX + endX) / 2;
+      labelY = (startY + endY) / 2;
+    }
     const style = GRAPH_ROLE_STYLE[target.role] ?? GRAPH_ROLE_STYLE.unknown;
     return {
       id: `${source.id}->${target.id}`,
       path: pathD,
       stroke: style.stroke,
       label: truncateGraphText(relationship, 16),
-      labelX: sameRow ? (startX + endX) / 2 : source.x + nodeWidth / 2,
-      labelY: sameRow ? startY : (source.y + nodeHeight + target.y) / 2,
+      labelX,
+      labelY,
     };
   });
 

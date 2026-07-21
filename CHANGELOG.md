@@ -21,6 +21,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `demo-override.yml`; PRODUCT_BRIEF marks webhook outbox as shipped; store-backed
   graph test module docstring matches auto-enable behavior.
 
+### Changed
+- Remove private strategy and agent-session audit ledgers from the public tree
+  (`docs/archive/STRATEGIC_AUDIT_*`, `docs/archive/AUDIT.md`, `docs/audits/`);
+  soften large-enterprise procurement phrasing. CI
+  (`scripts/check_public_docs_hygiene.py`) blocks reintroduction.
+
 ## [0.97.2] - 2026-07-21
 
 ### Added

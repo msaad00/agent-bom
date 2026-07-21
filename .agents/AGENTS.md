@@ -155,6 +155,14 @@ Minimum verification matrix:
 - Re-tag an existing version. Bump and tag forward only.
 - `git push --force` to `main`, `--no-verify`, `--no-gpg-sign`, or amend
   published commits without an explicit user request.
+- Commit private strategy, GTM/IP plans, named prospect/partner lists,
+  advisor/individual targeting notes, AE/commercial scorecards, harsh
+  pilot re-rate tables, or agent-session / persona audit ledgers into the
+  public tree (`docs/`, `docs/audits/`, `docs/archive/AUDIT*`,
+  `site-docs/`, CHANGELOG, UI copy, PR titles/bodies). Keep that material
+  in private notes or chat. Public docs are product evidence and operator
+  runbooks only — not Cursor/Claude/Codex review write-ups. Enforced by
+  `scripts/check_public_docs_hygiene.py`.
 
 ## Always
 

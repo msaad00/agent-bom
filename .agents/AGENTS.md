@@ -155,6 +155,14 @@ Minimum verification matrix:
 - Re-tag an existing version. Bump and tag forward only.
 - `git push --force` to `main`, `--no-verify`, `--no-gpg-sign`, or amend
   published commits without an explicit user request.
+- Commit private strategy, GTM/IP plans, named prospect/partner lists,
+  advisor/individual targeting notes, AE/commercial scorecards, or harsh
+  pilot re-rate tables into the public tree (`docs/`, `site-docs/`,
+  CHANGELOG, UI copy, PR titles/bodies). Keep that material in private
+  notes or chat. Engineering audits may record product evidence and
+  persona progress scores; they must not carry private positioning or
+  named third-party individuals. Enforced by
+  `scripts/check_public_docs_hygiene.py`.
 
 ## Always
 

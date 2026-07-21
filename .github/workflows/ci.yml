@@ -184,6 +184,13 @@ jobs:
         # breadcrumbs must never ship in product source. Pure stdlib, fails fast.
         run: python scripts/check_comment_hygiene.py
 
+      - name: Public-docs hygiene — no private strategy/scorecards in OSS tree
+        # Source: scripts/check_public_docs_hygiene.py
+        # Strategy memos, named-prospect lists, GTM/IP plans, and harsh pilot
+        # re-rate tables belong in private notes — not docs/, site-docs/, or
+        # CHANGELOG. Pure stdlib, fails fast.
+        run: python scripts/check_public_docs_hygiene.py
+
       - name: Package layout — no new top-level src/agent_bom/*.py modules
         # Source: scripts/check_package_layout.py
         # The flat namespace is frozen; new modules belong in packages

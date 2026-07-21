@@ -5,8 +5,9 @@ agent-bom maps scan findings to curated security and compliance frameworks and e
 **Scope:** these mappings are a curated **evidence helper** for AI/MCP/agent risk
 triage. They are **not** a certification, audit opinion, attestation of
 compliance, or a complete framework catalog. Operators and auditors must validate
-controls against the customer environment and the exact release in use. See also
-[`docs/CONTROL_MAPPING.md`](../../docs/CONTROL_MAPPING.md).
+controls against the customer environment and the exact release in use. For
+procurement-oriented product evidence mapping, see `docs/CONTROL_MAPPING.md` in
+the repository (not published on this docs site).
 
 Framework catalogs are pinned in-repo by default so scans stay deterministic,
 offline-friendly, and reproducible. Catalog refreshes can happen out of band;

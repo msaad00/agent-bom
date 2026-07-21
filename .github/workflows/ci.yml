@@ -1098,6 +1098,9 @@ jobs:
           PYPROJECT_VER=$(python -c "import re, pathlib; text = pathlib.Path('pyproject.toml').read_text(); print(re.search(r'^version\\s*=\\s*\"([^\"]+)\"', text, re.M).group(1))")
           python scripts/bump-version.py "$PYPROJECT_VER" --check
 
+      - name: Verify version alignment across all deploy/docs surfaces
+        run: python scripts/check_version_alignment.py
+
       - name: Verify README/docs consistency
         run: python scripts/check_release_consistency.py
 

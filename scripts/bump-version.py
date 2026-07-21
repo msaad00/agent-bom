@@ -185,6 +185,24 @@ def bump(new_version: str, *, dry_run: bool = False, check: bool = False) -> int
                 path.write_text(new_text)
                 print(f"  UPDATED ({count} hit): {rel_path}")
 
+    # Structural sweep: align every managed image pin / GitHub Action ref across
+    # the whole shipping-surface tree (deploy + docs + site-docs + integrations),
+    # so files not enumerated above — or added in a future release — can never
+    # silently drift. This is the same scan the CI version-alignment gate runs.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import check_version_alignment as cva
+
+    if dry_run or check:
+        sweep_drift = cva.find_drift(new_version)
+        for line in sweep_drift:
+            print(f"  {'DRIFT' if check else 'DRY-RUN'} (align sweep): {line}")
+        changed += len(sweep_drift)
+    else:
+        sweep_count, sweep_files = cva.rewrite(new_version)
+        for path in sweep_files:
+            print(f"  UPDATED (align sweep): {path.relative_to(ROOT)}")
+        changed += sweep_count
+
     print(f"\n{'Would update' if dry_run else 'Updated'} {changed} occurrence(s)")
 
     if check:

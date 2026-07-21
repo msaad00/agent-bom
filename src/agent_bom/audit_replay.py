@@ -350,6 +350,14 @@ def display_rich(
     if s and (s.total_blocked > 0 or s.relay_errors > 0):
         exit_code = 1
 
+    # Summary-less logs (partial JSONL without a proxy_summary trailer) must still
+    # fail closed when blocked tool calls or relay errors are present — matching
+    # display_json so CI gates cannot false-pass the rich path.
+    if exit_code == 0 and any(c.policy == "blocked" for c in log.tool_calls):
+        exit_code = 1
+    if exit_code == 0 and log.relay_errors:
+        exit_code = 1
+
     # ── Tool call table ─────────────────────────────────────────────────────
     if not alerts_only:
         calls = log.tool_calls

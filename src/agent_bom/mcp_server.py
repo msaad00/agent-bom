@@ -8,7 +8,12 @@ Start with:
 Tools (76):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
+    intel_lookup        — Look up a CVE, GHSA, or OSV advisory from local threat intel
+    intel_match         — Match package inventory coordinates to local advisory intel
+    intel_sources       — Return canonical intel sources and local feed-run freshness
+    intel_daily_brief   — Return a local analyst threat brief from governed intel sources
     blast_radius        — Look up blast radius for a specific CVE
+    exposure_paths      — Return ranked ExposurePath JSON for headless agents and MCP clients
     should_i_deploy     — Return allow/warn/block from ExposurePath risk
     policy_check        — Evaluate a policy against scan results
     registry_lookup     — Query the MCP server security metadata registry
@@ -29,13 +34,18 @@ Tools (76):
     marketplace_check   — Pre-install trust check with registry cross-reference
     code_scan           — SAST scanning via Semgrep with CWE-based compliance mapping
     context_graph       — Agent context graph with lateral movement analysis
+    graph_export        — Export dependency graph (GraphML, Neo4j Cypher, DOT, JSON-LD)
     analytics_query     — Query vulnerability trends and runtime events from ClickHouse
     cis_benchmark       — Run CIS benchmark checks against cloud accounts
+    kspm_cluster_posture — Evaluate live Kubernetes cluster posture vs CIS Kubernetes Benchmark
     fleet_scan          — Batch registry lookup for fleet inventories
     runtime_correlate   — Cross-reference runtime audit logs with CVE findings
     runtime_production_index — Runtime production posture summary
     runtime_blueprints  — Role/profile blueprints for runtime policy design
     runtime_blueprint_drift — Evaluate runtime posture against a blueprint
+    cost_report         — LLM spend attribution per agent/model/provider with budget posture
+    anomaly_scan        — Detect cost and behavior anomalies
+    drift_incidents     — List open blueprint-drift incidents
     proxy_status        — Current MCP proxy metrics and alert posture
     proxy_alerts        — Recent tenant-scoped runtime proxy alerts
     gateway_status      — Gateway policy and firewall runtime statistics
@@ -54,6 +64,7 @@ Tools (76):
     vector_db_scan      — Scan vector databases for embedding poisoning and access risks
     aisvs_benchmark     — OWASP AI Security Verification Standard benchmark
     gpu_infra_scan      — Scan GPU infrastructure for CVEs and misconfigurations
+    registry_sweep_scan — Sweep a cloud registry (ECR/ACR/GAR) and scan unique images
     dataset_card_scan   — Scan dataset cards for licensing and provenance
     training_pipeline_scan — Scan training pipeline artifacts for lineage
     browser_extension_scan — Scan browser extensions for dangerous permissions
@@ -69,6 +80,8 @@ Tools (76):
     nhi_discover        — Discover non-human identities (Okta / Entra), reference-only
     cloud_inventory     — Estate-wide cloud asset inventory summary, opt-in per provider
     access_review       — List or get NHI access-review / recertification campaigns
+    create_ticket       — File an ITSM ticket for a finding through a stored connector
+    sync_ticket_status  — Refresh a filed ITSM ticket's status through the stored connector
 
 Resources (6):
     registry://servers  — Browse the 1013-entry server security metadata registry

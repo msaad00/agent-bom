@@ -524,6 +524,19 @@ _SERVER_CARD_RESOURCES = [
 
 def build_server_card() -> dict[str, Any]:
     from agent_bom import __version__
+    from agent_bom.mcp_server_helpers import get_registry_data
+
+    try:
+        registry_servers = int(get_registry_data().get("_total_servers") or 0)
+    except Exception:
+        registry_servers = 0
+    if registry_servers <= 0:
+        # Fall back to counting the bundled map when the header is missing.
+        try:
+            servers = get_registry_data().get("servers") or {}
+            registry_servers = len(servers) if isinstance(servers, dict) else 0
+        except Exception:
+            registry_servers = 0
 
     return {
         "name": "agent-bom",
@@ -549,8 +562,10 @@ def build_server_card() -> dict[str, Any]:
                 "Kubernetes",
                 "SBOMs",
             ],
-            "registry_servers": 427,
-            "read_only": True,
+            "registry_servers": registry_servers,
+            # Scanner/graph tools are read-only; Shield / identity / ticket tools
+            # are write-gated. Do not claim a fully read-only server.
+            "read_only": False,
         },
         "license": "Apache-2.0",
         "pypi": "agent-bom",

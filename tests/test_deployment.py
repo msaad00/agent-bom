@@ -423,8 +423,11 @@ def test_server_card_capabilities():
     assert "OWASP LLM Top 10" in caps["frameworks"]
     assert "MITRE ATLAS" in caps["frameworks"]
     assert "NIST AI RMF" in caps["frameworks"]
-    assert caps["read_only"] is True
+    assert caps["read_only"] is False
     assert "OSV.dev" in caps["data_sources"]
+    from agent_bom.mcp_server_helpers import get_registry_data
+
+    assert caps["registry_servers"] == int(get_registry_data().get("_total_servers") or 0)
 
 
 def test_server_card_metadata():

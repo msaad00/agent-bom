@@ -14,6 +14,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   (stamp `init.sql` baselines when needed, then `alembic upgrade head`), matching
   the Helm migration Job so image upgrades apply Postgres schema changes without
   a manual Alembic step.
+- `graph_build_workspace_nodes` / `graph_build_workspace_edges` now ENABLE+FORCE
+  tenant RLS (init.sql + Alembic `20260721_01`); the Postgres workspace backend
+  binds `app.tenant_id` per operation so staging rows cannot cross tenants.
 
 ### Fixed
 - Hosted POC hardening overlay no longer opts into anonymous API access.

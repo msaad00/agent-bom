@@ -441,6 +441,8 @@ class PostgresGraphStore:
             _ensure_tenant_rls(conn, "interaction_risks", "tenant_id")
             _ensure_tenant_rls(conn, "graph_filter_presets", "tenant_id")
             _ensure_tenant_rls(conn, "graph_node_search", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_build_workspace_nodes", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_build_workspace_edges", "tenant_id")
             conn.commit()
         self._init_optional_search_indexes()
 

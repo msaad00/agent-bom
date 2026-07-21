@@ -1054,6 +1054,42 @@ BEGIN
 END
 $$;
 
+ALTER TABLE graph_build_workspace_nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_build_workspace_nodes FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_build_workspace_nodes'
+          AND policyname = 'graph_build_workspace_nodes_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_build_workspace_nodes_tenant_isolation ON graph_build_workspace_nodes
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE graph_build_workspace_edges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_build_workspace_edges FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_build_workspace_edges'
+          AND policyname = 'graph_build_workspace_edges_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_build_workspace_edges_tenant_isolation ON graph_build_workspace_edges
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
 ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api_keys FORCE ROW LEVEL SECURITY;
 

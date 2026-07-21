@@ -248,6 +248,111 @@ def test_postgres_scan_jobs_rls_schema_is_locked_down():
     )
 
 
+def test_postgres_graph_build_workspace_rls_schema_is_locked_down():
+    """Structural RLS guard for graph_build_workspace_* staging tables."""
+    from agent_bom.api.postgres_common import _get_pool
+    from agent_bom.api.postgres_graph import PostgresGraphStore
+
+    PostgresGraphStore()  # registers _ensure_tenant_rls on workspace tables
+
+    pool = _get_pool()
+    with pool.connection() as conn:
+        for table in ("graph_build_workspace_nodes", "graph_build_workspace_edges"):
+            rls_state = conn.execute(
+                """
+                SELECT relrowsecurity, relforcerowsecurity
+                FROM pg_class
+                WHERE relname = %s AND relnamespace = 'public'::regnamespace
+                """,
+                (table,),
+            ).fetchone()
+            policy_rows = conn.execute(
+                """
+                SELECT policyname, cmd, qual, with_check
+                FROM pg_policies
+                WHERE schemaname = 'public' AND tablename = %s
+                """,
+                (table,),
+            ).fetchall()
+            assert rls_state == (True, True), f"{table} must ENABLE+FORCE RLS; got {rls_state}"
+            isolation = [row for row in policy_rows if row[0] == f"{table}_tenant_isolation"]
+            assert isolation, f"{table} missing tenant_isolation policy"
+            _, cmd, qual, with_check = isolation[0]
+            assert cmd in {"ALL", "*"}
+            assert "abom_current_tenant" in (qual or "")
+            assert "abom_current_tenant" in (with_check or "")
+
+
+def test_postgres_graph_build_workspace_rls_blocks_cross_tenant_raw_select():
+    """Insert workspace rows under tenant A; tenant B raw SELECT must see zero."""
+    from agent_bom.api import postgres_common
+    from agent_bom.api.postgres_common import (
+        _apply_tenant_session,
+        reset_current_tenant,
+        set_current_tenant,
+    )
+    from agent_bom.api.postgres_graph import PostgresGraphStore
+
+    PostgresGraphStore()
+    pool = postgres_common._get_pool()
+    with pool.connection() as conn:
+        role_state = conn.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user").fetchone()
+    if role_state is None or role_state[0] or role_state[1]:
+        pytest.skip(
+            f"Runtime RLS check requires a non-superuser, non-bypassrls role. current_user has (rolsuper, rolbypassrls)={role_state}."
+        )
+
+    suffix = uuid4().hex
+    workspace_id = f"gbw-rls-{suffix}"
+    tenant_a = f"tenant-a-{suffix}"
+    tenant_b = f"tenant-b-{suffix}"
+    node_id = f"node-{suffix}"
+
+    token_a = set_current_tenant(tenant_a)
+    try:
+        with pool.connection() as conn:
+            _apply_tenant_session(conn)
+            conn.execute(
+                """
+                INSERT INTO graph_build_workspace_nodes
+                    (workspace_id, tenant_id, node_id, payload, entity_type)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (workspace_id, tenant_a, node_id, '{"id":"x"}', "agent"),
+            )
+            conn.commit()
+    finally:
+        reset_current_tenant(token_a)
+
+    token_b = set_current_tenant(tenant_b)
+    try:
+        with pool.connection() as conn:
+            _apply_tenant_session(conn)
+            cross_tenant_rows = conn.execute(
+                "SELECT node_id FROM graph_build_workspace_nodes WHERE workspace_id = %s AND node_id = %s",
+                (workspace_id, node_id),
+            ).fetchall()
+    finally:
+        reset_current_tenant(token_b)
+
+    assert cross_tenant_rows == [], (
+        "graph_build_workspace_nodes RLS leaked tenant A data into a session bound to tenant B"
+    )
+
+    # Cleanup under tenant A (and edges table is unused here).
+    token_a = set_current_tenant(tenant_a)
+    try:
+        with pool.connection() as conn:
+            _apply_tenant_session(conn)
+            conn.execute(
+                "DELETE FROM graph_build_workspace_nodes WHERE workspace_id = %s",
+                (workspace_id,),
+            )
+            conn.commit()
+    finally:
+        reset_current_tenant(token_a)
+
+
 def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
     # Runtime red-team for #1815: insert under tenant A, then run a
     # tenant-blind raw SELECT under a session bound to tenant B. RLS must

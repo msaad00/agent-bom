@@ -10,9 +10,10 @@ tools:
 
 # agent-bom — Security Platform for Agentic Infrastructure
 
-Scan your MCP servers, packages, and AI agent configurations for CVEs,
-credential exposure, and supply chain risks. Maps blast radius from
-vulnerable packages to the credentials and tools they can reach.
+Scan your MCP servers, AI agents, and their packages: CVEs and supply-chain
+risk (malicious/typosquat) in the packages, plus credential exposure,
+identity/auth/access posture, and MCP config risk on the servers and agents.
+Maps blast radius from a finding to the credentials and tools it can reach.
 
 ## When to Use
 

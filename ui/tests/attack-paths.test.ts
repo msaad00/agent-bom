@@ -12,6 +12,7 @@ import {
   mapAttackPathChainType,
   mapAttackPathNodeType,
   matchesAttackPathFocus,
+  mergeAttackPathGraphPages,
   moveAttackPathSelection,
   rankedAttackPathRows,
   recommendedInteractionRiskActions,
@@ -752,5 +753,43 @@ describe("attack path helpers", () => {
         href: "/compliance?q=AGENT-001",
       },
     ]);
+  });
+});
+
+describe("mergeAttackPathGraphPages", () => {
+  const path = (source: string, target: string, risk: number): AttackPath =>
+    ({
+      source,
+      target,
+      hops: [source, target],
+      vuln_ids: [],
+      composite_risk: risk,
+      techniques: [],
+    }) as AttackPath;
+
+  it("appends unique paths/nodes/edges and keeps latest pagination", () => {
+    const first = {
+      nodes: [{ id: "a" }, { id: "b" }],
+      edges: [{ id: "e1" }],
+      attack_paths: [path("a", "b", 9)],
+      pagination: { total: 3, offset: 0, limit: 1, has_more: true },
+      stats: { attack_path_count: 1 },
+    };
+    const second = {
+      nodes: [{ id: "b" }, { id: "c" }],
+      edges: [{ id: "e1" }, { id: "e2" }],
+      attack_paths: [path("b", "c", 8)],
+      pagination: { total: 3, offset: 1, limit: 1, has_more: true },
+      stats: { attack_path_count: 3 },
+    };
+    const merged = mergeAttackPathGraphPages(first, second);
+    expect(merged.nodes.map((n) => n.id)).toEqual(["a", "b", "c"]);
+    expect(merged.edges.map((e) => e.id)).toEqual(["e1", "e2"]);
+    expect(merged.attack_paths.map((p) => attackPathKey(p))).toEqual([
+      attackPathKey(path("a", "b", 9)),
+      attackPathKey(path("b", "c", 8)),
+    ]);
+    expect(merged.pagination).toEqual(second.pagination);
+    expect(merged.stats?.attack_path_count).toBe(3);
   });
 });

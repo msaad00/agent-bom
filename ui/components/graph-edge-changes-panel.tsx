@@ -15,6 +15,12 @@ import type {
   GraphEdgeChangesResponse,
   GraphEdgeHistoryRecord,
 } from "@/lib/api-types";
+import {
+  graphEdgeChangeHeadingClass,
+  graphEdgeChangeMetaClass,
+  graphEdgeChangeRowClass,
+  type GraphEdgeChangeTone,
+} from "@/lib/graph-edge-change-tones";
 
 function edgeKey(edge: GraphEdgeHistoryRecord): string {
   return `${edge.source_id} → ${edge.target_id} (${edge.relationship})`;
@@ -25,17 +31,11 @@ function EdgeRow({
   tone,
 }: {
   edge: GraphEdgeHistoryRecord;
-  tone: "added" | "removed" | "changed";
+  tone: GraphEdgeChangeTone;
 }) {
-  const toneClass =
-    tone === "added"
-      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-100"
-      : tone === "removed"
-        ? "border-rose-500/25 bg-rose-500/10 text-rose-100"
-        : "border-amber-500/25 bg-amber-500/10 text-amber-100";
   return (
     <li
-      className={`rounded-lg border px-2.5 py-1.5 font-mono text-[11px] ${toneClass}`}
+      className={`rounded-lg border px-2.5 py-1.5 font-mono text-[11px] ${graphEdgeChangeRowClass(tone)}`}
       data-testid={`graph-edge-change-${tone}`}
     >
       {edgeKey(edge)}
@@ -46,11 +46,11 @@ function EdgeRow({
 function ChangedEdgeRow({ pair }: { pair: GraphEdgeChangePair }) {
   return (
     <li
-      className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100"
+      className={`rounded-lg border px-2.5 py-1.5 text-[11px] ${graphEdgeChangeRowClass("changed")}`}
       data-testid="graph-edge-change-changed"
     >
       <div className="font-mono">{edgeKey(pair.after)}</div>
-      <div className="mt-1 text-[10px] text-amber-200/80">
+      <div className={`mt-1 text-[10px] ${graphEdgeChangeMetaClass("changed")}`}>
         weight {pair.before.weight} → {pair.after.weight}
         {pair.before.traversable !== pair.after.traversable
           ? ` · traversable ${String(pair.before.traversable)} → ${String(pair.after.traversable)}`
@@ -85,8 +85,8 @@ export function GraphEdgeChangesPanel({
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <ArrowRightLeft className="h-4 w-4 text-violet-400" />
-          <span className="text-[10px] uppercase tracking-[0.24em] text-violet-400">
+          <ArrowRightLeft className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+          <span className="text-[10px] uppercase tracking-[0.24em] text-violet-700 dark:text-violet-400">
             Edge changes
           </span>
           {comparedLabel ? (
@@ -96,7 +96,7 @@ export function GraphEdgeChangesPanel({
           ) : null}
         </div>
         {loading ? (
-          <span className="flex items-center gap-1 text-xs text-violet-300">
+          <span className="flex items-center gap-1 text-xs text-violet-700 dark:text-violet-300">
             <Loader2 className="h-3 w-3 animate-spin" />
             loading
           </span>
@@ -108,7 +108,7 @@ export function GraphEdgeChangesPanel({
       </div>
 
       {error ? (
-        <p className="mt-2 text-xs text-amber-200">{error}</p>
+        <p className="mt-2 text-xs text-amber-700 dark:text-amber-200">{error}</p>
       ) : loading && !changes ? (
         <p className="mt-2 text-xs text-[var(--text-tertiary)]">Loading edge lifecycle diff…</p>
       ) : !hasDrillDown ? (
@@ -120,7 +120,7 @@ export function GraphEdgeChangesPanel({
         <div className="mt-3 grid gap-3 lg:grid-cols-3">
           {changes!.edges_added.length > 0 ? (
             <div>
-              <p className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-emerald-400">
+              <p className={`mb-1.5 text-[10px] uppercase tracking-[0.18em] ${graphEdgeChangeHeadingClass("added")}`}>
                 Added ({changes!.edges_added.length})
               </p>
               <ul className="space-y-1.5">
@@ -132,7 +132,7 @@ export function GraphEdgeChangesPanel({
           ) : null}
           {changes!.edges_removed.length > 0 ? (
             <div>
-              <p className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-rose-400">
+              <p className={`mb-1.5 text-[10px] uppercase tracking-[0.18em] ${graphEdgeChangeHeadingClass("removed")}`}>
                 Removed ({changes!.edges_removed.length})
               </p>
               <ul className="space-y-1.5">
@@ -144,7 +144,7 @@ export function GraphEdgeChangesPanel({
           ) : null}
           {changes!.edges_changed.length > 0 ? (
             <div>
-              <p className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-amber-400">
+              <p className={`mb-1.5 text-[10px] uppercase tracking-[0.18em] ${graphEdgeChangeHeadingClass("changed")}`}>
                 Changed ({changes!.edges_changed.length})
               </p>
               <ul className="space-y-1.5">

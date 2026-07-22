@@ -613,7 +613,10 @@ function ReachBadges({ vuln }: { vuln: EnrichedVuln }) {
         </span>
       ) : null}
       {vuln.runtime_evidence?.state === "blocked" ? (
-        <Link href="/traces" className="text-xs text-emerald-300 hover:underline">
+        <Link
+          href="/traces"
+          className="text-xs text-emerald-700 hover:underline dark:text-emerald-300"
+        >
           Open trace explorer
         </Link>
       ) : null}

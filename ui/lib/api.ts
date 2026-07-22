@@ -13,7 +13,6 @@ import type {
   GraphSnapshot,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
-  GraphAttackCampaign,
   GraphQueryRequest,
   GraphQueryResponse,
   GraphNodeDetailResponse,

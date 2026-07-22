@@ -22,6 +22,7 @@ import {
 import {
   pathDisplayTitle,
   pathFixLabel,
+  pathSpanLabel,
   type ExposureEntityRef,
   type ExposureEntityRole,
   type ExposurePath,
@@ -148,7 +149,6 @@ export function ExposurePathCommandCenter({
     path.summary ||
     "A reachable package or service on this path inherits downstream credential and tool exposure from the agent runtime.";
   const primaryAction = actions[0];
-  const hopCount = Math.max(0, path.hops.length - 1);
   const severityTone =
     path.severity === "critical"
       ? "from-red-500/80 via-red-500/20 to-transparent"
@@ -183,7 +183,7 @@ export function ExposurePathCommandCenter({
           </div>
           <div className="grid w-full grid-cols-3 gap-2 text-xs sm:w-auto sm:grid-cols-4">
             <MetricPill label="Path risk" value={path.riskScore.toFixed(1)} tone="red" />
-            <MetricPill label="Hops" value={String(hopCount)} />
+            <MetricPill label="Path span" value={pathSpanLabel(path.hops.length)} />
             <MetricPill label="Agents" value={String(path.affectedAgents.length)} />
             {fixLabel ? <MetricPill label="Fix" value={fixLabel} tone="green" /> : null}
           </div>

@@ -404,7 +404,7 @@ function SecurityGraphPageContent() {
           title: descriptiveAttackPathTitle(card?.title, pathNodes),
           cve: path.vuln_ids[0] ?? null,
           riskScore: path.composite_risk,
-          hops: Math.max(0, path.hops.length - 1),
+          nodeCount: path.hops.length,
           agents: labelsForAttackPathType(path, graphNodeById, "agent").length,
         };
         if (card?.rank_meta?.tool_capabilities?.length) {

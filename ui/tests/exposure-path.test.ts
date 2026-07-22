@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { compareExposurePaths, pathDisplayTitle, pathFixLabel, type ExposurePath } from "@/lib/exposure-path";
+import {
+  compareExposurePaths,
+  pathDisplayTitle,
+  pathFixLabel,
+  pathSpanLabel,
+  type ExposurePath,
+} from "@/lib/exposure-path";
 
 function path(overrides: Partial<ExposurePath>): ExposurePath {
   return {
@@ -59,6 +65,12 @@ describe("ExposurePath", () => {
   it("prefers fix versions for compact remediation labels", () => {
     expect(pathFixLabel(path({ fix: { label: "Upgrade werkzeug", version: "2.2.3" } }))).toBe("2.2.3");
     expect(pathFixLabel(path({ fix: { label: "Rotate credential" } }))).toBe("Rotate credential");
+  });
+
+  it("describes single-node risk signals without claiming zero hops", () => {
+    expect(pathSpanLabel(0)).toBe("0 nodes");
+    expect(pathSpanLabel(1)).toBe("1 node");
+    expect(pathSpanLabel(3)).toBe("2 hops");
   });
 
   it("ranks by risk, then severity, then KEV, then affected agents", () => {

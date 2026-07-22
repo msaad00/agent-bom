@@ -538,7 +538,12 @@ _INSTRUCTION_NESTED_ROOTS: frozenset[tuple[str, str]] = frozenset(
 )
 
 
-def looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = False) -> bool:
+def looks_like_instruction_surface(
+    path: Path,
+    *,
+    allow_docs_skills: bool = False,
+    skip_test_fixtures: bool = True,
+) -> bool:
     """Return True when a file path looks like a real skill/instruction surface.
 
     The heuristic is intentionally bounded: it recognises well-known instruction
@@ -548,10 +553,15 @@ def looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = Fals
     ``.github/instructions``). Generic repository markdown (READMEs, PR
     templates, changelogs) and vendored trees are excluded so discovery does not
     scan an entire monorepo blindly.
+
+    ``skip_test_fixtures`` defaults on for project auto-discovery (self-scan must
+    not treat intentional malicious samples under ``tests/fixtures`` as estate
+    skills). Explicit CLI targets pass ``False`` so release fixtures remain
+    scannable when an operator points at them directly.
     """
     if any(part in SKILL_DISCOVERY_SKIP_DIRS for part in path.parts):
         return False
-    if _is_test_fixture_path(path):
+    if skip_test_fixtures and _is_test_fixture_path(path):
         return False
     if not allow_docs_skills and "docs" in path.parts and "skills" in path.parts:
         return False

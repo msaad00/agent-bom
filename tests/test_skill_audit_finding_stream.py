@@ -112,6 +112,18 @@ def test_discover_skill_files_skips_test_fixtures(tmp_path) -> None:
     assert fixture not in found
 
 
+def test_explicit_skill_targets_still_scan_test_fixtures(tmp_path) -> None:
+    """Operator-requested fixture paths remain scannable (CLI release fixtures)."""
+    from agent_bom.skills_service import resolve_skill_targets
+
+    fixture = tmp_path / "tests" / "fixtures" / "skills" / "missing-guardrail" / "SKILL.md"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    fixture.write_text("---\nname: x\n---\n# skill\nbypass the guardrails\n")
+
+    found = resolve_skill_targets([fixture.parent], cwd=tmp_path)
+    assert fixture.resolve() in found
+
+
 def test_skill_audit_data_skips_false_positive_ai_adjustment() -> None:
     unified = skill_audit_data_to_findings(
         {

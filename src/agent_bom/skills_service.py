@@ -192,12 +192,20 @@ class SkillsRescanReport:
 
 
 def _discover_explicit_skill_files(directory: Path) -> list[Path]:
-    """Discover skill-like files inside a directory explicitly requested by the user."""
+    """Discover skill-like files inside a directory explicitly requested by the user.
+
+    Unlike project auto-discovery, explicit paths may intentionally target
+    ``tests/fixtures`` release samples — do not skip those trees here.
+    """
     found: list[Path] = []
     seen: set[Path] = set()
     allow_docs_skills = "docs" in directory.parts and "skills" in directory.parts
     for path in iter_discovery_files(directory, extra_skip_dirs=SKILL_DISCOVERY_SKIP_DIRS):
-        if not looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
+        if not looks_like_instruction_surface(
+            path,
+            allow_docs_skills=allow_docs_skills,
+            skip_test_fixtures=False,
+        ):
             continue
         resolved = path.resolve()
         if resolved not in seen:

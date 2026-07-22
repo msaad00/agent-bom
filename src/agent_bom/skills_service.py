@@ -399,7 +399,7 @@ def _run_async_sync(awaitable):
 
 def _failed_skill_file_report(path: Path, exc: BaseException) -> SkillFileReport:
     """Build a warn-and-continue report when one skill target raises mid-batch."""
-    safe = sanitize_error(exc)
+    safe = sanitize_error(exc if isinstance(exc, Exception) else str(exc))
     return SkillFileReport(
         path=path,
         scan=SkillScanResult(source_files=[str(path)]),
@@ -445,7 +445,11 @@ async def _scan_skill_targets_async(
     reports: list[SkillFileReport] = []
     for path, outcome in zip(targets, outcomes, strict=False):
         if isinstance(outcome, BaseException):
-            logger.warning("Skill scan failed for %s: %s", path, sanitize_error(outcome))
+            logger.warning(
+                "Skill scan failed for %s: %s",
+                path,
+                sanitize_error(outcome if isinstance(outcome, Exception) else str(outcome)),
+            )
             reports.append(_failed_skill_file_report(path, outcome))
         else:
             reports.append(outcome)
@@ -555,11 +559,12 @@ async def _rescan_skill_catalog_async(
     outcomes = await asyncio.gather(*pending, return_exceptions=True) if pending else []
     for stable_id, outcome in zip(pending_ids, outcomes, strict=False):
         if isinstance(outcome, BaseException):
-            entry = entries.get(stable_id) if isinstance(entries.get(stable_id), dict) else {}
-            path_str = str(entry.get("path") or "") if isinstance(entry, dict) else ""
-            safe = sanitize_error(outcome)
+            raw_failed = entries.get(stable_id)
+            failed_entry: dict[str, object] = raw_failed if isinstance(raw_failed, dict) else {}
+            path_str = str(failed_entry.get("path") or "")
+            safe = sanitize_error(outcome if isinstance(outcome, Exception) else str(outcome))
             logger.warning("Skill catalog rescan failed for %s: %s", stable_id, safe)
-            updated = dict(entry) if isinstance(entry, dict) else {}
+            updated = dict(failed_entry)
             updated["status"] = ThreatIntelStatus.UNAVAILABLE.value
             updated_entries[stable_id] = updated
             serialized.append(
@@ -569,11 +574,11 @@ async def _rescan_skill_catalog_async(
                     "exists": True,
                     "rescanned": False,
                     "status": ThreatIntelStatus.UNAVAILABLE.value,
-                    "trust_verdict": entry.get("trust_verdict") if isinstance(entry, dict) else None,
-                    "review_verdict": entry.get("review_verdict") if isinstance(entry, dict) else None,
-                    "provenance_status": entry.get("provenance_status") if isinstance(entry, dict) else None,
-                    "threat_intel": entry.get("threat_intel") if isinstance(entry, dict) else None,
-                    "findings": entry.get("findings", 0) if isinstance(entry, dict) else 0,
+                    "trust_verdict": failed_entry.get("trust_verdict"),
+                    "review_verdict": failed_entry.get("review_verdict"),
+                    "provenance_status": failed_entry.get("provenance_status"),
+                    "threat_intel": failed_entry.get("threat_intel"),
+                    "findings": failed_entry.get("findings", 0),
                     "scanned_at": {"last_seen": catalog_scan_timestamp()},
                     "error": safe,
                 }

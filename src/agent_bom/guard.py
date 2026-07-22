@@ -225,7 +225,7 @@ async def guard_install(
                     "name": name,
                     "blocked": True,
                     "scan_failed": True,
-                    "error": sanitize_error(outcome),
+                    "error": sanitize_error(outcome if isinstance(outcome, Exception) else str(outcome)),
                 }
             )
         else:

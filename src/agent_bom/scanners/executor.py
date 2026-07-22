@@ -110,7 +110,7 @@ def run_scanner_driver(
     except Exception as exc:  # noqa: BLE001
         return _handle_unavailable(
             registration,
-            reason=sanitize_error(exc),
+            reason=sanitize_error(exc if isinstance(exc, Exception) else str(exc)),
             duration_ms=(time.perf_counter() - started) * 1000.0,
             exc=exc,
         )
@@ -120,7 +120,7 @@ def run_scanner_driver(
     except Exception as exc:  # noqa: BLE001
         return _handle_failure(
             registration,
-            reason=sanitize_error(exc),
+            reason=sanitize_error(exc if isinstance(exc, Exception) else str(exc)),
             duration_ms=(time.perf_counter() - started) * 1000.0,
             exc=exc,
         )
@@ -223,7 +223,7 @@ def apply_registered_failure_mode(name: str, exc: BaseException) -> ScannerDrive
     registration = get_scanner_registration(name)
     return _handle_failure(
         registration,
-        reason=sanitize_error(exc),
+        reason=sanitize_error(exc if isinstance(exc, Exception) else str(exc)),
         duration_ms=0.0,
         exc=exc if isinstance(exc, Exception) else None,
     )

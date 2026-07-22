@@ -24,8 +24,9 @@ or canceled check state.
 
 ### Permanent fix: auto-refresh ready PRs
 
-`.github/workflows/auto-retrigger-stranded.yml` now runs on every push to
-`main`, on a 5-minute schedule, and on manual dispatch. It first runs:
+`.github/workflows/auto-retrigger-stranded.yml` now runs on PR synchronize
+events, every push to `main`, on a 15-minute schedule, and on manual dispatch.
+It first runs:
 
 ```sh
 scripts/refresh_ready_prs.sh
@@ -109,12 +110,12 @@ The script:
 The script no-ops when the required check is already present, so it is safe to
 run on any PR.
 
-### Permanent fix: scheduled auto-retrigger (recommended, already on)
+### Permanent fix: event-driven auto-retrigger (recommended, already on)
 
 `.github/workflows/auto-retrigger-stranded.yml` runs `scripts/retrigger_stranded_pr.sh`
-against every open PR whose current head SHA has zero or stale
-`Lint and Type Check` runs. It runs after `main` advances, every five minutes,
-and through `workflow_dispatch` for on-demand. Once this workflow is on the
+against every synchronized PR whose current head SHA has zero or stale
+`Lint and Type Check` runs. It runs immediately after a PR push, after `main`
+advances, every 15 minutes, and through `workflow_dispatch` for on-demand. Once this workflow is on the
 default branch and `AUTOMATION_GITHUB_TOKEN` is configured, stranded PRs
 unstrand themselves within five minutes — no operator action required.
 

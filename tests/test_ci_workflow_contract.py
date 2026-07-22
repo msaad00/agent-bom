@@ -49,3 +49,13 @@ def test_graph_guard_does_not_rerun_full_graph_tests() -> None:
     )[0]
     assert "pytest" not in guard
     assert "rebaseline_graph_edges.py --dry-run" in guard
+
+
+def test_stranded_ci_recovery_runs_on_pr_synchronize() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "auto-retrigger-stranded.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "  pull_request:" in workflow
+    assert "    types: [synchronize]" in workflow
+    assert "scripts/dispatch_required_ci.sh" in workflow
+    assert "scripts/retrigger_stranded_pr.sh" in workflow

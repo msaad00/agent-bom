@@ -25,11 +25,14 @@ name: Auto-Retrigger Stranded PRs
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [synchronize]
   schedule:
     # GitHub-hosted schedules are best-effort and can be delayed during busy
-    # windows. A 15-minute fallback is sufficient because push and manual
-    # dispatch paths handle immediate recovery; the scripts also guard active
-    # queued runs by head SHA to prevent duplicate fan-out.
+    # windows. The synchronize trigger handles normal PR pushes immediately;
+    # this 15-minute fallback covers token-authored updates and missed events.
+    # The scripts also guard active queued runs by head SHA to prevent duplicate
+    # fan-out.
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:

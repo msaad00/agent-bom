@@ -1446,13 +1446,67 @@ async def _graph_compute_call(fn: Callable[..., _GraphCallResult], /, *args: Any
         raise HTTPException(status_code=501, detail=sanitize_error(exc)) from exc
 
 
+def _sync_attack_path_stats(
+    stats: dict[str, Any],
+    *,
+    total: int,
+    paths: list[AttackPath],
+) -> dict[str, Any]:
+    """Align ``attack_path_count`` / ``max_attack_path_risk`` with derived paths.
+
+    Topology-only snapshots store zero rows in ``attack_paths`` while serve
+    surfaces derive paths on read. Without this sync, ``/v1/graph`` can report
+    ``attack_path_count: 0`` next to a non-empty ``/attack-paths`` queue.
+    """
+    if total and int(stats.get("attack_path_count") or 0) == 0:
+        return {
+            **stats,
+            "attack_path_count": total,
+            "max_attack_path_risk": max((path.composite_risk for path in paths), default=0.0),
+        }
+    return stats
+
+
+def _ensure_attack_campaigns(graph: UnifiedGraph, paths: list[AttackPath] | None = None) -> None:
+    """Materialise crown-jewel campaigns on the serve path when the store has none.
+
+    Campaigns are computed at build-time fusion but not persisted today, so
+    store-backed graphs always load ``attack_campaigns=[]``. Recompute from
+    jewel-terminating paths when possible; otherwise run the bounded partitioned
+    engine when the estate actually has crown jewels. Empty stays empty — no
+    fabrication when there is no sensitivity signal.
+    """
+    if getattr(graph, "attack_campaigns", None):
+        return
+    try:
+        from agent_bom.graph.attack_path_campaigns import compute_partitioned_campaigns
+        from agent_bom.graph.attack_path_fusion import _cluster_small_graph_campaigns, _is_crown_jewel
+
+        candidate_paths = list(paths) if paths is not None else list(graph.attack_paths)
+        jewel_paths = [
+            path
+            for path in candidate_paths
+            if (node := graph.nodes.get(path.target)) is not None and _is_crown_jewel(node)
+        ]
+        if jewel_paths:
+            graph.attack_campaigns = _cluster_small_graph_campaigns(graph, jewel_paths)
+            return
+        if any(_is_crown_jewel(node) for node in graph.nodes.values()):
+            result = compute_partitioned_campaigns(graph)
+            graph.attack_campaigns = list(result.campaigns)
+    except Exception:  # noqa: BLE001 — campaigns are additive; never break investigation reads
+        logger.debug("attack campaign serve-path materialisation skipped", exc_info=True)
+
+
 def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) -> dict[str, Any]:
-    stats = graph.stats()
+    derived_paths = _derived_attack_paths(graph)
+    _ensure_attack_campaigns(graph, derived_paths)
+    stats = _sync_attack_path_stats(graph.stats(), total=len(derived_paths), paths=derived_paths)
     all_nodes = list(graph.nodes.values())
     paged_nodes, pagination = _paginate(all_nodes, offset, limit)
     paged_ids = {n.id for n in paged_nodes}
     paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
-    matching_paths = [p for p in _derived_attack_paths(graph) if p.hops and p.hops[0] in paged_ids]
+    matching_paths = [p for p in derived_paths if p.hops and p.hops[0] in paged_ids]
     kept_paths = matching_paths[:_FILTERED_GRAPH_ATTACK_PATH_LIMIT]
     off_page_hops = {hop for p in kept_paths for hop in p.hops} - paged_ids
     nodes_by_id = {n.id: n for n in paged_nodes}
@@ -1521,6 +1575,7 @@ def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str
     from agent_bom.graph.path_ranking import criticality_rank_meta, path_rank_tuple
 
     available_paths = _derived_attack_paths(graph)
+    _ensure_attack_campaigns(graph, available_paths)
     ranked_paths = sorted(
         (path for path in available_paths if _path_matches_focus(graph, path, cve=cve, package=package, agent=agent)),
         key=lambda path: path_rank_tuple(graph, path),
@@ -1583,12 +1638,7 @@ def _serialize_attack_path_queue(
     stats: dict[str, Any],
 ) -> dict[str, Any]:
     nodes_by_id = {node.id: node for node in nodes}
-    if total and int(stats.get("attack_path_count") or 0) == 0:
-        stats = {
-            **stats,
-            "attack_path_count": total,
-            "max_attack_path_risk": max((path.composite_risk for path in paths), default=0.0),
-        }
+    stats = _sync_attack_path_stats(stats, total=total, paths=paths)
     return {
         "scan_id": scan_id,
         "tenant_id": tenant,

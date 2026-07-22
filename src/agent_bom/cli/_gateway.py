@@ -582,7 +582,8 @@ def serve_cmd(
     # service mesh terminates external traffic in front of this pod. Set
     # --bind 127.0.0.1:8090 on a dev workstation to restrict.
     host = host  # nosec B104
-    click.echo(f"agent-bom gateway serving on http://{host}:{port_num} fronting {len(registry)} upstream(s): {', '.join(registry.names())}")
+    from agent_bom.output.brand_tokens import emit_cli_runtime_summary
+
     rows = [
         ("Bind", f"http://{host}:{port_num}"),
         ("Upstreams", f"{len(registry)} configured: {', '.join(registry.names()) or '(none)'}"),
@@ -629,11 +630,7 @@ def serve_cmd(
                 f"Firewall hot reload: enabled every {firewall_policy_reload_seconds}s from {firewall_policy_path}",
             )
         )
-    click.echo("")
-    click.echo("  agent-bom gateway")
-    for label, value in rows:
-        click.echo(f"  {label:<11} {value}")
-    click.echo("  Press Ctrl+C to stop.\n")
+    emit_cli_runtime_summary("agent-bom gateway", rows)
     emit_runtime_status_strip("gateway", calls=0, blocked=0, last_decision="listening")
     uvicorn.run(app, host=host, port=port_num, log_level=log_level.lower())
 

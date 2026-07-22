@@ -152,6 +152,24 @@ jobs:
           echo "== smoke =="
           scripts/deploy/hosted_poc_smoke.sh
 
+          # Fail closed when the public demo overlay came up without a usable
+          # curated findings spine (empty dashboard). Auth smoke alone is not
+          # enough — visitors land on grade N/A when scan jobs are missing.
+          echo "== demo estate smoke =="
+          DEMO_BASE="${AGENT_BOM_SMOKE_URL:?redeploy.env must set AGENT_BOM_SMOKE_URL}"
+          DEMO_BASE="${DEMO_BASE%/}"
+          findings_total=$(curl -fsS \
+            -H "Authorization: Bearer ${AGENT_BOM_SMOKE_API_KEY:?redeploy.env must set AGENT_BOM_SMOKE_API_KEY}" \
+            "${DEMO_BASE}/v1/findings?limit=1" \
+            | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("total") or 0))')
+          if [ "$findings_total" -lt 1 ]; then
+            echo "ERROR: demo estate has zero findings (total=${findings_total})." >&2
+            echo "Bootstrap did not seed a usable scan job — check API logs for" >&2
+            echo "'demo estate scan bootstrap failed' and AGENT_BOM_DEMO_ESTATE=1." >&2
+            exit 1
+          fi
+          echo "Demo estate findings total=${findings_total}"
+
           if [ "$RESET_DEMO" = "true" ]; then
             echo "== demo reset =="
             scripts/deploy/demo-reset.sh \

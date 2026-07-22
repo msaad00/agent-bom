@@ -27,11 +27,8 @@ SOFT_DEPRECATED_ORPHAN_PATHS: tuple[str, ...] = (
 KEEP_ACTIVE_PATHS: tuple[str, ...] = ("/v1/auth/saml/relay-state",)
 
 # Held for an explicit product call — not soft-deprecated yet.
-# NHI governance removed from HOLD once Identity UI wired GET /v1/graph/nhi/governance.
-HOLD_PATHS: tuple[str, ...] = (
-    "/v1/graph/presets",
-    "/v1/graph/presets/{name}",
-)
+# Presets (#4362) and NHI governance (#4364) are both productized — keep HOLD empty.
+HOLD_PATHS: tuple[str, ...] = ()
 
 _CONSUMER_ROOTS: tuple[Path, ...] = (
     ROOT / "ui",

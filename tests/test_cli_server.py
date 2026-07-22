@@ -598,7 +598,8 @@ def test_gateway_serve_empty_upstreams_yaml_reaches_uvicorn(tmp_path):
         result = runner.invoke(gateway_serve_cmd, ["--bind", "127.0.0.1:8090", "--upstreams", str(upstreams)])
 
     assert result.exit_code == 0
-    assert "fronting 0 upstream(s)" in result.output
+    # Branded runtime summary renders the upstream count as an "Upstreams" row.
+    assert "0 configured: (none)" in result.output
     mock_run.assert_called_once()
 
 

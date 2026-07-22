@@ -477,6 +477,81 @@ def test_demo_estate_bootstrap_is_idempotent(demo_estate_client: TestClient) -> 
     assert again.get("total") == first.get("total")
 
 
+def test_demo_estate_reseeds_when_marker_job_has_no_findings(
+    demo_estate_client: TestClient,
+) -> None:
+    """A demo-tagged job with empty findings must not block reseed (empty demo)."""
+    import uuid
+
+    from agent_bom.api import stores as api_stores
+    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+    from agent_bom.api.pipeline import _now
+    from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
+    from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT
+
+    store = api_stores._get_store()
+    for job in list(store.list_all(tenant_id=SHOWCASE_TENANT)):
+        store.delete(job.job_id, tenant_id=SHOWCASE_TENANT)
+
+    empty = ScanJob(
+        job_id=str(uuid.uuid4()),
+        tenant_id=SHOWCASE_TENANT,
+        triggered_by=DEMO_ESTATE_TRIGGERED_BY,
+        created_at=_now(),
+        request=ScanRequest(offline=True),
+    )
+    empty.status = JobStatus.DONE
+    empty.completed_at = _now()
+    empty.result = {"scan_sources": ["demo", "demo-estate"], "findings": [], "agents": []}
+    store.put(empty)
+
+    before_total = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 1}).json()
+    assert before_total.get("total", 0) == 0
+
+    summary = maybe_bootstrap_demo_estate()
+    assert summary.get("seeded") is True, summary
+    assert (summary.get("findings") or 0) >= 1
+
+    after = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 1}).json()
+    assert after.get("total", 0) > 0
+
+
+def test_demo_estate_survives_job_ttl_cleanup(demo_estate_client: TestClient) -> None:
+    """API job TTL must not delete curated demo-estate scan jobs."""
+    from agent_bom.api import stores as api_stores
+    from agent_bom.api.pipeline import _now
+    from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT
+
+    store = api_stores._get_store()
+    demo_jobs = [
+        job
+        for job in store.list_all(tenant_id=SHOWCASE_TENANT)
+        if getattr(job, "triggered_by", None) == DEMO_ESTATE_TRIGGERED_BY
+    ]
+    assert demo_jobs, "precondition: bootstrap seeded a demo-estate job"
+    for job in demo_jobs:
+        job.completed_at = "2020-01-01T00:00:00+00:00"
+        store.put(job)
+
+    removed = store.cleanup_expired(ttl_seconds=1)
+    remaining = [
+        job
+        for job in store.list_all(tenant_id=SHOWCASE_TENANT)
+        if getattr(job, "triggered_by", None) == DEMO_ESTATE_TRIGGERED_BY
+    ]
+    assert remaining, f"demo estate jobs were purged by TTL (removed={removed})"
+
+    # Restore a current completed_at so the default findings window still sees them.
+    now = _now()
+    for job in remaining:
+        job.completed_at = now
+        store.put(job)
+    findings = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 1}).json()
+    assert findings.get("total", 0) > 0
+
+
 def test_demo_estate_exposure_paths_materialized(demo_estate_client: TestClient) -> None:
     """The materialized exposure-path queue (read by /v1/graph/exposure-paths) is
     non-empty and headlines the seeded hero chains."""

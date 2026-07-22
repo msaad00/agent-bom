@@ -19,7 +19,7 @@ from agent_bom.api.postgres_common import (
     set_current_tenant,
 )
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
-from agent_bom.api.store import _require_tenant_scope
+from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY, _require_tenant_scope
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -470,8 +470,9 @@ class PostgresJobStore:
                 """DELETE FROM scan_jobs
                    WHERE status IN ('done', 'failed', 'cancelled')
                      AND completed_at IS NOT NULL
+                     AND COALESCE(triggered_by, '') <> %s
                      AND completed_at::timestamptz < (now() AT TIME ZONE 'UTC') - (%s * INTERVAL '1 second')""",
-                (ttl_seconds,),
+                (DEMO_ESTATE_TRIGGERED_BY, ttl_seconds),
             )
             conn.commit()
             return int(cursor.rowcount)

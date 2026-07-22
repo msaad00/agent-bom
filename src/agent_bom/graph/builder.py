@@ -1160,6 +1160,18 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("repo-structure overlay failed", exc_info=True)
 
+    # CODE_MODULE from SOURCE_FILE evidence (after repo-structure places files).
+    try:
+        _apply_code_graph_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("code-graph overlay failed", exc_info=True)
+
+    # CI_JOB / RUNS / CONFIGURES from github-actions agents already in the report.
+    try:
+        _apply_ci_graph_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("ci-graph overlay failed", exc_info=True)
+
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")
@@ -1244,6 +1256,31 @@ def _apply_repo_structure_overlay(graph: UnifiedGraph, report_json: Mapping[str,
     from agent_bom.graph.repo_structure_overlay import apply_repo_structure_overlay
 
     apply_repo_structure_overlay(graph, dict(report_json), datetime.now(timezone.utc))
+
+
+def _apply_code_graph_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
+    """Emit CODE_MODULE nodes from SOURCE_FILE evidence already on the graph."""
+    if not any(node.entity_type == EntityType.SOURCE_FILE for node in graph.nodes.values()):
+        return
+    from datetime import datetime, timezone
+
+    from agent_bom.graph.code_graph_overlay import apply_code_graph_overlay
+
+    apply_code_graph_overlay(graph, dict(report_json), datetime.now(timezone.utc))
+
+
+def _apply_ci_graph_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
+    """Emit CI_JOB topology from github-actions agents in the report."""
+    agents = report_json.get("agents")
+    if not isinstance(agents, list):
+        return
+    if not any(isinstance(agent, dict) and agent.get("source") == "github-actions" for agent in agents):
+        return
+    from datetime import datetime, timezone
+
+    from agent_bom.graph.ci_graph_overlay import apply_ci_graph_overlay
+
+    apply_ci_graph_overlay(graph, dict(report_json), datetime.now(timezone.utc))
 
 
 def _iter_agentic_identity_graph_projections(report_json: Mapping[str, Any]) -> list[Mapping[str, Any]]:

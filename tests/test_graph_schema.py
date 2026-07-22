@@ -1214,8 +1214,8 @@ class TestGraphSchemaEndpoint:
         node_entries = {entry["key"]: entry for entry in body["node_kinds"]}
         edge_entries = {entry["key"]: entry for entry in body["edge_kinds"]}
 
-        reserved_nodes = {"code_module", "external_import", "ci_job"}
-        reserved_edges = {"imports", "defines", "runs", "configures", "owns", "remediates", "acted_as"}
+        reserved_nodes = {"external_import"}
+        reserved_edges = {"imports", "owns", "remediates", "acted_as"}
         for key in reserved_nodes:
             assert node_entries[key]["emission_status"] == "reserved"
             assert "Reserved" in node_entries[key]["emission_notes"]
@@ -1238,6 +1238,14 @@ class TestGraphSchemaEndpoint:
         for key in repo_structure_nodes:
             assert node_entries[key]["emission_status"] == "emitted"
             assert any("repo_structure" in surface for surface in node_entries[key]["emission_surfaces"])
+
+        # CODE/CI kinds emit when scanners already carry the evidence
+        # (source files → code_module; github-actions → ci_job).
+        code_ci_nodes = {"code_module", "ci_job"}
+        for key in code_ci_nodes:
+            assert node_entries[key]["emission_status"] == "emitted"
+        for key in ("defines", "runs", "configures"):
+            assert edge_entries[key]["emission_status"] == "emitted"
 
     def test_every_entity_type_has_semantic_layer(self):
         from agent_bom.graph import ENTITY_LEGEND, GraphSemanticLayer

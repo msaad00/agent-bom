@@ -5487,7 +5487,7 @@
     }
   },
   "info": {
-    "description": "Security scanner for AI supply chain and infrastructure \u2014 map the full trust chain from agents to CVEs, credentials, and blast radius.",
+    "description": "Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure. agent \u2192 MCP server \u2192 packages \u2192 CVEs \u2192 blast radius.",
     "title": "agent-bom API",
     "version": "0.97.2"
   },

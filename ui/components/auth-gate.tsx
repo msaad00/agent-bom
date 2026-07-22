@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 import { useAuthState } from "@/components/auth-provider";
+import { BrandLogo } from "@/components/brand-logo";
 
 function isAuthFailure(message: string): boolean {
   const normalized = message.toLowerCase();
@@ -61,6 +62,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center px-4 py-10">
         <div className="w-full max-w-xl rounded-3xl border border-amber-900/50 bg-amber-950/20 p-8 text-center shadow-2xl shadow-black/20">
+          <div className="mx-auto mb-4 flex justify-center">
+            <BrandLogo />
+          </div>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--foreground)]">Control plane unreachable</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
             Authentication could not be verified because the API is offline or returned a server error.

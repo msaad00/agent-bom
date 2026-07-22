@@ -32,11 +32,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
   auth-required and `hosted_poc_preflight.py` can pass. Demo redeploy layers the
   demo overlay and calls `--write-secret` (was a nonexistent
   `--write-postgres-secret`).
+- Public demo estate no longer goes empty ~1h after boot: curated
+  `demo-estate-bootstrap` scan jobs are exempt from `AGENT_BOM_API_JOB_TTL`
+  cleanup, bootstrap reseeds when only an empty demo marker remains, and the
+  API cleanup loop self-heals a missing findings spine. Demo redeploy now fails
+  closed when `/v1/findings` total is zero.
 - Docs honesty: authenticated-hosted overlay matrix points anonymous demo at
   `demo-override.yml`; PRODUCT_BRIEF marks webhook outbox as shipped; store-backed
   graph test module docstring matches auto-enable behavior.
 
 ### Changed
+- README: clean top-nav Live demo link (offline fallback lives under scan/demo
+  body copy), lead with product visuals, and collapse persona / connector /
+  architecture tables under `<details>`.
+- Brand shell consistency: CLI serve/gateway startup prints the BOM agent-HUD
+  mark; console/PDF/HTML report titles use `agent-bom scan report`; OpenAPI
+  `/docs` favicon serves `/brand/mark.svg`; login/auth unreachable states show
+  the canonical `BrandLogo` lockup.
 - Remove private strategy and agent-session audit ledgers from the public tree
   (`docs/archive/STRATEGIC_AUDIT_*`, `docs/archive/AUDIT.md`, `docs/audits/`);
   soften large-enterprise procurement phrasing. CI

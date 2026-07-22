@@ -119,6 +119,31 @@ export interface GraphSnapshot {
   analysis_status?: import("./graph-schema").GraphStats["analysis_status"] | undefined;
 }
 
+/** Adjacent-pair entry from GET /v1/graph/history */
+export interface GraphHistoryDiffSummary {
+  nodes_added?: number;
+  nodes_removed?: number;
+  nodes_changed?: number;
+  edges_added?: number;
+  edges_removed?: number;
+  [key: string]: unknown;
+}
+
+export interface GraphHistorySnapshot {
+  scan_id: string;
+  created_at?: string;
+  node_count?: number;
+  edge_count?: number;
+  diff_baseline_scan_id?: string;
+  diff_summary?: GraphHistoryDiffSummary;
+}
+
+export interface GraphHistoryResponse {
+  schema_version?: string;
+  snapshots: GraphHistorySnapshot[];
+  window?: Record<string, unknown>;
+}
+
 export interface GraphAttackPath extends AttackPath {
   exposure_path?: ExposurePath | undefined;
 }
@@ -340,6 +365,21 @@ export interface GraphImpactResponse {
   affected_by_type: Record<string, number>;
   affected_count: number;
   max_depth_reached: number;
+}
+
+/** Saved tenant graph filter preset from GET/POST /v1/graph/presets */
+export interface GraphFilterPreset {
+  name: string;
+  description?: string;
+  filters: Record<string, unknown>;
+  created_at?: string;
+  tenant_id?: string;
+}
+
+export interface GraphFilterPresetCreate {
+  name: string;
+  description?: string;
+  filters: Record<string, unknown>;
 }
 
 export interface GraphNodeDetailResponse {

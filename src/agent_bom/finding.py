@@ -328,6 +328,10 @@ class Finding:
     exposed_credentials: list[str] = field(default_factory=list)  # credential env-var names at risk
     exposed_tools: list[str] = field(default_factory=list)  # tool names accessible through the path
 
+    # CWPP runtime/EDR workload evidence (optional, additive). Never implies the
+    # workload is clean — summaries carry clean_workload_assertion=False.
+    workload_runtime_evidence: Optional[dict] = None
+
     # Unique ID — deterministic UUID v5 based on content (computed in __post_init__)
     # Pass an explicit id= to override (e.g. when ingesting from external scanner)
     id: str = field(default="")
@@ -604,6 +608,12 @@ class Finding:
             "affected_agents": list(self.affected_agents),
             "exposed_credentials": list(self.exposed_credentials),
             "exposed_tools": list(self.exposed_tools),
+            # CWPP runtime/EDR — omit when unset so plain findings stay unchanged
+            **(
+                {"workload_runtime_evidence": dict(self.workload_runtime_evidence)}
+                if isinstance(self.workload_runtime_evidence, dict)
+                else {}
+            ),
         }
 
 

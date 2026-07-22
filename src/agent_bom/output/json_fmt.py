@@ -984,7 +984,10 @@ def to_json(report: AIBOMReport) -> dict:
     all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
     cve_pairs = list(zip(cve_findings(report, report.blast_radii), report.blast_radii, strict=True)) if report.blast_radii else []
     exposure_paths = [exposure_path_for_report_finding(finding, br=br, rank=rank) for rank, (finding, br) in enumerate(cve_pairs, start=1)]
-    unified_findings = [finding.to_dict() for finding in report.to_findings()]
+    from agent_bom.output.finding_views import apply_workload_runtime_evidence_for_export
+
+    export_findings = apply_workload_runtime_evidence_for_export(list(report.to_findings()))
+    unified_findings = [finding.to_dict() for finding in export_findings]
     asset_inventory = _build_asset_inventory(unified_findings)
     finding_summary = _build_finding_summary(unified_findings)
     from agent_bom.evidence.scan_run import effective_scan_run

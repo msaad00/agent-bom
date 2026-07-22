@@ -287,4 +287,36 @@ describe("FindingsPage", () => {
     expect(await screen.findByText("Page 2 · total unavailable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Next/i })).toBeDisabled();
   });
+
+  it("shows workload runtime evidence on the Evidence tab without conflating proxy runtime", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      total: 1,
+      findings: [
+        {
+          id: "uuid-runtime-1",
+          severity: "high",
+          cve_id: "CVE-2026-9999",
+          title: "Workload disk finding",
+          asset: { name: "i-0abc", asset_type: "cloud_resource" },
+          workload_runtime_evidence: {
+            state: "runtime_ioc_observed",
+            signal_count: 2,
+            source_kinds: ["edr"],
+            latest_observed_at: "2026-07-21T12:00:00Z",
+            clean_workload_assertion: false,
+          },
+        },
+      ],
+    });
+
+    render(<FindingsPage />);
+    expect(await screen.findByText("CVE-2026-9999")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-9999" }));
+    const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-9999" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Evidence" }));
+    expect(within(drawer).getByText("Workload runtime evidence")).toBeInTheDocument();
+    expect(within(drawer).getByText("IOC observed")).toBeInTheDocument();
+    expect(within(drawer).getByText(/not a clean-workload assertion/i)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Distinct from proxy\/gateway runtime evidence/i)).toBeInTheDocument();
+  });
 });

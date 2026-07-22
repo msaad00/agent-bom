@@ -42,16 +42,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
   graph test module docstring matches auto-enable behavior.
 
 ### Changed
-<<<<<<< HEAD
 - CWPP stage-4 honesty: Azure/GCP side-scan capabilities report
   `executor: contract_only` (discovery + injected-SDK adapters only); runtime
   evidence ingest + graph persist/investigation loads are documented as wired;
   Azure/GCP CLI executor and credentialed smoke remain unclaimed (#4158).
-=======
 - CWPP stage-4 (B): CLI `agent-bom cloud runtime-evidence-ingest` and MCP
   `runtime_evidence_ingest` share the authenticated runtime-evidence door with
   the REST ingest route (#4158).
->>>>>>> cd080ac5 (feat(cwpp): CLI and MCP runtime-evidence ingest)
+- CWPP stage-4 (C): JSON / SARIF / HTML exports surface
+  `workload_runtime_evidence` on workload-scoped findings (additive;
+  `clean_workload_assertion` stays false) (#4158).
+- CWPP stage-4 (D): findings Evidence drawer shows a Workload runtime evidence
+  panel for CWPP/EDR summaries (additive; not a clean-workload assertion)
+  (#4158).
 - Findings carry optional graph FKs (`node_id`, `finding_node_id`, `entity_type`)
   and attack paths expose `finding_ids` so investigation joins typed estate nodes
   instead of CVE-label-only anchors; `asset_type` aliases map to `EntityType`

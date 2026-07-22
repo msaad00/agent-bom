@@ -29,6 +29,24 @@ def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = No
     return [finding for finding in report.to_findings() if finding.finding_type in _MACHINE_EXPORT_TYPES]
 
 
+def apply_workload_runtime_evidence_for_export(findings: list[Finding]) -> list[Finding]:
+    """Annotate findings with CWPP runtime evidence when a tenant index is present.
+
+    Additive only: findings without a resolvable workload identity are unchanged.
+    An empty store leaves findings untouched (no fabricated no-signal rows).
+    Findings that already carry ``workload_runtime_evidence`` keep it.
+    """
+    from agent_bom.cloud.runtime_workload_evidence import (
+        enrich_findings_workload_runtime_evidence,
+        optional_runtime_workload_evidence_index,
+    )
+
+    pending = [finding for finding in findings if not getattr(finding, "workload_runtime_evidence", None)]
+    if pending:
+        enrich_findings_workload_runtime_evidence(pending, optional_runtime_workload_evidence_index())
+    return findings
+
+
 def machine_export_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
     """Rows for flat machine exports (CSV/Parquet): CVE findings plus synthesized
     malicious-package findings.

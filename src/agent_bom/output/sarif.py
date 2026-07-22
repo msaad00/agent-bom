@@ -615,6 +615,9 @@ def _cve_sarif_result(
         result_properties.update(framework_props)
     if ai_assessment is not None:
         result_properties.update(_ai_assessment_result_properties(ai_assessment))
+    workload_runtime = getattr(finding, "workload_runtime_evidence", None)
+    if isinstance(workload_runtime, dict) and workload_runtime:
+        result_properties["workload_runtime_evidence"] = _sanitize_sarif_property(workload_runtime)
     result["properties"] = result_properties
     suppressions = _suppression_entries(finding)
     if suppressions:
@@ -639,6 +642,7 @@ def to_sarif(
             from CVEs that can't be acted on.
     """
     from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
+    from agent_bom.output.finding_views import apply_workload_runtime_evidence_for_export
 
     scan_run = effective_scan_run(report)
     rules: list[dict[str, Any]] = []
@@ -654,7 +658,7 @@ def to_sarif(
     # primary key is descending unified risk, tie-broken by finding id. This keeps
     # rank (and therefore SARIF/JSON bytes) deterministic across identical runs.
     ordered_cve_findings = sorted(
-        cve_findings(report, blast_radii),
+        apply_workload_runtime_evidence_for_export(cve_findings(report, blast_radii)),
         key=lambda finding: (-float(finding.risk_score or 0.0), finding.cve_id or finding.id or ""),
     )
     for rank, finding in enumerate(ordered_cve_findings, 1):
@@ -695,7 +699,7 @@ def to_sarif(
     # Unified non-CVE findings, including MCP intelligence/blocklist matches.
     finding_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
     finding_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
-    for finding in report.to_findings():
+    for finding in apply_workload_runtime_evidence_for_export(list(report.to_findings())):
         if finding.finding_type == FindingType.CVE:
             continue
         # Cloud CIS benchmark failures for the dedicated-loop providers are
@@ -784,6 +788,14 @@ def to_sarif(
                 "ai_summary": finding.ai_summary,
                 "attack_vector_summary": finding.attack_vector_summary,
                 "suppressed": finding.suppressed,
+                **(
+                    {
+                        "workload_runtime_evidence": _sanitize_sarif_property(finding.workload_runtime_evidence),
+                    }
+                    if isinstance(getattr(finding, "workload_runtime_evidence", None), dict)
+                    and finding.workload_runtime_evidence
+                    else {}
+                ),
             },
         }
         suppressions = _suppression_entries(finding)

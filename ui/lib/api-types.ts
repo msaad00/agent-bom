@@ -1006,6 +1006,8 @@ export interface UnifiedFinding {
   resolved_at?: string | null | undefined;
   reopened_at?: string | null | undefined;
   scan_count?: number | undefined;
+  /** CWPP runtime/EDR workload evidence (additive; never a clean-workload claim). */
+  workload_runtime_evidence?: WorkloadRuntimeEvidence | undefined;
 }
 
 /**
@@ -1043,6 +1045,24 @@ export interface ReadWindow {
 }
 
 export type FindingsResponse = FindingListEnvelope<UnifiedFinding>;
+
+/** CWPP runtime/EDR evidence fused onto a workload-scoped finding. */
+export interface WorkloadRuntimeEvidence {
+  schema_version?: string;
+  state?:
+    | "runtime_ioc_observed"
+    | "runtime_alert_observed"
+    | "runtime_activity_observed"
+    | "no_runtime_signal"
+    | string;
+  signal_count?: number;
+  signal_types?: Record<string, number>;
+  severity_counts?: Record<string, number>;
+  source_kinds?: string[];
+  latest_observed_at?: string;
+  clean_workload_assertion?: boolean;
+  note?: string;
+}
 
 export interface BlastRadius {
   vulnerability_id: string;
@@ -1089,6 +1109,8 @@ export interface BlastRadius {
     blocked_count?: number;
     observed_count?: number;
   } | undefined;
+  /** CWPP runtime/EDR workload evidence (distinct from proxy/gateway runtime_evidence). */
+  workload_runtime_evidence?: WorkloadRuntimeEvidence | undefined;
   /** Graph-walk reachability (populated by the unified-graph dependency
    *  reach engine). `true` when an agent's USES/DEPENDS_ON closure
    *  reaches the vulnerable package; `false` when the package is in

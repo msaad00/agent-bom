@@ -158,10 +158,18 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "declared_version",
         "resolved_version",
         "observed_at",
+        "latest_observed_at",
         "version_resolved_at",
         "floating_reference",
         "floating_reference_reason",
         "scan_sources",
+        # CWPP runtime/EDR workload evidence (metadata only; never secret values)
+        "workload_runtime_evidence",
+        "signal_count",
+        "signal_types",
+        "source_kinds",
+        "clean_workload_assertion",
+        "additive_note",
         # Quantitative scores (no PII)
         "cvss_score",
         "epss_score",
@@ -273,6 +281,7 @@ TIER_A_COUNT_MAP_FIELDS: frozenset[str] = frozenset(
     {
         "class_counts",
         "severity_counts",
+        "signal_types",
     }
 )
 

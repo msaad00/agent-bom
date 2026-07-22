@@ -312,6 +312,7 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
                 f'title="match confidence: {_esc(tier)}" '
                 f'style="font-size:.6rem;color:{_tier_color}">{_esc(str(tier).replace("_", " "))}</span>'
             )
+        runtime_hint = _workload_runtime_evidence_hint(finding)
         vuln_id = finding.cve_id or finding.id
         pkg_name = package_name(finding)
         pkg_version = package_version(finding)
@@ -322,7 +323,7 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
             f'data-reachability="{reach_state}" '
             f'data-match-tier="{_esc(tier or "")}" '
             f'data-cvss="{finding.cvss_score if finding.cvss_score else 0}">'
-            f'<td><code class="vuln-id">{_esc(vuln_id)}</code>{tier_hint}</td>'
+            f'<td><code class="vuln-id">{_esc(vuln_id)}</code>{tier_hint}{runtime_hint}</td>'
             f"<td>{_sev_badge(sev)}{vendor_hint}</td>"
             f'<td><strong style="color:#e2e8f0">{_esc(pkg_name)}</strong>'
             f'<span style="color:#475569;font-size:.78rem">@{_esc(pkg_version)}</span></td>'
@@ -491,6 +492,32 @@ def _remediation_list(findings: list["Finding"]) -> str:
     return "".join(items) + nf_html
 
 
+def _workload_runtime_evidence_hint(finding: object) -> str:
+    """Compact HTML badge for CWPP runtime/EDR evidence. Never labels absence as clean."""
+    payload = getattr(finding, "workload_runtime_evidence", None)
+    if not isinstance(payload, dict) or not payload:
+        return ""
+    state = str(payload.get("state") or "").strip() or "unknown"
+    label_map = {
+        "runtime_ioc_observed": "Runtime IOC",
+        "runtime_alert_observed": "Runtime alert",
+        "runtime_activity_observed": "Runtime observed",
+        "no_runtime_signal": "No runtime signal",
+    }
+    label = label_map.get(state, f"Runtime {state.replace('_', ' ')}")
+    color = {
+        "runtime_ioc_observed": "#f87171",
+        "runtime_alert_observed": "#fb923c",
+        "runtime_activity_observed": "#38bdf8",
+        "no_runtime_signal": "#94a3b8",
+    }.get(state, "#94a3b8")
+    title = "CWPP runtime/EDR evidence — additive; not a clean-workload assertion"
+    return (
+        f'<br><span class="workload-runtime-evidence" data-state="{_esc(state)}" '
+        f'title="{title}" style="font-size:.6rem;color:{color}">{_esc(label)}</span>'
+    )
+
+
 def _non_cve_findings(report: "AIBOMReport") -> list["Finding"]:
     """Return unified findings not already represented in the CVE or CIS tables.
 
@@ -536,6 +563,9 @@ def _policy_findings_section(findings: list["Finding"]) -> str:
             if evidence_items
             else '<span style="color:#334155">&mdash;</span>'
         )
+        runtime_hint = _workload_runtime_evidence_hint(finding)
+        if runtime_hint:
+            evidence = f"{evidence}{runtime_hint}"
         remediation = finding.remediation_guidance or ""
         description_html = f'<br><span style="color:#94a3b8">{_esc(description)}</span>' if description else ""
         remediation_html = _esc(remediation) if remediation else '<span style="color:#334155">&mdash;</span>'

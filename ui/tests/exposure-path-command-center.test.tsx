@@ -94,6 +94,25 @@ describe("ExposurePathCommandCenter", () => {
     expect(screen.getByText(basePath.summary!)).toHaveClass("line-clamp-3");
   });
 
+  it("presents a single-node risk signal as one node instead of zero hops", () => {
+    const resource = { id: "resource-1", label: "Prod Bastion", role: "server" as const };
+    render(
+      <ExposurePathCommandCenter
+        path={{
+          ...basePath,
+          source: resource,
+          target: resource,
+          hops: [resource],
+          affectedAgents: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Path span")).toBeInTheDocument();
+    expect(screen.getByText("1 node")).toBeInTheDocument();
+    expect(screen.queryByText("Hops")).not.toBeInTheDocument();
+  });
+
   it("shows one representation at a time and defaults to the path view", () => {
     render(<ExposurePathCommandCenter path={basePath} />);
 

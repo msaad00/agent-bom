@@ -11,7 +11,7 @@ const rows: RankedPathRow[] = [
     title: "Agent → Database → werkzeug",
     cve: "CVE-2026-0002",
     riskScore: 9.6,
-    hops: 3,
+    nodeCount: 4,
     agents: 2,
   },
   {
@@ -21,7 +21,7 @@ const rows: RankedPathRow[] = [
     title: "Agent → API → flask",
     cve: null,
     riskScore: 7.1,
-    hops: 2,
+    nodeCount: 3,
     agents: 1,
   },
 ];
@@ -36,6 +36,19 @@ describe("RankedPathList", () => {
     expect(screen.getByText(/3 hops · 2 agents/)).toBeInTheDocument();
     // The single DAG renders in the command-center panel, not per row here.
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("labels a single-node risk signal as one node instead of zero hops", () => {
+    render(
+      <RankedPathList
+        rows={[{ ...rows[0]!, key: "single::0", selectionKey: "single", nodeCount: 1 }]}
+        selectedKey="single"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/1 node · 2 agents/)).toBeInTheDocument();
+    expect(screen.queryByText(/0 hops/)).not.toBeInTheDocument();
   });
 
   it("selects a path into the shared panel when a collapsed row is clicked", () => {

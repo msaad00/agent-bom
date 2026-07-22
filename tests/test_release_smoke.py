@@ -11,6 +11,14 @@ def test_release_smoke_script_is_valid_shell() -> None:
     subprocess.run(["bash", "-n", str(ROOT / "scripts" / "release_smoke.sh")], check=True)
 
 
+def test_release_smoke_isolates_local_state() -> None:
+    script = (ROOT / "scripts" / "release_smoke.sh").read_text(encoding="utf-8")
+    assert 'AGENT_BOM_STATE_DIR="${AGENT_BOM_STATE_DIR:-$tmp/state}"' in script
+    assert 'AGENT_BOM_DB_PATH="${AGENT_BOM_DB_PATH:-$AGENT_BOM_STATE_DIR/db/vulns.db}"' in script
+    assert 'AGENT_BOM_SCAN_CACHE="${AGENT_BOM_SCAN_CACHE:-$AGENT_BOM_STATE_DIR/scan-cache.db}"' in script
+    assert "mkdir -p \"$AGENT_BOM_STATE_DIR/db\"" in script
+
+
 def test_release_smoke_golden_path(tmp_path: Path) -> None:
     """Offline demo scan smoke must pass on every CI run."""
     env = {key: value for key, value in os.environ.items() if not key.startswith("AGENT_BOM_")}

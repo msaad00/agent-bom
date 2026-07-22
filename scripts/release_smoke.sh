@@ -27,6 +27,15 @@ fail() { printf "  \033[31m✗\033[0m %s\n" "$*" >&2; exit 1; }
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Keep the smoke hermetic. A release check must neither depend on nor mutate a
+# developer's existing ~/.agent-bom databases, and it must work when $HOME is
+# read-only (as it is in some CI/sandbox runners).
+export AGENT_BOM_STATE_DIR="${AGENT_BOM_STATE_DIR:-$tmp/state}"
+export AGENT_BOM_DB_PATH="${AGENT_BOM_DB_PATH:-$AGENT_BOM_STATE_DIR/db/vulns.db}"
+export AGENT_BOM_SCAN_CACHE="${AGENT_BOM_SCAN_CACHE:-$AGENT_BOM_STATE_DIR/scan-cache.db}"
+export AGENT_BOM_LOCAL_ANALYTICS_DB="${AGENT_BOM_LOCAL_ANALYTICS_DB:-$AGENT_BOM_STATE_DIR/local-analytics.sqlite}"
+mkdir -p "$AGENT_BOM_STATE_DIR/db"
+
 bold "1/5 CLI install surface"
 if command -v uv >/dev/null 2>&1; then
   AGENT_BOM_BIN=(uv run agent-bom)

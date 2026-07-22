@@ -256,13 +256,46 @@ describe("attack path helpers", () => {
       vuln_ids: [],
     });
     const paths = [collidingPath(9.9), collidingPath(9.9), collidingPath(9.9)];
-    const cards = [{ rank: 6, title: "a" }, { rank: 2, title: "b" }, { rank: 6, title: "c" }];
 
-    const rows = rankedAttackPathRows(paths, cards);
+    const rows = rankedAttackPathRows(paths);
 
     expect(rows.map((row) => row.rank)).toEqual([1, 2, 3]);
     expect(new Set(rows.map((row) => row.key)).size).toBe(3);
-    expect(rows.map((row) => row.card?.title)).toEqual(["a", "b", "c"]);
+  });
+
+  it("matches fix-first cards to their attack paths after filtering or reordering", () => {
+    const pathA: AttackPath = {
+      source: "finding-a",
+      target: "agent-a",
+      hops: ["finding-a", "tool-a", "agent-a"],
+      edges: [],
+      composite_risk: 9.8,
+      summary: "path A",
+      credential_exposure: [],
+      tool_exposure: ["tool-a"],
+      vuln_ids: ["CVE-A"],
+    };
+    const pathB: AttackPath = {
+      source: "finding-b",
+      target: "agent-b",
+      hops: ["finding-b", "agent-b"],
+      edges: [],
+      composite_risk: 8.7,
+      summary: "path B",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: ["CVE-B"],
+    };
+    const cards = [
+      { title: "Finding B via agent-b", attack_path: pathB },
+      { title: "Finding A via agent-a", attack_path: pathA },
+    ];
+
+    expect(rankedAttackPathRows([pathA, pathB], cards).map((row) => row.card?.title)).toEqual([
+      "Finding A via agent-a",
+      "Finding B via agent-b",
+    ]);
+    expect(rankedAttackPathRows([pathB], cards)[0]?.card?.title).toBe("Finding B via agent-b");
   });
 
   it("builds a focused security-graph href from canonical context", () => {

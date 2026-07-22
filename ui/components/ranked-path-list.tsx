@@ -2,6 +2,8 @@
 
 import { ChevronRight } from "lucide-react";
 
+import { pathSpanLabel } from "@/lib/exposure-path";
+
 export interface RankedPathRow {
   /** Collision-free React key (index-suffixed) for stable list rendering. */
   key: string;
@@ -11,7 +13,7 @@ export interface RankedPathRow {
   title: string;
   cve: string | null;
   riskScore: number;
-  hops: number;
+  nodeCount: number;
   agents: number;
   /** MCP tool capability tags (read/write/exec/net) feeding path scoring. */
   capabilityTags?: string[] | undefined;
@@ -72,7 +74,7 @@ export function RankedPathList({
                 {row.title}
               </span>
               <span className="mt-0.5 block text-[11px] text-[color:var(--text-tertiary)]">
-                {row.hops} hop{row.hops === 1 ? "" : "s"} · {row.agents} agent{row.agents === 1 ? "" : "s"}
+                {pathSpanLabel(row.nodeCount)} · {row.agents} agent{row.agents === 1 ? "" : "s"}
               </span>
               {(row.capabilityTags?.length || row.environmentTags?.length) ? (
                 <span className="mt-1 flex flex-wrap gap-1">

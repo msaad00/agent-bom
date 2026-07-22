@@ -184,16 +184,27 @@ export function descriptiveAttackPathTitle(cardTitle: string | undefined, nodes:
 }
 
 /**
- * Pair each sorted path with its fix-first card by position and stamp a rank
- * that equals the row's index in the sorted list. This is the single source of
- * truth for rank so duplicate ranks (#6 three times) — caused by looking rank up
- * through a lossy `source::target::hops` key that collides across distinct
- * paths — can never happen. The composite `key` is guaranteed unique per row.
+ * Pair each sorted path with the fix-first card derived from the same path and
+ * stamp a rank that equals the row's index in the sorted list. Matching by path
+ * identity prevents independently filtered or ordered API responses from
+ * cross-pollinating a card title with another path's hop and agent counters.
+ * The composite `key` remains unique when structurally identical paths repeat.
  */
-export function rankedAttackPathRows<C>(paths: AttackPath[], cards: readonly C[] = []): RankedAttackPathRow<C>[] {
+export function rankedAttackPathRows<C extends { attack_path: AttackPath }>(
+  paths: AttackPath[],
+  cards: readonly C[] = [],
+): RankedAttackPathRow<C>[] {
+  const cardsByPath = new Map<string, C[]>();
+  for (const card of cards) {
+    const key = attackPathKey(card.attack_path);
+    const matchingCards = cardsByPath.get(key) ?? [];
+    matchingCards.push(card);
+    cardsByPath.set(key, matchingCards);
+  }
+
   return paths.map((path, index) => ({
     path,
-    card: cards[index],
+    card: cardsByPath.get(attackPathKey(path))?.shift(),
     rank: index + 1,
     key: `${attackPathKey(path)}::${index}`,
   }));

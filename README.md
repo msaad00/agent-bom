@@ -32,36 +32,6 @@
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
-## Scan
-
-The same scanner runs from four entry points — pick the one for your surface;
-none is "the" way in.
-
-CLI (local or one-off):
-
-```bash
-pip install agent-bom
-agent-bom scan .
-```
-
-CI (GitHub Action):
-
-```yaml
-- uses: msaad00/agent-bom@v0.97.4
-  with:
-    scan-type: agents
-    format: sarif
-    upload-sarif: true
-```
-
-Also: Docker, and a self-hosted control plane via cloud connect / scheduled
-estate scans. Inventory, findings, reachability, and fix-first actions work
-without a control plane; export when another tool needs it:
-`agent-bom scan . -f sarif -o findings.sarif`.
-
-Offline sample without your repo: `uvx agent-bom scan --demo --offline` ·
-full path: [First Run](docs/FIRST_RUN.md).
-
 ## Blast radius
 
 One finding fans out to the MCP servers that load it, reachable tools,

@@ -162,6 +162,28 @@ def test_working_set_is_bounded_not_full_estate() -> None:
     assert peak < len(g.nodes), "the analysis must never materialize the whole estate at once"
 
 
+def test_partition_key_reads_environment_from_attrs_when_dims_empty() -> None:
+    from agent_bom.graph.attack_path_campaigns import _partition_key
+    from agent_bom.graph.node import NodeDimensions, UnifiedNode
+    from agent_bom.graph.types import EntityType
+
+    dims_only = UnifiedNode(
+        id="cloud:a",
+        entity_type=EntityType.CLOUD_RESOURCE,
+        label="a",
+        attributes={"account_id": "acct-1"},
+        dimensions=NodeDimensions(cloud_provider="aws", environment="staging"),
+    )
+    attrs_only = UnifiedNode(
+        id="cloud:b",
+        entity_type=EntityType.CLOUD_RESOURCE,
+        label="b",
+        attributes={"account_id": "acct-1", "environment": "staging", "provider": "aws"},
+    )
+    assert _partition_key(dims_only) == _partition_key(attrs_only)
+    assert "staging" in _partition_key(attrs_only)
+
+
 def test_campaign_carries_decision_fields() -> None:
     g = _large_single_partition_graph()
     campaign = compute_partitioned_campaigns(g).campaigns[0]

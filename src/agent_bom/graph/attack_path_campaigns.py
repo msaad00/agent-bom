@@ -111,7 +111,9 @@ def _partition_key(node: UnifiedNode) -> str:
         or ""
     ).strip()
     provider = str(node.dimensions.cloud_provider or attrs.get("provider") or "").strip()
-    environment = str(node.dimensions.environment or "").strip()
+    environment = str(
+        node.dimensions.environment or attrs.get("environment") or attrs.get("env") or ""
+    ).strip()
     natural = ":".join(part for part in (provider, account, environment) if part)
     if natural:
         return natural

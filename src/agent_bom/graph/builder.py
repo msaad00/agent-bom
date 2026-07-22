@@ -127,6 +127,7 @@ def build_unified_graph_from_report(
             )
         )
 
+        agent_env = _normalized_environment(agent_dict.get("environment"))
         graph.add_node(
             UnifiedNode(
                 id=agent_id,
@@ -150,7 +151,7 @@ def build_unified_graph_from_report(
                     "source_id": agent_scope,
                     "enrollment_name": agent_dict.get("enrollment_name", ""),
                     "owner": agent_dict.get("owner", ""),
-                    "environment": agent_dict.get("environment", ""),
+                    "environment": agent_env,
                     "mdm_provider": agent_dict.get("mdm_provider", ""),
                     "tags": agent_dict.get("tags", []),
                     "discovered_at": agent_dict.get("discovered_at"),
@@ -162,7 +163,7 @@ def build_unified_graph_from_report(
                     "cloud_scope": agent_metadata.get("cloud_scope"),
                     "cloud_principal": agent_metadata.get("cloud_principal"),
                 },
-                dimensions=NodeDimensions(agent_type=agent_type),
+                dimensions=NodeDimensions(agent_type=agent_type, environment=agent_env),
                 data_sources=[data_source_tag],
             )
         )
@@ -211,6 +212,7 @@ def build_unified_graph_from_report(
                         ],
                         "security_intelligence_count": len(srv_dict.get("security_intelligence", []) or []),
                         "agent": agent_name,
+                        "environment": agent_env,
                         "canonical_id": srv_dict.get("canonical_id")
                         or srv_dict.get("stable_id")
                         or canonical_graph_node_id(EntityType.SERVER.value, srv_id),
@@ -218,7 +220,7 @@ def build_unified_graph_from_report(
                         "stable_id": srv_dict.get("stable_id", ""),
                         "fingerprint": srv_dict.get("fingerprint", ""),
                     },
-                    dimensions=NodeDimensions(surface=surface),
+                    dimensions=NodeDimensions(surface=surface, environment=agent_env),
                     data_sources=[data_source_tag],
                 )
             )
@@ -267,10 +269,11 @@ def build_unified_graph_from_report(
                             "scorecard_score": pkg_dict.get("scorecard_score"),
                             "is_malicious": pkg_dict.get("is_malicious", False),
                             "stable_id": pkg_dict.get("stable_id", ""),
+                            "environment": agent_env,
                             "discovery_provenance": package_discovery_provenance,
                             "version_provenance": package_version_provenance,
                         },
-                        dimensions=NodeDimensions(ecosystem=ecosystem),
+                        dimensions=NodeDimensions(ecosystem=ecosystem, environment=agent_env),
                         data_sources=[data_source_tag],
                     )
                 )
@@ -2163,6 +2166,49 @@ def _add_rel_edge(
             evidence=evidence if evidence is not None else {},
         )
     )
+
+
+def _normalized_environment(*candidates: object) -> str:
+    """Return the first non-empty environment label among candidates."""
+    for raw in candidates:
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text:
+            return text
+    return ""
+
+
+def _environment_from_tags(tags: object) -> str:
+    """Promote common cloud tag keys onto the environment dimension."""
+    if not isinstance(tags, dict):
+        return ""
+    for key in ("environment", "Environment", "env", "Env", "ENVIRONMENT"):
+        if key in tags:
+            return _normalized_environment(tags.get(key))
+    return ""
+
+
+def _add_account_resource_hierarchy(
+    graph: UnifiedGraph,
+    account_node_id: str,
+    resource_node_id: str,
+    *,
+    evidence: dict[str, Any] | None = None,
+) -> None:
+    """Link account → resource as both ``OWNS`` and ``CONTAINS``.
+
+    Cloud inventory historically emitted ``OWNS`` only. Estate rollup special-cases
+    that edge, but attack-path fusion and cost subtrees walk ``CONTAINS``. Dual-emit
+    keeps ownership semantics while making the account hierarchy traversable for
+    kill-chains — matching cloud-origin lineage which already emits ``CONTAINS``.
+    """
+    if not account_node_id or not resource_node_id:
+        return
+    payload = dict(evidence or {})
+    _add_rel_edge(graph, account_node_id, resource_node_id, RelationshipType.OWNS, payload)
+    contains_evidence = {**payload, "hierarchy": "account_contains_resource"}
+    _add_rel_edge(graph, account_node_id, resource_node_id, RelationshipType.CONTAINS, contains_evidence)
 
 
 def _add_agent_cloud_lineage(
@@ -4532,13 +4578,11 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         )
         resource_ids.append(node_id)
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=node_id,
-                    relationship=RelationshipType.OWNS,
-                    evidence={"source": "cloud-inventory", "reason": "side_scan_target"},
-                )
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "cloud-inventory", "reason": "side_scan_target"},
             )
 
     # ── S3 buckets → CLOUD_RESOURCE (CNAPP makes the DATA_STORE companion) ──
@@ -4551,6 +4595,8 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         bucket_service = _clean_graph_part(bucket.get("_service")) or "s3"
         bucket_kind = _clean_graph_part(bucket.get("_kind")) or "s3-bucket"
         bucket_label = _clean_graph_part(bucket.get("_label")) or "s3 bucket"
+        bucket_tags = bucket.get("tags", {}) if isinstance(bucket.get("tags"), dict) else {}
+        bucket_env = _environment_from_tags(bucket_tags)
         node_id = f"cloud_resource:{provider}:{bucket_service}:bucket:{name}"
         graph.add_node(
             UnifiedNode(
@@ -4569,11 +4615,12 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "cloud_service": bucket_service,
                     "location": _clean_graph_part(bucket.get("location")) or region,
                     "internet_exposed": bool(bucket.get("publicly_accessible")),
-                    "tags": bucket.get("tags", {}),
+                    "tags": bucket_tags,
                     "account_id": account_id,
+                    "environment": bucket_env,
                 },
                 data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="s3"),
+                dimensions=NodeDimensions(cloud_provider=provider, surface="s3", environment=bucket_env),
             )
         )
         resource_ids.append(node_id)
@@ -4585,10 +4632,11 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         if isinstance(bucket_classification, dict):
             graph.nodes[node_id].attributes["content_classification"] = bucket_classification
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
-                )
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "cloud-inventory"},
             )
 
     # ── DSPM databases → CLOUD_RESOURCE (RDS/Postgres/warehouse content stores) ──
@@ -4634,10 +4682,11 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         )
         resource_ids.append(node_id)
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
-                )
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "cloud-inventory"},
             )
 
     # ── EC2 security groups → CLOUD_RESOURCE (carry structured exposure) ──
@@ -4839,10 +4888,11 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             )
             resource_ids.append(node_id)
             if account_node_id:
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
-                    )
+                _add_account_resource_hierarchy(
+                    graph,
+                    account_node_id,
+                    node_id,
+                    evidence={"source": "cloud-inventory"},
                 )
             if coll_key == "elb_load_balancers" and exposed:
                 internet_facing_lbs.append((node_id, _clean_graph_part(item.get("vpc_id"))))
@@ -4896,13 +4946,11 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                 )
                 resource_ids.append(node_id)
                 if account_node_id:
-                    graph.add_edge(
-                        UnifiedEdge(
-                            source=account_node_id,
-                            target=node_id,
-                            relationship=RelationshipType.OWNS,
-                            evidence={"source": "cloud-inventory"},
-                        )
+                    _add_account_resource_hierarchy(
+                        graph,
+                        account_node_id,
+                        node_id,
+                        evidence={"source": "cloud-inventory"},
                     )
 
     # ── Data / secret / registry / network resources (normalized model) ──
@@ -5141,6 +5189,8 @@ def _add_normalized_cloud_resources(
             pip_node_by_arm_id[res.resource_id] = node_id
         if res.resource_type is CloudResourceType.LOAD_BALANCER:
             load_balancer_nodes.append((node_id, raw))
+        resource_tags = dict(res.tags) if getattr(res, "tags", None) else {}
+        resource_env = _environment_from_tags(resource_tags)
         graph.add_node(
             UnifiedNode(
                 id=node_id,
@@ -5155,22 +5205,21 @@ def _add_normalized_cloud_resources(
                     "location": res.region or region,
                     "internet_exposed": internet_exposed,
                     "is_data_store": is_data_store,
-                    "tags": dict(res.tags),
+                    "tags": resource_tags,
                     "account_id": account_id,
+                    "environment": resource_env,
                 },
                 data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface=surface),
+                dimensions=NodeDimensions(cloud_provider=provider, surface=surface, environment=resource_env),
             )
         )
         resource_ids.append(node_id)
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=node_id,
-                    relationship=RelationshipType.OWNS,
-                    evidence={"source": "cloud-inventory"},
-                )
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "cloud-inventory"},
             )
 
     # ── Internet exposure path: public IP → load balancer it fronts ──
@@ -5339,10 +5388,11 @@ def _add_network_edge_inventory(
         )
         resource_ids.append(node_id)
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
-                )
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "cloud-inventory"},
             )
 
     def _protect(source_node_id: str, targets: list[Any], reason: str) -> None:
@@ -5587,10 +5637,11 @@ def _add_network_edge_inventory(
         )
         resource_ids.append(node_id)
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
-                )
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "cloud-inventory"},
             )
         _protect(node_id, api.get("protected_targets", []), "api_gateway_frontend")
         if api.get("internet_exposed"):

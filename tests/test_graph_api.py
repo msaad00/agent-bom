@@ -1845,6 +1845,104 @@ class TestGraphStoreBackendSelection:
             ("pkg:npm:form-data", "vuln:cve"),
         }
 
+    def test_fix_first_materialises_crown_jewel_campaigns_when_store_has_none(self, recording_graph_store):
+        """Store-backed loads wipe campaigns; serve path must recompute them."""
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="cloud:entry",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label="public-api",
+                attributes={"internet_exposed": True, "account_id": "acct-a"},
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="ds:crown",
+                entity_type=EntityType.DATA_STORE,
+                label="pci-db",
+                attributes={
+                    "account_id": "acct-a",
+                    "data_sensitivity": "sensitive",
+                    "data_regulatory_frameworks": ["PCI-DSS"],
+                    "owner": "payments",
+                },
+            )
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="cloud:entry", target="ds:crown", relationship=RelationshipType.STORES)
+        )
+        # Persist a jewel-terminating path (fusion does this at build time) but leave
+        # attack_campaigns empty — matching store_backed.StoreBackedUnifiedGraph.
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="cloud:entry",
+                target="ds:crown",
+                hops=["cloud:entry", "ds:crown"],
+                edges=["stores"],
+                composite_risk=88.0,
+                summary="Internet-exposed public-api reaches pci-db (2-hop chain)",
+            )
+        )
+        assert recording_graph_store.graph.attack_campaigns == []
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/views/fix-first", params={"scan_id": "store-scan"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["summary"]["campaign_count"] >= 1
+        assert body["attack_campaigns"]
+        assert body["attack_campaigns"][0]["crown_jewel"] == "ds:crown"
+
+    def test_filtered_graph_syncs_attack_path_stats_and_campaigns(self, recording_graph_store):
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="cloud:entry",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label="public-api",
+                attributes={"internet_exposed": True, "account_id": "acct-a"},
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="ds:crown",
+                entity_type=EntityType.DATA_STORE,
+                label="pci-db",
+                attributes={
+                    "account_id": "acct-a",
+                    "data_sensitivity": "sensitive",
+                    "owner": "payments",
+                },
+            )
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="cloud:entry", target="ds:crown", relationship=RelationshipType.STORES)
+        )
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="cloud:entry",
+                target="ds:crown",
+                hops=["cloud:entry", "ds:crown"],
+                edges=["stores"],
+                composite_risk=88.0,
+                summary="Internet-exposed public-api reaches pci-db (2-hop chain)",
+            )
+        )
+        client = TestClient(app)
+
+        # Relationship filter forces the investigation/load_graph path that
+        # materialises campaigns and syncs derived path stats.
+        response = client.get(
+            "/v1/graph",
+            params={"scan_id": "store-scan", "relationships": "stores", "limit": 50},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["stats"]["attack_path_count"] >= 1
+        assert body["attack_campaigns"]
+        assert body["attack_campaigns"][0]["crown_jewel"] == "ds:crown"
+
     def test_graph_overview_filtered_page_stays_store_backed(self, recording_graph_store):
         recording_graph_store.graph.add_node(
             UnifiedNode(

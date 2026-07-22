@@ -37,6 +37,7 @@ import tempfile
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 from agent_bom.config import (
@@ -336,3 +337,218 @@ async def clone_repository_async(
         yield Path(temp_dir)
     finally:
         await asyncio.to_thread(shutil.rmtree, temp_dir, ignore_errors=True)
+
+
+# ── Optional GitHub trust card (read-only metadata; never required for scan) ─
+
+_GITHUB_API = "https://api.github.com"
+_TRUST_DESC_MAX = 280
+_TRUST_TIMEOUT_S = 8.0
+
+
+def parse_github_owner_repo(repo_url: str) -> tuple[str, str] | None:
+    """Return ``(owner, repo)`` for a github.com git URL, else ``None``.
+
+    Accepts ``https://github.com/org/repo``, ``…/repo.git``, and deeper paths
+    (only the first two path segments are used). Non-GitHub hosts return ``None``.
+    """
+    try:
+        url = validate_repo_url(repo_url)
+    except RepoScanError:
+        return None
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    if host not in {"github.com", "www.github.com"}:
+        return None
+    segments = [s for s in (parts.path or "").split("/") if s]
+    if len(segments) < 2:
+        return None
+    owner, name = segments[0], segments[1]
+    if name.endswith(".git"):
+        name = name[: -len(".git")]
+    if not owner or not name or owner.startswith(".") or name.startswith("."):
+        return None
+    return owner, name
+
+
+def _trust_token(token_env: str | None) -> str | None:
+    if not token_env:
+        return None
+    raw = os.environ.get(token_env)
+    if raw is None:
+        return None
+    text = raw.strip()
+    return text or None
+
+
+def _trust_disabled() -> bool:
+    from agent_bom.config import REPO_TRUST_ENABLED
+
+    return not REPO_TRUST_ENABLED
+
+
+def _api_headers(token: str | None) -> dict[str, str]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "agent-bom-repo-trust",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _clip_text(value: object, *, limit: int = _TRUST_DESC_MAX) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = " ".join(value.split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _contributor_count(owner: str, repo: str, *, token: str | None) -> int | None:
+    """Best-effort contributor count via the contributors list + Link header."""
+    from agent_bom.http_client import sync_get
+    from agent_bom.security import SecurityError, validate_url
+
+    url = f"{_GITHUB_API}/repos/{owner}/{repo}/contributors"
+    try:
+        validate_url(url, allowed_schemes=("https",))
+    except SecurityError:
+        return None
+    try:
+        resp = sync_get(
+            url,
+            timeout=_TRUST_TIMEOUT_S,
+            headers=_api_headers(token),
+            params={"per_page": "1", "anon": "true"},
+        )
+    except Exception:  # noqa: BLE001 — trust card is best-effort
+        return None
+    if resp is None or resp.status_code != 200:
+        return None
+    link = resp.headers.get("Link") or resp.headers.get("link") or ""
+    # rel="last" page=N is the total when per_page=1
+    import re
+
+    match = re.search(r'[?&]page=(\d+)>;\s*rel="last"', link)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return None
+    if isinstance(payload, list):
+        return len(payload)
+    return None
+
+
+def fetch_repo_trust(
+    repo_url: str,
+    *,
+    token_env: str | None = "AGENT_BOM_REPO_SCAN_TOKEN",
+) -> dict[str, Any] | None:
+    """Fetch a read-only GitHub trust card for ``repo_url``.
+
+    Uses the same optional token as clone (``AGENT_BOM_REPO_SCAN_TOKEN``) for
+    private repos and higher API rate limits. Never raises — returns ``None`` when
+    disabled, non-GitHub, offline failure, or the API is unavailable. The scan
+    itself must not depend on this metadata.
+    """
+    if _trust_disabled():
+        return None
+    parsed = parse_github_owner_repo(repo_url)
+    if parsed is None:
+        # Still record that we saw a repo URL so UI/CLI can show the source
+        # without inventing GitHub fields for GitLab/Bitbucket/etc.
+        try:
+            url = validate_repo_url(repo_url)
+        except RepoScanError:
+            return None
+        host = (urlsplit(url).hostname or "").lower()
+        return {
+            "status": "unsupported_host",
+            "repo_url": url,
+            "host": host,
+            "provider": host,
+        }
+
+    owner, repo = parsed
+    token = _trust_token(token_env)
+    api_url = f"{_GITHUB_API}/repos/{owner}/{repo}"
+
+    from agent_bom.http_client import fetch_json
+    from agent_bom.security import SecurityError, validate_url
+
+    try:
+        validate_url(api_url, allowed_schemes=("https",))
+        payload = fetch_json(api_url, timeout=_TRUST_TIMEOUT_S, headers=_api_headers(token))
+    except (SecurityError, ConnectionError, OSError, ValueError, TimeoutError) as exc:
+        logger.debug("repo trust fetch skipped: %s", type(exc).__name__)
+        return {
+            "status": "unavailable",
+            "repo_url": f"https://github.com/{owner}/{repo}",
+            "host": "github.com",
+            "provider": "github",
+            "owner": owner,
+            "name": repo,
+            "full_name": f"{owner}/{repo}",
+        }
+    except Exception:  # noqa: BLE001
+        logger.debug("repo trust fetch failed", exc_info=True)
+        return {
+            "status": "unavailable",
+            "repo_url": f"https://github.com/{owner}/{repo}",
+            "host": "github.com",
+            "provider": "github",
+            "owner": owner,
+            "name": repo,
+            "full_name": f"{owner}/{repo}",
+        }
+
+    if not isinstance(payload, dict):
+        return None
+
+    license_info = payload.get("license") if isinstance(payload.get("license"), dict) else {}
+    license_spdx = ""
+    if isinstance(license_info, dict):
+        license_spdx = str(license_info.get("spdx_id") or license_info.get("key") or "").strip()
+
+    topics = payload.get("topics")
+    topic_list = [str(t) for t in topics if isinstance(t, str)] if isinstance(topics, list) else []
+
+    contributors = _contributor_count(owner, repo, token=token)
+
+    card: dict[str, Any] = {
+        "status": "ok",
+        "provider": "github",
+        "host": "github.com",
+        "repo_url": str(payload.get("html_url") or f"https://github.com/{owner}/{repo}"),
+        "clone_url": str(payload.get("clone_url") or ""),
+        "owner": owner,
+        "name": repo,
+        "full_name": str(payload.get("full_name") or f"{owner}/{repo}"),
+        "description": _clip_text(payload.get("description")),
+        "language": str(payload.get("language") or "") or None,
+        "license": license_spdx or None,
+        "default_branch": str(payload.get("default_branch") or "") or None,
+        "stars": int(payload.get("stargazers_count") or 0),
+        "forks": int(payload.get("forks_count") or 0),
+        "watchers": int(payload.get("subscribers_count") or payload.get("watchers_count") or 0),
+        "open_issues": int(payload.get("open_issues_count") or 0),
+        "pushed_at": str(payload.get("pushed_at") or "") or None,
+        "created_at": str(payload.get("created_at") or "") or None,
+        "updated_at": str(payload.get("updated_at") or "") or None,
+        "visibility": str(payload.get("visibility") or ("private" if payload.get("private") else "public")),
+        "archived": bool(payload.get("archived")),
+        "is_fork": bool(payload.get("fork")),
+        "topics": topic_list[:20],
+        "homepage": _clip_text(payload.get("homepage"), limit=200) or None,
+    }
+    if contributors is not None:
+        card["contributors"] = contributors
+    return card

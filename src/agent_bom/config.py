@@ -754,6 +754,11 @@ REPO_SCAN_CLONE_TIMEOUT_SECONDS = _float("AGENT_BOM_REPO_SCAN_CLONE_TIMEOUT_SECO
 REPO_SCAN_MAX_SIZE_BYTES = _int("AGENT_BOM_REPO_SCAN_MAX_SIZE_BYTES", 1024 * 1024 * 1024)
 # Max number of files in the cloned working tree.
 REPO_SCAN_MAX_FILES = _int("AGENT_BOM_REPO_SCAN_MAX_FILES", 100_000)
+# Optional GitHub trust card on --repo / repo_url scans (stars, contributors,
+# license, pushed_at). Enabled by default; set AGENT_BOM_REPO_TRUST=0 to skip.
+# Uses the same read-only AGENT_BOM_REPO_SCAN_TOKEN when present. Never required
+# for the security scan itself.
+REPO_TRUST_ENABLED = _bool("AGENT_BOM_REPO_TRUST", True)
 
 
 # ── Cloud audit-trail behavioral ingestion (opt-in, read-only) ───────────

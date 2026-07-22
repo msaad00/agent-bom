@@ -2198,10 +2198,11 @@ def _add_account_resource_hierarchy(
 ) -> None:
     """Link account → resource as both ``OWNS`` and ``CONTAINS``.
 
-    Cloud inventory historically emitted ``OWNS`` only. Estate rollup special-cases
-    that edge, but attack-path fusion and cost subtrees walk ``CONTAINS``. Dual-emit
-    keeps ownership semantics while making the account hierarchy traversable for
-    kill-chains — matching cloud-origin lineage which already emits ``CONTAINS``.
+    Cloud inventory and Snowflake object layers historically emitted ``OWNS``
+    only. Estate rollup special-cases that edge, but attack-path fusion and cost
+    subtrees walk ``CONTAINS``. Dual-emit keeps ownership semantics while making
+    the account hierarchy traversable for kill-chains — matching cloud-origin
+    lineage which already emits ``CONTAINS``.
     """
     if not account_node_id or not resource_node_id:
         return
@@ -2654,7 +2655,12 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
             )
         )
         if account_node_id:
-            _add_rel_edge(graph, account_node_id, node_id, RelationshipType.OWNS, {"source": "snowflake-objects"})
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "snowflake-objects"},
+            )
         return node_id
 
     for obj in payload.get("objects", []) or []:
@@ -2831,7 +2837,12 @@ def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str)
     def _own(node: UnifiedNode) -> str:
         graph.add_node(node)
         if account_node_id:
-            _add_rel_edge(graph, account_node_id, node.id, RelationshipType.OWNS, {"source": "snowflake-services"})
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node.id,
+                evidence={"source": "snowflake-services"},
+            )
         return node.id
 
     for wh in payload.get("warehouses", []) or []:
@@ -3038,7 +3049,12 @@ def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source:
             )
         )
         if account_node_id:
-            _add_rel_edge(graph, account_node_id, node_id, RelationshipType.OWNS, {"source": "snowflake-external-data"})
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "snowflake-external-data"},
+            )
         return node_id
 
     for tbl in payload.get("iceberg_tables", []) or []:
@@ -3183,7 +3199,12 @@ def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: 
             )
         )
         if account_node_id:
-            _add_rel_edge(graph, account_node_id, node_id, RelationshipType.OWNS, {"source": "snowflake-integrations"})
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node_id,
+                evidence={"source": "snowflake-integrations"},
+            )
 
 
 def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
@@ -3220,7 +3241,12 @@ def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str)
     def _own(node: UnifiedNode) -> str:
         graph.add_node(node)
         if account_node_id:
-            _add_rel_edge(graph, account_node_id, node.id, RelationshipType.OWNS, {"source": "snowflake-pipeline"})
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node.id,
+                evidence={"source": "snowflake-pipeline"},
+            )
         return node.id
 
     def _thin(node_id: str, entity_type: EntityType, label: str, surface: str) -> None:
@@ -3479,7 +3505,12 @@ def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) ->
     def _owned(node: UnifiedNode) -> str:
         graph.add_node(node)
         if account_node_id:
-            _add_rel_edge(graph, account_node_id, node.id, RelationshipType.OWNS, {"source": "snowflake-exfil"})
+            _add_account_resource_hierarchy(
+                graph,
+                account_node_id,
+                node.id,
+                evidence={"source": "snowflake-exfil"},
+            )
         return node.id
 
     # ── Outbound shares → consumer accounts ────────────────────────────
@@ -3710,7 +3741,12 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
                 )
             )
             if account_node_id:
-                _add_rel_edge(graph, account_node_id, object_node_id, RelationshipType.OWNS, {"source": "snowflake-governance"})
+                _add_account_resource_hierarchy(
+                    graph,
+                    account_node_id,
+                    object_node_id,
+                    evidence={"source": "snowflake-governance"},
+                )
         _add_rel_edge(
             graph,
             _ensure_user(user_name),
@@ -3872,12 +3908,11 @@ def _add_cloud_audit_behavioral(graph: UnifiedGraph, payload: Any, data_source: 
                 )
             )
             if account_node_id:
-                _add_rel_edge(
+                _add_account_resource_hierarchy(
                     graph,
                     account_node_id,
                     resource_node_id,
-                    RelationshipType.OWNS,
-                    {"source": "cloud-audit-trail"},
+                    evidence={"source": "cloud-audit-trail"},
                 )
         _add_rel_edge(
             graph,

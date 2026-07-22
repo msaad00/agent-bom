@@ -22,6 +22,7 @@ const { apiMock } = vi.hoisted(() => ({
     getCredentialExpiry: vi.fn(),
     listAccessReviews: vi.fn(),
     discoverNonHumanIdentities: vi.fn(),
+    getNhiGovernance: vi.fn(),
     listDriftIncidents: vi.fn(),
     resolveDriftIncident: vi.fn(),
     getPostureCounts: vi.fn(),
@@ -49,6 +50,10 @@ beforeEach(() => {
     services: {
       ai_spend: { state: "live", count: 1 },
     },
+  });
+  apiMock.getNhiGovernance.mockResolvedValue({
+    counts: {},
+    identities: [],
   });
 });
 
@@ -326,6 +331,7 @@ describe("IdentityPage", () => {
     await waitFor(() =>
       expect(screen.getByText("Managed identities")).toBeInTheDocument(),
     );
+    expect(screen.getByText("NHI governance posture")).toBeInTheDocument();
     expect(screen.getByText("JIT access grants")).toBeInTheDocument();
     expect(screen.getByText("Conditional-access policies")).toBeInTheDocument();
     expect(screen.getByText("prod-only")).toBeInTheDocument();

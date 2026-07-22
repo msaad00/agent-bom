@@ -13,6 +13,10 @@ export interface RankedPathRow {
   riskScore: number;
   hops: number;
   agents: number;
+  /** MCP tool capability tags (read/write/exec/net) feeding path scoring. */
+  capabilityTags?: string[] | undefined;
+  /** Environments seen on path hops (prod weighting explainability). */
+  environmentTags?: string[] | undefined;
 }
 
 /**
@@ -70,6 +74,26 @@ export function RankedPathList({
               <span className="mt-0.5 block text-[11px] text-[color:var(--text-tertiary)]">
                 {row.hops} hop{row.hops === 1 ? "" : "s"} · {row.agents} agent{row.agents === 1 ? "" : "s"}
               </span>
+              {(row.capabilityTags?.length || row.environmentTags?.length) ? (
+                <span className="mt-1 flex flex-wrap gap-1">
+                  {(row.environmentTags ?? []).slice(0, 2).map((tag) => (
+                    <span
+                      key={`env-${tag}`}
+                      className="rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-sky-800 dark:text-sky-200"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                  {(row.capabilityTags ?? []).slice(0, 4).map((tag) => (
+                    <span
+                      key={`cap-${tag}`}
+                      className="rounded border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-violet-800 dark:text-violet-200"
+                    >
+                      {tag === "execute" ? "exec" : tag === "network" ? "net" : tag}
+                    </span>
+                  ))}
+                </span>
+              ) : null}
             </span>
             <span className="col-span-2 col-start-2 justify-self-start rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-left sm:col-span-1 sm:col-start-auto sm:justify-self-auto sm:text-right">
               <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-red-300/80">

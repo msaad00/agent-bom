@@ -240,6 +240,12 @@ export interface FixFirstAction {
   href: string;
 }
 
+export interface FixFirstRankMeta {
+  environment_weight?: number;
+  environments?: string[];
+  tool_capabilities?: string[];
+}
+
 export interface FixFirstPathCard {
   id: string;
   rank: number;
@@ -251,6 +257,7 @@ export interface FixFirstPathCard {
   sequence_labels: string[];
   risk_reasons: FixFirstRiskReason[];
   next_actions: FixFirstAction[];
+  rank_meta?: FixFirstRankMeta | undefined;
   affected: {
     agents: string[];
     servers: string[];
@@ -261,17 +268,36 @@ export interface FixFirstPathCard {
   };
 }
 
+/** Fusion crown-jewel path cluster (not a remediation ticket campaign). */
+export interface GraphAttackCampaign {
+  campaign_id: string;
+  crown_jewel: string;
+  crown_jewel_label: string;
+  partition?: string;
+  owner?: string;
+  business_impact?: string;
+  exploitability?: number;
+  expected_risk_reduction?: number;
+  path_count: number;
+  top_path_summary?: string;
+  cross_partition?: boolean;
+  evidence?: string[];
+  member_paths?: string[];
+}
+
 export interface FixFirstGraphViewResponse {
   scan_id: string;
   tenant_id: string;
   created_at: string;
   cards: FixFirstPathCard[];
+  attack_campaigns?: GraphAttackCampaign[];
   summary: {
     total_paths: number;
     matched_paths: number;
     returned_paths: number;
     highest_risk: number;
     covered_findings: number;
+    campaign_count?: number;
     node_count: number;
     edge_count: number;
   };
@@ -280,6 +306,23 @@ export interface FixFirstGraphViewResponse {
     package: string;
     agent: string;
   };
+}
+
+export interface NhiGovernanceIdentity {
+  node_id?: string;
+  label?: string;
+  risk_score?: number;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface NhiGovernancePosture {
+  generated_from?: string;
+  scan_id?: string;
+  tenant_id?: string;
+  counts?: Record<string, number>;
+  identities?: NhiGovernanceIdentity[];
+  [key: string]: unknown;
 }
 
 export interface GraphQueryRequest {

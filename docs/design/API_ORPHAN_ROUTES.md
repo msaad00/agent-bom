@@ -24,7 +24,7 @@ product consumers.
 | `/v1/credentials/posture` | GET | **soft-deprecate** | No UI/CLI/MCP literals | Credential rotation rollup; sources API tests only |
 | `/v1/auth/saml/relay-state` | POST | **keep** | Auth protocol path (middleware allowlist + SAML login flow) | Not a product orphan; required for SP-initiated SAML |
 | `/v1/graph/presets` (+ `/{name}`) | POST/GET/DELETE | **keep** | UI: `ui/lib/api.ts` + `GraphPresetControls` on `/security-graph` | Investigation filter save/load/delete |
-| `/v1/graph/nhi/governance` | GET | **hold** | Demo estate bootstrap hits it; no UI/CLI/MCP | Defer product call until after graph work (#3664) |
+| `/v1/graph/nhi/governance` | GET | **keep** | UI: Identity NHI posture panel (`getNhiGovernance`) | Productized on Identity/Governance |
 
 ## Soft-deprecation mechanics
 

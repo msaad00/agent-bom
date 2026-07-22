@@ -1482,25 +1482,35 @@ def _overlay_filter_and_respond(
 
 
 def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str, agent: str, limit: int) -> dict[str, Any]:
+    from agent_bom.graph.path_ranking import criticality_rank_meta, path_rank_tuple
+
     available_paths = _derived_attack_paths(graph)
     ranked_paths = sorted(
         (path for path in available_paths if _path_matches_focus(graph, path, cve=cve, package=package, agent=agent)),
-        key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+        key=lambda path: path_rank_tuple(graph, path),
         reverse=True,
     )
-    cards = [_fix_first_card_for_path(graph, path, index + 1) for index, path in enumerate(ranked_paths[:limit])]
+    cards = []
+    for index, path in enumerate(ranked_paths[:limit]):
+        card = _fix_first_card_for_path(graph, path, index + 1)
+        card["rank_meta"] = criticality_rank_meta(graph, path)
+        cards.append(card)
     covered_findings = {finding for card in cards for finding in card["affected"]["findings"]}
+    # Crown-jewel fusion campaigns (not remediation ticket campaigns).
+    campaigns = [campaign.to_dict() for campaign in getattr(graph, "attack_campaigns", [])[:12]]
     return {
         "scan_id": graph.scan_id,
         "tenant_id": graph.tenant_id,
         "created_at": graph.created_at,
         "cards": cards,
+        "attack_campaigns": campaigns,
         "summary": {
             "total_paths": len(available_paths),
             "matched_paths": len(ranked_paths),
             "returned_paths": len(cards),
             "highest_risk": cards[0]["attack_path"]["composite_risk"] if cards else 0.0,
             "covered_findings": len(covered_findings),
+            "campaign_count": len(getattr(graph, "attack_campaigns", [])),
             "node_count": len(graph.nodes),
             "edge_count": len(graph.edges),
         },

@@ -258,6 +258,11 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
 function FeedRow({ event }: { event: GatewayFeedEvent }) {
   const meta = ACTION_META[event.action_type];
   const Icon = meta.icon;
+  const traceId = event.trace_id?.trim() || "";
+  const graphHref = `/security-graph?${new URLSearchParams({
+    ...(traceId ? { trace: traceId } : {}),
+    ...(event.agent ? { agent: event.agent } : {}),
+  }).toString()}`;
   return (
     <div className="flex items-center justify-between px-3 py-2 bg-[var(--surface-elevated)]/50 border border-[var(--border-subtle)] rounded-lg">
       <div className="flex items-center gap-3 min-w-0">
@@ -281,6 +286,15 @@ function FeedRow({ event }: { event: GatewayFeedEvent }) {
         <span className="text-xs text-[var(--text-tertiary)] truncate" title={event.detail}>
           {event.detail}
         </span>
+        {(traceId || event.agent) && (
+          <a
+            href={graphHref}
+            className="shrink-0 rounded border border-sky-700/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 dark:text-sky-200"
+            title={traceId ? `Pin via runtime_trace_id ${traceId}` : "Open agent in security graph"}
+          >
+            {traceId ? "Pin trace" : "Investigate"}
+          </a>
+        )}
       </div>
       <span className="ml-3 flex shrink-0 items-center gap-1 text-xs text-[color:var(--text-tertiary)]">
         <Clock className="w-3 h-3" />

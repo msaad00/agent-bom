@@ -59,3 +59,5 @@ def test_stranded_ci_recovery_runs_on_pr_synchronize() -> None:
     assert "    types: [synchronize]" in workflow
     assert "scripts/dispatch_required_ci.sh" in workflow
     assert "scripts/retrigger_stranded_pr.sh" in workflow
+    assert "github.event.pull_request.number" in workflow
+    assert "github.event_name == 'pull_request' && '0' || '3'" in workflow

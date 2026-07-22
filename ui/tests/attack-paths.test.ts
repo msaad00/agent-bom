@@ -762,26 +762,57 @@ describe("mergeAttackPathGraphPages", () => {
       source,
       target,
       hops: [source, target],
-      vuln_ids: [],
+      edges: [],
       composite_risk: risk,
-      techniques: [],
-    }) as AttackPath;
+      summary: `${source}->${target}`,
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: [],
+    });
+
+  const emptyStats = {
+    total_nodes: 0,
+    total_edges: 0,
+    node_types: {},
+    severity_counts: {},
+    relationship_types: {},
+    attack_path_count: 0,
+    interaction_risk_count: 0,
+    max_attack_path_risk: 0,
+    highest_interaction_risk: 0,
+  };
+
+  const page = (
+    paths: AttackPath[],
+    nodeIds: string[],
+    edgeIds: string[],
+    pagination: { total: number; offset: number; limit: number; has_more: boolean },
+  ): import("@/lib/api-types").UnifiedGraphResponse =>
+    ({
+      scan_id: "scan-1",
+      tenant_id: "default",
+      created_at: "2026-07-22T00:00:00Z",
+      nodes: nodeIds.map((id) => ({ id })) as import("@/lib/api-types").UnifiedGraphResponse["nodes"],
+      edges: edgeIds.map((id) => ({ id })) as import("@/lib/api-types").UnifiedGraphResponse["edges"],
+      attack_paths: paths,
+      interaction_risks: [],
+      stats: { ...emptyStats, attack_path_count: pagination.total },
+      pagination,
+    });
 
   it("appends unique paths/nodes/edges and keeps latest pagination", () => {
-    const first = {
-      nodes: [{ id: "a" }, { id: "b" }],
-      edges: [{ id: "e1" }],
-      attack_paths: [path("a", "b", 9)],
-      pagination: { total: 3, offset: 0, limit: 1, has_more: true },
-      stats: { attack_path_count: 1 },
-    };
-    const second = {
-      nodes: [{ id: "b" }, { id: "c" }],
-      edges: [{ id: "e1" }, { id: "e2" }],
-      attack_paths: [path("b", "c", 8)],
-      pagination: { total: 3, offset: 1, limit: 1, has_more: true },
-      stats: { attack_path_count: 3 },
-    };
+    const first = page([path("a", "b", 9)], ["a", "b"], ["e1"], {
+      total: 3,
+      offset: 0,
+      limit: 1,
+      has_more: true,
+    });
+    const second = page([path("b", "c", 8)], ["b", "c"], ["e1", "e2"], {
+      total: 3,
+      offset: 1,
+      limit: 1,
+      has_more: true,
+    });
     const merged = mergeAttackPathGraphPages(first, second);
     expect(merged.nodes.map((n) => n.id)).toEqual(["a", "b", "c"]);
     expect(merged.edges.map((e) => e.id)).toEqual(["e1", "e2"]);
@@ -790,6 +821,6 @@ describe("mergeAttackPathGraphPages", () => {
       attackPathKey(path("b", "c", 8)),
     ]);
     expect(merged.pagination).toEqual(second.pagination);
-    expect(merged.stats?.attack_path_count).toBe(3);
+    expect(merged.stats.attack_path_count).toBe(3);
   });
 });

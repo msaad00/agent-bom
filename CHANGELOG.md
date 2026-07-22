@@ -42,6 +42,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
   graph test module docstring matches auto-enable behavior.
 
 ### Changed
+- Raise UI client JS budget to 3600 KiB after criticality/NHI investigation
+  panels measured 3585.9 KiB against the prior 3584 KiB ceiling on main CI.
 - README: clean top-nav Live demo link (offline fallback lives under scan/demo
   body copy), lead with product visuals, and collapse persona / connector /
   architecture tables under `<details>`.

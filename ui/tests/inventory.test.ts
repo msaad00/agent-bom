@@ -7,6 +7,7 @@ import {
   buildInventory,
   dataSourceOptions,
   filterAssetRows,
+  mergeGraphPages,
   sortAssetRows,
   summarizeRows,
   type AssetRow,
@@ -274,3 +275,25 @@ function baseRow(overrides: Partial<AssetRow>): AssetRow {
     ...overrides,
   };
 }
+
+describe("mergeGraphPages", () => {
+  it("appends unique nodes/edges and keeps latest pagination", () => {
+    const first = graph(
+      [node("a", "package"), node("b", "package")],
+      [edge("CVE-1", "a")],
+      { package: 3 },
+    );
+    first.pagination = { total: 3, offset: 0, limit: 2, has_more: true, next_cursor: "c1" };
+    const second = graph(
+      [node("b", "package"), node("c", "package")],
+      [edge("CVE-1", "a"), edge("CVE-2", "c")],
+      { package: 3 },
+    );
+    second.pagination = { total: 3, offset: 2, limit: 2, has_more: false, next_cursor: "" };
+
+    const merged = mergeGraphPages(first, second);
+    expect(merged.nodes.map((n) => n.id)).toEqual(["a", "b", "c"]);
+    expect(merged.edges.map((e) => e.id)).toEqual(["CVE-1->a", "CVE-2->c"]);
+    expect(merged.pagination).toEqual(second.pagination);
+  });
+});

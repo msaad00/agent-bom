@@ -385,6 +385,32 @@ export function buildInventory(graph: UnifiedGraphResponse): InventoryModel {
   };
 }
 
+/**
+ * Append a later `/v1/graph` node page onto an already-loaded response so the
+ * inventory section can follow `pagination.has_more` / `next_cursor` without
+ * dropping earlier rows or finding-correlation edges.
+ */
+export function mergeGraphPages(
+  current: UnifiedGraphResponse,
+  next: UnifiedGraphResponse,
+): UnifiedGraphResponse {
+  const nodeIds = new Set(current.nodes.map((node) => node.id));
+  const edgeIds = new Set((current.edges ?? []).map((edge) => edge.id));
+  return {
+    ...current,
+    ...next,
+    nodes: [...current.nodes, ...next.nodes.filter((node) => !nodeIds.has(node.id))],
+    edges: [
+      ...(current.edges ?? []),
+      ...(next.edges ?? []).filter((edge) => !edgeIds.has(edge.id)),
+    ],
+    attack_paths: current.attack_paths,
+    interaction_risks: current.interaction_risks,
+    stats: next.stats ?? current.stats,
+    pagination: next.pagination,
+  };
+}
+
 export interface AssetFilter {
   query?: string | undefined;
   /** Minimum asset severity, e.g. "high"; "all" keeps everything. */

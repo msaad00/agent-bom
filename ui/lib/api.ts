@@ -854,6 +854,7 @@ export const api = {
     maxDepth?: number | undefined;
     offset?: number | undefined;
     limit?: number | undefined;
+    cursor?: string | undefined;
   }) => {
     const params = new URLSearchParams();
     if (filters?.scanId) params.set("scan_id", filters.scanId);
@@ -869,6 +870,7 @@ export const api = {
     if (filters?.maxDepth != null) params.set("max_depth", String(filters.maxDepth));
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.cursor) params.set("cursor", filters.cursor);
     const qs = params.toString();
     return get<UnifiedGraphResponse>(`/v1/graph${qs ? `?${qs}` : ""}`);
   },

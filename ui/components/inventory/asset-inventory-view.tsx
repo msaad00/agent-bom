@@ -38,7 +38,7 @@ const COLUMN_TO_SORT: Record<string, AssetSortKey> = {
 
 export function AssetInventoryView({ kind }: { kind: AssetKindId }) {
   const config = ASSET_KIND_BY_ID[kind];
-  const { model, loading, error, errorKind, reload } = useInventory();
+  const { model, loading, loadingMore, hasMore, error, errorKind, reload, loadMore } = useInventory();
 
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState("all");
@@ -146,11 +146,26 @@ export function AssetInventoryView({ kind }: { kind: AssetKindId }) {
 
       <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]">
         <span className="font-medium text-[color:var(--text-secondary)]">Coverage:</span> {config.coverageNote}
-        {total > loadedCount ? (
+        {total > loadedCount || hasMore ? (
           <span className="text-[color:var(--text-tertiary)]">
             {" "}
-            Showing the first {loadedCount.toLocaleString()} of {total.toLocaleString()} — refine with the search box.
+            Showing {loadedCount.toLocaleString()}
+            {total > loadedCount ? ` of ${total.toLocaleString()}` : ""}
+            {hasMore ? " — more pages available from the graph store." : "."}
           </span>
+        ) : null}
+        {hasMore ? (
+          <button
+            type="button"
+            data-testid="inventory-load-more"
+            onClick={() => {
+              void loadMore();
+            }}
+            disabled={loadingMore}
+            className="ml-2 inline-flex rounded-md border border-[color:var(--border-subtle)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:opacity-60"
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
         ) : null}
       </div>
 

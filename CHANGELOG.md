@@ -46,6 +46,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   and attack paths expose `finding_ids` so investigation joins typed estate nodes
   instead of CVE-label-only anchors; `asset_type` aliases map to `EntityType`
   without mutating stable asset ids.
+- Findings drawer leads with an Estate node section and deep-links into
+  `/security-graph?node=…&finding=…`; Posture nav is investigation-first and
+  post-login defaults to SecOps investigation home.
 - README: clean top-nav Live demo link (offline fallback lives under scan/demo
   body copy), lead with product visuals, and collapse persona / connector /
   architecture tables under `<details>`.

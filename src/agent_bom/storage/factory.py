@@ -4,8 +4,9 @@ Before this module, three stores each decided their backend by hand:
 
 * ``cost_store.get_cost_store`` and ``proxy_replay_store.get_proxy_replay_store``
   branched on ``AGENT_BOM_POSTGRES_URL`` then ``AGENT_BOM_DB`` then in-memory;
-* ``runtime_event_store`` delegated to ``durable_store.select_backend()`` (which
-  is durable-by-default: SQLite unless an explicit ephemeral opt-out).
+* ``runtime_event_store`` / ``runtime_workload_evidence_store`` delegated to
+  ``durable_store.select_backend()`` (which is durable-by-default: SQLite unless
+  an explicit ephemeral opt-out).
 
 Two subtly different precedence ladders for the same decision is exactly how a
 store ends up on the wrong tier. :func:`resolve_backend` centralises the choice

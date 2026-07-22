@@ -30,6 +30,13 @@ from agent_bom.api.runtime_event_store import (
     get_runtime_event_store,
     set_runtime_event_store,
 )
+from agent_bom.cloud.runtime_workload_evidence import RuntimeWorkloadSignal
+from agent_bom.cloud.runtime_workload_evidence_store import (
+    InMemoryRuntimeWorkloadEvidenceStore,
+    SQLiteRuntimeWorkloadEvidenceStore,
+    get_runtime_workload_evidence_store,
+    set_runtime_workload_evidence_store,
+)
 
 
 @pytest.fixture()
@@ -47,11 +54,13 @@ def durable_state_dir(tmp_path, monkeypatch):
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
     set_agent_identity_store(None)
     set_runtime_event_store(None)
+    set_runtime_workload_evidence_store(None)
     try:
         yield tmp_path
     finally:
         set_agent_identity_store(None)
         set_runtime_event_store(None)
+        set_runtime_workload_evidence_store(None)
 
 
 def test_default_backend_is_durable_sqlite(durable_state_dir):
@@ -141,6 +150,41 @@ def test_runtime_session_survives_restart(durable_state_dir):
     assert observations[0].tool_name == "search"
 
 
+def test_runtime_workload_evidence_survives_restart(durable_state_dir):
+    store = get_runtime_workload_evidence_store()
+    assert isinstance(store, SQLiteRuntimeWorkloadEvidenceStore)
+    assert (
+        store.put_batch(
+            [
+                RuntimeWorkloadSignal(
+                    tenant_id="t-cwpp",
+                    provider="aws",
+                    account_id="123456789012",
+                    workload_ref="i-0restart",
+                    signal_type="ioc_detection",  # type: ignore[arg-type]
+                    severity="high",
+                    observed_at="2026-07-18T12:00:00Z",
+                    source_id="edr-1",
+                    source_kind="edr",
+                    dedup_key="evt-restart",
+                    title="known C2 domain contacted",
+                )
+            ]
+        )
+        == 1
+    )
+
+    set_runtime_workload_evidence_store(None)
+
+    store2 = get_runtime_workload_evidence_store()
+    assert store2 is not store
+    assert isinstance(store2, SQLiteRuntimeWorkloadEvidenceStore)
+    rows = store2.list_for_tenant("t-cwpp")
+    assert len(rows) == 1
+    assert rows[0].workload_ref == "i-0restart"
+    assert rows[0].dedup_key == "evt-restart"
+
+
 def test_postgres_url_routes_to_postgres_store(durable_state_dir, monkeypatch):
     # When a Postgres URL is configured the selector must pick the shared
     # Postgres-backed store (multi-replica), not the SQLite default. Patch the
@@ -149,19 +193,24 @@ def test_postgres_url_routes_to_postgres_store(durable_state_dir, monkeypatch):
     import agent_bom.api.postgres_agent_identity as pai
     import agent_bom.api.postgres_runtime_event as pre
     import agent_bom.api.runtime_event_store as res
+    import agent_bom.cloud.runtime_workload_evidence_store as rwes
 
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://unused/db")
     assert durable_store.select_backend() == "postgres"
 
     sentinel_identity = object()
     sentinel_runtime = object()
+    sentinel_workload = object()
     monkeypatch.setattr(pai, "PostgresAgentIdentityStore", lambda *a, **k: sentinel_identity)
     monkeypatch.setattr(pre, "PostgresRuntimeEventStore", lambda *a, **k: sentinel_runtime)
+    monkeypatch.setattr(rwes, "PostgresRuntimeWorkloadEvidenceStore", lambda *a, **k: sentinel_workload)
     ais.set_agent_identity_store(None)
     res.set_runtime_event_store(None)
+    rwes.set_runtime_workload_evidence_store(None)
 
     assert ais.get_agent_identity_store() is sentinel_identity
     assert res.get_runtime_event_store() is sentinel_runtime
+    assert rwes.get_runtime_workload_evidence_store() is sentinel_workload
 
 
 def test_postgres_stores_import_and_expose_store_protocol():
@@ -169,11 +218,14 @@ def test_postgres_stores_import_and_expose_store_protocol():
     # surface the SQLite/in-memory tiers do, so the selector can swap them in.
     from agent_bom.api.postgres_agent_identity import PostgresAgentIdentityStore
     from agent_bom.api.postgres_runtime_event import PostgresRuntimeEventStore
+    from agent_bom.cloud.runtime_workload_evidence_store import PostgresRuntimeWorkloadEvidenceStore
 
     for method in ("put", "get", "get_by_token_hash", "list", "put_jit_grant", "active_jit_grant"):
         assert callable(getattr(PostgresAgentIdentityStore, method))
     for method in ("put_observation", "list_sessions", "get_session", "list_observations"):
         assert callable(getattr(PostgresRuntimeEventStore, method))
+    for method in ("init_schema", "put_batch", "list_for_tenant"):
+        assert callable(getattr(PostgresRuntimeWorkloadEvidenceStore, method))
 
 
 def test_ephemeral_opt_out_does_not_persist(durable_state_dir, monkeypatch):
@@ -181,14 +233,35 @@ def test_ephemeral_opt_out_does_not_persist(durable_state_dir, monkeypatch):
     # store instance does NOT see what a prior instance issued.
     monkeypatch.setenv("AGENT_BOM_EPHEMERAL_STORE", "1")
     set_agent_identity_store(None)
+    set_runtime_workload_evidence_store(None)
     assert durable_store.select_backend() == "memory"
 
     store = get_agent_identity_store()
     identity, _ = issue_identity(store, agent_id="ephemeral", tenant_id="t-eph")
+    workload = get_runtime_workload_evidence_store()
+    assert isinstance(workload, InMemoryRuntimeWorkloadEvidenceStore)
+    workload.put_batch(
+        [
+            RuntimeWorkloadSignal(
+                tenant_id="t-eph",
+                provider="aws",
+                account_id="123456789012",
+                workload_ref="i-eph",
+                signal_type="ioc_detection",  # type: ignore[arg-type]
+                severity="high",
+                observed_at="2026-07-18T12:00:00Z",
+                source_id="edr-1",
+                source_kind="edr",
+                dedup_key="evt-eph",
+            )
+        ]
+    )
     set_agent_identity_store(None)
+    set_runtime_workload_evidence_store(None)
 
     store2 = get_agent_identity_store()
     assert store2.get(identity.identity_id, tenant_id="t-eph") is None
+    assert get_runtime_workload_evidence_store().list_for_tenant("t-eph") == []
     # No durable file is created for the ephemeral tier.
     assert not (durable_state_dir / durable_store.DEFAULT_STATE_DB_FILENAME).exists()
     assert not os.path.exists(durable_state_dir / durable_store.DEFAULT_STATE_DB_FILENAME)

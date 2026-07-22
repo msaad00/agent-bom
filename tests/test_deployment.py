@@ -283,6 +283,7 @@ def test_server_card_tools_expose_capability_classes():
         "identity_grant_jit",
         "identity_revoke_jit",
         "ingest_external_scan",
+        "runtime_evidence_ingest",
         # access_review recomputes+persists campaign status on read; diff persists
         # the fresh scan to history and prunes old reports.
         "access_review",
@@ -373,6 +374,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "identity_revoke_jit",
         "identity_rotate",
         "ingest_external_scan",
+        "runtime_evidence_ingest",
         "shield_break_glass",
         "shield_start",
         "shield_unblock",

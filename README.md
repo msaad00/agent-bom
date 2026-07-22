@@ -189,7 +189,7 @@ deploys terminate TLS at the edge; API/UI stay on loopback or a private network.
 **Accuracy:** match tiers
 `distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` > `nvd_cpe_candidate`.
 End users do not need an NVD API key; `NVD_API_KEY` is an optional operator
-freshness knob. MCP server mode exposes 76 MCP tools, 6 resources, and 8 workflow prompts
+freshness knob. MCP server mode exposes 77 MCP tools, 6 resources, and 8 workflow prompts
 over strict arguments. Agent distribution includes a committed
 [Smithery manifest](integrations/smithery.yaml); external catalog liveness is
 verified separately. Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md) ·

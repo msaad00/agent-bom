@@ -479,6 +479,46 @@ def ingest_runtime_signals(
     return result
 
 
+def ingest_runtime_signals_payload(
+    *,
+    source_id: str,
+    secret: str,
+    payload: Any,
+    persist: bool = True,
+    now: str | None = None,
+    max_age_seconds: int = DEFAULT_MAX_SIGNAL_AGE_SECONDS,
+    registry: RuntimeSourceRegistry | None = None,
+    store: Any = None,
+) -> IngestResult:
+    """CLI/MCP helper: ingest a JSON list (or ``{"signals": [...]}``) of raw signals.
+
+    Uses the process registry and durable store by default so operator surfaces
+    share the same door as ``POST /v1/cloud/runtime-evidence/ingest``.
+    """
+    if isinstance(payload, Mapping) and "signals" in payload:
+        raw_signals = payload.get("signals")
+    else:
+        raw_signals = payload
+    if not isinstance(raw_signals, list):
+        raise ValueError('runtime evidence payload must be a list of signals or {"signals": [...]}')
+    cleaned = [row for row in raw_signals if isinstance(row, Mapping)]
+    active_registry = registry if registry is not None else get_runtime_source_registry()
+    active_store = store
+    if persist and active_store is None:
+        from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
+
+        active_store = get_runtime_workload_evidence_store()
+    return ingest_runtime_signals(
+        registry=active_registry,
+        source_id=source_id,
+        secret=secret,
+        raw_signals=cleaned,
+        now=now,
+        max_age_seconds=max_age_seconds,
+        store=active_store if persist else None,
+    )
+
+
 # ── Enrichment (additive, honest, tenant-isolated) ───────────────────────────
 
 
@@ -773,6 +813,7 @@ __all__ = [
     "enrich_graph_workload_runtime_evidence",
     "get_runtime_source_registry",
     "ingest_runtime_signals",
+    "ingest_runtime_signals_payload",
     "no_runtime_signal_summary",
     "set_runtime_source_registry",
     "workload_runtime_summary",

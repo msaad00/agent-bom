@@ -309,6 +309,7 @@ agent-bom where             # show all discovery paths
 | `model_file_scan` | Scan model files for unsafe serialization (pickle, etc.) |
 | `license_compliance_scan` | Full SPDX license catalog scan with copyleft and network-copyleft detection |
 | `ingest_external_scan` | Import external scan results (CycloneDX/SPDX/JSON) and merge into agent-bom findings |
+| `runtime_evidence_ingest` | Ingest CWPP runtime/EDR workload signals (authenticated source; metadata only) |
 
 ### Resources
 | Resource | Description |

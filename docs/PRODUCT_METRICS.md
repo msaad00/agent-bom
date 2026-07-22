@@ -10,7 +10,7 @@ Keep counts out of public positioning copy and update this file from the repo in
 
 | Metric | Value | Source | Notes |
 | --- | ---: | --- | --- |
-| MCP tools | 76 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card tools. |
+| MCP tools | 77 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card tools. |
 | MCP resources | 6 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card resources. |
 | MCP prompts | 8 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card workflow prompts. |
 | GitHub workflow files | 39 | `.github/workflows` | Counts .yml and .yaml workflow definitions. |

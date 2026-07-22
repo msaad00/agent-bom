@@ -241,6 +241,8 @@ AGENT_BOM_GCP_INVENTORY
 AGENT_BOM_GCP_MAX_PROJECTS
 # JSON array provisioning CWPP runtime-evidence ingest sources (source_id/tenant/provider/account/secret_hash); read once to build the process-global source registry. Fail-closed: empty/malformed registers no source.
 AGENT_BOM_RUNTIME_EVIDENCE_SOURCES
+# CLI/MCP convenience secret for one ingest call (never logged); prefer hashed secrets in AGENT_BOM_RUNTIME_EVIDENCE_SOURCES for durable sources.
+AGENT_BOM_RUNTIME_EVIDENCE_SOURCE_SECRET
 AGENT_BOM_GRAPH_DB
 AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK
 AGENT_BOM_GRAPH_DELTA_WEBHOOK

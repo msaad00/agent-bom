@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (76):
+Tools (77):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     intel_lookup        — Look up a CVE, GHSA, or OSV advisory from local threat intel
@@ -74,6 +74,7 @@ Tools (76):
     ai_inventory_scan   — Scan source code for AI SDK imports, model references, shadow AI
     license_compliance_scan — Evaluate package licenses against SPDX compliance policy
     ingest_external_scan   — Ingest tool-agnostic SARIF, SBOM, or scanner JSON with blast radius analysis
+    runtime_evidence_ingest — Ingest CWPP runtime/EDR workload signals (authenticated source; metadata only)
     cost_forecast       — Project LLM spend burn rate and budget runway
     cost_allocation     — Chargeback / showback spend rollups by cost-center and tag
     credential_expiry   — Expiring / overdue credential and rotation posture

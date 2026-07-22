@@ -1237,6 +1237,27 @@
     ]
   },
   {
+    "name": "runtime_evidence_ingest",
+    "description": "Ingest CWPP runtime/EDR workload signals into the durable evidence store (authenticated source; metadata only; never writes to a customer cloud target).",
+    "arguments": [
+      {
+        "name": "source_id",
+        "type": "string",
+        "desc": "Pre-registered runtime evidence source id"
+      },
+      {
+        "name": "secret",
+        "type": "string",
+        "desc": "Shared secret for the source (never logged)"
+      },
+      {
+        "name": "signals_json",
+        "type": "string",
+        "desc": "JSON string: a list of signal objects, or {\"signals\": [...]} matching the REST ingest body"
+      }
+    ]
+  },
+  {
     "name": "cost_forecast",
     "description": "Project LLM spend burn rate and budget runway for the active tenant \u2014 reference-only forecast with projected period spend, days of runway, and exhaustion date.",
     "arguments": [

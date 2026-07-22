@@ -99,6 +99,11 @@ def _minimal_args(name: str, workdir: Path) -> dict[str, Any]:
         "identity_revoke_jit": {"grant_id": "grant-x"},
         "identity_rotate": {"identity_id": "id-x"},
         "ingest_external_scan": {"scan_json": "{}", "parse_only": True},
+        "runtime_evidence_ingest": {
+            "source_id": "edr-missing",
+            "secret": "x",
+            "signals_json": "[]",
+        },
         "intel_lookup": {"advisory_id": "GHSA-xxxx-xxxx-xxxx"},
         "inventory_asset": {"asset_id": "asset-does-not-exist"},
         "license_compliance_scan": {"scan_json": "{}"},

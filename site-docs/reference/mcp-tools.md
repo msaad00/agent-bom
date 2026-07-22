@@ -3,14 +3,15 @@
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
-resources, or runtime targets. Thirteen write-annotated tools cover scan-history
-diff, Shield, identity, external ingest, access review, and ticket workflows.
+resources, or runtime targets. Fourteen write-annotated tools cover scan-history
+diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
+review, and ticket workflows.
 They fail closed unless a remote caller uses the operator token and supplies an
 admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.
 
 <details>
-<summary>Complete current catalog (76 tools)</summary>
+<summary>Complete current catalog (77 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
@@ -28,9 +29,9 @@ invoke them.
 `vector_db_scan`, `aisvs_benchmark`, `gpu_infra_scan`, `registry_sweep_scan`,
 `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`,
 `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ai_inventory_scan`,
-`license_compliance_scan`, `ingest_external_scan`, `cost_forecast`,
-`cost_allocation`, `credential_expiry`, `nhi_discover`, `cloud_inventory`,
-`access_review`, `create_ticket`, `sync_ticket_status`.
+`license_compliance_scan`, `ingest_external_scan`, `runtime_evidence_ingest`,
+`cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
+`cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`.
 
 </details>
 
@@ -397,6 +398,15 @@ JSON) and return packages with blast-radius analysis. This parses an existing
 artifact and does not execute Semgrep or any other producer.
 ```
 ingest_external_scan(scan_json="<SARIF or scanner JSON>", parse_only=true)
+```
+
+### runtime_evidence_ingest
+Ingest CWPP runtime/EDR workload signals into the durable evidence store.
+Requires a pre-registered source (`AGENT_BOM_RUNTIME_EVIDENCE_SOURCES`) and
+shared secret. Metadata only; never writes to a customer cloud target. Fail-closed
+on auth. Write-annotated (`findings:write`).
+```
+runtime_evidence_ingest(source_id="edr-1", secret="...", signals_json="[]")
 ```
 
 ## Resources

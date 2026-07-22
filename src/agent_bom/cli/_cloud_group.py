@@ -852,3 +852,77 @@ def _render_side_scan_results(con: Console, results: list[SideScanResult]) -> No
 
 
 cloud_group.add_command(side_scan_cmd, "side-scan")
+
+
+@click.command("runtime-evidence-ingest")
+@click.option("--source-id", required=True, help="Pre-registered runtime evidence source id.")
+@click.option(
+    "--secret",
+    required=True,
+    envvar="AGENT_BOM_RUNTIME_EVIDENCE_SOURCE_SECRET",
+    help="Shared secret for the source (or set AGENT_BOM_RUNTIME_EVIDENCE_SOURCE_SECRET).",
+)
+@click.option(
+    "--file",
+    "signals_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+    required=True,
+    help="JSON file: a list of signals, or {\"signals\": [...]}.",
+)
+@click.option("--no-persist", is_flag=True, help="Authenticate + validate only; do not write the durable store.")
+def runtime_evidence_ingest_cmd(source_id: str, secret: str, signals_file: str, no_persist: bool) -> None:
+    """Ingest CWPP runtime/EDR workload signals into the local evidence store.
+
+    Sources must already be registered via ``AGENT_BOM_RUNTIME_EVIDENCE_SOURCES``
+    (hashed shared secret). Read-only toward customer targets: agent-bom never
+    writes to a cloud workload; only redacted metadata is persisted. Fail-closed
+    authentication — unknown source or bad secret exits non-zero.
+
+    \b
+    Examples:
+      agent-bom cloud runtime-evidence-ingest \\
+        --source-id edr-1 --secret \"$SECRET\" --file signals.json
+    """
+    import json
+    from pathlib import Path
+
+    from rich.console import Console
+
+    from agent_bom.cloud.runtime_workload_evidence import (
+        SourceAuthenticationError,
+        ingest_runtime_signals_payload,
+    )
+
+    con = Console()
+    try:
+        payload = json.loads(Path(signals_file).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        con.print(f"\n  [red]invalid signals file:[/red] {exc}\n")
+        raise SystemExit(2) from exc
+
+    try:
+        result = ingest_runtime_signals_payload(
+            source_id=source_id,
+            secret=secret,
+            payload=payload,
+            persist=not no_persist,
+        )
+    except SourceAuthenticationError:
+        con.print("\n  [red]runtime evidence source authentication failed[/red]\n")
+        raise SystemExit(1)
+    except ValueError as exc:
+        con.print(f"\n  [red]invalid payload:[/red] {exc}\n")
+        raise SystemExit(2) from exc
+
+    summary = result.to_dict()
+    con.print("\n  [bold]runtime evidence ingest[/bold] [dim]· metadata only · additive[/dim]")
+    con.print(
+        f"  source={summary['source_id']} tenant={summary['tenant_id']} "
+        f"accepted={summary['accepted']} persisted={summary['persisted']} "
+        f"deduped={summary['deduped']} stale={summary['rejected_stale']} "
+        f"incomplete={summary['rejected_incomplete']}"
+    )
+    con.print()
+
+
+cloud_group.add_command(runtime_evidence_ingest_cmd, "runtime-evidence-ingest")

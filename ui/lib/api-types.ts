@@ -324,6 +324,21 @@ export interface GraphImpactResponse {
   max_depth_reached: number;
 }
 
+/** Saved tenant graph filter preset from GET/POST /v1/graph/presets */
+export interface GraphFilterPreset {
+  name: string;
+  description?: string;
+  filters: Record<string, unknown>;
+  created_at?: string;
+  tenant_id?: string;
+}
+
+export interface GraphFilterPresetCreate {
+  name: string;
+  description?: string;
+  filters: Record<string, unknown>;
+}
+
 export interface GraphNodeDetailResponse {
   node: UnifiedNode;
   edges_out: UnifiedEdge[];

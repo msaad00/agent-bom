@@ -1203,6 +1203,10 @@ class AIBOMReport:
     browser_extensions: Optional[dict[str, Any]] = None  # Serialized browser extension scan results
     ai_inventory_data: Optional[dict[str, Any]] = None  # AI component source scan results (SDK imports, models, keys)
     project_inventory_data: Optional[dict[str, Any]] = None  # Project manifest / lockfile inventory summary
+    # Optional GitHub trust card from --repo / repo_url scans (stars, contributors,
+    # license, pushed_at, …). Best-effort read-only API metadata — never required
+    # for the security scan itself.
+    repo_trust_data: Optional[dict[str, Any]] = None
     introspection_data: Optional[dict[str, Any]] = None  # Runtime MCP introspection results (tools, resources, drift)
     health_check_data: Optional[dict[str, Any]] = None  # MCP server reachability/health results
     runtime_session_graph: Optional[dict[str, Any]] = None  # Structured runtime session graph/timeline evidence

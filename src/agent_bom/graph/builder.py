@@ -1175,6 +1175,12 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("code-graph overlay failed", exc_info=True)
 
+    # Repo trust card (stars/contributors/license/…) from --repo / repo_url scans.
+    try:
+        _apply_repo_trust_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("repo-trust overlay failed", exc_info=True)
+
     # CI_JOB / RUNS / CONFIGURES from github-actions agents already in the report.
     try:
         _apply_ci_graph_overlay(graph, report_json)
@@ -1276,6 +1282,24 @@ def _apply_code_graph_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any
     from agent_bom.graph.code_graph_overlay import apply_code_graph_overlay
 
     apply_code_graph_overlay(graph, dict(report_json), datetime.now(timezone.utc))
+
+
+def _apply_repo_trust_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
+    """Stamp ``repo_trust`` metadata onto APPLICATION (+ root DIRECTORY when present)."""
+    has_trust = isinstance(report_json.get("repo_trust"), Mapping) and bool(report_json.get("repo_trust"))
+    inventory = report_json.get("project_inventory")
+    has_nested = (
+        isinstance(inventory, Mapping)
+        and isinstance(inventory.get("repo_trust"), Mapping)
+        and bool(inventory.get("repo_trust"))
+    )
+    if not has_trust and not has_nested:
+        return
+    from datetime import datetime, timezone
+
+    from agent_bom.graph.repo_trust_overlay import apply_repo_trust_overlay
+
+    apply_repo_trust_overlay(graph, dict(report_json), datetime.now(timezone.utc))
 
 
 def _apply_ci_graph_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:

@@ -898,8 +898,9 @@ def _run_scan_sync(job: ScanJob) -> None:
         iac_findings_data: dict | None = None
         repo_ai_inventory_data: dict | None = None
         repo_sast_data: dict | None = None
+        repo_trust_data: dict | None = None
         if repo_url:
-            from agent_bom.repo_scan import RepoScanError, clone_repository
+            from agent_bom.repo_scan import RepoScanError, clone_repository, fetch_repo_trust
 
             pipeline.start_step("discovery", f"Cloning repository: {repo_url}")
             try:
@@ -912,6 +913,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             effective_gha_path = effective_gha_path or cloned_path
             extra_symbol_paths.append(cloned_path)
             pipeline.update_step("discovery", f"Repository cloned for static scan: {repo_url}")
+            repo_trust_data = fetch_repo_trust(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN")
             from agent_bom.api.repo_tree_scan import scan_cloned_repo_tree
 
             repo_tree_result = scan_cloned_repo_tree(
@@ -1296,6 +1298,8 @@ def _run_scan_sync(job: ScanJob) -> None:
                     _promote_repo_dependency_inventory(report, repo_ai_inventory_data)
                 if repo_sast_data is not None:
                     report.sast_data = repo_sast_data
+                if repo_trust_data is not None:
+                    report.repo_trust_data = repo_trust_data
                 report_json = to_json(report)
                 report_json["status"] = "findings_only"
                 with lock:
@@ -1516,6 +1520,8 @@ def _run_scan_sync(job: ScanJob) -> None:
             _promote_repo_dependency_inventory(report, repo_ai_inventory_data)
         if repo_sast_data is not None:
             report.sast_data = repo_sast_data
+        if repo_trust_data is not None:
+            report.repo_trust_data = repo_trust_data
         if req.vex:
             from agent_bom.vex import apply_vex, load_vex
             from agent_bom.vex import to_serializable as vex_to_serializable

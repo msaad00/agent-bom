@@ -146,6 +146,25 @@ def print_summary(report: AIBOMReport) -> None:
             advisory_depth += f" ({advisory_depth_pct}% lockfile-backed)"
         table.add_row("Advisory depth", advisory_depth)
 
+    repo_trust = getattr(report, "repo_trust_data", None)
+    if isinstance(repo_trust, dict) and repo_trust:
+        name = repo_trust.get("full_name") or repo_trust.get("repo_url") or "repository"
+        if repo_trust.get("status") == "ok":
+            bits = [str(name)]
+            if repo_trust.get("stars") is not None:
+                bits.append(f"★ {repo_trust['stars']}")
+            if repo_trust.get("contributors") is not None:
+                bits.append(f"{repo_trust['contributors']} contributors")
+            if repo_trust.get("license"):
+                bits.append(str(repo_trust["license"]))
+            if repo_trust.get("language"):
+                bits.append(str(repo_trust["language"]))
+            if repo_trust.get("pushed_at"):
+                bits.append(f"pushed {repo_trust['pushed_at']}")
+            table.add_row("Repo trust", " · ".join(bits))
+        else:
+            table.add_row("Repo trust", f"{name} ({repo_trust.get('status', 'unavailable')})")
+
     model_sc = getattr(report, "model_supply_chain_data", None)
     if model_sc:
         table.add_row(

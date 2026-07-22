@@ -33,6 +33,7 @@ class ScanContext:
     sast_data: Any = None
     ai_inventory_data: Any = None
     project_inventory_data: Any = None
+    repo_trust_data: Any = None
     model_hash_verification_data: Any = None
     model_supply_chain_data: Any = None
     iac_findings_data: Any = None

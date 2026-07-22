@@ -1427,6 +1427,15 @@ def to_json(report: AIBOMReport) -> dict:
         result["ai_inventory"] = report.ai_inventory_data
     if report.project_inventory_data:
         result["project_inventory"] = report.project_inventory_data
+    if report.repo_trust_data:
+        result["repo_trust"] = report.repo_trust_data
+        # Convenience: nest under project_inventory when both are present so the
+        # graph overlay and UI can discover trust next to the folder tree.
+        inventory = result.get("project_inventory")
+        if isinstance(inventory, dict) and "repo_trust" not in inventory:
+            inventory = dict(inventory)
+            inventory["repo_trust"] = report.repo_trust_data
+            result["project_inventory"] = inventory
     if report.introspection_data:
         result["introspection"] = report.introspection_data
     if report.health_check_data:

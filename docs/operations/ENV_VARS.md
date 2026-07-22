@@ -292,6 +292,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_REPO_SCAN_CLONE_TIMEOUT_SECONDS` | `float` | `120.0` | Max wall-clock seconds for the `git clone` step before it is aborted. |
 | `AGENT_BOM_REPO_SCAN_MAX_FILES` | `int` | `100000` | Max number of files in the cloned working tree. |
 | `AGENT_BOM_REPO_SCAN_MAX_SIZE_BYTES` | `int` | `1024 * 1024 * 1024` | Max total on-disk size (bytes) of the cloned working tree. Default 1 GiB. |
+| `AGENT_BOM_REPO_TRUST` | `bool` | `True` | Optional GitHub trust card on --repo / repo_url scans (stars, contributors, license, pushed_at). Enabled by default; set AGENT_BOM_REPO_TRUST=0 to skip. Uses the same read-only AGENT_BOM_REPO_SCAN_TOKEN when present. Never required for the  |
 
 ## Rate-limit fingerprint key rotation policy
 | Env var | Type | Default | Description |

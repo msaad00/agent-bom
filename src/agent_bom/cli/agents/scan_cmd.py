@@ -651,6 +651,7 @@ def scan(
     # Shallow-clone the URL into a temp dir, point the local-directory scan path
     # at it, and remove the temp dir when the command finishes. Static only —
     # the repository's code is never executed.
+    repo_trust_data: dict[str, Any] | None = None
     if repo_url:
         if project:
             raise click.ClickException("--repo and --project/-p are mutually exclusive.")
@@ -662,7 +663,7 @@ def scan(
             )
         from contextlib import ExitStack
 
-        from agent_bom.repo_scan import RepoScanError, clone_repository
+        from agent_bom.repo_scan import RepoScanError, clone_repository, fetch_repo_trust
 
         _repo_cleanup = ExitStack()
         click_ctx = click.get_current_context(silent=True)
@@ -674,6 +675,9 @@ def scan(
             _repo_cleanup.close()
             raise click.ClickException(str(exc)) from exc
         project = str(cloned_dir)
+        # Best-effort GitHub trust card (stars/contributors/license). Never fails
+        # the scan; disable with AGENT_BOM_REPO_TRUST=0.
+        repo_trust_data = fetch_repo_trust(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN")
 
     # Route console output based on flags
     is_stdout = output == "-"
@@ -926,6 +930,8 @@ def scan(
 
     # Create shared context object
     ctx = ScanContext(con=con, quiet=quiet, verbose=verbose)
+    if repo_trust_data:
+        ctx.repo_trust_data = repo_trust_data
     try:
         from agent_bom.resolver import reset_performance_stats as _reset_resolver_performance
         from agent_bom.scanners import reset_scan_performance as _reset_scan_performance
@@ -1997,6 +2003,8 @@ def scan(
         report.ai_inventory_data = ctx.ai_inventory_data
     if ctx.project_inventory_data:
         report.project_inventory_data = ctx.project_inventory_data
+    if ctx.repo_trust_data:
+        report.repo_trust_data = ctx.repo_trust_data
     if ctx.model_hash_verification_data:
         report.model_hash_verification_data = ctx.model_hash_verification_data
 

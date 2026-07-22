@@ -9,6 +9,8 @@ share one vocabulary without inventing a separate info-id taxonomy.
 
 from __future__ import annotations
 
+from typing import Any
+
 from agent_bom.graph.types import EntityType
 
 # Freeform / legacy asset_type → canonical EntityType.
@@ -89,7 +91,7 @@ def finding_id_from_node_attributes(attrs: dict | None) -> str | None:
     return None
 
 
-def link_findings_to_graph_nodes(findings: list[object], graph: object) -> int:
+def link_findings_to_graph_nodes(findings: list[Any], graph: Any) -> int:
     """Stamp Finding ↔ UnifiedNode FKs both ways. Returns number of findings linked.
 
     - Finding.finding_node_id ← vuln/misconfig node id when label/CVE matches
@@ -105,7 +107,7 @@ def link_findings_to_graph_nodes(findings: list[object], graph: object) -> int:
     if not isinstance(nodes, dict) or not findings:
         return 0
 
-    finding_nodes: dict[str, object] = {}
+    finding_nodes: dict[str, Any] = {}
     for node in nodes.values():
         et = getattr(node, "entity_type", None)
         if et not in {EntityType.VULNERABILITY, EntityType.MISCONFIGURATION}:
@@ -133,7 +135,7 @@ def link_findings_to_graph_nodes(findings: list[object], graph: object) -> int:
         if ":" in title:
             candidates.append(title.split(":", 1)[0].strip())
 
-        match = None
+        match: Any | None = None
         for cand in candidates:
             if not cand:
                 continue
@@ -145,12 +147,8 @@ def link_findings_to_graph_nodes(findings: list[object], graph: object) -> int:
             asset = getattr(finding, "asset", None)
             identifier = str(getattr(asset, "identifier", None) or getattr(asset, "name", "") or "").strip()
             if identifier and identifier in nodes:
-                match = nodes[identifier]
                 if not getattr(finding, "node_id", None):
-                    finding.node_id = identifier
-                if not getattr(finding, "finding_node_id", None):
-                    # Identity findings often have no separate vuln node
-                    finding.finding_node_id = None
+                    setattr(finding, "node_id", identifier)
                 linked += 1
                 continue
 
@@ -159,7 +157,7 @@ def link_findings_to_graph_nodes(findings: list[object], graph: object) -> int:
 
         node_id = str(getattr(match, "id", "") or "")
         if node_id and not getattr(finding, "finding_node_id", None):
-            finding.finding_node_id = node_id
+            setattr(finding, "finding_node_id", node_id)
 
         attrs = getattr(match, "attributes", None)
         if isinstance(attrs, dict) and not finding_id_from_node_attributes(attrs):
@@ -173,7 +171,7 @@ def link_findings_to_graph_nodes(findings: list[object], graph: object) -> int:
                 if getattr(edge, "target", None) != node_id:
                     continue
                 rel = getattr(edge, "relationship", None)
-                rel_val = rel.value if hasattr(rel, "value") else rel
+                rel_val = getattr(rel, "value", rel)
                 if rel_val != RelationshipType.VULNERABLE_TO.value:
                     continue
                 src = getattr(edge, "source", None)
@@ -181,7 +179,7 @@ def link_findings_to_graph_nodes(findings: list[object], graph: object) -> int:
                     asset_node_id = src
                     break
             if asset_node_id:
-                finding.node_id = asset_node_id
+                setattr(finding, "node_id", asset_node_id)
         linked += 1
     return linked
 

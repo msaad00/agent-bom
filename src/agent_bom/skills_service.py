@@ -20,8 +20,8 @@ from agent_bom.parsers.skills import (
     looks_like_instruction_surface,
     parse_skill_file,
 )
-from agent_bom.parsers.trust_assessment import ProvenanceVerdict, TrustAssessmentResult, Verdict, assess_trust
-from agent_bom.security import sanitize_command_args
+from agent_bom.parsers.trust_assessment import ProvenanceVerdict, ReviewVerdict, TrustAssessmentResult, Verdict, assess_trust
+from agent_bom.security import sanitize_command_args, sanitize_error
 from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
 from agent_bom.skill_intel import ThreatIntelResult, ThreatIntelStatus, lookup_bundle_threat_intel
 from agent_bom.skills_catalog import catalog_scan_timestamp, load_skills_catalog, save_skills_catalog
@@ -396,6 +396,33 @@ def _run_async_sync(awaitable):
         return future.result()
 
 
+
+def _failed_skill_file_report(path: Path, exc: BaseException) -> SkillFileReport:
+    """Build a warn-and-continue report when one skill target raises mid-batch."""
+    safe = sanitize_error(exc)
+    return SkillFileReport(
+        path=path,
+        scan=SkillScanResult(source_files=[str(path)]),
+        audit=SkillAuditResult(passed=False),
+        trust=TrustAssessmentResult(
+            source_file=str(path),
+            review_verdict=ReviewVerdict.REVIEW,
+            provenance_verdict=ProvenanceVerdict.UNVERIFIED,
+            recommendations=[f"Skill scan failed: {safe}"],
+            review_reasons=[safe],
+        ),
+        provenance={"status": "unavailable", "reason": safe},
+        bundle=SkillBundle(
+            stable_id="",
+            sha256="",
+            root=str(path.parent),
+            file_count=0,
+            referenced_file_count=0,
+        ),
+        status=ThreatIntelStatus.UNAVAILABLE.value,
+    )
+
+
 async def _scan_skill_targets_async(
     paths: Iterable[str | Path] | None = None,
     *,
@@ -414,7 +441,14 @@ async def _scan_skill_targets_async(
         async with sem:
             return await _build_skill_report_async(path, intel_source=intel_source)
 
-    reports = list(await asyncio.gather(*[_scan_one(path) for path in targets]))
+    outcomes = await asyncio.gather(*[_scan_one(path) for path in targets], return_exceptions=True)
+    reports: list[SkillFileReport] = []
+    for path, outcome in zip(targets, outcomes, strict=False):
+        if isinstance(outcome, BaseException):
+            logger.warning("Skill scan failed for %s: %s", path, sanitize_error(outcome))
+            reports.append(_failed_skill_file_report(path, outcome))
+        else:
+            reports.append(outcome)
     report = SkillsScanReport(files=reports, catalog_path=_persist_catalog(reports, catalog_path))
     summary = report.to_dict()["summary"]
     assert isinstance(summary, dict)
@@ -478,12 +512,14 @@ async def _rescan_skill_catalog_async(
         return stable_id, updated, serialized_entry
 
     pending: list[asyncio.Task[tuple[str, dict[str, object], dict[str, object]]]] = []
+    pending_ids: list[str] = []
     for stable_id, raw_entry in sorted(entries.items()):
         entry = raw_entry if isinstance(raw_entry, dict) else {}
         path_str = str(entry.get("path") or "")
         path = Path(path_str)
         if path_str and path.exists():
             pending.append(asyncio.create_task(_rescan_existing(stable_id, entry, path, path_str)))
+            pending_ids.append(stable_id)
             continue
 
         status = ThreatIntelStatus.UNAVAILABLE.value
@@ -516,8 +552,35 @@ async def _rescan_skill_catalog_async(
             }
         )
 
-    for stable_id, updated, serialized_entry in await asyncio.gather(*pending):
-        updated_entries[stable_id] = updated
+    outcomes = await asyncio.gather(*pending, return_exceptions=True) if pending else []
+    for stable_id, outcome in zip(pending_ids, outcomes, strict=False):
+        if isinstance(outcome, BaseException):
+            entry = entries.get(stable_id) if isinstance(entries.get(stable_id), dict) else {}
+            path_str = str(entry.get("path") or "") if isinstance(entry, dict) else ""
+            safe = sanitize_error(outcome)
+            logger.warning("Skill catalog rescan failed for %s: %s", stable_id, safe)
+            updated = dict(entry) if isinstance(entry, dict) else {}
+            updated["status"] = ThreatIntelStatus.UNAVAILABLE.value
+            updated_entries[stable_id] = updated
+            serialized.append(
+                {
+                    "bundle_stable_id": stable_id,
+                    "path": path_str,
+                    "exists": True,
+                    "rescanned": False,
+                    "status": ThreatIntelStatus.UNAVAILABLE.value,
+                    "trust_verdict": entry.get("trust_verdict") if isinstance(entry, dict) else None,
+                    "review_verdict": entry.get("review_verdict") if isinstance(entry, dict) else None,
+                    "provenance_status": entry.get("provenance_status") if isinstance(entry, dict) else None,
+                    "threat_intel": entry.get("threat_intel") if isinstance(entry, dict) else None,
+                    "findings": entry.get("findings", 0) if isinstance(entry, dict) else 0,
+                    "scanned_at": {"last_seen": catalog_scan_timestamp()},
+                    "error": safe,
+                }
+            )
+            continue
+        sid, updated, serialized_entry = outcome
+        updated_entries[sid] = updated
         serialized.append(serialized_entry)
 
     catalog["entries"] = updated_entries

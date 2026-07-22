@@ -10,6 +10,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Concurrency / failure-model hardening: `asyncio.gather` hot paths use
+  `return_exceptions` with explicit fail-open / fail-closed policy; API scans
+  honor `POST /v1/scan/{id}/cancel` via cooperative checkpoints; online SCA
+  consults `apply_registered_failure_mode("sca-vulnerability")` after retries;
+  operator checklist in `docs/CONCURRENCY_AND_FAILURE_MODEL.md`.
 - Compose platform stack runs a one-shot `migrate` service before `api`
   (stamp `init.sql` baselines when needed, then `alembic upgrade head`), matching
   the Helm migration Job so image upgrades apply Postgres schema changes without

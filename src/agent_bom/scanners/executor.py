@@ -209,8 +209,28 @@ def _handle_failure(
     )
 
 
+
+
+def apply_registered_failure_mode(name: str, exc: BaseException) -> ScannerDriverRunResult | None:
+    """Honor a registered driver's ``failure_mode`` for an already-caught error.
+
+    Live CLI/API paths that call scanner callables directly can use this after
+    retries are exhausted so ``FAIL_CLOSED`` registry metadata actually fails
+    the job, while ``WARN_AND_CONTINUE`` / ``SKIP_WHEN_UNAVAILABLE`` stay soft.
+    Returns a warning/skipped result for soft modes; raises ``ScannerDriverError``
+    for fail-closed drivers.
+    """
+    registration = get_scanner_registration(name)
+    return _handle_failure(
+        registration,
+        reason=sanitize_error(exc),
+        duration_ms=0.0,
+        exc=exc if isinstance(exc, Exception) else None,
+    )
+
 __all__ = [
     "ScannerDriverError",
     "ScannerDriverRunResult",
+    "apply_registered_failure_mode",
     "run_scanner_driver",
 ]

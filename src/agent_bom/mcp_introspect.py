@@ -681,7 +681,20 @@ async def health_check_servers(
         return []
 
     tasks = [_probe(s) for s in eligible]
-    return list(await asyncio.gather(*tasks))
+    outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+    results: list[HealthStatus] = []
+    for server, outcome in zip(eligible, outcomes, strict=False):
+        if isinstance(outcome, BaseException):
+            results.append(
+                HealthStatus(
+                    server_name=server.name,
+                    reachable=False,
+                    error=_safe_runtime_text(outcome),
+                )
+            )
+        else:
+            results.append(outcome)
+    return results
 
 
 def health_check_servers_sync(

@@ -45,6 +45,18 @@ if [ -z "${CHECK_RUNS}" ]; then
   CHECK_RUNS="[]"
 fi
 
+# A queued workflow may have no check-runs attached yet. Query workflow runs
+# by head SHA so a pending/no-job run is not mistaken for missing CI.
+ACTIVE_WORKFLOWS="$(
+  gh api "repos/${REPO}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
+    --jq '[.workflow_runs[] | select(.status != "completed" and (.name == "CI/CD Pipeline" or .name == "PR Security Gate" or .name == "CodeQL"))] | length' \
+    2>/dev/null || printf '0'
+)"
+if [ "${ACTIVE_WORKFLOWS}" -gt 0 ]; then
+  echo "PR #${PR}: ${ACTIVE_WORKFLOWS} required workflow run(s) already active for head ${HEAD_SHA}; not retriggering."
+  exit 0
+fi
+
 IFS=',' read -r -a REQUIRED_CHECK_LIST <<< "${REQUIRED_CHECKS}"
 missing=()
 stale=()

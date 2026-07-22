@@ -15,6 +15,16 @@ def test_dispatch_required_ci_runs_all_required_workflows() -> None:
     assert 'gh workflow run codeql.yml --repo "${REPO}" --ref "${head_ref}"' in script
 
 
+def test_recovery_scripts_guard_queued_workflows_by_head_sha() -> None:
+    dispatch = (ROOT / "scripts" / "dispatch_required_ci.sh").read_text(encoding="utf-8")
+    retrigger = (ROOT / "scripts" / "retrigger_stranded_pr.sh").read_text(encoding="utf-8")
+
+    for script, sha in ((dispatch, "head_sha"), (retrigger, "HEAD_SHA")):
+        assert f"actions/runs?head_sha=${{{sha}}}" in script
+        assert ".status != \"completed\"" in script
+        assert "not dispatching a duplicate" in script or "not retriggering" in script
+
+
 def test_ci_runbook_documents_fallback_workflows() -> None:
     runbook = (ROOT / "docs" / "operations" / "CI_RUNBOOK.md").read_text(encoding="utf-8")
 

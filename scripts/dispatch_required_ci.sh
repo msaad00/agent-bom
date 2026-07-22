@@ -59,6 +59,19 @@ if [ -z "${check_runs}" ]; then
   check_runs="[]"
 fi
 
+# A workflow can be queued with no check-runs attached yet. Treat that state
+# as active so the fallback cannot dispatch a duplicate CI fan-out while
+# GitHub is still materialising jobs for the same head SHA.
+active_workflows="$(
+  gh api "repos/${REPO}/actions/runs?head_sha=${head_sha}&per_page=100" \
+    --jq '[.workflow_runs[] | select(.status != "completed" and (.name == "CI/CD Pipeline" or .name == "PR Security Gate" or .name == "CodeQL"))] | length' \
+    2>/dev/null || printf '0'
+)"
+if [ "${active_workflows}" -gt 0 ]; then
+  echo "PR #${PR}: ${active_workflows} required workflow run(s) already active for head ${head_sha}; not dispatching a duplicate."
+  exit 0
+fi
+
 IFS=',' read -r -a required_check_list <<< "${REQUIRED_CHECKS}"
 missing=()
 stale=()

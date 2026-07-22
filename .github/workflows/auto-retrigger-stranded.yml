@@ -27,8 +27,10 @@ on:
     branches: [main]
   schedule:
     # GitHub-hosted schedules are best-effort and can be delayed during busy
-    # windows. Odd-minute slots avoid the most contended top-of-hour queue.
-    - cron: "3,8,13,18,23,28,33,38,43,48,53,58 * * * *"
+    # windows. A 15-minute fallback is sufficient because push and manual
+    # dispatch paths handle immediate recovery; the scripts also guard active
+    # queued runs by head SHA to prevent duplicate fan-out.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       pr_number:
@@ -108,7 +110,7 @@ jobs:
             CHECKED=0
             DISPATCHED=0
             for line in "${PRS[@]}"; do
-              read -r PR SHA UPDATED <<< "$line"
+              read -r PR _sha UPDATED <<< "$line"
               UPDATED_EPOCH="$(date -u -d "$UPDATED" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$UPDATED" +%s)"
               AGE_SECONDS=$(( NOW_EPOCH - UPDATED_EPOCH ))
               if [ "$AGE_SECONDS" -lt $(( 60 * MIN_AGE_MINUTES )) ]; then
@@ -153,7 +155,7 @@ jobs:
           RETRIGGERED=0
 
           for line in "${PRS[@]}"; do
-            read -r PR SHA UPDATED <<< "$line"
+            read -r PR _sha UPDATED <<< "$line"
             UPDATED_EPOCH="$(date -u -d "$UPDATED" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$UPDATED" +%s)"
             AGE_SECONDS=$(( NOW_EPOCH - UPDATED_EPOCH ))
             if [ "$AGE_SECONDS" -lt $(( 60 * MIN_AGE_MINUTES )) ]; then

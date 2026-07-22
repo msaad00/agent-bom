@@ -73,6 +73,25 @@ def test_in_memory_cleanup():
     assert store.get("j2", all_tenants=True) is not None
 
 
+def test_in_memory_cleanup_preserves_demo_estate_jobs():
+    from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
+
+    store = InMemoryJobStore()
+    store.put(
+        _make_job(
+            "demo",
+            status=JobStatus.DONE,
+            completed_at="2020-01-01T00:00:00+00:00",
+            triggered_by=DEMO_ESTATE_TRIGGERED_BY,
+        )
+    )
+    store.put(_make_job("other", status=JobStatus.DONE, completed_at="2020-01-01T00:00:00+00:00"))
+    removed = store.cleanup_expired(ttl_seconds=1)
+    assert removed == 1
+    assert store.get("demo", all_tenants=True) is not None
+    assert store.get("other", all_tenants=True) is None
+
+
 def test_in_memory_retention_evicts_oldest_completed_jobs():
     store = InMemoryJobStore(max_retained_jobs=2)
     old = _make_job("old", status=JobStatus.DONE, completed_at="2026-02-23T12:00:00+00:00")
@@ -374,6 +393,30 @@ def test_sqlite_cleanup_expired():
         assert store.get("j1", all_tenants=True) is None
         assert store.get("j2", all_tenants=True) is not None
         assert store.get("j3", all_tenants=True) is None
+    finally:
+        Path(db_path).unlink(missing_ok=True)
+
+
+def test_sqlite_cleanup_preserves_demo_estate_jobs():
+    from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        store = SQLiteJobStore(db_path=db_path)
+        store.put(
+            _make_job(
+                "demo",
+                status=JobStatus.DONE,
+                completed_at="2020-01-01T00:00:00+00:00",
+                triggered_by=DEMO_ESTATE_TRIGGERED_BY,
+            )
+        )
+        store.put(_make_job("other", status=JobStatus.DONE, completed_at="2020-01-01T00:00:00+00:00"))
+        removed = store.cleanup_expired(ttl_seconds=1)
+        assert removed == 1
+        assert store.get("demo", all_tenants=True) is not None
+        assert store.get("other", all_tenants=True) is None
     finally:
         Path(db_path).unlink(missing_ok=True)
 

@@ -9,6 +9,7 @@ from typing import Any
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _now
+from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
 from agent_bom.demo_estate.showcase_graph import (
     SHOWCASE_TENANT,
     seed_showcase_graph_if_empty,
@@ -24,15 +25,41 @@ def demo_estate_enabled() -> bool:
     return os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in _TRUTHY
 
 
+def demo_estate_force_reseed() -> bool:
+    """Operator override: always reseed scan jobs even when usable ones exist."""
+    return os.environ.get("AGENT_BOM_DEMO_ESTATE_FORCE", "").strip().lower() in _TRUTHY
+
+
+def _job_has_demo_source(job: Any) -> bool:
+    result = getattr(job, "result", None) or {}
+    sources = result.get("scan_sources") or []
+    if any("demo" in str(src).lower() for src in sources):
+        return True
+    return getattr(job, "triggered_by", None) == DEMO_ESTATE_TRIGGERED_BY
+
+
+def _job_has_findings(job: Any) -> bool:
+    result = getattr(job, "result", None) or {}
+    findings = result.get("findings") or result.get("vulnerabilities") or []
+    return bool(findings)
+
+
 def _tenant_has_demo_jobs(store: Any, tenant_id: str) -> bool:
+    """True when the tenant already has a *usable* demo scan job.
+
+    Presence alone is not enough: an empty or FAILED demo marker (or a job
+    whose findings were never persisted) must not block reseed — that is how
+    the public demo can boot with graph/catalog populated but findings=[].
+    """
     list_fn = getattr(store, "list_all", None)
     if not callable(list_fn):
         return False
     jobs = list_fn(tenant_id=tenant_id)
     for job in jobs:
-        result = getattr(job, "result", None) or {}
-        sources = result.get("scan_sources") or []
-        if any("demo" in str(src).lower() for src in sources):
+        status = getattr(job, "status", None)
+        if status is not None and status != JobStatus.DONE and str(status).lower() != "done":
+            continue
+        if _job_has_demo_source(job) and _job_has_findings(job):
             return True
     return False
 
@@ -90,7 +117,7 @@ def _store_demo_scan_job(report: dict[str, Any], *, tenant_id: str) -> str:
     job = ScanJob(
         job_id=str(uuid.uuid4()),
         tenant_id=tenant_id,
-        triggered_by="demo-estate-bootstrap",
+        triggered_by=DEMO_ESTATE_TRIGGERED_BY,
         created_at=_now(),
         request=ScanRequest(offline=True),
     )
@@ -114,6 +141,9 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     store = _get_store()
     graph_store = _get_graph_store()
     summary: dict[str, Any] = {"enabled": True, "tenant_id": tenant_id, "seeded": False}
+    force = demo_estate_force_reseed()
+    if force:
+        summary["force"] = True
 
     # Graph seed is isolated and stale-aware: a real scan is left untouched, a
     # current demo seed is a no-op, and a stale demo seed is refreshed (see
@@ -156,19 +186,22 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         _logger.warning("demo estate catalog seeding failed", exc_info=True)
         summary["catalog_error"] = True
 
-    if _tenant_has_demo_jobs(store, tenant_id):
+    if not force and _tenant_has_demo_jobs(store, tenant_id):
         summary["reason"] = "demo_jobs_present"
         return summary
 
     try:
         report = _run_demo_scan_report()
+        finding_count = len(report.get("findings") or report.get("vulnerabilities") or [])
+        if finding_count < 1:
+            raise RuntimeError("demo estate scan produced zero findings")
         job_id = _store_demo_scan_job(report, tenant_id=tenant_id)
         summary.update(
             {
                 "seeded": True,
                 "job_id": job_id,
                 "agents": len(report.get("agents") or []),
-                "findings": len(report.get("findings") or report.get("vulnerabilities") or []),
+                "findings": finding_count,
             }
         )
         _logger.info(

@@ -497,6 +497,7 @@ def test_job_store_list_summary_includes_tenant(mock_pool):
 
 def test_job_store_cleanup(mock_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
 
     store = PostgresJobStore(pool=mock_pool)
     count = store.cleanup_expired(ttl_seconds=7200)
@@ -505,7 +506,8 @@ def test_job_store_cleanup(mock_pool):
     )
     assert isinstance(count, int)
     assert "INTERVAL '1 second'" in delete_sql
-    assert delete_params == (7200,)
+    assert "triggered_by" in delete_sql
+    assert delete_params == (DEMO_ESTATE_TRIGGERED_BY, 7200)
 
 
 def test_job_store_init_migrates_triggered_by_column(mock_pool):

@@ -215,12 +215,12 @@ export function SigmaGraphOverview({
       data-testid="sigma-graph-overview"
     >
       <div className="border-b border-[var(--border-subtle)] bg-[var(--background)]/95 p-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-200">
+        <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+          <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-200">
             <Sparkles className="h-3.5 w-3.5" />
             WebGL graph overview
           </span>
-          <span className="min-w-0 text-xs text-[var(--text-tertiary)]">
+          <span className="min-w-0 text-xs leading-snug text-[var(--text-tertiary)] sm:min-w-[12rem] sm:flex-1">
             Sigma.js renderer for broad estate scans; focused investigations still use React Flow.
           </span>
         </div>

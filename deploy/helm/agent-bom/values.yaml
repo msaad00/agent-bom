@@ -32,17 +32,17 @@
 
 image:
   repository: agentbom/agent-bom
-  tag: "0.97.3"
+  tag: "0.97.4"
   pullPolicy: IfNotPresent
 
 uiImage:
   repository: agentbom/agent-bom-ui
-  tag: "0.97.3"
+  tag: "0.97.4"
   pullPolicy: IfNotPresent
 
 runtimeImage:
   repository: agentbom/agent-bom
-  tag: "0.97.3"
+  tag: "0.97.4"
   pullPolicy: IfNotPresent
 
 # Cloud-SDK collector image (issue #4239). Ships the boto3/azure/google/snowflake
@@ -56,7 +56,7 @@ runtimeImage:
 # `image.tag`.
 collectorImage:
   repository: agentbom/agent-bom-collector
-  tag: "0.97.3"
+  tag: "0.97.4"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -82,7 +82,7 @@ tests:
   includeUi: true
   image:
     repository: agentbom/agent-bom
-    tag: "0.97.3"
+    tag: "0.97.4"
     pullPolicy: IfNotPresent
   resources:
     requests:

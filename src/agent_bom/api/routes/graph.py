@@ -375,21 +375,35 @@ def _finding_ids_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids: l
 
 
 def _finding_ids_for_nodes(nodes: dict[str, Any], path_hops: list[str], vuln_ids: list[str]) -> list[str]:
+    """Resolve stable finding identifiers for a path.
+
+    Preference order per hop: ``attributes.finding_id`` (canonical Finding.id) →
+    vulnerability label / CVE string → raw ``vuln_ids`` entries. CVE labels remain
+    for backward compatibility when a node was not stamped with a finding id.
+    """
+    from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+
     ids: list[str] = []
     seen: set[str] = set()
-    for value in vuln_ids:
-        cleaned = value.strip()
+
+    def _add(value: str | None) -> None:
+        cleaned = (value or "").strip()
         if cleaned and cleaned not in seen:
             ids.append(cleaned)
             seen.add(cleaned)
+
     for hop in path_hops:
         node = nodes.get(hop)
         if not node or node.entity_type not in {EntityType.VULNERABILITY, EntityType.MISCONFIGURATION}:
             continue
-        label = node.label or node.id
-        if label not in seen:
-            ids.append(label)
-            seen.add(label)
+        attrs = getattr(node, "attributes", None) or {}
+        stamped = finding_id_from_node_attributes(attrs if isinstance(attrs, dict) else None)
+        if stamped:
+            _add(stamped)
+        else:
+            _add(node.label or node.id)
+    for value in vuln_ids:
+        _add(value if isinstance(value, str) else str(value))
     return ids
 
 
@@ -894,6 +908,10 @@ def _serialize_attack_path(
     if not data.get("edges") and edges is not None:
         data["edges"] = _edge_relationships_for_hops(path.hops, edges)
     if nodes_by_id is not None:
+        # Prefer stamped Finding.id values over CVE labels when available.
+        resolved = _finding_ids_for_nodes(nodes_by_id, path.hops, path.vuln_ids)
+        if resolved:
+            data["finding_ids"] = resolved
         data["exposure_path"] = _exposure_path_for_attack_path(path, nodes_by_id=nodes_by_id, edges=edges, rank=rank, scan_id=scan_id)
     return data
 
@@ -1289,6 +1307,9 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     # Fuse governance / CNAPP / runtime evidence into the score so
                     # exposed, drifting, or unscoped-identity paths rank higher.
                     risk += sum(boost for _k, _l, _d, boost in _fusion_signals_for_path(graph, hop_ids))
+                    from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+
+                    stamped_finding_id = finding_id_from_node_attributes(getattr(finding, "attributes", None))
                     paths.append(
                         AttackPath(
                             source=agent_id,
@@ -1303,6 +1324,7 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             credential_exposure=sorted(set(credentials)),
                             tool_exposure=sorted(set(tools)),
                             vuln_ids=[finding.label or finding.id],
+                            finding_ids=[stamped_finding_id] if stamped_finding_id else [],
                         )
                     )
 

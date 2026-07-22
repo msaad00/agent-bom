@@ -648,12 +648,27 @@ def _finding_from_match(graph: UnifiedGraph, rule: ToxicRule, match: ToxicMatch)
         "detail": match.detail or rule.description,
         "source": _GRAPH_SOURCE,
     }
+    entry = match.entry
+    entry_type = _entity_type_of(graph, entry.id)
+    # Prefer a participating vulnerability/misconfiguration as finding_node_id.
+    finding_node_id = None
+    for nid in match.node_ids:
+        node = graph.nodes.get(nid)
+        if node is None:
+            continue
+        et = node.entity_type if isinstance(node.entity_type, EntityType) else None
+        if et in {EntityType.VULNERABILITY, EntityType.MISCONFIGURATION}:
+            finding_node_id = nid
+            break
     return Finding(
         finding_type=FindingType.COMBINATION,
         source=FindingSource.GRAPH_ANALYSIS,
-        asset=_asset_for(match.entry),
+        asset=_asset_for(entry),
+        node_id=entry.id,
+        finding_node_id=finding_node_id,
+        entity_type=entry_type or None,
         severity=severity,
-        title=f"{rule.title}: {match.entry.label}",
+        title=f"{rule.title}: {entry.label}",
         description=f"{rule.description} {match.detail}".strip(),
         remediation_guidance=rule.remediation,
         attack_tags=list(rule.mitre),
@@ -710,7 +725,15 @@ def toxic_combination_findings_from_data(data: list[dict]) -> list[Finding]:
     return findings
 
 
+def _optional_str(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _finding_from_dict(item: dict) -> Optional[Finding]:
+    """Rehydrate a Finding dict, preserving graph investigation FKs when present."""
     asset_data = item.get("asset") or {}
     asset = Asset(
         name=str(asset_data.get("name", "")),
@@ -741,4 +764,8 @@ def _finding_from_dict(item: dict) -> Optional[Finding]:
         is_actionable=item.get("is_actionable"),
         impact_category=item.get("impact_category"),
         id=str(item.get("id", "")),
+        cve_id=_optional_str(item.get("cve_id")),
+        node_id=_optional_str(item.get("node_id")),
+        finding_node_id=_optional_str(item.get("finding_node_id")),
+        entity_type=_optional_str(item.get("entity_type")),
     )

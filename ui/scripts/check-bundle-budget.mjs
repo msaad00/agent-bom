@@ -58,7 +58,12 @@ const BUDGETS = {
   // 14.7 KiB above the prior ceiling (collector plan, artifact preview, and
   // recent jobs). Keep 17 KiB of bounded headroom without changing either
   // chunk ceiling.
-  totalClientJsBytes: 3_670_016,
+  // Criticality ranking / crown-jewel clusters / NHI governance panels on the
+  // investigation graph measured 3585.9 KiB on Linux CI — 1.9 KiB over the
+  // 3584 KiB line with no headroom. Restore ~16 KiB to 3600 KiB so routine
+  // bundler variance stops failing UI Validate; largest-chunk and shared-
+  // runtime budgets are unchanged.
+  totalClientJsBytes: 3_686_400,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

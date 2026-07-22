@@ -141,6 +141,24 @@ def test_classification_tier_a_whitelist():
         assert classify_field(field) is EvidenceTier.SAFE_TO_STORE, field
 
 
+def test_graph_finding_fks_are_tier_a():
+    """Investigation FKs must survive /v1/findings redaction."""
+    for field in ("node_id", "finding_node_id", "entity_type", "finding_id"):
+        assert classify_field(field) is EvidenceTier.SAFE_TO_STORE, field
+    payload = {
+        "id": "fid-1",
+        "finding_id": "fid-1",
+        "node_id": "pkg:pypi/flask@3.0.0",
+        "finding_node_id": "vuln:CVE-2026-0001",
+        "entity_type": "package",
+        "description": "workspace path /Users/me/secret",
+    }
+    redacted = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
+    assert redacted["node_id"] == "pkg:pypi/flask@3.0.0"
+    assert redacted["finding_node_id"] == "vuln:CVE-2026-0001"
+    assert redacted["entity_type"] == "package"
+    assert "description" not in redacted
+
 def test_classification_unknown_defaults_to_tier_b():
     """Unknown / novel field names are conservatively REPLAY_ONLY."""
     assert classify_field("brand_new_evidence_key") is EvidenceTier.REPLAY_ONLY

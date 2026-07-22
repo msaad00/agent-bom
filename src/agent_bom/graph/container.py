@@ -94,6 +94,10 @@ class AttackPath:
     credential_exposure: list[str] = field(default_factory=list)
     tool_exposure: list[str] = field(default_factory=list)
     vuln_ids: list[str] = field(default_factory=list)
+    # Stable Finding.id values that anchor this path (preferred over CVE labels
+    # in vuln_ids). Additive — empty on legacy rows; API may recompute from
+    # vulnerability node attributes.finding_id.
+    finding_ids: list[str] = field(default_factory=list)
     # Typed MITRE ATT&CK / ATLAS techniques mapped from this path's observed
     # evidence, ordered by hop. Potential/mapped techniques for the kill-chain
     # sequence — never a claim of observed attacker activity.
@@ -114,6 +118,7 @@ class AttackPath:
             "credential_exposure": self.credential_exposure,
             "tool_exposure": self.tool_exposure,
             "vuln_ids": self.vuln_ids,
+            "finding_ids": self.finding_ids,
             "technique_mappings": [m.to_dict() for m in self.technique_mappings],
             "mitre_technique_ids": self.mitre_technique_ids(),
         }
@@ -130,6 +135,7 @@ class AttackPath:
             credential_exposure=data.get("credential_exposure", []),
             tool_exposure=data.get("tool_exposure", []),
             vuln_ids=data.get("vuln_ids", []),
+            finding_ids=list(data.get("finding_ids") or []),
             technique_mappings=[TechniqueMapping.from_dict(m) for m in data.get("technique_mappings", [])],
         )
 

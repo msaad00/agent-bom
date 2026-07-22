@@ -20,7 +20,7 @@ failure must never fail the scan job.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agent_bom.graph.container import UnifiedGraph
@@ -71,6 +71,73 @@ def attach_graph_derived_findings(report: "AIBOMReport", graph: "UnifiedGraph") 
             report.ciem_over_privilege_findings_data = ciem
     except Exception as exc:  # noqa: BLE001
         _logger.debug("CIEM over-privilege findings surfacing skipped: %s", exc)
+
+    # ── Finding ↔ graph node FK stamping ─────────────────────────────────────
+    # Prefer stable Finding.id on vuln nodes and Finding.node_id on estate nodes
+    # so investigation paths are not CVE-label-only.
+    try:
+        from agent_bom.graph.asset_entity import link_findings_to_graph_nodes
+
+        findings = list(report.to_findings())
+        linked = link_findings_to_graph_nodes(findings, graph)
+        if linked:
+            # Persist stamped FKs onto report.findings when the dual-write list
+            # is empty so subsequent to_findings() / API serialization see them.
+            if not getattr(report, "findings", None):
+                report.findings = findings
+            else:
+                by_id = {str(getattr(f, "id", "")): f for f in findings}
+                for existing in report.findings:
+                    stamped = by_id.get(str(getattr(existing, "id", "")))
+                    if stamped is None:
+                        continue
+                    if not getattr(existing, "node_id", None) and getattr(stamped, "node_id", None):
+                        existing.node_id = stamped.node_id
+                    if not getattr(existing, "finding_node_id", None) and getattr(stamped, "finding_node_id", None):
+                        existing.finding_node_id = stamped.finding_node_id
+                    if not getattr(existing, "entity_type", None) and getattr(stamped, "entity_type", None):
+                        existing.entity_type = stamped.entity_type
+            # Side-block JSON is what to_findings() rehydrates for toxic/CIEM
+            # rows. Rewrite those dicts from the stamped Finding objects so the
+            # next rehydrate (and to_json) keeps node_id / finding_node_id.
+            _rewrite_side_block_findings(report, findings)
+    except Exception as exc:  # noqa: BLE001
+        _logger.debug("finding↔node linking skipped: %s", exc)
+
+
+def _rewrite_side_block_findings(report: "AIBOMReport", findings: list[Any]) -> None:
+    """Write stamped FKs back into toxic/CIEM side-block dicts."""
+    by_id = {str(getattr(f, "id", "")): f for f in findings if getattr(f, "id", None)}
+
+    def _merge(rows: list[Any] | None) -> list[Any] | None:
+        if not rows:
+            return rows
+        updated: list[Any] = []
+        changed = False
+        for item in rows:
+            if not isinstance(item, dict):
+                updated.append(item)
+                continue
+            stamped = by_id.get(str(item.get("id", "")))
+            if stamped is None:
+                updated.append(item)
+                continue
+            payload = stamped.to_dict()
+            updated.append(payload)
+            if (
+                item.get("node_id") != payload.get("node_id")
+                or item.get("finding_node_id") != payload.get("finding_node_id")
+                or item.get("entity_type") != payload.get("entity_type")
+            ):
+                changed = True
+        return updated if changed else rows
+
+    toxic = _merge(getattr(report, "toxic_combination_findings_data", None))
+    if toxic is not None:
+        report.toxic_combination_findings_data = toxic
+    ciem = _merge(getattr(report, "ciem_over_privilege_findings_data", None))
+    if ciem is not None:
+        report.ciem_over_privilege_findings_data = ciem
 
 
 def surface_graph_derived_findings(report: "AIBOMReport", *, scan_id: str, tenant_id: str) -> None:

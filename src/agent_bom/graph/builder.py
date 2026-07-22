@@ -425,6 +425,12 @@ def build_unified_graph_from_report(
                 attributes={
                     "canonical_id": canonical_graph_node_id(EntityType.VULNERABILITY.value, vuln_node_id),
                     "source_ids": source_ids(vulnerability_id=vuln_id_str),
+                    "vulnerability_id": vuln_id_str,
+                    **(
+                        {"finding_id": str(br_dict["finding_id"]).strip()}
+                        if isinstance(br_dict.get("finding_id"), str) and str(br_dict.get("finding_id") or "").strip()
+                        else {}
+                    ),
                     "cvss_score": br_dict.get("cvss_score"),
                     "cvss_vector": br_dict.get("cvss_vector"),
                     "attack_vector": br_dict.get("attack_vector"),
@@ -1746,6 +1752,12 @@ def _add_vuln_node(
             attributes={
                 "canonical_id": canonical_graph_node_id(EntityType.VULNERABILITY.value, vuln_node_id),
                 "source_ids": source_ids(vulnerability_id=vuln_id_str),
+                "vulnerability_id": vuln_id_str,
+                **(
+                    {"finding_id": str(vuln_dict["finding_id"]).strip()}
+                    if isinstance(vuln_dict.get("finding_id"), str) and str(vuln_dict.get("finding_id") or "").strip()
+                    else {}
+                ),
                 "cvss_score": vuln_dict.get("cvss_score"),
                 "cvss_vector": vuln_dict.get("cvss_vector"),
                 "attack_vector": vuln_dict.get("attack_vector"),

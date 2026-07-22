@@ -295,6 +295,13 @@ class Finding:
     # Graph / correlation
     related_findings: list[str] = field(default_factory=list)  # IDs of related findings
     evidence: dict = field(default_factory=dict)  # raw evidence payload
+    # First-class graph FKs (optional, additive). ``node_id`` is the estate /
+    # asset UnifiedNode this finding attaches to; ``finding_node_id`` is the
+    # vulnerability/misconfiguration node (e.g. ``vuln:CVE-…``) when materialised.
+    # ``entity_type`` mirrors EntityType.value for the asset node when known.
+    node_id: Optional[str] = None
+    finding_node_id: Optional[str] = None
+    entity_type: Optional[str] = None
 
     # Risk
     risk_score: float = 0.0  # 0-10 unified risk score
@@ -351,6 +358,17 @@ class Finding:
                 *self._legacy_control_tags(),
             ]
         )
+        # Derive entity_type from asset_type aliases without mutating asset_type
+        # (asset_type feeds stable_id / finding id — must stay byte-stable).
+        if not self.entity_type:
+            try:
+                from agent_bom.graph.asset_entity import entity_type_for_asset_type
+
+                mapped = entity_type_for_asset_type(self.asset.asset_type)
+                if mapped is not None:
+                    self.entity_type = mapped.value
+            except Exception:  # noqa: BLE001 — finding construction must stay resilient
+                pass
         if not self.id:
             # Deterministic ID: same CVE on same asset always same ID
             cve_part = self.vulnerability_id or self.title
@@ -563,6 +581,9 @@ class Finding:
             "pci_dss_tags": self.pci_dss_tags,
             "related_findings": self.related_findings,
             "evidence": self.evidence,
+            "node_id": self.node_id,
+            "finding_node_id": self.finding_node_id,
+            "entity_type": self.entity_type,
             "risk_score": self.risk_score,
             "reachability": self.reachability,
             "is_actionable": self.is_actionable,
@@ -1140,13 +1161,22 @@ def blast_radius_to_finding(br: object) -> "Finding":
     )
 
     from agent_bom.compliance_hub import apply_hub_classification
+
+    # Deterministic graph FKs — package/vuln node ids match builder conventions
+    # so investigation can join without CVE-label heuristics alone.
+    from agent_bom.package_utils import canonical_package_key
     from agent_bom.vex import is_vex_suppressed
+
+    package_node_id = f"pkg:{canonical_package_key(pkg.name, pkg.version or '', pkg.ecosystem or '', getattr(pkg, 'purl', None))}"
+    finding_node_id = f"vuln:{vuln.id}" if vuln.id else None
 
     finding = Finding(
         finding_type=FindingType.CVE,
         source=_source_for_blast_radius(br),
         asset=asset,
         severity=sev,
+        node_id=package_node_id or None,
+        finding_node_id=finding_node_id,
         vendor_severity=getattr(vuln, "vendor_severity", None),
         cvss_severity=getattr(vuln, "cvss_severity", None),
         title=f"{vuln.id}: {pkg.name}@{pkg.version or 'unknown'}",

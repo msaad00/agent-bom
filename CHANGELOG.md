@@ -42,6 +42,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
   graph test module docstring matches auto-enable behavior.
 
 ### Changed
+- Findings carry optional graph FKs (`node_id`, `finding_node_id`, `entity_type`)
+  and attack paths expose `finding_ids` so investigation joins typed estate nodes
+  instead of CVE-label-only anchors; `asset_type` aliases map to `EntityType`
+  without mutating stable asset ids. Evidence redaction keeps the FKs, toxic/CIEM
+  rehydrate preserves them, and graph persist restamps vuln nodes after the
+  throwaway surfacing graph is released.
 - README: clean top-nav Live demo link (offline fallback lives under scan/demo
   body copy), lead with product visuals, and collapse persona / connector /
   architecture tables under `<details>`.

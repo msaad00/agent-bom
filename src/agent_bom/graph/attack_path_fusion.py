@@ -297,8 +297,11 @@ def _walk_from_entry(
         on_path: set[str],
         score: float,
         vuln_ids: list[str],
+        finding_ids: list[str],
         cred_exposure: list[str],
     ) -> None:
+        from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+
         if visited_budget["n"] >= _MAX_VISITED_PER_ENTRY:
             limit_reasons.add("visit_cap_reached")
             return
@@ -320,6 +323,7 @@ def _walk_from_entry(
                 summary=_summary(hops, graph, edge_labels, prize),
                 credential_exposure=sorted(set(cred_exposure)),
                 vuln_ids=sorted(set(vuln_ids)),
+                finding_ids=sorted(set(finding_ids)),
             )
             key = (hops[0], node_id)
             existing = best_by_pair.get(key)
@@ -342,7 +346,13 @@ def _walk_from_entry(
             if target is None:
                 continue
             boost, label = _edge_boost(edge, target)
-            next_vulns = vuln_ids + [target.label or target.id] if target.entity_type == EntityType.VULNERABILITY else vuln_ids
+            next_vulns = list(vuln_ids)
+            next_findings = list(finding_ids)
+            if target.entity_type == EntityType.VULNERABILITY:
+                next_vulns = vuln_ids + [target.label or target.id]
+                stamped = finding_id_from_node_attributes(getattr(target, "attributes", None))
+                if stamped:
+                    next_findings = finding_ids + [stamped]
             next_creds = (
                 cred_exposure + [target.label or target.id]
                 if target.entity_type in (EntityType.CREDENTIAL, EntityType.CREDENTIAL_REF)
@@ -357,11 +367,12 @@ def _walk_from_entry(
                 on_path,
                 score + boost + _node_boost(target),
                 next_vulns,
+                next_findings,
                 next_creds,
             )
             on_path.discard(nxt)
 
-    dfs(entry.id, [entry.id], [], [], {entry.id}, _node_boost(entry), [], [])
+    dfs(entry.id, [entry.id], [], [], {entry.id}, _node_boost(entry), [], [], [])
     return limit_reasons
 
 

@@ -584,12 +584,14 @@ absence stays `no_runtime_signal`, never "clean"). JSON / SARIF / HTML report
 exports carry the same field when it is already attached on a finding or when
 the tenant durable evidence store is non-empty (`AGENT_BOM_TENANT_ID`). The
 findings Evidence drawer shows a dedicated Workload runtime evidence panel
-(separate from proxy/gateway reach badges).
+(separate from proxy/gateway reach badges). CLI
+`agent-bom cloud side-scan-capabilities` prints the honest provider surface;
+`agent-bom cloud side-scan --provider azure|gcp` refuses execution (exit 2)
+without instantiating adapters.
 
 Not yet locked in (stage 4 remainder): a scheduler that pulls from sources.
 Azure/GCP disk side-scan remains discovery + injected-SDK lifecycle adapters
-(`executor: contract_only`) — no CLI executor and no credentialed live smoke
-is claimed.
+(`executor: contract_only`) — no credentialed live smoke is claimed.
 
 ---
 

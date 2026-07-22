@@ -106,6 +106,7 @@ def discover_organization(credentials: Any = None, *, force: bool = False) -> di
     org_id, org_name = _search_organization(credentials, warnings)
     if not org_id:
         result["status"] = "not_in_org"
+        _derive_findings(result)
         return result
     result["org_id"] = org_id
     result["org_name"] = org_name
@@ -392,23 +393,92 @@ def _collect_org_policies(
 
 def _derive_findings(result: dict[str, Any]) -> None:
     """Flag estate-shape risks, mirroring the AWS-org findings (read-only signal)."""
-    if not result["org_policies"] and result["projects"]:
-        result["findings"].append(
+    status = str(result.get("status") or "")
+    projects = [p for p in (result.get("projects") or []) if isinstance(p, dict)]
+    folders = [f for f in (result.get("folders") or []) if isinstance(f, dict)]
+    org_policies = [p for p in (result.get("org_policies") or []) if isinstance(p, dict)]
+
+    project_count = len(projects)
+    hierarchy_depth = len(folders)
+    if status == "not_in_org":
+        verdict = "not_in_org"
+    elif project_count <= 1:
+        verdict = "single_account"
+    elif hierarchy_depth == 0:
+        verdict = "flat"
+    else:
+        verdict = "tiered"
+    result["architecture"] = {
+        "provider": "gcp",
+        "account_count": project_count,
+        "hierarchy_depth": hierarchy_depth,
+        "org_policy_count": len(org_policies),
+        "verdict": verdict,
+    }
+
+    findings = result.setdefault("findings", [])
+    if not isinstance(findings, list):
+        result["findings"] = []
+        findings = result["findings"]
+
+    if status == "not_in_org":
+        findings.append(
             {
+                "check_id": "ORG-GCP-001",
                 "severity": "medium",
-                "title": "No organization policy constraints",
+                "category": "estate_architecture",
+                "title": "Standalone GCP project (no organization)",
                 "detail": (
-                    f"{len(result['projects'])} projects, no org-policy constraints — "
-                    "no org-wide guardrails (the AWS-SCP equivalent) apply."
+                    "No GCP organization is visible. Folder hierarchy + org policies are the "
+                    "recommended isolation model across projects."
                 ),
+                "account_count": 1,
+                "hierarchy_depth": 0,
             }
         )
-    if result["projects"] and not result["folders"]:
-        result["findings"].append(
+        return
+
+    if project_count <= 1 and (project_count > 0 or result.get("org_id")):
+        findings.append(
             {
+                "check_id": "ORG-GCP-002",
+                "severity": "medium",
+                "category": "estate_architecture",
+                "title": "Single-project GCP Organization",
+                "detail": (
+                    f"{max(project_count, 1)} project under the organization — prefer separate "
+                    "projects per environment / workload with folder-tiered org policies."
+                ),
+                "account_count": max(project_count, 1),
+                "hierarchy_depth": hierarchy_depth,
+            }
+        )
+
+    if not org_policies and projects:
+        findings.append(
+            {
+                "check_id": "ORG-GCP-003",
+                "severity": "medium",
+                "category": "estate_architecture",
+                "title": "No organization policy constraints",
+                "detail": (
+                    f"{project_count} projects, no org-policy constraints — "
+                    "no org-wide guardrails (the AWS-SCP equivalent) apply."
+                ),
+                "account_count": project_count,
+                "hierarchy_depth": hierarchy_depth,
+            }
+        )
+    if projects and not folders:
+        findings.append(
+            {
+                "check_id": "ORG-GCP-004",
                 "severity": "low",
+                "category": "estate_architecture",
                 "title": "Flat organization (no folders)",
-                "detail": (f"{len(result['projects'])} projects sit directly under the org with no folders — no tiered guardrails."),
+                "detail": f"{project_count} projects sit directly under the org with no folders — no tiered guardrails.",
+                "account_count": project_count,
+                "hierarchy_depth": 0,
             }
         )
 

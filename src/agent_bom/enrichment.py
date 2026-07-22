@@ -769,12 +769,23 @@ async def enrich_vulnerabilities(
         # Run all three concurrently, bounded by adaptive runtime posture.
         try:
             async with adaptive_backpressure("enrichment"):
-                epss_data, kev_data, nvd_result = await asyncio.gather(_fetch_epss(), _fetch_kev(), _fetch_nvd())
+                outcomes = await asyncio.gather(
+                    _fetch_epss(),
+                    _fetch_kev(),
+                    _fetch_nvd(),
+                    return_exceptions=True,
+                )
         except BackpressureRejectedError as exc:
             _record_enrichment_backpressure(exc)
             console.print("  [yellow]⚠[/yellow] External enrichment skipped by adaptive backpressure")
             return 0
-        nvd_data, nvd_skipped, nvd_total = nvd_result
+        epss_raw, kev_raw, nvd_raw = outcomes
+        epss_data = {} if isinstance(epss_raw, BaseException) else epss_raw
+        kev_data = {} if isinstance(kev_raw, BaseException) else kev_raw
+        if isinstance(nvd_raw, BaseException):
+            nvd_data, nvd_skipped, nvd_total = {}, 0, 0
+        else:
+            nvd_data, nvd_skipped, nvd_total = nvd_raw
 
         # Report results
         if epss_data:

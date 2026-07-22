@@ -18682,7 +18682,12 @@ paths:
       - scan
   /v1/scan/{job_id}:
     delete:
-      description: Discard a job record.
+      description: 'Discard a job record.
+
+
+        For pending/running jobs, requests cooperative cancellation first so the
+
+        worker does not finish into a resurrected DONE state after discard.'
       operationId: delete_scan_v1_scan__job_id__delete
       parameters:
       - in: path
@@ -18793,6 +18798,41 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Attack Flow
+      tags:
+      - scan
+  /v1/scan/{job_id}/cancel:
+    post:
+      description: 'Request cooperative cancellation of a pending or running scan
+        job.
+
+
+        Sets ``JobStatus.CANCELLED``; the worker exits at the next pipeline
+
+        checkpoint. Terminal jobs are returned unchanged. Use ``DELETE`` to discard
+
+        the job record after cancellation (or for already-finished jobs).'
+      operationId: cancel_scan_v1_scan__job_id__cancel_post
+      parameters:
+      - in: path
+        name: job_id
+        required: true
+        schema:
+          title: Job Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanJob'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Cancel Scan
       tags:
       - scan
   /v1/scan/{job_id}/context-graph:

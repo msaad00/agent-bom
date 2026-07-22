@@ -99,13 +99,20 @@ async def _batch_verify_packages(
     results: dict[str, bool] = {}
     sem = asyncio.Semaphore(20)
 
-    async def _check(name: str, eco: str) -> None:
+    async def _check(name: str, eco: str) -> tuple[str, bool]:
         async with sem:
             found = await _verify_package_exists(name, eco)
             # fail-open: treat network errors as "exists" to avoid false flags
-            results[name] = found if found is not None else True
+            return name, found if found is not None else True
 
-    await asyncio.gather(*[_check(n, e) for n, e in packages])
+    outcomes = await asyncio.gather(*[_check(n, e) for n, e in packages], return_exceptions=True)
+    for package, outcome in zip(packages, outcomes, strict=False):
+        name = package[0]
+        if isinstance(outcome, BaseException):
+            logger.debug("Package verify task failed for %s; fail-open as exists", name)
+            results[name] = True
+            continue
+        results[outcome[0]] = outcome[1]
     return results
 
 

@@ -40,6 +40,42 @@ from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
 
+
+class ScanCancelledError(Exception):
+    """Raised when a running scan observes ``JobStatus.CANCELLED``."""
+
+    def __init__(self, job_id: str) -> None:
+        self.job_id = job_id
+        super().__init__(f"scan cancelled: {job_id}")
+
+
+def request_scan_cancellation(job: ScanJob) -> JobStatus:
+    """Mark a non-terminal job cancelled under its job lock.
+
+    Returns the resulting status. Terminal jobs are left unchanged.
+    """
+    lock = _job_lock(job.job_id)
+    with lock:
+        if job.status in {JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED}:
+            return job.status
+        job.status = JobStatus.CANCELLED
+        job.progress.append("Cancellation requested")
+        status = job.status
+    try:
+        _get_store().put(job)
+    except Exception as persist_exc:  # noqa: BLE001
+        _logger.warning("Failed to persist cancel for job=%s: %s", job.job_id, sanitize_error(persist_exc))
+    _jobs_put(job.job_id, job, compact_terminal=False)
+    return status
+
+
+def _raise_if_cancelled(job: ScanJob, lock: threading.Lock) -> None:
+    """Cooperative cancel checkpoint between pipeline phases."""
+    with lock:
+        if job.status is JobStatus.CANCELLED:
+            raise ScanCancelledError(job.job_id)
+
+
 # ─── Shared executor ─────────────────────────────────────────────────────────
 # The scan pool is a module-level singleton so submit sites can reuse it across
 # requests, but graceful shutdown in the API lifespan calls `.shutdown()` — and
@@ -819,8 +855,19 @@ def _run_scan_sync(job: ScanJob) -> None:
 
     lock = _job_lock(job.job_id)
     with lock:
-        job.status = JobStatus.RUNNING
-        job.started_at = _now()
+        if job.status is JobStatus.CANCELLED:
+            job.completed_at = _now()
+            job.progress.append("Scan cancelled before start")
+        else:
+            job.status = JobStatus.RUNNING
+            job.started_at = _now()
+    if job.status is JobStatus.CANCELLED:
+        try:
+            _get_store().put(job)
+        except Exception:  # noqa: BLE001
+            pass
+        _jobs_put(job.job_id, job, compact_terminal=True)
+        return
     pipeline = ScanPipeline(job, lock)
     repo_stack = ExitStack()
 
@@ -1225,6 +1272,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 pipeline.skip_step("scanning", "No packages to scan")
                 pipeline.skip_step("enrichment", "Skipped")
                 pipeline.skip_step("analysis", "Skipped")
+                _raise_if_cancelled(job, lock)
                 pipeline.start_step("output", "Building report from repo static findings...")
                 from agent_bom.models import AIBOMReport
                 from agent_bom.output import to_json
@@ -1291,6 +1339,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             pipeline.update_step("discovery", f"MCP blocklist flagged {blocked_servers} server(s)")
 
         # ── Extraction phase ──
+        _raise_if_cancelled(job, lock)
         pipeline.start_step("extraction", f"Extracting packages from {len(agents)} agent(s)...")
         total_pkgs = 0
         for agent in agents:
@@ -1307,6 +1356,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
 
         # ── Scanning phase ──
+        _raise_if_cancelled(job, lock)
         blast_radii = []
         effective_enrich = bool(req.enrich and not req.offline)
         if req.no_scan:
@@ -1341,10 +1391,19 @@ def _run_scan_sync(job: ScanJob) -> None:
                         blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False, compliance_enabled=True)
                     except Exception as retry_exc:  # noqa: BLE001
                         _logger.error("Scan retry also failed: %s", sanitize_error(retry_exc))
+                        from agent_bom.scanners.executor import ScannerDriverError, apply_registered_failure_mode
+
+                        # Registry marks sca-vulnerability FAIL_CLOSED; honor that after retries.
+                        try:
+                            soft = apply_registered_failure_mode("sca-vulnerability", retry_exc)
+                        except ScannerDriverError:
+                            raise
                         blast_radii = []
                         message = f"CVE scanning failed: {sanitize_error(retry_exc)}"
                         warnings_all.append(message)
                         coverage_warning_messages.add(message)
+                        if soft is not None and soft.telemetry.warnings:
+                            warnings_all.extend(soft.telemetry.warnings)
             total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
             if total_pkgs > 0 and total_vulns == 0 and not blast_radii and not req.offline:
                 warnings_all.append(
@@ -1393,6 +1452,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             warnings_all.append("Tenant suppression-rule evaluation skipped")
 
         # ── Analysis phase ──
+        _raise_if_cancelled(job, lock)
         pipeline.start_step("analysis", "Computing blast radius...")
         # Surface graph-walk reachability onto each blast-radius row before
         # the report is built so the JSON payload (and risk_score) reflects
@@ -1419,6 +1479,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         pipeline.complete_step("analysis", f"Computed {len(blast_radii)} blast radius entries", {"blast_radius": len(blast_radii)})
 
         # ── Output phase ──
+        _raise_if_cancelled(job, lock)
         pipeline.start_step("output", "Building report...")
         from agent_bom.a2a_auth_posture import evaluate_a2a_auth_posture
         from agent_bom.finding import blast_radius_to_finding
@@ -1611,36 +1672,52 @@ def _run_scan_sync(job: ScanJob) -> None:
                 with lock:
                     job.progress.append(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
 
+    except ScanCancelledError:
+        with lock:
+            job.status = JobStatus.CANCELLED
+            job.error = None
+            job.progress.append("Scan cancelled")
+        for step_id in PIPELINE_STEPS:
+            if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
+                pipeline.skip_step(step_id, "Cancelled")
+                break
     except Exception as exc:  # noqa: BLE001
         safe_error = sanitize_error(exc)
         with lock:
-            job.status = JobStatus.FAILED
-            job.error = safe_error
-            job.result = {
-                "scan_run": {
-                    "outcome": "failed",
-                    "issues": [
-                        {
-                            "code": "scan_failed",
-                            "stage": "pipeline",
-                            "source": "api",
-                            "message": safe_error,
-                            "severity": "error",
-                            "affects_coverage": True,
-                        }
-                    ],
-                    "warning_count": 1,
-                },
-                "warnings": [safe_error],
-            }
-        # Mark whichever step was running as failed
-        for step_id in PIPELINE_STEPS:
-            if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
-                pipeline.fail_step(step_id, sanitize_error(exc))
-                break
+            if job.status is JobStatus.CANCELLED:
+                job.progress.append("Scan cancelled during failure handling")
+            else:
+                job.status = JobStatus.FAILED
+                job.error = safe_error
+            if job.status is not JobStatus.CANCELLED:
+                job.result = {
+                    "scan_run": {
+                        "outcome": "failed",
+                        "issues": [
+                            {
+                                "code": "scan_failed",
+                                "stage": "pipeline",
+                                "source": "api",
+                                "message": safe_error,
+                                "severity": "error",
+                                "affects_coverage": True,
+                            }
+                        ],
+                        "warning_count": 1,
+                    },
+                    "warnings": [safe_error],
+                }
+        if job.status is JobStatus.CANCELLED:
+            pass
         else:
-            with lock:
-                job.progress.append(f"Error: {sanitize_error(exc)}")
+            # Mark whichever step was running as failed
+            for step_id in PIPELINE_STEPS:
+                if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
+                    pipeline.fail_step(step_id, sanitize_error(exc))
+                    break
+            else:
+                with lock:
+                    job.progress.append(f"Error: {sanitize_error(exc)}")
     finally:
         repo_stack.close()
         with lock:

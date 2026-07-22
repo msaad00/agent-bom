@@ -115,6 +115,25 @@ npm run build
 npm run capture:product-proof
 ```
 
+### Security-graph investigation OS refresh
+
+After the graph investigation OS series and demo estate reseed land on the
+deployed control plane, recapture the live operator proof (not only the
+deterministic harness fixture):
+
+```bash
+# Prefer a seeded demo API with non-empty findings + attack paths.
+export CAPTURE_BASE_URL="${CAPTURE_BASE_URL:-https://demo.example}"
+cd ui
+npm run capture:product-proof
+# Inspect docs/images/security-graph-live.png (and lineage/mesh if chrome changed).
+```
+
+Do not commit a replacement `security-graph-live.png` until the demo estate
+findings smoke is green on that environment. Document the commands here even
+when the PNG itself is deferred.
+
+
 Without `CAPTURE_BASE_URL`, the harness starts the current standalone
 production build. It routes deterministic scan, fleet, gateway, IAM,
 environment, runtime, and package responses into the shipped Next.js pages,

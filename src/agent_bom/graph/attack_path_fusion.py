@@ -144,6 +144,8 @@ def _edge_boost(edge: UnifiedEdge, target: UnifiedNode) -> tuple[float, str]:
 
 def _node_boost(node: UnifiedNode) -> float:
     """Standing risk a node contributes when it sits on a chain."""
+    from agent_bom.graph.path_ranking import environment_weight, tool_capability_boost
+
     attrs = node.attributes
     boost = 0.0
     if attrs.get("toxic_exposed_vulnerable"):
@@ -161,6 +163,10 @@ def _node_boost(node: UnifiedNode) -> float:
     # (holds admin directly, distinct from reaching admin via an assume-chain).
     if attrs.get("admin_equivalent"):
         boost += 12.0
+    # Environment / asset-criticality and MCP tool capability tags feed ranking
+    # without inventing a new product family.
+    boost += (environment_weight(node) - 1.0) * 20.0
+    boost += tool_capability_boost(node)
     return boost
 
 

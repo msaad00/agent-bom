@@ -31,6 +31,7 @@ import {
   type ApiOfflineKind,
 } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+import { NhiGovernancePanel } from "@/components/nhi-governance-panel";
 
 function classifyApiErrorKind(err: unknown): ApiOfflineKind {
   if (err instanceof ApiAuthError) return "auth";
@@ -535,6 +536,8 @@ export default function IdentityPage() {
       )}
 
       {credExpiry && <CredentialExpiryPanel report={credExpiry} />}
+
+      <NhiGovernancePanel />
 
       <AccessReviewPanel campaigns={campaigns} />
 

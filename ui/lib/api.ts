@@ -13,12 +13,14 @@ import type {
   GraphSnapshot,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
+  GraphAttackCampaign,
   GraphQueryRequest,
   GraphQueryResponse,
   GraphNodeDetailResponse,
   GraphNodeNeighborsResponse,
   GraphNeighborDirection,
   GraphImpactResponse,
+  NhiGovernancePosture,
   GraphRollupResponse,
   GraphSearchResponse,
   GraphSemanticClustersResponse,
@@ -175,6 +177,7 @@ export type {
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
   FixFirstPathCard,
+  GraphAttackCampaign,
   GraphQueryRequest,
   GraphQueryResponse,
   GraphImpactResponse,
@@ -182,6 +185,7 @@ export type {
   GraphNodeNeighborsResponse,
   GraphNeighborDirection,
   GraphSearchResponse,
+  NhiGovernancePosture,
   GraphSemanticClusterKind,
   GraphSemanticClusterExpansion,
   GraphSemanticCluster,
@@ -1013,6 +1017,14 @@ export const api = {
     if (scanId) params.set("scan_id", scanId);
     if (maxDepth != null) params.set("max_depth", String(maxDepth));
     return get<GraphImpactResponse>(`/v1/graph/impact?${params.toString()}`);
+  },
+
+  /** NHI governance posture — GET /v1/graph/nhi/governance */
+  getNhiGovernance: (scanId?: string) => {
+    const params = new URLSearchParams();
+    if (scanId) params.set("scan_id", scanId);
+    const qs = params.toString();
+    return get<NhiGovernancePosture>(`/v1/graph/nhi/governance${qs ? `?${qs}` : ""}`);
   },
 
   /** Estate-scale CONTAINS roll-up with optional one-level drill-down */

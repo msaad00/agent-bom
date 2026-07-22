@@ -733,7 +733,7 @@ jobs:
 
       - name: Upload Trivy SARIF to GitHub Security tab
         if: always() && hashFiles('trivy-published-image.sarif') != ''
-        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
         with:
           sarif_file: trivy-published-image.sarif
           category: release-published-image-trivy
@@ -1043,7 +1043,7 @@ jobs:
 
       - name: Upload release self-scan SARIF
         if: always() && hashFiles('sarif/release-self-dep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
         with:
           sarif_file: sarif/release-self-dep.sarif
           category: agent-bom-release-gate

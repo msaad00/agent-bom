@@ -25,7 +25,7 @@ import {
   LINEAGE_NODE_WIDTH,
 } from "@/lib/graph-node-dimensions";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
-import { LineageDetailPanel } from "@/components/lineage-detail";
+import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { MeshStats } from "@/components/mesh-stats";
 import {
   buildMeshGraph,
@@ -647,9 +647,10 @@ export default function MeshPage() {
         )}
 
         {selectedNode && (
-          <LineageDetailPanel
+          <GraphEntityDrawer
             data={selectedNode}
             onClose={() => setSelectedNode(null)}
+            enrich={false}
           />
         )}
         </div>

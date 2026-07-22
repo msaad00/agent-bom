@@ -29,7 +29,7 @@ import {
   lineageNodeTypes,
   type LineageNodeData,
 } from "@/components/lineage-nodes";
-import { LineageDetailPanel } from "@/components/lineage-detail";
+import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
 import {
   buildContextFlowGraph,
@@ -710,9 +710,10 @@ export default function ContextPage() {
           )}
 
           {selectedNode && (
-            <LineageDetailPanel
+            <GraphEntityDrawer
               data={selectedNode}
               onClose={() => setSelectedNode(null)}
+              enrich={false}
             />
           )}
           </div>

@@ -1494,7 +1494,7 @@ class AIBOMReport:
         """AWS/GCP org-architecture findings (single-account / flat hierarchy)."""
         from agent_bom.finding import cloud_org_architecture_finding_to_finding
 
-        payloads: list[tuple[str, dict]] = []
+        payloads: list[tuple[str, dict[str, Any]]] = []
         aws = self.aws_organization_data
         if isinstance(aws, dict):
             payloads.append(("aws", aws))

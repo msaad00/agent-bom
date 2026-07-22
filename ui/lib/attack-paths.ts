@@ -1,4 +1,5 @@
 import { EntityType, type AttackPath, type UnifiedNode } from "./graph-schema";
+import type { UnifiedGraphResponse } from "./api-types";
 import {
   formatExposureEntityDisplay,
   formatExposureEntityTitle,
@@ -592,4 +593,36 @@ export function matchesAttackPathFocus(
   }
 
   return true;
+}
+
+/**
+ * Append a later `/v1/graph/attack-paths` page onto an already-loaded response.
+ * Dedupes nodes/edges/paths so "Show more" can follow `pagination.has_more`
+ * without resetting the investigation canvas.
+ */
+export function mergeAttackPathGraphPages(
+  current: UnifiedGraphResponse,
+  next: UnifiedGraphResponse,
+): UnifiedGraphResponse {
+  const nodeIds = new Set(current.nodes.map((node) => node.id));
+  const edgeIds = new Set(current.edges.map((edge) => edge.id));
+  const pathKeys = new Set(current.attack_paths.map((path) => attackPathKey(path)));
+
+  const mergedPaths = [
+    ...current.attack_paths,
+    ...next.attack_paths.filter((path) => !pathKeys.has(attackPathKey(path))),
+  ];
+  return {
+    ...current,
+    ...next,
+    nodes: [...current.nodes, ...next.nodes.filter((node) => !nodeIds.has(node.id))],
+    edges: [...current.edges, ...next.edges.filter((edge) => !edgeIds.has(edge.id))],
+    attack_paths: mergedPaths,
+    pagination: next.pagination,
+    stats: {
+      ...current.stats,
+      ...next.stats,
+      attack_path_count: next.pagination.total,
+    },
+  };
 }

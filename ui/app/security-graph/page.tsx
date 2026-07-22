@@ -60,6 +60,7 @@ import {
   investigationRootForAttackPath,
   labelsForAttackPathType,
   matchesAttackPathFocus,
+  mergeAttackPathGraphPages,
   rankedAttackPathRows,
   recommendedAttackPathActions,
   moveAttackPathSelection,
@@ -82,7 +83,8 @@ const EMPTY_INVESTIGATION_FILTERS: InvestigationPresetFilters = {
   environment: null,
 };
 
-const ATTACK_PATH_QUEUE_LIMIT = 75;
+/** First/next fetch size for GET /v1/graph/attack-paths (API offset paging). */
+const ATTACK_PATH_FETCH_PAGE = 25;
 const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
 const FIX_FIRST_CARD_LIMIT = 12;
 const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
@@ -105,6 +107,7 @@ function SecurityGraphPageContent() {
   const [focusApplied, setFocusApplied] = useState(false);
   const [showAllSnapshots, setShowAllSnapshots] = useState(false);
   const [visibleAttackPathCount, setVisibleAttackPathCount] = useState(ATTACK_PATH_QUEUE_PAGE_SIZE);
+  const [loadingMorePaths, setLoadingMorePaths] = useState(false);
   const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
   const [pathView, setPathView] = useState<ExposurePathView>("path");
   const [investigationFilters, setInvestigationFilters] =
@@ -219,11 +222,14 @@ function SecurityGraphPageContent() {
 
     async function loadGraph() {
       setLoadingGraph(true);
+      setLoadingMorePaths(false);
+      setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
       try {
         const [graph, view] = await Promise.all([
           api.getGraphAttackPaths({
             scanId: selectedScanId,
-            limit: ATTACK_PATH_QUEUE_LIMIT,
+            offset: 0,
+            limit: ATTACK_PATH_FETCH_PAGE,
           }),
           api.getFixFirstGraphView({
             scanId: selectedScanId,
@@ -307,13 +313,17 @@ function SecurityGraphPageContent() {
     [campaigns, selectedCampaignId],
   );
 
+  // Authoritative queue is the attack-paths API (offset + has_more). Fix-first
+  // cards enrich titles/actions but must not silently cap the global queue at
+  // FIX_FIRST_CARD_LIMIT when more ranked paths exist server-side.
   const allAttackPaths = useMemo(() => {
+    const fromApi = [...(graphData?.attack_paths ?? [])].sort(
+      (left, right) => right.composite_risk - left.composite_risk,
+    );
     const base =
-      fixFirstCards.length > 0
-        ? fixFirstCards.map((card) => card.attack_path)
-        : [...(graphData?.attack_paths ?? [])].sort(
-            (left, right) => right.composite_risk - left.composite_risk,
-          );
+      fromApi.length > 0
+        ? fromApi
+        : fixFirstCards.map((card) => card.attack_path);
     if (!selectedCampaign?.member_paths?.length) return base;
     const members = new Set(selectedCampaign.member_paths);
     return base.filter((path) => members.has(`${path.source}->${path.target}`));
@@ -330,7 +340,57 @@ function SecurityGraphPageContent() {
     () => attackPaths.slice(0, Math.min(visibleAttackPathCount, attackPaths.length)),
     [attackPaths, visibleAttackPathCount],
   );
-  const hiddenAttackPathCount = Math.max(0, attackPaths.length - visibleAttackPaths.length);
+  const filtersNarrowQueue =
+    Boolean(selectedCampaign?.member_paths?.length) ||
+    Object.values(investigationFilters).some((value) => Boolean(value));
+  const pathHasMoreFromApi = Boolean(graphData?.pagination?.has_more) && !filtersNarrowQueue;
+  const hiddenLoadedAttackPathCount = Math.max(0, attackPaths.length - visibleAttackPaths.length);
+  const hiddenAttackPathCount =
+    hiddenLoadedAttackPathCount +
+    (pathHasMoreFromApi
+      ? Math.max(
+          0,
+          (graphData?.pagination?.total ?? attackPaths.length) - attackPaths.length,
+        )
+      : 0);
+
+  const loadMoreAttackPaths = useCallback(async () => {
+    if (hiddenLoadedAttackPathCount > 0) {
+      setVisibleAttackPathCount((current) =>
+        Math.min(attackPaths.length, current + ATTACK_PATH_QUEUE_PAGE_SIZE),
+      );
+      return;
+    }
+    if (!pathHasMoreFromApi || !selectedScanId || !graphData || loadingMorePaths) return;
+    const offset = graphData.pagination?.offset ?? 0;
+    const limit = graphData.pagination?.limit ?? ATTACK_PATH_FETCH_PAGE;
+    // Server has_more uses offset+limit < total; advance by the requested page size.
+    const nextOffset = offset + limit;
+    setLoadingMorePaths(true);
+    try {
+      const nextPage = await api.getGraphAttackPaths({
+        scanId: selectedScanId,
+        offset: nextOffset,
+        limit: ATTACK_PATH_FETCH_PAGE,
+      });
+      setGraphData((current) =>
+        current ? mergeAttackPathGraphPages(current, nextPage) : nextPage,
+      );
+      setVisibleAttackPathCount((current) => current + ATTACK_PATH_QUEUE_PAGE_SIZE);
+    } catch (error) {
+      setGraphLoadError(userFacingApiErrorMessage(error, "Failed to load more attack paths"));
+      setApiErrorKind(_classifyGraphErrorKind(error));
+    } finally {
+      setLoadingMorePaths(false);
+    }
+  }, [
+    attackPaths.length,
+    graphData,
+    hiddenLoadedAttackPathCount,
+    loadingMorePaths,
+    pathHasMoreFromApi,
+    selectedScanId,
+  ]);
 
   const rankedRows = useMemo<RankedPathRow[]>(
     () =>
@@ -857,9 +917,13 @@ function SecurityGraphPageContent() {
                 <div>
                   <h2 className="text-base font-semibold text-[color:var(--foreground)]">
                     {attackPaths.length} ranked path{attackPaths.length !== 1 ? "s" : ""}
-                    {allAttackPaths.length !== attackPaths.length
-                      ? ` of ${allAttackPaths.length}`
-                      : ""}
+                    {!filtersNarrowQueue &&
+                    typeof graphData?.pagination?.total === "number" &&
+                    graphData.pagination.total > attackPaths.length
+                      ? ` of ${graphData.pagination.total}`
+                      : allAttackPaths.length !== attackPaths.length
+                        ? ` of ${allAttackPaths.length}`
+                        : ""}
                   </h2>
                   <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
                     Select a path to open its graph and evidence above.
@@ -868,15 +932,19 @@ function SecurityGraphPageContent() {
                       : ""}
                   </p>
                   {focusLabel && (
-                    <p className="mt-1 text-xs text-emerald-300">Focused: {focusLabel}</p>
+                    <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                      Focused: {focusLabel}
+                    </p>
                   )}
                   {focus.traceId ? (
-                    <p className="mt-1 text-xs text-sky-300">
+                    <p className="mt-1 text-xs text-sky-700 dark:text-sky-300">
                       Runtime trace pin: <span className="font-mono">{focus.traceId}</span>
                     </p>
                   ) : null}
                 </div>
-                <div className="font-mono text-lg text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
+                <div className="font-mono text-lg text-red-700 dark:text-red-300">
+                  {attackPaths[0]!.composite_risk.toFixed(1)}
+                </div>
               </div>
 
               <div className="mt-4 space-y-3">
@@ -903,17 +971,19 @@ function SecurityGraphPageContent() {
                 }}
                 onKeyDown={handleAttackPathQueueKeyDown}
               />
-              {hiddenAttackPathCount > 0 && (
+              {(hiddenAttackPathCount > 0 || loadingMorePaths) && (
                 <div className="mt-4">
                   <GraphCompletenessBanner
                     visibleCount={visibleAttackPaths.length}
-                    omittedCount={hiddenAttackPathCount}
-                    loadMoreLabel={`Show ${Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, hiddenAttackPathCount)} more`}
-                    onLoadMore={() =>
-                      setVisibleAttackPathCount((current) =>
-                        Math.min(attackPaths.length, current + ATTACK_PATH_QUEUE_PAGE_SIZE),
-                      )
+                    omittedCount={Math.max(hiddenAttackPathCount, loadingMorePaths ? 1 : 0)}
+                    loadMoreLabel={
+                      loadingMorePaths
+                        ? "Loading more paths…"
+                        : `Show ${Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, Math.max(hiddenAttackPathCount, 1))} more`
                     }
+                    onLoadMore={() => {
+                      void loadMoreAttackPaths();
+                    }}
                   />
                 </div>
               )}

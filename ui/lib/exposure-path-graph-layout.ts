@@ -13,8 +13,9 @@ export const MIN_NODE_HEIGHT = 82;
 const MARGIN_X = 28;
 const MARGIN_Y = 30;
 const COLUMN_GAP = 132;
-const ROW_GAP_EXTRA = 40; // vertical clear channel between wrapped rows
-const MAX_COLUMNS = 4;
+// Path view is always a single horizontal kill-chain. Multi-row wrap made long
+// paths look like a broken DAG (vertical connector + orphan stubs on narrow
+// boards). Overflow scrolls horizontally instead.
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -72,27 +73,21 @@ export interface PathGraphLayout {
 export function buildPathGraphLayout(path: ExposurePath): PathGraphLayout {
   const count = path.hops.length;
   const { width: nodeWidth, height: nodeHeight } = nodeSizeForCount(count);
-  const columns = Math.min(MAX_COLUMNS, Math.max(1, count));
   const pitchX = nodeWidth + COLUMN_GAP;
-  const rowGap = nodeHeight + ROW_GAP_EXTRA;
 
-  // Always place hops left-to-right, wrapping to a new row. A prior
-  // boustrophedon (snake) layout made long paths reverse on odd rows while
-  // edges still assumed L→R ports — so the inbound arrow into the finding
-  // looked like it came from empty space (README screenshot regression).
-  const nodes: PathGraphNode[] = path.hops.map((hop, index) => {
-    const row = Math.floor(index / columns);
-    const col = index % columns;
-    return {
-      ...hop,
-      x: MARGIN_X + col * pitchX,
-      y: MARGIN_Y + row * rowGap,
-    };
-  });
+  // Single left-to-right row: hop N always sits to the right of hop N-1. A prior
+  // 4-column wrap (and an earlier boustrophedon snake) made long demo paths look
+  // disconnected — vertical wrap edges and ports that no longer matched the
+  // visual order. Horizontal scroll keeps the kill-chain readable instead.
+  const nodes: PathGraphNode[] = path.hops.map((hop, index) => ({
+    ...hop,
+    x: MARGIN_X + index * pitchX,
+    y: MARGIN_Y,
+  }));
 
   // Auto-fit: the viewBox is the tight bounding box of every node plus a uniform
   // margin, so the rendered graph always frames its own content — a 1-hop path
-  // is compact, a many-hop path scales down to fit, nothing overflows.
+  // is compact; a many-hop path grows horizontally and the canvas scrolls.
   const maxX = nodes.reduce((acc, node) => Math.max(acc, node.x + nodeWidth), nodeWidth);
   const maxY = nodes.reduce((acc, node) => Math.max(acc, node.y + nodeHeight), nodeHeight);
   const width = maxX + MARGIN_X;
@@ -101,41 +96,19 @@ export function buildPathGraphLayout(path: ExposurePath): PathGraphLayout {
   const edges: PathGraphEdge[] = nodes.slice(0, -1).map((source, index) => {
     const target = nodes[index + 1]!;
     const relationship = relationshipForPathStep(path, source.id, target.id, index);
-    const sameRow = Math.abs(source.y - target.y) < 10;
-    const control = sameRow ? Math.max(40, Math.abs(target.x - source.x) / 2) : 56;
-    let pathD: string;
-    let labelX: number;
-    let labelY: number;
-    if (sameRow) {
-      // Direction-aware ports so a same-row edge never draws "into" a node
-      // from empty space on the wrong side.
-      const leftToRight = target.x >= source.x;
-      const startX = leftToRight ? source.x + nodeWidth : source.x;
-      const endX = leftToRight ? target.x : target.x + nodeWidth;
-      const midY = source.y + nodeHeight / 2;
-      const c1 = leftToRight ? startX + control : startX - control;
-      const c2 = leftToRight ? endX - control : endX + control;
-      pathD = `M ${startX} ${midY} C ${c1} ${midY}, ${c2} ${midY}, ${endX} ${midY}`;
-      labelX = (startX + endX) / 2;
-      labelY = midY;
-    } else {
-      // Row wrap: drop from the end of the prior row to the start of the next.
-      const startX = source.x + nodeWidth / 2;
-      const startY = source.y + nodeHeight;
-      const endX = target.x + nodeWidth / 2;
-      const endY = target.y;
-      pathD = `M ${startX} ${startY} C ${startX} ${startY + control}, ${endX} ${endY - control}, ${endX} ${endY}`;
-      labelX = (startX + endX) / 2;
-      labelY = (startY + endY) / 2;
-    }
+    const control = Math.max(40, Math.abs(target.x - source.x) / 2);
+    const startX = source.x + nodeWidth;
+    const endX = target.x;
+    const midY = source.y + nodeHeight / 2;
+    const pathD = `M ${startX} ${midY} C ${startX + control} ${midY}, ${endX - control} ${midY}, ${endX} ${midY}`;
     const style = GRAPH_ROLE_STYLE[target.role] ?? GRAPH_ROLE_STYLE.unknown;
     return {
       id: `${source.id}->${target.id}`,
       path: pathD,
       stroke: style.stroke,
       label: truncateGraphText(relationship, 16),
-      labelX,
-      labelY,
+      labelX: (startX + endX) / 2,
+      labelY: midY,
     };
   });
 

@@ -311,14 +311,15 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
   const layout = buildPathGraphLayout(path);
 
   return (
-    <div className="flex justify-center overflow-x-auto p-2">
+    <div className="overflow-x-auto p-2" data-testid="exposure-path-graph-scroll">
       <svg
         viewBox={`0 0 ${layout.width} ${layout.height}`}
-        preserveAspectRatio="xMidYMid meet"
+        width={layout.width}
+        height={layout.height}
+        preserveAspectRatio="xMinYMid meet"
         role="img"
         aria-label={`Selected exposure path graph for ${pathDisplayTitle(path)}`}
-        style={{ maxWidth: `${layout.fitWidth}px` }}
-        className="mx-auto block h-auto w-full"
+        className="mx-auto block shrink-0"
       >
         <defs>
           <marker id="exposure-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -407,17 +408,17 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 }
 
 function ExposurePathHopTitle({ hops }: { hops: ExposureEntityRef[] }) {
-  /** Wrap between hops (chip + chevron), never mid-arrow in a long string. */
+  /** Single-row scrollable hop chips — never wrap mid-chain. */
   return (
     <div
-      className="flex flex-wrap items-center gap-x-1.5 gap-y-2"
+      className="flex flex-nowrap items-center gap-x-1.5 overflow-x-auto pb-1"
       aria-hidden="true"
       data-testid="exposure-path-hop-title"
     >
       {hops.map((hop, index) => {
         const meta = ROLE_META[hop.role] ?? ROLE_META.unknown;
         return (
-          <div key={`${hop.id}-${index}`} className="flex items-center gap-1.5">
+          <div key={`${hop.id}-${index}`} className="flex shrink-0 items-center gap-1.5">
             {index > 0 ? (
               <ChevronRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)]" aria-hidden="true" />
             ) : null}

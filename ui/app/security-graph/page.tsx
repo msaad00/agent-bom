@@ -29,6 +29,7 @@ import { ExposurePathLens } from "@/components/exposure-path-lens";
 import { Collapsible } from "@/components/collapsible";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import { GraphAnalysisStatusBanner, graphAnalysisStatusCopy } from "@/components/graph-analysis-status";
+import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import {
   api,
   formatDate,
@@ -729,21 +730,17 @@ function SecurityGraphPageContent() {
               onKeyDown={handleAttackPathQueueKeyDown}
             />
             {hiddenAttackPathCount > 0 && (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3">
-                <p className="text-xs text-[color:var(--text-tertiary)]">
-                  Showing {visibleAttackPaths.length} of {attackPaths.length} ranked paths.
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
+              <div className="mt-4">
+                <GraphCompletenessBanner
+                  visibleCount={visibleAttackPaths.length}
+                  omittedCount={hiddenAttackPathCount}
+                  loadMoreLabel={`Show ${Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, hiddenAttackPathCount)} more`}
+                  onLoadMore={() =>
                     setVisibleAttackPathCount((current) =>
                       Math.min(attackPaths.length, current + ATTACK_PATH_QUEUE_PAGE_SIZE),
                     )
                   }
-                  className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                >
-                  Show {Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, hiddenAttackPathCount)} more
-                </button>
+                />
               </div>
             )}
           </section>

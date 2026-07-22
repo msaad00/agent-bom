@@ -16,9 +16,8 @@ under test beyond the command's own ``asyncio.run`` call.
 
 from __future__ import annotations
 
-from click.testing import CliRunner
-
 import pytest
+from click.testing import CliRunner
 
 import agent_bom.cli._cloud_group as cg
 from agent_bom.cloud.side_scan import (

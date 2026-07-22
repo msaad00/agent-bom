@@ -21,7 +21,7 @@ Usage::
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 import click
 
@@ -797,10 +797,13 @@ def side_scan_cmd(
 
     from agent_bom.cloud.base import CloudDiscoveryError
     from agent_bom.cloud.side_scan import run_side_scan
-    from agent_bom.cloud.side_scan_lifecycle import side_scan_provider_capabilities
+    from agent_bom.cloud.side_scan_lifecycle import (
+        SideScanProvider,
+        side_scan_provider_capabilities,
+    )
 
     con = Console()
-    provider_key = provider.strip().lower()
+    provider_key = cast(SideScanProvider, provider.strip().lower())
     capabilities = side_scan_provider_capabilities()
     capability = capabilities.get(provider_key)
     if capability is None or not capability.cli_available:

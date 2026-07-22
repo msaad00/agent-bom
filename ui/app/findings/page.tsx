@@ -188,6 +188,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       framework_tags?: string[];
       phantom_tools?: string[];
       runtime_evidence?: EnrichedVuln["runtime_evidence"];
+      workload_runtime_evidence?: EnrichedVuln["workload_runtime_evidence"];
       effective_reach_band?: string;
       effective_reach_score?: number;
       attack_vector_summary?: string;
@@ -228,6 +229,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       effective_reach_band: raw.effective_reach_band,
       effective_reach_score: raw.effective_reach_score,
       runtime_evidence: raw.runtime_evidence,
+      workload_runtime_evidence: raw.workload_runtime_evidence ?? finding.workload_runtime_evidence,
       remediation_items: finding.remediation_guidance
         ? [
             {
@@ -571,6 +573,8 @@ function FindingsPage() {
                 existing.effective_reach_band = existing.effective_reach_band ?? blast?.effective_reach_band;
                 existing.effective_reach_score = existing.effective_reach_score ?? blast?.effective_reach_score;
                 existing.runtime_evidence = existing.runtime_evidence ?? blast?.runtime_evidence;
+                existing.workload_runtime_evidence =
+                  existing.workload_runtime_evidence ?? blast?.workload_runtime_evidence;
                 existing.references = uniqueStrings([...existing.references, ...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]);
                 existing.advisory_sources = uniqueStrings([...existing.advisory_sources, ...(vuln.advisory_sources ?? [])]);
                 existing.aliases = uniqueStrings([...(existing.aliases ?? []), ...(vuln.aliases ?? [])]);
@@ -593,6 +597,7 @@ function FindingsPage() {
                   effective_reach_band: blast?.effective_reach_band,
                   effective_reach_score: blast?.effective_reach_score,
                   runtime_evidence: blast?.runtime_evidence,
+                  workload_runtime_evidence: blast?.workload_runtime_evidence,
                   references: uniqueStrings([...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]),
                   advisory_sources: vuln.advisory_sources ?? [],
                   aliases: vuln.aliases ?? [],

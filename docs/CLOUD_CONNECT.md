@@ -582,12 +582,14 @@ empty registry fails closed). Graph persist and investigation graph loads
 annotate matching CWPP workload nodes via the same index (tenant-scoped;
 absence stays `no_runtime_signal`, never "clean"). JSON / SARIF / HTML report
 exports carry the same field when it is already attached on a finding or when
-the tenant durable evidence store is non-empty (`AGENT_BOM_TENANT_ID`).
+the tenant durable evidence store is non-empty (`AGENT_BOM_TENANT_ID`). The
+findings Evidence drawer shows a dedicated Workload runtime evidence panel
+(separate from proxy/gateway reach badges).
 
-Not yet locked in (stage 4 remainder): a scheduler that pulls from sources and
-any UI panel for workload runtime evidence. Azure/GCP disk side-scan remains
-discovery + injected-SDK lifecycle adapters (`executor: contract_only`) — no
-CLI executor and no credentialed live smoke is claimed.
+Not yet locked in (stage 4 remainder): a scheduler that pulls from sources.
+Azure/GCP disk side-scan remains discovery + injected-SDK lifecycle adapters
+(`executor: contract_only`) — no CLI executor and no credentialed live smoke
+is claimed.
 
 ---
 

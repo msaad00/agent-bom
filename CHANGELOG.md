@@ -9,6 +9,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.97.4] - 2026-07-22
+
+### Fixed
+- Release self-scan gate counts **critical** SARIF results via
+  `security-severity >= 9.0` (`scripts/count_sarif_critical.py`) instead of
+  raw result cardinality. Medium/low first-party `SKILL_RISK` noise no longer
+  aborts publish when the scan exits non-zero for coverage-limited evidence
+  (v0.97.3 tag publish was blocked by this false positive).
+- Skill auto-discovery skips catalog/index markdown (`README.md` / `index.md`
+  under skills trees) and `site-docs/skills/**` (same as `docs/skills/**`), so
+  first-party docs no longer open medium Skill Risk code-scanning alerts.
+- Release SARIF upload drops medium/low `SKILL_RISK` rows (keeps high/critical)
+  so GitHub Security is not flooded by first-party instruction hygiene.
+
 ## [0.97.3] - 2026-07-22
 
 ### Added
@@ -2559,7 +2573,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.3...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.4...HEAD
+[0.97.4]: https://github.com/msaad00/agent-bom/compare/v0.97.3...v0.97.4
 [0.97.3]: https://github.com/msaad00/agent-bom/compare/v0.97.2...v0.97.3
 [0.97.2]: https://github.com/msaad00/agent-bom/compare/v0.97.1...v0.97.2
 [0.97.1]: https://github.com/msaad00/agent-bom/compare/v0.97.0...v0.97.1

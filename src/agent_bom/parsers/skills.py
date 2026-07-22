@@ -511,6 +511,20 @@ _INSTRUCTION_FILE_NAMES: frozenset[str] = frozenset(
     }
 )
 
+# Index / catalog markdown often lives inside skills trees but is not an
+# executable skill surface (e.g. `.agents/skills/README.md`, `skills/index.md`).
+_INSTRUCTION_INDEX_FILE_NAMES: frozenset[str] = frozenset(
+    {
+        "readme.md",
+        "index.md",
+        "summary.md",
+        "overview.md",
+    }
+)
+
+# Published / generated docs trees that mention skills but are not estate skills.
+_DOCS_SKILL_ROOT_NAMES: frozenset[str] = frozenset({"docs", "site-docs"})
+
 # Directory names whose ``*.md`` / ``*.mdc`` descendants are instruction surfaces.
 # Keep this list narrow: bare ``agents/`` / ``commands/`` dirs are common in
 # application code and would flood discovery with false positives.
@@ -563,7 +577,7 @@ def looks_like_instruction_surface(
         return False
     if skip_test_fixtures and _is_test_fixture_path(path):
         return False
-    if not allow_docs_skills and "docs" in path.parts and "skills" in path.parts:
+    if not allow_docs_skills and any(root in path.parts for root in _DOCS_SKILL_ROOT_NAMES) and "skills" in path.parts:
         return False
 
     name = path.name
@@ -575,6 +589,10 @@ def looks_like_instruction_surface(
         return True
 
     if path.suffix.lower() not in _INSTRUCTION_SUFFIXES:
+        return False
+
+    # Catalog/index files under skills trees are documentation, not skills.
+    if name.lower() in _INSTRUCTION_INDEX_FILE_NAMES:
         return False
 
     parents = list(path.parents)
@@ -605,7 +623,7 @@ def discover_skill_files(project_dir: Path) -> list[Path]:
     if not project_dir.is_dir():
         return []
 
-    allow_docs_skills = "docs" in project_dir.parts and "skills" in project_dir.parts
+    allow_docs_skills = any(root in project_dir.parts for root in _DOCS_SKILL_ROOT_NAMES) and "skills" in project_dir.parts
     found: list[Path] = []
     seen: set[Path] = set()
 

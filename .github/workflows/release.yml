@@ -990,8 +990,10 @@ jobs:
             # partial and exits non-zero with zero results. pip-audit above is the
             # enforcing dependency gate, so degrade partial-coverage to evidence-
             # only (like the timeout branch) and fail only on real critical
-            # results. Unreadable SARIF counts as non-zero → fail closed.
-            crit_results=$(python3 -c "import json; d=json.load(open('sarif/release-self-dep.sarif')); print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" 2>/dev/null || echo unknown)
+            # results. Count by security-severity >= 9.0 — not raw result count
+            # (skill medium/low SARIF rows are warning/note) and not level=error
+            # alone (high also maps to error). Unreadable SARIF → fail closed.
+            crit_results=$(python3 scripts/count_sarif_critical.py sarif/release-self-dep.sarif 2>/dev/null || echo unknown)
             if [ "$crit_results" != "0" ]; then
               echo "::error::agent-bom release self-scan found ${crit_results} critical finding(s) (exit ${scan_exit})"
               exit "$scan_exit"
@@ -1034,10 +1036,35 @@ jobs:
           # id wins and GitHub derives the category from it (the part before the
           # final "/", i.e. "agent-bom") instead of "agent-bom-release-gate". Drop
           # it so the upload `category` below applies.
+          #
+          # Also drop medium/low SKILL_RISK rows from the code-scanning upload.
+          # Release dependency enforcement is pip-audit/npm/osv; skill hygiene on
+          # first-party CLAUDE.md / docs must not open GitHub Security alerts.
+          # High/critical skill findings (security-severity >= 7.0) still upload.
           path = Path("sarif/release-self-dep.sarif")
           data = json.loads(path.read_text())
           for run in data.get("runs", []):
               run.pop("automationDetails", None)
+              rules = ((run.get("tool") or {}).get("driver") or {}).get("rules") or []
+              rules_by_id = {str(rule.get("id") or ""): rule for rule in rules if isinstance(rule, dict)}
+              kept = []
+              for result in run.get("results") or []:
+                  if not isinstance(result, dict):
+                      continue
+                  rule_id = str(result.get("ruleId") or "")
+                  if rule_id.startswith("finding/SKILL"):
+                      props = result.get("properties") or {}
+                      raw = props.get("security-severity")
+                      if raw is None:
+                          raw = (rules_by_id.get(rule_id) or {}).get("properties", {}).get("security-severity")
+                      try:
+                          score = float(raw)
+                      except (TypeError, ValueError):
+                          score = 0.0
+                      if score < 7.0:
+                          continue
+                  kept.append(result)
+              run["results"] = kept
           path.write_text(json.dumps(data, indent=2) + "\n")
           PY
 

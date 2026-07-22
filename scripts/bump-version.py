@@ -69,7 +69,11 @@ OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [
 DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # README.md + docs — GitHub Action version references
     ("README.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
-    ("README.md", re.compile(r"(current )\d+\.\d+\.\d+( console demo)"), r"\g<1>{v}\g<2>"),
+    (
+        "README.md",
+        re.compile(r"(CLI walkthrough</b> — )\d+\.\d+\.\d+( console demo</summary>)"),
+        r"\g<1>{v}\g<2>",
+    ),
     ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/archive/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
@@ -141,8 +145,6 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ),
     ("site-docs/reference/remediate-output.md", re.compile(r'("version":\s*")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     ("docs/RUNTIME_MONITORING.md", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
-    # mcp-change-scan.yml — pinned agent-bom install version
-    (".github/workflows/mcp-change-scan.yml", re.compile(r"(agent-bom==)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     # docs/demo.tape — version header
     ("docs/demo.tape", re.compile(r"^(# agent-bom v)\d+\.\d+\.\d+(\s+.*demo.*)$", re.M), r"\g<1>{v}\g<2>"),
 ]

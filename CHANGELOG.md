@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.97.3] - 2026-07-22
+
 ### Added
 - Skill audit feeds the unified Finding stream (`FindingType.SKILL_RISK` /
   `FindingSource.SKILL`) on CLI and API scans, matches extracted MCP servers
@@ -31,11 +33,30 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `graph_build_workspace_nodes` / `graph_build_workspace_edges` now ENABLE+FORCE
   tenant RLS (init.sql + Alembic `20260721_01`); the Postgres workspace backend
   binds `app.tenant_id` per operation so staging rows cannot cross tenants.
+- `--repo` / `repo_url` scans attach an optional GitHub trust card (`repo_trust`:
+  stars, contributors, license, language, pushed_at) to the report and stamp an
+  `APPLICATION` (+ root `DIRECTORY`) on the graph; disable with
+  `AGENT_BOM_REPO_TRUST=0` (#4401).
+- AWS/GCP org discovery emits estate-architecture findings (`ORG-AWS-*` /
+  `ORG-GCP-*`) for standalone / single-account / flat hierarchy / missing
+  SCPs-or-org-policies, with an `architecture` summary promoted to graph
+  misconfigurations and the unified Finding stream (#4402).
+- Graph builder dual-emits account→resource `OWNS` + `CONTAINS` for cloud
+  inventory and Snowflake object layers so attack-path fusion walks the same
+  hierarchy as estate rollup (#4399, #4400).
+- Inventory graph API pages packages/jobs with `has_more`; CWPP durable
+  workload-evidence store factory; runtime-evidence ingest uses the scan write
+  rate-limit bucket (#4383–#4385).
 
 ### Fixed
 - Attack-path Path view always lays hops left-to-right (no odd-row snake), so
   wrapped critical paths no longer draw an inbound arrow into the finding from
-  empty space.
+  empty space (#4397).
+- Graph serve materialises `attack_campaigns` and keeps `attack_path_count` in
+  sync on filtered/attack-path views (#4382).
+- Agents/servers/packages/resources persist `dimensions.environment` from BOM
+  and resource Environment tags so campaigns and Path filters see env facets
+  (#4399).
 - Helm scanner, KSPM, and control-plane backup CronJobs fail loud
   (`jobTemplate.spec.backoffLimit: 0`, `restartPolicy: Never`) so a bad run
   surfaces as a Failed Job instead of retrying quietly under `OnFailure`.
@@ -54,6 +75,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Docs honesty: authenticated-hosted overlay matrix points anonymous demo at
   `demo-override.yml`; PRODUCT_BRIEF marks webhook outbox as shipped; store-backed
   graph test module docstring matches auto-enable behavior.
+- README Scan section lists CLI + GitHub Action as peer entry points; Cortex
+  Code skill no longer overclaims agents-for-CVEs (#4398, #4381).
 
 ### Changed
 - CWPP stage-4 honesty: Azure/GCP side-scan capabilities report
@@ -2536,7 +2559,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.3...HEAD
+[0.97.3]: https://github.com/msaad00/agent-bom/compare/v0.97.2...v0.97.3
 [0.97.2]: https://github.com/msaad00/agent-bom/compare/v0.97.1...v0.97.2
 [0.97.1]: https://github.com/msaad00/agent-bom/compare/v0.97.0...v0.97.1
 [0.97.0]: https://github.com/msaad00/agent-bom/compare/v0.96.4...v0.97.0

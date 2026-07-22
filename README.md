@@ -47,7 +47,7 @@ agent-bom scan .
 CI (GitHub Action):
 
 ```yaml
-- uses: msaad00/agent-bom@v0.97.2
+- uses: msaad00/agent-bom@v0.97.3
   with:
     scan-type: agents
     format: sarif
@@ -159,7 +159,7 @@ walkthrough.
 </details>
 
 <details>
-<summary><b>CLI walkthrough</b> — 0.97.2 console demo</summary>
+<summary><b>CLI walkthrough</b> — 0.97.3 console demo</summary>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo showing inventory, findings, remediation, and package gate" width="820" />
@@ -210,7 +210,7 @@ Guides: [Deploy anywhere](docs/DEPLOY_PLATFORM.md) ·
 | Audit package | `agent-bom scan . -f sarif -o findings.sarif` | SARIF, CycloneDX, SPDX, bundles |
 
 Also: `agent-bom graph`, `agent-bom remediate -p .`, CI pin
-`uses: msaad00/agent-bom@v0.97.2`. Maps: [CLI](docs/CLI_MAP.md) ·
+`uses: msaad00/agent-bom@v0.97.3`. Maps: [CLI](docs/CLI_MAP.md) ·
 [start here](docs/START_HERE.md) · [product map](docs/PRODUCT_MAP.md).
 
 </details>

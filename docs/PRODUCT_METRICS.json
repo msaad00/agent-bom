@@ -1,6 +1,6 @@
 {
-  "generated_on": "2026-07-19",
-  "version": "0.97.2",
+  "generated_on": "2026-07-22",
+  "version": "0.97.3",
   "metrics": [
     {
       "name": "MCP tools",
@@ -22,13 +22,13 @@
     },
     {
       "name": "GitHub workflow files",
-      "value": 39,
+      "value": 38,
       "source": ".github/workflows",
       "notes": "Counts .yml and .yaml workflow definitions."
     },
     {
       "name": "Test files",
-      "value": 968,
+      "value": 1005,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 790,
+      "value": 799,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

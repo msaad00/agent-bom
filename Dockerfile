@@ -43,7 +43,7 @@ RUN set -eu; \
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.14.6-alpine3.23@sha256:02da11a8d221ca167aa07de20b3cd7104c1f01227f4b02b1fa13cf6517280a81
 
-ARG VERSION=0.97.2
+ARG VERSION=0.97.3
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY

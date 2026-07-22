@@ -34,8 +34,8 @@
     "graphology": "^0.26.0",
     "lucide-react": "^1.25.0",
     "next": "^16.2.10",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "recharts": "^3.10.0",
     "sigma": "^3.0.3"
   },

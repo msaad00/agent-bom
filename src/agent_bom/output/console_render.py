@@ -90,13 +90,15 @@ def _console() -> Console:
 
 
 def print_summary(report: AIBOMReport) -> None:
-    """Print a summary of the AI-BOM report to console."""
+    """Print a summary of the agent-bom scan report to console."""
+    from agent_bom.output.brand_tokens import PRODUCT_NAME, REPORT_TITLE
+
     _console().print("\n")
     _console().print(
         Panel.fit(
-            f"[bold]AI-BOM Report[/bold]\n"
+            f"[bold]{REPORT_TITLE}[/bold]\n"
             f"Generated: {report.generated_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-            f"agent-bom v{report.tool_version}",
+            f"{PRODUCT_NAME} v{report.tool_version}",
             border_style="blue",
         )
     )

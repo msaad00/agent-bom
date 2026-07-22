@@ -18,7 +18,7 @@ def test_to_pdf_renders_pdf_bytes():
 
     assert data.startswith(b"%PDF")
     assert b"/Type /Catalog" in data
-    assert b"Agent-BOM Scan Report" in data
+    assert b"agent-bom scan report" in data
 
 
 def test_export_pdf_writes_file(tmp_path):
@@ -28,4 +28,4 @@ def test_export_pdf_writes_file(tmp_path):
     export_pdf(_report(), str(out), [])
 
     assert out.read_bytes().startswith(b"%PDF")
-    assert b"Agent-BOM Scan Report" in out.read_bytes()
+    assert b"agent-bom scan report" in out.read_bytes()

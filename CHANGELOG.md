@@ -45,6 +45,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - README: clean top-nav Live demo link (offline fallback lives under scan/demo
   body copy), lead with product visuals, and collapse persona / connector /
   architecture tables under `<details>`.
+- Brand shell consistency: CLI serve/gateway startup prints the BOM agent-HUD
+  mark; console/PDF/HTML report titles use `agent-bom scan report`; OpenAPI
+  `/docs` favicon serves `/brand/mark.svg`; login/auth unreachable states show
+  the canonical `BrandLogo` lockup.
 - Remove private strategy and agent-session audit ledgers from the public tree
   (`docs/archive/STRATEGIC_AUDIT_*`, `docs/archive/AUDIT.md`, `docs/audits/`);
   soften large-enterprise procurement phrasing. CI

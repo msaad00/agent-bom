@@ -73,7 +73,9 @@ def _append_wrapped(lines: list[str], value: object = "", *, indent: str = "") -
 
 def _build_report_lines(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[str]:
     lines: list[str] = []
-    lines.append("Agent-BOM Scan Report")
+    from agent_bom.output.brand_tokens import REPORT_TITLE
+
+    lines.append(REPORT_TITLE)
     lines.append("=" * 76)
     lines.append(f"Generated: {_sanitize_text(report.generated_at.isoformat())}")
     lines.append(f"Version: {_sanitize_text(report.tool_version or 'unknown')}")
@@ -136,7 +138,9 @@ def _build_report_lines(report: AIBOMReport, blast_radii: list[BlastRadius] | No
 def _split_pages(lines: list[str]) -> list[list[str]]:
     usable_height = _TOP_START - _BOTTOM_MARGIN
     page_capacity = max(12, usable_height // _LINE_HEIGHT)
-    return [lines[i : i + page_capacity] for i in range(0, len(lines), page_capacity)] or [["Agent-BOM Scan Report"]]
+    from agent_bom.output.brand_tokens import REPORT_TITLE
+
+    return [lines[i : i + page_capacity] for i in range(0, len(lines), page_capacity)] or [[REPORT_TITLE]]
 
 
 def _page_stream(lines: list[str]) -> bytes:

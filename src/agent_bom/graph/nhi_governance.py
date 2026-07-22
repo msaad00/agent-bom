@@ -416,6 +416,7 @@ def build_nhi_governance_findings(
                     finding_type=FindingType.CIEM_OVER_PRIVILEGE,
                     source=FindingSource.MCP_SCAN,
                     asset=asset,
+                    node_id=v.node_id,
                     severity="medium" if v.is_privileged else "low",
                     title=f"Over-granted identity: {v.name} has {len(over_grant_targets)} unused permission(s)",
                     description=(
@@ -449,6 +450,7 @@ def build_nhi_governance_findings(
                     finding_type=FindingType.CREDENTIAL_EXPOSURE,
                     source=FindingSource.MCP_SCAN,
                     asset=asset,
+                    node_id=v.node_id,
                     severity="high" if (v.is_privileged or v.internet_exposed) else "medium",
                     title=f"Unattended non-human identity: {v.name} ({', '.join(reasons)})",
                     description=(
@@ -552,6 +554,8 @@ def build_ciem_over_privilege_findings(graph: UnifiedGraph) -> list[Finding]:
                 finding_type=FindingType.CIEM_OVER_PRIVILEGE,
                 source=FindingSource.GRAPH_ANALYSIS,
                 asset=asset,
+                node_id=node.id,
+                entity_type=node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type),
                 severity="medium" if privileged else "low",
                 title=f"Over-privileged identity: {node.label} has {len(unused)} unused permission(s)",
                 description=(

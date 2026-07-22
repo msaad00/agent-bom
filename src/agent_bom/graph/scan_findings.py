@@ -72,6 +72,34 @@ def attach_graph_derived_findings(report: "AIBOMReport", graph: "UnifiedGraph") 
     except Exception as exc:  # noqa: BLE001
         _logger.debug("CIEM over-privilege findings surfacing skipped: %s", exc)
 
+    # ── Finding ↔ graph node FK stamping ─────────────────────────────────────
+    # Prefer stable Finding.id on vuln nodes and Finding.node_id on estate nodes
+    # so investigation paths are not CVE-label-only.
+    try:
+        from agent_bom.graph.asset_entity import link_findings_to_graph_nodes
+
+        findings = list(report.to_findings())
+        linked = link_findings_to_graph_nodes(findings, graph)
+        if linked:
+            # Persist stamped FKs onto report.findings when the dual-write list
+            # is empty so subsequent to_findings() / API serialization see them.
+            if not getattr(report, "findings", None):
+                report.findings = findings
+            else:
+                by_id = {str(getattr(f, "id", "")): f for f in findings}
+                for existing in report.findings:
+                    stamped = by_id.get(str(getattr(existing, "id", "")))
+                    if stamped is None:
+                        continue
+                    if not getattr(existing, "node_id", None) and getattr(stamped, "node_id", None):
+                        existing.node_id = stamped.node_id
+                    if not getattr(existing, "finding_node_id", None) and getattr(stamped, "finding_node_id", None):
+                        existing.finding_node_id = stamped.finding_node_id
+                    if not getattr(existing, "entity_type", None) and getattr(stamped, "entity_type", None):
+                        existing.entity_type = stamped.entity_type
+    except Exception as exc:  # noqa: BLE001
+        _logger.debug("finding↔node linking skipped: %s", exc)
+
 
 def surface_graph_derived_findings(report: "AIBOMReport", *, scan_id: str, tenant_id: str) -> None:
     """Build the unified graph from ``report`` and attach graph-derived findings.

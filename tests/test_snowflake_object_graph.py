@@ -58,7 +58,10 @@ def test_objects_become_owned_data_store_nodes() -> None:
     assert orders.attributes["is_data_store"] is True
     assert orders.attributes["row_count"] == 100
     owns = {(e.source, e.target) for e in edges if e.relationship.value == "owns"}
-    assert ("account:snowflake:acct1", "data_store:snowflake:DB.PUBLIC.ORDERS") in owns
+    contains = {(e.source, e.target) for e in edges if e.relationship.value == "contains"}
+    account_orders = ("account:snowflake:acct1", "data_store:snowflake:DB.PUBLIC.ORDERS")
+    assert account_orders in owns
+    assert account_orders in contains
 
 
 def test_dependencies_become_depends_on_lineage_edges() -> None:

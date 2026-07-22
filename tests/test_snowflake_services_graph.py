@@ -44,7 +44,10 @@ def test_warehouse_is_compute_cloud_resource_owned_by_account() -> None:
     assert wh is not None
     assert wh.attributes["resource_kind"] == "snowflake-warehouse"
     owns = {(e.source, e.target) for e in edges if e.relationship.value == "owns"}
-    assert ("account:snowflake:acct1", "cloud_resource:snowflake:warehouse:WH_ETL") in owns
+    contains = {(e.source, e.target) for e in edges if e.relationship.value == "contains"}
+    account_wh = ("account:snowflake:acct1", "cloud_resource:snowflake:warehouse:WH_ETL")
+    assert account_wh in owns
+    assert account_wh in contains
 
 
 def test_database_contains_schema() -> None:
